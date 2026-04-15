@@ -145,7 +145,12 @@ export default async function handler(req, res) {
         const getQty = Number(campConditions.get_qty || 1);
         const campaignFreeProduct = campPrize.free_product || free_product || '';
 
-        const productsText = (campConditions.products_text || '').trim();
+        // Normalize products — handle both conditions.products (array) and conditions.products_text (string)
+        let productsText = (campConditions.products_text || '').trim();
+        if (!productsText && Array.isArray(campConditions.products) && campConditions.products.length > 0) {
+          productsText = campConditions.products.join(', ');
+        }
+
         if (productsText) {
           const eligibleProducts = productsText.split(',').map(p => p.trim().toLowerCase()).filter(Boolean);
           // Only enforce eligibility if at least one entry in products_text matches a real product in the price list.

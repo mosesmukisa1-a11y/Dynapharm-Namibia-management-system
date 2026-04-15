@@ -2096,18 +2096,25 @@ function CampaignsTab() {
                   </div>
 
                   {/* Campaign-type specific details */}
-                  {camp.campaign_type === 'buy_x_get_y' && (
-                    <div className="mb-3 p-3 bg-green-50 rounded-lg border border-green-200 text-sm space-y-1">
-                      <p className="font-bold text-green-800 flex items-center gap-1"><Gift size={14} /> Buy & Get Free Deal</p>
-                      <p className="text-green-700">Buy <strong>{conditions.buy_qty || 1}</strong> unit{(conditions.buy_qty || 1) > 1 ? 's' : ''}, get <strong>{conditions.get_qty || 1}</strong> free</p>
-                      {conditions.products_text && (
-                        <p className="text-xs text-gray-600">Eligible products: <strong>{conditions.products_text}</strong></p>
-                      )}
-                      {prize.free_product && (
-                        <p className="text-xs text-gray-600">Free item: <strong>{prize.free_product}</strong></p>
-                      )}
-                    </div>
-                  )}
+                  {camp.campaign_type === 'buy_x_get_y' && (() => {
+                    const productsDisplay = conditions.products_text
+                      ? conditions.products_text
+                      : Array.isArray(conditions.products) && conditions.products.length > 0
+                        ? conditions.products.join(', ')
+                        : '';
+                    return (
+                      <div className="mb-3 p-3 bg-green-50 rounded-lg border border-green-200 text-sm space-y-1">
+                        <p className="font-bold text-green-800 flex items-center gap-1"><Gift size={14} /> Buy & Get Free Deal</p>
+                        <p className="text-green-700">Buy <strong>{conditions.buy_qty || 1}</strong> unit{(conditions.buy_qty || 1) > 1 ? 's' : ''}, get <strong>{conditions.get_qty || 1}</strong> free</p>
+                        {productsDisplay && (
+                          <p className="text-xs text-gray-600">Eligible products: <strong>{productsDisplay}</strong></p>
+                        )}
+                        {prize.free_product && (
+                          <p className="text-xs text-gray-600">Free item: <strong>{prize.free_product}</strong></p>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {camp.campaign_type === 'discount' && (
                     <div className="mb-3 p-3 bg-orange-50 rounded-lg border border-orange-200 text-sm">
@@ -2194,8 +2201,20 @@ function CampaignPurchaseModal({ campaign, products, branches, nb, onClose }) {
   const getQty = Number(conditions.get_qty || 1);
   const freeProductName = prize.free_product || '';
 
+  // Normalize products_text — handles both array (conditions.products) and string (conditions.products_text)
+  const getProductsText = (cond) => {
+    if (cond.products_text && typeof cond.products_text === 'string' && cond.products_text.trim()) {
+      return cond.products_text.trim();
+    }
+    if (Array.isArray(cond.products) && cond.products.length > 0) {
+      return cond.products.join(', ');
+    }
+    return '';
+  };
+  const condProductsText = getProductsText(conditions);
+
   // Campaign-defined paid product name (from setup — does NOT require database match)
-  const campaignPaidProductName = (conditions.products_text || '').split(',')[0]?.trim() || '';
+  const campaignPaidProductName = condProductsText.split(',')[0]?.trim() || '';
 
   // Match the campaign product in the price list for DP/BV lookup (best-effort, case-insensitive)
   const findProduct = (name) => {
@@ -2207,8 +2226,8 @@ function CampaignPurchaseModal({ campaign, products, branches, nb, onClose }) {
 
   // For buy_x_get_y: products are locked to campaign setup — no dropdown needed
   // For discount/other: allow selection from all products
-  const rawEligibleNames = conditions.products_text
-    ? conditions.products_text.split(',').map(p => p.trim().toLowerCase()).filter(Boolean)
+  const rawEligibleNames = condProductsText
+    ? condProductsText.split(',').map(p => p.trim().toLowerCase()).filter(Boolean)
     : [];
 
   const eligibleProducts = isBuyXGetY && rawEligibleNames.length > 0

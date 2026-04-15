@@ -2270,7 +2270,7 @@ function CampaignsTab() {
         scope: editCampaignForm.scope,
         target_branches: editCampaignForm.target_branches,
         status: editCampaignForm.status,
-        conditions: editCampaignForm.conditions,
+        conditions: normalizeConditions(editCampaignForm.conditions),
         prize: editCampaignForm.prize,
         discount_percentage: editCampaignForm.campaign_type === 'discount'
           ? Number(editCampaignForm.conditions?.discount_pct || editCampaignForm.discount_percentage || 0)
@@ -2289,6 +2289,18 @@ function CampaignsTab() {
     }
   };
 
+  // Normalize conditions: ensure products array is also reflected in products_text
+  const normalizeConditions = (cond) => {
+    if (!cond) return {};
+    const normalized = { ...cond };
+    if (Array.isArray(normalized.products) && normalized.products.length > 0) {
+      normalized.products_text = normalized.products.join(', ');
+    } else if (normalized.products_text && !Array.isArray(normalized.products)) {
+      normalized.products = (normalized.products_text || '').split(',').map(s => s.trim()).filter(Boolean);
+    }
+    return normalized;
+  };
+
   const handleCreate = async (e) => {
     e.preventDefault();
     if (!form.name || !form.start_date || !form.end_date) {
@@ -2298,6 +2310,7 @@ function CampaignsTab() {
     try {
       await api.post('/campaigns', {
         ...form,
+        conditions: normalizeConditions(form.conditions),
         discount_percentage: form.campaign_type === 'discount' ? Number(form.conditions?.discount_pct || 0) : 0,
       });
       setAlert({ type: 'success', msg: 'Campaign created!' });

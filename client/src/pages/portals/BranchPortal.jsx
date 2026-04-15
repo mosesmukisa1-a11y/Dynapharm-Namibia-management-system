@@ -8407,7 +8407,8 @@ function BranchCampaignsTab() {
     setLastReceipt(null);
     const cond = typeof c.conditions === 'string' ? (() => { try { return JSON.parse(c.conditions); } catch { return {}; } })() : (c.conditions || {});
     const prize = typeof c.prize === 'string' ? (() => { try { return JSON.parse(c.prize); } catch { return {}; } })() : (c.prize || {});
-    const prefillPaid = cond.products_text ? cond.products_text.split(',')[0]?.trim() : '';
+    const productsText = getProductsText(cond);
+    const prefillPaid = productsText.split(',')[0]?.trim() || '';
     const prefillFree = prize.free_product || '';
     const prefillBuyQty = cond.buy_qty || 1;
     const prefillGetQty = cond.get_qty || 1;
@@ -8422,12 +8423,24 @@ function BranchCampaignsTab() {
     }).catch(() => {});
   };
 
+  // Derive products_text from conditions, handling both array (conditions.products) and string (conditions.products_text)
+  const getProductsText = (cond) => {
+    if (cond.products_text && typeof cond.products_text === 'string' && cond.products_text.trim()) {
+      return cond.products_text.trim();
+    }
+    if (Array.isArray(cond.products) && cond.products.length > 0) {
+      return cond.products.join(', ');
+    }
+    return '';
+  };
+
   // Derive campaign products directly from campaign setup (not from user selection)
   const getCampProducts = (c) => {
     if (!c) return { paidProduct: '', freeProduct: '', buyQty: 1, getQty: 1 };
     const cond = typeof c.conditions === 'string' ? (() => { try { return JSON.parse(c.conditions); } catch { return {}; } })() : (c.conditions || {});
     const prize = typeof c.prize === 'string' ? (() => { try { return JSON.parse(c.prize); } catch { return {}; } })() : (c.prize || {});
-    const paidProduct = (cond.products_text || '').split(',')[0]?.trim() || '';
+    const productsText = getProductsText(cond);
+    const paidProduct = productsText.split(',')[0]?.trim() || '';
     const freeProduct = prize.free_product || '';
     const buyQty = Number(cond.buy_qty || 1);
     const getQty = Number(cond.get_qty || 1);
@@ -8440,15 +8453,9 @@ function BranchCampaignsTab() {
     const isBuyXGetY = saleModal?.campaign_type === 'buy_x_get_y';
     const { paidProduct: campPaidProduct, freeProduct: campFreeProduct, buyQty, getQty } = getCampProducts(saleModal);
 
-    // Check whether the campaign's locked product is actually in inventory
-    const campPaidValid = campPaidProduct && productOptions.some(
-      p => p.value.trim().toLowerCase() === campPaidProduct.trim().toLowerCase()
-    );
-
-    // For buy_x_get_y: use campaign product only when it's a real inventory match;
-    // otherwise fall back to whatever the branch staff manually selected.
-    const finalPaidProduct = isBuyXGetY && campPaidValid ? campPaidProduct : saleForm.paid_product;
-    // Free product: use campaign prize config → fall back to same item as paid (most common pattern)
+    // For buy_x_get_y: use the campaign's configured product first; only fall back to manual selection if campaign has no product set
+    const finalPaidProduct = isBuyXGetY ? (campPaidProduct || saleForm.paid_product) : saleForm.paid_product;
+    // Free product: use campaign prize config → fall back to same item as paid
     const finalFreeProduct = isBuyXGetY ? (campFreeProduct || finalPaidProduct) : saleForm.free_product;
     const finalPaidQty = Number(saleForm.paid_qty);
     const finalFreeQty = isBuyXGetY ? Math.floor(finalPaidQty / buyQty) * getQty : Number(saleForm.free_qty);
@@ -8463,10 +8470,6 @@ function BranchCampaignsTab() {
     }
     if (!finalPaidProduct) {
       setAlertMsg({ type: 'error', msg: 'Please select the product being purchased.' });
-      return;
-    }
-    if (!isBuyXGetY && !saleForm.paid_product) {
-      setAlertMsg({ type: 'error', msg: 'Please select the paid product.' });
       return;
     }
 
@@ -8724,29 +8727,29 @@ function BranchCampaignsTab() {
                   p => p.value.trim().toLowerCase() === paidProduct.trim().toLowerCase()
                 );
                 // Effective free product: from campaign prize, or same as paid item
-                const effectiveFreeProduct = freeProduct || (campPaidValid ? paidProduct : saleForm.paid_product) || '';
+                const effectiveFreeProduct = freeProduct || paidProduct || saleForm.paid_product || '';
 
                 if (isBXGY) {
                   return (
                     <>
-                      {/* Paid product — locked pill if valid, selector if campaign data is wrong */}
+                      {/* Paid product — always locked to campaign configuration */}
                       <div className="p-3 rounded-lg border-2 border-blue-200 bg-blue-50 space-y-2">
                         <div className="text-sm font-semibold text-blue-800">
                           Paid Item <span className="text-blue-600 font-normal text-xs">(deducted as sale)</span>
                         </div>
-                        {campPaidValid ? (
+                        {paidProduct ? (
                           <div className="flex items-center gap-3 p-2 bg-white border border-blue-300 rounded-lg">
                             <span style={{ fontSize: 20 }}>📦</span>
                             <div className="flex-1">
                               <div className="font-bold text-gray-800 text-sm">{paidProduct}</div>
                               <div className="text-xs text-gray-500">Buy {buyQty} unit(s) to qualify</div>
                             </div>
-                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold">Auto-selected</span>
+                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold">From campaign setup</span>
                           </div>
                         ) : (
                           <div className="space-y-1">
                             <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
-                              ⚠️ Campaign product not configured — select from your inventory below
+                              ⚠️ No product configured in this campaign — select from your inventory
                             </div>
                             <select value={saleForm.paid_product} onChange={e => setSaleForm(f => ({ ...f, paid_product: e.target.value }))}
                               className="w-full px-3 py-2 rounded-lg border border-blue-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200">
