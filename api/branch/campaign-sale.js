@@ -504,6 +504,8 @@ export default async function handler(req, res) {
           total_bv:       paidBvTotal,
           profit_amount:  profitAmount,
           referral_nb:    referral_nb || null,
+          referral_name:  !isMember ? (body.referral_name || '') : null,
+          cashier:        processed_by || null,
           notes,
         },
         message: `Campaign sale processed. ${allDeductions.length} stock deduction(s) recorded.`,

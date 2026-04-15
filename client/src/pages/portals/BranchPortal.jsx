@@ -8223,88 +8223,58 @@ function isLiveCampaign(c) {
 }
 
 function printCampaignReceipt(receipt, branchDisplayName) {
-  const BRANCH_NAMES = {
-    windhoek: 'Windhoek', walvisbay: 'Walvis Bay', swakopmund: 'Swakopmund',
-    oshakati: 'Oshakati', rundu: 'Rundu', katima: 'Katima Mulilo', katima_mulilo: 'Katima Mulilo',
-    keetmanshoop: 'Keetmanshoop', otjiwarongo: 'Otjiwarongo', gobabis: 'Gobabis',
-  };
-  const branchName = BRANCH_NAMES[receipt.branch] || branchDisplayName || receipt.branch || '';
-  const dateStr = receipt.sale_date
-    ? new Date(receipt.sale_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-    : '';
   const isMember = receipt.customer_type === 'member';
-  const items = Array.isArray(receipt.items) ? receipt.items : [];
+  const rawItems = Array.isArray(receipt.items) ? receipt.items : [];
 
-  const itemRows = items.map(it => {
-    if (it.is_free) {
-      return `
-        <tr style="background:#fff0f0;">
-          <td style="padding:6px 8px;border-bottom:1px solid #fca5a5;">${it.product_name}</td>
-          <td style="padding:6px 8px;border-bottom:1px solid #fca5a5;text-align:center;">${it.quantity}</td>
-          <td style="padding:6px 8px;border-bottom:1px solid #fca5a5;text-align:right;color:#b91c1c;font-weight:700;">FREE</td>
-          <td style="padding:6px 8px;border-bottom:1px solid #fca5a5;text-align:right;color:#b91c1c;font-weight:700;">FREE</td>
-        </tr>`;
-    }
-    return `
-      <tr>
-        <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;">${it.product_name}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;text-align:center;">${it.quantity}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;text-align:right;">N$${Math.round(Number(it.unit_price || it.dp || 0)).toLocaleString("en-ZA")}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;text-align:right;">N$${Math.round(Number(it.total_dp || (it.unit_price || 0) * it.quantity)).toLocaleString('en-ZA')}</td>
-      </tr>`;
-  }).join('');
+  // Map campaign items to the format expected by generateReceiptHTML
+  // Free items show as N$0 with 🎁 label appended to name — customer/dist/branch copies all see them
+  const mappedItems = rawItems.map(it => ({
+    product_name: it.is_free ? `${it.product_name} 🎁 (FREE)` : it.product_name,
+    name:         it.is_free ? `${it.product_name} 🎁 (FREE)` : it.product_name,
+    quantity:     it.quantity || 1,
+    qty:          it.quantity || 1,
+    // Customer copy uses cpPrice (or unit_price as fallback)
+    cpPrice:      it.is_free ? 0 : Number(it.cp || 0),
+    unit_price:   it.is_free ? 0 : Number(it.cp || it.unit_price || 0),
+    unitPrice:    it.is_free ? 0 : Number(it.cp || it.unit_price || 0),
+    // Distributor/Branch copies use dpPrice
+    dpPrice:      it.is_free ? 0 : Number(it.dp || 0),
+    // BV fields
+    bv:           it.is_free ? 0 : Number(it.bv || 0),
+    lineBV:       it.is_free ? 0 : Number(it.total_bv || 0),
+    // Line totals
+    line_total:   it.is_free ? 0 : Number(it.total_cp || it.total || 0),
+    lineTotal:    it.is_free ? 0 : Number(it.total_cp || it.total || 0),
+  }));
 
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Campaign Receipt</title>
-  <style>
-    body{font-family:'Arial',sans-serif;font-size:13px;color:#1a202c;max-width:400px;margin:0 auto;padding:20px;}
-    h2{text-align:center;color:#9b1c2e;margin:0 0 2px;}
-    .sub{text-align:center;font-size:11px;color:#64748b;margin:0 0 12px;}
-    .divider{border:none;border-top:2px dashed #e2e8f0;margin:12px 0;}
-    table{width:100%;border-collapse:collapse;font-size:12px;}
-    th{background:#f8fafc;padding:6px 8px;text-align:left;font-size:11px;color:#475569;border-bottom:2px solid #e2e8f0;}
-    th:nth-child(2){text-align:center;}th:nth-child(3),th:nth-child(4){text-align:right;}
-    .free-badge{display:inline-block;background:#ef4444;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;vertical-align:middle;}
-    .total-row{font-weight:700;font-size:13px;}
-    .campaign-banner{background:#9b1c2e;color:#fff;text-align:center;padding:6px 10px;border-radius:8px;font-weight:700;font-size:12px;margin-bottom:10px;}
-    @media print{body{padding:0;}}
-  </style></head><body>
-  <h2>DYNAPHARM INTERNATIONAL</h2>
-  <div class="sub">Namibia · ${branchName} Branch</div>
-  <div class="sub">Campaign Sale Receipt</div>
-  <hr class="divider">
-  <div class="campaign-banner">🎁 ${receipt.campaign_name || 'Campaign Sale'}</div>
-  <table>
-    <tr><td style="color:#64748b;font-size:11px;">Receipt #</td><td colspan="3" style="font-weight:700;">${receipt.sale_number}</td></tr>
-    <tr><td style="color:#64748b;font-size:11px;">Date</td><td colspan="3">${dateStr}</td></tr>
-    <tr><td style="color:#64748b;font-size:11px;">Customer</td><td colspan="3">${receipt.customer_name || '—'}</td></tr>
-    <tr><td style="color:#64748b;font-size:11px;">Type</td><td colspan="3">${isMember ? 'Member' : 'Non-Member'}</td></tr>
-    ${receipt.nb_number ? `<tr><td style="color:#64748b;font-size:11px;">NB#</td><td colspan="3">${receipt.nb_number}</td></tr>` : ''}
-  </table>
-  <hr class="divider">
-  <table>
-    <thead><tr><th>Product</th><th>Qty</th><th>Unit</th><th>Total</th></tr></thead>
-    <tbody>${itemRows}</tbody>
-    <tfoot>
-      <tr class="total-row" style="border-top:2px solid #1a202c;">
-        <td colspan="3" style="padding:8px 8px 4px;text-align:right;">Total Paid:</td>
-        <td style="padding:8px 8px 4px;text-align:right;">N$${Math.round(Number(receipt.total_dp || 0)).toLocaleString("en-ZA")}</td>
-      </tr>
-      <tr><td colspan="3" style="padding:2px 8px 8px;text-align:right;color:#64748b;font-size:11px;">BV Earned:</td>
-        <td style="padding:2px 8px 8px;text-align:right;color:#064e3b;font-size:11px;">${Math.round(Number(receipt.total_bv || 0)).toLocaleString("en-ZA")} BV</td></tr>
-    </tfoot>
-  </table>
-  <hr class="divider">
-  ${items.some(i => i.is_free) ? `<div style="background:#fff0f0;border:1px solid #fca5a5;border-radius:6px;padding:8px 10px;text-align:center;color:#b91c1c;font-weight:700;font-size:12px;margin:8px 0;">🎁 FREE item(s) included — Campaign promotion</div>` : ''}
-  ${receipt.notes ? `<div style="font-size:11px;color:#64748b;margin-top:8px;">Notes: ${receipt.notes}</div>` : ''}
-  <div style="text-align:center;margin-top:16px;font-size:10px;color:#94a3b8;">Thank you for your purchase!<br>Dynapharm International Namibia</div>
-  </body></html>`;
+  const campaignBanner = `<div style="background:#9b1c2e;color:#fff;text-align:center;padding:5px 10px;border-radius:6px;font-weight:700;font-size:11px;margin-bottom:6px;">🎁 Campaign: ${receipt.campaign_name || 'Campaign Sale'}</div>`;
 
-  const w = window.open('', '_blank', 'width=480,height=700');
-  if (!w) return;
-  w.document.write(html);
-  w.document.close();
-  w.focus();
-  setTimeout(() => { w.print(); }, 400);
+  const receiptHTML = generateReceiptHTML({
+    receiptNumber:   receipt.sale_number,
+    branch:          branchDisplayName || receipt.branch,
+    items:           mappedItems,
+    totalAmount:     Number(receipt.total || 0),
+    totalBV:         Number(receipt.total_bv || 0),
+    paymentMethod:   'Cash',
+    customerType:    isMember ? 'member' : 'non_member',
+    customerName:    receipt.customer_name || '',
+    nbNumber:        isMember ? (receipt.nb_number || '') : '',
+    referralName:    !isMember ? (receipt.referral_name || 'Dynapharm Namibia') : null,
+    referralNB:      !isMember ? (receipt.referral_nb || '') : null,
+    cashier:         receipt.cashier || null,
+    showBV:          true,
+    cashback:        0,
+    branchAmount:    !isMember ? Number(receipt.total_dp || 0) : null,
+    distributorProfit: !isMember ? Number(receipt.profit_amount || 0) : null,
+  });
+
+  // Inject campaign banner right after the first <div ...> opening tag
+  const withBanner = receiptHTML.replace(
+    /(<div[^>]*max-width[^>]*>)/,
+    `$1${campaignBanner}`
+  );
+
+  printReceipt(withBanner);
 }
 
 function BranchCampaignsTab() {
