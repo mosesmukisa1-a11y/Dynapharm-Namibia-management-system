@@ -124,45 +124,118 @@ function parseItems(items, keepZeroQty = false) {
   return items.map(normalizeTransferItem).filter(Boolean).filter((item) => keepZeroQty ? item.quantity >= 0 : item.quantity > 0);
 }
 
-async function enrichItemsWithBatchExpiry(items) {
-  const batchNosNeedingLookup = [...new Set(
+/**
+ * Enrich transfer items with batch_no and expiry_date from stock_batches / supplier_imports.
+ * This is the canonical gateway that ensures the supplier-import batch_no is always preserved:
+ *  1. Items missing batchNo → look up FIFO from stock_batches at the source location (or supplier_imports).
+ *  2. Items with batchNo but missing expiryDate → look up expiry from stock_batches.
+ */
+async function enrichItemsWithBatchExpiry(items, sourceLocation) {
+  // Collect product names that need a batch_no resolved
+  const productsNeedingBatch = items.filter(item => !item.batchNo && item.productName);
+  // Collect batch_nos that have a batch_no but need expiry resolved
+  const batchNosNeedingExpiry = [...new Set(
     items
       .filter(item => item.batchNo && !item.expiryDate)
       .map(item => item.batchNo)
   )];
 
-  if (batchNosNeedingLookup.length === 0) return items;
-
-  let batchExpiryMap = {};
-  try {
-    const batchRows = await getMany(
-      `SELECT batch_no, expiry_date FROM stock_batches WHERE batch_no = ANY($1::text[]) AND expiry_date IS NOT NULL`,
-      [batchNosNeedingLookup]
-    );
-    batchRows.forEach(row => {
-      if (row.batch_no && row.expiry_date && !batchExpiryMap[row.batch_no]) {
-        batchExpiryMap[row.batch_no] = row.expiry_date instanceof Date
-          ? row.expiry_date.toISOString().split('T')[0]
-          : row.expiry_date;
+  // Resolve missing batch_no values by looking up the FIFO-first batch from stock_batches
+  // (falling back to supplier_imports if no stock_batches row found).
+  let productBatchMap = {}; // productName → { batchNo, expiryDate }
+  if (productsNeedingBatch.length > 0) {
+    const productNames = [...new Set(productsNeedingBatch.map(i => i.productName))];
+    try {
+      for (const productName of productNames) {
+        // Primary: look up stock_batches at source location (FIFO by expiry/import_date)
+        const locationFilter = sourceLocation
+          ? `AND (LOWER(TRIM(location)) = LOWER(TRIM($2)) OR LOWER(TRIM(warehouse_id)) = LOWER(TRIM($2)))`
+          : '';
+        const params = sourceLocation
+          ? [productName, sourceLocation]
+          : [productName];
+        const batchRow = await getMany(
+          `SELECT batch_no, expiry_date, dpc_unit_value, cif_unit_cost
+           FROM stock_batches
+           WHERE LOWER(TRIM(description)) = LOWER(TRIM($1))
+             AND remaining_quantity > 0
+             AND status != 'expired'
+             ${locationFilter}
+           ORDER BY expiry_date ASC NULLS LAST, import_date ASC
+           LIMIT 1`,
+          params
+        );
+        if (batchRow.length > 0 && batchRow[0].batch_no) {
+          const row = batchRow[0];
+          productBatchMap[productName.toLowerCase()] = {
+            batchNo: row.batch_no,
+            expiryDate: row.expiry_date instanceof Date
+              ? row.expiry_date.toISOString().split('T')[0]
+              : (row.expiry_date || null),
+          };
+        } else {
+          // Fallback: look up from supplier_imports (the canonical user-entered batch_no)
+          const siRow = await getMany(
+            `SELECT batch_no, expiry_date FROM supplier_imports
+             WHERE LOWER(TRIM(product_name)) = LOWER(TRIM($1))
+               AND batch_no IS NOT NULL
+             ORDER BY created_at DESC LIMIT 1`,
+            [productName]
+          );
+          if (siRow.length > 0 && siRow[0].batch_no) {
+            productBatchMap[productName.toLowerCase()] = {
+              batchNo: siRow[0].batch_no,
+              expiryDate: siRow[0].expiry_date instanceof Date
+                ? siRow[0].expiry_date.toISOString().split('T')[0]
+                : (siRow[0].expiry_date || null),
+            };
+          }
+        }
       }
-    });
-  } catch (e) {
-    console.warn('[transfers] Could not look up batch expiry dates:', e.message);
+    } catch (e) {
+      console.warn('[transfers] Could not look up batch_no for items:', e.message);
+    }
+  }
+
+  // Resolve missing expiry for items that already have a batch_no
+  let batchExpiryMap = {};
+  if (batchNosNeedingExpiry.length > 0) {
+    try {
+      const batchRows = await getMany(
+        `SELECT batch_no, expiry_date FROM stock_batches WHERE batch_no = ANY($1::text[]) AND expiry_date IS NOT NULL`,
+        [batchNosNeedingExpiry]
+      );
+      batchRows.forEach(row => {
+        if (row.batch_no && row.expiry_date && !batchExpiryMap[row.batch_no]) {
+          batchExpiryMap[row.batch_no] = row.expiry_date instanceof Date
+            ? row.expiry_date.toISOString().split('T')[0]
+            : row.expiry_date;
+        }
+      });
+    } catch (e) {
+      console.warn('[transfers] Could not look up batch expiry dates:', e.message);
+    }
   }
 
   return items.map(item => {
-    if (item.batchNo && !item.expiryDate && batchExpiryMap[item.batchNo]) {
-      return { ...item, expiryDate: batchExpiryMap[item.batchNo] };
-    }
-    return item;
+    const key = (item.productName || '').toLowerCase();
+    const resolved = productBatchMap[key];
+    return {
+      ...item,
+      batchNo: item.batchNo || resolved?.batchNo || null,
+      expiryDate: item.expiryDate
+        || (item.batchNo ? batchExpiryMap[item.batchNo] : null)
+        || resolved?.expiryDate
+        || null,
+    };
   });
 }
 
-async function replaceTransferItems(transferId, items) {
+async function replaceTransferItems(transferId, items, sourceLocation) {
   await query('DELETE FROM stock_transfer_items WHERE transfer_id = $1', [transferId]);
   if (!Array.isArray(items) || items.length === 0) return;
 
-  const enrichedItems = await enrichItemsWithBatchExpiry(items);
+  const enrichedItems = await enrichItemsWithBatchExpiry(items, sourceLocation || null);
 
   const values = [];
   const params = [];
@@ -581,7 +654,7 @@ export default async function handler(req, res) {
       if (finalItems.length === 0 && productName && quantity > 0) {
         finalItems = [{ productId: productName, productName, quantity, unit: 'units', batchNo: null, metadata: null }];
       }
-      await replaceTransferItems(transfer.id, finalItems);
+      await replaceTransferItems(transfer.id, finalItems, fromLocation);
 
       let dispatchNote = null;
       if (transfer.status === 'dispatched') {
@@ -819,7 +892,8 @@ export default async function handler(req, res) {
 
       if (body.items !== undefined || body.itemsArray !== undefined) {
         const normalizedItems = parseItems(body.items || body.itemsArray, true);
-        await replaceTransferItems(id, normalizedItems);
+        const patchSourceLocation = body.fromWarehouse || body.from_warehouse || body.fromLocation || body.from_location || null;
+        await replaceTransferItems(id, normalizedItems, patchSourceLocation);
       }
 
       const transferItems = await getMany(
