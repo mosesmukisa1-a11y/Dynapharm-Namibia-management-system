@@ -55,22 +55,29 @@ export default async function handler(req, res) {
       const FULL_ACCESS = new Set(['admin', 'gm', 'director', 'stock']);
       // Distributors querying their own checkups via client_reference skip branch restriction
       const isDistributorSelfQuery = userRole === 'distributor' && clientRef;
-      if (req.user && !FULL_ACCESS.has(userRole) && userBranch && !branch && !isDistributorSelfQuery) {
-        // Match all stored name variants for this branch (e.g. 'townshop' matches 'Windhoek CBD')
-        const aliases = getBranchAliases(userBranch);
-        conditions.push('branch = ANY($' + (params.length + 1) + '::text[])');
-        params.push(aliases);
+
+      if (req.user && !FULL_ACCESS.has(userRole) && !isDistributorSelfQuery && !branch) {
+        if (userBranch) {
+          // Restrict to user's own branch — match all stored name variants
+          const aliases = getBranchAliases(userBranch);
+          conditions.push('branch = ANY($' + (params.length + 1) + '::text[])');
+          params.push(aliases);
+        } else {
+          // No branch assigned to this user — fail-safe: return nothing
+          // Prevents cross-branch data leakage for staff without a branch set
+          conditions.push('1 = 0');
+        }
       }
-      
+
       if (id) {
         conditions.push('id = $' + (params.length + 1));
         params.push(id);
       }
       if (branch) {
         if (req.user && !FULL_ACCESS.has(userRole) && userBranch) {
-          // Allow if the requested branch is an alias of the user's own branch
+          // Allow only if the requested branch is an alias of the user's own branch
           const userAliases = getBranchAliases(userBranch);
-          const requestedAliases = getBranchAliases(branch);
+          const requestedAliases = getBranchAliases(normBranch(branch));
           const overlaps = userAliases.some(a => requestedAliases.includes(a));
           if (!overlaps) {
             return res.status(403).json({ error: 'Access denied to this branch' });

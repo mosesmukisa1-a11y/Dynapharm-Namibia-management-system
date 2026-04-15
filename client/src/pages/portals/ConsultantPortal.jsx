@@ -356,13 +356,16 @@ function CheckupsSection() {
   const [currentRecommendations, setCurrentRecommendations] = useState(null);
   const [reportRequired, setReportRequired] = useState(true);
 
+  const consultantBranch = user?.branch || '';
+
   const loadCheckups = useCallback(() => {
     setLoading(true);
-    api.appointments.list('type=Check')
+    const branchParam = consultantBranch ? `&branch=${encodeURIComponent(consultantBranch)}` : '';
+    api.appointments.list(`type=Check${branchParam}`)
       .then(data => setAppointments(Array.isArray(data) ? data : data.appointments || []))
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  }, [consultantBranch]);
 
   useEffect(() => { loadCheckups(); }, [loadCheckups]);
 

@@ -65,13 +65,14 @@ function AppointmentsTab() {
 
   const loadAppointments = () => {
     setLoading(true);
-    api.appointments.list()
+    const branchParam = userBranch ? `branch=${encodeURIComponent(userBranch)}` : '';
+    api.appointments.list(branchParam)
       .then(data => setAppointments(Array.isArray(data) ? data : data.appointments || []))
       .catch(() => {})
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { loadAppointments(); }, []);
+  useEffect(() => { loadAppointments(); }, [userBranch]);
 
   const handleCreate = async (e) => {
     e.preventDefault();
