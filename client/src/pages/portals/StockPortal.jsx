@@ -2242,32 +2242,77 @@ function WarehouseTab({ name }) {
             <Card>
               <CardHeader>
                 <h3 className="font-bold text-gray-800">📥 Pending Receipt ({pendingReceipt.length})</h3>
-                <p className="text-xs text-gray-500 mt-0.5">Distributions from Country Stock awaiting your confirmation.</p>
+                <p className="text-xs text-gray-500 mt-0.5">Distributions from Country Stock awaiting your confirmation. Each product line is shown individually.</p>
               </CardHeader>
-              <Table
-                columns={[
-                  { header: 'Products', render: r => {
-                    const items = Array.isArray(r.items) ? r.items : [];
-                    if (items.length > 0) return <span className="text-sm">{items.map(i => `${i.productName || i.product_name} × ${i.quantity}`).join(', ')}</span>;
-                    return <span className="font-medium">{r.product_name || '—'}</span>;
-                  }},
-                  { header: 'Total Qty', render: r => {
-                    const items = Array.isArray(r.items) ? r.items : [];
-                    const total = items.length > 0 ? items.reduce((s, i) => s + Number(i.quantity || 0), 0) : (r.quantity || 0);
-                    return <span className="font-bold text-primary">{total}</span>;
-                  }},
-                  { header: 'From', render: r => fmtLocation(r.fromWarehouse || r.from_location) },
-                  { header: 'Status', render: r => <Badge variant={statusColor[r.status] || 'default'}>{(r.status || 'pending').replace(/_/g, ' ')}</Badge> },
-                  { header: 'Date', render: r => formatDate(r.createdAt || r.created_at) },
-                  { header: 'Action', render: r => (
-                    <Button size="sm" variant="success" onClick={() => handleReceiveDistribution(r)} disabled={receivingId === r.id}>
-                      {receivingId === r.id ? 'Receiving...' : '✓ Confirm Receipt'}
-                    </Button>
-                  )},
-                ]}
-                data={pendingReceipt}
-                emptyMessage="No distributions pending receipt"
-              />
+              <div className="overflow-x-auto">
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                      <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Product Name</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Batch #</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Expiry</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 700, color: '#374151' }}>Qty</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>From</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Status</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Date</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pendingReceipt.map((transfer, ti) => {
+                      const items = Array.isArray(transfer.items) && transfer.items.length > 0
+                        ? transfer.items
+                        : [{ productName: transfer.product_name || '—', batchNo: null, expiryDate: null, quantity: transfer.quantity || 0 }];
+                      const rowBg = ti % 2 === 0 ? '#fff' : '#fafafa';
+                      return items.map((item, ii) => (
+                        <tr key={`${transfer.id}-${ii}`} style={{ background: rowBg, borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '9px 12px', fontWeight: 600, color: '#1e293b' }}>
+                            {item.productName || item.product_name || '—'}
+                          </td>
+                          <td style={{ padding: '9px 12px' }}>
+                            <span style={{ background: '#eff6ff', color: '#1d4ed8', padding: '2px 8px', borderRadius: 5, fontFamily: 'monospace', fontSize: '0.78rem', fontWeight: 700 }}>
+                              {item.batchNo || item.batch_no || '—'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '9px 12px' }}>
+                            {(() => {
+                              const d = item.expiryDate || item.expiry_date;
+                              if (!d) return <span style={{ color: '#94a3b8' }}>—</span>;
+                              const days = Math.floor((new Date(d) - new Date()) / 86400000);
+                              return (
+                                <span style={{ color: days <= 30 ? '#dc2626' : days <= 90 ? '#d97706' : '#16a34a', fontWeight: days <= 90 ? 700 : 400 }}>
+                                  {formatDate(d)}{days <= 90 ? ` (${days}d)` : ''}
+                                </span>
+                              );
+                            })()}
+                          </td>
+                          <td style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 800, color: '#7c3aed', fontSize: '0.95rem' }}>
+                            {Number(item.quantity || 0).toLocaleString()}
+                          </td>
+                          {ii === 0 && (
+                            <>
+                              <td style={{ padding: '9px 12px', color: '#64748b' }} rowSpan={items.length}>
+                                {fmtLocation(transfer.fromWarehouse || transfer.from_location)}
+                              </td>
+                              <td style={{ padding: '9px 12px' }} rowSpan={items.length}>
+                                <Badge variant={statusColor[transfer.status] || 'default'}>{(transfer.status || 'pending').replace(/_/g, ' ')}</Badge>
+                              </td>
+                              <td style={{ padding: '9px 12px', color: '#64748b', whiteSpace: 'nowrap' }} rowSpan={items.length}>
+                                {formatDate(transfer.createdAt || transfer.created_at)}
+                              </td>
+                              <td style={{ padding: '9px 12px' }} rowSpan={items.length}>
+                                <Button size="sm" variant="success" onClick={() => handleReceiveDistribution(transfer)} disabled={receivingId === transfer.id}>
+                                  {receivingId === transfer.id ? 'Receiving…' : '✓ Confirm Receipt'}
+                                </Button>
+                              </td>
+                            </>
+                          )}
+                        </tr>
+                      ));
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </Card>
           )}
 
@@ -2275,25 +2320,78 @@ function WarehouseTab({ name }) {
             <Card>
               <CardHeader>
                 <h3 className="font-bold text-gray-800">✓ Receipt History</h3>
+                <p className="text-xs text-gray-500 mt-0.5">All stock received into {name} Warehouse from Country Stock.</p>
               </CardHeader>
-              <Table
-                columns={[
-                  { header: 'Products', render: r => {
-                    const items = Array.isArray(r.items) ? r.items : [];
-                    if (items.length > 0) return <span className="text-xs">{items.map(i => `${i.productName || i.product_name} × ${i.quantity}`).join(', ')}</span>;
-                    return <span className="text-sm">{r.product_name || '—'}</span>;
-                  }},
-                  { header: 'Total Qty', render: r => {
-                    const items = Array.isArray(r.items) ? r.items : [];
-                    return items.length > 0 ? items.reduce((s, i) => s + Number(i.quantity || 0), 0) : (r.quantity || 0);
-                  }},
-                  { header: 'Status', render: r => <Badge variant="success">Received</Badge> },
-                  { header: 'Received By', render: r => <span className="text-xs">{r.receivedBy || r.received_by || '—'}</span> },
-                  { header: 'Date', render: r => formatDate(r.createdAt || r.created_at) },
-                ]}
-                data={receivedHistory}
-                emptyMessage="No receipt history yet"
-              />
+              <div className="overflow-x-auto">
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                      <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Product Name</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Batch #</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Expiry</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 700, color: '#374151' }}>Qty Received</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Received By</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Date Received</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {receivedHistory.map((transfer, ti) => {
+                      const items = Array.isArray(transfer.items) && transfer.items.length > 0
+                        ? transfer.items
+                        : [{ productName: transfer.product_name || '—', batchNo: null, expiryDate: null, quantity: transfer.quantity || 0 }];
+                      const rowBg = ti % 2 === 0 ? '#fff' : '#fafafa';
+                      const receivedBy = transfer.receivedBy || transfer.received_by || '—';
+                      const receivedAt = transfer.receivedAt || transfer.received_at || transfer.updatedAt || transfer.updated_at || transfer.createdAt || transfer.created_at;
+                      return items.map((item, ii) => (
+                        <tr key={`${transfer.id}-${ii}`} style={{ background: rowBg, borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '9px 12px', fontWeight: 600, color: '#1e293b' }}>
+                            {item.productName || item.product_name || '—'}
+                          </td>
+                          <td style={{ padding: '9px 12px' }}>
+                            <span style={{ background: '#f0fdf4', color: '#166534', padding: '2px 8px', borderRadius: 5, fontFamily: 'monospace', fontSize: '0.78rem', fontWeight: 700 }}>
+                              {item.batchNo || item.batch_no || '—'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '9px 12px' }}>
+                            {(() => {
+                              const d = item.expiryDate || item.expiry_date;
+                              if (!d) return <span style={{ color: '#94a3b8' }}>—</span>;
+                              const days = Math.floor((new Date(d) - new Date()) / 86400000);
+                              return (
+                                <span style={{ color: days <= 30 ? '#dc2626' : days <= 90 ? '#d97706' : '#16a34a', fontWeight: days <= 90 ? 700 : 400 }}>
+                                  {formatDate(d)}{days <= 90 ? ` (${days}d)` : ''}
+                                </span>
+                              );
+                            })()}
+                          </td>
+                          <td style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 800, color: '#7c3aed', fontSize: '0.95rem' }}>
+                            {Number(item.quantityReceived ?? item.quantity_received ?? item.quantity ?? 0).toLocaleString()}
+                          </td>
+                          {ii === 0 && (
+                            <>
+                              <td style={{ padding: '9px 12px' }} rowSpan={items.length}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  <span style={{ width: 26, height: 26, borderRadius: '50%', background: '#d1fae5', color: '#065f46', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.7rem', flexShrink: 0 }}>
+                                    {(receivedBy !== '—' ? receivedBy : '?')[0]?.toUpperCase()}
+                                  </span>
+                                  <span style={{ color: '#1e293b', fontWeight: 600, fontSize: '0.82rem' }}>{receivedBy}</span>
+                                </div>
+                              </td>
+                              <td style={{ padding: '9px 12px', color: '#64748b', whiteSpace: 'nowrap' }} rowSpan={items.length}>
+                                {receivedAt ? formatDate(receivedAt) : '—'}
+                              </td>
+                              <td style={{ padding: '9px 12px' }} rowSpan={items.length}>
+                                <Badge variant="success">Received</Badge>
+                              </td>
+                            </>
+                          )}
+                        </tr>
+                      ));
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </Card>
           )}
 
