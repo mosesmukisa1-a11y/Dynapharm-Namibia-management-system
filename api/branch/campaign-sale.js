@@ -1,6 +1,7 @@
 import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
 import { query, getOne, getMany, withTransaction } from '../db.js';
 import { recomputeLocationBalances } from '../services/stockEngine.js';
+import { postActivityRecord, generateBatId } from '../_lib/activityCapture.js';
 
 async function parseJsonBody(req) {
   if (req.body && typeof req.body === 'object') return req.body;
@@ -70,12 +71,23 @@ async function deductStock(client, branchId, productName, qty, movType, noteStr,
       `UPDATE branch_inventory_batches SET quantity = quantity - $1, updated_at = NOW() WHERE id = $2`,
       [take, batch.id]
     );
-    const bimId = 'BIM-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
+    const ts1  = Date.now();
+    const bimId = 'BIM-' + ts1 + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
     await client.query(
       `INSERT INTO branch_inventory_movements (id, branch_id, type, product_name, batch_no, quantity, unit_price, reference, notes, created_by, created_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())`,
       [bimId, branchId, movType, batch.product_name, batch.batch_no || '', take,
        unitPrice || null, saleId, noteStr, createdBy || '']
+    );
+    const smId1 = 'MOV-' + ts1 + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();
+    await client.query(
+      `INSERT INTO stock_movements
+         (id, product_name, batch_no, expiry_date, quantity, movement_type,
+          source_location, source_location_type, destination_location, destination_location_type,
+          reference_id, notes, status, unit_dp, movement_date, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'branch','customer',NULL,$8,$9,'posted',$10,NOW(),NOW(),NOW())`,
+      [smId1, batch.product_name, batch.batch_no || '', batch.expiry_date || null,
+       take, movType, branchId, saleId, noteStr, unitPrice || null]
     );
     deductions.push({ product_name: batch.product_name, batch_no: batch.batch_no, quantity: take, movement_type: movType });
     remaining -= take;
@@ -142,12 +154,23 @@ async function deductStock(client, branchId, productName, qty, movType, noteStr,
       [take, bibId]
     );
 
-    const bimId = 'BIM-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
+    const ts2  = Date.now();
+    const bimId = 'BIM-' + ts2 + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
     await client.query(
       `INSERT INTO branch_inventory_movements (id, branch_id, type, product_name, batch_no, quantity, unit_price, reference, notes, created_by, created_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())`,
       [bimId, branchId, movType, ib.product_name, ib.batch_no || '', take,
        unitPrice || null, saleId, noteStr + ' [from inventory_balances]', createdBy || '']
+    );
+    const smId2 = 'MOV-' + ts2 + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();
+    await client.query(
+      `INSERT INTO stock_movements
+         (id, product_name, batch_no, expiry_date, quantity, movement_type,
+          source_location, source_location_type, destination_location, destination_location_type,
+          reference_id, notes, status, unit_dp, movement_date, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'branch','customer',NULL,$8,$9,'posted',$10,NOW(),NOW(),NOW())`,
+      [smId2, ib.product_name, ib.batch_no || '', ib.expiry_date || null,
+       take, movType, branchId, saleId, noteStr, unitPrice || null]
     );
     deductions.push({ product_name: ib.product_name, batch_no: ib.batch_no, quantity: take, movement_type: movType, source: 'inventory_balances' });
     remaining -= take;
@@ -409,17 +432,46 @@ export default async function handler(req, res) {
         );
       });
 
+      // ── Post-transaction: activity record (mirrors walk-in sales) ────────────
+      const actType = isMember ? 'member_sale' : 'non_member_sale';
+      const saleDate = new Date().toISOString();
+      postActivityRecord({
+        id:                 generateBatId(),
+        branch_id:          branch,
+        branch_name:        branch,
+        client_name:        customer_name || (isMember ? distributor_nb : referral_nb) || 'Campaign Customer',
+        client_type:        customer_type,
+        nb_number:          isMember ? distributor_nb : (referral_nb || null),
+        service_date:       saleDate,
+        service_time:       new Date().toTimeString().slice(0, 8),
+        activity_type:      actType,
+        workflow_source:    'branch_portal',
+        form_reference_id:  saleId,
+        product_total_dp:   Math.round(paidDp * paid_qty * 100) / 100,
+        product_total_cp:   paidTotal,
+        total_qty:          paid_qty,
+        grand_total:        paidTotal,
+        payment_status:     'paid',
+        payment_method:     'cash',
+        stock_impact:       true,
+        stock_status:       'deducted',
+        prescription_status: 'none',
+        consultation_status: 'none',
+        reporting_status:   'posted',
+        captured_by:        processed_by || null,
+      }).catch(e => console.error('[activityCapture] campaign-sale post error:', e.message));
+
       // ── Post-transaction: record distributor profit for non-member sales ──────
-      // Mirrors walk-in sales: profit = (CP - DP) × qty goes to referring distributor
+      // Mirrors walk-in sales exactly: profit = (CP - DP) × qty → referring distributor
       if (!isMember && profitAmount > 0) {
         const profitDistrib = referral_nb || 'NB005676';
         const profitName    = body.referral_name || body.campRefName || 'Dynapharm Namibia';
         const profitId      = 'BDP-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
-        query(   // fire-and-forget (non-critical)
+        query(
           `INSERT INTO branch_distributor_profit
              (id, branch_id, distributor_nb, distributor_name, sale_id, sale_receipt, sale_date, profit_amount, status, created_at, updated_at)
-           VALUES ($1,$2,$3,$4,$5,$6,NOW(),$7,'pending',NOW(),NOW())`,
-          [profitId, branch, profitDistrib, profitName, saleId, saleNumber, profitAmount]
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending',NOW(),NOW())`,
+          [profitId, branch, profitDistrib, profitName, saleId, saleNumber, saleDate, profitAmount]
         ).catch(e => console.error('[campaignProfit] insert error:', e.message));
       }
 

@@ -8480,19 +8480,21 @@ function BranchCampaignsTab() {
     setSubmitting(true);
     try {
       const result = await api.branch.campaignSale({
-        campaign_id:   saleModal.id,
-        campaign_name: saleModal.name,
-        branch:        effectiveBranch,
-        customer_type: campMemberType,
-        customer_name: isMember ? (campSelected?.name || '') : nonMemberName.trim(),
-        nb_number:     isMember ? (campSelected?.nb_number || '') : '',
-        referral_nb:   !isMember ? (campRefSelected?.nb_number || '') : '',
-        paid_product:  finalPaidProduct,
-        paid_qty:      finalPaidQty,
-        free_product:  finalFreeProduct,
-        free_qty:      finalFreeQty,
-        notes:         saleForm.notes,
-        processed_by:  user?.username || user?.full_name || 'branch',
+        campaign_id:    saleModal.id,
+        campaign_name:  saleModal.name,
+        branch:         effectiveBranch,
+        customer_type:  campMemberType,
+        customer_name:  isMember ? (campSelected?.name || '') : nonMemberName.trim(),
+        distributor_nb: isMember ? (campSelected?.nb_number || '') : '',
+        nb_number:      isMember ? (campSelected?.nb_number || '') : '',
+        referral_nb:    !isMember ? (campRefSelected?.nb_number || '') : '',
+        referral_name:  !isMember ? (campRefSelected?.name || '') : '',
+        paid_product:   finalPaidProduct,
+        paid_qty:       finalPaidQty,
+        free_product:   finalFreeProduct,
+        free_qty:       finalFreeQty,
+        notes:          saleForm.notes,
+        processed_by:   user?.username || user?.full_name || 'branch',
       });
       setLastReceipt(result.receipt || null);
       setAlertMsg({ type: 'success', msg: 'Campaign sale processed successfully!' });
