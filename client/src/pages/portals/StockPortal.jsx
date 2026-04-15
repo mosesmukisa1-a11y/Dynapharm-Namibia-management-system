@@ -1999,6 +1999,10 @@ function WarehouseTab({ name }) {
   const [outboundStatusFilter, setOutboundStatusFilter] = useState('');
   const [viewAuditTransfer, setViewAuditTransfer] = useState(null);
   const [viewDispatchNoteTransfer, setViewDispatchNoteTransfer] = useState(null);
+  const [mvDateFrom, setMvDateFrom] = useState('');
+  const [mvDateTo, setMvDateTo] = useState('');
+  const [mvTypeFilter, setMvTypeFilter] = useState('');
+  const [mvProductSearch, setMvProductSearch] = useState('');
   const location = name.toLowerCase() + '_warehouse';
 
   const loadData = useCallback(() => {
@@ -2528,46 +2532,331 @@ function WarehouseTab({ name }) {
         );
       })()}
 
-      {subTab === 'movements' && (
-        <Card>
-          <CardHeader>
-            <div className="flex justify-between items-center">
-              <div>
-                <h3 className="font-bold text-gray-800">{name} Warehouse — Stock Movements</h3>
-                <p className="text-xs text-gray-500 mt-0.5">All stock movements in and out of {name} Warehouse.</p>
+      {subTab === 'movements' && (() => {
+        const IN_TYPES = ['transfer_in','warehouse_receipt','received','import','adjustment_in','country_release','receipt'];
+        const OUT_TYPES = ['dispatch','branch_dispatch','reserved','write_off','adjustment_out','released','transfer_out','dispatched','out'];
+        const mvDir = m => {
+          const t = (m.movement_type || '').toLowerCase();
+          if (IN_TYPES.some(k => t.includes(k))) return 'in';
+          if (OUT_TYPES.some(k => t.includes(k))) return 'out';
+          // fallback: check if warehouse is the destination (in) or source (out)
+          const dst = (m.destination_location || '').toLowerCase();
+          const src = (m.source_location || '').toLowerCase();
+          const loc = location.toLowerCase();
+          if (dst.includes(loc) || dst.includes(name.toLowerCase())) return 'in';
+          if (src.includes(loc) || src.includes(name.toLowerCase())) return 'out';
+          return 'other';
+        };
+        const mvTypeBg = m => {
+          const d = mvDir(m);
+          if (d === 'in') return { bg: '#f0fdf4', color: '#166534', border: '#86efac' };
+          if (d === 'out') return { bg: '#fef2f2', color: '#991b1b', border: '#fca5a5' };
+          return { bg: '#fffbeb', color: '#92400e', border: '#fcd34d' };
+        };
+
+        // Apply filters
+        let filtered = [...movements].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        if (mvDateFrom) filtered = filtered.filter(m => new Date(m.created_at) >= new Date(mvDateFrom));
+        if (mvDateTo) filtered = filtered.filter(m => new Date(m.created_at) <= new Date(mvDateTo + 'T23:59:59'));
+        if (mvTypeFilter) {
+          if (mvTypeFilter === '__in__') filtered = filtered.filter(m => mvDir(m) === 'in');
+          else if (mvTypeFilter === '__out__') filtered = filtered.filter(m => mvDir(m) === 'out');
+          else filtered = filtered.filter(m => (m.movement_type || '').toLowerCase() === mvTypeFilter);
+        }
+        if (mvProductSearch) {
+          const s = mvProductSearch.toLowerCase();
+          filtered = filtered.filter(m => (m.product_name || '').toLowerCase().includes(s) || (m.batch_no || '').toLowerCase().includes(s));
+        }
+
+        // Summary stats from filtered data
+        const totalIn = filtered.filter(m => mvDir(m) === 'in').reduce((s, m) => s + Number(m.quantity || 0), 0);
+        const totalOut = filtered.filter(m => mvDir(m) === 'out').reduce((s, m) => s + Number(m.quantity || 0), 0);
+        const totalAdj = filtered.filter(m => mvDir(m) === 'other').reduce((s, m) => s + Number(m.quantity || 0), 0);
+        const netMovement = totalIn - totalOut;
+
+        // Per-product summary
+        const productMap = {};
+        filtered.forEach(m => {
+          const key = m.product_name || '—';
+          if (!productMap[key]) productMap[key] = { product: key, in: 0, out: 0, adj: 0, batches: new Set() };
+          const d = mvDir(m);
+          if (d === 'in') productMap[key].in += Number(m.quantity || 0);
+          else if (d === 'out') productMap[key].out += Number(m.quantity || 0);
+          else productMap[key].adj += Number(m.quantity || 0);
+          if (m.batch_no) productMap[key].batches.add(m.batch_no);
+        });
+        const productSummary = Object.values(productMap);
+
+        // Remaining from live batches
+        const getRemainingForProduct = pname => batches
+          .filter(b => (b.description || b.product_name || '').toLowerCase() === (pname || '').toLowerCase())
+          .reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0), 0);
+
+        const allTypes = [...new Set(movements.map(m => m.movement_type).filter(Boolean))];
+
+        const printMovements = () => {
+          const dateRange = mvDateFrom || mvDateTo ? `<div style="font-size:11px;color:#666;margin-bottom:8px">Period: ${mvDateFrom || 'all'} to ${mvDateTo || 'present'}</div>` : '';
+          const summaryHtml = `
+            <div style="display:flex;gap:20px;margin-bottom:16px;flex-wrap:wrap">
+              <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px 16px;min-width:120px">
+                <div style="font-size:22px;font-weight:900;color:#166534">${totalIn.toLocaleString()}</div>
+                <div style="font-size:11px;color:#166534;font-weight:700">TOTAL RECEIVED</div>
               </div>
-              <button onClick={() => {
-                const rows = movements.map(m => `<tr><td>${m.product_name||'-'}</td><td>${m.movement_type||'-'}</td><td>${m.quantity||'-'}</td><td>${fmtLocation(m.source_location)}</td><td>${fmtLocation(m.destination_location)}</td><td>${formatDateTime(m.created_at)}</td></tr>`).join('');
-                printDocument(`${name} Warehouse Movements`, `<table><thead><tr><th>Product</th><th>Type</th><th>Qty</th><th>From</th><th>To</th><th>Date</th></tr></thead><tbody>${rows}</tbody></table>`);
-              }} className="px-3 py-1.5 rounded-lg text-xs font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>Print</button>
-            </div>
-          </CardHeader>
-          <div className="px-4 pb-3 grid grid-cols-3 gap-3">
-            {['received','dispatched','adjustment'].map(type => {
-              const total = movements.filter(m => (m.movement_type||'').includes(type)).reduce((s, m) => s + Number(m.quantity || 0), 0);
-              return (
-                <div key={type} style={{ background: type === 'received' ? '#f0fdf4' : type === 'dispatched' ? '#eff6ff' : '#fffbeb', border: `1px solid ${type === 'received' ? '#86efac' : type === 'dispatched' ? '#93c5fd' : '#fcd34d'}`, borderRadius: 10, padding: '10px 14px' }}>
-                  <div className="text-lg font-bold">{total}</div>
-                  <div className="text-xs font-semibold capitalize" style={{ color: type === 'received' ? '#166534' : type === 'dispatched' ? '#1e40af' : '#92400e' }}>{type}</div>
+              <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:10px 16px;min-width:120px">
+                <div style="font-size:22px;font-weight:900;color:#991b1b">${totalOut.toLocaleString()}</div>
+                <div style="font-size:11px;color:#991b1b;font-weight:700">TOTAL DISPATCHED</div>
+              </div>
+              ${totalAdj > 0 ? `<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:10px 16px;min-width:120px"><div style="font-size:22px;font-weight:900;color:#92400e">${totalAdj.toLocaleString()}</div><div style="font-size:11px;color:#92400e;font-weight:700">ADJUSTMENTS</div></div>` : ''}
+              <div style="background:#eff6ff;border:1px solid #93c5fd;border-radius:8px;padding:10px 16px;min-width:120px">
+                <div style="font-size:22px;font-weight:900;color:#1e40af">${netMovement >= 0 ? '+' : ''}${netMovement.toLocaleString()}</div>
+                <div style="font-size:11px;color:#1e40af;font-weight:700">NET MOVEMENT</div>
+              </div>
+            </div>`;
+          const productRows = productSummary.map(p => {
+            const rem = getRemainingForProduct(p.product);
+            return `<tr><td style="padding:6px 10px;font-weight:600">${p.product}</td><td style="padding:6px 10px;text-align:center;color:#166534;font-weight:700">+${p.in}</td><td style="padding:6px 10px;text-align:center;color:#991b1b;font-weight:700">-${p.out}</td>${p.adj ? `<td style="padding:6px 10px;text-align:center;color:#92400e;font-weight:700">${p.adj}</td>` : '<td style="padding:6px 10px;text-align:center;color:#94a3b8">—</td>'}<td style="padding:6px 10px;text-align:center;font-weight:800;color:#1d4ed8">${rem}</td></tr>`;
+          }).join('');
+          const detailRows = filtered.map(m => {
+            const d = mvDir(m);
+            const sign = d === 'in' ? '+' : d === 'out' ? '-' : '±';
+            const clr = d === 'in' ? '#166534' : d === 'out' ? '#991b1b' : '#92400e';
+            return `<tr><td style="padding:5px 8px">${m.product_name||'—'}</td><td style="padding:5px 8px;font-family:monospace;font-size:10px">${m.batch_no||'—'}</td><td style="padding:5px 8px;font-size:10px">${m.expiry_date ? formatDate(m.expiry_date) : '—'}</td><td style="padding:5px 8px;text-transform:capitalize;font-size:10px">${(m.movement_type||'').replace(/_/g,' ')}</td><td style="padding:5px 8px;font-weight:800;color:${clr};text-align:center">${sign}${Number(m.quantity||0)}</td><td style="padding:5px 8px;font-size:10px">${fmtLocation(m.source_location)}</td><td style="padding:5px 8px;font-size:10px">${fmtLocation(m.destination_location)}</td><td style="padding:5px 8px;font-family:monospace;font-size:9px">${m.reference_id||m.reference||'—'}</td><td style="padding:5px 8px;font-size:10px">${m.created_by||'—'}</td><td style="padding:5px 8px;font-size:10px;white-space:nowrap">${formatDateTime(m.created_at)}</td></tr>`;
+          }).join('');
+          printDocument(`${name} Warehouse — Stock Movements Report`, `
+            ${dateRange}
+            ${summaryHtml}
+            <h3 style="font-size:13px;font-weight:800;margin:16px 0 6px;color:#1e293b">Per-Product Summary</h3>
+            <table style="width:100%;border-collapse:collapse;margin-bottom:20px;font-size:12px">
+              <thead><tr style="background:#f1f5f9"><th style="padding:6px 10px;text-align:left">Product</th><th style="padding:6px 10px">Received</th><th style="padding:6px 10px">Dispatched</th><th style="padding:6px 10px">Adjusted</th><th style="padding:6px 10px">Remaining</th></tr></thead>
+              <tbody>${productRows}</tbody>
+            </table>
+            <h3 style="font-size:13px;font-weight:800;margin:16px 0 6px;color:#1e293b">Movement Detail (${filtered.length} records)</h3>
+            <table style="width:100%;border-collapse:collapse;font-size:11px">
+              <thead><tr style="background:#f1f5f9"><th style="padding:5px 8px;text-align:left">Product</th><th style="padding:5px 8px">Batch</th><th style="padding:5px 8px">Expiry</th><th style="padding:5px 8px">Type</th><th style="padding:5px 8px">Qty</th><th style="padding:5px 8px">From</th><th style="padding:5px 8px">To</th><th style="padding:5px 8px">Reference</th><th style="padding:5px 8px">By</th><th style="padding:5px 8px">Date & Time</th></tr></thead>
+              <tbody>${detailRows}</tbody>
+            </table>
+          `);
+        };
+
+        return (
+          <div className="space-y-4">
+            {/* Summary cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {[
+                { label: 'Total Received', value: totalIn, sign: '+', bg: '#f0fdf4', border: '#86efac', color: '#166534', icon: '📥' },
+                { label: 'Total Dispatched', value: totalOut, sign: '-', bg: '#fef2f2', border: '#fca5a5', color: '#991b1b', icon: '📤' },
+                { label: 'Adjustments', value: totalAdj, sign: '±', bg: '#fffbeb', border: '#fcd34d', color: '#92400e', icon: '⚖️' },
+                { label: 'Net Movement', value: netMovement, sign: netMovement >= 0 ? '+' : '', bg: '#eff6ff', border: '#93c5fd', color: '#1e40af', icon: '📊' },
+              ].map(s => (
+                <div key={s.label} style={{ background: s.bg, border: `1.5px solid ${s.border}`, borderRadius: 12, padding: '12px 16px' }}>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 900, color: s.color }}>{s.sign}{s.value.toLocaleString()}</div>
+                  <div style={{ fontSize: '0.73rem', fontWeight: 700, color: s.color, marginTop: 2 }}>{s.icon} {s.label}</div>
+                  <div style={{ fontSize: '0.68rem', color: '#94a3b8', marginTop: 1 }}>{mvDateFrom || mvDateTo ? `${mvDateFrom||'start'} – ${mvDateTo||'now'}` : 'All time'}</div>
                 </div>
-              );
-            })}
+              ))}
+            </div>
+
+            {/* Per-product summary */}
+            {productSummary.length > 0 && (
+              <Card>
+                <CardHeader><h4 className="font-bold text-gray-800 text-sm">📦 Per-Product Summary</h4></CardHeader>
+                <div className="overflow-x-auto">
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                    <thead>
+                      <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                        <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Product</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Batch(es)</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 700, color: '#166534' }}>Received ↓</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 700, color: '#991b1b' }}>Dispatched ↑</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 700, color: '#92400e' }}>Adjusted</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 700, color: '#1d4ed8' }}>Remaining Now</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {productSummary.map((p, idx) => {
+                        const rem = getRemainingForProduct(p.product);
+                        const low = rem > 0 && rem < 10;
+                        return (
+                          <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9', background: idx % 2 === 0 ? '#fff' : '#fafafa' }}>
+                            <td style={{ padding: '8px 12px', fontWeight: 600, color: '#1e293b' }}>{p.product}</td>
+                            <td style={{ padding: '8px 12px' }}>
+                              {[...p.batches].map(b => (
+                                <span key={b} style={{ background: '#eff6ff', color: '#1d4ed8', padding: '1px 6px', borderRadius: 4, fontSize: '0.72rem', fontFamily: 'monospace', fontWeight: 700, marginRight: 3 }}>{b}</span>
+                              ))}
+                            </td>
+                            <td style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 800, color: '#166534', fontSize: '1rem' }}>+{p.in}</td>
+                            <td style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 800, color: '#991b1b', fontSize: '1rem' }}>-{p.out}</td>
+                            <td style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 700, color: '#92400e' }}>{p.adj || <span style={{ color: '#cbd5e1' }}>—</span>}</td>
+                            <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                              <span style={{ fontWeight: 900, fontSize: '1rem', color: low ? '#dc2626' : rem === 0 ? '#94a3b8' : '#1d4ed8' }}>
+                                {rem}
+                                {low && <span style={{ fontSize: '0.65rem', color: '#dc2626', marginLeft: 4, fontWeight: 700 }}>LOW</span>}
+                                {rem === 0 && <span style={{ fontSize: '0.65rem', color: '#94a3b8', marginLeft: 4 }}>EMPTY</span>}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            )}
+
+            {/* Filters + detailed table */}
+            <Card>
+              <CardHeader>
+                <div className="flex justify-between items-start flex-wrap gap-3">
+                  <div>
+                    <h3 className="font-bold text-gray-800">{name} Warehouse — Movement Detail</h3>
+                    <p className="text-xs text-gray-500 mt-0.5">{filtered.length} of {movements.length} movements shown</p>
+                  </div>
+                  <div className="flex gap-2 flex-wrap items-center">
+                    <Button size="sm" variant="secondary" onClick={loadData}>↺ Refresh</Button>
+                    <button onClick={printMovements}
+                      style={{ padding: '6px 14px', background: '#c41e3a', color: '#fff', border: 'none', borderRadius: 8, fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+                      🖨 Print PDF
+                    </button>
+                  </div>
+                </div>
+
+                {/* Filter controls */}
+                <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2">
+                  <div className="col-span-2 md:col-span-1" style={{ position: 'relative' }}>
+                    <Search size={13} style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none' }} />
+                    <input type="text" value={mvProductSearch} onChange={e => setMvProductSearch(e.target.value)}
+                      placeholder="Search product / batch…"
+                      style={{ width: '100%', padding: '7px 10px 7px 28px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: '0.8rem', outline: 'none', boxSizing: 'border-box' }} />
+                  </div>
+                  <select value={mvTypeFilter} onChange={e => setMvTypeFilter(e.target.value)}
+                    style={{ padding: '7px 10px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: '0.8rem', background: '#fff' }}>
+                    <option value="">All Types</option>
+                    <option value="__in__">📥 Inbound only</option>
+                    <option value="__out__">📤 Outbound only</option>
+                    {allTypes.map(t => <option key={t} value={t}>{t.replace(/_/g,' ')}</option>)}
+                  </select>
+                  <input type="date" value={mvDateFrom} onChange={e => setMvDateFrom(e.target.value)}
+                    style={{ padding: '7px 10px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: '0.8rem' }} />
+                  <input type="date" value={mvDateTo} onChange={e => setMvDateTo(e.target.value)}
+                    style={{ padding: '7px 10px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: '0.8rem' }} />
+                </div>
+                {(mvDateFrom || mvDateTo || mvTypeFilter || mvProductSearch) && (
+                  <button onClick={() => { setMvDateFrom(''); setMvDateTo(''); setMvTypeFilter(''); setMvProductSearch(''); }}
+                    style={{ marginTop: 6, fontSize: '0.75rem', color: '#6366f1', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
+                    ✕ Clear filters
+                  </button>
+                )}
+              </CardHeader>
+
+              {filtered.length === 0 ? (
+                <CardBody>
+                  <EmptyState icon={<Package size={40} />} title="No movements found" description="Try adjusting your filters or date range." />
+                </CardBody>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.81rem' }}>
+                    <thead>
+                      <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', position: 'sticky', top: 0 }}>
+                        <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151', minWidth: 160 }}>Product</th>
+                        <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Batch #</th>
+                        <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Expiry</th>
+                        <th style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 700, color: '#374151' }}>Direction</th>
+                        <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Type</th>
+                        <th style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 700, color: '#374151' }}>Quantity</th>
+                        <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>From</th>
+                        <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>To</th>
+                        <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Reference</th>
+                        <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Performed By</th>
+                        <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151', whiteSpace: 'nowrap' }}>Date & Time</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map((m, idx) => {
+                        const d = mvDir(m);
+                        const st = mvTypeBg(m);
+                        const sign = d === 'in' ? '+' : d === 'out' ? '-' : '±';
+                        const qty = Number(m.quantity || 0);
+                        const expiry = m.expiry_date;
+                        const expiryDays = expiry ? Math.floor((new Date(expiry) - new Date()) / 86400000) : null;
+                        return (
+                          <tr key={m.id || idx} style={{ borderBottom: '1px solid #f1f5f9', background: idx % 2 === 0 ? '#fff' : '#fafafa' }}>
+                            <td style={{ padding: '8px 12px', fontWeight: 600, color: '#1e293b' }}>{m.product_name || '—'}</td>
+                            <td style={{ padding: '8px 12px' }}>
+                              {m.batch_no
+                                ? <span style={{ background: '#eff6ff', color: '#1d4ed8', padding: '2px 7px', borderRadius: 5, fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 700 }}>{m.batch_no}</span>
+                                : <span style={{ color: '#cbd5e1' }}>—</span>}
+                            </td>
+                            <td style={{ padding: '8px 12px' }}>
+                              {expiry ? (
+                                <span style={{ color: expiryDays <= 30 ? '#dc2626' : expiryDays <= 90 ? '#d97706' : '#374151', fontWeight: expiryDays <= 90 ? 700 : 400, fontSize: '0.78rem' }}>
+                                  {formatDate(expiry)}{expiryDays <= 90 ? ` (${expiryDays}d)` : ''}
+                                </span>
+                              ) : <span style={{ color: '#cbd5e1' }}>—</span>}
+                            </td>
+                            <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                              <span style={{ width: 28, height: 28, borderRadius: '50%', background: st.bg, border: `2px solid ${st.border}`, color: st.color, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '0.95rem' }}>
+                                {d === 'in' ? '↓' : d === 'out' ? '↑' : '↕'}
+                              </span>
+                            </td>
+                            <td style={{ padding: '8px 12px' }}>
+                              <span style={{ background: st.bg, color: st.color, border: `1px solid ${st.border}`, padding: '2px 8px', borderRadius: 5, fontSize: '0.72rem', fontWeight: 700, textTransform: 'capitalize', whiteSpace: 'nowrap' }}>
+                                {(m.movement_type || 'unknown').replace(/_/g, ' ')}
+                              </span>
+                            </td>
+                            <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                              <span style={{ fontWeight: 900, fontSize: '1.05rem', color: d === 'in' ? '#166534' : d === 'out' ? '#dc2626' : '#d97706' }}>
+                                {sign}{qty.toLocaleString()}
+                              </span>
+                            </td>
+                            <td style={{ padding: '8px 12px', fontSize: '0.78rem', color: '#475569' }}>{fmtLocation(m.source_location)}</td>
+                            <td style={{ padding: '8px 12px', fontSize: '0.78rem', color: '#475569' }}>{fmtLocation(m.destination_location)}</td>
+                            <td style={{ padding: '8px 12px' }}>
+                              <span style={{ fontFamily: 'monospace', fontSize: '0.72rem', color: '#6366f1', background: '#eef2ff', padding: '2px 6px', borderRadius: 4 }}>
+                                {m.reference_id || m.reference || '—'}
+                              </span>
+                            </td>
+                            <td style={{ padding: '8px 12px' }}>
+                              {m.created_by ? (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                                  <span style={{ width: 22, height: 22, borderRadius: '50%', background: '#e0e7ff', color: '#3730a3', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.65rem', flexShrink: 0 }}>
+                                    {m.created_by[0]?.toUpperCase()}
+                                  </span>
+                                  <span style={{ fontSize: '0.78rem', color: '#374151' }}>{m.created_by}</span>
+                                </div>
+                              ) : <span style={{ color: '#cbd5e1' }}>—</span>}
+                            </td>
+                            <td style={{ padding: '8px 12px', fontSize: '0.76rem', color: '#64748b', whiteSpace: 'nowrap' }}>
+                              <div style={{ fontWeight: 600, color: '#374151' }}>{formatDate(m.created_at)}</div>
+                              <div style={{ color: '#94a3b8', fontSize: '0.7rem' }}>{m.created_at ? new Date(m.created_at).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' }) : ''}</div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr style={{ background: '#f1f5f9', borderTop: '2px solid #e2e8f0' }}>
+                        <td colSpan={5} style={{ padding: '8px 12px', fontWeight: 700, color: '#374151', fontSize: '0.8rem' }}>
+                          TOTALS ({filtered.length} movements)
+                        </td>
+                        <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                          <div style={{ fontSize: '0.72rem', fontWeight: 700 }}>
+                            <span style={{ color: '#166534' }}>+{totalIn}</span>
+                            {' / '}
+                            <span style={{ color: '#dc2626' }}>-{totalOut}</span>
+                          </div>
+                        </td>
+                        <td colSpan={5} style={{ padding: '8px 12px', fontSize: '0.75rem', color: '#64748b' }}>
+                          Net: <span style={{ fontWeight: 800, color: netMovement >= 0 ? '#166534' : '#dc2626' }}>{netMovement >= 0 ? '+' : ''}{netMovement}</span>
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+            </Card>
           </div>
-          <Table
-            columns={[
-              { header: 'Product', render: r => r.product_name || '-' },
-              { header: 'Type', render: r => <Badge variant={r.movement_type==='received'?'success':r.movement_type==='dispatched'||r.movement_type==='out'?'info':r.movement_type==='write_off'?'danger':'warning'}>{(r.movement_type||'').replace(/_/g,' ')}</Badge> },
-              { header: 'Qty', render: r => <span className="font-bold">{r.quantity}</span> },
-              { header: 'From', render: r => <span className="text-xs">{fmtLocation(r.source_location)}</span> },
-              { header: 'To', render: r => <span className="text-xs">{fmtLocation(r.destination_location)}</span> },
-              { header: 'Reference', render: r => <span className="font-mono text-xs text-gray-500">{r.reference || r.reference_id || '—'}</span> },
-              { header: 'Date', render: r => formatDate(r.created_at) },
-            ]}
-            data={movements}
-            emptyMessage={`No stock movements recorded for ${name} warehouse`}
-          />
-        </Card>
-      )}
+        );
+      })()}
 
       <Modal open={showDispatch} onClose={() => setShowDispatch(false)} title={`Dispatch from ${name} Warehouse to Branch`} size="lg">
         <form onSubmit={handleDispatchToBranch} style={{ display: 'flex', flexDirection: 'column' }}>
