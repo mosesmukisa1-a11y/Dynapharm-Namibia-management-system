@@ -312,17 +312,24 @@ function RequestAdjustmentModal({ open, onClose, record, targetType, location, o
 // ── Field Stock Tab ──────────────────────────────────────────────────────────
 function FieldStockTab() {
   const { user } = useAuth();
-  const [records, setRecords] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
+  const [records, setRecords]     = useState([]);
+  const [loading, setLoading]     = useState(true);
+  const [showForm, setShowForm]   = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [alert, setAlert] = useState(null);
+  const [alert, setAlert]         = useState(null);
   const [showReturn, setShowReturn] = useState(null);
   const [returnQty, setReturnQty] = useState('');
-  const [soldQty, setSoldQty] = useState('');
-  const [form, setForm] = useState({ officer_name: '', team_name: '', product_name: '', batch_no: '', expiry_date: '', quantity_issued: '', origin_location: '', origin_type: 'warehouse', notes: '' });
+  const [soldQty, setSoldQty]     = useState('');
+  const [detail, setDetail]       = useState(null);
+  const [search, setSearch]       = useState('');
+  const [branchFilter, setBranchFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('issued');
+  const [viewMode, setViewMode]   = useState('officer');  // 'officer' | 'product' | 'branch'
   const [productOptions, setProductOptions] = useState(PRICE_LIST.map(p => p.description).sort());
-  const [search, setSearch] = useState('');
+  const [form, setForm] = useState({
+    officer_name: '', team_name: '', product_name: '', batch_no: '',
+    expiry_date: '', quantity_issued: '', origin_location: '', origin_type: 'warehouse', notes: '',
+  });
 
   const loadData = useCallback(() => {
     setLoading(true);
@@ -341,35 +348,124 @@ function FieldStockTab() {
   }, []);
 
   const { connected: wsConnected } = useStockRealtime({ onUpdate: loadData });
-
   useEffect(() => { loadData(); }, [loadData]);
 
+  // ── Helpers ─────────────────────────────────────────────────────────────────
+  const fmtDate = ts => { try { return ts ? new Date(ts).toLocaleDateString('en-ZA',{day:'2-digit',month:'short',year:'numeric'}) : '—'; } catch { return '—'; } };
+  const fmtDateTime = ts => { try { return ts ? new Date(ts).toLocaleString('en-ZA',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '—'; } catch { return '—'; } };
+  const daysOut  = r => r.created_at ? Math.floor((Date.now() - new Date(r.created_at)) / 86400000) : 0;
+  const daysExp  = d => { if (!d) return null; return Math.ceil((new Date(d) - Date.now()) / 86400000); };
+  const getDP    = name => { const p = getLiveProductList().find(p => p.description === name); return Number(p?.dp || 0); };
+  const isOverdue = r => r.status === 'issued' && Number(r.balance || 0) > 0 && daysOut(r) > 7;
+
+  const fmtLoc = loc => {
+    const l = (loc||'').toLowerCase();
+    if (!l) return '—';
+    if (l === 'country_stock') return 'Country Stock';
+    if (l === 'windhoek_warehouse') return 'Windhoek WH';
+    if (l === 'ondangwa_warehouse') return 'Ondangwa WH';
+    const bd = BRANCH_DETAILS.find(b => b.id === l);
+    return bd ? bd.name : (loc||'').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+  };
+  const locColor = loc => {
+    const l = (loc||'').toLowerCase();
+    if (l === 'country_stock') return '#6b7280';
+    if (l.includes('warehouse')) return '#2563eb';
+    return '#c41e3a';
+  };
+  const locBg = loc => {
+    const l = (loc||'').toLowerCase();
+    if (l === 'country_stock') return '#f3f4f6';
+    if (l.includes('warehouse')) return '#eff6ff';
+    return '#fff0f3';
+  };
+
+  // ── Filters ──────────────────────────────────────────────────────────────────
+  const statusFiltered = statusFilter === 'all' ? records : records.filter(r => r.status === statusFilter);
+  const branchFiltered = branchFilter === 'all' ? statusFiltered : statusFiltered.filter(r =>
+    (r.origin_location||'').toLowerCase() === branchFilter.toLowerCase()
+  );
+  const searched = !search.trim() ? branchFiltered : branchFiltered.filter(r => {
+    const q = search.toLowerCase();
+    return (r.officer_name||'').toLowerCase().includes(q)
+      || (r.product_name||'').toLowerCase().includes(q)
+      || (r.team_name||'').toLowerCase().includes(q)
+      || (r.batch_no||'').toLowerCase().includes(q);
+  });
+
+  // ── Stats (from all records, not filtered) ───────────────────────────────────
+  const activeRecs   = records.filter(r => r.status === 'issued');
+  const totalBalance = activeRecs.reduce((s,r) => s + Number(r.balance || 0), 0);
+  const totalIssued  = activeRecs.reduce((s,r) => s + Number(r.quantity_issued || 0), 0);
+  const totalSold    = records.reduce((s,r) => s + Number(r.quantity_sold || 0), 0);
+  const overdueRecs  = activeRecs.filter(isOverdue);
+  const fieldValue   = activeRecs.reduce((s,r) => s + Number(r.balance||0) * getDP(r.product_name), 0);
+
+  // ── Branch summary ─────────────────────────────────────────────────────────
+  const branchMap = {};
+  activeRecs.forEach(r => {
+    const lk = (r.origin_location||'unknown').toLowerCase();
+    if (!branchMap[lk]) branchMap[lk] = { loc: r.origin_location, count: 0, balance: 0, overdue: 0 };
+    branchMap[lk].count++;
+    branchMap[lk].balance += Number(r.balance || 0);
+    if (isOverdue(r)) branchMap[lk].overdue++;
+  });
+  const branchSummary = Object.entries(branchMap).sort(([,a],[,b]) => b.balance - a.balance);
+
+  // ── By-Officer grouping ────────────────────────────────────────────────────
+  const officerMap = {};
+  searched.forEach(r => {
+    const key = r.officer_name || 'Unknown';
+    if (!officerMap[key]) officerMap[key] = { name: key, team: r.team_name, branch: r.origin_location, records: [], balance: 0, issued: 0, sold: 0, returned: 0, overdue: 0 };
+    officerMap[key].records.push(r);
+    officerMap[key].balance   += Number(r.balance || 0);
+    officerMap[key].issued    += Number(r.quantity_issued || 0);
+    officerMap[key].sold      += Number(r.quantity_sold || 0);
+    officerMap[key].returned  += Number(r.quantity_returned || 0);
+    if (isOverdue(r)) officerMap[key].overdue++;
+  });
+  const officerRows = Object.values(officerMap).sort((a,b) => b.balance - a.balance);
+
+  // ── By-Product grouping ────────────────────────────────────────────────────
+  const productMap = {};
+  searched.forEach(r => {
+    const key = r.product_name || 'Unknown';
+    if (!productMap[key]) productMap[key] = { name: key, records: [], balance: 0, issued: 0, officers: new Set(), branches: new Set() };
+    productMap[key].records.push(r);
+    productMap[key].balance += Number(r.balance || 0);
+    productMap[key].issued  += Number(r.quantity_issued || 0);
+    productMap[key].officers.add(r.officer_name);
+    productMap[key].branches.add((r.origin_location||'').toLowerCase());
+  });
+  const productRows = Object.values(productMap).sort((a,b) => b.balance - a.balance);
+
+  // ── Issue handler ────────────────────────────────────────────────────────────
   const handleIssue = async (e) => {
     e.preventDefault();
     if (!form.officer_name || !form.product_name || !form.quantity_issued || Number(form.quantity_issued) <= 0) {
-      setAlert({ type: 'error', msg: 'Officer name, product, and quantity are required' });
+      setAlert({ type:'error', msg:'Officer name, product, and quantity are required' });
       return;
     }
     setSubmitting(true);
     try {
       await api.stock.createFieldStock({
-        officer_name: form.officer_name,
-        team_name: form.team_name || null,
-        product_name: form.product_name,
-        batch_no: form.batch_no || null,
-        expiry_date: form.expiry_date || null,
-        quantity_issued: Number(form.quantity_issued),
-        origin_location: form.origin_location || 'windhoek_warehouse',
-        origin_type: form.origin_type || 'warehouse',
-        notes: form.notes || null,
-        created_by: user?.full_name || user?.username,
+        officer_name:     form.officer_name,
+        team_name:        form.team_name || null,
+        product_name:     form.product_name,
+        batch_no:         form.batch_no || null,
+        expiry_date:      form.expiry_date || null,
+        quantity_issued:  Number(form.quantity_issued),
+        origin_location:  form.origin_location || 'windhoek_warehouse',
+        origin_type:      form.origin_type || 'warehouse',
+        notes:            form.notes || null,
+        created_by:       user?.full_name || user?.username,
       });
       setShowForm(false);
-      setForm({ officer_name: '', team_name: '', product_name: '', batch_no: '', expiry_date: '', quantity_issued: '', origin_location: '', origin_type: 'warehouse', notes: '' });
-      setAlert({ type: 'success', msg: `Stock issued to ${form.officer_name} successfully` });
+      setForm({ officer_name:'', team_name:'', product_name:'', batch_no:'', expiry_date:'', quantity_issued:'', origin_location:'', origin_type:'warehouse', notes:'' });
+      setAlert({ type:'success', msg:`Stock issued to ${form.officer_name} successfully` });
       setTimeout(loadData, 100);
     } catch (err) {
-      setAlert({ type: 'error', msg: err.message });
+      setAlert({ type:'error', msg: err.message });
     } finally {
       setSubmitting(false);
     }
@@ -377,158 +473,470 @@ function FieldStockTab() {
 
   const handleReturn = async (record) => {
     const returned = Number(returnQty) || 0;
-    const sold = Number(soldQty) || 0;
-    if (returned <= 0 && sold <= 0) {
-      setAlert({ type: 'error', msg: 'Enter return or sold quantity' });
-      return;
-    }
+    const sold     = Number(soldQty)   || 0;
+    if (returned <= 0 && sold <= 0) { setAlert({ type:'error', msg:'Enter return or sold quantity' }); return; }
     try {
       await api.stock.updateFieldStock(record.id, {
         quantity_returned: Number(record.quantity_returned || 0) + returned,
-        quantity_sold: Number(record.quantity_sold || 0) + sold,
+        quantity_sold:     Number(record.quantity_sold || 0) + sold,
       });
       setShowReturn(null);
       setReturnQty('');
       setSoldQty('');
-      setAlert({ type: 'success', msg: 'Field stock updated successfully' });
+      if (detail?.id === record.id) setDetail(null);
+      setAlert({ type:'success', msg:'Field stock updated successfully' });
       setTimeout(loadData, 100);
     } catch (err) {
-      setAlert({ type: 'error', msg: err.message });
+      setAlert({ type:'error', msg: err.message });
     }
   };
 
   if (loading) return <LoadingSpinner />;
 
-  const filtered = search.trim() ? records.filter(r => {
-    const q = search.toLowerCase();
-    return (r.officer_name || '').toLowerCase().includes(q) || (r.product_name || '').toLowerCase().includes(q) || (r.team_name || '').toLowerCase().includes(q);
-  }) : records;
-
-  const activeRecords = filtered.filter(r => r.status === 'issued');
-  const closedRecords = filtered.filter(r => r.status === 'closed');
-  const totalIssued = activeRecords.reduce((s, r) => s + Number(r.quantity_issued || 0), 0);
-  const totalBalance = activeRecords.reduce((s, r) => s + Number(r.balance || 0), 0);
-  const totalSold = records.reduce((s, r) => s + Number(r.quantity_sold || 0), 0);
-  const totalReturned = records.reduce((s, r) => s + Number(r.quantity_returned || 0), 0);
-
   return (
-    <div className="space-y-6">
-      {alert && <Alert type={alert.type} className="mb-4" onClose={() => setAlert(null)}>{alert.msg}</Alert>}
+    <div className="space-y-4">
+      {alert && <Alert type={alert.type} onClose={() => setAlert(null)}>{alert.msg}</Alert>}
 
-      <Card className="bg-gradient-to-r from-orange-50 to-yellow-50 border-orange-200">
+      {/* ── Stat Cards ──────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        {[
+          { label:'Active Issues',       value: activeRecs.length,                                            color:'#d97706', bg:'#fffbeb', border:'#fde68a' },
+          { label:'Units on Field',      value: totalBalance.toLocaleString(),                                color:'#c41e3a', bg:'#fff0f3', border:'#fecaca' },
+          { label:'Field Value (N$)',    value: fieldValue > 0 ? Math.round(fieldValue).toLocaleString('en-ZA') : '—', color:'#7c3aed', bg:'#fdf4ff', border:'#d8b4fe' },
+          { label:'Sold This Period',    value: totalSold.toLocaleString(),                                   color:'#16a34a', bg:'#f0fdf4', border:'#86efac' },
+          { label:'Overdue (>7 days)',   value: overdueRecs.length, color: overdueRecs.length > 0 ? '#dc2626' : '#374151', bg: overdueRecs.length > 0 ? '#fef2f2' : '#f8fafc', border: overdueRecs.length > 0 ? '#fecaca' : '#e2e8f0' },
+        ].map(s => (
+          <div key={s.label} style={{ borderRadius:10, padding:'11px 14px', background:s.bg, border:`1.5px solid ${s.border}` }}>
+            <div style={{ fontSize:'1.45rem', fontWeight:900, color:s.color, lineHeight:1 }}>{s.value}</div>
+            <div style={{ fontSize:'0.69rem', color:'#64748b', fontWeight:700, marginTop:2 }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Overdue Alert ─────────────────────────────────────────────────── */}
+      {overdueRecs.length > 0 && (
+        <div style={{ background:'#fef2f2', border:'1.5px solid #fecaca', borderRadius:10, padding:'10px 16px' }}>
+          <div style={{ fontWeight:800, color:'#dc2626', fontSize:'0.82rem', marginBottom:5 }}>
+            🚨 {overdueRecs.length} overdue field issue{overdueRecs.length !== 1 ? 's' : ''} — balance unaccounted for more than 7 days
+          </div>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
+            {overdueRecs.map((r,i) => (
+              <button key={i} onClick={() => setDetail(r)}
+                style={{ background:'#fff', border:'1px solid #fecaca', borderRadius:6, padding:'3px 10px', fontSize:'0.71rem', fontWeight:700, color:'#dc2626', cursor:'pointer' }}>
+                {r.officer_name} · {r.product_name} · {Number(r.balance||0)} units · {daysOut(r)}d out
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Branch filter pills ───────────────────────────────────────────── */}
+      {branchSummary.length > 0 && (
+        <div>
+          <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Field Stock by Origin Branch — click to filter</div>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+            <button onClick={() => setBranchFilter('all')}
+              style={{ padding:'5px 13px', borderRadius:99, border:`2px solid ${branchFilter==='all'?'#c41e3a':'#e2e8f0'}`, background:branchFilter==='all'?'#fff0f3':'#fff', fontSize:'0.76rem', fontWeight:700, cursor:'pointer', color:branchFilter==='all'?'#c41e3a':'#374151' }}>
+              All Branches
+            </button>
+            {branchSummary.map(([lk, s]) => (
+              <button key={lk} onClick={() => setBranchFilter(branchFilter === lk ? 'all' : lk)}
+                style={{ padding:'5px 13px', borderRadius:99, border:`2px solid ${branchFilter===lk ? locColor(lk) : '#e2e8f0'}`, background:branchFilter===lk ? locBg(lk) : '#fff', fontSize:'0.76rem', fontWeight:700, cursor:'pointer', color:branchFilter===lk ? locColor(lk) : '#374151', display:'flex', alignItems:'center', gap:6 }}>
+                <span style={{ width:7, height:7, borderRadius:'50%', background:locColor(lk), display:'inline-block' }} />
+                {fmtLoc(lk)}
+                <span style={{ fontWeight:900, color:locColor(lk) }}>{s.balance.toLocaleString()} units</span>
+                {s.overdue > 0 && <span style={{ background:'#fef2f2', color:'#dc2626', borderRadius:99, padding:'0 5px', fontSize:'0.62rem', fontWeight:800 }}>⚠{s.overdue}</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Toolbar ───────────────────────────────────────────────────────── */}
+      <Card>
         <CardBody>
-          <div className="flex items-start gap-4">
-            <Users size={32} className="text-orange-600 mt-1" />
-            <div>
-              <h3 className="font-bold text-orange-900">Field Stock Management</h3>
-              <p className="text-sm text-orange-700 mt-1">
-                Track stock issued to field officers/teams. Record returns, sales, and monitor outstanding balances.
-              </p>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:10, alignItems:'center' }}>
+            <div style={{ position:'relative', flex:1, minWidth:200 }}>
+              <Search size={14} style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:'#94a3b8' }} />
+              <input style={{ width:'100%', paddingLeft:32, paddingRight:12, paddingTop:8, paddingBottom:8, borderRadius:8, border:'1px solid #d1d5db', fontSize:'0.83rem', outline:'none' }}
+                placeholder="Search officer, product, batch…" value={search} onChange={e => setSearch(e.target.value)} />
             </div>
+            <select style={{ padding:'7px 12px', borderRadius:8, border:'1px solid #d1d5db', fontSize:'0.83rem', background:'#fff', cursor:'pointer' }}
+              value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+              <option value="issued">Active (Issued)</option>
+              <option value="closed">Closed</option>
+              <option value="all">All Records</option>
+            </select>
+            <div style={{ display:'flex', borderRadius:8, border:'1px solid #d1d5db', overflow:'hidden', fontSize:'0.83rem' }}>
+              {[['officer','By Officer'],['product','By Product'],['branch','By Branch']].map(([v,l]) => (
+                <button key={v} onClick={() => setViewMode(v)}
+                  style={{ padding:'7px 13px', fontWeight:700, background: viewMode===v ? '#c41e3a' : '#fff', color: viewMode===v ? '#fff' : '#374151', border:'none', cursor:'pointer' }}>
+                  {l}
+                </button>
+              ))}
+            </div>
+            <Button size="sm" variant="secondary" onClick={loadData}>↺ Refresh</Button>
+            <Button size="sm" variant="secondary" onClick={() => {
+              const rows = searched.map(r => `<tr><td>${r.officer_name||''}</td><td>${r.team_name||''}</td><td>${r.product_name||''}</td><td>${fmtLoc(r.origin_location||'')}</td><td>${r.batch_no||'—'}</td><td>${r.quantity_issued||0}</td><td>${r.quantity_returned||0}</td><td>${r.quantity_sold||0}</td><td>${r.balance||0}</td><td>${daysOut(r)}d</td><td>${r.status||''}</td></tr>`).join('');
+              printDocument('Field Stock Report', `<table><thead><tr><th>Officer</th><th>Team</th><th>Product</th><th>Branch</th><th>Batch</th><th>Issued</th><th>Returned</th><th>Sold</th><th>Balance</th><th>Days Out</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>`);
+            }}><Printer size={14} /> Print</Button>
+            <Button size="sm" onClick={() => setShowForm(true)}><Plus size={14} /> Issue to Field</Button>
           </div>
         </CardBody>
       </Card>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <StatCard title="Active Issues" value={activeRecords.length} color="orange" icon={<Users size={24} />} />
-        <StatCard title="Total Issued" value={totalIssued.toLocaleString()} color="blue" icon={<Package size={24} />} />
-        <StatCard title="Field Balance" value={totalBalance.toLocaleString()} color="purple" icon={<Activity size={24} />} />
-        <StatCard title="Sold / Returned" value={`${totalSold} / ${totalReturned}`} color="green" icon={<TrendingUp size={24} />} />
-      </div>
-
-      <Card>
-        <CardHeader>
-          <div className="flex justify-between items-center flex-wrap gap-2">
-            <h3 className="font-bold text-gray-800 flex items-center gap-2">
-              Field Stock Records
-              {wsConnected && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#dcfce7', color: '#166534', borderRadius: 99, padding: '2px 8px', fontSize: '0.7rem', fontWeight: 700 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#16a34a', display: 'inline-block' }} />LIVE</span>}
-            </h3>
-            <div className="flex gap-2">
-              <div className="relative">
-                <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none' }} />
-                <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search officer, product..."
-                  className="pl-8 pr-3 py-1.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20 w-48" />
-              </div>
-              <Button size="sm" variant="secondary" onClick={loadData}>Refresh</Button>
-              <Button size="sm" variant="secondary" onClick={() => {
-                const rows = filtered.map(r => `<tr><td>${r.officer_name||''}</td><td>${r.product_name||''}</td><td>${r.batch_no||'-'}</td><td>${r.quantity_issued||0}</td><td>${r.quantity_returned||0}</td><td>${r.quantity_sold||0}</td><td>${r.balance||0}</td><td>${r.status||''}</td></tr>`).join('');
-                printDocument('Field Stock Report', `<table><thead><tr><th>Officer</th><th>Product</th><th>Batch</th><th>Issued</th><th>Returned</th><th>Sold</th><th>Balance</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>`);
-              }}><Printer size={14} /> Print</Button>
-              <Button size="sm" onClick={() => setShowForm(true)}><Plus size={16} /> Issue to Field</Button>
+      {/* ── Detail Modal ──────────────────────────────────────────────────── */}
+      {detail && (
+        <Modal open={!!detail} onClose={() => setDetail(null)} title={`Field Stock Detail — ${detail.officer_name}`} size="md">
+          <div className="p-6 space-y-4">
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+              {[
+                ['Officer',         detail.officer_name],
+                ['Team',            detail.team_name || '—'],
+                ['Product',         detail.product_name],
+                ['Batch #',         detail.batch_no || '—'],
+                ['Origin Branch',   fmtLoc(detail.origin_location)],
+                ['Issue Date',      fmtDateTime(detail.created_at)],
+                ['Days on Field',   `${daysOut(detail)} day${daysOut(detail) !== 1 ? 's' : ''}`],
+                ['Expiry Date',     fmtDate(detail.expiry_date)],
+                ['Qty Issued',      Number(detail.quantity_issued||0).toLocaleString()],
+                ['Qty Returned',    Number(detail.quantity_returned||0).toLocaleString()],
+                ['Qty Sold',        Number(detail.quantity_sold||0).toLocaleString()],
+                ['Balance Out',     Number(detail.balance||0).toLocaleString()],
+                ['DP Value (bal)',  getDP(detail.product_name) > 0 ? `N$ ${Math.round(Number(detail.balance||0) * getDP(detail.product_name)).toLocaleString('en-ZA')}` : '—'],
+                ['Status',          (detail.status||'issued').toUpperCase()],
+                ['Issued By',       detail.created_by || '—'],
+                ['Notes',           detail.notes || '—'],
+              ].map(([k,v]) => (
+                <div key={k} style={{ background:'#f8fafc', borderRadius:8, padding:'8px 12px' }}>
+                  <div style={{ fontSize:'0.66rem', color:'#94a3b8', fontWeight:700, textTransform:'uppercase' }}>{k}</div>
+                  <div style={{ fontSize:'0.87rem', fontWeight:700, color:'#1e293b', marginTop:1, wordBreak:'break-word' }}>{v}</div>
+                </div>
+              ))}
             </div>
+            {/* Progress bar */}
+            {Number(detail.quantity_issued||0) > 0 && (
+              <div>
+                <div style={{ display:'flex', justifyContent:'space-between', fontSize:'0.72rem', color:'#64748b', marginBottom:3 }}>
+                  <span>Accounted for: {(Number(detail.quantity_returned||0)+Number(detail.quantity_sold||0)).toLocaleString()} / {Number(detail.quantity_issued||0).toLocaleString()}</span>
+                  <span>{Math.round((Number(detail.quantity_returned||0)+Number(detail.quantity_sold||0))/Number(detail.quantity_issued)*100)}%</span>
+                </div>
+                <div style={{ height:8, background:'#f1f5f9', borderRadius:99, overflow:'hidden' }}>
+                  <div style={{ height:'100%', background:'#16a34a', borderRadius:99, width:`${Math.min(100,Math.round((Number(detail.quantity_returned||0)+Number(detail.quantity_sold||0))/Number(detail.quantity_issued)*100))}%` }} />
+                </div>
+                {isOverdue(detail) && <div style={{ fontSize:'0.7rem', color:'#dc2626', fontWeight:700, marginTop:4 }}>⚠️ Overdue — {daysOut(detail)} days on field with outstanding balance</div>}
+              </div>
+            )}
+            {detail.status === 'issued' && (
+              <div style={{ display:'flex', gap:10, paddingTop:4 }}>
+                <button onClick={() => { setShowReturn(detail); setReturnQty(''); setSoldQty(''); setDetail(null); }}
+                  style={{ padding:'8px 16px', background:'#1d4ed8', color:'#fff', border:'none', borderRadius:8, fontWeight:700, fontSize:'0.82rem', cursor:'pointer' }}>
+                  Record Return / Sale
+                </button>
+                <button onClick={() => setDetail(null)}
+                  style={{ padding:'8px 16px', background:'#f1f5f9', color:'#374151', border:'none', borderRadius:8, fontWeight:700, fontSize:'0.82rem', cursor:'pointer' }}>
+                  Close
+                </button>
+              </div>
+            )}
           </div>
-        </CardHeader>
-        <Table
-          columns={[
-            { header: 'Date', render: r => formatDateTime(r.created_at || r.issue_date) },
-            { header: 'Officer', render: r => <div><span className="font-medium">{r.officer_name}</span>{r.team_name && <span className="text-xs text-gray-400 block">{r.team_name}</span>}</div> },
-            { header: 'Product', render: r => <span className="text-xs">{r.product_name}</span> },
-            { header: 'Batch', render: r => r.batch_no || '-' },
-            { header: 'Expiry', render: r => r.expiry_date ? formatDate(r.expiry_date) : '-' },
-            { header: 'Issued', render: r => <span className="font-bold">{r.quantity_issued}</span> },
-            { header: 'Returned', render: r => r.quantity_returned || 0 },
-            { header: 'Sold', render: r => r.quantity_sold || 0 },
-            { header: 'Balance', render: r => <span className={Number(r.balance) > 0 ? 'text-orange-600 font-bold' : 'text-green-600 font-bold'}>{r.balance || 0}</span> },
-            { header: 'Status', render: r => <Badge variant={r.status === 'issued' ? 'warning' : 'success'}>{r.status || 'issued'}</Badge> },
-            { header: '', render: r => r.status === 'issued' ? (
-              <button onClick={() => { setShowReturn(r); setReturnQty(''); setSoldQty(''); }}
-                style={{ padding: '4px 10px', background: '#dbeafe', color: '#1e40af', border: '1px solid #93c5fd', borderRadius: 6, cursor: 'pointer', fontSize: '0.76rem', fontWeight: 700 }}>
-                Return/Sold
-              </button>
-            ) : null },
-          ]}
-          data={filtered}
-          emptyMessage="No field stock records yet"
-        />
-      </Card>
+        </Modal>
+      )}
 
+      {/* ── Main Content ─────────────────────────────────────────────────── */}
+      {viewMode === 'officer' && (
+        <Card>
+          <CardHeader>
+            <h3 style={{ fontWeight:800, color:'#1e293b' }}>
+              Field Officers
+              {wsConnected && <span style={{ display:'inline-flex', alignItems:'center', gap:4, background:'#dcfce7', color:'#166534', borderRadius:99, padding:'2px 8px', fontSize:'0.68rem', fontWeight:700, marginLeft:8 }}><span style={{ width:5, height:5, borderRadius:'50%', background:'#16a34a', display:'inline-block' }} />LIVE</span>}
+              <span style={{ fontSize:'0.72rem', color:'#94a3b8', fontWeight:400, marginLeft:8 }}>{officerRows.length} officer{officerRows.length !== 1 ? 's' : ''}</span>
+            </h3>
+          </CardHeader>
+          {officerRows.length === 0 ? (
+            <CardBody><EmptyState icon={<Users size={40} />} title="No field stock records" description="Issue stock to a field officer to get started" /></CardBody>
+          ) : (
+            officerRows.map((officer, oi) => (
+              <div key={officer.name} style={{ borderBottom:'1px solid #f1f5f9' }}>
+                {/* Officer header row */}
+                <div style={{ padding:'10px 16px', background: oi%2===0 ? '#fafafa' : '#fff', display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
+                  <div style={{ flex:1, minWidth:140 }}>
+                    <div style={{ fontWeight:800, color:'#1e293b', fontSize:'0.88rem' }}>{officer.name}</div>
+                    {officer.team && <div style={{ fontSize:'0.68rem', color:'#94a3b8' }}>{officer.team}</div>}
+                  </div>
+                  <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                    <span style={{ background:locBg(officer.branch), color:locColor(officer.branch), border:`1px solid ${locColor(officer.branch)}30`, borderRadius:99, padding:'2px 8px', fontSize:'0.68rem', fontWeight:800 }}>
+                      <span style={{ width:5, height:5, borderRadius:'50%', background:locColor(officer.branch), display:'inline-block', marginRight:3, verticalAlign:'middle' }} />
+                      {fmtLoc(officer.branch)}
+                    </span>
+                    {officer.overdue > 0 && <span style={{ background:'#fef2f2', color:'#dc2626', borderRadius:99, padding:'2px 8px', fontSize:'0.68rem', fontWeight:800, border:'1px solid #fecaca' }}>⚠ {officer.overdue} overdue</span>}
+                  </div>
+                  <div style={{ display:'flex', gap:16, fontSize:'0.78rem' }}>
+                    <span><span style={{ color:'#94a3b8' }}>Issued:</span> <strong>{officer.issued.toLocaleString()}</strong></span>
+                    <span><span style={{ color:'#94a3b8' }}>Sold:</span> <strong style={{ color:'#16a34a' }}>{officer.sold.toLocaleString()}</strong></span>
+                    <span><span style={{ color:'#94a3b8' }}>Returned:</span> <strong style={{ color:'#2563eb' }}>{officer.returned.toLocaleString()}</strong></span>
+                    <span><span style={{ color:'#94a3b8' }}>Balance:</span> <strong style={{ color: officer.balance > 0 ? '#c41e3a' : '#16a34a' }}>{officer.balance.toLocaleString()}</strong></span>
+                  </div>
+                </div>
+                {/* Product rows under this officer */}
+                <div style={{ overflowX:'auto' }}>
+                  <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'0.77rem' }}>
+                    <thead>
+                      <tr style={{ background:'#f8fafc', borderBottom:'1px solid #e2e8f0' }}>
+                        {['Product','Batch #','Expiry','Issue Date','Days Out','Issued','Returned','Sold','Balance','DP Value','Status',''].map(h => (
+                          <th key={h} style={{ padding:'6px 10px', textAlign:'left', fontWeight:700, color:'#64748b', fontSize:'0.66rem', whiteSpace:'nowrap' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {officer.records.map((r, ri) => {
+                        const do_ = daysOut(r);
+                        const de  = daysExp(r.expiry_date);
+                        const bal = Number(r.balance || 0);
+                        const dpVal = bal * getDP(r.product_name);
+                        const overdue = isOverdue(r);
+                        return (
+                          <tr key={r.id || ri} style={{ background: overdue ? '#fef9f9' : '#fff', borderBottom:'1px solid #f8fafc', cursor:'pointer' }}
+                            onClick={() => setDetail(r)}
+                            onMouseEnter={e => e.currentTarget.style.background='#fef2f2'}
+                            onMouseLeave={e => e.currentTarget.style.background= overdue ? '#fef9f9' : '#fff'}>
+                            <td style={{ padding:'7px 10px', fontWeight:700, color:'#1e293b', maxWidth:160 }}>
+                              <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={r.product_name}>{r.product_name}</div>
+                            </td>
+                            <td style={{ padding:'7px 10px', fontFamily:'monospace', fontSize:'0.7rem', color:'#6b21a8' }}>{r.batch_no || '—'}</td>
+                            <td style={{ padding:'7px 10px', whiteSpace:'nowrap', color: de !== null && de <= 30 ? '#dc2626' : '#374151', fontWeight: de !== null && de <= 30 ? 700 : 400 }}>
+                              {fmtDate(r.expiry_date)}
+                              {de !== null && de <= 30 && de > 0 && <div style={{ fontSize:'0.62rem', color:'#dc2626' }}>{de}d left</div>}
+                              {de !== null && de <= 0 && <div style={{ fontSize:'0.62rem', color:'#dc2626', fontWeight:800 }}>EXPIRED</div>}
+                            </td>
+                            <td style={{ padding:'7px 10px', whiteSpace:'nowrap', color:'#64748b' }}>{fmtDate(r.created_at)}</td>
+                            <td style={{ padding:'7px 10px', fontWeight: overdue ? 800 : 400, color: overdue ? '#dc2626' : do_ > 3 ? '#d97706' : '#374151' }}>
+                              {do_}d {overdue && '⚠'}
+                            </td>
+                            <td style={{ padding:'7px 10px', color:'#64748b' }}>{Number(r.quantity_issued||0).toLocaleString()}</td>
+                            <td style={{ padding:'7px 10px', color:'#2563eb', fontWeight:700 }}>{Number(r.quantity_returned||0).toLocaleString()}</td>
+                            <td style={{ padding:'7px 10px', color:'#16a34a', fontWeight:700 }}>{Number(r.quantity_sold||0).toLocaleString()}</td>
+                            <td style={{ padding:'7px 10px', fontWeight:900, color: bal > 0 ? '#c41e3a' : '#16a34a' }}>{bal.toLocaleString()}</td>
+                            <td style={{ padding:'7px 10px', fontWeight:700, color:'#374151' }}>{dpVal > 0 ? `N$ ${Math.round(dpVal).toLocaleString('en-ZA')}` : '—'}</td>
+                            <td style={{ padding:'7px 10px' }}>
+                              <span style={{ background: r.status==='issued' ? '#fffbeb' : '#f0fdf4', color: r.status==='issued' ? '#d97706' : '#16a34a', borderRadius:99, padding:'2px 7px', fontSize:'0.65rem', fontWeight:800 }}>
+                                {r.status||'issued'}
+                              </span>
+                            </td>
+                            <td style={{ padding:'7px 10px' }}>
+                              {r.status === 'issued' && (
+                                <button onClick={ev => { ev.stopPropagation(); setShowReturn(r); setReturnQty(''); setSoldQty(''); }}
+                                  style={{ padding:'3px 8px', background:'#dbeafe', color:'#1e40af', border:'1px solid #93c5fd', borderRadius:5, cursor:'pointer', fontSize:'0.7rem', fontWeight:700, whiteSpace:'nowrap' }}>
+                                  Return/Sold
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))
+          )}
+        </Card>
+      )}
+
+      {viewMode === 'product' && (
+        <Card>
+          <CardHeader>
+            <h3 style={{ fontWeight:800, color:'#1e293b' }}>Products on Field
+              <span style={{ fontSize:'0.72rem', color:'#94a3b8', fontWeight:400, marginLeft:8 }}>{productRows.length} product{productRows.length !== 1 ? 's' : ''}</span>
+            </h3>
+          </CardHeader>
+          {productRows.length === 0 ? (
+            <CardBody><EmptyState icon={<Package size={40} />} title="No products on field" description="No field stock records match the current filters" /></CardBody>
+          ) : (
+            <div style={{ overflowX:'auto' }}>
+              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'0.82rem' }}>
+                <thead>
+                  <tr style={{ background:'#fef2f2', borderBottom:'2px solid #fecaca' }}>
+                    {['Product','Balance (units)','DP Value','Officers','Branches','Total Issued','Records'].map(h => (
+                      <th key={h} style={{ padding:'9px 12px', textAlign:'left', fontWeight:700, color:'#475569', fontSize:'0.71rem', whiteSpace:'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {productRows.map((p, i) => {
+                    const dp = getDP(p.name);
+                    const val = p.balance * dp;
+                    const brs = [...p.branches].filter(Boolean);
+                    return (
+                      <tr key={p.name} style={{ background:i%2===0?'#fff':'#f9fafb', borderBottom:'1px solid #f1f5f9' }}>
+                        <td style={{ padding:'9px 12px', fontWeight:800, color:'#1e293b', maxWidth:200 }}>
+                          <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={p.name}>{p.name}</div>
+                        </td>
+                        <td style={{ padding:'9px 12px', fontWeight:900, color: p.balance > 0 ? '#c41e3a' : '#16a34a', fontSize:'0.9rem' }}>{p.balance.toLocaleString()}</td>
+                        <td style={{ padding:'9px 12px', fontWeight:700, color:'#374151' }}>{val > 0 ? `N$ ${Math.round(val).toLocaleString('en-ZA')}` : '—'}</td>
+                        <td style={{ padding:'9px 12px', color:'#64748b' }}>{p.officers.size}</td>
+                        <td style={{ padding:'9px 12px' }}>
+                          <div style={{ display:'flex', flexWrap:'wrap', gap:3 }}>
+                            {brs.slice(0,4).map(lk => (
+                              <span key={lk} style={{ background:locBg(lk), color:locColor(lk), border:`1px solid ${locColor(lk)}22`, borderRadius:99, padding:'1px 6px', fontSize:'0.64rem', fontWeight:800 }}>
+                                {fmtLoc(lk).replace(' Warehouse','').replace(' WH','')}
+                              </span>
+                            ))}
+                            {brs.length > 4 && <span style={{ fontSize:'0.64rem', color:'#94a3b8' }}>+{brs.length-4}</span>}
+                          </div>
+                        </td>
+                        <td style={{ padding:'9px 12px', color:'#64748b' }}>{p.issued.toLocaleString()}</td>
+                        <td style={{ padding:'9px 12px', color:'#64748b' }}>{p.records.length}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      )}
+
+      {viewMode === 'branch' && (
+        <div className="space-y-3">
+          {branchSummary.length === 0 ? (
+            <Card><CardBody><EmptyState icon={<Package size={40} />} title="No branch data" description="No active field stock records" /></CardBody></Card>
+          ) : branchSummary.map(([lk, s]) => {
+            const branchRecs = searched.filter(r => (r.origin_location||'').toLowerCase() === lk);
+            if (branchRecs.length === 0) return null;
+            return (
+              <Card key={lk}>
+                <CardHeader>
+                  <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
+                    <span style={{ background:locBg(lk), color:locColor(lk), border:`1.5px solid ${locColor(lk)}44`, borderRadius:99, padding:'4px 12px', fontWeight:800, fontSize:'0.8rem', display:'flex', alignItems:'center', gap:6 }}>
+                      <span style={{ width:8, height:8, borderRadius:'50%', background:locColor(lk), display:'inline-block' }} />
+                      {fmtLoc(lk)}
+                    </span>
+                    <span style={{ fontSize:'0.78rem', color:'#64748b' }}>
+                      {branchRecs.length} record{branchRecs.length!==1?'s':''} · <strong style={{ color:locColor(lk) }}>{branchRecs.reduce((s,r)=>s+Number(r.balance||0),0).toLocaleString()} units</strong> outstanding
+                    </span>
+                    {branchRecs.filter(isOverdue).length > 0 && (
+                      <span style={{ background:'#fef2f2', color:'#dc2626', borderRadius:99, padding:'2px 8px', fontSize:'0.68rem', fontWeight:800, border:'1px solid #fecaca' }}>
+                        ⚠ {branchRecs.filter(isOverdue).length} overdue
+                      </span>
+                    )}
+                  </div>
+                </CardHeader>
+                <div style={{ overflowX:'auto' }}>
+                  <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'0.79rem' }}>
+                    <thead>
+                      <tr style={{ background:'#f8fafc', borderBottom:'1px solid #e2e8f0' }}>
+                        {['Officer','Product','Batch','Issued','Returned','Sold','Balance','Days Out','DP Value','Status',''].map(h => (
+                          <th key={h} style={{ padding:'7px 10px', textAlign:'left', fontWeight:700, color:'#64748b', fontSize:'0.66rem', whiteSpace:'nowrap' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {branchRecs.sort((a,b) => Number(b.balance||0) - Number(a.balance||0)).map((r, ri) => {
+                        const do_ = daysOut(r);
+                        const bal = Number(r.balance || 0);
+                        const dpVal = bal * getDP(r.product_name);
+                        const overdue = isOverdue(r);
+                        return (
+                          <tr key={r.id||ri} onClick={() => setDetail(r)} style={{ background: overdue ? '#fef9f9' : ri%2===0?'#fff':'#fafafa', borderBottom:'1px solid #f1f5f9', cursor:'pointer' }}
+                            onMouseEnter={e => e.currentTarget.style.background='#fef2f2'}
+                            onMouseLeave={e => e.currentTarget.style.background=overdue?'#fef9f9':ri%2===0?'#fff':'#fafafa'}>
+                            <td style={{ padding:'7px 10px', fontWeight:700, color:'#1e293b' }}>
+                              {r.officer_name}
+                              {r.team_name && <div style={{ fontSize:'0.63rem', color:'#94a3b8' }}>{r.team_name}</div>}
+                            </td>
+                            <td style={{ padding:'7px 10px', maxWidth:160 }}>
+                              <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={r.product_name}>{r.product_name}</div>
+                            </td>
+                            <td style={{ padding:'7px 10px', fontFamily:'monospace', fontSize:'0.7rem', color:'#6b21a8' }}>{r.batch_no||'—'}</td>
+                            <td style={{ padding:'7px 10px', color:'#64748b' }}>{Number(r.quantity_issued||0).toLocaleString()}</td>
+                            <td style={{ padding:'7px 10px', color:'#2563eb', fontWeight:700 }}>{Number(r.quantity_returned||0).toLocaleString()}</td>
+                            <td style={{ padding:'7px 10px', color:'#16a34a', fontWeight:700 }}>{Number(r.quantity_sold||0).toLocaleString()}</td>
+                            <td style={{ padding:'7px 10px', fontWeight:900, color:bal>0?'#c41e3a':'#16a34a' }}>{bal.toLocaleString()}</td>
+                            <td style={{ padding:'7px 10px', fontWeight:overdue?800:400, color:overdue?'#dc2626':do_>3?'#d97706':'#374151' }}>{do_}d{overdue&&' ⚠'}</td>
+                            <td style={{ padding:'7px 10px', fontWeight:700, color:'#374151' }}>{dpVal>0?`N$ ${Math.round(dpVal).toLocaleString('en-ZA')}`:'—'}</td>
+                            <td style={{ padding:'7px 10px' }}>
+                              <span style={{ background:r.status==='issued'?'#fffbeb':'#f0fdf4', color:r.status==='issued'?'#d97706':'#16a34a', borderRadius:99, padding:'2px 7px', fontSize:'0.65rem', fontWeight:800 }}>{r.status||'issued'}</span>
+                            </td>
+                            <td style={{ padding:'7px 10px' }}>
+                              {r.status==='issued' && (
+                                <button onClick={ev => { ev.stopPropagation(); setShowReturn(r); setReturnQty(''); setSoldQty(''); }}
+                                  style={{ padding:'3px 8px', background:'#dbeafe', color:'#1e40af', border:'1px solid #93c5fd', borderRadius:5, cursor:'pointer', fontSize:'0.7rem', fontWeight:700, whiteSpace:'nowrap' }}>
+                                  Return/Sold
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── Issue to Field Modal ──────────────────────────────────────────── */}
       <Modal open={showForm} onClose={() => setShowForm(false)} title="Issue Stock to Field Officer" size="md">
         <form onSubmit={handleIssue} className="p-6 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Input label="Officer Name *" value={form.officer_name} onChange={e => setForm(f => ({ ...f, officer_name: e.target.value }))} placeholder="e.g. John Doe" />
-            <Input label="Team Name" value={form.team_name} onChange={e => setForm(f => ({ ...f, team_name: e.target.value }))} placeholder="e.g. Northern Team" />
+            <Input label="Officer Name *" value={form.officer_name} onChange={e => setForm(f=>({...f,officer_name:e.target.value}))} placeholder="e.g. John Doe" />
+            <Input label="Team Name" value={form.team_name} onChange={e => setForm(f=>({...f,team_name:e.target.value}))} placeholder="e.g. Northern Team" />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Product *</label>
               <input list="field-prod-list" className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm" value={form.product_name}
-                onChange={e => setForm(f => ({ ...f, product_name: e.target.value }))} placeholder="Search products..." autoComplete="off" />
+                onChange={e => setForm(f=>({...f,product_name:e.target.value}))} placeholder="Search products…" autoComplete="off" />
               <datalist id="field-prod-list">{productOptions.map(name => <option key={name} value={name} />)}</datalist>
             </div>
-            <Input label="Quantity *" type="number" min="1" value={form.quantity_issued} onChange={e => setForm(f => ({ ...f, quantity_issued: e.target.value }))} />
+            <Input label="Quantity *" type="number" min="1" value={form.quantity_issued} onChange={e => setForm(f=>({...f,quantity_issued:e.target.value}))} />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Input label="Batch #" value={form.batch_no} onChange={e => setForm(f => ({ ...f, batch_no: e.target.value }))} />
-            <Input label="Expiry Date" type="date" value={form.expiry_date} onChange={e => setForm(f => ({ ...f, expiry_date: e.target.value }))} />
+            <Input label="Batch #" value={form.batch_no} onChange={e => setForm(f=>({...f,batch_no:e.target.value}))} />
+            <Input label="Expiry Date" type="date" value={form.expiry_date} onChange={e => setForm(f=>({...f,expiry_date:e.target.value}))} />
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Origin</label>
-              <select className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm" value={form.origin_location} onChange={e => setForm(f => ({ ...f, origin_location: e.target.value }))}>
-                <option value="">Select origin...</option>
-                <option value="windhoek_warehouse">Windhoek Warehouse</option>
-                <option value="ondangwa_warehouse">Ondangwa Warehouse</option>
-                <option value="country_stock">Country Stock</option>
-                {BRANCH_DETAILS.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              <label className="block text-sm font-medium text-gray-700 mb-1">Origin Branch / Warehouse</label>
+              <select className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm bg-white" value={form.origin_location} onChange={e => setForm(f=>({...f,origin_location:e.target.value}))}>
+                <option value="">Select origin…</option>
+                <optgroup label="Warehouses">
+                  <option value="windhoek_warehouse">Windhoek Warehouse</option>
+                  <option value="ondangwa_warehouse">Ondangwa Warehouse</option>
+                  <option value="country_stock">Country Stock</option>
+                </optgroup>
+                <optgroup label="Branches">
+                  {BRANCH_DETAILS.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </optgroup>
               </select>
             </div>
           </div>
-          <Input label="Notes" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Purpose, event, etc." />
+          <Input label="Notes" value={form.notes} onChange={e => setForm(f=>({...f,notes:e.target.value}))} placeholder="Purpose, event, campaign…" />
           <div className="flex gap-3 pt-2">
-            <Button type="submit" disabled={submitting}>{submitting ? 'Issuing...' : 'Issue Stock'}</Button>
+            <Button type="submit" disabled={submitting}>{submitting ? 'Issuing…' : 'Issue Stock'}</Button>
             <Button variant="secondary" type="button" onClick={() => setShowForm(false)}>Cancel</Button>
           </div>
         </form>
       </Modal>
 
+      {/* ── Return / Sale Modal ───────────────────────────────────────────── */}
       <Modal open={!!showReturn} onClose={() => setShowReturn(null)} title={`Record Return/Sale — ${showReturn?.product_name || ''}`} size="sm">
         {showReturn && (
           <div className="p-6 space-y-4">
-            <p className="text-sm text-gray-600">
-              Officer: <strong>{showReturn.officer_name}</strong> · Balance: <strong>{showReturn.balance}</strong> units
-            </p>
-            <Input label="Quantity Returned" type="number" min="0" max={showReturn.balance} value={returnQty} onChange={e => setReturnQty(e.target.value)} />
-            <Input label="Quantity Sold" type="number" min="0" max={showReturn.balance} value={soldQty} onChange={e => setSoldQty(e.target.value)} />
+            <div style={{ background:'#f8fafc', borderRadius:8, padding:'10px 14px', fontSize:'0.82rem' }}>
+              <div><strong>Officer:</strong> {showReturn.officer_name}</div>
+              <div><strong>Product:</strong> {showReturn.product_name}</div>
+              <div><strong>Outstanding Balance:</strong> <span style={{ fontWeight:800, color:'#c41e3a' }}>{showReturn.balance} units</span></div>
+              <div><strong>Days on Field:</strong> {daysOut(showReturn)} days</div>
+            </div>
+            <Input label="Quantity Returned to Stock" type="number" min="0" max={showReturn.balance} value={returnQty} onChange={e => setReturnQty(e.target.value)} />
+            <Input label="Quantity Sold in Field" type="number" min="0" max={showReturn.balance} value={soldQty} onChange={e => setSoldQty(e.target.value)} />
+            {returnQty && soldQty && Number(returnQty)+Number(soldQty) > Number(showReturn.balance) && (
+              <p style={{ fontSize:'0.76rem', color:'#dc2626', fontWeight:700 }}>⚠ Total ({Number(returnQty)+Number(soldQty)}) exceeds balance ({showReturn.balance})</p>
+            )}
             <div className="flex gap-3 pt-2">
-              <Button onClick={() => handleReturn(showReturn)}>Update</Button>
+              <Button onClick={() => handleReturn(showReturn)} disabled={Number(returnQty||0)+Number(soldQty||0) > Number(showReturn.balance||0)}>Update</Button>
               <Button variant="secondary" onClick={() => setShowReturn(null)}>Cancel</Button>
             </div>
           </div>
