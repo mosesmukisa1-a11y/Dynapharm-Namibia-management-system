@@ -1224,8 +1224,10 @@ function PrescriptionsTab() {
   const [expandedPackages, setExpandedPackages] = useState({});
 
   const CHECKUP_FEE_OPTIONS = {
-    standard: { label: 'Full Body Check Up', fee: 200, cashback: 50, consultantEarns: 150 },
-    report:   { label: 'Full Body Check Up (With Report)', fee: 250, cashback: 50, consultantEarns: 200 },
+    standard:        { label: 'Full Body Check Up',              fee: 200, cashback: 50, consultantEarns: 150 },
+    report:          { label: 'Full Body Check Up (With Report)', fee: 250, cashback: 50, consultantEarns: 200 },
+    followup:        { label: 'Follow-Up Visit',                 fee: 150, cashback: 0,  consultantEarns: 150 },
+    followup_report: { label: 'Follow-Up Visit (With Report)',   fee: 200, cashback: 0,  consultantEarns: 200 },
   };
   const getCheckupType = (reportId) => checkupFeeType[reportId] || null;
   const setCheckupType = (reportId, type) => setCheckupFeeType(prev => ({ ...prev, [reportId]: type }));
@@ -1679,7 +1681,7 @@ function PrescriptionsTab() {
       referralNB: !isMember ? (report.referral_nb || null) : null,
       cashier: user?.full_name || user?.username || null,
       showBV: true,
-      cashback: !isMember ? 50 : 0,
+      cashback: (!isMember && checkupOpt) ? checkupOpt.cashback : 0,
       branchAmount: !isMember ? rxBranchAmount : null,
       distributorProfit: !isMember ? rxDistProfit : null,
       consultFeeAmount: consultFee.total,
@@ -1973,19 +1975,33 @@ function PrescriptionsTab() {
                     </div>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                    <div style={{ fontSize: '0.62rem', fontWeight: 700, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 1 }}>First Visit</div>
                     {[
                       { key: 'standard', label: 'Standard', sub: 'N$200' },
-                      { key: 'report', label: 'With Report', sub: 'N$250' },
+                      { key: 'report',   label: 'With Report', sub: 'N$250' },
                     ].map(opt => (
                       <button key={opt.key} onClick={() => setCheckupType(report.id, checkupType === opt.key ? null : opt.key)}
                         style={{ padding: '6px 10px', borderRadius: 7, border: `1.5px solid ${checkupType === opt.key ? '#0d9488' : '#ccfbf1'}`, background: checkupType === opt.key ? '#0d9488' : '#fff', color: checkupType === opt.key ? '#fff' : '#0f766e', fontWeight: checkupType === opt.key ? 700 : 500, cursor: 'pointer', fontSize: '0.75rem', textAlign: 'left', transition: 'all .12s' }}>
                         {opt.label} <span style={{ opacity: 0.7 }}>{opt.sub}</span>
                       </button>
                     ))}
+                    <div style={{ fontSize: '0.62rem', fontWeight: 700, color: '#7c3aed', textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 4, marginBottom: 1 }}>Return / Follow-Up</div>
+                    {[
+                      { key: 'followup',        label: 'Follow-Up Visit', sub: 'N$150' },
+                      { key: 'followup_report', label: 'With Report',     sub: 'N$200' },
+                    ].map(opt => (
+                      <button key={opt.key} onClick={() => setCheckupType(report.id, checkupType === opt.key ? null : opt.key)}
+                        style={{ padding: '6px 10px', borderRadius: 7, border: `1.5px solid ${checkupType === opt.key ? '#7c3aed' : '#ede9fe'}`, background: checkupType === opt.key ? '#7c3aed' : '#fff', color: checkupType === opt.key ? '#fff' : '#6d28d9', fontWeight: checkupType === opt.key ? 700 : 500, cursor: 'pointer', fontSize: '0.75rem', textAlign: 'left', transition: 'all .12s' }}>
+                        {opt.label} <span style={{ opacity: 0.7 }}>{opt.sub}</span>
+                      </button>
+                    ))}
                   </div>
                   {checkupOpt && (
-                    <div style={{ marginTop: 6, fontSize: '0.68rem', color: '#0f766e', background: '#ccfbf1', padding: '4px 7px', borderRadius: 5 }}>
-                      {!isMember ? `Cashback N$${checkupOpt.cashback} · Consultant N$${checkupOpt.consultantEarns}` : `Member · Consultant N$${checkupOpt.fee}`}
+                    <div style={{ marginTop: 6, fontSize: '0.68rem', color: checkupType?.startsWith('followup') ? '#6d28d9' : '#0f766e', background: checkupType?.startsWith('followup') ? '#ede9fe' : '#ccfbf1', padding: '4px 7px', borderRadius: 5 }}>
+                      {checkupType?.startsWith('followup')
+                        ? `Return client · Consultant N$${checkupOpt.consultantEarns}`
+                        : (!isMember ? `Cashback N$${checkupOpt.cashback} · Consultant N$${checkupOpt.consultantEarns}` : `Member · Consultant N$${checkupOpt.fee}`)
+                      }
                     </div>
                   )}
                 </div>
