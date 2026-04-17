@@ -30,6 +30,7 @@ export default function FinancePortal() {
     { id: 'bonus', label: 'Bonus Workflow', icon: '💰' },
     { id: 'reports', label: 'Reports', icon: '📈' },
     { id: 'communication', label: 'Notices', icon: '📢' },
+    { id: 'payments', label: 'Payment Vouchers', icon: '🧾' },
     { id: 'casReview', label: 'CAS Review', icon: '✅' },
     { id: 'staff', label: 'Staff Services', icon: '👤' },
     { id: 'messages', label: 'My Messages', icon: '📨' },
@@ -53,6 +54,7 @@ export default function FinancePortal() {
         {activeTab === 'bonus' && <BonusTab />}
         {activeTab === 'reports' && <ReportsTab />}
         {activeTab === 'communication' && <CommunicationTab />}
+        {activeTab === 'payments' && <PaymentVouchersTab />}
         {activeTab === 'casReview' && <CASReviewTab />}
         {activeTab === 'staff' && <StaffTab />}
         {activeTab === 'messages' && <StaffMessagesTab accentColor="#1d4ed8" />}
@@ -1448,6 +1450,481 @@ function ReportsTab() {
             </Card>
           )}
         </>
+      )}
+    </div>
+  );
+}
+
+/* ─── PAYMENT VOUCHERS ───────────────────────────────────── */
+const PAYMENT_TYPES = [
+  { value: 'cash_request', label: 'Cash Request Payout' },
+  { value: 'salary', label: 'Salary / Wage Payment' },
+  { value: 'bonus', label: 'Distributor Bonus' },
+  { value: 'expense_reimbursement', label: 'Expense Reimbursement' },
+  { value: 'supplier_remittance', label: 'Supplier Remittance' },
+  { value: 'rent', label: 'Rent / Lease Payment' },
+  { value: 'ad_hoc', label: 'Ad-Hoc Payment' },
+];
+const PAYMENT_METHODS = ['EFT', 'Cheque', 'Cash', 'Bank Transfer', 'Wire Transfer'];
+const STATUS_COLORS = {
+  draft: 'bg-gray-100 text-gray-600',
+  pending_auth: 'bg-yellow-100 text-yellow-700',
+  authorised: 'bg-blue-100 text-blue-700',
+  paid: 'bg-green-100 text-green-700',
+  cancelled: 'bg-red-100 text-red-600',
+};
+const EMPTY_VOUCHER = {
+  payment_type: 'cash_request', payee_name: '', payee_bank: '', payee_account: '',
+  payee_branch_code: '', amount: '', currency: 'NAD', payment_method: 'EFT',
+  reference_number: '', narration: '', authorised_by: '', payment_date: new Date().toISOString().slice(0, 10),
+  notes: '', status: 'draft',
+};
+
+function PaymentVouchersTab() {
+  const [vouchers, setVouchers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [msg, setMsg] = useState('');
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ ...EMPTY_VOUCHER });
+  const [submitting, setSubmitting] = useState(false);
+  const [viewVoucher, setViewVoucher] = useState(null);
+  const [editStatus, setEditStatus] = useState(null);
+  const [filterType, setFilterType] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterFrom, setFilterFrom] = useState('');
+  const [filterTo, setFilterTo] = useState('');
+
+  const load = () => {
+    setLoading(true);
+    const params = {};
+    if (filterType) params.type = filterType;
+    if (filterStatus) params.status = filterStatus;
+    if (filterFrom) params.from = filterFrom;
+    if (filterTo) params.to = filterTo;
+    api.paymentVouchers.list(params)
+      .then(d => setVouchers(Array.isArray(d) ? d : []))
+      .catch(() => setVouchers([]))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(load, [filterType, filterStatus, filterFrom, filterTo]);
+
+  const fv = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.payee_name || !form.amount || !form.payment_method) {
+      setMsg('Error: Payee name, amount and payment method are required.'); return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await api.paymentVouchers.create({ ...form, amount: parseFloat(form.amount) });
+      setVouchers(prev => [res.voucher, ...prev]);
+      setForm({ ...EMPTY_VOUCHER });
+      setShowForm(false);
+      setMsg(`✅ Voucher ${res.voucher.voucher_number} created successfully.`);
+    } catch (err) { setMsg('Error: ' + err.message); }
+    finally { setSubmitting(false); }
+  };
+
+  const handleStatusChange = async (id, newStatus) => {
+    try {
+      const res = await api.paymentVouchers.update(id, { status: newStatus });
+      setVouchers(prev => prev.map(v => v.id === id ? res.voucher : v));
+      if (viewVoucher?.id === id) setViewVoucher(res.voucher);
+      setEditStatus(null);
+    } catch (err) { setMsg('Error: ' + err.message); }
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('Delete this draft voucher?')) return;
+    try {
+      await api.paymentVouchers.delete(id);
+      setVouchers(prev => prev.filter(v => v.id !== id));
+      if (viewVoucher?.id === id) setViewVoucher(null);
+    } catch (err) { setMsg('Error: ' + err.message); }
+  };
+
+  const totalPaid = vouchers.filter(v => v.status === 'paid').reduce((s, v) => s + parseFloat(v.amount || 0), 0);
+  const totalAuthorised = vouchers.filter(v => v.status === 'authorised').reduce((s, v) => s + parseFloat(v.amount || 0), 0);
+  const totalPending = vouchers.filter(v => v.status === 'pending_auth').reduce((s, v) => s + parseFloat(v.amount || 0), 0);
+
+  const typeLabel = (t) => PAYMENT_TYPES.find(x => x.value === t)?.label || t;
+
+  const printVoucher = (v) => {
+    const w = window.open('', '_blank');
+    w.document.write(`<!DOCTYPE html><html><head><title>Payment Voucher ${v.voucher_number}</title>
+    <style>
+      body{font-family:Arial,sans-serif;margin:0;padding:24px;color:#1e293b}
+      .header{text-align:center;border-bottom:2px solid #1d4ed8;padding-bottom:16px;margin-bottom:20px}
+      .title{font-size:22px;font-weight:800;color:#1d4ed8;letter-spacing:1px}
+      .subtitle{font-size:13px;color:#64748b;margin-top:4px}
+      .vnum{font-size:14px;font-weight:700;color:#1e293b;margin-top:6px}
+      table{width:100%;border-collapse:collapse;margin-bottom:16px}
+      td{padding:7px 10px;font-size:13px;border:1px solid #e2e8f0;vertical-align:top}
+      td:first-child{font-weight:600;background:#f8fafc;width:35%;color:#374151}
+      .amount-row td{font-size:18px;font-weight:800;color:#1d4ed8}
+      .status-badge{display:inline-block;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;text-transform:uppercase;background:${v.status==='paid'?'#dcfce7':v.status==='authorised'?'#dbeafe':'#fef9c3'};color:${v.status==='paid'?'#166534':v.status==='authorised'?'#1e40af':'#92400e'}}
+      .sigs{display:flex;gap:40px;margin-top:30px}
+      .sig-box{flex:1;border-top:1.5px solid #1e293b;padding-top:8px;font-size:12px;color:#64748b}
+      .footer{text-align:center;margin-top:32px;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:10px}
+      @media print{body{padding:12px}}
+    </style></head><body>
+    <div class="header">
+      <div class="title">DYNAPHARM INTERNATIONAL NAMIBIA</div>
+      <div class="subtitle">Payment Voucher</div>
+      <div class="vnum">${v.voucher_number} &nbsp;|&nbsp; <span class="status-badge">${v.status?.replace('_',' ').toUpperCase()}</span></div>
+    </div>
+    <table>
+      <tr><td>Payment Type</td><td>${typeLabel(v.payment_type)}</td></tr>
+      <tr><td>Payment Date</td><td>${v.payment_date ? new Date(v.payment_date).toLocaleDateString('en-NA',{day:'2-digit',month:'long',year:'numeric'}) : '—'}</td></tr>
+      <tr class="amount-row"><td>Amount</td><td>${v.currency || 'NAD'} ${parseFloat(v.amount).toFixed(2)}</td></tr>
+      <tr><td>Payment Method</td><td>${v.payment_method}</td></tr>
+      <tr><td>Reference / Cheque No.</td><td>${v.reference_number || '—'}</td></tr>
+    </table>
+    <table>
+      <tr><td>Payee Name</td><td>${v.payee_name}</td></tr>
+      <tr><td>Bank</td><td>${v.payee_bank || '—'}</td></tr>
+      <tr><td>Account Number</td><td>${v.payee_account || '—'}</td></tr>
+      <tr><td>Branch Code</td><td>${v.payee_branch_code || '—'}</td></tr>
+    </table>
+    <table>
+      <tr><td>Narration / Description</td><td>${v.narration || '—'}</td></tr>
+      <tr><td>Internal Notes</td><td>${v.notes || '—'}</td></tr>
+    </table>
+    <div class="sigs">
+      <div class="sig-box">Prepared By<br><strong>${v.prepared_by || '—'}</strong><br><br>Signature: ___________________</div>
+      <div class="sig-box">Authorised By<br><strong>${v.authorised_by || '—'}</strong><br><br>Signature: ___________________</div>
+      <div class="sig-box">Received By<br><br><br>Signature: ___________________</div>
+    </div>
+    <div class="footer">Generated ${new Date().toLocaleString('en-NA')} &nbsp;|&nbsp; Dynapharm International Namibia</div>
+    </body></html>`);
+    w.document.close();
+    w.focus();
+    setTimeout(() => w.print(), 400);
+  };
+
+  return (
+    <div className="space-y-5">
+      {msg && (
+        <div className={`px-4 py-3 rounded-lg text-sm font-medium ${msg.startsWith('Error') ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-green-50 text-green-700 border border-green-200'}`}>
+          {msg} <button onClick={() => setMsg('')} className="ml-2 text-xs opacity-60 cursor-pointer">✕</button>
+        </div>
+      )}
+
+      {/* Summary KPIs */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[
+          { label: 'Total Vouchers', val: vouchers.length, color: 'blue' },
+          { label: 'Pending Auth', val: formatCurrency(totalPending), sub: vouchers.filter(v=>v.status==='pending_auth').length + ' voucher(s)', color: 'yellow' },
+          { label: 'Authorised', val: formatCurrency(totalAuthorised), sub: vouchers.filter(v=>v.status==='authorised').length + ' voucher(s)', color: 'blue' },
+          { label: 'Paid Out', val: formatCurrency(totalPaid), sub: vouchers.filter(v=>v.status==='paid').length + ' voucher(s)', color: 'green' },
+        ].map(k => (
+          <div key={k.label} className={`bg-white rounded-xl border p-4 border-${k.color}-100`}>
+            <p className="text-xs text-gray-500 font-medium">{k.label}</p>
+            <p className={`text-lg font-bold text-${k.color}-700 mt-1`}>{k.val}</p>
+            {k.sub && <p className="text-xs text-gray-400 mt-0.5">{k.sub}</p>}
+          </div>
+        ))}
+      </div>
+
+      {/* Header + New Voucher Button */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h3 className="text-base font-bold text-gray-800">Payment Voucher Register</h3>
+        <button onClick={() => { setShowForm(true); setMsg(''); }}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-700 text-white text-sm font-bold rounded-lg hover:bg-blue-800 cursor-pointer">
+          + New Payment Voucher
+        </button>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-wrap gap-2 bg-gray-50 p-3 rounded-xl border border-gray-200">
+        <select value={filterType} onChange={e => setFilterType(e.target.value)}
+          className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 bg-white focus:ring-2 focus:ring-blue-500 outline-none">
+          <option value="">All Types</option>
+          {PAYMENT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+        </select>
+        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+          className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 bg-white focus:ring-2 focus:ring-blue-500 outline-none">
+          <option value="">All Statuses</option>
+          <option value="draft">Draft</option>
+          <option value="pending_auth">Pending Auth</option>
+          <option value="authorised">Authorised</option>
+          <option value="paid">Paid</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+        <input type="date" value={filterFrom} onChange={e => setFilterFrom(e.target.value)}
+          className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 bg-white focus:ring-2 focus:ring-blue-500 outline-none" placeholder="From" />
+        <input type="date" value={filterTo} onChange={e => setFilterTo(e.target.value)}
+          className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 bg-white focus:ring-2 focus:ring-blue-500 outline-none" placeholder="To" />
+        <button onClick={() => { setFilterType(''); setFilterStatus(''); setFilterFrom(''); setFilterTo(''); }}
+          className="text-xs text-gray-500 underline px-2 cursor-pointer">Clear</button>
+      </div>
+
+      {/* Voucher List */}
+      {loading ? (
+        <div className="text-center py-10 text-gray-400 text-sm">Loading vouchers…</div>
+      ) : vouchers.length === 0 ? (
+        <div className="text-center py-12 bg-white rounded-xl border border-gray-200">
+          <div className="text-4xl mb-2">🧾</div>
+          <p className="text-gray-500 font-medium">No payment vouchers yet.</p>
+          <p className="text-sm text-gray-400 mt-1">Create a new voucher to get started.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {vouchers.map(v => (
+            <div key={v.id} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              <div className="flex flex-wrap items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50 gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">{v.voucher_number}</span>
+                  <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${STATUS_COLORS[v.status] || 'bg-gray-100 text-gray-600'}`}>
+                    {v.status?.replace('_', ' ').toUpperCase()}
+                  </span>
+                  <span className="text-xs text-gray-500 bg-white border border-gray-200 px-2 py-0.5 rounded-full">{typeLabel(v.payment_type)}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => setViewVoucher(v)} className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 cursor-pointer">View</button>
+                  <button onClick={() => printVoucher(v)} className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100 cursor-pointer">🖨 Print</button>
+                  {v.status === 'draft' && <button onClick={() => handleDelete(v.id)} className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 cursor-pointer">Delete</button>}
+                </div>
+              </div>
+              <div className="px-4 py-3 flex flex-wrap items-center gap-x-6 gap-y-1">
+                <div>
+                  <p className="text-xs text-gray-400">Payee</p>
+                  <p className="text-sm font-bold text-gray-800">{v.payee_name}</p>
+                  {v.payee_bank && <p className="text-xs text-gray-500">{v.payee_bank}{v.payee_account ? ' · ' + v.payee_account : ''}</p>}
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400">Amount</p>
+                  <p className="text-base font-extrabold text-blue-700">{v.currency || 'NAD'} {parseFloat(v.amount).toLocaleString('en-NA', { minimumFractionDigits: 2 })}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400">Method</p>
+                  <p className="text-sm font-semibold text-gray-700">{v.payment_method}</p>
+                  {v.reference_number && <p className="text-xs text-gray-400">Ref: {v.reference_number}</p>}
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400">Date</p>
+                  <p className="text-sm font-semibold text-gray-700">{v.payment_date ? new Date(v.payment_date).toLocaleDateString('en-NA') : '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400">Authorised By</p>
+                  <p className="text-sm font-semibold text-gray-700">{v.authorised_by || '—'}</p>
+                </div>
+                {v.narration && (
+                  <div className="w-full">
+                    <p className="text-xs text-gray-400">Narration</p>
+                    <p className="text-sm text-gray-600 italic">{v.narration}</p>
+                  </div>
+                )}
+              </div>
+              {/* Quick status update bar */}
+              {editStatus === v.id ? (
+                <div className="px-4 pb-3 flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-semibold text-gray-600">Update status to:</span>
+                  {['draft','pending_auth','authorised','paid','cancelled'].map(s => (
+                    <button key={s} onClick={() => handleStatusChange(v.id, s)}
+                      className={`px-2.5 py-1 text-xs font-bold rounded-full cursor-pointer ${STATUS_COLORS[s] || 'bg-gray-100'}`}>
+                      {s.replace('_',' ').toUpperCase()}
+                    </button>
+                  ))}
+                  <button onClick={() => setEditStatus(null)} className="text-xs text-gray-400 underline cursor-pointer ml-1">Cancel</button>
+                </div>
+              ) : (
+                <div className="px-4 pb-2">
+                  <button onClick={() => setEditStatus(v.id)} className="text-xs text-blue-600 underline cursor-pointer">Change Status</button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* New Voucher Modal */}
+      {showForm && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl my-6">
+            <div className="flex items-center justify-between px-6 py-4 bg-blue-700 rounded-t-2xl">
+              <div>
+                <h3 className="text-white font-bold text-lg">New Payment Voucher</h3>
+                <p className="text-blue-200 text-xs mt-0.5">Dynapharm International Namibia</p>
+              </div>
+              <button onClick={() => setShowForm(false)} className="text-white/80 hover:text-white text-xl cursor-pointer">✕</button>
+            </div>
+            <form onSubmit={handleSubmit} className="p-6 space-y-5">
+              {/* Payment classification */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 mb-1">Payment Type *</label>
+                  <select value={form.payment_type} onChange={e => fv('payment_type', e.target.value)} required
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                    {PAYMENT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 mb-1">Status</label>
+                  <select value={form.status} onChange={e => fv('status', e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                    <option value="draft">Draft</option>
+                    <option value="pending_auth">Pending Authorisation</option>
+                    <option value="authorised">Authorised</option>
+                    <option value="paid">Paid</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Payee info */}
+              <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 space-y-3">
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Payee Details</p>
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 mb-1">Payee Name *</label>
+                  <input value={form.payee_name} onChange={e => fv('payee_name', e.target.value)} required
+                    placeholder="Full name or company name" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-600 mb-1">Bank Name</label>
+                    <input value={form.payee_bank} onChange={e => fv('payee_bank', e.target.value)}
+                      placeholder="e.g. FNB, Standard Bank" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-600 mb-1">Account Number</label>
+                    <input value={form.payee_account} onChange={e => fv('payee_account', e.target.value)}
+                      placeholder="Account number" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-600 mb-1">Branch Code</label>
+                    <input value={form.payee_branch_code} onChange={e => fv('payee_branch_code', e.target.value)}
+                      placeholder="Branch/sort code" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Payment details */}
+              <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 space-y-3">
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Payment Details</p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-600 mb-1">Amount (NAD) *</label>
+                    <input type="number" step="0.01" min="0.01" value={form.amount} onChange={e => fv('amount', e.target.value)} required
+                      placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-600 mb-1">Currency</label>
+                    <select value={form.currency} onChange={e => fv('currency', e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                      <option value="NAD">NAD (N$)</option>
+                      <option value="USD">USD ($)</option>
+                      <option value="ZAR">ZAR (R)</option>
+                      <option value="MYR">MYR (RM)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-600 mb-1">Payment Method *</label>
+                    <select value={form.payment_method} onChange={e => fv('payment_method', e.target.value)} required
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                      {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-600 mb-1">Reference / Cheque No.</label>
+                    <input value={form.reference_number} onChange={e => fv('reference_number', e.target.value)}
+                      placeholder="EFT ref, cheque number, etc." className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-600 mb-1">Payment Date</label>
+                    <input type="date" value={form.payment_date} onChange={e => fv('payment_date', e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Authorisation & narration */}
+              <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 space-y-3">
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Authorisation</p>
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 mb-1">Authorised By</label>
+                  <input value={form.authorised_by} onChange={e => fv('authorised_by', e.target.value)}
+                    placeholder="Name of authorising manager/director" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 mb-1">Narration / Description *</label>
+                  <textarea value={form.narration} onChange={e => fv('narration', e.target.value)} rows={2}
+                    placeholder="What is this payment for? (be specific)" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 mb-1">Internal Notes</label>
+                  <textarea value={form.notes} onChange={e => fv('notes', e.target.value)} rows={2}
+                    placeholder="Any internal notes (not printed on voucher)" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none" />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button type="button" onClick={() => setShowForm(false)}
+                  className="px-5 py-2 rounded-lg text-sm font-semibold border border-gray-200 text-gray-600 hover:bg-gray-50 cursor-pointer">Cancel</button>
+                <button type="submit" disabled={submitting}
+                  className="px-6 py-2 rounded-lg text-sm font-bold bg-blue-700 text-white hover:bg-blue-800 disabled:opacity-60 cursor-pointer">
+                  {submitting ? 'Creating…' : 'Create Voucher'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* View Voucher Detail Modal */}
+      {viewVoucher && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg my-6">
+            <div className="flex items-center justify-between px-6 py-4 bg-blue-700 rounded-t-2xl">
+              <div>
+                <h3 className="text-white font-bold">{viewVoucher.voucher_number}</h3>
+                <p className="text-blue-200 text-xs">{typeLabel(viewVoucher.payment_type)}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => printVoucher(viewVoucher)} className="text-white/80 hover:text-white text-sm cursor-pointer">🖨 Print</button>
+                <button onClick={() => setViewVoucher(null)} className="text-white/80 hover:text-white text-xl cursor-pointer">✕</button>
+              </div>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${STATUS_COLORS[viewVoucher.status] || 'bg-gray-100 text-gray-600'}`}>
+                {viewVoucher.status?.replace('_', ' ').toUpperCase()}
+              </div>
+              {[
+                ['Amount', `${viewVoucher.currency || 'NAD'} ${parseFloat(viewVoucher.amount).toLocaleString('en-NA', { minimumFractionDigits: 2 })}`],
+                ['Payment Method', viewVoucher.payment_method],
+                ['Reference', viewVoucher.reference_number || '—'],
+                ['Payment Date', viewVoucher.payment_date ? new Date(viewVoucher.payment_date).toLocaleDateString('en-NA') : '—'],
+                ['Payee', viewVoucher.payee_name],
+                ['Bank', viewVoucher.payee_bank || '—'],
+                ['Account', viewVoucher.payee_account || '—'],
+                ['Branch Code', viewVoucher.payee_branch_code || '—'],
+                ['Narration', viewVoucher.narration || '—'],
+                ['Authorised By', viewVoucher.authorised_by || '—'],
+                ['Prepared By', viewVoucher.prepared_by],
+                ['Notes', viewVoucher.notes || '—'],
+              ].map(([label, val]) => (
+                <div key={label} className="flex justify-between text-sm border-b border-gray-100 pb-2">
+                  <span className="text-gray-500 font-medium">{label}</span>
+                  <span className="text-gray-800 font-semibold text-right max-w-xs">{val}</span>
+                </div>
+              ))}
+              <div className="pt-2">
+                <p className="text-xs text-gray-400 font-medium mb-2">Change Status:</p>
+                <div className="flex flex-wrap gap-2">
+                  {['draft','pending_auth','authorised','paid','cancelled'].map(s => (
+                    <button key={s} onClick={() => handleStatusChange(viewVoucher.id, s)}
+                      className={`px-3 py-1 text-xs font-bold rounded-full cursor-pointer border-0 ${viewVoucher.status === s ? 'ring-2 ring-blue-500 ' : ''}${STATUS_COLORS[s] || 'bg-gray-100'}`}>
+                      {s.replace('_',' ').toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

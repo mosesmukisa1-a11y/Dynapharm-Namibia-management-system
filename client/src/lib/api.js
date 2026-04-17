@@ -367,6 +367,13 @@ export const api = {
     render: (receiptId, copyType = 'branch') => api.get(`/receipts/${encodeURIComponent(receiptId)}/render?copyType=${copyType}`),
   },
 
+  paymentVouchers: {
+    list: (params = {}) => { const qs = new URLSearchParams(params).toString(); return request(`/payment-vouchers${qs ? '?' + qs : ''}`); },
+    create: (data) => request('/payment-vouchers', { method: 'POST', body: data }),
+    update: (id, data) => request(`/payment-vouchers/${id}`, { method: 'PATCH', body: data }),
+    delete: (id) => request(`/payment-vouchers/${id}`, { method: 'DELETE' }),
+  },
+
   upload: (formData) => request('/upload', { method: 'POST', body: formData }),
   health: () => api.get('/health'),
 };

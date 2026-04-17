@@ -1569,6 +1569,112 @@ app.use((req, res) => {
   }
 });
 
+// ── Payment Vouchers API ──────────────────────────────────────────────────────
+app.get('/api/payment-vouchers', async (req, res) => {
+  try {
+    const { query } = await import('./api/db.js');
+    const role = req.user?.role || '';
+    const allowed = ['admin', 'finance', 'gm', 'director', 'mis'];
+    if (!allowed.includes(role)) return res.status(403).json({ error: 'Access denied' });
+    const { status, type, from, to, limit: lim } = req.query;
+    const params = [];
+    const conds = [];
+    if (status) { params.push(status); conds.push(`status = $${params.length}`); }
+    if (type) { params.push(type); conds.push(`payment_type = $${params.length}`); }
+    if (from) { params.push(from); conds.push(`payment_date >= $${params.length}`); }
+    if (to) { params.push(to); conds.push(`payment_date <= $${params.length}`); }
+    const where = conds.length ? ' WHERE ' + conds.join(' AND ') : '';
+    const rows = (await query(
+      `SELECT * FROM payment_vouchers${where} ORDER BY created_at DESC LIMIT ${parseInt(lim) || 200}`,
+      params
+    )).rows;
+    res.json(rows);
+  } catch (err) {
+    console.error('payment-vouchers GET:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/payment-vouchers', async (req, res) => {
+  try {
+    const { query, getOne } = await import('./api/db.js');
+    const role = req.user?.role || '';
+    if (!['admin', 'finance'].includes(role)) return res.status(403).json({ error: 'Access denied' });
+    const {
+      payment_type, payee_name, payee_bank, payee_account, payee_branch_code,
+      amount, currency, payment_method, reference_number, narration,
+      authorised_by, payment_date, notes, linked_request_id, linked_request_type, status
+    } = req.body;
+    if (!payment_type || !payee_name || !amount || !payment_method) {
+      return res.status(400).json({ error: 'payment_type, payee_name, amount and payment_method are required' });
+    }
+    const prepared_by = req.user?.full_name || req.user?.username || 'Finance';
+    const id = 'PV' + Date.now();
+    // Generate sequential voucher number
+    const countRow = await getOne('SELECT COUNT(*) AS c FROM payment_vouchers');
+    const seq = (parseInt(countRow?.c || 0) + 1).toString().padStart(5, '0');
+    const year = new Date().getFullYear();
+    const voucher_number = `DPI-PV-${year}-${seq}`;
+    await query(
+      `INSERT INTO payment_vouchers
+        (id, voucher_number, payment_type, payee_name, payee_bank, payee_account, payee_branch_code,
+         amount, currency, payment_method, reference_number, narration, authorised_by, prepared_by,
+         status, linked_request_id, linked_request_type, payment_date, notes, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,NOW(),NOW())`,
+      [id, voucher_number, payment_type, payee_name, payee_bank || null, payee_account || null,
+       payee_branch_code || null, parseFloat(amount), currency || 'NAD', payment_method,
+       reference_number || null, narration || null, authorised_by || null, prepared_by,
+       status || 'draft', linked_request_id || null, linked_request_type || null,
+       payment_date || null, notes || null]
+    );
+    const created = await getOne('SELECT * FROM payment_vouchers WHERE id = $1', [id]);
+    res.json({ success: true, voucher: created });
+  } catch (err) {
+    console.error('payment-vouchers POST:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/payment-vouchers/:id', async (req, res) => {
+  try {
+    const { query, getOne } = await import('./api/db.js');
+    const role = req.user?.role || '';
+    if (!['admin', 'finance', 'gm'].includes(role)) return res.status(403).json({ error: 'Access denied' });
+    const { id } = req.params;
+    const allowed_fields = ['status', 'payment_method', 'reference_number', 'narration', 'authorised_by',
+      'payment_date', 'notes', 'payee_bank', 'payee_account', 'payee_branch_code'];
+    const updates = [];
+    const params = [];
+    for (const f of allowed_fields) {
+      if (req.body[f] !== undefined) { params.push(req.body[f]); updates.push(`${f} = $${params.length}`); }
+    }
+    if (!updates.length) return res.status(400).json({ error: 'No fields to update' });
+    params.push(id);
+    await query(
+      `UPDATE payment_vouchers SET ${updates.join(', ')}, updated_at=NOW() WHERE id = $${params.length}`,
+      params
+    );
+    const updated = await getOne('SELECT * FROM payment_vouchers WHERE id = $1', [id]);
+    res.json({ success: true, voucher: updated });
+  } catch (err) {
+    console.error('payment-vouchers PATCH:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/payment-vouchers/:id', async (req, res) => {
+  try {
+    const { query } = await import('./api/db.js');
+    const role = req.user?.role || '';
+    if (!['admin', 'finance'].includes(role)) return res.status(403).json({ error: 'Access denied' });
+    await query('DELETE FROM payment_vouchers WHERE id = $1 AND status = $2', [req.params.id, 'draft']);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('payment-vouchers DELETE:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 const server = app.listen(PORT, HOST, () => {
   console.log('Dynapharm API & static server running');
   console.log(`Listening on http://${HOST}:${PORT}`);
@@ -1875,6 +1981,39 @@ server.on('error', (error) => {
       await query(`CREATE INDEX IF NOT EXISTS idx_spo_product ON supplier_purchase_orders (product_name)`);
     } catch (e) {
       console.warn('[supplier_purchase_orders init]', e.message);
+    }
+    // ── Payment Vouchers ──────────────────────────────────────────────────────
+    try {
+      await query(`
+        CREATE TABLE IF NOT EXISTS payment_vouchers (
+          id TEXT PRIMARY KEY,
+          voucher_number VARCHAR(30) NOT NULL UNIQUE,
+          payment_type VARCHAR(60) NOT NULL,
+          payee_name VARCHAR(255) NOT NULL,
+          payee_bank VARCHAR(255),
+          payee_account VARCHAR(120),
+          payee_branch_code VARCHAR(60),
+          amount NUMERIC(14,2) NOT NULL,
+          currency VARCHAR(10) NOT NULL DEFAULT 'NAD',
+          payment_method VARCHAR(40) NOT NULL,
+          reference_number VARCHAR(120),
+          narration TEXT,
+          authorised_by VARCHAR(255),
+          prepared_by VARCHAR(255) NOT NULL,
+          status VARCHAR(30) NOT NULL DEFAULT 'draft',
+          linked_request_id TEXT,
+          linked_request_type VARCHAR(60),
+          payment_date DATE,
+          notes TEXT,
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+      await query(`CREATE INDEX IF NOT EXISTS idx_pv_type ON payment_vouchers (payment_type)`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_pv_status ON payment_vouchers (status)`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_pv_date ON payment_vouchers (payment_date)`);
+    } catch (e) {
+      console.warn('[payment_vouchers init]', e.message);
     }
     // ────────────────────────────────────────────────────────────────────────
     // ── Normalize appointment branch display names → branch IDs (idempotent) ──
