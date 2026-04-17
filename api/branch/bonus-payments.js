@@ -102,7 +102,8 @@ export default async function handler(req, res) {
       const branchScope = getBranchScope(req.user);
       let branchId;
       if (isFullAccess) {
-        branchId = body.branch_id || req.user.branch || '';
+        // Finance staff with no branch assigned → mark as paid by 'finance'
+        branchId = body.branch_id || req.user.branch || (role === 'finance' ? 'finance' : '');
       } else {
         branchId = req.user.branch || '';
         if (!branchId) {

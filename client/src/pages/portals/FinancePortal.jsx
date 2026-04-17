@@ -11,7 +11,11 @@ import StaffServicesTab from '../../components/StaffServicesTab';
 import StaffMessagesTab from '../../components/StaffMessagesTab';
 
 const BRANCH_NAME_MAP = Object.fromEntries(BRANCH_DETAILS.map(b => [b.id, b.name]));
-const branchLabel = (id) => BRANCH_NAME_MAP[id] || id || '—';
+const branchLabel = (id) => {
+  if (!id) return '—';
+  if (id === 'finance' || id === 'FINANCE') return 'Finance Dept.';
+  return BRANCH_NAME_MAP[id] || id;
+};
 
 export default function FinancePortal() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -1025,6 +1029,12 @@ function BonusCommittedSubTab() {
   const [deleteMsg, setDeleteMsg] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [pendingDeletes, setPendingDeletes] = useState([]);
+  const [payModal, setPayModal] = useState(null);
+  const [payDate, setPayDate] = useState('');
+  const [payNotes, setPayNotes] = useState('');
+  const [paying, setPaying] = useState(false);
+  const [payError, setPayError] = useState('');
+  const [paySuccess, setPaySuccess] = useState('');
 
   const load = async () => {
     setLoading(true);
@@ -1076,8 +1086,96 @@ function BonusCommittedSubTab() {
     }
   };
 
+  const openPayModal = (bonus) => {
+    setPayModal(bonus);
+    setPayDate(new Date().toISOString().slice(0, 10));
+    setPayNotes('');
+    setPayError('');
+    setPaySuccess('');
+  };
+
+  const handlePayBonus = async () => {
+    if (!payModal) return;
+    setPaying(true);
+    setPayError('');
+    setPaySuccess('');
+    try {
+      const result = await api.branch.recordBonusPayment({
+        bonus_id: payModal.id,
+        paid_at: payDate,
+        notes: payNotes.trim() || null,
+        branch_id: 'finance',
+      });
+      setPaySuccess(`✅ Paid ${formatCurrency(result.amount_paid)} — marked as paid by Finance Dept.`);
+      setBonuses(prev => prev.map(b =>
+        b.id === payModal.id
+          ? { ...b, status: 'paid', amount_paid: b.amount_earned, paid_by_branch_id: 'finance', payment_date: payDate }
+          : b
+      ));
+      setTimeout(() => { setPayModal(null); setPaySuccess(''); }, 2500);
+    } catch (err) {
+      setPayError(err.message || 'Payment failed. Please try again.');
+    } finally {
+      setPaying(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
+      {payModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+                <DollarSign size={20} className="text-green-600" />
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900">Pay Bonus — Finance</h3>
+                <p className="text-sm text-gray-500">This will be marked as paid by Finance Dept.</p>
+              </div>
+            </div>
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3 space-y-1">
+              <div className="text-sm font-semibold text-green-800">{payModal.distributor_name} — {payModal.nb_number}</div>
+              <div className="text-sm text-green-700">Period: {payModal.period}</div>
+              <div className="text-base font-bold text-green-900">
+                Outstanding: {formatCurrency(Number(payModal.amount_earned) - Number(payModal.amount_paid || 0))}
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Payment Date</label>
+              <input
+                type="date"
+                value={payDate}
+                onChange={e => setPayDate(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-300"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Notes <span className="text-gray-400 font-normal">(optional)</span></label>
+              <textarea
+                value={payNotes}
+                onChange={e => setPayNotes(e.target.value)}
+                rows={2}
+                placeholder="e.g. Paid via bank transfer, EFT reference..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-300"
+              />
+            </div>
+            {payError && <div className="text-sm font-medium text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{payError}</div>}
+            {paySuccess && <div className="text-sm font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">{paySuccess}</div>}
+            <div className="flex gap-3 pt-1">
+              <Button variant="secondary" onClick={() => setPayModal(null)} className="flex-1" disabled={paying}>Cancel</Button>
+              <Button
+                onClick={handlePayBonus}
+                disabled={paying || !payDate || !!paySuccess}
+                className="flex-1"
+                style={{ background: '#16a34a', color: '#fff', border: 'none' }}
+              >
+                {paying ? 'Processing…' : `Confirm Payment`}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
       {deleteModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
@@ -1193,7 +1291,26 @@ function BonusCommittedSubTab() {
                   return <span className={`font-bold ${out > 0.01 ? 'text-orange-600' : 'text-green-600'}`}>{formatCurrency(out)}</span>;
                 }},
                 { header: 'Status', render: r => <Badge variant={r.status === 'paid' ? 'success' : r.status === 'partial' ? 'warning' : 'danger'}>{r.status}</Badge> },
-                { header: 'Branch Paid', render: r => r.paid_by_branch_id ? branchLabel(r.paid_by_branch_id) : '—' },
+                { header: 'Paid By', render: r => r.paid_by_branch_id ? (
+                  <span className={`text-sm font-semibold ${r.paid_by_branch_id === 'finance' || r.paid_by_branch_id === 'FINANCE' ? 'text-purple-700' : 'text-gray-700'}`}>
+                    {branchLabel(r.paid_by_branch_id)}
+                  </span>
+                ) : '—' },
+                { header: 'Action', render: r => {
+                  const out = Number(r.amount_earned) - Number(r.amount_paid);
+                  if (r.status === 'paid' || out < 0.01) {
+                    return <span className="text-xs text-green-600 font-semibold">✓ Paid</span>;
+                  }
+                  return (
+                    <button
+                      onClick={() => openPayModal(r)}
+                      className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
+                      style={{ background: '#f0fdf4', color: '#16a34a', border: '1.5px solid #86efac' }}
+                    >
+                      <DollarSign size={12} /> Pay
+                    </button>
+                  );
+                }},
               ]}
               data={bonuses}
               emptyMessage="No committed bonus records found"
