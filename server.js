@@ -1499,76 +1499,6 @@ app.get('/api/receipts/:receiptId/render', async (req, res) => {
   }
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-
-app.all('/api/*', async (req, res) => {
-  try {
-    const handler = await getHandler(req.path);
-    if (!handler) {
-      try {
-        const { applyAuthCors } = await import('./api/_lib/auth.js');
-        applyAuthCors(req, res);
-      } catch (_) {
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Content-Type', 'application/json');
-      }
-      res.status(404).json({ success: false, error: 'API route not found' });
-      return;
-    }
-    await handler(req, res);
-  } catch (error) {
-    console.error(`API error on ${req.method} ${req.path}:`, error);
-    if (!res.headersSent) {
-      res.status(500).json({
-        success: false,
-        error: 'Internal server error',
-      });
-    }
-  }
-});
-
-app.use((req, res, next) => {
-  if (req.path.includes('..') || req.path.startsWith('/node_modules')) {
-    res.status(404).send('Not found');
-    return;
-  }
-  next();
-});
-
-const distPath = path.join(__dirname, 'dist');
-const hasReactBuild = fs.existsSync(path.join(distPath, 'index.html'));
-
-if (hasReactBuild) {
-  app.use(express.static(distPath, {
-    setHeaders(res, filePath) {
-      if (filePath.endsWith('.html')) {
-        res.setHeader('Cache-Control', 'no-store');
-      } else {
-        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-      }
-    },
-  }));
-}
-
-app.use(
-  express.static(__dirname, {
-    extensions: ['html', 'htm'],
-    setHeaders(res, filePath) {
-      if (filePath.endsWith('.html')) {
-        res.setHeader('Cache-Control', 'no-store');
-      }
-    },
-  })
-);
-
-app.use((req, res) => {
-  if (hasReactBuild && !req.path.startsWith('/api') && !req.path.includes('.')) {
-    res.sendFile(path.join(distPath, 'index.html'));
-  } else {
-    res.status(404).send('Not found');
-  }
-});
-
 // ── Bonus Periods + Lookup (used by Payment Voucher form) ────────────────────
 app.get('/api/finance/bonus-periods', async (req, res) => {
   try {
@@ -1668,7 +1598,6 @@ app.post('/api/payment-vouchers', async (req, res) => {
     }
     const prepared_by = req.user?.full_name || req.user?.username || 'Finance';
     const id = 'PV' + Date.now();
-    // Generate sequential voucher number
     const countRow = await getOne('SELECT COUNT(*) AS c FROM payment_vouchers');
     const seq = (parseInt(countRow?.c || 0) + 1).toString().padStart(5, '0');
     const year = new Date().getFullYear();
@@ -1686,9 +1615,8 @@ app.post('/api/payment-vouchers', async (req, res) => {
        payment_date || null, notes || null]
     );
     const created = await getOne('SELECT * FROM payment_vouchers WHERE id = $1', [id]);
-    // Auto-record bonus payment when type=bonus and status=paid
     let bonusReceipt = null;
-    if ((status === 'paid') && payment_type === 'bonus' && linked_request_id) {
+    if (status === 'paid' && payment_type === 'bonus' && linked_request_id) {
       try {
         const bonus = await getOne(`SELECT * FROM distributor_bonuses WHERE id = $1`, [linked_request_id]);
         if (bonus && bonus.status !== 'paid') {
@@ -1737,7 +1665,6 @@ app.patch('/api/payment-vouchers/:id', async (req, res) => {
       params
     );
     const updated = await getOne('SELECT * FROM payment_vouchers WHERE id = $1', [id]);
-    // Auto-record bonus payment when transitioning to 'paid' for bonus vouchers
     let bonusReceipt = null;
     if (req.body.status === 'paid' && updated.payment_type === 'bonus' && updated.linked_request_id) {
       try {
@@ -1779,6 +1706,76 @@ app.delete('/api/payment-vouchers/:id', async (req, res) => {
   } catch (err) {
     console.error('payment-vouchers DELETE:', err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+app.all('/api/*', async (req, res) => {
+  try {
+    const handler = await getHandler(req.path);
+    if (!handler) {
+      try {
+        const { applyAuthCors } = await import('./api/_lib/auth.js');
+        applyAuthCors(req, res);
+      } catch (_) {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Content-Type', 'application/json');
+      }
+      res.status(404).json({ success: false, error: 'API route not found' });
+      return;
+    }
+    await handler(req, res);
+  } catch (error) {
+    console.error(`API error on ${req.method} ${req.path}:`, error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error',
+      });
+    }
+  }
+});
+
+app.use((req, res, next) => {
+  if (req.path.includes('..') || req.path.startsWith('/node_modules')) {
+    res.status(404).send('Not found');
+    return;
+  }
+  next();
+});
+
+const distPath = path.join(__dirname, 'dist');
+const hasReactBuild = fs.existsSync(path.join(distPath, 'index.html'));
+
+if (hasReactBuild) {
+  app.use(express.static(distPath, {
+    setHeaders(res, filePath) {
+      if (filePath.endsWith('.html')) {
+        res.setHeader('Cache-Control', 'no-store');
+      } else {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      }
+    },
+  }));
+}
+
+app.use(
+  express.static(__dirname, {
+    extensions: ['html', 'htm'],
+    setHeaders(res, filePath) {
+      if (filePath.endsWith('.html')) {
+        res.setHeader('Cache-Control', 'no-store');
+      }
+    },
+  })
+);
+
+app.use((req, res) => {
+  if (hasReactBuild && !req.path.startsWith('/api') && !req.path.includes('.')) {
+    res.sendFile(path.join(distPath, 'index.html'));
+  } else {
+    res.status(404).send('Not found');
   }
 });
 
