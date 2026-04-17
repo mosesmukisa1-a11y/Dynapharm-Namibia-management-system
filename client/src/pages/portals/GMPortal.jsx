@@ -575,6 +575,7 @@ function ApprovalsTab() {
   const [casModal, setCasModal] = useState(null);
   const [casNote, setCasNote] = useState('');
   const [adminLeaveRequests, setAdminLeaveRequests] = useState([]);
+  const [allLeaveHistory, setAllLeaveHistory] = useState([]);
   const [leaveApprovalModal, setLeaveApprovalModal] = useState(null);
   const [leaveApprovalNote, setLeaveApprovalNote] = useState('');
   const [bonusDeleteRequests, setBonusDeleteRequests] = useState([]);
@@ -617,7 +618,7 @@ function ApprovalsTab() {
       api.finance.rent.editRequests('pending').then(d => d.requests || []).catch(() => []),
       api.hr.salaryLedger.editRequests('pending').then(d => d.requests || []).catch(() => []),
       api.get('/cash-requests/admin?status=finance_reviewed').then(d => Array.isArray(d) ? d : []).catch(() => []),
-      api.get('/leave-requests/admin?status=pending').then(d => Array.isArray(d) ? d : []).catch(() => []),
+      api.get('/leave-requests/admin').then(d => Array.isArray(d) ? d : []).catch(() => []),
       api.finance.getBonusPeriodDeleteRequests('pending_gm').then(d => d.requests || []).catch(() => []),
       api.hr.staffChangeRequests.list('pending').then(d => d.requests || []).catch(() => []),
     ]).then(([cash, leaves, stock, transfers, fieldReqs, pcReqs, rentReqs, salaryReqs, casReqs, adminLeaves, bonusDelReqs, staffChangeReqs]) => {
@@ -630,7 +631,8 @@ function ApprovalsTab() {
       setRentEditRequests(rentReqs);
       setSalaryEditRequests(salaryReqs);
       setCasRequests(casReqs);
-      setAdminLeaveRequests(adminLeaves);
+      setAdminLeaveRequests(adminLeaves.filter(r => r.status?.toLowerCase() === 'pending'));
+      setAllLeaveHistory(adminLeaves);
       setBonusDeleteRequests(bonusDelReqs);
       setStaffChangeRequests(staffChangeReqs);
     }).finally(() => setLoading(false));
@@ -835,7 +837,15 @@ function ApprovalsTab() {
         ? `✅ Leave request approved for ${leaveApprovalModal.staffName || leaveApprovalModal.staff}.`
         : `❌ Leave request rejected.`;
       setMessage(msg);
+      const actorName = user?.full_name || user?.username || 'GM';
       setAdminLeaveRequests(prev => prev.filter(r => r.id !== leaveApprovalModal.id));
+      setAllLeaveHistory(prev => prev.map(r => r.id !== leaveApprovalModal.id ? r : {
+        ...r,
+        status: action === 'approved' ? 'Approved' : 'Rejected',
+        approvedBy: actorName,
+        approvedAt: new Date().toISOString(),
+        notes: leaveApprovalNote || r.notes,
+      }));
       setLeaveApprovalModal(null);
       setLeaveApprovalNote('');
     } catch (err) {
@@ -944,8 +954,12 @@ function ApprovalsTab() {
                     <span className="text-xs text-gray-500">{formatDateTime(r.createdAt || r.created_at)}</span>
                   </div>
                   <p className="text-sm font-semibold text-gray-700">
-                    {r.createdBy || r.employee_name || r.requested_by || r.user || '—'}
-                    {(r.requestingBranch || r.branch || r.requesting_branch) && <span className="ml-2 text-xs text-gray-400 font-normal">({r.requestingBranch || r.branch || r.requesting_branch})</span>}
+                    {r.staff_name || r.staffName || r.createdBy || r.employee_name || r.user || '—'}
+                    {(r.staff_branch || r.requestingBranch || r.branch || r.requesting_branch) && (
+                      <span className="ml-2 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded-full">
+                        📍 {r.staff_branch || r.requestingBranch || r.branch || r.requesting_branch}
+                      </span>
+                    )}
                   </p>
                   <p className="text-sm text-gray-600 mt-1">
                     {r.purpose || r.reason || r.description || r.notes || r.product_name || ''}
@@ -958,6 +972,12 @@ function ApprovalsTab() {
                   )}
                   {r.amount && r._type !== 'petty_cash' && (
                     <p className="text-base font-bold text-red-700 mt-1">{formatCurrency(r.amount)}</p>
+                  )}
+                  {(r.reviewed_by || r.finance_note || r.gm_approved_by) && (
+                    <div className="flex flex-wrap gap-3 mt-2">
+                      {r.reviewed_by && <span className="text-xs text-gray-500">🏦 Finance reviewed by <span className="font-semibold text-gray-700">{r.reviewed_by}</span></span>}
+                      {r.gm_approved_by && <span className="text-xs text-gray-500">✅ GM approved by <span className="font-semibold text-gray-700">{r.gm_approved_by}</span></span>}
+                    </div>
                   )}
                 </div>
                 <div className="flex gap-2 ml-2">
@@ -1515,6 +1535,7 @@ function ApprovalsTab() {
                   <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50">
                     <div className="flex items-center gap-3 flex-wrap">
                       <span className="font-bold text-gray-800">{r.staffName || r.staff}</span>
+                      {r.branch && <span className="text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">📍 {r.branch}</span>}
                       <span style={{ padding: '2px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 700, background: '#fff0f3', color: '#c41e3a', border: '1px solid #fecaca' }}>{r.type || 'Annual'} Leave</span>
                       {r.urgent && <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700, background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5' }}>URGENT</span>}
                     </div>
@@ -1524,12 +1545,49 @@ function ApprovalsTab() {
                     </button>
                   </div>
                   <div className="p-4">
-                    <div className="text-sm text-gray-700 mb-1"><span className="font-semibold">Period:</span> {r.startDate || r.start_date} → {r.endDate || r.end_date}</div>
+                    <div className="text-sm text-gray-700 mb-1"><span className="font-semibold">Period:</span> {fmtDate(r.startDate || r.start_date)} → {fmtDate(r.endDate || r.end_date)}</div>
                     <div className="text-sm text-gray-600 mb-1"><span className="font-semibold">Reason:</span> {r.reason}</div>
                     <div className="text-xs text-gray-400 mt-1">Submitted: {r.submittedAt ? new Date(r.submittedAt).toLocaleString('en-NA') : '—'}</div>
                   </div>
                 </div>
               ))}
+
+              {/* Leave History */}
+              {(() => {
+                const history = allLeaveHistory.filter(r => r.status?.toLowerCase() !== 'pending');
+                if (history.length === 0) return null;
+                return (
+                  <div className="mt-6">
+                    <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wide mb-3">Leave Records — History</h4>
+                    <div className="space-y-2">
+                      {history.map(r => (
+                        <div key={r.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-bold text-gray-800">{r.staffName || r.staff}</span>
+                              {r.branch && <span className="text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">📍 {r.branch}</span>}
+                              <span style={{ padding: '2px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 700, background: '#fff0f3', color: '#c41e3a', border: '1px solid #fecaca' }}>{r.type || 'Annual'} Leave</span>
+                            </div>
+                            <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${r.status?.toLowerCase() === 'approved' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                              {r.status}
+                            </span>
+                          </div>
+                          <div className="p-4">
+                            <div className="text-sm text-gray-700 mb-1"><span className="font-semibold">Period:</span> {fmtDate(r.startDate || r.start_date)} → {fmtDate(r.endDate || r.end_date)}</div>
+                            <div className="text-sm text-gray-600 mb-1"><span className="font-semibold">Reason:</span> {r.reason}</div>
+                            <div className="flex flex-wrap gap-4 mt-2">
+                              {r.approvedBy && <div className="text-xs text-gray-500">✅ {r.status} by <span className="font-semibold text-gray-700">{r.approvedBy}</span></div>}
+                              {r.approvedAt && <div className="text-xs text-gray-400">{new Date(r.approvedAt).toLocaleString('en-NA')}</div>}
+                            </div>
+                            {r.notes && <div className="text-xs text-gray-500 mt-1 italic">Note: {r.notes}</div>}
+                            <div className="text-xs text-gray-400 mt-1">Submitted: {r.submittedAt ? new Date(r.submittedAt).toLocaleString('en-NA') : '—'}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>
@@ -1548,9 +1606,15 @@ function ApprovalsTab() {
                   <span style={{ fontSize: '0.82rem', color: '#64748b' }}>Staff</span>
                   <span style={{ fontWeight: 700, color: '#1e293b' }}>{leaveApprovalModal.staffName || leaveApprovalModal.staff}</span>
                 </div>
+                {leaveApprovalModal.branch && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <span style={{ fontSize: '0.82rem', color: '#64748b' }}>Branch</span>
+                    <span style={{ fontWeight: 700, color: '#1e40af' }}>📍 {leaveApprovalModal.branch}</span>
+                  </div>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                   <span style={{ fontSize: '0.82rem', color: '#64748b' }}>Period</span>
-                  <span style={{ fontWeight: 700, color: '#1e293b' }}>{leaveApprovalModal.startDate || leaveApprovalModal.start_date} → {leaveApprovalModal.endDate || leaveApprovalModal.end_date}</span>
+                  <span style={{ fontWeight: 700, color: '#1e293b' }}>{fmtDate(leaveApprovalModal.startDate || leaveApprovalModal.start_date)} → {fmtDate(leaveApprovalModal.endDate || leaveApprovalModal.end_date)}</span>
                 </div>
                 <div style={{ fontSize: '0.87rem', color: '#374151', marginTop: 4 }}>{leaveApprovalModal.reason}</div>
               </div>

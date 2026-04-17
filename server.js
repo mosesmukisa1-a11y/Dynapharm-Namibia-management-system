@@ -264,16 +264,32 @@ app.get('/api/leave-requests/admin', async (req, res) => {
     const allowed = ['admin', 'finance', 'gm', 'director', 'mis'];
     if (!allowed.includes(role)) return res.status(403).json({ error: 'Access denied' });
     const { status } = req.query;
-    let sql = `SELECT id, employee_id AS staff, employee_name AS "staffName",
-                      leave_type AS type, start_date AS "startDate", end_date AS "endDate",
-                      reason, INITCAP(status) AS status, COALESCE(urgent, false) AS urgent,
-                      created_at AS "submittedAt", approved_by AS "approvedBy", notes
-               FROM hr_leave_requests`;
+    let sql = `SELECT l.id,
+                      l.employee_id AS staff,
+                      COALESCE(l.employee_name, u.full_name, l.employee_id) AS "staffName",
+                      COALESCE(u.branch, e.branch, '') AS branch,
+                      COALESCE(u.role, e.position, '') AS "staffRole",
+                      l.leave_type AS type,
+                      l.start_date AS "startDate",
+                      l.end_date AS "endDate",
+                      l.reason,
+                      INITCAP(l.status) AS status,
+                      COALESCE(l.urgent, false) AS urgent,
+                      l.created_at AS "submittedAt",
+                      l.approved_by AS "approvedBy",
+                      l.approved_at AS "approvedAt",
+                      l.notes
+               FROM hr_leave_requests l
+               LEFT JOIN users u
+                 ON LOWER(TRIM(u.username)) = LOWER(TRIM(l.employee_id))
+                 OR LOWER(TRIM(u.id::text)) = LOWER(TRIM(l.employee_id))
+               LEFT JOIN employees e
+                 ON LOWER(TRIM(e.full_name)) = LOWER(TRIM(l.employee_name))`;
     const params = [];
     const conds = [];
-    if (status) { params.push(status); conds.push(`LOWER(status) = LOWER($${params.length})`); }
+    if (status) { params.push(status); conds.push(`LOWER(l.status) = LOWER($${params.length})`); }
     if (conds.length) sql += ' WHERE ' + conds.join(' AND ');
-    sql += ' ORDER BY created_at DESC';
+    sql += ' ORDER BY l.created_at DESC LIMIT 500';
     const { rows } = await query(sql, params);
     res.json(rows);
   } catch (err) {
