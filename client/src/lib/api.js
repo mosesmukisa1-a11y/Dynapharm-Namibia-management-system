@@ -372,6 +372,8 @@ export const api = {
     create: (data) => request('/payment-vouchers', { method: 'POST', body: data }),
     update: (id, data) => request(`/payment-vouchers/${id}`, { method: 'PATCH', body: data }),
     delete: (id) => request(`/payment-vouchers/${id}`, { method: 'DELETE' }),
+    bonusPeriods: () => request('/finance/bonus-periods'),
+    bonusSearch: (params = {}) => { const qs = new URLSearchParams(params).toString(); return request(`/finance/bonus-search${qs ? '?' + qs : ''}`); },
   },
 
   upload: (formData) => request('/upload', { method: 'POST', body: formData }),

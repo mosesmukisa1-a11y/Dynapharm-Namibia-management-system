@@ -1494,6 +1494,15 @@ function PaymentVouchersTab() {
   const [filterFrom, setFilterFrom] = useState('');
   const [filterTo, setFilterTo] = useState('');
 
+  // Bonus-specific state
+  const [bonusPeriods, setBonusPeriods] = useState([]);
+  const [bonusSearchQ, setBonusSearchQ] = useState('');
+  const [bonusSearchPeriod, setBonusSearchPeriod] = useState('');
+  const [bonusResults, setBonusResults] = useState([]);
+  const [bonusSearching, setBonusSearching] = useState(false);
+  const [selectedBonus, setSelectedBonus] = useState(null);
+  const bonusSearchTimer = useRef(null);
+
   const load = () => {
     setLoading(true);
     const params = {};
@@ -1509,6 +1518,53 @@ function PaymentVouchersTab() {
 
   useEffect(load, [filterType, filterStatus, filterFrom, filterTo]);
 
+  // Load bonus periods when bonus type is selected
+  useEffect(() => {
+    if (form.payment_type === 'bonus' && bonusPeriods.length === 0) {
+      api.paymentVouchers.bonusPeriods()
+        .then(d => setBonusPeriods(Array.isArray(d) ? d : []))
+        .catch(() => {});
+    }
+  }, [form.payment_type]);
+
+  // Debounced bonus search
+  useEffect(() => {
+    if (form.payment_type !== 'bonus') return;
+    if (!bonusSearchQ && !bonusSearchPeriod) { setBonusResults([]); return; }
+    clearTimeout(bonusSearchTimer.current);
+    bonusSearchTimer.current = setTimeout(() => {
+      setBonusSearching(true);
+      const p = {};
+      if (bonusSearchQ) p.q = bonusSearchQ;
+      if (bonusSearchPeriod) p.period = bonusSearchPeriod;
+      api.paymentVouchers.bonusSearch(p)
+        .then(d => setBonusResults(Array.isArray(d) ? d : []))
+        .catch(() => setBonusResults([]))
+        .finally(() => setBonusSearching(false));
+    }, 350);
+  }, [bonusSearchQ, bonusSearchPeriod, form.payment_type]);
+
+  const selectBonus = (bonus) => {
+    setSelectedBonus(bonus);
+    setBonusResults([]);
+    setForm(f => ({
+      ...f,
+      payee_name: bonus.distributor_name,
+      amount: parseFloat(bonus.outstanding || bonus.amount_earned).toFixed(2),
+      narration: `Distributor bonus payment — ${bonus.distributor_name} (${bonus.nb_number}) for period ${bonus.period}`,
+      linked_request_id: bonus.id,
+      linked_request_type: 'distributor_bonus',
+    }));
+  };
+
+  const clearBonusSelection = () => {
+    setSelectedBonus(null);
+    setBonusSearchQ('');
+    setBonusSearchPeriod('');
+    setBonusResults([]);
+    setForm(f => ({ ...f, payee_name: '', amount: '', narration: '', linked_request_id: '', linked_request_type: '' }));
+  };
+
   const fv = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const handleSubmit = async (e) => {
@@ -1516,13 +1572,18 @@ function PaymentVouchersTab() {
     if (!form.payee_name || !form.amount || !form.payment_method) {
       setMsg('Error: Payee name, amount and payment method are required.'); return;
     }
+    if (form.payment_type === 'bonus' && !selectedBonus) {
+      setMsg('Error: Please search and select a distributor bonus record.'); return;
+    }
     setSubmitting(true);
     try {
       const res = await api.paymentVouchers.create({ ...form, amount: parseFloat(form.amount) });
       setVouchers(prev => [res.voucher, ...prev]);
       setForm({ ...EMPTY_VOUCHER });
+      setSelectedBonus(null); setBonusSearchQ(''); setBonusSearchPeriod(''); setBonusResults([]);
       setShowForm(false);
-      setMsg(`✅ Voucher ${res.voucher.voucher_number} created successfully.`);
+      const bonusNote = res.bonusReceipt ? ` Distributor portal and all branch records updated automatically.` : '';
+      setMsg(`✅ Voucher ${res.voucher.voucher_number} created successfully.${bonusNote}`);
     } catch (err) { setMsg('Error: ' + err.message); }
     finally { setSubmitting(false); }
   };
@@ -1533,6 +1594,9 @@ function PaymentVouchersTab() {
       setVouchers(prev => prev.map(v => v.id === id ? res.voucher : v));
       if (viewVoucher?.id === id) setViewVoucher(res.voucher);
       setEditStatus(null);
+      if (newStatus === 'paid' && res.bonusReceipt) {
+        setMsg(`✅ Voucher marked as Paid. Distributor portal and all branch records updated automatically.`);
+      }
     } catch (err) { setMsg('Error: ' + err.message); }
   };
 
@@ -1773,13 +1837,86 @@ function PaymentVouchersTab() {
                 </div>
               </div>
 
+              {/* ── BONUS-SPECIFIC: Distributor Search ─────────────── */}
+              {form.payment_type === 'bonus' && (
+                <div className="p-4 bg-yellow-50 rounded-xl border border-yellow-200 space-y-3">
+                  <p className="text-xs font-bold text-yellow-700 uppercase tracking-wide">🔍 Distributor Bonus Lookup</p>
+                  {selectedBonus ? (
+                    <div className="bg-white rounded-lg border border-yellow-300 p-3 flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-bold text-gray-800 text-sm">{selectedBonus.distributor_name}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">NB: {selectedBonus.nb_number} · Period: {selectedBonus.period}</p>
+                        <div className="flex items-center gap-3 mt-1">
+                          <span className="text-xs text-green-700 font-semibold">Earned: {formatCurrency(selectedBonus.amount_earned)}</span>
+                          <span className="text-xs text-blue-700 font-semibold">Paid: {formatCurrency(selectedBonus.amount_paid)}</span>
+                          <span className="text-xs text-orange-700 font-bold">Outstanding: {formatCurrency(selectedBonus.outstanding)}</span>
+                        </div>
+                        {parseFloat(selectedBonus.outstanding) <= 0 && (
+                          <p className="text-xs text-red-600 font-semibold mt-1">⚠️ This bonus is already fully paid.</p>
+                        )}
+                      </div>
+                      <button type="button" onClick={clearBonusSelection} className="text-xs text-red-500 underline cursor-pointer shrink-0">Change</button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-bold text-gray-600 mb-1">Period</label>
+                          <select value={bonusSearchPeriod} onChange={e => setBonusSearchPeriod(e.target.value)}
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-yellow-400 outline-none bg-white">
+                            <option value="">All periods</option>
+                            {bonusPeriods.map(p => (
+                              <option key={p.period} value={p.period}>
+                                {p.period} — {p.unpaid_count} unpaid / {p.total} total
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="relative">
+                          <label className="block text-xs font-bold text-gray-600 mb-1">Search by NB number or name</label>
+                          <input value={bonusSearchQ} onChange={e => setBonusSearchQ(e.target.value)}
+                            placeholder="e.g. NB001234 or Distributor Name"
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-yellow-400 outline-none" />
+                          {bonusSearching && <span className="absolute right-2 top-8 text-xs text-gray-400">Searching…</span>}
+                        </div>
+                      </div>
+                      {bonusResults.length > 0 && (
+                        <div className="bg-white rounded-lg border border-gray-200 shadow-sm max-h-48 overflow-y-auto divide-y divide-gray-100">
+                          {bonusResults.map(b => (
+                            <button key={b.id} type="button" onClick={() => selectBonus(b)}
+                              className={`w-full text-left px-3 py-2.5 hover:bg-yellow-50 transition-colors cursor-pointer ${parseFloat(b.outstanding) <= 0 ? 'opacity-50' : ''}`}>
+                              <div className="flex items-center justify-between gap-2">
+                                <div>
+                                  <p className="text-sm font-bold text-gray-800">{b.distributor_name}</p>
+                                  <p className="text-xs text-gray-500">NB: {b.nb_number} · Period: {b.period}</p>
+                                </div>
+                                <div className="text-right shrink-0">
+                                  <p className="text-sm font-extrabold text-orange-700">{formatCurrency(b.outstanding)}</p>
+                                  <p className="text-xs text-gray-400">{parseFloat(b.outstanding) <= 0 ? 'Fully Paid' : 'Outstanding'}</p>
+                                </div>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {bonusSearchQ.length > 1 && bonusResults.length === 0 && !bonusSearching && (
+                        <p className="text-xs text-gray-500 text-center py-2">No matching bonus records found. Try a different search or period.</p>
+                      )}
+                      <p className="text-xs text-gray-400">Select a distributor record to auto-fill the payee name and outstanding amount.</p>
+                    </>
+                  )}
+                </div>
+              )}
+
               {/* Payee info */}
               <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 space-y-3">
-                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Payee Details</p>
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Payee Details {form.payment_type === 'bonus' && selectedBonus ? '(auto-filled from bonus record)' : ''}</p>
                 <div>
                   <label className="block text-xs font-bold text-gray-600 mb-1">Payee Name *</label>
                   <input value={form.payee_name} onChange={e => fv('payee_name', e.target.value)} required
-                    placeholder="Full name or company name" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                    placeholder="Full name or company name"
+                    readOnly={form.payment_type === 'bonus' && !!selectedBonus}
+                    className={`w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none ${form.payment_type === 'bonus' && selectedBonus ? 'bg-gray-100 text-gray-600' : ''}`} />
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
@@ -1806,8 +1943,14 @@ function PaymentVouchersTab() {
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-xs font-bold text-gray-600 mb-1">Amount (NAD) *</label>
-                    <input type="number" step="0.01" min="0.01" value={form.amount} onChange={e => fv('amount', e.target.value)} required
-                      placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                    <input type="number" step="0.01" min="0.01" value={form.amount}
+                      onChange={e => fv('amount', e.target.value)} required
+                      readOnly={form.payment_type === 'bonus' && !!selectedBonus}
+                      placeholder="0.00"
+                      className={`w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none ${form.payment_type === 'bonus' && selectedBonus ? 'bg-gray-100 font-bold text-blue-800' : ''}`} />
+                    {form.payment_type === 'bonus' && selectedBonus && (
+                      <p className="text-xs text-orange-600 mt-0.5">Auto-filled from outstanding bonus balance</p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-gray-600 mb-1">Currency</label>

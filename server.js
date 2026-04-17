@@ -1569,6 +1569,64 @@ app.use((req, res) => {
   }
 });
 
+// ── Bonus Periods + Lookup (used by Payment Voucher form) ────────────────────
+app.get('/api/finance/bonus-periods', async (req, res) => {
+  try {
+    const { query } = await import('./api/db.js');
+    const role = req.user?.role || '';
+    if (!['admin', 'finance', 'gm', 'director'].includes(role)) return res.status(403).json({ error: 'Access denied' });
+    const { rows } = await query(
+      `SELECT period,
+              COUNT(*) AS total,
+              SUM(CASE WHEN status != 'paid' THEN 1 ELSE 0 END) AS unpaid_count,
+              COALESCE(SUM(amount_earned), 0) AS total_earned,
+              COALESCE(SUM(amount_paid), 0) AS total_paid,
+              COALESCE(SUM(amount_earned) - SUM(amount_paid), 0) AS outstanding
+       FROM distributor_bonuses
+       GROUP BY period
+       ORDER BY period DESC
+       LIMIT 60`
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('bonus-periods GET:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/finance/bonus-search', async (req, res) => {
+  try {
+    const { query } = await import('./api/db.js');
+    const role = req.user?.role || '';
+    if (!['admin', 'finance', 'gm', 'director'].includes(role)) return res.status(403).json({ error: 'Access denied' });
+    const { q = '', period = '', status = '' } = req.query;
+    if (!q && !period) return res.json([]);
+    const params = [];
+    const conds = [];
+    if (q.trim()) {
+      params.push(`%${q.trim()}%`);
+      const n = params.length;
+      conds.push(`(nb_number ILIKE $${n} OR distributor_name ILIKE $${n})`);
+    }
+    if (period) { params.push(period); conds.push(`period = $${params.length}`); }
+    if (status) { params.push(status); conds.push(`status = $${params.length}`); }
+    const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
+    const { rows } = await query(
+      `SELECT id, nb_number, distributor_name, period, status,
+              amount_earned, amount_paid,
+              COALESCE(amount_earned, 0) - COALESCE(amount_paid, 0) AS outstanding
+       FROM distributor_bonuses ${where}
+       ORDER BY period DESC, distributor_name
+       LIMIT 30`,
+      params
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('bonus-search GET:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Payment Vouchers API ──────────────────────────────────────────────────────
 app.get('/api/payment-vouchers', async (req, res) => {
   try {
@@ -1628,7 +1686,31 @@ app.post('/api/payment-vouchers', async (req, res) => {
        payment_date || null, notes || null]
     );
     const created = await getOne('SELECT * FROM payment_vouchers WHERE id = $1', [id]);
-    res.json({ success: true, voucher: created });
+    // Auto-record bonus payment when type=bonus and status=paid
+    let bonusReceipt = null;
+    if ((status === 'paid') && payment_type === 'bonus' && linked_request_id) {
+      try {
+        const bonus = await getOne(`SELECT * FROM distributor_bonuses WHERE id = $1`, [linked_request_id]);
+        if (bonus && bonus.status !== 'paid') {
+          const payAmount = parseFloat(bonus.amount_earned) - parseFloat(bonus.amount_paid);
+          if (payAmount > 0.01) {
+            const payId = `BPAY-PV-${Date.now()}`;
+            const paidDate = payment_date || new Date().toISOString().slice(0, 10);
+            await query(
+              `INSERT INTO distributor_bonus_payments (id, bonus_id, branch_id, amount, paid_at, recorded_by, notes, created_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())`,
+              [payId, linked_request_id, 'finance', payAmount, paidDate, prepared_by, `Paid via voucher ${voucher_number}`]
+            );
+            await query(
+              `UPDATE distributor_bonuses SET amount_paid=amount_earned, status='paid', paid_by_branch_id='finance', payment_date=$1, updated_at=NOW() WHERE id=$2`,
+              [paidDate, linked_request_id]
+            );
+            bonusReceipt = { payment_id: payId, bonus_id: linked_request_id, amount: payAmount };
+          }
+        }
+      } catch (bErr) { console.warn('Auto bonus payment failed:', bErr.message); }
+    }
+    res.json({ success: true, voucher: created, bonusReceipt });
   } catch (err) {
     console.error('payment-vouchers POST:', err);
     res.status(500).json({ error: err.message });
@@ -1655,7 +1737,32 @@ app.patch('/api/payment-vouchers/:id', async (req, res) => {
       params
     );
     const updated = await getOne('SELECT * FROM payment_vouchers WHERE id = $1', [id]);
-    res.json({ success: true, voucher: updated });
+    // Auto-record bonus payment when transitioning to 'paid' for bonus vouchers
+    let bonusReceipt = null;
+    if (req.body.status === 'paid' && updated.payment_type === 'bonus' && updated.linked_request_id) {
+      try {
+        const bonus = await getOne(`SELECT * FROM distributor_bonuses WHERE id = $1`, [updated.linked_request_id]);
+        if (bonus && bonus.status !== 'paid') {
+          const payAmount = parseFloat(bonus.amount_earned) - parseFloat(bonus.amount_paid);
+          if (payAmount > 0.01) {
+            const preparedBy = req.user?.full_name || req.user?.username || 'Finance';
+            const payId = `BPAY-PV-${Date.now()}`;
+            const paidDate = updated.payment_date || new Date().toISOString().slice(0, 10);
+            await query(
+              `INSERT INTO distributor_bonus_payments (id, bonus_id, branch_id, amount, paid_at, recorded_by, notes, created_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())`,
+              [payId, updated.linked_request_id, 'finance', payAmount, paidDate, preparedBy, `Paid via voucher ${updated.voucher_number}`]
+            );
+            await query(
+              `UPDATE distributor_bonuses SET amount_paid=amount_earned, status='paid', paid_by_branch_id='finance', payment_date=$1, updated_at=NOW() WHERE id=$2`,
+              [paidDate, updated.linked_request_id]
+            );
+            bonusReceipt = { payment_id: payId, bonus_id: updated.linked_request_id, amount: payAmount };
+          }
+        }
+      } catch (bErr) { console.warn('Auto bonus payment failed (PATCH):', bErr.message); }
+    }
+    res.json({ success: true, voucher: updated, bonusReceipt });
   } catch (err) {
     console.error('payment-vouchers PATCH:', err);
     res.status(500).json({ error: err.message });
