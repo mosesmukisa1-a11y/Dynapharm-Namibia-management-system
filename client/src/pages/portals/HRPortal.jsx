@@ -248,13 +248,12 @@ function EmployeesTab() {
         </form>
       </Modal>
 
-      {removeTarget && (
-        <Modal title={`Request Removal: ${removeTarget.full_name}`} onClose={() => setRemoveTarget(null)}>
+      <Modal open={!!removeTarget} title={removeTarget ? `Request Removal: ${removeTarget.full_name}` : ''} onClose={() => setRemoveTarget(null)}>
           <div className="p-6 space-y-4">
             <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3">
               <p className="text-sm font-semibold text-red-800">You are requesting to deactivate this employee.</p>
               <p className="text-sm text-red-700 mt-1">
-                <strong>{removeTarget.full_name}</strong> · {removeTarget.position} · {removeTarget.branch || '—'}
+                <strong>{removeTarget?.full_name}</strong> · {removeTarget?.position} · {removeTarget?.branch || '—'}
               </p>
               <p className="text-xs text-red-500 mt-2">This request requires GM approval before any change is made.</p>
             </div>
@@ -273,7 +272,6 @@ function EmployeesTab() {
             </div>
           </div>
         </Modal>
-      )}
     </div>
   );
 }
