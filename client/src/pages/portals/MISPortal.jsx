@@ -4,7 +4,7 @@ import StaffServicesTab from '../../components/StaffServicesTab';
 import StaffMessagesTab from '../../components/StaffMessagesTab';
 import { api } from '../../lib/api';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES, BRANCH_DETAILS } from '../../lib/constants';
-import { PRICE_LIST, getLiveProductList } from '../../lib/pricing';
+import { PRICE_LIST, getLiveProductList, setLivePrices } from '../../lib/pricing';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, Table, Modal, Alert } from '../../components/ui';
 import { BarChart3, FileSearch, GitCompare, Activity, Receipt, Package, BookOpen, FileEdit, Search, AlertTriangle, Download, Printer } from 'lucide-react';
 import { useStockRealtime } from '../../hooks/useStockRealtime';
@@ -12,6 +12,13 @@ import * as XLSX from 'xlsx';
 
 export default function MISPortal() {
   const [activeTab, setActiveTab] = useState('audit');
+
+  useEffect(() => {
+    api.prices.list().then(data => {
+      if (Array.isArray(data) && data.length > 0) setLivePrices(data);
+    }).catch(() => {});
+  }, []);
+
   const tabs = [
     { id: 'audit', label: 'Audit', icon: '🔍' },
     { id: 'reconcile', label: 'Reconcile', icon: '⚖️' },
