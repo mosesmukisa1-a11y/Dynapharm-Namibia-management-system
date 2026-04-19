@@ -20,6 +20,9 @@ export default function GMPortal() {
     api.get('/stock-adjustments?status=pending')
       .then(d => setPendingAdj(Array.isArray(d) ? d.length : 0))
       .catch(() => {});
+    api.prices.list().then(data => {
+      if (Array.isArray(data) && data.length > 0) setLivePrices(data);
+    }).catch(() => {});
   }, []);
 
   const tabs = [

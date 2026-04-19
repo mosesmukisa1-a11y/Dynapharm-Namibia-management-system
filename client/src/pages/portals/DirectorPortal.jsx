@@ -6,7 +6,7 @@ import {
 import DistributorPerformanceTab from '../../components/DistributorPerformanceTab';
 import DailySalesCard from '../../components/DailySalesCard';
 import { api } from '../../lib/api';
-import { getLiveProductList, findProductPrice } from '../../lib/pricing';
+import { getLiveProductList, findProductPrice, setLivePrices } from '../../lib/pricing';
 import { formatCurrency, formatDate, BRANCHES, BRANCH_DETAILS } from '../../lib/constants';
 import {
   Tabs, Card, CardBody, CardHeader, Button, Input, StatCard,
@@ -55,6 +55,12 @@ export default function DirectorPortal() {
   const [startDate, setStartDate] = useState(firstOfMonth);
   const [endDate, setEndDate] = useState(today);
   const [applied, setApplied] = useState({ start: firstOfMonth, end: today });
+
+  useEffect(() => {
+    api.prices.list().then(data => {
+      if (Array.isArray(data) && data.length > 0) setLivePrices(data);
+    }).catch(() => {});
+  }, []);
 
   const tabs = [
     { id: 'dashboard', label: 'Executive Dashboard', icon: '📊' },
