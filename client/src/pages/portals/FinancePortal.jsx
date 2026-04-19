@@ -72,7 +72,7 @@ export default function FinancePortal() {
 
 /* ─── DASHBOARD ─────────────────────────────────────────── */
 function DashboardTab() {
-  const [data, setData] = useState({ sales: [], deposits: [], orders: [] });
+  const [data, setData] = useState({ sales: [], deposits: [], orders: [], expenses: [] });
   const [branchSummary, setBranchSummary] = useState([]);
   const [financeSummary, setFinanceSummary] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -89,8 +89,9 @@ function DashboardTab() {
       api.branch.deposits().then(d => Array.isArray(d) ? d : d.deposits || []).catch(() => []),
       api.orders.list().then(d => Array.isArray(d) ? d : d.orders || []).catch(() => []),
       api.finance.branchesSummary().then(d => Array.isArray(d) ? d : d.branches || []).catch(() => []),
-    ]).then(([sales, deposits, orders, branches]) => {
-      setData({ sales, deposits, orders });
+      api.branch.expenses().then(d => Array.isArray(d) ? d : d.expenses || []).catch(() => []),
+    ]).then(([sales, deposits, orders, branches, expenses]) => {
+      setData({ sales, deposits, orders, expenses });
       setBranchSummary(branches);
     }).finally(() => setLoading(false));
     refreshFinanceSummary();
@@ -103,7 +104,10 @@ function DashboardTab() {
   const pendingDeposits = data.deposits.filter(d => d.status !== 'verified' && d.status !== 'approved');
   const totalPendingAmt = pendingDeposits.reduce((s, d) => s + Number(d.amount || 0), 0);
   const totalVerified = data.deposits.filter(d => d.status === 'verified' || d.status === 'approved').reduce((s, d) => s + Number(d.amount || 0), 0);
-  const totalExpenses = 0;
+  const approvedExpenses = data.expenses.filter(e => e.status === 'approved');
+  const pendingExpenses = data.expenses.filter(e => !e.status || e.status === 'recorded');
+  const totalExpenses = approvedExpenses.reduce((s, e) => s + Number(e.amount || 0), 0);
+  const totalPendingExpenses = pendingExpenses.reduce((s, e) => s + Number(e.amount || 0), 0);
 
   return (
     <div className="space-y-5">
@@ -123,10 +127,10 @@ function DashboardTab() {
           <p className="text-2xl font-bold mt-1">{formatCurrency(totalVerified)}</p>
           <p className="text-xs opacity-70 mt-1">Confirmed in bank</p>
         </div>
-        <div className="rounded-xl p-5 text-white bg-gradient-to-br from-blue-500 to-blue-700">
-          <p className="text-xs opacity-80 uppercase tracking-wide">Total Branches</p>
-          <p className="text-2xl font-bold mt-1">{branchSummary.length || BRANCH_DETAILS.length}</p>
-          <p className="text-xs opacity-70 mt-1">Active locations</p>
+        <div className="rounded-xl p-5 text-white bg-gradient-to-br from-red-500 to-red-700">
+          <p className="text-xs opacity-80 uppercase tracking-wide">Approved Expenses</p>
+          <p className="text-2xl font-bold mt-1">{formatCurrency(totalExpenses)}</p>
+          <p className="text-xs opacity-70 mt-1">{pendingExpenses.length} pending review ({formatCurrency(totalPendingExpenses)})</p>
         </div>
       </div>
 
@@ -201,12 +205,18 @@ function DashboardTab() {
 
 /* ─── REMITTANCE ─────────────────────────────────────────── */
 function RemittanceTab() {
+  const nowStr = new Date().toISOString().slice(0, 10);
+  const firstOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
+
   const [data, setData] = useState({ sales: [], deposits: [], orders: [] });
   const [loading, setLoading] = useState(true);
   const [remittances, setRemittances] = useState([]);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ amount: '', reference: '', date: new Date().toISOString().slice(0, 10), notes: '' });
+  const [form, setForm] = useState({ amount: '', reference: '', date: nowStr, notes: '' });
   const [message, setMessage] = useState('');
+  const [cifStart, setCifStart] = useState(firstOfMonth);
+  const [cifEnd, setCifEnd] = useState(nowStr);
+  const [cifPeriod, setCifPeriod] = useState('month');
 
   useEffect(() => {
     Promise.all([
@@ -220,18 +230,40 @@ function RemittanceTab() {
     }).finally(() => setLoading(false));
   }, []);
 
+  const applyCifPreset = (p) => {
+    setCifPeriod(p);
+    const n = new Date();
+    const today = n.toISOString().slice(0, 10);
+    if (p === 'all') { setCifStart(''); setCifEnd(''); return; }
+    if (p === 'today') { setCifStart(today); setCifEnd(today); return; }
+    if (p === 'week') { const s = new Date(n); s.setDate(s.getDate() - 7); setCifStart(s.toISOString().slice(0, 10)); setCifEnd(today); return; }
+    if (p === 'month') { const s = new Date(n.getFullYear(), n.getMonth(), 1); setCifStart(s.toISOString().slice(0, 10)); setCifEnd(today); return; }
+    if (p === 'quarter') { const s = new Date(n); s.setMonth(s.getMonth() - 3); setCifStart(s.toISOString().slice(0, 10)); setCifEnd(today); return; }
+  };
+
   if (loading) return <LoadingSpinner />;
+
+  const inCifRange = (record) => {
+    const d = (record.date || record.created_at || record.sale_date || '').slice(0, 10);
+    if (cifStart && d < cifStart) return false;
+    if (cifEnd && d > cifEnd) return false;
+    return true;
+  };
+
+  const filteredSales = data.sales.filter(inCifRange);
+  const filteredOrders = data.orders.filter(inCifRange);
+  const filteredDeposits = data.deposits.filter(inCifRange);
 
   const allItems = [];
   const processItems = items => (items || []).forEach(item => {
     const matched = findProductPrice(item.name || item.product_name || '');
     allItems.push({ quantity: Number(item.quantity || item.qty || 1), cif: matched ? matched.cif : 0 });
   });
-  data.orders.forEach(o => processItems(o.items));
-  data.sales.forEach(s => processItems(s.items));
+  filteredOrders.forEach(o => processItems(o.items));
+  filteredSales.forEach(s => processItems(s.items));
 
   const totalCIF = allItems.reduce((s, i) => s + i.cif * i.quantity, 0);
-  const totalDeposits = data.deposits.reduce((s, d) => s + Number(d.amount || 0), 0);
+  const totalDeposits = filteredDeposits.reduce((s, d) => s + Number(d.amount || 0), 0);
   const totalRemitted = remittances.reduce((s, r) => s + Number(r.amount || 0), 0);
   const remittanceDue = Math.max(0, totalCIF - totalDeposits - totalRemitted);
 
@@ -270,10 +302,35 @@ function RemittanceTab() {
           </div>
         </CardBody>
       </Card>
+      <Card>
+        <CardBody>
+          <div className="flex flex-wrap items-end gap-4">
+            <div>
+              <p className="text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">CIF Calculation Period</p>
+              <div className="flex flex-wrap gap-2">
+                {['today', 'week', 'month', 'quarter', 'all'].map(p => (
+                  <button key={p} onClick={() => applyCifPreset(p)}
+                    className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${cifPeriod === p ? 'bg-primary text-white border-primary' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
+                    {p === 'all' ? 'All Time' : p.charAt(0).toUpperCase() + p.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <input type="date" value={cifStart} onChange={e => { setCifStart(e.target.value); setCifPeriod('custom'); }}
+                className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none" />
+              <span className="text-gray-400 text-sm">to</span>
+              <input type="date" value={cifEnd} onChange={e => { setCifEnd(e.target.value); setCifPeriod('custom'); }}
+                className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none" />
+            </div>
+            <p className="text-xs text-gray-400 ml-auto">Showing {filteredSales.length + filteredOrders.length} transactions</p>
+          </div>
+        </CardBody>
+      </Card>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard title="Total CIF Cost" value={formatCurrency(totalCIF)} subtitle="Cost of goods sold" color="red" icon={<Ship size={24} />} />
-        <StatCard title="Deposits Received" value={formatCurrency(totalDeposits)} subtitle="From all branches" color="blue" icon={<Landmark size={24} />} />
-        <StatCard title="Total Remitted" value={formatCurrency(totalRemitted)} subtitle="Paid to supplier" color="green" icon={<CheckCircle size={24} />} />
+        <StatCard title="Total CIF Cost" value={formatCurrency(totalCIF)} subtitle={cifPeriod === 'all' ? 'All time' : `${cifStart || '—'} to ${cifEnd || '—'}`} color="red" icon={<Ship size={24} />} />
+        <StatCard title="Deposits Received" value={formatCurrency(totalDeposits)} subtitle="In selected period" color="blue" icon={<Landmark size={24} />} />
+        <StatCard title="Total Remitted" value={formatCurrency(totalRemitted)} subtitle="Paid to supplier (all time)" color="green" icon={<CheckCircle size={24} />} />
         <StatCard title={remittanceDue > 0 ? 'Outstanding' : 'Status'} value={remittanceDue > 0 ? formatCurrency(remittanceDue) : 'Settled'} subtitle={remittanceDue > 0 ? 'Due to supplier' : 'No remittance due'} color={remittanceDue > 0 ? 'orange' : 'green'} icon={<DollarSign size={24} />} />
       </div>
       <div className="flex gap-3">
@@ -534,6 +591,8 @@ function ExpensesTab() {
   const [actionId, setActionId] = useState(null);
   const [actionType, setActionType] = useState('');
   const [actionNotes, setActionNotes] = useState('');
+  const [filterStartDate, setFilterStartDate] = useState('');
+  const [filterEndDate, setFilterEndDate] = useState('');
 
   const load = () => {
     setLoading(true);
@@ -589,12 +648,33 @@ function ExpensesTab() {
   if (filterBranch) filtered = filtered.filter(e => (e.branchId || e.branch_id) === filterBranch);
   if (filterStatus) filtered = filtered.filter(e => (e.status || 'recorded') === filterStatus);
   if (filterCategory) filtered = filtered.filter(e => e.category === filterCategory);
+  if (filterStartDate) filtered = filtered.filter(e => { const d = (e.date || e.created_at || '').slice(0, 10); return d >= filterStartDate; });
+  if (filterEndDate) filtered = filtered.filter(e => { const d = (e.date || e.created_at || '').slice(0, 10); return d <= filterEndDate; });
 
-  const totalAll = expenses.reduce((s, e) => s + Number(e.amount || 0), 0);
-  const pendingReview = expenses.filter(e => e.status === 'recorded' || !e.status).length;
-  const totalApproved = expenses.filter(e => e.status === 'approved').reduce((s, e) => s + Number(e.amount || 0), 0);
+  const totalAll = filtered.reduce((s, e) => s + Number(e.amount || 0), 0);
+  const pendingReview = filtered.filter(e => e.status === 'recorded' || !e.status).length;
+  const totalApproved = filtered.filter(e => e.status === 'approved').reduce((s, e) => s + Number(e.amount || 0), 0);
 
   const categoryVariant = cat => ({ 'Office Supplies': 'info', 'Transport': 'warning', 'Utilities': 'primary', 'Maintenance': 'danger', 'Marketing': 'success', 'Other': 'default' }[cat] || 'default');
+
+  const exportExpensesCSV = () => {
+    const headers = ['Date', 'Branch', 'Category', 'Description', 'Amount (NAD)', 'Status', 'Submitted By'];
+    const rows = filtered.map(e => [
+      (e.date || e.created_at || '').slice(0, 10),
+      branchLabel(e.branchId || e.branch_id) === '—' ? 'Head Office' : branchLabel(e.branchId || e.branch_id),
+      e.category || '—',
+      `"${(e.description || '').replace(/"/g, '""')}"`,
+      Number(e.amount || 0).toFixed(2),
+      e.status || 'recorded',
+      e.submitted_by || e.user_name || '—',
+    ]);
+    rows.push(['TOTAL', '', '', '', totalAll.toFixed(2), '', '']);
+    const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = `expenses${filterStartDate ? `-${filterStartDate}` : ''}${filterEndDate ? `-to-${filterEndDate}` : ''}.csv`;
+    a.click();
+  };
 
   return (
     <div className="space-y-5">
@@ -639,11 +719,20 @@ function ExpensesTab() {
               <option value="">All Categories</option>
               {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
-            {(filterBranch || filterStatus || filterCategory) && (
-              <Button size="sm" variant="secondary" onClick={() => { setFilterBranch(''); setFilterStatus(''); setFilterCategory(''); }}>
+            <input type="date" value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)}
+              title="From date" placeholder="From"
+              className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none" />
+            <input type="date" value={filterEndDate} onChange={e => setFilterEndDate(e.target.value)}
+              title="To date" placeholder="To"
+              className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none" />
+            {(filterBranch || filterStatus || filterCategory || filterStartDate || filterEndDate) && (
+              <Button size="sm" variant="secondary" onClick={() => { setFilterBranch(''); setFilterStatus(''); setFilterCategory(''); setFilterStartDate(''); setFilterEndDate(''); }}>
                 <XCircle size={14} /> Clear
               </Button>
             )}
+            <Button size="sm" variant="secondary" onClick={exportExpensesCSV} className="ml-auto">
+              <Download size={14} /> Export CSV ({filtered.length})
+            </Button>
           </div>
           <Table
             columns={[
@@ -1333,18 +1422,33 @@ function BonusCommittedSubTab() {
 
 /* ─── REPORTS ────────────────────────────────────────────── */
 function ReportsTab() {
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0, 10);
+  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+
   const [branchSummary, setBranchSummary] = useState([]);
   const [stockValue, setStockValue] = useState(null);
   const [writeoffs, setWriteoffs] = useState(null);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState('month');
+  const [startDate, setStartDate] = useState(firstOfMonth);
+  const [endDate, setEndDate] = useState(todayStr);
 
-  const periodParams = { all: {}, today: { days: 1 }, week: { days: 7 }, month: { days: 30 }, quarter: { days: 90 } };
+  const getPresetDates = (p) => {
+    const n = new Date();
+    const today = n.toISOString().slice(0, 10);
+    if (p === 'all') return {};
+    if (p === 'today') return { startDate: today, endDate: today };
+    if (p === 'week') { const s = new Date(n); s.setDate(s.getDate() - 7); return { startDate: s.toISOString().slice(0, 10), endDate: today }; }
+    if (p === 'month') { const s = new Date(n.getFullYear(), n.getMonth(), 1); return { startDate: s.toISOString().slice(0, 10), endDate: today }; }
+    if (p === 'quarter') { const s = new Date(n); s.setMonth(s.getMonth() - 3); return { startDate: s.toISOString().slice(0, 10), endDate: today }; }
+    return {};
+  };
 
-  useEffect(() => {
+  const loadData = useCallback((params) => {
     setLoading(true);
     Promise.all([
-      api.finance.branchesSummary(periodParams[period] || {}).then(d => Array.isArray(d) ? d : d.branches || []).catch(() => []),
+      api.finance.branchesSummary(params).then(d => Array.isArray(d) ? d : d.branches || []).catch(() => []),
       api.finance.stockValue().then(d => d).catch(() => null),
       api.finance.writeoffs().then(d => d).catch(() => null),
     ]).then(([branches, stock, wo]) => {
@@ -1352,23 +1456,79 @@ function ReportsTab() {
       setStockValue(stock);
       setWriteoffs(wo);
     }).finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    const params = getPresetDates(period);
+    if (period === 'month') { setStartDate(params.startDate || firstOfMonth); setEndDate(params.endDate || todayStr); }
+    loadData(params);
   }, [period]);
+
+  const applyCustomRange = () => {
+    if (!startDate || !endDate) return;
+    setPeriod('custom');
+    loadData({ startDate, endDate });
+  };
 
   const totalRevenue = branchSummary.reduce((s, b) => s + parseFloat(b.salesRevenue || 0), 0);
   const totalCash = branchSummary.reduce((s, b) => s + parseFloat(b.cashTotal || 0), 0);
-  const totalSwipe = branchSummary.reduce((s, b) => s + parseFloat(b.swipeTotal || 0), 0);
+  const totalSwipe = branchSummary.reduce((s, b) => s + parseFloat(b.swipeTotal || 0) + parseFloat(b.eftTotal || 0), 0);
+
+  const exportBranchCSV = () => {
+    const headers = ['Branch', 'Sales Revenue', 'Units Sold', 'Cash', 'Swipe/EFT', 'Stock Value (DP)'];
+    const rows = branchSummary.map(r => [
+      r.branchName || branchLabel(r.branchId),
+      r.salesRevenue || 0,
+      r.salesUnits || 0,
+      r.cashTotal || 0,
+      (Number(r.swipeTotal || 0) + Number(r.eftTotal || 0)).toFixed(2),
+      r.stockValueDP || 0,
+    ]);
+    rows.push(['TOTAL', totalRevenue.toFixed(2), '', totalCash.toFixed(2), totalSwipe.toFixed(2), '']);
+    const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = `finance-report-${startDate}-to-${endDate}.csv`;
+    a.click();
+  };
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center gap-3">
-        <label className="text-sm font-medium text-gray-700">Period:</label>
-        {['today', 'week', 'month', 'quarter', 'all'].map(p => (
-          <button key={p} onClick={() => setPeriod(p)}
-            className={`px-4 py-1.5 rounded-full text-sm font-semibold border transition-colors ${period === p ? 'bg-primary text-white border-primary' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
-            {p === 'all' ? 'All Time' : p.charAt(0).toUpperCase() + p.slice(1)}
-          </button>
-        ))}
-      </div>
+      <Card>
+        <CardBody>
+          <div className="flex flex-wrap items-end gap-4">
+            <div>
+              <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">Quick Period</p>
+              <div className="flex flex-wrap gap-2">
+                {['today', 'week', 'month', 'quarter', 'all'].map(p => (
+                  <button key={p} onClick={() => setPeriod(p)}
+                    className={`px-3 py-1.5 rounded-full text-sm font-semibold border transition-colors ${period === p ? 'bg-primary text-white border-primary' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
+                    {p === 'all' ? 'All Time' : p.charAt(0).toUpperCase() + p.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2 items-end">
+              <div>
+                <p className="text-xs font-semibold text-gray-500 mb-1">Custom Range</p>
+                <div className="flex gap-2 items-center">
+                  <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
+                    className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none" />
+                  <span className="text-gray-400 text-sm">to</span>
+                  <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
+                    className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none" />
+                  <Button size="sm" onClick={applyCustomRange}>Apply</Button>
+                </div>
+              </div>
+            </div>
+            {branchSummary.length > 0 && (
+              <Button size="sm" variant="secondary" onClick={exportBranchCSV} className="ml-auto">
+                <Download size={14} /> Export CSV
+              </Button>
+            )}
+          </div>
+        </CardBody>
+      </Card>
 
       {loading ? <LoadingSpinner /> : (
         <>
@@ -1379,7 +1539,12 @@ function ReportsTab() {
           </div>
 
           <Card>
-            <CardHeader><h3 className="font-bold text-gray-800">Branch Financial Summary</h3></CardHeader>
+            <CardHeader>
+              <div className="flex justify-between items-center">
+                <h3 className="font-bold text-gray-800">Branch Financial Summary</h3>
+                <span className="text-xs text-gray-400">{period === 'custom' ? `${startDate} → ${endDate}` : period === 'all' ? 'All time' : `Last ${period}`}</span>
+              </div>
+            </CardHeader>
             <Table
               columns={[
                 { header: 'Branch', render: r => <span className="font-semibold">{r.branchName || branchLabel(r.branchId)}</span> },
@@ -2642,7 +2807,7 @@ function OverheadsTab() {
 
 function OverheadExpensesSubTab() {
   const OVERHEAD_CATEGORIES = ['Rent', 'Salaries', 'Utilities', 'Internet & Telecoms', 'Security', 'Cleaning & Hygiene', 'Transport & Fuel', 'Office Supplies', 'Maintenance & Repairs', 'Marketing & Advertising', 'Staff Welfare', 'Insurance', 'Equipment & Assets', 'Professional Services', 'Banking Charges', 'Other Overhead'];
-  const emptyForm = { description: '', amount: '', category: 'Rent', branch_id: '', date: new Date().toISOString().slice(0, 10), payment_method: 'bank_transfer', notes: '' };
+  const emptyForm = { description: '', amount: '', category: 'Rent', branch_id: 'head_office', date: new Date().toISOString().slice(0, 10), payment_method: 'bank_transfer', notes: '' };
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
@@ -3213,6 +3378,30 @@ function PayrollTab() {
               <button onClick={() => window.print()}
                 className="flex items-center gap-1 px-3 py-1.5 rounded border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50">
                 <Printer size={13} /> Print
+              </button>
+              <button onClick={() => {
+                const headers = ['Employee', 'Branch', 'Gross Salary', 'Allowances', 'Total Gross', 'PAYE', 'SSC (Emp)', 'SSC (Er)', 'Deductions', 'Net Pay', 'Employer Cost'];
+                const dataRows = rows.map(r => [
+                  r.name || r.fullName || '—',
+                  r.branch || '—',
+                  r.gross.toFixed(2),
+                  r.allowances.toFixed(2),
+                  r.totalGross.toFixed(2),
+                  r.monthlyPAYE.toFixed(2),
+                  r.sscEmployee.toFixed(2),
+                  r.sscEmployer.toFixed(2),
+                  r.deductions.toFixed(2),
+                  r.net.toFixed(2),
+                  r.employerCost.toFixed(2),
+                ]);
+                dataRows.push(['TOTALS', '', '', '', totals.gross.toFixed(2), totals.paye.toFixed(2), totals.sscEmp.toFixed(2), totals.sscEr.toFixed(2), '', totals.net.toFixed(2), totals.cost.toFixed(2)]);
+                const csv = [headers, ...dataRows].map(r => r.join(',')).join('\n');
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+                a.download = `payroll-${month}.csv`;
+                a.click();
+              }} className="flex items-center gap-1 px-3 py-1.5 rounded border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50">
+                <Download size={13} /> Export CSV
               </button>
             </div>
           </div>
