@@ -2609,29 +2609,66 @@ function TrainingTab() {
             </div>
       )}
 
-      {!loading && tab === 'schedule' && (
-        schedules.length === 0
+      {!loading && tab === 'schedule' && (() => {
+        const DIST_PLATFORMS = [
+          { id: 'zoom',       label: 'Zoom',         icon: '🎥', color: '#2D8CFF', bg: '#eff6ff' },
+          { id: 'teams',      label: 'Teams',        icon: '💼', color: '#5b5ea6', bg: '#f5f3ff' },
+          { id: 'meet',       label: 'Google Meet',  icon: '📹', color: '#0F9D58', bg: '#f0fdf4' },
+          { id: 'webex',      label: 'Webex',        icon: '🌐', color: '#00A0D1', bg: '#ecfeff' },
+          { id: 'skype',      label: 'Skype',        icon: '💬', color: '#00AFF0', bg: '#eff6ff' },
+          { id: 'goto',       label: 'GoTo Meeting', icon: '🖥️', color: '#f97316', bg: '#fff7ed' },
+          { id: 'whatsapp',   label: 'WhatsApp',     icon: '📱', color: '#25D366', bg: '#f0fdf4' },
+          { id: 'in_person',  label: 'In-Person',    icon: '📍', color: '#64748b', bg: '#f8fafc' },
+        ];
+        const distGetPlatform = id => DIST_PLATFORMS.find(p => p.id === id) || DIST_PLATFORMS[DIST_PLATFORMS.length - 1];
+        const DIST_AUDIENCES = ['all', 'distributors', 'all_staff'];
+        const visible = schedules.filter(s => DIST_AUDIENCES.includes(s.target_audience || 'all'));
+        return visible.length === 0
           ? <EmptyState icon={<span style={{ fontSize: 40 }}>📅</span>} title="No upcoming sessions" description="Scheduled training sessions will appear here. Check back soon!" />
           : <div className="space-y-3">
-              {schedules.map((s, i) => (
-                <Card key={s.id || i}>
-                  <CardBody>
-                    <div className="flex items-start gap-4">
-                      <div style={{ minWidth: 52, textAlign: 'center', background: '#fef2f2', borderRadius: 10, padding: '8px 4px' }}>
-                        <div style={{ fontSize: '0.7rem', color: '#c41e3a', fontWeight: 700, textTransform: 'uppercase' }}>{s.date ? new Date(s.date).toLocaleDateString('en-NA', { month: 'short' }) : '—'}</div>
-                        <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#c41e3a', lineHeight: 1 }}>{s.date ? new Date(s.date).getDate() : '—'}</div>
+              {visible.map((s, i) => {
+                const platform = distGetPlatform(s.platform || 'in_person');
+                const isOnline = s.platform && s.platform !== 'in_person';
+                const isPast = new Date(s.date) < new Date(new Date().toDateString());
+                return (
+                  <div key={s.id || i} style={{ borderRadius: 12, border: `2px solid ${isOnline ? platform.color + '44' : '#e2e8f0'}`, overflow: 'hidden', opacity: isPast ? 0.65 : 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 14px', background: platform.bg, color: platform.color, fontSize: '0.78rem', fontWeight: 700 }}>
+                      <span style={{ fontSize: '1rem' }}>{platform.icon}</span>
+                      <span>{platform.label}</span>
+                      {s.target_audience === 'all' && <span style={{ marginLeft: 'auto' }}>🌍 Open to Everyone</span>}
+                      {s.target_audience === 'distributors' && <span style={{ marginLeft: 'auto' }}>🏪 Distributors</span>}
+                    </div>
+                    <div style={{ padding: '14px', background: '#fff', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                      <div style={{ minWidth: 52, textAlign: 'center', background: platform.bg, borderRadius: 10, padding: '6px 4px', border: `1.5px solid ${platform.color}33` }}>
+                        <div style={{ fontSize: '0.68rem', color: platform.color, fontWeight: 800, textTransform: 'uppercase' }}>{s.date ? new Date(s.date).toLocaleDateString('en-NA', { month: 'short' }) : '—'}</div>
+                        <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#1f2937', lineHeight: 1 }}>{s.date ? new Date(s.date).getDate() : '—'}</div>
                       </div>
                       <div style={{ flex: 1 }}>
                         <div className="font-bold text-gray-800">{s.title}</div>
-                        <div className="text-sm text-gray-500">{[s.time, s.location].filter(Boolean).join(' · ')}</div>
-                        {s.trainer && <div className="text-xs text-gray-400 mt-1">Trainer: {s.trainer}</div>}
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0 14px', marginTop: 3 }}>
+                          {s.time && <span style={{ fontSize: '0.8rem', color: '#64748b' }}>🕐 {s.time}</span>}
+                          {s.location && <span style={{ fontSize: '0.8rem', color: '#64748b' }}>📍 {s.location}</span>}
+                          {s.trainer && <span style={{ fontSize: '0.8rem', color: '#64748b' }}>👤 {s.trainer}</span>}
+                        </div>
+                        {s.description && <p style={{ margin: '6px 0 0', fontSize: '0.8rem', color: '#475569', lineHeight: 1.4 }}>{s.description}</p>}
+                      </div>
+                      <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
+                        <span style={{ padding: '2px 10px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700, background: isPast ? '#f1f5f9' : '#fef2f2', color: isPast ? '#64748b' : '#c41e3a' }}>
+                          {isPast ? 'Past' : 'Upcoming'}
+                        </span>
+                        {isOnline && s.meeting_link && !isPast && (
+                          <a href={s.meeting_link} target="_blank" rel="noreferrer"
+                            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', borderRadius: 8, background: platform.color, color: '#fff', fontWeight: 700, fontSize: '0.8rem', textDecoration: 'none' }}>
+                            🔗 Join Meeting
+                          </a>
+                        )}
                       </div>
                     </div>
-                  </CardBody>
-                </Card>
-              ))}
-            </div>
-      )}
+                  </div>
+                );
+              })}
+            </div>;
+      })()}
     </div>
   );
 }

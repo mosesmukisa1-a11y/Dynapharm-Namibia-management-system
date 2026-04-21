@@ -205,6 +205,7 @@ export default function BranchPortal() {
     { id: 'salesReview', label: 'Sales Review', icon: '📈' },
     { id: 'checkup', label: 'Check Up Booking', icon: '🩺' },
     { id: 'campaigns', label: 'Campaigns', icon: '📢' },
+    { id: 'training', label: 'Training', icon: '🎓' },
   ];
 
   return (
@@ -292,6 +293,7 @@ export default function BranchPortal() {
           {activeTab === 'salesReview' && <SalesReviewTab />}
           {activeTab === 'checkup' && <CheckUpBookingTab />}
           {activeTab === 'campaigns' && <BranchCampaignsTab />}
+          {activeTab === 'training' && <BranchTrainingTab />}
         </div>
       </div>
     </PortalBranchContext.Provider>
@@ -8876,6 +8878,116 @@ function BranchCampaignsTab() {
               </div>
             </form>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── BRANCH TRAINING TAB ──────────────────────────────────── */
+const BRANCH_MEETING_PLATFORMS = [
+  { id: 'zoom',       label: 'Zoom',           icon: '🎥', color: '#2D8CFF', bg: '#eff6ff' },
+  { id: 'teams',      label: 'Teams',          icon: '💼', color: '#5b5ea6', bg: '#f5f3ff' },
+  { id: 'meet',       label: 'Google Meet',    icon: '📹', color: '#0F9D58', bg: '#f0fdf4' },
+  { id: 'webex',      label: 'Cisco Webex',    icon: '🌐', color: '#00A0D1', bg: '#ecfeff' },
+  { id: 'skype',      label: 'Skype',          icon: '💬', color: '#00AFF0', bg: '#eff6ff' },
+  { id: 'goto',       label: 'GoTo Meeting',   icon: '🖥️', color: '#f97316', bg: '#fff7ed' },
+  { id: 'whatsapp',   label: 'WhatsApp',       icon: '📱', color: '#25D366', bg: '#f0fdf4' },
+  { id: 'in_person',  label: 'In-Person',      icon: '📍', color: '#64748b', bg: '#f8fafc' },
+];
+
+function branchGetPlatform(id) {
+  return BRANCH_MEETING_PLATFORMS.find(p => p.id === id) || BRANCH_MEETING_PLATFORMS[BRANCH_MEETING_PLATFORMS.length - 1];
+}
+
+function BranchTrainingTab() {
+  const [schedules, setSchedules] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showPast, setShowPast] = useState(false);
+
+  useEffect(() => {
+    api.get('/training-schedules')
+      .then(d => setSchedules(Array.isArray(d) ? d : []))
+      .catch(() => setSchedules([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const AUDIENCE_FOR_BRANCH = ['all', 'branch_staff', 'all_staff'];
+  let events = schedules.filter(s => AUDIENCE_FOR_BRANCH.includes(s.target_audience || 'all'));
+  if (!showPast) events = events.filter(s => new Date(s.date) >= new Date(new Date().toDateString()));
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ background: 'linear-gradient(135deg,#065f46,#047857)', borderRadius: 14, padding: '20px 24px', color: '#fff', display: 'flex', alignItems: 'center', gap: 16 }}>
+        <span style={{ fontSize: 40 }}>🎓</span>
+        <div>
+          <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700 }}>Online Training Sessions</h2>
+          <p style={{ margin: '4px 0 0', opacity: 0.85, fontSize: '0.9rem' }}>Click &ldquo;Join Meeting&rdquo; to attend your scheduled training</p>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', color: '#64748b', cursor: 'pointer' }}>
+          <input type="checkbox" checked={showPast} onChange={e => setShowPast(e.target.checked)} />
+          Show past sessions
+        </label>
+        <span style={{ marginLeft: 'auto', fontSize: '0.8rem', color: '#94a3b8' }}>{events.length} session{events.length !== 1 ? 's' : ''}</span>
+      </div>
+
+      {loading ? (
+        <LoadingSpinner />
+      ) : events.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '60px 20px', background: '#fff', borderRadius: 14, border: '2px dashed #e2e8f0' }}>
+          <div style={{ fontSize: 48, marginBottom: 12 }}>📅</div>
+          <p style={{ fontWeight: 600, color: '#374151', margin: 0 }}>No upcoming training sessions</p>
+          <p style={{ color: '#9ca3af', fontSize: '0.9rem', marginTop: 6 }}>Sessions will appear here when scheduled by the training team.</p>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {events.map(s => {
+            const platform = branchGetPlatform(s.platform || 'in_person');
+            const isOnline = s.platform && s.platform !== 'in_person';
+            const isPast = new Date(s.date) < new Date(new Date().toDateString());
+            return (
+              <div key={s.id} style={{ borderRadius: 12, border: `2px solid ${isOnline ? platform.color + '44' : '#e2e8f0'}`, overflow: 'hidden', opacity: isPast ? 0.6 : 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px', background: platform.bg, color: platform.color, fontSize: '0.8rem', fontWeight: 700 }}>
+                  <span style={{ fontSize: '1.1rem' }}>{platform.icon}</span>
+                  <span>{platform.label}</span>
+                  {s.target_audience === 'branch_staff' && <span style={{ marginLeft: 'auto' }}>🏬 Branch Staff</span>}
+                  {s.target_audience === 'all_staff' && <span style={{ marginLeft: 'auto' }}>👥 All Staff</span>}
+                  {s.target_audience === 'all' && <span style={{ marginLeft: 'auto' }}>🌍 Everyone</span>}
+                </div>
+                <div style={{ padding: '16px', background: '#fff', display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+                  <div style={{ minWidth: 52, background: platform.bg, borderRadius: 10, padding: '6px 4px', textAlign: 'center', border: `2px solid ${platform.color}33` }}>
+                    <div style={{ fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', color: platform.color }}>
+                      {new Date(s.date).toLocaleDateString('en', { month: 'short' })}
+                    </div>
+                    <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#1f2937', lineHeight: 1.1 }}>{new Date(s.date).getDate()}</div>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, fontSize: '1rem', color: '#1f2937' }}>{s.title}</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0 16px', marginTop: 4 }}>
+                      {s.time && <span style={{ fontSize: '0.8rem', color: '#64748b' }}>🕐 {s.time}</span>}
+                      {s.location && <span style={{ fontSize: '0.8rem', color: '#64748b' }}>📍 {s.location}</span>}
+                      {s.trainer && <span style={{ fontSize: '0.8rem', color: '#64748b' }}>👤 {s.trainer}</span>}
+                    </div>
+                    {s.description && <p style={{ margin: '8px 0 0', fontSize: '0.82rem', color: '#475569', lineHeight: 1.5 }}>{s.description}</p>}
+                  </div>
+                  <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
+                    <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 700, background: isPast ? '#f1f5f9' : '#dbeafe', color: isPast ? '#64748b' : '#1d4ed8' }}>
+                      {isPast ? 'Past' : 'Upcoming'}
+                    </span>
+                    {isOnline && s.meeting_link && !isPast && (
+                      <a href={s.meeting_link} target="_blank" rel="noreferrer"
+                        style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, background: platform.color, color: '#fff', fontWeight: 700, fontSize: '0.82rem', textDecoration: 'none' }}>
+                        🔗 Join Meeting
+                      </a>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

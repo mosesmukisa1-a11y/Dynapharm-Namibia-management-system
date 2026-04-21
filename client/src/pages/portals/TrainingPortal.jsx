@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { api } from '../../lib/api';
 import { formatDate } from '../../lib/constants';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, Alert, Modal } from '../../components/ui';
-import { GraduationCap, Video, Image, Upload, Search, Play, Eye, FileText, Users, BookOpen } from 'lucide-react';
+import { GraduationCap, Video, Image, Upload, Search, Play, Eye, FileText, Users, BookOpen, Trash2, ExternalLink, Globe, MapPin } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import StaffServicesTab from '../../components/StaffServicesTab';
 import StaffMessagesTab from '../../components/StaffMessagesTab';
@@ -348,13 +348,118 @@ function UploadTab() {
   );
 }
 
+const MEETING_PLATFORMS = [
+  { id: 'zoom',       label: 'Zoom',              icon: '🎥', color: '#2D8CFF', bg: '#eff6ff' },
+  { id: 'teams',      label: 'Microsoft Teams',   icon: '💼', color: '#5b5ea6', bg: '#f5f3ff' },
+  { id: 'meet',       label: 'Google Meet',       icon: '📹', color: '#0F9D58', bg: '#f0fdf4' },
+  { id: 'webex',      label: 'Cisco Webex',       icon: '🌐', color: '#00A0D1', bg: '#ecfeff' },
+  { id: 'skype',      label: 'Skype',             icon: '💬', color: '#00AFF0', bg: '#eff6ff' },
+  { id: 'goto',       label: 'GoTo Meeting',      icon: '🖥️', color: '#f97316', bg: '#fff7ed' },
+  { id: 'whatsapp',   label: 'WhatsApp Video',    icon: '📱', color: '#25D366', bg: '#f0fdf4' },
+  { id: 'in_person',  label: 'In-Person',         icon: '📍', color: '#64748b', bg: '#f8fafc' },
+];
+
+const TARGET_AUDIENCES = [
+  { id: 'all',          label: 'Everyone',       icon: '🌍' },
+  { id: 'distributors', label: 'Distributors',   icon: '🏪' },
+  { id: 'branch_staff', label: 'Branch Staff',   icon: '🏬' },
+  { id: 'consultants',  label: 'Consultants',    icon: '🩺' },
+  { id: 'all_staff',    label: 'All Staff',      icon: '👥' },
+];
+
+function getPlatform(id) {
+  return MEETING_PLATFORMS.find(p => p.id === id) || MEETING_PLATFORMS[MEETING_PLATFORMS.length - 1];
+}
+
+function getAudience(id) {
+  return TARGET_AUDIENCES.find(a => a.id === id) || TARGET_AUDIENCES[0];
+}
+
+function MeetingCard({ event, isTrainer, onDelete }) {
+  const platform = getPlatform(event.platform || 'in_person');
+  const audience = getAudience(event.target_audience || 'all');
+  const isOnline = event.platform && event.platform !== 'in_person';
+  const isPast = new Date(event.date) < new Date(new Date().toDateString());
+
+  return (
+    <div className={`rounded-xl border-2 overflow-hidden transition-shadow hover:shadow-md ${isPast ? 'opacity-60' : ''}`}
+      style={{ borderColor: isOnline ? platform.color + '55' : '#e2e8f0' }}>
+      <div className="flex items-center gap-3 px-4 py-2 text-xs font-semibold"
+        style={{ background: platform.bg, color: platform.color }}>
+        <span className="text-base">{platform.icon}</span>
+        <span>{platform.label}</span>
+        <span className="ml-auto flex items-center gap-1.5">
+          <span>{audience.icon}</span> {audience.label}
+        </span>
+      </div>
+      <div className="p-4 bg-white">
+        <div className="flex items-start gap-4">
+          <div className="w-14 h-14 rounded-xl flex flex-col items-center justify-center flex-shrink-0 border-2"
+            style={{ background: platform.bg, borderColor: platform.color + '44' }}>
+            <span className="text-xs font-bold uppercase" style={{ color: platform.color }}>
+              {new Date(event.date).toLocaleDateString('en', { month: 'short' })}
+            </span>
+            <span className="text-xl font-black text-gray-800 leading-tight">{new Date(event.date).getDate()}</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <h4 className="font-bold text-gray-900 text-base leading-tight">{event.title}</h4>
+            <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1.5">
+              {event.time && (
+                <span className="text-xs text-gray-500 flex items-center gap-1">
+                  🕐 {event.time}
+                </span>
+              )}
+              {event.location && (
+                <span className="text-xs text-gray-500 flex items-center gap-1">
+                  <MapPin size={11} /> {event.location}
+                </span>
+              )}
+              {event.trainer && (
+                <span className="text-xs text-gray-500 flex items-center gap-1">
+                  <Users size={11} /> {event.trainer}
+                </span>
+              )}
+            </div>
+            {event.description && (
+              <p className="text-xs text-gray-600 mt-2 leading-relaxed line-clamp-2">{event.description}</p>
+            )}
+          </div>
+          <div className="flex flex-col items-end gap-2 flex-shrink-0">
+            <Badge variant={isPast ? 'default' : 'info'}>{isPast ? 'Past' : 'Upcoming'}</Badge>
+            {isOnline && event.meeting_link && !isPast && (
+              <a href={event.meeting_link} target="_blank" rel="noreferrer"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white no-underline transition-opacity hover:opacity-90"
+                style={{ background: platform.color }}>
+                <ExternalLink size={12} /> Join Meeting
+              </a>
+            )}
+            {isTrainer && (
+              <button onClick={() => onDelete(event.id)}
+                className="flex items-center gap-1 text-xs text-red-400 hover:text-red-600 mt-1">
+                <Trash2 size={12} /> Delete
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ScheduleTab({ isTrainer }) {
+  const emptyForm = {
+    title: '', date: '', time: '', location: '', trainer: '',
+    platform: 'in_person', meeting_link: '', target_audience: 'all', description: '',
+  };
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ title: '', date: '', time: '', location: '', trainer: '' });
+  const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
+  const [filterAudience, setFilterAudience] = useState('');
+  const [filterPlatform, setFilterPlatform] = useState('');
+  const [showPast, setShowPast] = useState(false);
 
   const loadSchedules = () => {
     setLoading(true);
@@ -369,12 +474,16 @@ function ScheduleTab({ isTrainer }) {
   const handleAdd = async (e) => {
     e.preventDefault();
     if (!form.title || !form.date) { setMessage('Error: Title and date are required'); return; }
+    if (form.platform !== 'in_person' && !form.meeting_link) {
+      setMessage('Error: Please enter the meeting link for online sessions'); return;
+    }
     setSaving(true);
     setMessage('');
     try {
       await api.post('/training-schedules', form);
-      setForm({ title: '', date: '', time: '', location: '', trainer: '' });
+      setForm(emptyForm);
       setShowForm(false);
+      setMessage('Session scheduled successfully!');
       loadSchedules();
     } catch (err) {
       setMessage('Error: ' + (err.message || 'Failed to save'));
@@ -383,61 +492,155 @@ function ScheduleTab({ isTrainer }) {
     }
   };
 
+  const handleDelete = async (id) => {
+    if (!confirm('Remove this training event?')) return;
+    try {
+      await api.delete(`/training-schedules?id=${id}`);
+      setEvents(prev => prev.filter(e => e.id !== id));
+      setMessage('Event removed.');
+    } catch (err) { setMessage('Error: ' + err.message); }
+  };
+
+  const selectedPlatform = getPlatform(form.platform);
+  const isOnlinePlatform = form.platform !== 'in_person';
+
+  let visible = events;
+  if (!showPast) visible = visible.filter(e => new Date(e.date) >= new Date(new Date().toDateString()));
+  if (filterAudience) visible = visible.filter(e => (e.target_audience || 'all') === filterAudience);
+  if (filterPlatform) visible = visible.filter(e => (e.platform || 'in_person') === filterPlatform);
+
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <h3 className="font-bold text-gray-800 flex items-center gap-2"><BookOpen size={18} /> Training Schedule</h3>
-          {isTrainer && (
-            <Button size="sm" onClick={() => setShowForm(v => !v)}>
-              {showForm ? 'Cancel' : '+ Add Event'}
-            </Button>
-          )}
-        </div>
-      </CardHeader>
-      <CardBody>
-        {message && <Alert type={message.startsWith('Error') ? 'error' : 'success'} className="mb-4">{message}</Alert>}
+    <div className="space-y-4">
+      {message && <Alert type={message.startsWith('Error') ? 'error' : 'success'}>{message}</Alert>}
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <h3 className="font-bold text-gray-800 flex items-center gap-2"><BookOpen size={18} /> Training Schedule</h3>
+            {isTrainer && (
+              <Button size="sm" onClick={() => { setShowForm(v => !v); setMessage(''); }}>
+                {showForm ? 'Cancel' : '+ Schedule Session'}
+              </Button>
+            )}
+          </div>
+        </CardHeader>
 
         {showForm && isTrainer && (
-          <form onSubmit={handleAdd} className="mb-6 p-4 bg-gray-50 rounded-xl space-y-3">
-            <Input label="Title *" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="Event title" />
-            <div className="grid grid-cols-2 gap-3">
-              <Input label="Date *" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} />
-              <Input label="Time" type="time" value={form.time} onChange={e => setForm({ ...form, time: e.target.value })} />
-            </div>
-            <Input label="Location" value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} placeholder="e.g. Windhoek CBD" />
-            <Input label="Trainer" value={form.trainer} onChange={e => setForm({ ...form, trainer: e.target.value })} placeholder="e.g. Head Office" />
-            <Button type="submit" disabled={saving}>{saving ? 'Saving...' : 'Save Event'}</Button>
-          </form>
-        )}
+          <CardBody className="border-t border-gray-100 bg-gray-50">
+            <form onSubmit={handleAdd} className="space-y-4">
+              <Input label="Session Title *" value={form.title}
+                onChange={e => setForm({ ...form, title: e.target.value })} placeholder="e.g. Monthly Distributor Briefing" />
 
-        {loading ? (
-          <LoadingSpinner />
-        ) : events.length === 0 ? (
-          <EmptyState icon={<BookOpen size={48} />} title="No Scheduled Events" description="No training events have been scheduled yet." />
-        ) : (
-          <div className="space-y-4">
-            {events.map(event => (
-              <div key={event.id} className="flex items-start gap-4 p-4 bg-gray-50 rounded-xl">
-                <div className="w-12 h-12 bg-primary/10 rounded-lg flex flex-col items-center justify-center flex-shrink-0">
-                  <span className="text-xs font-bold text-primary">{new Date(event.date).toLocaleDateString('en', { month: 'short' })}</span>
-                  <span className="text-sm font-bold text-gray-800">{new Date(event.date).getDate()}</span>
+              <div>
+                <p className="text-sm font-semibold text-gray-700 mb-2">Platform *</p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {MEETING_PLATFORMS.map(p => (
+                    <button key={p.id} type="button"
+                      onClick={() => setForm({ ...form, platform: p.id, meeting_link: p.id === 'in_person' ? '' : form.meeting_link })}
+                      className="flex items-center gap-2 px-3 py-2.5 rounded-lg border-2 text-sm font-semibold transition-all"
+                      style={{
+                        borderColor: form.platform === p.id ? p.color : '#e2e8f0',
+                        background: form.platform === p.id ? p.bg : '#fff',
+                        color: form.platform === p.id ? p.color : '#64748b',
+                      }}>
+                      <span>{p.icon}</span>
+                      <span className="text-xs">{p.label}</span>
+                    </button>
+                  ))}
                 </div>
-                <div className="flex-1">
-                  <h4 className="font-semibold text-gray-800 text-sm">{event.title}</h4>
-                  {(event.time || event.location) && (
-                    <p className="text-xs text-gray-500 mt-1">{[event.time, event.location].filter(Boolean).join(' | ')}</p>
-                  )}
-                  {event.trainer && <p className="text-xs text-gray-400">Trainer: {event.trainer}</p>}
-                </div>
-                <Badge variant={new Date(event.date) >= new Date() ? 'info' : 'default'}>
-                  {new Date(event.date) >= new Date() ? 'Upcoming' : 'Past'}
-                </Badge>
               </div>
-            ))}
-          </div>
+
+              {isOnlinePlatform && (
+                <Input label={`${selectedPlatform.label} Meeting Link *`}
+                  type="url" value={form.meeting_link}
+                  onChange={e => setForm({ ...form, meeting_link: e.target.value })}
+                  placeholder={`Paste your ${selectedPlatform.label} invite link here`} />
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Input label="Date *" type="date" value={form.date}
+                  onChange={e => setForm({ ...form, date: e.target.value })} />
+                <Input label="Time" type="time" value={form.time}
+                  onChange={e => setForm({ ...form, time: e.target.value })} />
+              </div>
+
+              {!isOnlinePlatform && (
+                <Input label="Physical Location" value={form.location}
+                  onChange={e => setForm({ ...form, location: e.target.value })}
+                  placeholder="e.g. Head Office Training Room, Windhoek" />
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Input label="Presenter / Trainer" value={form.trainer}
+                  onChange={e => setForm({ ...form, trainer: e.target.value })}
+                  placeholder="e.g. Mr. Johnson" />
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Target Audience *</label>
+                  <select value={form.target_audience}
+                    onChange={e => setForm({ ...form, target_audience: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary">
+                    {TARGET_AUDIENCES.map(a => (
+                      <option key={a.id} value={a.id}>{a.icon} {a.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Agenda / Description</label>
+                <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}
+                  rows={3} placeholder="Briefly describe what will be covered in this session…"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary resize-none" />
+              </div>
+
+              <div className="flex gap-3">
+                <Button type="submit" disabled={saving}>{saving ? 'Scheduling…' : 'Schedule Session'}</Button>
+                <Button type="button" variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button>
+              </div>
+            </form>
+          </CardBody>
         )}
-      </CardBody>
-    </Card>
+      </Card>
+
+      <Card>
+        <CardBody>
+          <div className="flex flex-wrap gap-3 items-center">
+            <select value={filterAudience} onChange={e => setFilterAudience(e.target.value)}
+              className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none">
+              <option value="">All Audiences</option>
+              {TARGET_AUDIENCES.map(a => <option key={a.id} value={a.id}>{a.icon} {a.label}</option>)}
+            </select>
+            <select value={filterPlatform} onChange={e => setFilterPlatform(e.target.value)}
+              className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none">
+              <option value="">All Platforms</option>
+              {MEETING_PLATFORMS.map(p => <option key={p.id} value={p.id}>{p.icon} {p.label}</option>)}
+            </select>
+            <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+              <input type="checkbox" checked={showPast} onChange={e => setShowPast(e.target.checked)} className="rounded" />
+              Show past sessions
+            </label>
+            <span className="ml-auto text-xs text-gray-400">{visible.length} session{visible.length !== 1 ? 's' : ''}</span>
+          </div>
+        </CardBody>
+      </Card>
+
+      {loading ? (
+        <LoadingSpinner />
+      ) : visible.length === 0 ? (
+        <div className="text-center py-12">
+          <BookOpen size={48} className="mx-auto text-gray-300 mb-3" />
+          <p className="text-gray-500 font-medium">No upcoming sessions scheduled</p>
+          <p className="text-gray-400 text-sm mt-1">
+            {isTrainer ? 'Click "Schedule Session" to add one.' : 'Check back soon for upcoming training events.'}
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {visible.map(event => (
+            <MeetingCard key={event.id} event={event} isTrainer={isTrainer} onDelete={handleDelete} />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
