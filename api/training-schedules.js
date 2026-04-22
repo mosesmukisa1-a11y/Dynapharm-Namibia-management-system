@@ -56,6 +56,29 @@ export default async function handler(req, res) {
       return res.status(201).json({ success: true, schedule: rows[0] });
     }
 
+    if (req.method === 'PUT' || req.method === 'PATCH') {
+      const { id, title, date, time, location, trainer, platform, meeting_link, target_audience, description } = req.body || {};
+      if (!id) return res.status(400).json({ success: false, error: 'id is required' });
+      const { rows } = await query(
+        `UPDATE training_schedules SET
+           title = COALESCE($1, title),
+           date = COALESCE($2, date),
+           time = $3,
+           location = $4,
+           trainer = $5,
+           platform = COALESCE($6, platform),
+           meeting_link = $7,
+           target_audience = COALESCE($8, target_audience),
+           description = $9
+         WHERE id = $10
+         RETURNING *`,
+        [title || null, date || null, time ?? null, location ?? null, trainer ?? null,
+         platform || null, meeting_link ?? null, target_audience || null, description ?? null, id]
+      );
+      if (!rows.length) return res.status(404).json({ success: false, error: 'Schedule not found' });
+      return res.json({ success: true, schedule: rows[0] });
+    }
+
     if (req.method === 'DELETE') {
       const { id } = req.query;
       if (!id) return res.status(400).json({ success: false, error: 'id is required' });

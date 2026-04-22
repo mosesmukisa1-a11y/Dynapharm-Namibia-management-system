@@ -375,15 +375,16 @@ function getAudience(id) {
   return TARGET_AUDIENCES.find(a => a.id === id) || TARGET_AUDIENCES[0];
 }
 
-function MeetingCard({ event, isTrainer, onDelete }) {
+function MeetingCard({ event, isTrainer, onDelete, onEdit }) {
   const platform = getPlatform(event.platform || 'in_person');
   const audience = getAudience(event.target_audience || 'all');
   const isOnline = event.platform && event.platform !== 'in_person';
   const isPast = new Date(event.date) < new Date(new Date().toDateString());
+  const hasLink = !!event.meeting_link;
 
   return (
-    <div className={`rounded-xl border-2 overflow-hidden transition-shadow hover:shadow-md ${isPast ? 'opacity-60' : ''}`}
-      style={{ borderColor: isOnline ? platform.color + '55' : '#e2e8f0' }}>
+    <div className={`rounded-xl border-2 overflow-hidden transition-shadow hover:shadow-md ${isPast ? 'opacity-70' : ''}`}
+      style={{ borderColor: hasLink && !isPast ? '#16a34a55' : isOnline ? platform.color + '55' : '#e2e8f0' }}>
       <div className="flex items-center gap-3 px-4 py-2 text-xs font-semibold"
         style={{ background: platform.bg, color: platform.color }}>
         <span className="text-base">{platform.icon}</span>
@@ -405,9 +406,7 @@ function MeetingCard({ event, isTrainer, onDelete }) {
             <h4 className="font-bold text-gray-900 text-base leading-tight">{event.title}</h4>
             <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1.5">
               {event.time && (
-                <span className="text-xs text-gray-500 flex items-center gap-1">
-                  🕐 {event.time}
-                </span>
+                <span className="text-xs text-gray-500 flex items-center gap-1">🕐 {event.time}</span>
               )}
               {event.location && (
                 <span className="text-xs text-gray-500 flex items-center gap-1">
@@ -426,22 +425,32 @@ function MeetingCard({ event, isTrainer, onDelete }) {
           </div>
           <div className="flex flex-col items-end gap-2 flex-shrink-0">
             <Badge variant={isPast ? 'default' : 'info'}>{isPast ? 'Past' : 'Upcoming'}</Badge>
-            {isOnline && event.meeting_link && !isPast && (
-              <a href={event.meeting_link} target="_blank" rel="noreferrer"
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white no-underline transition-opacity hover:opacity-90"
-                style={{ background: platform.color }}>
-                <ExternalLink size={12} /> Join Meeting
-              </a>
-            )}
             {isTrainer && (
-              <button onClick={() => onDelete(event.id)}
-                className="flex items-center gap-1 text-xs text-red-400 hover:text-red-600 mt-1">
-                <Trash2 size={12} /> Delete
-              </button>
+              <div className="flex gap-2 mt-1">
+                <button onClick={() => onEdit(event)}
+                  className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-700">
+                  ✏️ Edit
+                </button>
+                <button onClick={() => onDelete(event.id)}
+                  className="flex items-center gap-1 text-xs text-red-400 hover:text-red-600">
+                  <Trash2 size={12} /> Delete
+                </button>
+              </div>
             )}
           </div>
         </div>
       </div>
+      {hasLink && (
+        <div style={{ borderTop: `1px solid ${isPast ? '#e2e8f0' : '#bbf7d0'}`, background: isPast ? '#f8fafc' : '#f0fdf4', padding: '9px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: '0.78rem', color: isPast ? '#94a3b8' : '#15803d', fontWeight: 600, flex: 1 }}>
+            {isPast ? '🔗 Meeting link (session ended)' : '🟢 Online meeting link is active — click to join'}
+          </span>
+          <a href={event.meeting_link} target="_blank" rel="noreferrer"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 16px', borderRadius: 8, fontWeight: 800, fontSize: '0.82rem', textDecoration: 'none', background: isPast ? '#94a3b8' : '#16a34a', color: '#fff', boxShadow: isPast ? 'none' : '0 2px 8px rgba(22,163,74,0.3)' }}>
+            <ExternalLink size={13} /> {isPast ? 'View Link' : 'Join Now'}
+          </a>
+        </div>
+      )}
     </div>
   );
 }
