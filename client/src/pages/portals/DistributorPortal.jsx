@@ -67,6 +67,115 @@ function MyNetworkTab() {
   );
 }
 
+function periodToMonthKey(period) {
+  if (!period) return '';
+  const s = String(period).trim();
+  if (/^\d{4}-\d{2}$/.test(s)) return s;
+  const d = new Date(s);
+  if (!isNaN(d)) return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  const months = { jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12' };
+  const match = s.toLowerCase().match(/([a-z]+)[^0-9]*(\d{4})/);
+  if (match) { const m = months[match[1].slice(0,3)]; if (m) return `${match[2]}-${m}`; }
+  return s.slice(0, 7);
+}
+
+function printBonusHistory({ bonuses, filtered, publicNB, summary, dateFrom, dateTo, formatCurrency, formatDate }) {
+  const range = (dateFrom || dateTo) ? ` (${dateFrom || ''}${dateFrom && dateTo ? ' – ' : ''}${dateTo || ''})` : '';
+  const totalEarned = filtered.reduce((s, b) => s + Number(b.amount_earned || 0), 0);
+  const totalPaid = filtered.reduce((s, b) => s + Number(b.amount_paid || 0), 0);
+  const totalOutstanding = filtered.reduce((s, b) => s + Math.max(0, Number(b.amount_earned || 0) - Number(b.amount_paid || 0)), 0);
+
+  const rows = filtered.map(b => {
+    const out = Math.max(0, Number(b.amount_earned) - Number(b.amount_paid));
+    const statusColor = b.status === 'paid' ? '#15803d' : b.status === 'partial' ? '#b45309' : '#dc2626';
+    return `<tr>
+      <td>${b.period || '—'}</td>
+      <td style="text-align:right;color:#15803d;font-weight:700">${formatCurrency(b.amount_earned)}</td>
+      <td style="text-align:right;color:#1d4ed8;font-weight:700">${formatCurrency(b.amount_paid)}</td>
+      <td style="text-align:right;font-weight:700;color:${out > 0.01 ? '#ea580c' : '#15803d'}">${formatCurrency(out)}</td>
+      <td style="color:${statusColor};font-weight:600;text-transform:uppercase;font-size:10px">${b.status || '—'}</td>
+      <td>${b.paid_by_branch_id || '—'}</td>
+      <td>${b.payment_date ? formatDate(b.payment_date) : '—'}</td>
+    </tr>`;
+  }).join('');
+
+  const payRows = filtered.flatMap(b => (b.payments || []).map(p => `<tr>
+    <td>${b.period || '—'}</td>
+    <td style="text-align:right;color:#1d4ed8;font-weight:700">${formatCurrency(p.amount)}</td>
+    <td>${p.branch_id || '—'}</td>
+    <td>${formatDate(p.paid_at)}</td>
+    <td>${p.notes || '—'}</td>
+  </tr>`)).join('');
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+  <title>Bonus History — ${publicNB}</title>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family: Arial, sans-serif; font-size: 11px; color: #1e293b; padding: 28px; }
+    .header { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:3px solid #c41e3a; padding-bottom:14px; margin-bottom:18px; }
+    .logo-block .company { color:#c41e3a; font-weight:900; font-size:17px; letter-spacing:1px; }
+    .logo-block .sub { color:#64748b; font-size:10px; margin-top:2px; }
+    .title-block { text-align:right; }
+    .title-block h1 { font-size:15px; font-weight:800; color:#1e293b; }
+    .title-block .nb { font-size:12px; color:#c41e3a; font-weight:700; margin-top:2px; }
+    .title-block .range { font-size:10px; color:#64748b; margin-top:2px; }
+    .kpi-row { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:18px; }
+    .kpi { border-radius:10px; padding:10px 14px; color:#fff; }
+    .kpi.green { background:linear-gradient(135deg,#16a34a,#15803d); }
+    .kpi.blue { background:linear-gradient(135deg,#2563eb,#1d4ed8); }
+    .kpi.orange { background:linear-gradient(135deg,#ea580c,#c2410c); }
+    .kpi.gray { background:linear-gradient(135deg,#64748b,#475569); }
+    .kpi .label { font-size:9px; text-transform:uppercase; letter-spacing:.5px; opacity:.85; }
+    .kpi .value { font-size:18px; font-weight:900; margin-top:3px; }
+    .section-title { font-size:12px; font-weight:800; color:#1e293b; margin-bottom:8px; padding-bottom:4px; border-bottom:1.5px solid #e2e8f0; margin-top:18px; }
+    table { width:100%; border-collapse:collapse; font-size:10px; }
+    th { background:#f8f9fa; padding:6px 8px; text-align:left; font-weight:700; font-size:9px; text-transform:uppercase; color:#64748b; border-bottom:1.5px solid #e2e8f0; }
+    td { padding:6px 8px; border-bottom:1px solid #f1f5f9; }
+    tr:last-child td { border-bottom:none; }
+    .footer { margin-top:28px; border-top:1px solid #e2e8f0; padding-top:10px; text-align:center; color:#94a3b8; font-size:9px; }
+    .print-btn { position:fixed; top:12px; right:12px; background:#c41e3a; color:#fff; border:none; padding:8px 18px; border-radius:8px; font-weight:700; cursor:pointer; font-size:12px; }
+    @media print { .print-btn { display:none; } }
+  </style></head><body>
+  <button class="print-btn" onclick="window.print()">🖨 Print / Save PDF</button>
+  <div class="header">
+    <div class="logo-block">
+      <div class="company">DYNAPHARM</div>
+      <div class="sub">International Namibia</div>
+    </div>
+    <div class="title-block">
+      <h1>Bonus History Statement</h1>
+      <div class="nb">${publicNB}</div>
+      <div class="range">${range ? 'Period: ' + range.trim() : 'All periods'} &nbsp;|&nbsp; Printed: ${new Date().toLocaleDateString('en-ZA', { year:'numeric', month:'short', day:'numeric' })}</div>
+    </div>
+  </div>
+  <div class="kpi-row">
+    <div class="kpi green"><div class="label">Total Earned</div><div class="value">${formatCurrency(totalEarned)}</div></div>
+    <div class="kpi blue"><div class="label">Total Paid</div><div class="value">${formatCurrency(totalPaid)}</div></div>
+    <div class="kpi ${totalOutstanding > 0 ? 'orange' : 'gray'}"><div class="label">Outstanding</div><div class="value">${formatCurrency(totalOutstanding)}</div></div>
+  </div>
+  <div class="section-title">Bonus Records (${filtered.length})</div>
+  <table>
+    <thead><tr>
+      <th>Period</th><th style="text-align:right">Earned</th><th style="text-align:right">Paid</th>
+      <th style="text-align:right">Outstanding</th><th>Status</th><th>Paid By</th><th>Payment Date</th>
+    </tr></thead>
+    <tbody>${rows || '<tr><td colspan="7" style="text-align:center;padding:14px;color:#94a3b8">No records in selected period</td></tr>'}</tbody>
+  </table>
+  ${payRows ? `<div class="section-title">Payment Breakdown</div>
+  <table>
+    <thead><tr><th>Period</th><th style="text-align:right">Amount Paid</th><th>Branch</th><th>Date</th><th>Notes</th></tr></thead>
+    <tbody>${payRows}</tbody>
+  </table>` : ''}
+  <div class="footer">Dynapharm International Namibia &nbsp;|&nbsp; This is an official bonus statement &nbsp;|&nbsp; ${new Date().toLocaleString('en-ZA')}</div>
+  </body></html>`;
+
+  const w = window.open('', '_blank', 'width=820,height=680');
+  w.document.write(html);
+  w.document.close();
+  w.focus();
+  setTimeout(() => w.print(), 500);
+}
+
 function MyBonusTab() {
   const { user } = useAuth();
   const [bonuses, setBonuses] = useState([]);
@@ -74,6 +183,8 @@ function MyBonusTab() {
   const [loading, setLoading] = useState(true);
   const [publicNB, setPublicNB] = useState('');
   const [nbInput, setNBInput] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
 
   const fetchBonuses = async (nb) => {
     setLoading(true);
@@ -98,7 +209,21 @@ function MyBonusTab() {
     }
   }, [user]);
 
-  const hasOutstanding = bonuses.some(b => (Number(b.amount_earned) - Number(b.amount_paid)) > 0.01);
+  const filtered = bonuses.filter(b => {
+    const key = periodToMonthKey(b.period);
+    if (dateFrom && key && key < dateFrom) return false;
+    if (dateTo && key && key > dateTo) return false;
+    return true;
+  });
+
+  const filteredSummary = {
+    totalEarned: filtered.reduce((s, b) => s + Number(b.amount_earned || 0), 0),
+    totalPaid: filtered.reduce((s, b) => s + Number(b.amount_paid || 0), 0),
+    totalOutstanding: filtered.reduce((s, b) => s + Math.max(0, Number(b.amount_earned || 0) - Number(b.amount_paid || 0)), 0),
+  };
+
+  const hasOutstanding = filtered.some(b => (Number(b.amount_earned) - Number(b.amount_paid)) > 0.01);
+  const isFiltered = dateFrom || dateTo;
 
   return (
     <div className="space-y-5">
@@ -131,32 +256,63 @@ function MyBonusTab() {
             </div>
           )}
 
-          {summary && (
+          {bonuses.length > 0 && (
             <div className="grid grid-cols-3 gap-4">
               <div className="rounded-xl p-4 text-white bg-gradient-to-br from-green-500 to-green-700 text-center">
                 <p className="text-xs opacity-80 uppercase tracking-wide">Total Earned</p>
-                <p className="text-2xl font-bold mt-1">{formatCurrency(summary.totalEarned || 0)}</p>
+                <p className="text-2xl font-bold mt-1">{formatCurrency(filteredSummary.totalEarned)}</p>
               </div>
               <div className="rounded-xl p-4 text-white bg-gradient-to-br from-blue-500 to-blue-700 text-center">
                 <p className="text-xs opacity-80 uppercase tracking-wide">Total Paid</p>
-                <p className="text-2xl font-bold mt-1">{formatCurrency(summary.totalPaid || 0)}</p>
+                <p className="text-2xl font-bold mt-1">{formatCurrency(filteredSummary.totalPaid)}</p>
               </div>
-              <div className={`rounded-xl p-4 text-white bg-gradient-to-br ${(summary.totalOutstanding || 0) > 0 ? 'from-orange-500 to-orange-700' : 'from-gray-400 to-gray-600'} text-center`}>
+              <div className={`rounded-xl p-4 text-white bg-gradient-to-br ${filteredSummary.totalOutstanding > 0 ? 'from-orange-500 to-orange-700' : 'from-gray-400 to-gray-600'} text-center`}>
                 <p className="text-xs opacity-80 uppercase tracking-wide">Outstanding</p>
-                <p className="text-2xl font-bold mt-1">{formatCurrency(summary.totalOutstanding || 0)}</p>
+                <p className="text-2xl font-bold mt-1">{formatCurrency(filteredSummary.totalOutstanding)}</p>
               </div>
             </div>
           )}
 
           <Card>
             <CardHeader>
-              <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                <span>💰</span> My Bonus History {publicNB && <span className="text-sm font-normal text-gray-500">— {publicNB}</span>}
-              </h3>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full">
+                <h3 className="font-bold text-gray-800 flex items-center gap-2 flex-1">
+                  <span>💰</span> My Bonus History {publicNB && <span className="text-sm font-normal text-gray-500">— {publicNB}</span>}
+                  {isFiltered && <span className="text-xs font-normal text-primary bg-primary/10 px-2 py-0.5 rounded-full">{filtered.length} of {bonuses.length}</span>}
+                </h3>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <label className="text-xs text-gray-500 font-medium whitespace-nowrap">From</label>
+                    <input type="month" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+                      className="px-2 py-1 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <label className="text-xs text-gray-500 font-medium whitespace-nowrap">To</label>
+                    <input type="month" value={dateTo} onChange={e => setDateTo(e.target.value)}
+                      className="px-2 py-1 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                  </div>
+                  {isFiltered && (
+                    <button onClick={() => { setDateFrom(''); setDateTo(''); }}
+                      className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
+                      Clear
+                    </button>
+                  )}
+                  {bonuses.length > 0 && (
+                    <button
+                      onClick={() => printBonusHistory({ bonuses, filtered, publicNB, summary, dateFrom, dateTo, formatCurrency, formatDate })}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-white text-xs font-semibold rounded-lg hover:bg-primary/90 transition-colors shadow-sm"
+                    >
+                      <Printer size={12} /> Print PDF
+                    </button>
+                  )}
+                </div>
+              </div>
             </CardHeader>
-            {bonuses.length === 0 ? (
+            {filtered.length === 0 ? (
               <CardBody>
-                <p className="text-center text-gray-400 py-6 text-sm">No bonus records found. Bonuses are uploaded by Finance each month.</p>
+                <p className="text-center text-gray-400 py-6 text-sm">
+                  {bonuses.length === 0 ? 'No bonus records found. Bonuses are uploaded by Finance each month.' : 'No records match the selected date range.'}
+                </p>
               </CardBody>
             ) : (
               <div className="overflow-x-auto">
@@ -173,7 +329,7 @@ function MyBonusTab() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {bonuses.map(b => {
+                    {filtered.map(b => {
                       const outstanding = Number(b.amount_earned) - Number(b.amount_paid);
                       return (
                         <tr key={b.id} className="hover:bg-gray-50">
@@ -197,9 +353,9 @@ function MyBonusTab() {
             )}
           </Card>
 
-          {bonuses.some(b => (b.payments || []).length > 0) && (
+          {filtered.some(b => (b.payments || []).length > 0) && (
             <Card>
-              <CardHeader><h3 className="font-bold text-gray-800">Payment Details</h3></CardHeader>
+              <CardHeader><h3 className="font-bold text-gray-800">Payment Breakdown</h3></CardHeader>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 border-b border-gray-200">
@@ -212,7 +368,7 @@ function MyBonusTab() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {bonuses.flatMap(b => (b.payments || []).map(p => (
+                    {filtered.flatMap(b => (b.payments || []).map(p => (
                       <tr key={p.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3 font-semibold">{b.period}</td>
                         <td className="px-4 py-3 text-right font-bold text-blue-700">{formatCurrency(p.amount)}</td>
