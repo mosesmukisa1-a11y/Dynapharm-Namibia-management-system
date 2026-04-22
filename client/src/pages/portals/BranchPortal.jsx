@@ -5097,6 +5097,8 @@ function DistributorProfitTab() {
   const [paySubmitting, setPaySubmitting] = useState(false);
   const [expandedNb, setExpandedNb] = useState(null);
   const [filterStatus, setFilterStatus] = useState('all');
+  const [search, setSearch] = useState('');
+  const [activeView, setActiveView] = useState('list');
 
   const load = async () => {
     setLoading(true);
@@ -5137,10 +5139,60 @@ function DistributorProfitTab() {
   );
 
   const filteredGroups = groups.filter(g => {
-    if (filterStatus === 'pending') return g.pending > 0;
-    if (filterStatus === 'paid') return g.paid > 0;
-    return true;
+    const statusOk = filterStatus === 'all' || (filterStatus === 'pending' ? g.pending > 0 : g.paid > 0);
+    const searchOk = !search.trim() || (g.distributor_name || '').toLowerCase().includes(search.toLowerCase()) || (g.distributor_nb || '').toLowerCase().includes(search.toLowerCase());
+    return statusOk && searchOk;
   });
+
+  const exportCSV = () => {
+    const rows = [['Distributor NB', 'Distributor Name', 'Pending (N$)', 'Paid (N$)', 'Total (N$)', 'Sales Count']];
+    groups.forEach(g => {
+      rows.push([g.distributor_nb, g.distributor_name || '', g.pending.toFixed(2), g.paid.toFixed(2), (g.pending + g.paid).toFixed(2), g.entries?.length || 0]);
+    });
+    const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `distributor-profit-${branchId}-${new Date().toISOString().slice(0,10)}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const printReport = () => {
+    const branchLabel = (branchId || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    const rows = groups.map(g => `
+      <tr>
+        <td>${g.distributor_nb}</td>
+        <td>${g.distributor_name || '—'}</td>
+        <td style="text-align:right;color:#c41e3a;font-weight:700">N$ ${g.pending.toFixed(2)}</td>
+        <td style="text-align:right;color:#166534;font-weight:700">N$ ${g.paid.toFixed(2)}</td>
+        <td style="text-align:right;font-weight:800">N$ ${(g.pending + g.paid).toFixed(2)}</td>
+        <td style="text-align:center">${g.entries?.length || 0}</td>
+        <td style="text-align:center"><span style="padding:2px 8px;border-radius:10px;background:${g.pending > 0 ? '#fee2e2' : '#dcfce7'};color:${g.pending > 0 ? '#c41e3a' : '#166534'};font-weight:700">${g.pending > 0 ? 'PENDING' : 'SETTLED'}</span></td>
+      </tr>`).join('');
+    const html = `<!DOCTYPE html><html><head><title>Distributor Profit Report — ${branchLabel}</title><style>
+      body{font-family:Arial,sans-serif;margin:24px;color:#1e293b}h1{color:#c41e3a;margin:0}h2{color:#374151;margin:4px 0 0}
+      .meta{color:#94a3b8;font-size:13px;margin-bottom:20px}
+      table{width:100%;border-collapse:collapse;font-size:13px}
+      th{background:#f8fafc;padding:9px 10px;text-align:left;border-bottom:2px solid #e2e8f0;font-weight:700;color:#374151}
+      td{padding:8px 10px;border-bottom:1px solid #f1f5f9}
+      .totals{margin-top:16px;display:flex;gap:20px}
+      .kpi{background:#f8fafc;border-radius:8px;padding:12px 16px;flex:1}
+      .kpi-label{font-size:11px;font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:4px}
+      .kpi-val{font-size:1.4rem;font-weight:900}
+    </style></head><body>
+      <h1>💰 Distributor Profit Report</h1>
+      <h2>${branchLabel}</h2>
+      <div class="meta">Generated: ${new Date().toLocaleString('en-ZA')} · ${groups.length} distributor(s)</div>
+      <div class="totals">
+        <div class="kpi"><div class="kpi-label">Total Pending</div><div class="kpi-val" style="color:#c41e3a">N$ ${totalPending.toFixed(2)}</div></div>
+        <div class="kpi"><div class="kpi-label">Total Paid</div><div class="kpi-val" style="color:#166534">N$ ${totalPaid.toFixed(2)}</div></div>
+        <div class="kpi"><div class="kpi-label">Grand Total</div><div class="kpi-val">N$ ${(totalPending + totalPaid).toFixed(2)}</div></div>
+      </div>
+      <br/>
+      <table><thead><tr><th>NB Number</th><th>Name</th><th style="text-align:right">Pending</th><th style="text-align:right">Paid</th><th style="text-align:right">Total</th><th style="text-align:center">Sales</th><th style="text-align:center">Status</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+    </body></html>`;
+    const w = window.open('', '_blank'); w.document.write(html); w.document.close(); setTimeout(() => w.print(), 400);
+  };
 
   if (loading) return <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>Loading distributor profit data…</div>;
 
@@ -5165,8 +5217,86 @@ function DistributorProfitTab() {
         💡 Distributor profit = CP − DP earned by the referring distributor on each non-member walk-in sale. Pending amounts need to be paid out to distributors.
       </div>
 
-      {/* Filter */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+      {/* View Toggle + Export Buttons */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+        {[{ id: 'list', label: '📋 Payout List' }, { id: 'report', label: '📊 Profit Report' }].map(v => (
+          <button key={v.id} onClick={() => setActiveView(v.id)}
+            style={{ padding: '6px 16px', borderRadius: 20, border: '1.5px solid', borderColor: activeView === v.id ? '#c41e3a' : '#e2e8f0', background: activeView === v.id ? '#c41e3a' : '#fff', color: activeView === v.id ? '#fff' : '#374151', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer' }}>
+            {v.label}
+          </button>
+        ))}
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+          <button onClick={exportCSV} style={{ padding: '6px 14px', borderRadius: 8, border: '1.5px solid #16a34a', background: '#f0fdf4', color: '#166534', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer' }}>
+            ⬇ Export CSV
+          </button>
+          <button onClick={printReport} style={{ padding: '6px 14px', borderRadius: 8, border: '1.5px solid #1d4ed8', background: '#eff6ff', color: '#1d4ed8', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer' }}>
+            🖨 Print Report
+          </button>
+        </div>
+      </div>
+
+      {/* Report View */}
+      {activeView === 'report' && (
+        <div style={{ background: '#fff', borderRadius: 14, border: '1.5px solid #e2e8f0', overflow: 'hidden', marginBottom: 20 }}>
+          <div style={{ background: 'linear-gradient(135deg,#1e293b,#334155)', color: '#fff', padding: '16px 20px' }}>
+            <div style={{ fontSize: '1rem', fontWeight: 800 }}>📊 Distributor Profit Report</div>
+            <div style={{ fontSize: '0.78rem', opacity: 0.75, marginTop: 2 }}>
+              {(branchId || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())} · Generated {new Date().toLocaleDateString('en-ZA', { day: '2-digit', month: 'long', year: 'numeric' })}
+            </div>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+              <thead>
+                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                  <th style={{ textAlign: 'left', padding: '10px 14px', fontWeight: 700, color: '#374151' }}>NB Number</th>
+                  <th style={{ textAlign: 'left', padding: '10px 14px', fontWeight: 700, color: '#374151' }}>Distributor Name</th>
+                  <th style={{ textAlign: 'center', padding: '10px 14px', fontWeight: 700, color: '#374151' }}>Sales</th>
+                  <th style={{ textAlign: 'right', padding: '10px 14px', fontWeight: 700, color: '#c41e3a' }}>Pending (N$)</th>
+                  <th style={{ textAlign: 'right', padding: '10px 14px', fontWeight: 700, color: '#166534' }}>Paid (N$)</th>
+                  <th style={{ textAlign: 'right', padding: '10px 14px', fontWeight: 700, color: '#1d4ed8' }}>Total (N$)</th>
+                  <th style={{ textAlign: 'center', padding: '10px 14px', fontWeight: 700, color: '#374151' }}>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {groups.map(g => (
+                  <tr key={g.distributor_nb} style={{ borderBottom: '1px solid #f1f5f9', background: g.pending > 0 ? '#fffbeb' : '#fff' }}>
+                    <td style={{ padding: '9px 14px', fontFamily: 'monospace', color: '#374151', fontSize: '0.78rem' }}>{g.distributor_nb}</td>
+                    <td style={{ padding: '9px 14px', fontWeight: 600, color: '#1e293b' }}>{g.distributor_name || '—'}</td>
+                    <td style={{ padding: '9px 14px', textAlign: 'center', color: '#64748b' }}>{g.entries?.length || 0}</td>
+                    <td style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 800, color: g.pending > 0 ? '#c41e3a' : '#94a3b8' }}>{formatCurrency(g.pending)}</td>
+                    <td style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 700, color: g.paid > 0 ? '#166534' : '#94a3b8' }}>{formatCurrency(g.paid)}</td>
+                    <td style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 800, color: '#1e293b' }}>{formatCurrency(g.pending + g.paid)}</td>
+                    <td style={{ padding: '9px 14px', textAlign: 'center' }}>
+                      <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700, background: g.pending > 0 ? '#fee2e2' : '#dcfce7', color: g.pending > 0 ? '#c41e3a' : '#166534' }}>
+                        {g.pending > 0 ? '⏳ Pending' : '✅ Settled'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr style={{ background: '#f8fafc', borderTop: '2px solid #e2e8f0' }}>
+                  <td colSpan={3} style={{ padding: '10px 14px', fontWeight: 800, color: '#374151' }}>TOTALS ({groups.length} distributors)</td>
+                  <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 900, color: '#c41e3a' }}>{formatCurrency(totalPending)}</td>
+                  <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 900, color: '#166534' }}>{formatCurrency(totalPaid)}</td>
+                  <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 900, color: '#1e293b' }}>{formatCurrency(totalPending + totalPaid)}</td>
+                  <td />
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* List View controls */}
+      {activeView === 'list' && <>
+      {/* Search + Filter */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+        <input
+          value={search} onChange={e => setSearch(e.target.value)}
+          placeholder="Search distributor name or NB number…"
+          style={{ flex: 1, minWidth: 200, padding: '7px 12px', borderRadius: 8, border: '1.5px solid #e2e8f0', fontSize: '0.85rem', outline: 'none' }}
+        />
         {['all', 'pending', 'paid'].map(s => (
           <button key={s} onClick={() => setFilterStatus(s)}
             style={{ padding: '5px 16px', borderRadius: 20, border: '1.5px solid', borderColor: filterStatus === s ? '#c41e3a' : '#e2e8f0', background: filterStatus === s ? '#c41e3a' : '#fff', color: filterStatus === s ? '#fff' : '#374151', fontWeight: 600, fontSize: '0.78rem', cursor: 'pointer' }}>
@@ -5284,6 +5414,7 @@ function DistributorProfitTab() {
           })}
         </div>
       )}
+      </>}
     </div>
   );
 }

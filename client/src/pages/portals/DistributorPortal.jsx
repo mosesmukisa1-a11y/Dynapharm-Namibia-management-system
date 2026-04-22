@@ -1163,50 +1163,157 @@ function BVProfitTab() {
         </CardBody>
       </Card>
 
-      {profitLedger.length > 0 && (() => {
+      {(() => {
+        if (profitLedger.length === 0) return null;
+
+        const fmtBranch = id => {
+          if (!id) return 'Unknown Branch';
+          return id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        };
+
         const pendingEntries = profitLedger.filter(e => e.status === 'pending');
-        const paidEntries = profitLedger.filter(e => e.status === 'paid');
-        const pendingTotal = pendingEntries.reduce((s, e) => s + Number(e.profit_amount || 0), 0);
-        const paidTotal = paidEntries.reduce((s, e) => s + Number(e.profit_amount || 0), 0);
+        const paidEntries    = profitLedger.filter(e => e.status === 'paid');
+        const pendingTotal   = pendingEntries.reduce((s, e) => s + Number(e.profit_amount || 0), 0);
+        const paidTotal      = paidEntries.reduce((s, e) => s + Number(e.profit_amount || 0), 0);
+
+        const byBranch = {};
+        profitLedger.forEach(e => {
+          const bid = e.branch_id || 'unknown';
+          if (!byBranch[bid]) byBranch[bid] = { branch_id: bid, pending: 0, paid: 0, count: 0 };
+          byBranch[bid].count += 1;
+          if (e.status === 'pending') byBranch[bid].pending += Number(e.profit_amount || 0);
+          else byBranch[bid].paid += Number(e.profit_amount || 0);
+        });
+        const branchList = Object.values(byBranch).sort((a, b) => b.pending - a.pending);
+
         return (
-          <Card>
-            <CardHeader>
-              <h3 className="font-bold text-gray-800 flex items-center gap-2">💰 Retail Profit Ledger</h3>
-            </CardHeader>
-            <CardBody>
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div className="p-3 bg-red-50 rounded-lg text-center">
-                  <p className="text-xs text-red-600 font-semibold uppercase tracking-wide mb-1">Pending Payment</p>
-                  <p className="text-xl font-black text-red-700">{formatCurrency(pendingTotal)}</p>
-                  <p className="text-xs text-red-500">{pendingEntries.length} sale(s) unpaid</p>
-                </div>
-                <div className="p-3 bg-green-50 rounded-lg text-center">
-                  <p className="text-xs text-green-600 font-semibold uppercase tracking-wide mb-1">Paid Out</p>
-                  <p className="text-xl font-black text-green-700">{formatCurrency(paidTotal)}</p>
-                  <p className="text-xs text-green-500">{paidEntries.length} sale(s) paid</p>
-                </div>
+          <>
+            {/* ── Profit Summary Cards ── */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 12 }}>
+              <div style={{ background: 'linear-gradient(135deg,#c41e3a,#991b1b)', borderRadius: 12, padding: '16px 18px', color: '#fff', textAlign: 'center' }}>
+                <div style={{ fontSize: '0.68rem', fontWeight: 800, opacity: 0.8, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Pending Collection</div>
+                <div style={{ fontSize: '1.5rem', fontWeight: 900 }}>{formatCurrency(pendingTotal)}</div>
+                <div style={{ fontSize: '0.72rem', opacity: 0.8, marginTop: 2 }}>{pendingEntries.length} unpaid sale(s)</div>
               </div>
-              <div className="space-y-2 max-h-64 overflow-y-auto">
-                {profitLedger.slice(0, 20).map((e, idx) => (
-                  <div key={idx} className="flex items-center justify-between py-2 px-3 rounded-lg bg-gray-50 text-sm">
-                    <div>
-                      <span className="font-mono text-xs text-gray-500 mr-2">{e.sale_receipt || e.sale_id || '—'}</span>
-                      <span className="text-gray-600">{e.sale_date ? new Date(e.sale_date).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className={`font-bold ${e.status === 'paid' ? 'text-green-700' : 'text-red-700'}`}>{formatCurrency(Number(e.profit_amount))}</span>
-                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${e.status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                        {e.status === 'paid' ? '✓ Paid' : '⏳ Pending'}
-                      </span>
-                    </div>
+              <div style={{ background: 'linear-gradient(135deg,#166534,#15803d)', borderRadius: 12, padding: '16px 18px', color: '#fff', textAlign: 'center' }}>
+                <div style={{ fontSize: '0.68rem', fontWeight: 800, opacity: 0.8, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Total Paid Out</div>
+                <div style={{ fontSize: '1.5rem', fontWeight: 900 }}>{formatCurrency(paidTotal)}</div>
+                <div style={{ fontSize: '0.72rem', opacity: 0.8, marginTop: 2 }}>{paidEntries.length} paid sale(s)</div>
+              </div>
+              <div style={{ background: 'linear-gradient(135deg,#1e40af,#1d4ed8)', borderRadius: 12, padding: '16px 18px', color: '#fff', textAlign: 'center' }}>
+                <div style={{ fontSize: '0.68rem', fontWeight: 800, opacity: 0.8, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Total Earned</div>
+                <div style={{ fontSize: '1.5rem', fontWeight: 900 }}>{formatCurrency(pendingTotal + paidTotal)}</div>
+                <div style={{ fontSize: '0.72rem', opacity: 0.8, marginTop: 2 }}>{profitLedger.length} sale(s) total</div>
+              </div>
+            </div>
+
+            {/* ── By-Branch Breakdown ── */}
+            <Card>
+              <CardHeader>
+                <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                  🏢 Profit by Branch — Collection Guide
+                </h3>
+                <p className="text-xs text-gray-500 mt-1">Visit or contact each branch below to collect your pending profit.</p>
+              </CardHeader>
+              <CardBody>
+                {branchList.length === 0 ? (
+                  <p className="text-sm text-gray-400">No branch data available.</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {branchList.map(b => (
+                      <div key={b.branch_id} style={{ borderRadius: 10, border: `2px solid ${b.pending > 0 ? '#fca5a5' : '#d1fae5'}`, overflow: 'hidden' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', flexWrap: 'wrap', gap: 8 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <div style={{ width: 36, height: 36, borderRadius: 18, background: b.pending > 0 ? '#fee2e2' : '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem' }}>
+                              {b.pending > 0 ? '🏦' : '✅'}
+                            </div>
+                            <div>
+                              <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.92rem' }}>{fmtBranch(b.branch_id)}</div>
+                              <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{b.count} sale(s) recorded · Branch ID: {b.branch_id}</div>
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+                            {b.pending > 0 && (
+                              <div style={{ textAlign: 'right' }}>
+                                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#c41e3a', textTransform: 'uppercase' }}>To Collect</div>
+                                <div style={{ fontWeight: 900, color: '#c41e3a', fontSize: '1.05rem' }}>{formatCurrency(b.pending)}</div>
+                              </div>
+                            )}
+                            {b.paid > 0 && (
+                              <div style={{ textAlign: 'right' }}>
+                                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#166534', textTransform: 'uppercase' }}>Paid</div>
+                                <div style={{ fontWeight: 700, color: '#166534', fontSize: '1.05rem' }}>{formatCurrency(b.paid)}</div>
+                              </div>
+                            )}
+                            {b.pending > 0 && (
+                              <span style={{ padding: '4px 12px', borderRadius: 20, background: '#fef2f2', color: '#c41e3a', fontSize: '0.72rem', fontWeight: 700, border: '1.5px solid #fca5a5' }}>
+                                ⏳ Pending
+                              </span>
+                            )}
+                            {b.pending === 0 && (
+                              <span style={{ padding: '4px 12px', borderRadius: 20, background: '#f0fdf4', color: '#166534', fontSize: '0.72rem', fontWeight: 700, border: '1.5px solid #86efac' }}>
+                                ✅ Settled
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-              {pendingTotal > 0 && (
-                <p className="text-xs text-amber-600 bg-amber-50 rounded p-2 mt-3">⚠️ You have {formatCurrency(pendingTotal)} pending. Contact your branch to arrange payment.</p>
-              )}
-            </CardBody>
-          </Card>
+                )}
+              </CardBody>
+            </Card>
+
+            {/* ── Detailed Ledger ── */}
+            <Card>
+              <CardHeader>
+                <h3 className="font-bold text-gray-800 flex items-center gap-2">📋 Profit Ledger — All Entries</h3>
+              </CardHeader>
+              <CardBody>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                    <thead>
+                      <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                        <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 700, color: '#374151' }}>Receipt</th>
+                        <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 700, color: '#374151' }}>Date</th>
+                        <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 700, color: '#374151' }}>Branch Source</th>
+                        <th style={{ textAlign: 'right', padding: '8px 10px', fontWeight: 700, color: '#374151' }}>Profit Amount</th>
+                        <th style={{ textAlign: 'center', padding: '8px 10px', fontWeight: 700, color: '#374151' }}>Status</th>
+                        <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 700, color: '#374151' }}>Paid Info</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {profitLedger.map((e, idx) => (
+                        <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9', background: e.status === 'pending' ? '#fffbeb' : '#fff' }}>
+                          <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: '#374151', fontSize: '0.75rem' }}>{e.sale_receipt || e.sale_id || '—'}</td>
+                          <td style={{ padding: '8px 10px', color: '#64748b' }}>{e.sale_date ? new Date(e.sale_date).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</td>
+                          <td style={{ padding: '8px 10px' }}>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 8px', borderRadius: 6, background: '#eff6ff', color: '#1d4ed8', fontSize: '0.72rem', fontWeight: 600 }}>
+                              🏢 {fmtBranch(e.branch_id)}
+                            </span>
+                          </td>
+                          <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800, color: e.status === 'paid' ? '#166534' : '#c41e3a' }}>{formatCurrency(Number(e.profit_amount))}</td>
+                          <td style={{ padding: '8px 10px', textAlign: 'center' }}>
+                            <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700, background: e.status === 'paid' ? '#dcfce7' : '#fee2e2', color: e.status === 'paid' ? '#166534' : '#c41e3a' }}>
+                              {e.status === 'paid' ? '✓ Paid' : '⏳ Pending'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '8px 10px', fontSize: '0.72rem', color: '#94a3b8' }}>
+                            {e.status === 'paid' ? `${e.payment_method || ''} ${e.paid_at ? new Date(e.paid_at).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short' }) : ''}`.trim() || '—' : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {pendingTotal > 0 && (
+                  <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', fontSize: '0.78rem', color: '#92400e', marginTop: 14 }}>
+                    ⚠️ You have <strong>{formatCurrency(pendingTotal)}</strong> pending across {branchList.filter(b => b.pending > 0).length} branch(es). Visit or call each branch above to collect your profit.
+                  </div>
+                )}
+              </CardBody>
+            </Card>
+          </>
         );
       })()}
 
