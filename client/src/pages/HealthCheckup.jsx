@@ -45,8 +45,23 @@ export default function HealthCheckup() {
   const [previewOpen, setPreviewOpen] = useState(false);
 
   useEffect(() => {
+    const savedRefNB = localStorage.getItem('ref_nb');
+    const savedRefName = localStorage.getItem('ref_name');
+    if (savedRefNB) setReferralNB(savedRefNB);
+    if (savedRefName) setReferralName(savedRefName);
+  }, []);
+
+  useEffect(() => {
     api.distributors.list()
-      .then(data => setDistributors(Array.isArray(data) ? data : data.distributors || []))
+      .then(data => {
+        const raw = Array.isArray(data) ? data : data.distributors || [];
+        setDistributors(raw);
+        const savedRefNB = localStorage.getItem('ref_nb');
+        if (savedRefNB) {
+          const match = raw.find(d => d.distributor_code === savedRefNB);
+          if (match) setSelectedDistributor(match);
+        }
+      })
       .catch(() => []);
   }, []);
 

@@ -5,6 +5,7 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import Landing from './pages/Landing';
 import Shop from './pages/Shop';
 import HealthCheckup from './pages/HealthCheckup';
+import DistributorRefPage from './pages/DistributorRefPage';
 import DistributorPortal from './pages/portals/DistributorPortal';
 import FrontDeskPortal from './pages/portals/FrontDeskPortal';
 import ConsultantPortal from './pages/portals/ConsultantPortal';
@@ -34,6 +35,7 @@ export default function App() {
         <Route path="/" element={<Landing />} />
         <Route path="/shop" element={<Shop />} />
         <Route path="/checkup" element={<HealthCheckup />} />
+        <Route path="/ref/:nbCode" element={<DistributorRefPage />} />
 
         <Route path="/distributor" element={
           <ProtectedRoute portalId="distributor"><DistributorPortal /></ProtectedRoute>

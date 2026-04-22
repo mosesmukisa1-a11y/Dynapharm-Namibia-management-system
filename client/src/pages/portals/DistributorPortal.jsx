@@ -4,10 +4,11 @@ import { api } from '../../lib/api';
 import { formatCurrency, formatDate } from '../../lib/constants';
 import { enrichProductsWithPricing, calculateCartTotals, setLivePrices } from '../../lib/pricing';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Modal, Alert } from '../../components/ui';
-import { ShoppingCart, Heart, Newspaper, MessageSquare, Search, Plus, Minus, Package, Trash2, Send, User, BarChart3, ShoppingBag, Star, UserPlus, Printer, MapPin, ChevronDown, TrendingUp, Calendar, Gift, Tag, Zap, Award, Clock, Trophy, CheckCircle, AlertCircle, ChevronRight, Megaphone, Camera, Upload } from 'lucide-react';
+import { ShoppingCart, Heart, Newspaper, MessageSquare, Search, Plus, Minus, Package, Trash2, Send, User, BarChart3, ShoppingBag, Star, UserPlus, Printer, MapPin, ChevronDown, TrendingUp, Calendar, Gift, Tag, Zap, Award, Clock, Trophy, CheckCircle, AlertCircle, ChevronRight, Megaphone, Camera, Upload, QrCode, Share2, Download } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { MembershipAgreementForm } from '../../components/MembershipAgreementForm';
 import NetworkReportTab from '../../components/NetworkReportTab';
+import QRCodeLib from 'qrcode';
 
 export default function DistributorPortal() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -311,8 +312,11 @@ function DashboardTab() {
   const [photoUploading, setPhotoUploading] = useState(false);
   const [photoMenuOpen, setPhotoMenuOpen] = useState(false);
   const [welcomeInfo, setWelcomeInfo] = useState({ isReturn: false, lastSeen: null, greeting: '' });
+  const [qrModalOpen, setQrModalOpen] = useState(false);
+  const [qrGenerating, setQrGenerating] = useState(false);
   const photoInputRef = useRef(null);
   const cameraInputRef = useRef(null);
+  const qrCanvasRef = useRef(null);
 
   const getTimeGreeting = () => {
     const h = new Date().getHours();
@@ -405,6 +409,153 @@ function DashboardTab() {
   const nbNumber = profile?.distributor_code || publicNBCode || '';
   const position = profile?.position || 'Distributor';
   const dateJoined = profile?.date_joined || (user?.created_at ? formatDate(user.created_at) : 'N/A');
+  const initials = displayName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+
+  const generateQRCard = async () => {
+    if (!qrCanvasRef.current || !nbNumber) return;
+    setQrGenerating(true);
+    try {
+      const canvas = qrCanvasRef.current;
+      const ctx = canvas.getContext('2d');
+      const W = 400, H = 560;
+      canvas.width = W;
+      canvas.height = H;
+
+      const grad = ctx.createLinearGradient(0, 0, 0, H);
+      grad.addColorStop(0, '#0b1020');
+      grad.addColorStop(0.45, '#1c0b16');
+      grad.addColorStop(1, '#0b1020');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, W, H);
+
+      ctx.fillStyle = '#c41e3a';
+      ctx.fillRect(0, 0, W, 5);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 21px Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('DYNAPHARM', W / 2, 44);
+      ctx.fillStyle = '#c41e3a';
+      ctx.font = '10px Arial, sans-serif';
+      ctx.fillText('INTERNATIONAL NAMIBIA', W / 2, 60);
+
+      const photoR = 46;
+      const photoCX = W / 2, photoCY = 118;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(photoCX, photoCY, photoR + 4, 0, Math.PI * 2);
+      ctx.strokeStyle = '#c41e3a';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(photoCX, photoCY, photoR, 0, Math.PI * 2);
+      ctx.clip();
+
+      if (profile?.photo_url) {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        await new Promise(resolve => { img.onload = resolve; img.onerror = resolve; img.src = profile.photo_url; });
+        ctx.drawImage(img, photoCX - photoR, photoCY - photoR, photoR * 2, photoR * 2);
+      } else {
+        const bgGrad = ctx.createLinearGradient(photoCX - photoR, photoCY - photoR, photoCX + photoR, photoCY + photoR);
+        bgGrad.addColorStop(0, '#c41e3a');
+        bgGrad.addColorStop(1, '#8b0000');
+        ctx.fillStyle = bgGrad;
+        ctx.fillRect(photoCX - photoR, photoCY - photoR, photoR * 2, photoR * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `bold ${Math.floor(photoR * 0.9)}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(initials, photoCX, photoCY);
+        ctx.textBaseline = 'alphabetic';
+      }
+      ctx.restore();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 17px Arial, sans-serif';
+      ctx.textAlign = 'center';
+      const nameLines = displayName.length > 28 ? [displayName.slice(0, 28), displayName.slice(28)] : [displayName];
+      nameLines.forEach((line, i) => ctx.fillText(line, W / 2, 190 + i * 20));
+      const nameBottom = 190 + nameLines.length * 20;
+
+      ctx.fillStyle = '#c41e3a';
+      ctx.font = '12px Arial, sans-serif';
+      ctx.fillText(position, W / 2, nameBottom + 4);
+      ctx.fillStyle = '#888888';
+      ctx.font = '11px monospace';
+      ctx.fillText(nbNumber, W / 2, nameBottom + 20);
+
+      const refUrl = `${window.location.origin}/ref/${nbNumber}`;
+      const qrDataUrl = await QRCodeLib.toDataURL(refUrl, {
+        width: 210,
+        margin: 1,
+        color: { dark: '#0b1020', light: '#ffffff' },
+        errorCorrectionLevel: 'H',
+      });
+      const qrImg = new Image();
+      await new Promise(resolve => { qrImg.onload = resolve; qrImg.src = qrDataUrl; });
+
+      const qrSize = 210;
+      const qrX = W / 2 - qrSize / 2;
+      const qrY = nameBottom + 32;
+
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      if (ctx.roundRect) {
+        ctx.roundRect(qrX - 6, qrY - 6, qrSize + 12, qrSize + 12, 14);
+      } else {
+        ctx.rect(qrX - 6, qrY - 6, qrSize + 12, qrSize + 12);
+      }
+      ctx.fill();
+      ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
+
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.font = '10px Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Scan to shop • Book check-up • Join Dynapharm', W / 2, qrY + qrSize + 24);
+
+      ctx.fillStyle = '#c41e3a';
+      ctx.fillRect(0, H - 5, W, 5);
+    } catch (e) {
+      console.error('QR generation error', e);
+    }
+    setQrGenerating(false);
+  };
+
+  useEffect(() => {
+    if (qrModalOpen && nbNumber) {
+      setTimeout(generateQRCard, 80);
+    }
+  }, [qrModalOpen, nbNumber, profile]);
+
+  const downloadQRCard = () => {
+    if (!qrCanvasRef.current) return;
+    const link = document.createElement('a');
+    link.download = `dynapharm-qr-${nbNumber}.png`;
+    link.href = qrCanvasRef.current.toDataURL('image/png');
+    link.click();
+  };
+
+  const shareQRCard = async () => {
+    const refUrl = `${window.location.origin}/ref/${nbNumber}`;
+    if (navigator.share) {
+      try {
+        if (qrCanvasRef.current) {
+          qrCanvasRef.current.toBlob(async (blob) => {
+            const file = new File([blob], `dynapharm-qr-${nbNumber}.png`, { type: 'image/png' });
+            await navigator.share({ title: `Shop with ${displayName} — Dynapharm`, text: `${displayName} invites you to Dynapharm. Scan or click to shop, book a check-up, or join!`, url: refUrl, files: navigator.canShare?.({ files: [file] }) ? [file] : undefined });
+          });
+        } else {
+          await navigator.share({ title: `Shop with ${displayName} — Dynapharm`, url: refUrl });
+        }
+      } catch (_) {}
+    } else {
+      await navigator.clipboard.writeText(refUrl).catch(() => {});
+      alert('Referral link copied to clipboard!');
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -519,12 +670,20 @@ function DashboardTab() {
               {user && <p style={{ fontSize: '0.72rem', opacity: 0.6, marginTop: 4 }}>Tap photo to update</p>}
             </div>
           </div>
-          {profile && (
-            <button onClick={() => printDistributorProfile(profile)}
-              className="flex items-center gap-1.5 px-3 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-xs font-semibold cursor-pointer transition-colors">
-              <Printer size={14} /> Print Profile
-            </button>
-          )}
+          <div className="flex gap-2 flex-wrap">
+            {profile && (
+              <button onClick={() => printDistributorProfile(profile)}
+                className="flex items-center gap-1.5 px-3 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-xs font-semibold cursor-pointer transition-colors">
+                <Printer size={14} /> Print Profile
+              </button>
+            )}
+            {nbNumber && (
+              <button onClick={() => setQrModalOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-xs font-semibold cursor-pointer transition-colors">
+                <QrCode size={14} /> My QR Card
+              </button>
+            )}
+          </div>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
           <div className="bg-white/15 rounded-xl p-4 text-center">
@@ -730,6 +889,45 @@ function DashboardTab() {
           </div>
         </CardBody>
       </Card>
+
+      <Modal open={qrModalOpen} onClose={() => setQrModalOpen(false)} title="My Dynapharm QR Card" size="md">
+        <div className="flex flex-col items-center gap-4 py-2">
+          {qrGenerating ? (
+            <div className="flex flex-col items-center gap-3 py-10">
+              <LoadingSpinner />
+              <p className="text-sm text-gray-500">Generating your QR card…</p>
+            </div>
+          ) : (
+            <>
+              <canvas
+                ref={qrCanvasRef}
+                style={{ borderRadius: 16, maxWidth: '100%', boxShadow: '0 8px 32px rgba(0,0,0,0.25)' }}
+              />
+              <p className="text-xs text-gray-500 text-center max-w-xs">
+                Share this card with clients — when they scan it, you'll be their referral for all purchases, check-ups and new registrations.
+              </p>
+              <div className="flex gap-3 w-full justify-center flex-wrap">
+                <button
+                  onClick={downloadQRCard}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-xl text-sm font-semibold hover:bg-primary/90 transition-colors shadow"
+                >
+                  <Download size={15} /> Download PNG
+                </button>
+                <button
+                  onClick={shareQRCard}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-gray-100 text-gray-800 rounded-xl text-sm font-semibold hover:bg-gray-200 transition-colors"
+                >
+                  <Share2 size={15} /> Share Link
+                </button>
+              </div>
+              <div className="w-full bg-gray-50 rounded-xl px-4 py-2.5 text-center">
+                <p className="text-xs text-gray-400 mb-1">Your referral link</p>
+                <p className="text-xs text-primary font-mono break-all select-all">{`${window.location.origin}/ref/${nbNumber}`}</p>
+              </div>
+            </>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 }

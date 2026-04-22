@@ -39,6 +39,13 @@ export default function Shop() {
   const isMember = customerType === 'member';
 
   useEffect(() => {
+    const savedRefNB = localStorage.getItem('ref_nb');
+    const savedRefName = localStorage.getItem('ref_name');
+    if (savedRefNB) setReferralNB(savedRefNB);
+    if (savedRefName) setReferralName(savedRefName);
+  }, []);
+
+  useEffect(() => {
     Promise.all([
       api.prices.list().then(prices => {
         if (Array.isArray(prices) && prices.length > 0) setLivePrices(prices);
@@ -50,6 +57,11 @@ export default function Shop() {
       api.distributors.list().then(data => {
         const raw = Array.isArray(data) ? data : data.distributors || [];
         setDistributors(raw);
+        const savedRefNB = localStorage.getItem('ref_nb');
+        if (savedRefNB) {
+          const match = raw.find(d => d.distributor_code === savedRefNB);
+          if (match) setSelectedDistributor(match);
+        }
       }).catch(() => []),
     ]).finally(() => setLoading(false));
   }, []);
