@@ -71,7 +71,7 @@ export default async function handler(req, res) {
       } else {
         // Get all products from the products table and price list together
         const [dbProducts, priceRows] = await Promise.all([
-          getMany('SELECT * FROM products ORDER BY name'),
+          getMany('SELECT * FROM products WHERE is_active = true ORDER BY name'),
           getMany('SELECT * FROM product_prices ORDER BY description'),
         ]);
 
@@ -137,7 +137,11 @@ export default async function handler(req, res) {
             hasPricing: true,
           }));
 
-        return res.json([...enrichedDbProducts, ...priceOnlyProducts]);
+        // Only include DB products that are on the current GM price list.
+        // Products removed from the price list are excluded from the shop.
+        const activeDbProducts = enrichedDbProducts.filter(p => p.hasPricing);
+
+        return res.json([...activeDbProducts, ...priceOnlyProducts]);
       }
     }
 
