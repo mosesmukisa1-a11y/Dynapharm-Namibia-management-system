@@ -15,18 +15,35 @@ function PortalIcon({ name, size = 18 }) {
 }
 
 export function Layout() {
-  const { user, logout, getAccessiblePortals, showLoginAfterRefresh } = useAuth();
+  const { user, loading, logout, getAccessiblePortals, showLoginAfterRefresh } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const [distributorLoginOpen, setDistributorLoginOpen] = useState(false);
+  const [autoOpenedForPath, setAutoOpenedForPath] = useState('');
 
   useEffect(() => {
     if (showLoginAfterRefresh) {
       setLoginOpen(true);
     }
   }, [showLoginAfterRefresh]);
+
+  useEffect(() => {
+    const handler = () => setDistributorLoginOpen(true);
+    window.addEventListener('openDistributorLogin', handler);
+    return () => window.removeEventListener('openDistributorLogin', handler);
+  }, []);
+
+  useEffect(() => {
+    if (!loading && !user && location.pathname === '/distributor' && autoOpenedForPath !== '/distributor') {
+      setAutoOpenedForPath('/distributor');
+      setDistributorLoginOpen(true);
+    }
+    if (user || location.pathname !== '/distributor') {
+      setAutoOpenedForPath('');
+    }
+  }, [loading, user, location.pathname, autoOpenedForPath]);
 
   const accessiblePortals = getAccessiblePortals();
   const visiblePortals = PORTALS.filter(p => accessiblePortals.includes(p.id));

@@ -51,7 +51,7 @@ The backend operates on an Express.js server, providing robust API services. It 
 A PostgreSQL database comprising 42 fully migrated tables. It is pre-seeded with essential data and a super admin user. Key tables include `finance_remittances` for supplier payments, `hr_records` for HR operational data (warnings, terminations, attendance, performance), and `hr_leave_requests` for employee leave management.
 
 ### Authentication
-Authentication is optional, allowing all portals to be accessible without login for certain roles. JWT tokens, stored in httpOnly cookies, provide user identity. Staff and distributor registrations require administrative approval.
+JWT tokens stored in httpOnly cookies provide user identity. Sessions are restored on page refresh via `/api/auth/me`. Staff and distributor accounts require admin approval. The distributor portal (`/distributor`) automatically opens the `DistributorLoginModal` when visited unauthenticated — this is triggered by `Layout.jsx` detecting `!user && pathname === '/distributor'`. The modal auto-opens once per visit; closing it resets after navigation. Staff portals use the standard `LoginModal` ("Staff Access") via `ProtectedRoute`.
 
 ## External Dependencies
 - **PostgreSQL**: Primary relational database.

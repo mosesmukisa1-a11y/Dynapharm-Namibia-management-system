@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api';
 import { Modal, Input, Button, Alert } from './ui';
@@ -24,6 +24,7 @@ export function DistributorLoginModal({ open, onClose }) {
 
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -38,7 +39,9 @@ export function DistributorLoginModal({ open, onClose }) {
       onClose();
       setNbNumber('');
       setPassword('');
-      navigate('/distributor');
+      if (location.pathname !== '/distributor') {
+        navigate('/distributor');
+      }
     } catch (err) {
       setError(err.message || 'Login failed. Please check your credentials.');
     } finally {
