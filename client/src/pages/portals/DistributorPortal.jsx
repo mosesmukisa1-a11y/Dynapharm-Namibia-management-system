@@ -19,6 +19,7 @@ export default function DistributorPortal() {
     { id: 'register', label: 'New Member', icon: '📝' },
     { id: 'bv', label: 'BV & Profit', icon: '📈' },
     { id: 'network', label: 'My Network', icon: '🌐' },
+    { id: 'statement', label: 'Statement', icon: '📄' },
     { id: 'communications', label: 'Communications', icon: '📩' },
     { id: 'checkup', label: 'Full Body Check Up', icon: '🏥' },
     { id: 'training', label: 'Training', icon: '🎓' },
@@ -37,6 +38,7 @@ export default function DistributorPortal() {
         {activeTab === 'register' && <NewMemberTab />}
         {activeTab === 'bv' && <BVProfitTab />}
         {activeTab === 'network' && <MyNetworkTab />}
+        {activeTab === 'statement' && <StatementTab />}
         {activeTab === 'communications' && <CommunicationsTab />}
         {activeTab === 'checkup' && <CheckupTab />}
         {activeTab === 'training' && <TrainingTab />}
@@ -64,6 +66,166 @@ function MyNetworkTab() {
       areaLabel={nb}
       title={`🌐 My Network — ${nb}`}
     />
+  );
+}
+
+// ── Statement Tab ─────────────────────────────────────────────────────────
+function printStatement(sectionText, nb, monthLabel) {
+  const w = window.open('', '_blank', 'width=900,height=700');
+  if (!w) return;
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
+  <title>Bonus Statement — ${nb} — ${monthLabel}</title>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family: 'Courier New', Courier, monospace; font-size: 10px; color: #000; background: #fff; padding: 20px; white-space: pre; }
+    .print-btn { position:fixed; top:10px; right:10px; background:#c41e3a; color:#fff; border:none;
+      padding:8px 18px; border-radius:8px; font-weight:700; cursor:pointer; font-size:12px;
+      font-family: Arial, sans-serif; white-space: nowrap; }
+    @media print { .print-btn { display:none; } body { padding: 10px; } }
+  </style></head><body>
+  <button class="print-btn" onclick="window.print()">🖨 Save as PDF</button>${escapeHtml(sectionText)}
+  </body></html>`);
+  w.document.close();
+  w.focus();
+  setTimeout(() => w.print(), 500);
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function StatementTab() {
+  const { user } = useAuth();
+  const nb = (user?.username || user?.distributor_code || user?.nb_number || '').toUpperCase();
+
+  const [availableMonths, setAvailableMonths] = useState([]);
+  const [selectedMonth, setSelectedMonth] = useState('');
+  const [section, setSection] = useState(null);
+  const [sectionMonth, setSectionMonth] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [nbInput, setNbInput] = useState('');
+  const [lookupNb, setLookupNb] = useState('');
+  const [error, setError] = useState('');
+
+  const activeNb = nb || lookupNb;
+
+  useEffect(() => {
+    api.statements.listMonths()
+      .then(r => {
+        const months = r.months || [];
+        setAvailableMonths(months);
+        if (months.length > 0 && !selectedMonth) setSelectedMonth(months[0].month);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!activeNb) return;
+    setLoading(true);
+    setError('');
+    api.statements.get(activeNb, selectedMonth || undefined)
+      .then(r => {
+        setSection(r.section || null);
+        setSectionMonth(r.label || r.month || selectedMonth || '');
+      })
+      .catch(() => setError('Could not load statement. Please try again.'))
+      .finally(() => setLoading(false));
+  }, [activeNb, selectedMonth]);
+
+  const monthLabel = availableMonths.find(m => m.month === sectionMonth)?.label || sectionMonth;
+
+  return (
+    <div className="space-y-5">
+      {!user && (
+        <Card>
+          <CardBody>
+            <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Enter your NB or DZ number to view your statement</label>
+                <input type="text" value={nbInput} onChange={e => setNbInput(e.target.value.toUpperCase())}
+                  onKeyDown={e => { if (e.key === 'Enter' && nbInput.trim()) setLookupNb(nbInput.trim()); }}
+                  placeholder="e.g. NB001234 or DZ001234"
+                  className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
+              </div>
+              <Button onClick={() => { if (nbInput.trim()) setLookupNb(nbInput.trim()); }}>Look Up</Button>
+            </div>
+          </CardBody>
+        </Card>
+      )}
+
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full">
+            <h3 className="font-bold text-gray-800 flex items-center gap-2 flex-1">
+              <span>📄</span> Bonus Statement
+              {activeNb && <span className="text-sm font-normal text-gray-500">— {activeNb}</span>}
+            </h3>
+            <div className="flex items-center gap-2 flex-wrap">
+              {availableMonths.length > 0 && (
+                <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}
+                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-white">
+                  {availableMonths.map(m => (
+                    <option key={m.month} value={m.month}>{m.label || m.month}</option>
+                  ))}
+                </select>
+              )}
+              {section && (
+                <button
+                  onClick={() => printStatement(section, activeNb, monthLabel)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-white text-xs font-semibold rounded-lg hover:bg-primary/90 transition-colors shadow-sm">
+                  <Printer size={12} /> Save as PDF
+                </button>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+        <CardBody>
+          {!activeNb && (
+            <p className="text-center text-gray-400 py-8 text-sm">Enter your NB or DZ number above to view your statement.</p>
+          )}
+          {activeNb && loading && <LoadingSpinner />}
+          {activeNb && !loading && error && (
+            <p className="text-center text-red-500 py-6 text-sm">{error}</p>
+          )}
+          {activeNb && !loading && !error && availableMonths.length === 0 && (
+            <div className="text-center py-10">
+              <p className="text-4xl mb-3">📭</p>
+              <p className="text-gray-600 font-semibold">No Statements Available Yet</p>
+              <p className="text-gray-400 text-sm mt-1">Statements are uploaded monthly by management. Check back after the month-end processing.</p>
+            </div>
+          )}
+          {activeNb && !loading && !error && availableMonths.length > 0 && !section && (
+            <div className="text-center py-10">
+              <p className="text-4xl mb-3">📋</p>
+              <p className="text-gray-600 font-semibold">No Statement Found for {monthLabel || selectedMonth}</p>
+              <p className="text-gray-400 text-sm mt-1">Your NB/DZ code was not found in this period's statement. If you believe this is an error, please contact your branch.</p>
+            </div>
+          )}
+          {activeNb && !loading && section && (
+            <div>
+              <div className="mb-3 flex items-center justify-between">
+                <span className="text-xs text-gray-500 bg-gray-100 px-3 py-1 rounded-full font-medium">
+                  Period: {monthLabel}
+                </span>
+                <span className="text-xs text-gray-400">Scroll horizontally to see full statement</span>
+              </div>
+              <div className="overflow-x-auto rounded-lg border border-gray-200 bg-gray-50">
+                <pre className="p-4 text-xs leading-relaxed text-gray-800 font-mono whitespace-pre min-w-max">
+                  {section}
+                </pre>
+              </div>
+              <p className="mt-3 text-xs text-gray-400 text-center">
+                Use "Save as PDF" to download an official copy of this statement.
+              </p>
+            </div>
+          )}
+        </CardBody>
+      </Card>
+    </div>
   );
 }
 

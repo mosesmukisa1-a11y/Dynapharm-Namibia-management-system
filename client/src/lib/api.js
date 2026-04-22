@@ -378,4 +378,17 @@ export const api = {
 
   upload: (formData) => request('/upload', { method: 'POST', body: formData }),
   health: () => api.get('/health'),
+
+  statements: {
+    listMonths: () => request('/distributor-statements'),
+    get: (nb, month) => {
+      const qs = new URLSearchParams({ nb });
+      if (month) qs.set('month', month);
+      return request(`/distributor-statements?${qs}`);
+    },
+    upload: (rawContent, month, label) =>
+      request('/distributor-statements', { method: 'POST', body: { rawContent, month, label } }),
+    delete: (month) =>
+      request(`/distributor-statements?month=${encodeURIComponent(month)}`, { method: 'DELETE' }),
+  },
 };

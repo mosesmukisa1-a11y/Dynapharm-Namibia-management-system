@@ -34,6 +34,7 @@ export default function GMPortal() {
     { id: 'profitAnalysis', label: 'Profit Analysis', icon: '💰' },
     { id: 'accounts', label: 'Accounts', icon: '📒' },
     { id: 'bonus', label: 'Bonus History', icon: '🎁' },
+    { id: 'statements', label: 'Statements', icon: '📄' },
     { id: 'communication', label: 'Communication', icon: '💬' },
     { id: 'staff', label: 'Staff Services', icon: '👤' },
     { id: 'messages', label: 'My Messages', icon: '📨' },
@@ -56,6 +57,7 @@ export default function GMPortal() {
         {activeTab === 'profitAnalysis' && <ProfitAnalysisTab />}
         {activeTab === 'accounts' && <AccountsTab role="gm" />}
         {activeTab === 'bonus' && <BonusHistoryTab />}
+        {activeTab === 'statements' && <StatementsUploadTab />}
         {activeTab === 'communication' && <CommunicationTab />}
         {activeTab === 'staff' && <StaffTab />}
         {activeTab === 'messages' && <StaffMessagesTab accentColor="#7c3aed" />}
@@ -3677,6 +3679,162 @@ function PriceListTab() {
           </div>
         </Modal>
       )}
+    </div>
+  );
+}
+
+// ── Statements Upload Tab ─────────────────────────────────────────────────
+function StatementsUploadTab() {
+  const [uploads, setUploads] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [alert, setAlert] = useState(null);
+  const [fileContent, setFileContent] = useState('');
+  const [fileName, setFileName] = useState('');
+  const [monthLabel, setMonthLabel] = useState('');
+  const fileRef = useRef(null);
+
+  const load = () => {
+    setLoading(true);
+    api.statements.listMonths()
+      .then(r => setUploads(r.months || []))
+      .catch(() => setAlert({ type: 'error', msg: 'Failed to load uploads.' }))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const handleFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFileName(file.name);
+    const nameMonth = file.name.match(/(\d{4})[-_](\d{2})/);
+    if (nameMonth) setMonthLabel(`${nameMonth[1]}-${nameMonth[2]}`);
+    const reader = new FileReader();
+    reader.onload = ev => setFileContent(ev.target.result || '');
+    reader.readAsText(file, 'utf-8');
+  };
+
+  const handleUpload = async () => {
+    if (!fileContent) return setAlert({ type: 'error', msg: 'Please select a statement text file first.' });
+    if (!monthLabel || !/^\d{4}-\d{2}$/.test(monthLabel)) {
+      return setAlert({ type: 'error', msg: 'Enter the month in YYYY-MM format (e.g. 2026-03).' });
+    }
+    setUploading(true);
+    setAlert(null);
+    try {
+      const [yr, mo] = monthLabel.split('-').map(Number);
+      const humanLabel = new Date(yr, mo - 1, 1).toLocaleString('en-NA', { month: 'long', year: 'numeric' });
+      const result = await api.statements.upload(fileContent, monthLabel, humanLabel);
+      setAlert({ type: 'success', msg: `Uploaded — ${result.count} distributor sections found for ${humanLabel}.` });
+      setFileContent('');
+      setFileName('');
+      setMonthLabel('');
+      if (fileRef.current) fileRef.current.value = '';
+      load();
+    } catch (err) {
+      setAlert({ type: 'error', msg: err.message || 'Upload failed.' });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDelete = async (month, label) => {
+    if (!window.confirm(`Delete the ${label || month} statement? Distributors will no longer be able to view it.`)) return;
+    try {
+      await api.statements.delete(month);
+      setAlert({ type: 'success', msg: `${label || month} statement deleted.` });
+      load();
+    } catch {
+      setAlert({ type: 'error', msg: 'Failed to delete.' });
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <h3 className="font-bold text-gray-800 flex items-center gap-2">
+            <span>📤</span> Upload Monthly Bonus Statement
+          </h3>
+        </CardHeader>
+        <CardBody>
+          <p className="text-sm text-gray-500 mb-4">
+            Upload the monthly Dynapharm bonus statement text file. Each distributor will automatically see only their own section.
+            The file must be the standard <strong>DYNAPHARM INT&apos;L</strong> statement format (.txt).
+          </p>
+          {alert && (
+            <div className={`mb-4 p-3 rounded-lg text-sm font-medium ${alert.type === 'success' ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-red-50 text-red-800 border border-red-200'}`}>
+              {alert.msg}
+            </div>
+          )}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Statement File (.txt)</label>
+              <input ref={fileRef} type="file" accept=".txt,text/plain" onChange={handleFile}
+                className="block w-full text-sm text-gray-700 border border-gray-300 rounded-lg px-3 py-2 bg-white file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer" />
+              {fileName && <p className="text-xs text-gray-400 mt-1">Selected: {fileName}</p>}
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Month (YYYY-MM)</label>
+              <input type="month" value={monthLabel} onChange={e => setMonthLabel(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
+            </div>
+          </div>
+          <button onClick={handleUpload} disabled={uploading || !fileContent}
+            className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white text-sm font-semibold rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm">
+            {uploading ? '⏳ Processing…' : '📤 Upload Statement'}
+          </button>
+          {fileContent && !uploading && (
+            <p className="mt-2 text-xs text-green-600 font-medium">✓ File loaded ({(fileContent.length / 1024).toFixed(1)} KB) — ready to upload</p>
+          )}
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <h3 className="font-bold text-gray-800 flex items-center gap-2">
+            <span>📋</span> Uploaded Statements
+          </h3>
+        </CardHeader>
+        {loading ? <CardBody><LoadingSpinner /></CardBody> : (
+          uploads.length === 0 ? (
+            <CardBody>
+              <p className="text-center text-gray-400 py-6 text-sm">No statements uploaded yet.</p>
+            </CardBody>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Period</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Distributors</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Uploaded By</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Uploaded At</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {uploads.map(u => (
+                    <tr key={u.month} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 font-semibold">{u.label || u.month}</td>
+                      <td className="px-4 py-3 text-gray-600">{u.total_sections?.toLocaleString() || '—'} distributors</td>
+                      <td className="px-4 py-3 text-gray-600 capitalize">{u.uploaded_by || '—'}</td>
+                      <td className="px-4 py-3 text-gray-500 text-xs">{u.uploaded_at ? new Date(u.uploaded_at).toLocaleString('en-NA') : '—'}</td>
+                      <td className="px-4 py-3">
+                        <button onClick={() => handleDelete(u.month, u.label)}
+                          className="text-xs text-red-600 hover:text-red-800 font-semibold px-2 py-1 rounded hover:bg-red-50 transition-colors">
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        )}
+      </Card>
     </div>
   );
 }

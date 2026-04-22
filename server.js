@@ -77,6 +77,7 @@ const PUBLIC_ROUTE_PREFIXES = [
   '/api/cash-requests',
   '/api/mis/',
   '/api/admin/',
+  '/api/distributor-statements',
   '/api/gm/',
   '/api/finance/',
   '/api/director/',
@@ -2118,6 +2119,24 @@ server.on('error', (error) => {
       await query(`CREATE INDEX IF NOT EXISTS idx_pv_date ON payment_vouchers (payment_date)`);
     } catch (e) {
       console.warn('[payment_vouchers init]', e.message);
+    }
+    // ── Distributor Bonus Statements (monthly upload by admin/GM/MIS) ─────────
+    try {
+      await query(`
+        CREATE TABLE IF NOT EXISTS distributor_statements (
+          id TEXT PRIMARY KEY,
+          month VARCHAR(7) NOT NULL UNIQUE,
+          label VARCHAR(60),
+          uploaded_by VARCHAR(120),
+          uploaded_at TIMESTAMPTZ DEFAULT NOW(),
+          total_sections INTEGER DEFAULT 0,
+          sections JSONB DEFAULT '{}'::jsonb,
+          summary_index JSONB DEFAULT '{}'::jsonb
+        )
+      `);
+      await query(`CREATE INDEX IF NOT EXISTS idx_dstmt_month ON distributor_statements (month DESC)`);
+    } catch (e) {
+      console.warn('[distributor_statements init]', e.message);
     }
     // ────────────────────────────────────────────────────────────────────────
     // ── Normalize appointment branch display names → branch IDs (idempotent) ──
