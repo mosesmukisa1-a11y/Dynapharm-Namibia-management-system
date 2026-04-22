@@ -81,6 +81,7 @@ export const api = {
 
   appointments: {
     list: (params = '') => api.get(`/appointments${params ? '?' + params : ''}`),
+    byReferral: (nb) => api.get(`/appointments?referral_nb=${encodeURIComponent(nb)}&limit=500`),
     create: (data) => api.post('/appointments', data),
     update: (id, data) => api.put('/appointments', { ...data, id }),
   },
@@ -190,6 +191,7 @@ export const api = {
     walkinSalesByDistributor: (nb) => api.get(`/branch/walkin-sales?distributor_nb=${encodeURIComponent(nb)}&limit=500`),
     distributorProfit: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/branch/distributor-profit${qs ? '?' + qs : ''}`); },
     distributorProfitGroups: (params = {}) => { const qs = new URLSearchParams({ ...params, grouped: 'true' }).toString(); return api.get(`/branch/distributor-profit?${qs}`); },
+    referredSales: (nb) => api.get(`/branch/distributor-profit/referred-sales?distributor_nb=${encodeURIComponent(nb)}`),
     payDistributorProfit: (distributorNb, branchId, data) => api.post('/branch/distributor-profit/pay-all', { distributor_nb: distributorNb, branch_id: branchId, ...data }),
     createWalkinSale: (data) => api.post('/branch/walkin-sales', data),
     cashMovements: () => api.get('/branch/cash-movements'),

@@ -1831,208 +1831,237 @@ function MyBVTab() {
 
 function MyProfitTab() {
   const { user } = useAuth();
-  const [statementMonths, setStatementMonths] = useState([]);
-  const [profitLedger, setProfitLedger] = useState([]);
+  const [referredSales, setReferredSales] = useState([]);
+  const [checkupReferrals, setCheckupReferrals] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [publicNBCode, setPublicNBCode] = useState('');
-  const [nbInput, setNBInput] = useState('');
+  const [expandedSale, setExpandedSale] = useState(null);
 
-  const fetchByNB = async (nbCode) => {
-    setLoading(true);
-    try {
-      const [stmtData, ledgerData] = await Promise.all([
-        api.statements.summarize(nbCode).catch(() => ({ months: [] })),
-        api.branch.distributorProfit({ distributor_nb: nbCode }).catch(() => ({ entries: [] })),
-      ]);
-      setStatementMonths(Array.isArray(stmtData?.months) ? stmtData.months : []);
-      setProfitLedger(Array.isArray(ledgerData?.entries) ? ledgerData.entries : []);
-    } catch {
-      setStatementMonths([]); setProfitLedger([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const nb = (user?.username || '').toUpperCase();
 
   useEffect(() => {
-    if (user?.username) {
-      const nb = user.username.toUpperCase();
-      setPublicNBCode(nb);
-      fetchByNB(nb);
-    } else {
-      setLoading(false);
-    }
-  }, [user]);
+    if (!nb) { setLoading(false); return; }
+    setLoading(true);
+    Promise.all([
+      api.branch.referredSales(nb).catch(() => ({ sales: [] })),
+      api.appointments.byReferral(nb).catch(() => []),
+    ]).then(([salesData, appts]) => {
+      setReferredSales(Array.isArray(salesData?.sales) ? salesData.sales : []);
+      setCheckupReferrals(Array.isArray(appts) ? appts : []);
+    }).finally(() => setLoading(false));
+  }, [nb]);
 
   if (loading) return <LoadingSpinner />;
 
-  const totalStatementBonus = statementMonths.reduce((s, m) => s + (m.net_amount || 0), 0);
-  const pendingLedger = profitLedger.filter(e => e.status === 'pending');
-  const paidLedger = profitLedger.filter(e => e.status === 'paid');
-  const pendingTotal = pendingLedger.reduce((s, e) => s + Number(e.profit_amount || 0), 0);
-  const paidTotal = paidLedger.reduce((s, e) => s + Number(e.profit_amount || 0), 0);
-
   const fmtBranch = id => id ? id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'Unknown Branch';
   const fmtDate = d => d ? new Date(d).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
-  const fmtMonth = m => { try { return new Date(m + '-01').toLocaleDateString('en-ZA', { year: 'numeric', month: 'long' }); } catch { return m; } };
+
+  const parseItems = raw => {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw;
+    try { return JSON.parse(raw); } catch { return []; }
+  };
+
+  const pendingSales = referredSales.filter(s => !s.profit_status || s.profit_status === 'pending');
+  const paidSales = referredSales.filter(s => s.profit_status === 'paid');
+  const pendingTotal = pendingSales.reduce((sum, s) => sum + Number(s.profit_amount || 0), 0);
+  const paidTotal = paidSales.reduce((sum, s) => sum + Number(s.profit_amount || 0), 0);
+  const completedCheckups = checkupReferrals.filter(a => (a.status || '').toLowerCase() === 'completed');
+
+  const byBranch = {};
+  referredSales.forEach(s => {
+    const bid = s.branch_id || 'unknown';
+    if (!byBranch[bid]) byBranch[bid] = { branch_id: bid, pending: 0, paid: 0, count: 0 };
+    byBranch[bid].count += 1;
+    if (s.profit_status === 'paid') byBranch[bid].paid += Number(s.profit_amount || 0);
+    else if (s.profit_amount) byBranch[bid].pending += Number(s.profit_amount || 0);
+  });
 
   return (
     <div className="space-y-6">
-      {!user && (
-        <Card>
-          <CardBody>
-            <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
-              <div className="flex-1">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Enter your NB Number to view your profit</label>
-                <input type="text" value={nbInput} onChange={e => setNBInput(e.target.value.toUpperCase())}
-                  onKeyDown={e => { if (e.key === 'Enter' && nbInput.trim()) { setPublicNBCode(nbInput.trim()); fetchByNB(nbInput.trim()); } }}
-                  placeholder="e.g. NB001234 or DZ001234"
-                  className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20" />
-              </div>
-              <Button onClick={() => { const nb = nbInput.trim(); if (nb) { setPublicNBCode(nb); fetchByNB(nb); } }}>Look Up</Button>
-            </div>
-            {publicNBCode && <p className="text-xs text-gray-500 mt-2">Showing profit for: <strong>{publicNBCode}</strong></p>}
-          </CardBody>
-        </Card>
-      )}
-
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard title="Total Statement Bonus" value={formatCurrency(totalStatementBonus)} color="green" />
-        <StatCard title="Statement Months" value={statementMonths.length} color="blue" />
-        <StatCard title="Retail Profit Pending" value={formatCurrency(pendingTotal)} color="orange" />
-        <StatCard title="Retail Profit Collected" value={formatCurrency(paidTotal)} color="purple" />
+        <StatCard title="Retail Profit Pending" value={formatCurrency(pendingTotal)} color="orange" icon={<span style={{ fontSize: 20 }}>⏳</span>} />
+        <StatCard title="Retail Profit Collected" value={formatCurrency(paidTotal)} color="green" icon={<span style={{ fontSize: 20 }}>✅</span>} />
+        <StatCard title="Referred Sales" value={referredSales.length} color="blue" icon={<span style={{ fontSize: 20 }}>🛒</span>} />
+        <StatCard title="Checkup Referrals" value={checkupReferrals.length} color="purple" icon={<span style={{ fontSize: 20 }}>🩺</span>} />
       </div>
 
-      {/* ── Section 1: Monthly Statement Bonus ── */}
+      {/* ── Section 1: Referred CP Sales ── */}
       <Card>
         <CardHeader>
-          <h3 className="font-bold text-gray-800 flex items-center gap-2">📋 Monthly Statement Bonus</h3>
-          <p className="text-xs text-gray-500 mt-1">Your monthly net bonus as calculated by Dynapharm International on the official distributor statement. Upload new months via the GM portal.</p>
+          <h3 className="font-bold text-gray-800 flex items-center gap-2">💰 Referred Client Sales — CP Retail Profit</h3>
+          <p className="text-xs text-gray-500 mt-1">
+            All non-member client purchases recorded under your NB at any branch, at Customer Price (CP). Your profit is CP − DP per item. Collect from the branch listed.
+          </p>
         </CardHeader>
         <CardBody>
-          {statementMonths.length === 0 ? (
-            <EmptyState
-              icon={<span style={{ fontSize: 40 }}>📋</span>}
-              title="No Statement Data Yet"
-              description="Your bonus amounts will appear here once your GM uploads the monthly Dynapharm statement. Check back after month-end."
-            />
-          ) : (
-            <div className="space-y-3">
-              {statementMonths.map((m, i) => (
-                <div key={i} className="flex items-center justify-between p-4 rounded-lg border border-gray-100 bg-gray-50">
-                  <div>
-                    <p className="font-semibold text-gray-800">{m.label || fmtMonth(m.month)}</p>
-                    {m.name && <p className="text-xs text-gray-400">{m.name}</p>}
-                  </div>
-                  <div className="text-right">
-                    {m.net_amount != null ? (
-                      <>
-                        <p className="text-lg font-black text-green-700">{formatCurrency(m.net_amount)}</p>
-                        <p className="text-xs text-gray-400">Net Bonus</p>
-                      </>
-                    ) : (
-                      <p className="text-sm text-gray-400 italic">No amount on record</p>
-                    )}
-                  </div>
-                </div>
-              ))}
-              <div className="flex justify-between items-center pt-2 border-t border-gray-200 px-1">
-                <span className="text-sm font-semibold text-gray-600">Total across {statementMonths.length} month(s)</span>
-                <span className="text-base font-black text-green-700">{formatCurrency(totalStatementBonus)}</span>
-              </div>
-            </div>
-          )}
-        </CardBody>
-      </Card>
-
-      {/* ── Section 2: Retail Profit Ledger ── */}
-      <Card>
-        <CardHeader>
-          <h3 className="font-bold text-gray-800 flex items-center gap-2">💰 Retail Profit Ledger — Referred Non-Member Sales</h3>
-          <p className="text-xs text-gray-500 mt-1">Profit (CP − DP) from walk-in purchases made by non-member clients you referred. Collected directly from the processing branch.</p>
-        </CardHeader>
-        <CardBody>
-          {profitLedger.length === 0 ? (
+          {referredSales.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '32px 20px' }}>
-              <div style={{ fontSize: 40, marginBottom: 10 }}>💰</div>
-              <p style={{ fontWeight: 700, color: '#374151', margin: 0 }}>No retail profit entries yet</p>
+              <div style={{ fontSize: 40, marginBottom: 10 }}>🛒</div>
+              <p style={{ fontWeight: 700, color: '#374151', margin: 0 }}>No referred sales recorded yet</p>
               <p style={{ color: '#9ca3af', fontSize: '0.82rem', marginTop: 8, maxWidth: 380, margin: '8px auto 0' }}>
-                When a non-member client you referred makes a branch purchase, the retail profit (CP − DP) is recorded here and assigned to the processing branch for you to collect.
+                When a non-member client buys at CP at any branch and your NB is recorded as the referral, it appears here with the items they bought and your profit from that sale.
               </p>
             </div>
           ) : (
             <>
-              {/* By-branch summary */}
-              {(() => {
-                const byBranch = {};
-                profitLedger.forEach(e => {
-                  const bid = e.branch_id || 'unknown';
-                  if (!byBranch[bid]) byBranch[bid] = { branch_id: bid, pending: 0, paid: 0, count: 0 };
-                  byBranch[bid].count += 1;
-                  if (e.status === 'pending') byBranch[bid].pending += Number(e.profit_amount || 0);
-                  else byBranch[bid].paid += Number(e.profit_amount || 0);
-                });
-                const branchList = Object.values(byBranch).sort((a, b) => b.pending - a.pending);
-                return (
-                  <div className="space-y-2 mb-5">
-                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">By Branch</p>
-                    {branchList.map(b => (
-                      <div key={b.branch_id} style={{ borderRadius: 10, border: `2px solid ${b.pending > 0 ? '#fca5a5' : '#d1fae5'}`, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-                        <div>
-                          <span style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.88rem' }}>{fmtBranch(b.branch_id)}</span>
-                          <span style={{ fontSize: '0.72rem', color: '#94a3b8', marginLeft: 8 }}>{b.count} sale(s)</span>
-                        </div>
-                        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                          {b.pending > 0 && <span style={{ color: '#c41e3a', fontWeight: 800, fontSize: '0.9rem' }}>{formatCurrency(b.pending)} <span style={{ fontSize: '0.7rem', fontWeight: 600 }}>pending</span></span>}
-                          {b.paid > 0 && <span style={{ color: '#166534', fontWeight: 700, fontSize: '0.88rem' }}>{formatCurrency(b.paid)} <span style={{ fontSize: '0.7rem', fontWeight: 600 }}>paid</span></span>}
-                          <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700, background: b.pending > 0 ? '#fee2e2' : '#dcfce7', color: b.pending > 0 ? '#c41e3a' : '#166534' }}>
-                            {b.pending > 0 ? '⏳ Pending' : '✅ Settled'}
-                          </span>
-                        </div>
+              {/* Branch summary */}
+              {Object.values(byBranch).length > 0 && (
+                <div className="space-y-2 mb-5">
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Collection Summary by Branch</p>
+                  {Object.values(byBranch).sort((a, b) => b.pending - a.pending).map(b => (
+                    <div key={b.branch_id} style={{ borderRadius: 10, border: `2px solid ${b.pending > 0 ? '#fca5a5' : '#d1fae5'}`, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                      <div>
+                        <span style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.88rem' }}>🏢 {fmtBranch(b.branch_id)}</span>
+                        <span style={{ fontSize: '0.72rem', color: '#94a3b8', marginLeft: 8 }}>{b.count} sale(s)</span>
                       </div>
-                    ))}
-                  </div>
-                );
-              })()}
-
-              {/* Detailed table */}
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
-                  <thead>
-                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-                      <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 700, color: '#374151' }}>Receipt</th>
-                      <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 700, color: '#374151' }}>Date</th>
-                      <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 700, color: '#374151' }}>Branch</th>
-                      <th style={{ textAlign: 'right', padding: '8px 10px', fontWeight: 700, color: '#374151' }}>Amount</th>
-                      <th style={{ textAlign: 'center', padding: '8px 10px', fontWeight: 700, color: '#374151' }}>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {profitLedger.map((e, idx) => (
-                      <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9', background: e.status === 'pending' ? '#fffbeb' : '#fff' }}>
-                        <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: '#374151', fontSize: '0.75rem' }}>{e.sale_receipt || e.sale_id || '—'}</td>
-                        <td style={{ padding: '8px 10px', color: '#64748b' }}>{fmtDate(e.sale_date)}</td>
-                        <td style={{ padding: '8px 10px' }}>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px', borderRadius: 6, background: '#eff6ff', color: '#1d4ed8', fontSize: '0.72rem', fontWeight: 600 }}>
-                            🏢 {fmtBranch(e.branch_id)}
-                          </span>
-                        </td>
-                        <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800, color: e.status === 'paid' ? '#166534' : '#c41e3a' }}>{formatCurrency(Number(e.profit_amount))}</td>
-                        <td style={{ padding: '8px 10px', textAlign: 'center' }}>
-                          <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700, background: e.status === 'paid' ? '#dcfce7' : '#fee2e2', color: e.status === 'paid' ? '#166534' : '#c41e3a' }}>
-                            {e.status === 'paid' ? '✓ Paid' : '⏳ Pending'}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {pendingTotal > 0 && (
-                <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', fontSize: '0.78rem', color: '#92400e', marginTop: 14 }}>
-                  ⚠️ You have <strong>{formatCurrency(pendingTotal)}</strong> in retail profit to collect. Visit the branch(es) listed above.
+                      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                        {b.pending > 0 && <span style={{ color: '#c41e3a', fontWeight: 800, fontSize: '0.9rem' }}>{formatCurrency(b.pending)} <span style={{ fontSize: '0.7rem', fontWeight: 600 }}>pending</span></span>}
+                        {b.paid > 0 && <span style={{ color: '#166534', fontWeight: 700, fontSize: '0.88rem' }}>{formatCurrency(b.paid)} <span style={{ fontSize: '0.7rem', fontWeight: 600 }}>collected</span></span>}
+                        <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700, background: b.pending > 0 ? '#fee2e2' : '#dcfce7', color: b.pending > 0 ? '#c41e3a' : '#166534' }}>
+                          {b.pending > 0 ? '⏳ Collect' : '✅ Settled'}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
+
+              {/* Per-sale cards with item details */}
+              <div className="space-y-3">
+                {referredSales.map((sale, idx) => {
+                  const items = parseItems(sale.items);
+                  const isExpanded = expandedSale === (sale.id || idx);
+                  const hasProfit = !!sale.profit_amount;
+                  const isPaid = sale.profit_status === 'paid';
+                  return (
+                    <div key={sale.id || idx} style={{ borderRadius: 10, border: `1.5px solid ${isPaid ? '#d1fae5' : hasProfit ? '#fde68a' : '#e2e8f0'}`, background: '#fff', overflow: 'hidden' }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 14px' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px 10px', marginBottom: 3 }}>
+                            <span style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.85rem' }}>{sale.customer_name || 'Walk-in Client'}</span>
+                            <span style={{ fontSize: '0.72rem', color: '#64748b' }}>{fmtDate(sale.sale_date)}</span>
+                          </div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px 10px' }}>
+                            <span style={{ fontSize: '0.72rem', padding: '1px 7px', borderRadius: 5, background: '#eff6ff', color: '#1d4ed8', fontWeight: 600 }}>
+                              🏢 {fmtBranch(sale.branch_id)}
+                            </span>
+                            <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                              CP Total: <strong>{formatCurrency(Number(sale.total || 0))}</strong>
+                            </span>
+                            {sale.sale_number && <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontFamily: 'monospace' }}>#{sale.sale_number}</span>}
+                          </div>
+                        </div>
+                        <div style={{ flexShrink: 0, textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5 }}>
+                          {hasProfit ? (
+                            <>
+                              <span style={{ fontWeight: 900, fontSize: '1rem', color: isPaid ? '#166534' : '#c41e3a' }}>{formatCurrency(Number(sale.profit_amount))}</span>
+                              <span style={{ padding: '2px 9px', borderRadius: 20, fontSize: '0.68rem', fontWeight: 700, background: isPaid ? '#dcfce7' : '#fef9c3', color: isPaid ? '#166534' : '#92400e' }}>
+                                {isPaid ? '✓ Collected' : '⏳ Pending'}
+                              </span>
+                            </>
+                          ) : (
+                            <span style={{ padding: '2px 9px', borderRadius: 20, fontSize: '0.68rem', fontWeight: 600, background: '#f1f5f9', color: '#64748b' }}>
+                              Profit not logged
+                            </span>
+                          )}
+                          {items.length > 0 && (
+                            <button
+                              onClick={() => setExpandedSale(isExpanded ? null : (sale.id || idx))}
+                              style={{ fontSize: '0.7rem', color: '#3b82f6', fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                              {isExpanded ? '▲ Hide items' : `▼ ${items.length} item(s)`}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      {isExpanded && items.length > 0 && (
+                        <div style={{ borderTop: '1px solid #f1f5f9', padding: '8px 14px 12px', background: '#f8fafc' }}>
+                          <p style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 6 }}>Items Purchased</p>
+                          <div className="space-y-1">
+                            {items.map((item, i) => (
+                              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem', padding: '4px 0', borderBottom: i < items.length - 1 ? '1px dashed #e2e8f0' : 'none' }}>
+                                <div>
+                                  <span style={{ fontWeight: 600, color: '#1e293b' }}>{item.name || item.productName || item.product || `Item ${i + 1}`}</span>
+                                  {item.sku && <span style={{ color: '#94a3b8', marginLeft: 6, fontSize: '0.7rem' }}>({item.sku})</span>}
+                                  {(item.quantity || item.qty) && <span style={{ color: '#64748b', marginLeft: 6 }}>× {item.quantity || item.qty}</span>}
+                                </div>
+                                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                                  {item.cp != null && <span style={{ color: '#1d4ed8', fontWeight: 700 }}>CP: {formatCurrency(Number(item.cp) * (item.quantity || item.qty || 1))}</span>}
+                                  {item.dp != null && item.cp != null && (
+                                    <span style={{ color: '#16a34a', marginLeft: 8, fontWeight: 700 }}>
+                                      Profit: {formatCurrency((Number(item.cp) - Number(item.dp)) * (item.quantity || item.qty || 1))}
+                                    </span>
+                                  )}
+                                  {item.cp == null && item.price != null && <span style={{ color: '#374151', fontWeight: 600 }}>{formatCurrency(Number(item.price) * (item.quantity || item.qty || 1))}</span>}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {pendingTotal > 0 && (
+                <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', fontSize: '0.78rem', color: '#92400e', marginTop: 14 }}>
+                  ⚠️ You have <strong>{formatCurrency(pendingTotal)}</strong> in retail profit to collect. Visit your branch(es) to receive payment.
+                </div>
+              )}
+            </>
+          )}
+        </CardBody>
+      </Card>
+
+      {/* ── Section 2: Checkup Referral Cashback ── */}
+      <Card>
+        <CardHeader>
+          <h3 className="font-bold text-gray-800 flex items-center gap-2">🩺 Checkup Referral Cashback</h3>
+          <p className="text-xs text-gray-500 mt-1">
+            All health check-up appointments booked under your NB referral. Your cashback is credited per completed checkup — confirm the rate with your branch or GM.
+          </p>
+        </CardHeader>
+        <CardBody>
+          {checkupReferrals.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '32px 20px' }}>
+              <div style={{ fontSize: 40, marginBottom: 10 }}>🩺</div>
+              <p style={{ fontWeight: 700, color: '#374151', margin: 0 }}>No checkup referrals yet</p>
+              <p style={{ color: '#9ca3af', fontSize: '0.82rem', marginTop: 8, maxWidth: 380, margin: '8px auto 0' }}>
+                When a client books a full body check-up and your NB is selected as the referral, it appears here. Share your QR code or referral link to send clients your way.
+              </p>
+            </div>
+          ) : (
+            <>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+                <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 700, background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0' }}>
+                  ✅ {completedCheckups.length} Completed
+                </span>
+                <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 700, background: '#fffbeb', color: '#92400e', border: '1px solid #fde68a' }}>
+                  ⏳ {checkupReferrals.filter(a => (a.status || '').toLowerCase() !== 'completed').length} Pending
+                </span>
+              </div>
+              <div className="space-y-2">
+                {checkupReferrals.map((appt, i) => {
+                  const isDone = (appt.status || '').toLowerCase() === 'completed';
+                  return (
+                    <div key={appt.id || i} style={{ borderRadius: 10, border: `1.5px solid ${isDone ? '#d1fae5' : '#e2e8f0'}`, padding: '11px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                      <div>
+                        <p style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.85rem', margin: 0 }}>{appt.full_name || appt.fullName || 'Client'}</p>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 10px', marginTop: 3 }}>
+                          <span style={{ fontSize: '0.72rem', color: '#64748b' }}>📅 {fmtDate(appt.date)}</span>
+                          {appt.time && <span style={{ fontSize: '0.72rem', color: '#64748b' }}>🕐 {appt.time}</span>}
+                          {appt.branch && <span style={{ fontSize: '0.72rem', padding: '1px 6px', borderRadius: 4, background: '#eff6ff', color: '#1d4ed8', fontWeight: 600 }}>🏢 {appt.branch}</span>}
+                          {appt.type && <span style={{ fontSize: '0.7rem', color: '#64748b' }}>{appt.type}</span>}
+                        </div>
+                      </div>
+                      <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 700, background: isDone ? '#dcfce7' : '#f1f5f9', color: isDone ? '#166534' : '#64748b', flexShrink: 0 }}>
+                        {isDone ? '✅ Completed' : `⏳ ${appt.status || 'Pending'}`}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
             </>
           )}
         </CardBody>

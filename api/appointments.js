@@ -43,6 +43,7 @@ export default async function handler(req, res) {
   const status = searchParams.get('status');
   const type = searchParams.get('type');
   const clientRef = searchParams.get('client_reference');
+  const referralNb = searchParams.get('referral_nb');
 
   try {
     if (method === 'GET') {
@@ -102,6 +103,10 @@ export default async function handler(req, res) {
       if (clientRef) {
         conditions.push('UPPER(client_reference) = $' + (params.length + 1));
         params.push(clientRef.toUpperCase().trim());
+      }
+      if (referralNb) {
+        conditions.push(`UPPER(data->>'referral_nb') = $${params.length + 1}`);
+        params.push(referralNb.toUpperCase().trim());
       }
 
       if (conditions.length > 0) {

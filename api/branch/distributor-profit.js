@@ -14,6 +14,28 @@ export default async function handler(req, res) {
   const url = new URL(req.url, `http://localhost`);
   const pathParts = url.pathname.replace(/^\/api\/branch\/distributor-profit/, '').split('/').filter(Boolean);
 
+  /* ── GET /api/branch/distributor-profit/referred-sales?distributor_nb=NB ── */
+  if (pathParts[0] === 'referred-sales' && req.method === 'GET') {
+    const nb = url.searchParams.get('distributor_nb');
+    if (!nb) return res.status(400).json({ error: 'distributor_nb required' });
+    const rows = await getMany(
+      `SELECT bws.*,
+              bdp.id          AS profit_id,
+              bdp.profit_amount,
+              bdp.status      AS profit_status,
+              bdp.paid_at,
+              bdp.sale_receipt AS profit_receipt
+       FROM branch_walkin_sales bws
+       LEFT JOIN branch_distributor_profit bdp ON bdp.sale_id = bws.id
+       WHERE UPPER(bws.referral_nb) = $1
+         AND (bws.customer_type IS NULL OR bws.customer_type <> 'member')
+       ORDER BY bws.sale_date DESC
+       LIMIT 500`,
+      [nb.toUpperCase()]
+    );
+    return res.json({ success: true, sales: rows });
+  }
+
   /* ── PATCH /api/branch/distributor-profit/:id/pay  (mark single as paid) ── */
   if (pathParts.length >= 2 && pathParts[1] === 'pay' && req.method === 'PATCH') {
     const id = pathParts[0];
@@ -57,7 +79,15 @@ export default async function handler(req, res) {
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const rows = await getMany(
-      `SELECT * FROM branch_distributor_profit ${where} ORDER BY sale_date DESC LIMIT 1000`,
+      `SELECT bdp.*,
+              bws.items        AS sale_items,
+              bws.customer_name AS sale_customer,
+              bws.customer_type AS sale_customer_type,
+              bws.total         AS sale_total,
+              bws.sale_number   AS sale_number_ref
+       FROM branch_distributor_profit bdp
+       LEFT JOIN branch_walkin_sales bws ON bws.id = bdp.sale_id
+       ${where} ORDER BY bdp.sale_date DESC LIMIT 1000`,
       params
     );
 
