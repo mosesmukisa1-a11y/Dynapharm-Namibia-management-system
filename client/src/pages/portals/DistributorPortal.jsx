@@ -1164,12 +1164,29 @@ function BVProfitTab() {
       </Card>
 
       {(() => {
-        if (profitLedger.length === 0) return null;
-
         const fmtBranch = id => {
           if (!id) return 'Unknown Branch';
           return id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
         };
+
+        if (profitLedger.length === 0) {
+          return (
+            <Card>
+              <CardHeader>
+                <h3 className="font-bold text-gray-800 flex items-center gap-2">💰 Retail Profit Ledger</h3>
+              </CardHeader>
+              <CardBody>
+                <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+                  <div style={{ fontSize: 48, marginBottom: 12 }}>💰</div>
+                  <p style={{ fontWeight: 700, color: '#374151', margin: 0, fontSize: '1rem' }}>No profit entries recorded yet</p>
+                  <p style={{ color: '#9ca3af', fontSize: '0.85rem', marginTop: 8, maxWidth: 380, margin: '8px auto 0' }}>
+                    When you refer customers who make walk-in purchases at a branch, your retail profit (CP − DP) will appear here — showing which branch owes you what, and whether it has been paid or is still pending collection.
+                  </p>
+                </div>
+              </CardBody>
+            </Card>
+          );
+        }
 
         const pendingEntries = profitLedger.filter(e => e.status === 'pending');
         const paidEntries    = profitLedger.filter(e => e.status === 'paid');
