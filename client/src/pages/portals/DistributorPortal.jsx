@@ -2502,7 +2502,7 @@ function MediaTab() {
       api.get('/notifications?recipient_id=ALL&recipient_type=company').then(d => Array.isArray(d) ? d : d.notifications || []).catch(() => []),
     ]).then(([c, m, a]) => {
       setCampaigns(c);
-      setMaterials(m.slice(0, 10));
+      setMaterials(m);
       setAnnouncements(a);
     }).finally(() => setLoading(false));
   }, []);
