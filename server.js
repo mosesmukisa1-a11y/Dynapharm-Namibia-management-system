@@ -45,6 +45,54 @@ app.use('/uploads', express.static(UPLOADS_DIR, {
   },
 }));
 
+// Serve files from Replit persistent object storage — new uploads go here
+let _objClient = null;
+async function getStorageClient() {
+  if (_objClient) return _objClient;
+  const { Client } = await import('@replit/object-storage');
+  const bucketId = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
+  _objClient = new Client(bucketId ? { bucketId } : undefined);
+  return _objClient;
+}
+
+app.get('/api/obj/*', async (req, res) => {
+  try {
+    const client = await getStorageClient();
+    // req.path = "/api/obj/public/uploads/filename.mp4"
+    const objectName = req.path.replace(/^\/api\/obj\//, '');
+    if (!objectName) return res.status(400).json({ error: 'No object path specified' });
+
+    const ext = path.extname(objectName).toLowerCase();
+    const mimeMap = {
+      '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime',
+      '.ogg': 'video/ogg', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+      '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp',
+      '.pdf': 'application/pdf', '.doc': 'application/msword',
+      '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    };
+    const contentType = mimeMap[ext] || 'application/octet-stream';
+
+    // downloadAsStream returns the stream directly (not { ok, value })
+    // check existence first to give a clean 404
+    const existsResult = await client.exists(objectName);
+    if (!existsResult.ok || !existsResult.value) {
+      return res.status(404).json({ error: 'File not found in storage' });
+    }
+
+    const fileStream = await client.downloadAsStream(objectName);
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=604800');
+    if (['.mp4', '.webm', '.ogg', '.mov'].includes(ext)) {
+      res.setHeader('Accept-Ranges', 'bytes');
+    }
+    fileStream.pipe(res);
+  } catch (err) {
+    console.error('[obj-serve]', err.message);
+    res.status(500).json({ error: 'Failed to serve file' });
+  }
+});
+
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
@@ -104,6 +152,7 @@ const PUBLIC_ROUTE_PREFIXES = [
   '/api/product_images',
   '/api/notifications',
   '/api/media',
+  '/api/obj/',
   '/api/branch-activity',
   '/api/branch-client-visits',
   '/api/reports/branch-sales',

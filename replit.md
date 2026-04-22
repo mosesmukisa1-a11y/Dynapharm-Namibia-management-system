@@ -19,6 +19,12 @@ The frontend is a React-based Single Page Application (SPA) built with Vite. It 
 ### Backend
 The backend operates on an Express.js server, providing robust API services. It employs file-based routing and secures communications using JWT-based authentication with httpOnly cookie-based sessions. A PostgreSQL connection pool manages database interactions, and API routes are protected by middleware, with designated public routes. The backend also handles automatic camelCase to snake_case conversion for seamless database operations.
 
+### File Storage
+- **Persistent Cloud Storage**: File uploads (videos, photos, documents) are stored in Replit's App Storage (Google Cloud Storage bucket) via the `@replit/object-storage` package, not on the local filesystem. This means uploaded files survive deployments and container restarts.
+- **Upload flow**: `api/upload.js` uses multer's memory storage, uploads the buffer to object storage under `public/uploads/`, and stores the URL as `/api/obj/public/uploads/filename` in the database.
+- **Serving**: `server.js` includes a `/api/obj/*` route that streams files from object storage. Old pre-migration records with `/uploads/...` URLs are served via `express.static` for backward compatibility.
+- **Env vars**: `DEFAULT_OBJECT_STORAGE_BUCKET_ID`, `PUBLIC_OBJECT_SEARCH_PATHS`, `PRIVATE_OBJECT_DIR` are set by Replit App Storage.
+
 ### Core Features
 - **Multi-Portal System**: Comprises 12 specialized portals (Distributor, Front Desk, Consultant, Branch, HR, Finance, GM, Director, MIS, Stock, Admin, Training) each offering tailored functionalities and UI/UX.
 - **Role-Based Access Control**: Ensures granular access permissions based on user roles.
