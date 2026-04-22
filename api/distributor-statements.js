@@ -3,24 +3,35 @@ import { applyAuthCors, getTokenFromRequest, verifyAuthToken } from './_lib/auth
 
 // ── Parse the raw statement file into a map of DRN → section text ──────────
 function parseStatementFile(raw) {
-  // Each distributor's section starts with the DYNAPHARM company header.
-  // We split on that pattern (keeping the delimiter at the start of each part).
-  const parts = raw.split(/(?=[ \t]{10,}DYNAPHARM INT'L)/i);
-  const sections = {};
-  let found = 0;
+  // Each PAGE of a distributor's statement starts with the DYNAPHARM header.
+  // Only the FIRST page of each distributor includes the DRN No. line.
+  // Continuation pages (page 2, 3 …) have the same header but no DRN line —
+  // we append them to the preceding distributor's section so the full
+  // statement (all pages) is stored and visible.
+  //
+  // We also handle both ASCII apostrophe (U+0027) and Unicode right single
+  // quote (U+2019) since some systems produce the latter in the header.
 
-  for (const part of parts) {
-    const trimmed = part.trim();
-    if (!trimmed) continue;
-    // Only keep parts that have a DRN line
-    const drnMatch = trimmed.match(/DRN\s*No\.\s*:\s*([A-Z0-9]+)/i);
-    if (!drnMatch) continue;
-    const drn = drnMatch[1].trim().toUpperCase();
-    sections[drn] = part; // preserve original whitespace / column alignment
-    found++;
+  const pages = raw
+    .split(/(?=[ \t]{8,}DYNAPHARM\s+INT[\u2019'`]?L)/i)
+    .filter(p => p.trim());
+
+  const sections = {};
+  let currentDrn = null;
+
+  for (const page of pages) {
+    const drnMatch = page.match(/DRN\s*No\.\s*:\s*([A-Z0-9]+)/i);
+    if (drnMatch) {
+      // First page of a new distributor
+      currentDrn = drnMatch[1].trim().toUpperCase();
+      sections[currentDrn] = page;
+    } else if (currentDrn) {
+      // Continuation page — append to the current distributor's section
+      sections[currentDrn] += '\n' + page;
+    }
   }
 
-  return { sections, count: found };
+  return { sections, count: Object.keys(sections).length };
 }
 
 // ── Extract the "Net Amount" / total bonus from a section text ─────────────
