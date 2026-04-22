@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { formatCurrency, formatDate } from '../../lib/constants';
 import { enrichProductsWithPricing, calculateCartTotals, setLivePrices } from '../../lib/pricing';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Modal, Alert } from '../../components/ui';
-import { ShoppingCart, Heart, Newspaper, MessageSquare, Search, Plus, Minus, Package, Trash2, Send, User, BarChart3, ShoppingBag, Star, UserPlus, Printer, MapPin, ChevronDown, TrendingUp, Calendar, Gift, Tag, Zap, Award, Clock, Trophy, CheckCircle, AlertCircle, ChevronRight, Megaphone } from 'lucide-react';
+import { ShoppingCart, Heart, Newspaper, MessageSquare, Search, Plus, Minus, Package, Trash2, Send, User, BarChart3, ShoppingBag, Star, UserPlus, Printer, MapPin, ChevronDown, TrendingUp, Calendar, Gift, Tag, Zap, Award, Clock, Trophy, CheckCircle, AlertCircle, ChevronRight, Megaphone, Camera, Upload } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { MembershipAgreementForm } from '../../components/MembershipAgreementForm';
 import NetworkReportTab from '../../components/NetworkReportTab';
@@ -308,6 +308,18 @@ function DashboardTab() {
   const [loading, setLoading] = useState(true);
   const [publicNBCode, setPublicNBCode] = useState('');
   const [nbInput, setNBInput] = useState('');
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoMenuOpen, setPhotoMenuOpen] = useState(false);
+  const [welcomeInfo, setWelcomeInfo] = useState({ isReturn: false, lastSeen: null, greeting: '' });
+  const photoInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
+
+  const getTimeGreeting = () => {
+    const h = new Date().getHours();
+    if (h < 12) return 'Good morning';
+    if (h < 17) return 'Good afternoon';
+    return 'Good evening';
+  };
 
   const fetchByNB = async (nbCode) => {
     setLoading(true);
@@ -326,11 +338,51 @@ function DashboardTab() {
     setLoading(false);
   };
 
+  const handlePhotoFile = async (file) => {
+    if (!file || !publicNBCode) return;
+    setPhotoUploading(true);
+    setPhotoMenuOpen(false);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('type', 'distributor');
+      formData.append('entityId', publicNBCode);
+      const res = await fetch('/api/upload', { method: 'POST', credentials: 'include', body: formData });
+      const data = await res.json();
+      if (data.photo_url || data.file_url) {
+        const url = data.photo_url || data.file_url;
+        setProfile(p => ({ ...(p || {}), photo_url: url }));
+        localStorage.setItem(`dist_photo_${publicNBCode}`, url);
+      }
+    } catch {}
+    setPhotoUploading(false);
+  };
+
   useEffect(() => {
     if (user?.username) {
       const nbCode = user.username.toUpperCase();
       setPublicNBCode(nbCode);
       fetchByNB(nbCode);
+
+      const key = `dist_last_visit_${nbCode}`;
+      const last = localStorage.getItem(key);
+      const now = Date.now();
+      if (last) {
+        const diffMs = now - Number(last);
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHrs = Math.floor(diffMs / 3600000);
+        const diffDays = Math.floor(diffMs / 86400000);
+        let lastSeen;
+        if (diffMins < 1) lastSeen = 'just now';
+        else if (diffMins < 60) lastSeen = `${diffMins} minute${diffMins !== 1 ? 's' : ''} ago`;
+        else if (diffHrs < 24) lastSeen = `${diffHrs} hour${diffHrs !== 1 ? 's' : ''} ago`;
+        else if (diffDays === 1) lastSeen = 'yesterday';
+        else lastSeen = `${diffDays} days ago`;
+        setWelcomeInfo({ isReturn: true, lastSeen, greeting: getTimeGreeting() });
+      } else {
+        setWelcomeInfo({ isReturn: false, lastSeen: null, greeting: getTimeGreeting() });
+      }
+      localStorage.setItem(key, String(now));
     } else {
       setLoading(false);
     }
@@ -377,18 +429,94 @@ function DashboardTab() {
           </CardBody>
         </Card>
       )}
+      {/* ── Welcome Back Banner ── */}
+      {user && (
+        <div style={{ background: welcomeInfo.isReturn ? 'linear-gradient(135deg,#1e3a5f,#1d4ed8)' : 'linear-gradient(135deg,#166534,#15803d)', borderRadius: 14, padding: '14px 20px', color: '#fff', display: 'flex', alignItems: 'center', gap: 14, marginBottom: 0 }}>
+          <div style={{ fontSize: 32 }}>{welcomeInfo.isReturn ? '👋' : '🎉'}</div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 800, fontSize: '1.05rem' }}>
+              {welcomeInfo.greeting}, {displayName}!
+            </div>
+            {welcomeInfo.isReturn ? (
+              <div style={{ fontSize: '0.8rem', opacity: 0.85, marginTop: 2 }}>
+                Welcome back — last visited <strong>{welcomeInfo.lastSeen}</strong>
+              </div>
+            ) : (
+              <div style={{ fontSize: '0.8rem', opacity: 0.85, marginTop: 2 }}>
+                Welcome to your Dynapharm distributor portal 🌟
+              </div>
+            )}
+          </div>
+          <div style={{ fontSize: '0.72rem', opacity: 0.6, textAlign: 'right', flexShrink: 0 }}>
+            {new Date().toLocaleDateString('en-ZA', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+          </div>
+        </div>
+      )}
+
       <div className="bg-gradient-to-r from-primary to-primary-dark rounded-2xl p-6 text-white">
+        {/* Hidden file inputs */}
+        <input ref={photoInputRef} type="file" accept="image/*" style={{ display: 'none' }}
+          onChange={e => { if (e.target.files[0]) handlePhotoFile(e.target.files[0]); e.target.value = ''; }} />
+        <input ref={cameraInputRef} type="file" accept="image/*" capture="user" style={{ display: 'none' }}
+          onChange={e => { if (e.target.files[0]) handlePhotoFile(e.target.files[0]); e.target.value = ''; }} />
+
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-4">
-            <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center">
-              <User size={32} />
+            {/* ── Profile Photo Circle ── */}
+            <div style={{ position: 'relative', flexShrink: 0 }}>
+              <div style={{ width: 72, height: 72, borderRadius: '50%', overflow: 'hidden', border: '3px solid rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.2)', cursor: user ? 'pointer' : 'default', position: 'relative' }}
+                onClick={() => user && setPhotoMenuOpen(o => !o)}>
+                {photoUploading ? (
+                  <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ width: 24, height: 24, border: '3px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                  </div>
+                ) : (profile?.photo_url) ? (
+                  <img src={profile.photo_url} alt={displayName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <User size={32} color="white" />
+                  </div>
+                )}
+                {/* Camera overlay badge */}
+                {user && (
+                  <div style={{ position: 'absolute', bottom: 2, right: 2, width: 22, height: 22, borderRadius: '50%', background: '#c41e3a', border: '2px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Camera size={11} color="white" />
+                  </div>
+                )}
+              </div>
+
+              {/* Photo menu dropdown */}
+              {photoMenuOpen && user && (
+                <div style={{ position: 'absolute', top: 80, left: 0, background: '#fff', borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,0.18)', zIndex: 50, minWidth: 200, overflow: 'hidden' }}
+                  onMouseLeave={() => setPhotoMenuOpen(false)}>
+                  <div style={{ padding: '10px 14px', fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', borderBottom: '1px solid #f1f5f9' }}>
+                    Profile Photo
+                  </div>
+                  <button onClick={() => { setPhotoMenuOpen(false); cameraInputRef.current?.click(); }}
+                    style={{ width: '100%', padding: '11px 16px', background: 'none', border: 'none', textAlign: 'left', fontSize: '0.88rem', fontWeight: 600, color: '#1e293b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <Camera size={16} color="#c41e3a" /> Take Photo
+                  </button>
+                  <button onClick={() => { setPhotoMenuOpen(false); photoInputRef.current?.click(); }}
+                    style={{ width: '100%', padding: '11px 16px', background: 'none', border: 'none', textAlign: 'left', fontSize: '0.88rem', fontWeight: 600, color: '#1e293b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, borderTop: '1px solid #f8fafc' }}>
+                    <Upload size={16} color="#1d4ed8" /> Upload from Gallery
+                  </button>
+                  {profile?.photo_url && (
+                    <button onClick={() => { setPhotoMenuOpen(false); setProfile(p => ({ ...p, photo_url: null })); }}
+                      style={{ width: '100%', padding: '11px 16px', background: 'none', border: 'none', textAlign: 'left', fontSize: '0.88rem', fontWeight: 600, color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, borderTop: '1px solid #f8fafc' }}>
+                      🗑 Remove Photo
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
+
             <div>
               <h2 className="text-2xl font-bold">{displayName}</h2>
               <div className="flex items-center gap-3 mt-1">
                 <span className="bg-white/20 px-3 py-0.5 rounded-full text-xs font-semibold">{nbNumber}</span>
                 <span className="bg-white/20 px-3 py-0.5 rounded-full text-xs font-semibold">{position}</span>
               </div>
+              {user && <p style={{ fontSize: '0.72rem', opacity: 0.6, marginTop: 4 }}>Tap photo to update</p>}
             </div>
           </div>
           {profile && (
