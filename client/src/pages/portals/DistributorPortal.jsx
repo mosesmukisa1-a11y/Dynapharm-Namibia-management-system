@@ -3439,7 +3439,7 @@ function TrainingTab() {
                 const isOnline = s.platform && s.platform !== 'in_person';
                 const isPast = new Date(s.date) < new Date(new Date().toDateString());
                 return (
-                  <div key={s.id || i} style={{ borderRadius: 12, border: `2px solid ${isOnline ? platform.color + '44' : '#e2e8f0'}`, overflow: 'hidden', opacity: isPast ? 0.65 : 1 }}>
+                  <div key={s.id || i} style={{ borderRadius: 12, border: `2px solid ${s.meeting_link && !isPast ? '#16a34a44' : isOnline ? platform.color + '44' : '#e2e8f0'}`, overflow: 'hidden', opacity: isPast ? 0.7 : 1 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 14px', background: platform.bg, color: platform.color, fontSize: '0.78rem', fontWeight: 700 }}>
                       <span style={{ fontSize: '1rem' }}>{platform.icon}</span>
                       <span>{platform.label}</span>
@@ -3460,18 +3460,33 @@ function TrainingTab() {
                         </div>
                         {s.description && <p style={{ margin: '6px 0 0', fontSize: '0.8rem', color: '#475569', lineHeight: 1.4 }}>{s.description}</p>}
                       </div>
-                      <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
+                      <div style={{ flexShrink: 0 }}>
                         <span style={{ padding: '2px 10px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700, background: isPast ? '#f1f5f9' : '#fef2f2', color: isPast ? '#64748b' : '#c41e3a' }}>
                           {isPast ? 'Past' : 'Upcoming'}
                         </span>
-                        {isOnline && s.meeting_link && !isPast && (
-                          <a href={s.meeting_link} target="_blank" rel="noreferrer"
-                            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', borderRadius: 8, background: platform.color, color: '#fff', fontWeight: 700, fontSize: '0.8rem', textDecoration: 'none' }}>
-                            🔗 Join Meeting
-                          </a>
-                        )}
                       </div>
                     </div>
+                    {s.meeting_link && (
+                      <div style={{ borderTop: `1px solid ${isPast ? '#e2e8f0' : '#bbf7d0'}`, background: isPast ? '#f8fafc' : '#f0fdf4', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <span style={{ fontSize: '0.78rem', color: isPast ? '#94a3b8' : '#15803d', fontWeight: 600, flex: 1 }}>
+                          {isPast ? '🔗 Meeting link (session ended)' : '🟢 Online meeting link ready — tap to join'}
+                        </span>
+                        <a
+                          href={s.meeting_link}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 6,
+                            padding: '8px 18px', borderRadius: 8, fontWeight: 800, fontSize: '0.85rem', textDecoration: 'none',
+                            background: isPast ? '#94a3b8' : '#16a34a',
+                            color: '#fff',
+                            boxShadow: isPast ? 'none' : '0 2px 8px rgba(22,163,74,0.35)',
+                            letterSpacing: '0.01em',
+                          }}>
+                          📹 {isPast ? 'View Link' : 'Join Now'}
+                        </a>
+                      </div>
+                    )}
                   </div>
                 );
               })}
