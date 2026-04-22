@@ -134,13 +134,14 @@ export default async function handler(req, res) {
     const branchStaff = await getMany(
       `SELECT id, full_name, role, branch, email, phone FROM users
        WHERE is_active = TRUE
+         AND LOWER(role) = 'dispenser'
          AND (REPLACE(LOWER(branch), ' ', '_') = REPLACE(LOWER($1), ' ', '_')
               OR EXISTS (
                 SELECT 1 FROM jsonb_array_elements_text(
                   CASE WHEN jsonb_typeof(branches) = 'array' THEN branches ELSE '[]'::jsonb END
                 ) AS b WHERE REPLACE(LOWER(b), ' ', '_') = REPLACE(LOWER($1), ' ', '_')
               ))
-       ORDER BY role, full_name`,
+       ORDER BY full_name`,
       [destinationBranchId]
     );
     if (branchStaff.length > 0) {

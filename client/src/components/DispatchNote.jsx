@@ -205,7 +205,10 @@ export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
   const dispatchedBy = t.dispatchedBy || t.dispatched_by || null;
   const receivedBy = t.receivedBy || t.received_by || signatureName || null;
   const preparedByRole = t.preparedByRole || t.prepared_by_role || null;
-  const destinationBranchStaff = t.destinationBranchStaff || t.destination_branch_staff || null;
+  const rawDestinationBranchStaff = t.destinationBranchStaff || t.destination_branch_staff || null;
+  const destinationBranchStaff = Array.isArray(rawDestinationBranchStaff)
+    ? rawDestinationBranchStaff.filter(s => (s.role || '').toLowerCase() === 'dispenser')
+    : rawDestinationBranchStaff;
   const gmApprovedAt = t.gmApprovedAt || t.gm_approved_at || null;
   const gmApprovedBy = t.gmApprovedBy || t.gm_approved_by || null;
 
@@ -293,7 +296,7 @@ export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
       {/* === B2. DESTINATION BRANCH STAFF === */}
       {Array.isArray(destinationBranchStaff) && destinationBranchStaff.length > 0 && (
         <div style={{ marginBottom: 16 }}>
-          <div style={sectionTitle}>Destination Branch Staff</div>
+          <div style={sectionTitle}>Destination Branch Dispensers</div>
           <div style={{ ...sectionBoxStyle, background: '#f0fdf4', borderColor: '#86efac' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
               <thead>

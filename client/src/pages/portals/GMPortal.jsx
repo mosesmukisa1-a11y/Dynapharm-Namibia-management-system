@@ -1071,11 +1071,11 @@ function ApprovalsTab() {
                           </div>
                         </div>
 
-                        {Array.isArray(t.destinationBranchStaff) && t.destinationBranchStaff.length > 0 && (
+                        {Array.isArray(t.destinationBranchStaff) && t.destinationBranchStaff.filter(s => (s.role || '').toLowerCase() === 'dispenser').length > 0 && (
                           <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: '10px 14px', marginBottom: 12 }}>
-                            <div className="text-xs font-semibold text-green-700 uppercase mb-2">👥 Destination Branch Staff ({toLoc})</div>
+                            <div className="text-xs font-semibold text-green-700 uppercase mb-2">👥 Destination Branch Dispensers ({toLoc})</div>
                             <div className="grid grid-cols-1 gap-1">
-                              {t.destinationBranchStaff.map((s, si) => (
+                              {t.destinationBranchStaff.filter(s => (s.role || '').toLowerCase() === 'dispenser').map((s, si) => (
                                 <div key={si} className="flex items-center gap-2 text-xs text-gray-700">
                                   <span className="font-semibold">{s.name}</span>
                                   <span className="text-gray-400">·</span>
