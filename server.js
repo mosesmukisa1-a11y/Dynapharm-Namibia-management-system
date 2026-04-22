@@ -25,6 +25,15 @@ app.disable('x-powered-by');
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// Client-side error logging
+app.post('/api/client-error', (req, res) => {
+  const { message, stack, componentStack, url } = req.body || {};
+  console.error('[CLIENT ERROR]', { message, url });
+  if (stack) console.error('[CLIENT STACK]', stack.slice(0, 800));
+  if (componentStack) console.error('[COMPONENT STACK]', componentStack.slice(0, 400));
+  res.json({ ok: true });
+});
+
 // Serve uploaded files (videos, images, documents) — no auth required to stream
 app.use('/uploads', express.static(UPLOADS_DIR, {
   maxAge: '7d',

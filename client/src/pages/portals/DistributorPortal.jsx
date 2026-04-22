@@ -10,6 +10,15 @@ import { MembershipAgreementForm } from '../../components/MembershipAgreementFor
 import NetworkReportTab from '../../components/NetworkReportTab';
 import QRCodeLib from 'qrcode';
 
+function parseItems(raw) {
+  try {
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 export default function DistributorPortal() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const tabs = [
@@ -717,7 +726,7 @@ function DashboardTab() {
   const branchSpent = branchSales.reduce((sum, s) => sum + Number(s.total || s.totalAmount || 0), 0);
   const totalSpent = onlineSpent + branchSpent;
   const onlineBV = myOrders.reduce((sum, o) => {
-    const items = typeof o.items === 'string' ? JSON.parse(o.items || '[]') : (o.items || []);
+    const items = parseItems(o.items);
     return sum + items.reduce((s, i) => s + Number(i.bv || 0) * Number(i.quantity || 1), 0);
   }, 0);
   const branchBV = branchSales.reduce((sum, s) => sum + Number(s.totalBV || s.total_bv || 0), 0);
@@ -1074,7 +1083,7 @@ function DashboardTab() {
             ) : (
               <div className="space-y-3 max-h-80 overflow-y-auto">
                 {myOrders.slice(0, 10).map((order, idx) => {
-                  const items = (() => { try { return typeof order.items === 'string' ? JSON.parse(order.items) : (Array.isArray(order.items) ? order.items : []); } catch { return []; } })();
+                  const items = parseItems(order.items);
                   const orderBV = items.reduce((s, i) => s + Number(i.bv || 0) * Number(i.quantity || 1), 0);
                   return (
                     <div key={order.id || idx} className="border border-gray-100 rounded-lg overflow-hidden">
@@ -1719,7 +1728,7 @@ function BVProfitTab() {
     monthlyData[month].orders += 1;
     const amt = Number(o.total_amount || o.subtotal || 0);
     monthlyData[month].amount += amt;
-    const items = typeof o.items === 'string' ? JSON.parse(o.items || '[]') : (o.items || []);
+    const items = parseItems(o.items);
     items.forEach(i => {
       monthlyData[month].bv += Number(i.bv || 0) * Number(i.quantity || 1);
       const dp = Number(i.unit_price || i.dp || 0);
@@ -2201,7 +2210,7 @@ function CommunicationsTab() {
           ) : (
             <div className="divide-y">
               {memberSales.map((s, i) => {
-                const items = typeof s.items === 'string' ? (() => { try { return JSON.parse(s.items || '[]'); } catch { return []; } })() : (s.items || []);
+                const items = parseItems(s.items);
                 return (
                   <div key={s.id || i} className="p-4">
                     <div className="flex items-center justify-between mb-1">
@@ -2239,7 +2248,7 @@ function CommunicationsTab() {
           ) : (
             <div className="divide-y">
               {referralSales.map((s, i) => {
-                const items = typeof s.items === 'string' ? (() => { try { return JSON.parse(s.items || '[]'); } catch { return []; } })() : (s.items || []);
+                const items = parseItems(s.items);
                 return (
                   <div key={s.id || i} className="p-4">
                     <div className="flex items-center justify-between mb-1">
@@ -2312,7 +2321,7 @@ function CommunicationsTab() {
           ) : (
             <div className="divide-y">
               {onlineOrders.map((o, i) => {
-                const items = typeof o.items === 'string' ? (() => { try { return JSON.parse(o.items || '[]'); } catch { return []; } })() : (o.items || []);
+                const items = parseItems(o.items);
                 const statusColor = { delivered: 'success', processing: 'info', pending: 'warning', cancelled: 'danger' }[o.status] || 'warning';
                 return (
                   <div key={o.id || i} className="p-4">
