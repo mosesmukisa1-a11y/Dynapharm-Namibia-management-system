@@ -25,6 +25,23 @@ export default async function handler(req, res) {
 
       let sql = `
         SELECT l.*,
+               -- Resolve display name: prefer a real name over UUID/username
+               COALESCE(
+                 CASE
+                   WHEN l.employee_name IS NULL OR l.employee_name = '' THEN NULL
+                   -- UUID format: 8-4-4-4-12 hex
+                   WHEN l.employee_name ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN NULL
+                   -- Raw 32-char hex
+                   WHEN l.employee_name ~* '^[0-9a-f]{32}$' THEN NULL
+                   -- User ID prefixes (USR..., usr...)
+                   WHEN l.employee_name ~* '^[Uu][Ss][Rr][0-9a-zA-Z_-]{5,}$' THEN NULL
+                   -- Pure numeric-only strings (unlikely to be a real name)
+                   WHEN l.employee_name ~ '^[0-9]+$' THEN NULL
+                   ELSE l.employee_name
+                 END,
+                 u.full_name,
+                 l.employee_name
+               ) AS employee_name,
                e.position        AS emp_position,
                e.branch          AS emp_branch,
                e.department      AS emp_department,
@@ -33,6 +50,9 @@ export default async function handler(req, res) {
         FROM hr_leave_requests l
         LEFT JOIN employees e
           ON LOWER(TRIM(e.full_name)) = LOWER(TRIM(l.employee_name))
+        LEFT JOIN users u
+          ON LOWER(TRIM(u.id::text)) = LOWER(TRIM(l.employee_id))
+          OR LOWER(TRIM(u.username)) = LOWER(TRIM(l.employee_id))
         WHERE 1=1`;
       const params = [];
       if (status) { params.push(status); sql += ` AND l.status = $${params.length}`; }

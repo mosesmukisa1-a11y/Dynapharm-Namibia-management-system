@@ -295,8 +295,18 @@ const LEAVE_TYPE_COLORS = {
   Unpaid: 'danger',
 };
 
+function isUuid(s) {
+  return typeof s === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s.trim());
+}
+function resolveDisplayName(leave) {
+  const name = leave.employee_name;
+  if (name && !isUuid(name) && name.trim().length > 0) return name;
+  return leave.staffName || leave.staff_name || leave.full_name || leave.username || '—';
+}
+
 function LeaveCard({ leave, onApprove, onRejectClick }) {
-  const empNum = leave.employee_id || leave.emp_number || '—';
+  const displayName = resolveDisplayName(leave);
+  const empNum = leave.emp_number || (!isUuid(leave.employee_id) ? leave.employee_id : null) || '—';
   const position = leave.emp_position || '—';
   const branch = leave.emp_branch || '—';
   const dept = leave.emp_department || null;
@@ -316,7 +326,7 @@ function LeaveCard({ leave, onApprove, onRejectClick }) {
       <div className="flex items-start justify-between gap-4 px-5 py-4 bg-white border-b border-amber-100">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-lg font-bold text-gray-900">{leave.employee_name}</span>
+            <span className="text-lg font-bold text-gray-900">{displayName}</span>
             {leave.urgent && (
               <span className="inline-flex items-center gap-1 text-xs font-semibold bg-red-100 text-red-700 px-2 py-0.5 rounded-full">
                 <AlertCircle size={11} /> URGENT
@@ -559,8 +569,10 @@ function LeaveTab() {
           columns={[
             { header: 'Employee', render: r => (
               <div>
-                <p className="font-semibold text-gray-800 text-sm">{r.employee_name}</p>
-                <p className="text-xs text-gray-400 font-mono">{r.employee_id || r.emp_number || '—'}</p>
+                <p className="font-semibold text-gray-800 text-sm">{resolveDisplayName(r)}</p>
+                {(r.emp_number || (!isUuid(r.employee_id) && r.employee_id)) && (
+                  <p className="text-xs text-gray-400 font-mono">{r.emp_number || r.employee_id}</p>
+                )}
               </div>
             )},
             { header: 'Type', render: r => <Badge variant={LEAVE_TYPE_COLORS[r.leave_type] || 'info'}>{r.leave_type}</Badge> },
@@ -584,7 +596,7 @@ function LeaveTab() {
         <Modal title="Reject Leave Request" onClose={() => setRejectTarget(null)}>
           <div className="space-y-4">
             <div className="bg-gray-50 rounded-lg px-4 py-3 border border-gray-200">
-              <p className="text-sm font-semibold text-gray-800">{rejectTarget.employee_name}</p>
+              <p className="text-sm font-semibold text-gray-800">{resolveDisplayName(rejectTarget)}</p>
               <p className="text-xs text-gray-500">{rejectTarget.leave_type} · {formatDate(rejectTarget.start_date)} → {formatDate(rejectTarget.end_date)} · {rejectTarget.working_days ?? '?'} working day(s)</p>
             </div>
             <div>
