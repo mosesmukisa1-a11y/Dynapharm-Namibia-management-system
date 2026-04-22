@@ -386,6 +386,7 @@ export const api = {
       if (month) qs.set('month', month);
       return request(`/distributor-statements?${qs}`);
     },
+    summarize: (nb) => request(`/distributor-statements?nb=${encodeURIComponent(nb)}&summary=true`),
     upload: (rawContent, month, label) =>
       request('/distributor-statements', { method: 'POST', body: { rawContent, month, label } }),
     delete: (month) =>

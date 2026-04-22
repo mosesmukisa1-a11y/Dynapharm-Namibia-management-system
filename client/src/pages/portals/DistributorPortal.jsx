@@ -26,7 +26,8 @@ export default function DistributorPortal() {
     { id: 'mybonus', label: 'My Bonus', icon: '💰' },
     { id: 'shop', label: 'Shop', icon: '🛒' },
     { id: 'register', label: 'New Member', icon: '📝' },
-    { id: 'bv', label: 'BV & Profit', icon: '📈' },
+    { id: 'bv', label: 'My BV', icon: '📈' },
+    { id: 'profit', label: 'My Profit', icon: '💵' },
     { id: 'network', label: 'My Network', icon: '🌐' },
     { id: 'statement', label: 'Statement', icon: '📄' },
     { id: 'communications', label: 'Communications', icon: '📩' },
@@ -45,7 +46,8 @@ export default function DistributorPortal() {
         {activeTab === 'mybonus' && <MyBonusTab />}
         {activeTab === 'shop' && <ShopTab />}
         {activeTab === 'register' && <NewMemberTab />}
-        {activeTab === 'bv' && <BVProfitTab />}
+        {activeTab === 'bv' && <MyBVTab />}
+        {activeTab === 'profit' && <MyProfitTab />}
         {activeTab === 'network' && <MyNetworkTab />}
         {activeTab === 'statement' && <StatementTab />}
         {activeTab === 'communications' && <CommunicationsTab />}
@@ -1378,7 +1380,7 @@ function ShopTab() {
           order_type: 'client_referral',
           notes: `Client Stock — Referred by ${nb} | ${branchNote} | Client: ${clientName.trim()}${clientPhone.trim() ? ' (' + clientPhone.trim() + ')' : ''} | Potential Profit: N$${clientCartProfit.toFixed(2)} | Total BV: ${cartTotals.totalBV.toFixed(1)} | Pricing: DP`,
         });
-        setMessage(`Client order for ${clientName.trim()} submitted to ${selectedBranch?.name || 'branch'}! Your retail profit will appear in your BV & Profit tab after processing.`);
+        setMessage(`Client order for ${clientName.trim()} submitted to ${selectedBranch?.name || 'branch'}! Your retail profit will appear in your My Profit tab after processing.`);
         setClientName('');
         setClientPhone('');
       }
@@ -1462,7 +1464,7 @@ function ShopTab() {
                 className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300" />
             </div>
           </div>
-          <p className="text-xs text-blue-600">After the branch processes this order, your retail profit will appear in your BV & Profit tab.</p>
+          <p className="text-xs text-blue-600">After the branch processes this order, your retail profit will appear in your My Profit tab.</p>
         </div>
       )}
 
@@ -1681,11 +1683,10 @@ function ShopTab() {
   );
 }
 
-function BVProfitTab() {
+function MyBVTab() {
   const { user } = useAuth();
   const [orders, setOrders] = useState([]);
   const [branchSales, setBranchSales] = useState([]);
-  const [profitLedger, setProfitLedger] = useState([]);
   const [loading, setLoading] = useState(true);
   const [publicNBCode, setPublicNBCode] = useState('');
   const [nbInput, setNBInput] = useState('');
@@ -1693,18 +1694,16 @@ function BVProfitTab() {
   const fetchByNB = async (nbCode) => {
     setLoading(true);
     try {
-      const [orderData, branchData, ledgerData] = await Promise.all([
+      const [orderData, branchData] = await Promise.all([
         api.orders.list({ distributor_code: nbCode }).catch(() => []),
         api.branch.walkinSalesByDistributor(nbCode).catch(() => ({ sales: [] })),
-        api.branch.distributorProfit({ distributor_nb: nbCode }).catch(() => ({ entries: [] })),
       ]);
       const all = Array.isArray(orderData) ? orderData : orderData.orders || [];
       setOrders(all);
       const sales = Array.isArray(branchData) ? branchData : branchData.sales || [];
       setBranchSales(sales);
-      setProfitLedger(Array.isArray(ledgerData?.entries) ? ledgerData.entries : []);
     } catch {
-      setOrders([]); setBranchSales([]); setProfitLedger([]);
+      setOrders([]); setBranchSales([]);
     } finally {
       setLoading(false);
     }
@@ -1747,8 +1746,6 @@ function BVProfitTab() {
   const months = Object.entries(monthlyData).sort((a, b) => b[0].localeCompare(a[0]));
   const totalBV = months.reduce((s, [, d]) => s + d.bv, 0);
   const totalTransactions = orders.length + branchSales.length;
-  const pendingProfitTotal = profitLedger.filter(e => e.status === 'pending').reduce((s, e) => s + Number(e.profit_amount || 0), 0);
-  const paidProfitTotal = profitLedger.filter(e => e.status === 'paid').reduce((s, e) => s + Number(e.profit_amount || 0), 0);
 
   return (
     <div className="space-y-6">
@@ -1757,7 +1754,7 @@ function BVProfitTab() {
           <CardBody>
             <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
               <div className="flex-1">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Enter your NB Number to view your BV & Profit</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Enter your NB Number to view your BV</label>
                 <input
                   type="text"
                   value={nbInput}
@@ -1773,16 +1770,15 @@ function BVProfitTab() {
           </CardBody>
         </Card>
       )}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+
+      <div className="grid grid-cols-3 gap-4">
         <StatCard title="Total BV Earned" value={totalBV.toFixed(1)} color="blue" />
-        <StatCard title="Retail Profit Collected" value={formatCurrency(paidProfitTotal)} color="green" />
-        <StatCard title="Profit Pending" value={formatCurrency(pendingProfitTotal)} color="orange" />
         <StatCard title="Total Transactions" value={totalTransactions} color="purple" />
+        <StatCard title="Months Active" value={months.length} color="orange" />
       </div>
 
       <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 text-xs text-blue-800 space-y-1">
-        <p><strong>BV (Business Volume)</strong> — points accumulated from your own purchases on your NB number <em>plus</em> purchases made by non-member clients you referred to any branch.</p>
-        <p><strong>Retail Profit</strong> — the difference between Consumer Price (CP) and Distributor Price (DP) on sales to non-member clients referred by you. Collected directly from the branch that processed the sale.</p>
+        <p><strong>BV (Business Volume)</strong> — points accumulated from your own purchases on your NB number <em>plus</em> purchases made by non-member clients you referred to any branch. Use the <strong>My Profit</strong> tab to see your earnings and monthly bonus payouts.</p>
       </div>
 
       <Card>
@@ -1800,7 +1796,7 @@ function BVProfitTab() {
                       {data.orders > 0 && `${data.orders} online order(s)`}
                       {data.orders > 0 && data.branchSales > 0 && ' · '}
                       {data.branchSales > 0 && `${data.branchSales} branch sale(s)`}
-                      {' · '}Sales total: {formatCurrency(data.amount)}
+                      {(data.orders > 0 || data.branchSales > 0) && ' · '}Sales total: {formatCurrency(data.amount)}
                     </p>
                   </div>
                   <div className="text-right">
@@ -1814,181 +1810,10 @@ function BVProfitTab() {
         </CardBody>
       </Card>
 
-      {(() => {
-        const fmtBranch = id => {
-          if (!id) return 'Unknown Branch';
-          return id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-        };
-
-        if (profitLedger.length === 0) {
-          return (
-            <Card>
-              <CardHeader>
-                <h3 className="font-bold text-gray-800 flex items-center gap-2">💰 Retail Profit Ledger — Referred Non-Member Sales</h3>
-              </CardHeader>
-              <CardBody>
-                <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-                  <div style={{ fontSize: 48, marginBottom: 12 }}>💰</div>
-                  <p style={{ fontWeight: 700, color: '#374151', margin: 0, fontSize: '1rem' }}>No profit entries recorded yet</p>
-                  <p style={{ color: '#9ca3af', fontSize: '0.85rem', marginTop: 8, maxWidth: 400, margin: '8px auto 0' }}>
-                    When a non-member client you referred makes a walk-in purchase at a branch, your retail profit (Consumer Price − Distributor Price) is recorded here. Each entry shows which branch processed the sale, the profit amount, and whether it has been collected or is still pending.
-                  </p>
-                </div>
-              </CardBody>
-            </Card>
-          );
-        }
-
-        const pendingEntries = profitLedger.filter(e => e.status === 'pending');
-        const paidEntries    = profitLedger.filter(e => e.status === 'paid');
-        const pendingTotal   = pendingEntries.reduce((s, e) => s + Number(e.profit_amount || 0), 0);
-        const paidTotal      = paidEntries.reduce((s, e) => s + Number(e.profit_amount || 0), 0);
-
-        const byBranch = {};
-        profitLedger.forEach(e => {
-          const bid = e.branch_id || 'unknown';
-          if (!byBranch[bid]) byBranch[bid] = { branch_id: bid, pending: 0, paid: 0, count: 0 };
-          byBranch[bid].count += 1;
-          if (e.status === 'pending') byBranch[bid].pending += Number(e.profit_amount || 0);
-          else byBranch[bid].paid += Number(e.profit_amount || 0);
-        });
-        const branchList = Object.values(byBranch).sort((a, b) => b.pending - a.pending);
-
-        return (
-          <>
-            {/* ── Profit Summary Cards ── */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 12 }}>
-              <div style={{ background: 'linear-gradient(135deg,#c41e3a,#991b1b)', borderRadius: 12, padding: '16px 18px', color: '#fff', textAlign: 'center' }}>
-                <div style={{ fontSize: '0.68rem', fontWeight: 800, opacity: 0.8, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Pending Collection</div>
-                <div style={{ fontSize: '1.5rem', fontWeight: 900 }}>{formatCurrency(pendingTotal)}</div>
-                <div style={{ fontSize: '0.72rem', opacity: 0.8, marginTop: 2 }}>{pendingEntries.length} unpaid sale(s)</div>
-              </div>
-              <div style={{ background: 'linear-gradient(135deg,#166534,#15803d)', borderRadius: 12, padding: '16px 18px', color: '#fff', textAlign: 'center' }}>
-                <div style={{ fontSize: '0.68rem', fontWeight: 800, opacity: 0.8, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Total Paid Out</div>
-                <div style={{ fontSize: '1.5rem', fontWeight: 900 }}>{formatCurrency(paidTotal)}</div>
-                <div style={{ fontSize: '0.72rem', opacity: 0.8, marginTop: 2 }}>{paidEntries.length} paid sale(s)</div>
-              </div>
-              <div style={{ background: 'linear-gradient(135deg,#1e40af,#1d4ed8)', borderRadius: 12, padding: '16px 18px', color: '#fff', textAlign: 'center' }}>
-                <div style={{ fontSize: '0.68rem', fontWeight: 800, opacity: 0.8, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Total Earned</div>
-                <div style={{ fontSize: '1.5rem', fontWeight: 900 }}>{formatCurrency(pendingTotal + paidTotal)}</div>
-                <div style={{ fontSize: '0.72rem', opacity: 0.8, marginTop: 2 }}>{profitLedger.length} sale(s) total</div>
-              </div>
-            </div>
-
-            {/* ── By-Branch Breakdown ── */}
-            <Card>
-              <CardHeader>
-                <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                  🏢 Retail Profit by Branch — Collection Guide
-                </h3>
-                <p className="text-xs text-gray-500 mt-1">Each branch below processed a sale for a non-member client you referred. Visit or call the branch to collect your pending retail profit (CP − DP).</p>
-              </CardHeader>
-              <CardBody>
-                {branchList.length === 0 ? (
-                  <p className="text-sm text-gray-400">No branch data available.</p>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {branchList.map(b => (
-                      <div key={b.branch_id} style={{ borderRadius: 10, border: `2px solid ${b.pending > 0 ? '#fca5a5' : '#d1fae5'}`, overflow: 'hidden' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', flexWrap: 'wrap', gap: 8 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <div style={{ width: 36, height: 36, borderRadius: 18, background: b.pending > 0 ? '#fee2e2' : '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem' }}>
-                              {b.pending > 0 ? '🏦' : '✅'}
-                            </div>
-                            <div>
-                              <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.92rem' }}>{fmtBranch(b.branch_id)}</div>
-                              <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{b.count} sale(s) recorded · Branch ID: {b.branch_id}</div>
-                            </div>
-                          </div>
-                          <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-                            {b.pending > 0 && (
-                              <div style={{ textAlign: 'right' }}>
-                                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#c41e3a', textTransform: 'uppercase' }}>To Collect</div>
-                                <div style={{ fontWeight: 900, color: '#c41e3a', fontSize: '1.05rem' }}>{formatCurrency(b.pending)}</div>
-                              </div>
-                            )}
-                            {b.paid > 0 && (
-                              <div style={{ textAlign: 'right' }}>
-                                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#166534', textTransform: 'uppercase' }}>Paid</div>
-                                <div style={{ fontWeight: 700, color: '#166534', fontSize: '1.05rem' }}>{formatCurrency(b.paid)}</div>
-                              </div>
-                            )}
-                            {b.pending > 0 && (
-                              <span style={{ padding: '4px 12px', borderRadius: 20, background: '#fef2f2', color: '#c41e3a', fontSize: '0.72rem', fontWeight: 700, border: '1.5px solid #fca5a5' }}>
-                                ⏳ Pending
-                              </span>
-                            )}
-                            {b.pending === 0 && (
-                              <span style={{ padding: '4px 12px', borderRadius: 20, background: '#f0fdf4', color: '#166534', fontSize: '0.72rem', fontWeight: 700, border: '1.5px solid #86efac' }}>
-                                ✅ Settled
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardBody>
-            </Card>
-
-            {/* ── Detailed Ledger ── */}
-            <Card>
-              <CardHeader>
-                <h3 className="font-bold text-gray-800 flex items-center gap-2">📋 Retail Profit Ledger — All Entries</h3>
-              </CardHeader>
-              <CardBody>
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
-                    <thead>
-                      <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-                        <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 700, color: '#374151' }}>Receipt</th>
-                        <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 700, color: '#374151' }}>Date</th>
-                        <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 700, color: '#374151' }}>Branch Source</th>
-                        <th style={{ textAlign: 'right', padding: '8px 10px', fontWeight: 700, color: '#374151' }}>Profit Amount</th>
-                        <th style={{ textAlign: 'center', padding: '8px 10px', fontWeight: 700, color: '#374151' }}>Status</th>
-                        <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 700, color: '#374151' }}>Paid Info</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {profitLedger.map((e, idx) => (
-                        <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9', background: e.status === 'pending' ? '#fffbeb' : '#fff' }}>
-                          <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: '#374151', fontSize: '0.75rem' }}>{e.sale_receipt || e.sale_id || '—'}</td>
-                          <td style={{ padding: '8px 10px', color: '#64748b' }}>{e.sale_date ? new Date(e.sale_date).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</td>
-                          <td style={{ padding: '8px 10px' }}>
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 8px', borderRadius: 6, background: '#eff6ff', color: '#1d4ed8', fontSize: '0.72rem', fontWeight: 600 }}>
-                              🏢 {fmtBranch(e.branch_id)}
-                            </span>
-                          </td>
-                          <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800, color: e.status === 'paid' ? '#166534' : '#c41e3a' }}>{formatCurrency(Number(e.profit_amount))}</td>
-                          <td style={{ padding: '8px 10px', textAlign: 'center' }}>
-                            <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700, background: e.status === 'paid' ? '#dcfce7' : '#fee2e2', color: e.status === 'paid' ? '#166534' : '#c41e3a' }}>
-                              {e.status === 'paid' ? '✓ Paid' : '⏳ Pending'}
-                            </span>
-                          </td>
-                          <td style={{ padding: '8px 10px', fontSize: '0.72rem', color: '#94a3b8' }}>
-                            {e.status === 'paid' ? `${e.payment_method || ''} ${e.paid_at ? new Date(e.paid_at).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short' }) : ''}`.trim() || '—' : '—'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                {pendingTotal > 0 && (
-                  <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', fontSize: '0.78rem', color: '#92400e', marginTop: 14 }}>
-                    ⚠️ You have <strong>{formatCurrency(pendingTotal)}</strong> pending across {branchList.filter(b => b.pending > 0).length} branch(es). Visit or call each branch above to collect your profit.
-                  </div>
-                )}
-              </CardBody>
-            </Card>
-          </>
-        );
-      })()}
-
       <Card>
-        <CardHeader><h3 className="font-bold text-gray-800">How BV & Profit Work</h3></CardHeader>
+        <CardHeader><h3 className="font-bold text-gray-800">How BV Works</h3></CardHeader>
         <CardBody>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
             <div className="p-4 bg-blue-50 rounded-lg">
               <p className="font-bold text-blue-800 mb-1">BV from Your Own Sales</p>
               <p className="text-blue-600">Every purchase made on your NB number — at a branch or online — earns you BV points as a member distributor.</p>
@@ -1997,11 +1822,219 @@ function BVProfitTab() {
               <p className="font-bold text-indigo-800 mb-1">BV from Referred Clients</p>
               <p className="text-indigo-600">When a non-member client you referred buys at a branch, those sales are also linked to your NB number and add to your total BV.</p>
             </div>
-            <div className="p-4 bg-green-50 rounded-lg">
-              <p className="font-bold text-green-800 mb-1">Retail Profit</p>
-              <p className="text-green-600">You earn the margin between Consumer Price (CP) and Distributor Price (DP) on every non-member sale made by a client you referred. Collect this from the branch that processed the sale.</p>
-            </div>
           </div>
+        </CardBody>
+      </Card>
+    </div>
+  );
+}
+
+function MyProfitTab() {
+  const { user } = useAuth();
+  const [statementMonths, setStatementMonths] = useState([]);
+  const [profitLedger, setProfitLedger] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [publicNBCode, setPublicNBCode] = useState('');
+  const [nbInput, setNBInput] = useState('');
+
+  const fetchByNB = async (nbCode) => {
+    setLoading(true);
+    try {
+      const [stmtData, ledgerData] = await Promise.all([
+        api.statements.summarize(nbCode).catch(() => ({ months: [] })),
+        api.branch.distributorProfit({ distributor_nb: nbCode }).catch(() => ({ entries: [] })),
+      ]);
+      setStatementMonths(Array.isArray(stmtData?.months) ? stmtData.months : []);
+      setProfitLedger(Array.isArray(ledgerData?.entries) ? ledgerData.entries : []);
+    } catch {
+      setStatementMonths([]); setProfitLedger([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (user?.username) {
+      const nb = user.username.toUpperCase();
+      setPublicNBCode(nb);
+      fetchByNB(nb);
+    } else {
+      setLoading(false);
+    }
+  }, [user]);
+
+  if (loading) return <LoadingSpinner />;
+
+  const totalStatementBonus = statementMonths.reduce((s, m) => s + (m.net_amount || 0), 0);
+  const pendingLedger = profitLedger.filter(e => e.status === 'pending');
+  const paidLedger = profitLedger.filter(e => e.status === 'paid');
+  const pendingTotal = pendingLedger.reduce((s, e) => s + Number(e.profit_amount || 0), 0);
+  const paidTotal = paidLedger.reduce((s, e) => s + Number(e.profit_amount || 0), 0);
+
+  const fmtBranch = id => id ? id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'Unknown Branch';
+  const fmtDate = d => d ? new Date(d).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+  const fmtMonth = m => { try { return new Date(m + '-01').toLocaleDateString('en-ZA', { year: 'numeric', month: 'long' }); } catch { return m; } };
+
+  return (
+    <div className="space-y-6">
+      {!user && (
+        <Card>
+          <CardBody>
+            <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Enter your NB Number to view your profit</label>
+                <input type="text" value={nbInput} onChange={e => setNBInput(e.target.value.toUpperCase())}
+                  onKeyDown={e => { if (e.key === 'Enter' && nbInput.trim()) { setPublicNBCode(nbInput.trim()); fetchByNB(nbInput.trim()); } }}
+                  placeholder="e.g. NB001234 or DZ001234"
+                  className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20" />
+              </div>
+              <Button onClick={() => { const nb = nbInput.trim(); if (nb) { setPublicNBCode(nb); fetchByNB(nb); } }}>Look Up</Button>
+            </div>
+            {publicNBCode && <p className="text-xs text-gray-500 mt-2">Showing profit for: <strong>{publicNBCode}</strong></p>}
+          </CardBody>
+        </Card>
+      )}
+
+      {/* Summary cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <StatCard title="Total Statement Bonus" value={formatCurrency(totalStatementBonus)} color="green" />
+        <StatCard title="Statement Months" value={statementMonths.length} color="blue" />
+        <StatCard title="Retail Profit Pending" value={formatCurrency(pendingTotal)} color="orange" />
+        <StatCard title="Retail Profit Collected" value={formatCurrency(paidTotal)} color="purple" />
+      </div>
+
+      {/* ── Section 1: Monthly Statement Bonus ── */}
+      <Card>
+        <CardHeader>
+          <h3 className="font-bold text-gray-800 flex items-center gap-2">📋 Monthly Statement Bonus</h3>
+          <p className="text-xs text-gray-500 mt-1">Your monthly net bonus as calculated by Dynapharm International on the official distributor statement. Upload new months via the GM portal.</p>
+        </CardHeader>
+        <CardBody>
+          {statementMonths.length === 0 ? (
+            <EmptyState
+              icon={<span style={{ fontSize: 40 }}>📋</span>}
+              title="No Statement Data Yet"
+              description="Your bonus amounts will appear here once your GM uploads the monthly Dynapharm statement. Check back after month-end."
+            />
+          ) : (
+            <div className="space-y-3">
+              {statementMonths.map((m, i) => (
+                <div key={i} className="flex items-center justify-between p-4 rounded-lg border border-gray-100 bg-gray-50">
+                  <div>
+                    <p className="font-semibold text-gray-800">{m.label || fmtMonth(m.month)}</p>
+                    {m.name && <p className="text-xs text-gray-400">{m.name}</p>}
+                  </div>
+                  <div className="text-right">
+                    {m.net_amount != null ? (
+                      <>
+                        <p className="text-lg font-black text-green-700">{formatCurrency(m.net_amount)}</p>
+                        <p className="text-xs text-gray-400">Net Bonus</p>
+                      </>
+                    ) : (
+                      <p className="text-sm text-gray-400 italic">No amount on record</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+              <div className="flex justify-between items-center pt-2 border-t border-gray-200 px-1">
+                <span className="text-sm font-semibold text-gray-600">Total across {statementMonths.length} month(s)</span>
+                <span className="text-base font-black text-green-700">{formatCurrency(totalStatementBonus)}</span>
+              </div>
+            </div>
+          )}
+        </CardBody>
+      </Card>
+
+      {/* ── Section 2: Retail Profit Ledger ── */}
+      <Card>
+        <CardHeader>
+          <h3 className="font-bold text-gray-800 flex items-center gap-2">💰 Retail Profit Ledger — Referred Non-Member Sales</h3>
+          <p className="text-xs text-gray-500 mt-1">Profit (CP − DP) from walk-in purchases made by non-member clients you referred. Collected directly from the processing branch.</p>
+        </CardHeader>
+        <CardBody>
+          {profitLedger.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '32px 20px' }}>
+              <div style={{ fontSize: 40, marginBottom: 10 }}>💰</div>
+              <p style={{ fontWeight: 700, color: '#374151', margin: 0 }}>No retail profit entries yet</p>
+              <p style={{ color: '#9ca3af', fontSize: '0.82rem', marginTop: 8, maxWidth: 380, margin: '8px auto 0' }}>
+                When a non-member client you referred makes a branch purchase, the retail profit (CP − DP) is recorded here and assigned to the processing branch for you to collect.
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* By-branch summary */}
+              {(() => {
+                const byBranch = {};
+                profitLedger.forEach(e => {
+                  const bid = e.branch_id || 'unknown';
+                  if (!byBranch[bid]) byBranch[bid] = { branch_id: bid, pending: 0, paid: 0, count: 0 };
+                  byBranch[bid].count += 1;
+                  if (e.status === 'pending') byBranch[bid].pending += Number(e.profit_amount || 0);
+                  else byBranch[bid].paid += Number(e.profit_amount || 0);
+                });
+                const branchList = Object.values(byBranch).sort((a, b) => b.pending - a.pending);
+                return (
+                  <div className="space-y-2 mb-5">
+                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">By Branch</p>
+                    {branchList.map(b => (
+                      <div key={b.branch_id} style={{ borderRadius: 10, border: `2px solid ${b.pending > 0 ? '#fca5a5' : '#d1fae5'}`, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                        <div>
+                          <span style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.88rem' }}>{fmtBranch(b.branch_id)}</span>
+                          <span style={{ fontSize: '0.72rem', color: '#94a3b8', marginLeft: 8 }}>{b.count} sale(s)</span>
+                        </div>
+                        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                          {b.pending > 0 && <span style={{ color: '#c41e3a', fontWeight: 800, fontSize: '0.9rem' }}>{formatCurrency(b.pending)} <span style={{ fontSize: '0.7rem', fontWeight: 600 }}>pending</span></span>}
+                          {b.paid > 0 && <span style={{ color: '#166534', fontWeight: 700, fontSize: '0.88rem' }}>{formatCurrency(b.paid)} <span style={{ fontSize: '0.7rem', fontWeight: 600 }}>paid</span></span>}
+                          <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700, background: b.pending > 0 ? '#fee2e2' : '#dcfce7', color: b.pending > 0 ? '#c41e3a' : '#166534' }}>
+                            {b.pending > 0 ? '⏳ Pending' : '✅ Settled'}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {/* Detailed table */}
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                      <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 700, color: '#374151' }}>Receipt</th>
+                      <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 700, color: '#374151' }}>Date</th>
+                      <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 700, color: '#374151' }}>Branch</th>
+                      <th style={{ textAlign: 'right', padding: '8px 10px', fontWeight: 700, color: '#374151' }}>Amount</th>
+                      <th style={{ textAlign: 'center', padding: '8px 10px', fontWeight: 700, color: '#374151' }}>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {profitLedger.map((e, idx) => (
+                      <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9', background: e.status === 'pending' ? '#fffbeb' : '#fff' }}>
+                        <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: '#374151', fontSize: '0.75rem' }}>{e.sale_receipt || e.sale_id || '—'}</td>
+                        <td style={{ padding: '8px 10px', color: '#64748b' }}>{fmtDate(e.sale_date)}</td>
+                        <td style={{ padding: '8px 10px' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px', borderRadius: 6, background: '#eff6ff', color: '#1d4ed8', fontSize: '0.72rem', fontWeight: 600 }}>
+                            🏢 {fmtBranch(e.branch_id)}
+                          </span>
+                        </td>
+                        <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800, color: e.status === 'paid' ? '#166534' : '#c41e3a' }}>{formatCurrency(Number(e.profit_amount))}</td>
+                        <td style={{ padding: '8px 10px', textAlign: 'center' }}>
+                          <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700, background: e.status === 'paid' ? '#dcfce7' : '#fee2e2', color: e.status === 'paid' ? '#166534' : '#c41e3a' }}>
+                            {e.status === 'paid' ? '✓ Paid' : '⏳ Pending'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {pendingTotal > 0 && (
+                <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', fontSize: '0.78rem', color: '#92400e', marginTop: 14 }}>
+                  ⚠️ You have <strong>{formatCurrency(pendingTotal)}</strong> in retail profit to collect. Visit the branch(es) listed above.
+                </div>
+              )}
+            </>
+          )}
         </CardBody>
       </Card>
     </div>

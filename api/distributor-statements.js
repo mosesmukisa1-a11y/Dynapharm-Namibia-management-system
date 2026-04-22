@@ -69,6 +69,28 @@ export default async function handler(req, res) {
       return res.json({ success: true, months: rows });
     }
 
+    // Return just the summary (netAmount) for a distributor across all months — no raw text
+    const summaryOnly = url.searchParams.get('summary') === 'true';
+    if (summaryOnly) {
+      const rows = await getMany(
+        `SELECT month, label, summary_index->$1 AS summary
+         FROM distributor_statements
+         WHERE summary_index ? $1
+         ORDER BY month DESC`,
+        [nb]
+      );
+      const result = rows.map(r => {
+        const s = r.summary || {};
+        return {
+          month: r.month,
+          label: r.label,
+          name: s.name || null,
+          net_amount: s.netAmount != null ? Number(s.netAmount) : null,
+        };
+      });
+      return res.json({ success: true, months: result });
+    }
+
     // Get a specific distributor's section for a given month
     if (!month) {
       // Return the latest month available
