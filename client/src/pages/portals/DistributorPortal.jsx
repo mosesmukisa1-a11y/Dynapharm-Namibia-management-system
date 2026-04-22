@@ -719,6 +719,14 @@ function DashboardTab() {
     }
   }, [user]);
 
+  const _qrNbNumber = profile?.distributor_code || publicNBCode || '';
+  const _qrFnRef = useRef(null);
+  useEffect(() => {
+    if (qrModalOpen && _qrNbNumber) {
+      setTimeout(() => { _qrFnRef.current?.(); }, 80);
+    }
+  }, [qrModalOpen, _qrNbNumber, profile]);
+
   if (loading) return <LoadingSpinner />;
 
   const myOrders = orders;
@@ -850,12 +858,7 @@ function DashboardTab() {
     }
     setQrGenerating(false);
   };
-
-  useEffect(() => {
-    if (qrModalOpen && nbNumber) {
-      setTimeout(generateQRCard, 80);
-    }
-  }, [qrModalOpen, nbNumber, profile]);
+  _qrFnRef.current = generateQRCard;
 
   const downloadQRCard = () => {
     if (!qrCanvasRef.current) return;
