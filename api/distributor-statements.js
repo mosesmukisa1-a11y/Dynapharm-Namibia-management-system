@@ -1,5 +1,5 @@
 import { query, getMany, getOne } from './db.js';
-import { applyAuthCors, getSessionUser } from './_lib/auth.js';
+import { applyAuthCors, getTokenFromRequest, verifyAuthToken } from './_lib/auth.js';
 
 // ── Parse the raw statement file into a map of DRN → section text ──────────
 function parseStatementFile(raw) {
@@ -88,7 +88,12 @@ export default async function handler(req, res) {
 
   // ── POST (upload) ─────────────────────────────────────────────────────────
   if (req.method === 'POST') {
-    const user = await getSessionUser(req);
+    let user = null;
+    try {
+      const token = getTokenFromRequest(req);
+      const decoded = verifyAuthToken(token);
+      if (decoded?.sub) user = await getOne('SELECT id, username, role FROM users WHERE id = $1 AND is_active != false', [decoded.sub]);
+    } catch {}
     if (!user || !['admin', 'gm', 'mis', 'finance', 'director'].includes(user.role)) {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
@@ -140,7 +145,12 @@ export default async function handler(req, res) {
 
   // ── DELETE ────────────────────────────────────────────────────────────────
   if (req.method === 'DELETE') {
-    const user = await getSessionUser(req);
+    let user = null;
+    try {
+      const token = getTokenFromRequest(req);
+      const decoded = verifyAuthToken(token);
+      if (decoded?.sub) user = await getOne('SELECT id, username, role FROM users WHERE id = $1 AND is_active != false', [decoded.sub]);
+    } catch {}
     if (!user || !['admin', 'gm', 'mis', 'director'].includes(user.role)) {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
