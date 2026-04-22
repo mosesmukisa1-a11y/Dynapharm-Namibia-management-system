@@ -1222,40 +1222,39 @@ function DashboardTab() {
 
       <Modal open={qrModalOpen} onClose={() => setQrModalOpen(false)} title="My Dynapharm QR Card" size="md">
         <div className="flex flex-col items-center gap-4 py-2">
-          {qrGenerating ? (
-            <div className="flex flex-col items-center gap-3 py-10">
-              <LoadingSpinner />
-              <p className="text-sm text-gray-500">Generating your QR card…</p>
-            </div>
-          ) : (
-            <>
-              <canvas
-                ref={qrCanvasRef}
-                style={{ borderRadius: 16, maxWidth: '100%', boxShadow: '0 8px 32px rgba(0,0,0,0.25)' }}
-              />
-              <p className="text-xs text-gray-500 text-center max-w-xs">
-                Share this card with clients — when they scan it, you'll be their referral for all purchases, check-ups and new registrations.
-              </p>
-              <div className="flex gap-3 w-full justify-center flex-wrap">
-                <button
-                  onClick={downloadQRCard}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-xl text-sm font-semibold hover:bg-primary/90 transition-colors shadow"
-                >
-                  <Download size={15} /> Download PNG
-                </button>
-                <button
-                  onClick={shareQRCard}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-gray-100 text-gray-800 rounded-xl text-sm font-semibold hover:bg-gray-200 transition-colors"
-                >
-                  <Share2 size={15} /> Share Link
-                </button>
+          <div style={{ position: 'relative', width: '100%', display: 'flex', justifyContent: 'center' }}>
+            <canvas
+              ref={qrCanvasRef}
+              style={{ borderRadius: 16, maxWidth: '100%', boxShadow: '0 8px 32px rgba(0,0,0,0.25)', display: 'block' }}
+            />
+            {qrGenerating && (
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.8)', borderRadius: 16 }}>
+                <LoadingSpinner />
+                <p className="text-sm text-gray-500 mt-2">Generating your QR card…</p>
               </div>
-              <div className="w-full bg-gray-50 rounded-xl px-4 py-2.5 text-center">
-                <p className="text-xs text-gray-400 mb-1">Your referral link</p>
-                <p className="text-xs text-primary font-mono break-all select-all">{`${window.location.origin}/ref/${nbNumber}`}</p>
-              </div>
-            </>
-          )}
+            )}
+          </div>
+          <p className="text-xs text-gray-500 text-center max-w-xs">
+            Share this card with clients — when they scan it, you'll be their referral for all purchases, check-ups and new registrations.
+          </p>
+          <div className="flex gap-3 w-full justify-center flex-wrap">
+            <button
+              onClick={downloadQRCard}
+              className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-xl text-sm font-semibold hover:bg-primary/90 transition-colors shadow"
+            >
+              <Download size={15} /> Download PNG
+            </button>
+            <button
+              onClick={shareQRCard}
+              className="flex items-center gap-2 px-5 py-2.5 bg-gray-100 text-gray-800 rounded-xl text-sm font-semibold hover:bg-gray-200 transition-colors"
+            >
+              <Share2 size={15} /> Share Link
+            </button>
+          </div>
+          <div className="w-full bg-gray-50 rounded-xl px-4 py-2.5 text-center">
+            <p className="text-xs text-gray-400 mb-1">Your referral link</p>
+            <p className="text-xs text-primary font-mono break-all select-all">{`${window.location.origin}/ref/${nbNumber}`}</p>
+          </div>
         </div>
       </Modal>
     </div>
