@@ -1726,38 +1726,29 @@ function BVProfitTab() {
   orders.forEach(o => {
     const month = (o.created_at || '').slice(0, 7);
     if (!month) return;
-    if (!monthlyData[month]) monthlyData[month] = { orders: 0, branchSales: 0, amount: 0, bv: 0, profit: 0 };
+    if (!monthlyData[month]) monthlyData[month] = { orders: 0, branchSales: 0, amount: 0, bv: 0 };
     monthlyData[month].orders += 1;
-    const amt = Number(o.total_amount || o.subtotal || 0);
-    monthlyData[month].amount += amt;
+    monthlyData[month].amount += Number(o.total_amount || o.subtotal || 0);
     const items = parseItems(o.items);
     items.forEach(i => {
       monthlyData[month].bv += Number(i.bv || 0) * Number(i.quantity || 1);
-      const dp = Number(i.unit_price || i.dp || 0);
-      const cp = Number(i.cp || dp * 1.3);
-      monthlyData[month].profit += (cp - dp) * Number(i.quantity || 1);
     });
   });
   branchSales.forEach(s => {
     const date = s.sale_date || s.saleDate || s.created_at || s.timestamp || '';
     const month = date.slice(0, 7);
     if (!month) return;
-    if (!monthlyData[month]) monthlyData[month] = { orders: 0, branchSales: 0, amount: 0, bv: 0, profit: 0 };
+    if (!monthlyData[month]) monthlyData[month] = { orders: 0, branchSales: 0, amount: 0, bv: 0 };
     monthlyData[month].branchSales += 1;
     monthlyData[month].amount += Number(s.total || s.totalAmount || 0);
     monthlyData[month].bv += Number(s.totalBV || s.bv || 0);
-    const items = Array.isArray(s.products) ? s.products : [];
-    items.forEach(i => {
-      const dp = Number(i.dpPrice || i.dp || 0);
-      const cp = Number(i.cpPrice || i.cp || i.unit_price || (dp > 0 ? dp * 1.3 : 0));
-      const qty = Number(i.quantity || i.qty || 1);
-      if (dp > 0 && cp > dp) monthlyData[month].profit += (cp - dp) * qty;
-    });
   });
 
   const months = Object.entries(monthlyData).sort((a, b) => b[0].localeCompare(a[0]));
   const totalBV = months.reduce((s, [, d]) => s + d.bv, 0);
-  const totalProfit = months.reduce((s, [, d]) => s + d.profit, 0);
+  const totalTransactions = orders.length + branchSales.length;
+  const pendingProfitTotal = profitLedger.filter(e => e.status === 'pending').reduce((s, e) => s + Number(e.profit_amount || 0), 0);
+  const paidProfitTotal = profitLedger.filter(e => e.status === 'paid').reduce((s, e) => s + Number(e.profit_amount || 0), 0);
 
   return (
     <div className="space-y-6">
@@ -1783,17 +1774,22 @@ function BVProfitTab() {
         </Card>
       )}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard title="Total BV" value={totalBV.toFixed(1)} color="blue" />
-        <StatCard title="Est. Profit" value={formatCurrency(totalProfit)} color="green" />
-        <StatCard title="Total Transactions" value={orders.length + branchSales.length} color="purple" />
-        <StatCard title="Months Active" value={months.length} color="orange" />
+        <StatCard title="Total BV Earned" value={totalBV.toFixed(1)} color="blue" />
+        <StatCard title="Retail Profit Collected" value={formatCurrency(paidProfitTotal)} color="green" />
+        <StatCard title="Profit Pending" value={formatCurrency(pendingProfitTotal)} color="orange" />
+        <StatCard title="Total Transactions" value={totalTransactions} color="purple" />
+      </div>
+
+      <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 text-xs text-blue-800 space-y-1">
+        <p><strong>BV (Business Volume)</strong> — points accumulated from your own purchases on your NB number <em>plus</em> purchases made by non-member clients you referred to any branch.</p>
+        <p><strong>Retail Profit</strong> — the difference between Consumer Price (CP) and Distributor Price (DP) on sales to non-member clients referred by you. Collected directly from the branch that processed the sale.</p>
       </div>
 
       <Card>
-        <CardHeader><h3 className="font-bold text-gray-800 flex items-center gap-2"><BarChart3 size={18} /> Monthly BV & Profit Breakdown</h3></CardHeader>
+        <CardHeader><h3 className="font-bold text-gray-800 flex items-center gap-2"><BarChart3 size={18} /> Monthly BV Breakdown</h3></CardHeader>
         <CardBody>
           {months.length === 0 ? (
-            <EmptyState icon={<BarChart3 size={48} />} title="No Data Yet" description="Your BV will appear here when branch sales or online orders are linked to your NB number." />
+            <EmptyState icon={<BarChart3 size={48} />} title="No BV Recorded Yet" description="BV will appear here once branch sales or online orders are linked to your NB number — either from your own purchases or clients you referred." />
           ) : (
             <div className="space-y-3">
               {months.map(([month, data]) => (
@@ -1804,12 +1800,12 @@ function BVProfitTab() {
                       {data.orders > 0 && `${data.orders} online order(s)`}
                       {data.orders > 0 && data.branchSales > 0 && ' · '}
                       {data.branchSales > 0 && `${data.branchSales} branch sale(s)`}
-                      {' | '}Total: {formatCurrency(data.amount)}
+                      {' · '}Sales total: {formatCurrency(data.amount)}
                     </p>
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-bold text-blue-600">{data.bv.toFixed(1)} BV</p>
-                    <p className="text-sm font-bold text-green-600">{formatCurrency(data.profit)} profit</p>
+                    <p className="text-xs text-gray-400">{(data.orders + data.branchSales)} transaction(s)</p>
                   </div>
                 </div>
               ))}
@@ -1828,14 +1824,14 @@ function BVProfitTab() {
           return (
             <Card>
               <CardHeader>
-                <h3 className="font-bold text-gray-800 flex items-center gap-2">💰 Retail Profit Ledger</h3>
+                <h3 className="font-bold text-gray-800 flex items-center gap-2">💰 Retail Profit Ledger — Referred Non-Member Sales</h3>
               </CardHeader>
               <CardBody>
                 <div style={{ textAlign: 'center', padding: '40px 20px' }}>
                   <div style={{ fontSize: 48, marginBottom: 12 }}>💰</div>
                   <p style={{ fontWeight: 700, color: '#374151', margin: 0, fontSize: '1rem' }}>No profit entries recorded yet</p>
-                  <p style={{ color: '#9ca3af', fontSize: '0.85rem', marginTop: 8, maxWidth: 380, margin: '8px auto 0' }}>
-                    When you refer customers who make walk-in purchases at a branch, your retail profit (CP − DP) will appear here — showing which branch owes you what, and whether it has been paid or is still pending collection.
+                  <p style={{ color: '#9ca3af', fontSize: '0.85rem', marginTop: 8, maxWidth: 400, margin: '8px auto 0' }}>
+                    When a non-member client you referred makes a walk-in purchase at a branch, your retail profit (Consumer Price − Distributor Price) is recorded here. Each entry shows which branch processed the sale, the profit amount, and whether it has been collected or is still pending.
                   </p>
                 </div>
               </CardBody>
@@ -1883,9 +1879,9 @@ function BVProfitTab() {
             <Card>
               <CardHeader>
                 <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                  🏢 Profit by Branch — Collection Guide
+                  🏢 Retail Profit by Branch — Collection Guide
                 </h3>
-                <p className="text-xs text-gray-500 mt-1">Visit or contact each branch below to collect your pending profit.</p>
+                <p className="text-xs text-gray-500 mt-1">Each branch below processed a sale for a non-member client you referred. Visit or call the branch to collect your pending retail profit (CP − DP).</p>
               </CardHeader>
               <CardBody>
                 {branchList.length === 0 ? (
@@ -1939,7 +1935,7 @@ function BVProfitTab() {
             {/* ── Detailed Ledger ── */}
             <Card>
               <CardHeader>
-                <h3 className="font-bold text-gray-800 flex items-center gap-2">📋 Profit Ledger — All Entries</h3>
+                <h3 className="font-bold text-gray-800 flex items-center gap-2">📋 Retail Profit Ledger — All Entries</h3>
               </CardHeader>
               <CardBody>
                 <div style={{ overflowX: 'auto' }}>
@@ -1990,20 +1986,20 @@ function BVProfitTab() {
       })()}
 
       <Card>
-        <CardHeader><h3 className="font-bold text-gray-800">BV Accumulation Guide</h3></CardHeader>
+        <CardHeader><h3 className="font-bold text-gray-800">How BV & Profit Work</h3></CardHeader>
         <CardBody>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
             <div className="p-4 bg-blue-50 rounded-lg">
-              <p className="font-bold text-blue-800 mb-1">Personal BV</p>
-              <p className="text-blue-600">BV earned from your own purchases at Distributor Price (DP).</p>
+              <p className="font-bold text-blue-800 mb-1">BV from Your Own Sales</p>
+              <p className="text-blue-600">Every purchase made on your NB number — at a branch or online — earns you BV points as a member distributor.</p>
+            </div>
+            <div className="p-4 bg-indigo-50 rounded-lg">
+              <p className="font-bold text-indigo-800 mb-1">BV from Referred Clients</p>
+              <p className="text-indigo-600">When a non-member client you referred buys at a branch, those sales are also linked to your NB number and add to your total BV.</p>
             </div>
             <div className="p-4 bg-green-50 rounded-lg">
               <p className="font-bold text-green-800 mb-1">Retail Profit</p>
-              <p className="text-green-600">Difference between Consumer Price (CP) and Distributor Price (DP) on retail sales.</p>
-            </div>
-            <div className="p-4 bg-purple-50 rounded-lg">
-              <p className="font-bold text-purple-800 mb-1">Group BV</p>
-              <p className="text-purple-600">Combined BV from your downline network for bonus qualification.</p>
+              <p className="text-green-600">You earn the margin between Consumer Price (CP) and Distributor Price (DP) on every non-member sale made by a client you referred. Collect this from the branch that processed the sale.</p>
             </div>
           </div>
         </CardBody>
