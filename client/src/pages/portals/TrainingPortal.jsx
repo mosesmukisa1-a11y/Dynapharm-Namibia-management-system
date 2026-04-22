@@ -22,13 +22,17 @@ export default function TrainingPortal() {
     { id: 'messages', label: 'My Messages', icon: '📨' },
   ];
 
+  const goToUpload = (type) => {
+    if (isTrainer) setActiveTab('upload');
+  };
+
   return (
     <div>
       <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
       <div className="mt-6">
-        {activeTab === 'materials' && <MaterialsTab />}
-        {activeTab === 'videos' && <VideosTab />}
-        {activeTab === 'photos' && <PhotosTab />}
+        {activeTab === 'materials' && <MaterialsTab isTrainer={isTrainer} onUpload={goToUpload} />}
+        {activeTab === 'videos' && <VideosTab isTrainer={isTrainer} onUpload={goToUpload} />}
+        {activeTab === 'photos' && <PhotosTab isTrainer={isTrainer} onUpload={goToUpload} />}
         {activeTab === 'upload' && isTrainer && <UploadTab />}
         {activeTab === 'schedule' && <ScheduleTab isTrainer={isTrainer} />}
         {activeTab === 'staffServices' && <StaffServicesTab accentColor="#065f46" />}
@@ -38,33 +42,109 @@ export default function TrainingPortal() {
   );
 }
 
-function MaterialsTab() {
+function MaterialsTab({ isTrainer, onUpload }) {
   const [search, setSearch] = useState('');
+  const [uploaded, setUploaded] = useState([]);
+  const [loadingUploaded, setLoadingUploaded] = useState(true);
 
-  const materials = [
-    { id: 1, title: 'Product Knowledge Guide', type: 'PDF', category: 'Products', description: 'Comprehensive guide to all Dynapharm products, ingredients, and benefits.' },
-    { id: 2, title: 'Sales Techniques Manual', type: 'PDF', category: 'Sales', description: 'Effective sales strategies for distributors and branch staff.' },
-    { id: 3, title: 'Health Assessment Protocol', type: 'PDF', category: 'Health', description: 'Standard procedures for conducting full body check-ups.' },
-    { id: 4, title: 'Distributor Onboarding Pack', type: 'PDF', category: 'Onboarding', description: 'Complete onboarding guide for new distributors.' },
-    { id: 5, title: 'Branch Operations Manual', type: 'PDF', category: 'Operations', description: 'Standard operating procedures for branch management.' },
+  useEffect(() => {
+    api.get('/media?upload_type=training')
+      .then(data => {
+        const rows = Array.isArray(data) ? data : [];
+        setUploaded(rows.filter(r =>
+          (r.media_type === 'document' || r.category === 'document') ||
+          (r.mime_type || '').startsWith('application/') ||
+          (r.mime_type || '').startsWith('text/')
+        ));
+      })
+      .catch(() => setUploaded([]))
+      .finally(() => setLoadingUploaded(false));
+  }, []);
+
+  const staticMaterials = [
+    { id: 'static-1', title: 'Product Knowledge Guide', type: 'PDF', category: 'Products', description: 'Comprehensive guide to all Dynapharm products, ingredients, and benefits.', file_url: null },
+    { id: 'static-2', title: 'Sales Techniques Manual', type: 'PDF', category: 'Sales', description: 'Effective sales strategies for distributors and branch staff.', file_url: null },
+    { id: 'static-3', title: 'Health Assessment Protocol', type: 'PDF', category: 'Health', description: 'Standard procedures for conducting full body check-ups.', file_url: null },
+    { id: 'static-4', title: 'Distributor Onboarding Pack', type: 'PDF', category: 'Onboarding', description: 'Complete onboarding guide for new distributors.', file_url: null },
+    { id: 'static-5', title: 'Branch Operations Manual', type: 'PDF', category: 'Operations', description: 'Standard operating procedures for branch management.', file_url: null },
   ];
 
-  const filtered = materials.filter(m =>
-    !search || m.title.toLowerCase().includes(search.toLowerCase()) || m.category.toLowerCase().includes(search.toLowerCase())
+  const uploadedMapped = uploaded.map(u => ({
+    id: u.id,
+    title: u.entity_name || u.filename || 'Uploaded Material',
+    type: (u.mime_type || '').includes('pdf') ? 'PDF' : (u.mime_type || '').includes('word') ? 'DOCX' : 'DOC',
+    category: u.category || 'General',
+    description: u.description || '',
+    file_url: u.file_url,
+    uploaded_at: u.uploaded_at,
+    isReal: true,
+  }));
+
+  const allMaterials = [...uploadedMapped, ...staticMaterials];
+  const filtered = allMaterials.filter(m =>
+    !search || m.title.toLowerCase().includes(search.toLowerCase()) || (m.category || '').toLowerCase().includes(search.toLowerCase())
   );
 
   return (
     <div>
-      <div className="flex items-center gap-3 mb-6">
-        <div className="relative flex-1">
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
+        <div className="relative flex-1 min-w-0">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search training materials..."
             className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20" />
         </div>
+        {isTrainer && (
+          <button onClick={onUpload}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 18px', background: '#c41e3a', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', whiteSpace: 'nowrap', boxShadow: '0 2px 8px rgba(196,30,58,0.25)' }}>
+            <Upload size={15} /> Upload Material
+          </button>
+        )}
       </div>
 
+      {uploadedMapped.length > 0 && (
+        <div className="mb-5">
+          <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Uploaded by Training Team</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {uploadedMapped.filter(m => !search || m.title.toLowerCase().includes(search.toLowerCase())).map(mat => (
+              <Card key={mat.id} className="hover:shadow-md transition-shadow border-l-4 border-l-primary">
+                <CardBody>
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <FileText size={20} className="text-primary" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-gray-900 text-sm leading-snug">{mat.title}</h3>
+                      {mat.description && <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{mat.description}</p>}
+                      <div className="flex items-center gap-2 mt-2 flex-wrap">
+                        <Badge variant="info">{mat.category}</Badge>
+                        <Badge variant="success">{mat.type}</Badge>
+                        {mat.uploaded_at && <span className="text-xs text-gray-400">{new Date(mat.uploaded_at).toLocaleDateString()}</span>}
+                      </div>
+                    </div>
+                  </div>
+                  {mat.file_url ? (
+                    <a href={mat.file_url} target="_blank" rel="noreferrer" download
+                      className="w-full mt-3 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-bold text-white bg-primary no-underline">
+                      <Eye size={13} /> View / Download
+                    </a>
+                  ) : (
+                    <Button size="sm" variant="secondary" className="w-full mt-3" disabled>
+                      <Eye size={14} /> View Material
+                    </Button>
+                  )}
+                </CardBody>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {uploadedMapped.length > 0 && (
+        <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Standard Reference Materials</p>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filtered.map(mat => (
+        {staticMaterials.filter(m => !search || m.title.toLowerCase().includes(search.toLowerCase()) || m.category.toLowerCase().includes(search.toLowerCase())).map(mat => (
           <Card key={mat.id} className="hover:shadow-md transition-shadow">
             <CardBody>
               <div className="flex items-start gap-3">
@@ -86,12 +166,25 @@ function MaterialsTab() {
             </CardBody>
           </Card>
         ))}
+        {filtered.length === 0 && (
+          <div className="col-span-full text-center py-8 text-gray-400">No materials matching "{search}"</div>
+        )}
       </div>
+
+      {isTrainer && (
+        <div className="mt-6 p-4 rounded-xl border-2 border-dashed border-gray-200 text-center">
+          <p className="text-sm text-gray-500 mb-3">Have a document, guide, or training file to share?</p>
+          <button onClick={onUpload}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 20px', background: '#c41e3a', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', boxShadow: '0 2px 8px rgba(196,30,58,0.25)' }}>
+            <Upload size={15} /> Upload Training Material
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
-function VideosTab() {
+function VideosTab({ isTrainer, onUpload }) {
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -110,52 +203,68 @@ function VideosTab() {
 
   if (loading) return <LoadingSpinner />;
 
-  if (videos.length === 0) {
-    return (
-      <EmptyState
-        icon={<Video size={48} />}
-        title="No Training Videos Yet"
-        description="Training videos will appear here once uploaded by trainers. Videos cover product knowledge, sales techniques, and health assessment procedures."
-      />
-    );
-  }
-
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      {videos.map(vid => (
-        <Card key={vid.id} className="hover:shadow-md transition-shadow overflow-hidden">
-          <div className="bg-black rounded-t-xl overflow-hidden">
-            {vid.file_url ? (
-              <video
-                src={vid.file_url}
-                controls
-                preload="metadata"
-                className="w-full max-h-52 object-contain"
-              />
-            ) : (
-              <div className="h-40 flex items-center justify-center bg-gray-800">
-                <div className="w-16 h-16 bg-primary/20 rounded-full flex items-center justify-center">
-                  <Play size={24} className="text-primary ml-1" />
-                </div>
+    <div>
+      {isTrainer && (
+        <div className="flex justify-end mb-4">
+          <button onClick={onUpload}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 18px', background: '#c41e3a', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', boxShadow: '0 2px 8px rgba(196,30,58,0.25)' }}>
+            <Upload size={15} /> Upload Video
+          </button>
+        </div>
+      )}
+      {videos.length === 0 ? (
+        <EmptyState
+          icon={<Video size={48} />}
+          title="No Training Videos Yet"
+          description={isTrainer ? 'Click "Upload Video" above to add the first training video.' : 'Training videos will appear here once uploaded by trainers.'}
+        />
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {videos.map(vid => (
+            <Card key={vid.id} className="hover:shadow-md transition-shadow overflow-hidden">
+              <div className="bg-black rounded-t-xl overflow-hidden">
+                {vid.file_url ? (
+                  <video src={vid.file_url} controls playsInline preload="metadata" className="w-full max-h-52 object-contain" />
+                ) : (
+                  <div className="h-40 flex items-center justify-center bg-gray-800">
+                    <div className="w-16 h-16 bg-primary/20 rounded-full flex items-center justify-center">
+                      <Play size={24} className="text-primary ml-1" />
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-          <CardBody>
-            <h3 className="font-semibold text-gray-900 text-sm">{vid.entity_name || vid.filename || 'Untitled Video'}</h3>
-            {vid.description && <p className="text-xs text-gray-500 mt-1 line-clamp-2">{vid.description}</p>}
-            <div className="flex items-center gap-2 mt-2 flex-wrap">
-              {vid.category && <Badge variant="info">{vid.category}</Badge>}
-              {vid.uploaded_by && <span className="text-xs text-gray-400">by {vid.uploaded_by}</span>}
-              {vid.file_size && <span className="text-xs text-gray-400">{(vid.file_size / 1024 / 1024).toFixed(1)} MB</span>}
-            </div>
-          </CardBody>
-        </Card>
-      ))}
+              <CardBody>
+                <div className="flex items-start justify-between gap-2">
+                  <h3 className="font-semibold text-gray-900 text-sm leading-snug">{vid.entity_name || vid.filename || 'Untitled Video'}</h3>
+                  {vid.file_url && (
+                    <a href={vid.file_url} target="_blank" rel="noreferrer" className="text-xs text-primary font-bold shrink-0" style={{ textDecoration: 'none' }}>Open ↗</a>
+                  )}
+                </div>
+                {vid.description && <p className="text-xs text-gray-500 mt-1 line-clamp-2">{vid.description}</p>}
+                <div className="flex items-center gap-2 mt-2 flex-wrap">
+                  {vid.category && vid.category !== 'video' && <Badge variant="info">{vid.category}</Badge>}
+                  {vid.uploaded_by && <span className="text-xs text-gray-400">by {vid.uploaded_by}</span>}
+                  {vid.file_size && <span className="text-xs text-gray-400">{(vid.file_size / 1024 / 1024).toFixed(1)} MB</span>}
+                </div>
+              </CardBody>
+            </Card>
+          ))}
+        </div>
+      )}
+      {isTrainer && videos.length > 0 && (
+        <div className="mt-5 p-4 rounded-xl border-2 border-dashed border-gray-200 text-center">
+          <button onClick={onUpload}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 20px', background: '#c41e3a', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', boxShadow: '0 2px 8px rgba(196,30,58,0.25)' }}>
+            <Upload size={15} /> Upload Another Video
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
-function PhotosTab() {
+function PhotosTab({ isTrainer, onUpload }) {
   const [photos, setPhotos] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -174,28 +283,50 @@ function PhotosTab() {
 
   if (loading) return <LoadingSpinner />;
 
-  if (photos.length === 0) {
-    return (
-      <EmptyState
-        icon={<Image size={48} />}
-        title="No Training Photos Yet"
-        description="Training photos and event galleries will be displayed here once uploaded by trainers."
-      />
-    );
-  }
-
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-      {photos.map(photo => (
-        <Card key={photo.id} className="hover:shadow-md transition-shadow overflow-hidden">
-          <div className="h-40 bg-gray-100">
-            <img src={photo.file_url} alt={photo.entity_name || photo.filename} className="w-full h-full object-cover" />
-          </div>
-          <CardBody className="py-2 px-3">
-            <p className="text-xs text-gray-700 truncate">{photo.entity_name || photo.filename || 'Photo'}</p>
-          </CardBody>
-        </Card>
-      ))}
+    <div>
+      {isTrainer && (
+        <div className="flex justify-end mb-4">
+          <button onClick={onUpload}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 18px', background: '#c41e3a', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', boxShadow: '0 2px 8px rgba(196,30,58,0.25)' }}>
+            <Upload size={15} /> Upload Photo
+          </button>
+        </div>
+      )}
+      {photos.length === 0 ? (
+        <EmptyState
+          icon={<Image size={48} />}
+          title="No Training Photos Yet"
+          description={isTrainer ? 'Click "Upload Photo" above to add training event photos.' : 'Training photos and event galleries will appear here once uploaded.'}
+        />
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          {photos.map(photo => (
+            <a key={photo.id} href={photo.file_url} target="_blank" rel="noreferrer"
+              style={{ borderRadius: 12, overflow: 'hidden', border: '1px solid #e2e8f0', background: '#f8fafc', display: 'block', textDecoration: 'none' }}
+              className="hover:shadow-md transition-shadow">
+              <div className="h-40 bg-gray-100">
+                <img src={photo.file_url} alt={photo.entity_name || photo.filename}
+                  className="w-full h-full object-cover"
+                  onError={e => { e.target.style.display = 'none'; }}
+                />
+              </div>
+              <div style={{ padding: '6px 10px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <p className="text-xs text-gray-700 truncate">{photo.entity_name || photo.filename || 'Photo'}</p>
+                <span style={{ fontSize: '0.7rem', color: '#c41e3a', fontWeight: 700 }}>View ↗</span>
+              </div>
+            </a>
+          ))}
+        </div>
+      )}
+      {isTrainer && photos.length > 0 && (
+        <div className="mt-5 p-4 rounded-xl border-2 border-dashed border-gray-200 text-center">
+          <button onClick={onUpload}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 20px', background: '#c41e3a', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', boxShadow: '0 2px 8px rgba(196,30,58,0.25)' }}>
+            <Upload size={15} /> Upload More Photos
+          </button>
+        </div>
+      )}
     </div>
   );
 }
