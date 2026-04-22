@@ -101,11 +101,8 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'No valid distributor rows found. Each row must have at least a DRN/NB/DZ code and NAME.' });
     }
 
-    const existing = await getMany('SELECT distributor_code, position, position_code FROM distributors WHERE entity_type = $1', ['distributor']);
-    const existingMap = new Map();
-    for (const e of existing) {
-      existingMap.set(e.distributor_code, e);
-    }
+    const existing = await getMany('SELECT distributor_code FROM distributors WHERE entity_type = $1', ['distributor']);
+    const existingSet = new Set(existing.map(e => e.distributor_code));
 
     let inserted = 0;
     let updated = 0;
@@ -119,26 +116,55 @@ export default async function handler(req, res) {
       await withTransaction(async (client) => {
         for (const dist of chunk) {
           try {
-            const existingDist = existingMap.get(dist.distributor_code);
-
-            if (existingDist) {
-              if (existingDist.position_code !== dist.position_code) {
-                await client.query(
-                  `UPDATE distributors SET position = $1, position_code = $2, updated_at = NOW() WHERE distributor_code = $3`,
-                  [dist.position, dist.position_code, dist.distributor_code]
-                );
-                updated++;
-              } else {
-                skipped++;
-              }
+            if (existingSet.has(dist.distributor_code)) {
+              await client.query(
+                `UPDATE distributors SET
+                   distributor_name = $1,
+                   position = $2,
+                   position_code = $3,
+                   mobile_no = COALESCE($4, mobile_no),
+                   sex = COALESCE($5, sex),
+                   location = COALESCE($6, location),
+                   status = $7,
+                   email = COALESCE($8, email),
+                   level = COALESCE($9, level),
+                   date_joined = COALESCE($10, date_joined),
+                   sponsor_code = COALESCE($11, sponsor_code),
+                   updated_at = NOW()
+                 WHERE distributor_code = $12`,
+                [
+                  dist.distributor_name,
+                  dist.position,
+                  dist.position_code,
+                  dist.mobile_no,
+                  dist.sex,
+                  dist.location,
+                  dist.status,
+                  dist.email,
+                  dist.level,
+                  dist.date_joined,
+                  dist.sponsor_code,
+                  dist.distributor_code,
+                ]
+              );
+              updated++;
             } else {
               const id = `DIST-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
               await client.query(
                 `INSERT INTO distributors (id, distributor_code, distributor_name, position, position_code, date_joined, sponsor_code, mobile_no, sex, location, status, email, level, entity_type)
                  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
                  ON CONFLICT (distributor_code) DO UPDATE SET
+                   distributor_name = EXCLUDED.distributor_name,
                    position = EXCLUDED.position,
                    position_code = EXCLUDED.position_code,
+                   mobile_no = COALESCE(EXCLUDED.mobile_no, distributors.mobile_no),
+                   sex = COALESCE(EXCLUDED.sex, distributors.sex),
+                   location = COALESCE(EXCLUDED.location, distributors.location),
+                   status = EXCLUDED.status,
+                   email = COALESCE(EXCLUDED.email, distributors.email),
+                   level = COALESCE(EXCLUDED.level, distributors.level),
+                   date_joined = COALESCE(EXCLUDED.date_joined, distributors.date_joined),
+                   sponsor_code = COALESCE(EXCLUDED.sponsor_code, distributors.sponsor_code),
                    updated_at = NOW()`,
                 [id, dist.distributor_code, dist.distributor_name, dist.position, dist.position_code, dist.date_joined, dist.sponsor_code, dist.mobile_no, dist.sex, dist.location, dist.status, dist.email, dist.level, dist.entity_type]
               );
@@ -161,7 +187,7 @@ export default async function handler(req, res) {
         errors: errors.length,
       },
       errors: errors.slice(0, 50),
-      message: `Import complete: ${inserted} new, ${updated} position updates, ${skipped} unchanged, ${errors.length} errors`,
+      message: `Import complete: ${inserted} new, ${updated} updated, ${skipped} unchanged, ${errors.length} errors`,
     });
   } catch (error) {
     console.error('Distributor import error:', error);
