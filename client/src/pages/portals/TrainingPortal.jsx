@@ -463,6 +463,7 @@ function ScheduleTab({ isTrainer }) {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -480,7 +481,25 @@ function ScheduleTab({ isTrainer }) {
 
   useEffect(() => { loadSchedules(); }, []);
 
-  const handleAdd = async (e) => {
+  const handleEdit = (event) => {
+    setForm({
+      title: event.title || '',
+      date: event.date || '',
+      time: event.time || '',
+      location: event.location || '',
+      trainer: event.trainer || '',
+      platform: event.platform || 'in_person',
+      meeting_link: event.meeting_link || '',
+      target_audience: event.target_audience || 'all',
+      description: event.description || '',
+    });
+    setEditingId(event.id);
+    setShowForm(true);
+    setMessage('');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleSave = async (e) => {
     e.preventDefault();
     if (!form.title || !form.date) { setMessage('Error: Title and date are required'); return; }
     if (form.platform !== 'in_person' && !form.meeting_link) {
@@ -489,10 +508,16 @@ function ScheduleTab({ isTrainer }) {
     setSaving(true);
     setMessage('');
     try {
-      await api.post('/training-schedules', form);
+      if (editingId) {
+        await api.put('/training-schedules', { ...form, id: editingId });
+        setMessage('Session updated successfully!');
+      } else {
+        await api.post('/training-schedules', form);
+        setMessage('Session scheduled successfully!');
+      }
       setForm(emptyForm);
       setShowForm(false);
-      setMessage('Session scheduled successfully!');
+      setEditingId(null);
       loadSchedules();
     } catch (err) {
       setMessage('Error: ' + (err.message || 'Failed to save'));
@@ -527,16 +552,19 @@ function ScheduleTab({ isTrainer }) {
           <div className="flex items-center justify-between flex-wrap gap-3">
             <h3 className="font-bold text-gray-800 flex items-center gap-2"><BookOpen size={18} /> Training Schedule</h3>
             {isTrainer && (
-              <Button size="sm" onClick={() => { setShowForm(v => !v); setMessage(''); }}>
+              <Button size="sm" onClick={() => { setShowForm(v => !v); setEditingId(null); setForm(emptyForm); setMessage(''); }}>
                 {showForm ? 'Cancel' : '+ Schedule Session'}
               </Button>
             )}
           </div>
+          {showForm && editingId && (
+            <p className="text-xs text-blue-600 font-semibold mt-1 px-1">✏️ Editing existing session — save to update</p>
+          )}
         </CardHeader>
 
         {showForm && isTrainer && (
           <CardBody className="border-t border-gray-100 bg-gray-50">
-            <form onSubmit={handleAdd} className="space-y-4">
+            <form onSubmit={handleSave} className="space-y-4">
               <Input label="Session Title *" value={form.title}
                 onChange={e => setForm({ ...form, title: e.target.value })} placeholder="e.g. Monthly Distributor Briefing" />
 
@@ -545,7 +573,7 @@ function ScheduleTab({ isTrainer }) {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {MEETING_PLATFORMS.map(p => (
                     <button key={p.id} type="button"
-                      onClick={() => setForm({ ...form, platform: p.id, meeting_link: p.id === 'in_person' ? '' : form.meeting_link })}
+                      onClick={() => setForm({ ...form, platform: p.id })}
                       className="flex items-center gap-2 px-3 py-2.5 rounded-lg border-2 text-sm font-semibold transition-all"
                       style={{
                         borderColor: form.platform === p.id ? p.color : '#e2e8f0',
@@ -559,12 +587,11 @@ function ScheduleTab({ isTrainer }) {
                 </div>
               </div>
 
-              {isOnlinePlatform && (
-                <Input label={`${selectedPlatform.label} Meeting Link *`}
-                  type="url" value={form.meeting_link}
-                  onChange={e => setForm({ ...form, meeting_link: e.target.value })}
-                  placeholder={`Paste your ${selectedPlatform.label} invite link here`} />
-              )}
+              <Input
+                label={isOnlinePlatform ? `${selectedPlatform.label} Meeting Link *` : 'Online Meeting Link (optional — for hybrid sessions)'}
+                type="url" value={form.meeting_link}
+                onChange={e => setForm({ ...form, meeting_link: e.target.value })}
+                placeholder={isOnlinePlatform ? `Paste your ${selectedPlatform.label} invite link here` : 'e.g. https://zoom.us/j/... (leave blank if no online component)'} />
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Input label="Date *" type="date" value={form.date}
@@ -573,11 +600,9 @@ function ScheduleTab({ isTrainer }) {
                   onChange={e => setForm({ ...form, time: e.target.value })} />
               </div>
 
-              {!isOnlinePlatform && (
-                <Input label="Physical Location" value={form.location}
-                  onChange={e => setForm({ ...form, location: e.target.value })}
-                  placeholder="e.g. Head Office Training Room, Windhoek" />
-              )}
+              <Input label={isOnlinePlatform ? 'Physical Location (optional)' : 'Physical Location'} value={form.location}
+                onChange={e => setForm({ ...form, location: e.target.value })}
+                placeholder="e.g. Head Office Training Room, Windhoek" />
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Input label="Presenter / Trainer" value={form.trainer}
@@ -603,8 +628,8 @@ function ScheduleTab({ isTrainer }) {
               </div>
 
               <div className="flex gap-3">
-                <Button type="submit" disabled={saving}>{saving ? 'Scheduling…' : 'Schedule Session'}</Button>
-                <Button type="button" variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button>
+                <Button type="submit" disabled={saving}>{saving ? 'Saving…' : editingId ? 'Update Session' : 'Schedule Session'}</Button>
+                <Button type="button" variant="secondary" onClick={() => { setShowForm(false); setEditingId(null); setForm(emptyForm); }}>Cancel</Button>
               </div>
             </form>
           </CardBody>
@@ -646,7 +671,7 @@ function ScheduleTab({ isTrainer }) {
       ) : (
         <div className="space-y-3">
           {visible.map(event => (
-            <MeetingCard key={event.id} event={event} isTrainer={isTrainer} onDelete={handleDelete} />
+            <MeetingCard key={event.id} event={event} isTrainer={isTrainer} onDelete={handleDelete} onEdit={handleEdit} />
           ))}
         </div>
       )}
