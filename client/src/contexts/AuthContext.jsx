@@ -35,45 +35,28 @@ export function AuthProvider({ children }) {
   const [showLoginAfterRefresh, setShowLoginAfterRefresh] = useState(false);
 
   useEffect(() => {
-    const isRefresh = sessionStorage.getItem(SESSION_ALIVE_KEY) === 'true';
+    sessionStorage.setItem(SESSION_ALIVE_KEY, 'true');
 
-    if (isRefresh) {
-      api.auth.logout().catch(() => {});
-      sessionStorage.removeItem(SESSION_ALIVE_KEY);
-
-      api.version.check()
-        .then(data => {
-          if (data?.version) {
-            const cachedVersion = sessionStorage.getItem(VERSION_KEY);
-            if (cachedVersion && cachedVersion !== data.version) {
-              setSystemUpdated(true);
-            }
-            sessionStorage.setItem(VERSION_KEY, data.version);
+    // Check for version change (show update banner if app was updated)
+    api.version.check()
+      .then(data => {
+        if (data?.version) {
+          const cachedVersion = sessionStorage.getItem(VERSION_KEY);
+          if (cachedVersion && cachedVersion !== data.version) {
+            setSystemUpdated(true);
           }
-        })
-        .catch(() => {})
-        .finally(() => {
-          setShowLoginAfterRefresh(true);
-          setLoading(false);
-        });
-    } else {
-      sessionStorage.setItem(SESSION_ALIVE_KEY, 'true');
+          sessionStorage.setItem(VERSION_KEY, data.version);
+        }
+      })
+      .catch(() => {});
 
-      api.version.check()
-        .then(data => {
-          if (data?.version) {
-            sessionStorage.setItem(VERSION_KEY, data.version);
-          }
-        })
-        .catch(() => {});
-
-      api.auth.me()
-        .then(data => {
-          if (data.user) setUser(data.user);
-        })
-        .catch(() => {})
-        .finally(() => setLoading(false));
-    }
+    // Always attempt to restore session from existing cookie
+    api.auth.me()
+      .then(data => {
+        if (data.user) setUser(data.user);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
   const login = useCallback(async (username, password) => {
