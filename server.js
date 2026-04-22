@@ -1927,6 +1927,7 @@ server.on('error', (error) => {
       // file_uploads: description and category for training content
       `ALTER TABLE file_uploads ADD COLUMN IF NOT EXISTS description TEXT`,
       `ALTER TABLE file_uploads ADD COLUMN IF NOT EXISTS category VARCHAR(100)`,
+      `ALTER TABLE file_uploads ADD COLUMN IF NOT EXISTS media_type VARCHAR(50)`,
     ];
     let schemaSynced = 0;
     for (const sql of schemaSyncs) {

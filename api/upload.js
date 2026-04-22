@@ -132,6 +132,14 @@ export default async function handler(req, res) {
       await publishRealtimeEvent('distributors', 'update', result).catch(() => {});
 
     } else {
+      const mediaType = req.body?.mediaType || null;
+      let storedCategory = req.body?.category || null;
+      if (!storedCategory && mediaType) storedCategory = mediaType;
+      if (!storedCategory) {
+        if (mimeType.startsWith('video/')) storedCategory = 'video';
+        else if (mimeType.startsWith('image/')) storedCategory = 'photo';
+        else if (mimeType.startsWith('application/') || mimeType === 'text/plain') storedCategory = 'document';
+      }
       result = await safeInsertFileUpload({
         upload_type: uploadType,
         entity_id: entityId || null,
@@ -142,7 +150,8 @@ export default async function handler(req, res) {
         mime_type: mimeType,
         uploaded_by: req.user?.fullName || req.user?.username || req.user?.id || null,
         description: req.body?.description || null,
-        category: req.body?.category || null,
+        category: storedCategory,
+        media_type: mediaType || storedCategory || null,
       });
     }
 

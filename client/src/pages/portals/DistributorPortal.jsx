@@ -3375,9 +3375,15 @@ function TrainingTab() {
     }).finally(() => setLoading(false));
   }, []);
 
-  const videos = media.filter(f => (f.mime_type || f.file_type || '').startsWith('video/'));
-  const docs = media.filter(f => (f.mime_type || f.file_type || '').startsWith('application/') || (f.upload_type || '') === 'document');
-  const photos = media.filter(f => (f.mime_type || f.file_type || '').startsWith('image/'));
+  const videos = media.filter(f =>
+    (f.mime_type || '').startsWith('video/') || f.media_type === 'video' || f.category === 'video'
+  );
+  const docs = media.filter(f =>
+    (f.mime_type || '').startsWith('application/') || f.media_type === 'document' || f.category === 'document'
+  );
+  const photos = media.filter(f =>
+    (f.mime_type || '').startsWith('image/') || f.media_type === 'photo' || f.category === 'photo'
+  );
 
   const subTabs = [
     { id: 'materials', label: 'Materials', count: docs.length },
@@ -3437,13 +3443,22 @@ function TrainingTab() {
               {videos.map((v, i) => (
                 <Card key={v.id || i}>
                   <CardBody>
-                    <div className="font-semibold text-gray-800 mb-2">{v.entity_name || v.filename || 'Video'}</div>
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <div className="font-semibold text-gray-800 text-sm">{v.entity_name || v.filename || 'Video'}</div>
+                      {v.file_url && (
+                        <a href={v.file_url} target="_blank" rel="noreferrer"
+                          className="text-xs text-primary font-bold shrink-0" style={{ textDecoration: 'none' }}>
+                          Open ↗
+                        </a>
+                      )}
+                    </div>
                     {v.file_url && (
-                      <video controls style={{ width: '100%', borderRadius: 8, maxHeight: 200, background: '#000' }} src={v.file_url}>
+                      <video controls playsInline style={{ width: '100%', borderRadius: 8, maxHeight: 200, background: '#000' }} src={v.file_url}>
                         Your browser does not support video playback.
                       </video>
                     )}
-                    <div className="text-xs text-gray-400 mt-1">{v.created_at ? new Date(v.created_at).toLocaleDateString() : ''}</div>
+                    {v.description && <p className="text-xs text-gray-500 mt-1">{v.description}</p>}
+                    <div className="text-xs text-gray-400 mt-1">{(v.uploaded_at || v.created_at) ? new Date(v.uploaded_at || v.created_at).toLocaleDateString() : ''}</div>
                   </CardBody>
                 </Card>
               ))}
@@ -3455,10 +3470,21 @@ function TrainingTab() {
           ? <EmptyState icon={<span style={{ fontSize: 40 }}>🖼️</span>} title="No photos yet" description="Training photos will appear here when uploaded by your training team." />
           : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
               {photos.map((p, i) => (
-                <div key={p.id || i} style={{ borderRadius: 10, overflow: 'hidden', border: '1px solid #e2e8f0', background: '#f8fafc' }}>
-                  <img src={p.file_url} alt={p.entity_name || 'Photo'} style={{ width: '100%', height: 120, objectFit: 'cover', display: 'block' }} />
-                  <div style={{ padding: '6px 8px', fontSize: '0.72rem', color: '#64748b' }}>{p.entity_name || ''}</div>
-                </div>
+                <a key={p.id || i} href={p.file_url} target="_blank" rel="noreferrer"
+                  style={{ borderRadius: 10, overflow: 'hidden', border: '1px solid #e2e8f0', background: '#f8fafc', display: 'block', textDecoration: 'none' }}>
+                  <img src={p.file_url} alt={p.entity_name || 'Photo'}
+                    style={{ width: '100%', height: 120, objectFit: 'cover', display: 'block' }}
+                    onError={e => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }}
+                  />
+                  <div style={{ display: 'none', height: 120, alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#64748b', fontSize: '0.75rem', flexDirection: 'column', gap: 4 }}>
+                    <span style={{ fontSize: 24 }}>🖼️</span>
+                    <span>Tap to open</span>
+                  </div>
+                  <div style={{ padding: '6px 8px', fontSize: '0.72rem', color: '#64748b', display: 'flex', justifyContent: 'space-between' }}>
+                    <span>{p.entity_name || ''}</span>
+                    <span style={{ color: '#c41e3a', fontWeight: 700 }}>View ↗</span>
+                  </div>
+                </a>
               ))}
             </div>
       )}
@@ -3483,7 +3509,8 @@ function TrainingTab() {
               {visible.map((s, i) => {
                 const platform = distGetPlatform(s.platform || 'in_person');
                 const isOnline = s.platform && s.platform !== 'in_person';
-                const isPast = new Date(s.date) < new Date(new Date().toDateString());
+                const sessionDt = new Date(`${s.date}T${s.time || '23:59'}`);
+                const isPast = sessionDt < new Date();
                 return (
                   <div key={s.id || i} style={{ borderRadius: 12, border: `2px solid ${s.meeting_link && !isPast ? '#16a34a44' : isOnline ? platform.color + '44' : '#e2e8f0'}`, overflow: 'hidden', opacity: isPast ? 0.7 : 1 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 14px', background: platform.bg, color: platform.color, fontSize: '0.78rem', fontWeight: 700 }}>
@@ -3508,7 +3535,7 @@ function TrainingTab() {
                       </div>
                       <div style={{ flexShrink: 0 }}>
                         <span style={{ padding: '2px 10px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700, background: isPast ? '#f1f5f9' : '#fef2f2', color: isPast ? '#64748b' : '#c41e3a' }}>
-                          {isPast ? 'Past' : 'Upcoming'}
+                          {isPast ? 'Ended' : 'Upcoming'}
                         </span>
                       </div>
                     </div>

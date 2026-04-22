@@ -99,7 +99,10 @@ function VideosTab() {
     api.get('/media?upload_type=training')
       .then(data => {
         const rows = Array.isArray(data) ? data : [];
-        setVideos(rows.filter(r => r.mime_type?.startsWith('video/')));
+        setVideos(rows.filter(r =>
+          (r.mime_type || '').startsWith('video/') ||
+          r.media_type === 'video' || r.category === 'video'
+        ));
       })
       .catch(() => setVideos([]))
       .finally(() => setLoading(false));
@@ -160,7 +163,10 @@ function PhotosTab() {
     api.get('/media?upload_type=training')
       .then(data => {
         const rows = Array.isArray(data) ? data : [];
-        setPhotos(rows.filter(r => r.mime_type?.startsWith('image/')));
+        setPhotos(rows.filter(r =>
+          (r.mime_type || '').startsWith('image/') ||
+          r.media_type === 'photo' || r.category === 'photo'
+        ));
       })
       .catch(() => setPhotos([]))
       .finally(() => setLoading(false));
@@ -225,8 +231,9 @@ function UploadTab() {
       formData.append('type', 'training');
       formData.append('entityName', form.title);
       formData.append('uploadType', 'training');
+      formData.append('mediaType', uploadType);
       if (form.description) formData.append('description', form.description);
-      if (form.category) formData.append('category', form.category);
+      formData.append('category', form.category || uploadType);
 
       // Use XHR for upload progress tracking (fetch doesn't support it)
       await new Promise((resolve, reject) => {
@@ -375,11 +382,18 @@ function getAudience(id) {
   return TARGET_AUDIENCES.find(a => a.id === id) || TARGET_AUDIENCES[0];
 }
 
+function getIsPast(event) {
+  if (!event.date) return false;
+  const timeStr = event.time || '23:59';
+  const dt = new Date(`${event.date}T${timeStr}`);
+  return dt < new Date();
+}
+
 function MeetingCard({ event, isTrainer, onDelete, onEdit }) {
   const platform = getPlatform(event.platform || 'in_person');
   const audience = getAudience(event.target_audience || 'all');
   const isOnline = event.platform && event.platform !== 'in_person';
-  const isPast = new Date(event.date) < new Date(new Date().toDateString());
+  const isPast = getIsPast(event);
   const hasLink = !!event.meeting_link;
 
   return (
@@ -424,7 +438,7 @@ function MeetingCard({ event, isTrainer, onDelete, onEdit }) {
             )}
           </div>
           <div className="flex flex-col items-end gap-2 flex-shrink-0">
-            <Badge variant={isPast ? 'default' : 'info'}>{isPast ? 'Past' : 'Upcoming'}</Badge>
+            <Badge variant={isPast ? 'default' : 'info'}>{isPast ? 'Ended' : 'Upcoming'}</Badge>
             {isTrainer && (
               <div className="flex gap-2 mt-1">
                 <button onClick={() => onEdit(event)}
@@ -539,7 +553,7 @@ function ScheduleTab({ isTrainer }) {
   const isOnlinePlatform = form.platform !== 'in_person';
 
   let visible = events;
-  if (!showPast) visible = visible.filter(e => new Date(e.date) >= new Date(new Date().toDateString()));
+  if (!showPast) visible = visible.filter(e => !getIsPast(e));
   if (filterAudience) visible = visible.filter(e => (e.target_audience || 'all') === filterAudience);
   if (filterPlatform) visible = visible.filter(e => (e.platform || 'in_person') === filterPlatform);
 
