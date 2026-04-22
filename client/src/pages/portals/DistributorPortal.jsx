@@ -1865,7 +1865,9 @@ function MyProfitTab() {
   const paidSales = referredSales.filter(s => s.profit_status === 'paid');
   const pendingTotal = pendingSales.reduce((sum, s) => sum + Number(s.profit_amount || 0), 0);
   const paidTotal = paidSales.reduce((sum, s) => sum + Number(s.profit_amount || 0), 0);
+  const CHECKUP_CASHBACK = 50;
   const completedCheckups = checkupReferrals.filter(a => (a.status || '').toLowerCase() === 'completed');
+  const checkupCashbackTotal = completedCheckups.length * CHECKUP_CASHBACK;
 
   const byBranch = {};
   referredSales.forEach(s => {
@@ -1883,7 +1885,7 @@ function MyProfitTab() {
         <StatCard title="Retail Profit Pending" value={formatCurrency(pendingTotal)} color="orange" icon={<span style={{ fontSize: 20 }}>⏳</span>} />
         <StatCard title="Retail Profit Collected" value={formatCurrency(paidTotal)} color="green" icon={<span style={{ fontSize: 20 }}>✅</span>} />
         <StatCard title="Referred Sales" value={referredSales.length} color="blue" icon={<span style={{ fontSize: 20 }}>🛒</span>} />
-        <StatCard title="Checkup Referrals" value={checkupReferrals.length} color="purple" icon={<span style={{ fontSize: 20 }}>🩺</span>} />
+        <StatCard title="Checkup Cashback" value={formatCurrency(checkupCashbackTotal)} color="purple" icon={<span style={{ fontSize: 20 }}>🩺</span>} subtitle={`${completedCheckups.length} completed × N$50`} />
       </div>
 
       {/* ── Section 1: Referred CP Sales ── */}
@@ -2019,7 +2021,7 @@ function MyProfitTab() {
         <CardHeader>
           <h3 className="font-bold text-gray-800 flex items-center gap-2">🩺 Checkup Referral Cashback</h3>
           <p className="text-xs text-gray-500 mt-1">
-            All health check-up appointments booked under your NB referral. Your cashback is credited per completed checkup — confirm the rate with your branch or GM.
+            All health check-up appointments booked under your NB referral. You earn <strong>N$50 cashback</strong> for every completed checkup. Collect from the branch where the checkup was done.
           </p>
         </CardHeader>
         <CardBody>
@@ -2033,20 +2035,25 @@ function MyProfitTab() {
             </div>
           ) : (
             <>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14, alignItems: 'center' }}>
                 <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 700, background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0' }}>
                   ✅ {completedCheckups.length} Completed
                 </span>
                 <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 700, background: '#fffbeb', color: '#92400e', border: '1px solid #fde68a' }}>
                   ⏳ {checkupReferrals.filter(a => (a.status || '').toLowerCase() !== 'completed').length} Pending
                 </span>
+                {checkupCashbackTotal > 0 && (
+                  <span style={{ marginLeft: 'auto', fontWeight: 900, fontSize: '1rem', color: '#166534' }}>
+                    Total: {formatCurrency(checkupCashbackTotal)}
+                  </span>
+                )}
               </div>
               <div className="space-y-2">
                 {checkupReferrals.map((appt, i) => {
                   const isDone = (appt.status || '').toLowerCase() === 'completed';
                   return (
                     <div key={appt.id || i} style={{ borderRadius: 10, border: `1.5px solid ${isDone ? '#d1fae5' : '#e2e8f0'}`, padding: '11px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-                      <div>
+                      <div style={{ flex: 1 }}>
                         <p style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.85rem', margin: 0 }}>{appt.full_name || appt.fullName || 'Client'}</p>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 10px', marginTop: 3 }}>
                           <span style={{ fontSize: '0.72rem', color: '#64748b' }}>📅 {fmtDate(appt.date)}</span>
@@ -2055,13 +2062,23 @@ function MyProfitTab() {
                           {appt.type && <span style={{ fontSize: '0.7rem', color: '#64748b' }}>{appt.type}</span>}
                         </div>
                       </div>
-                      <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 700, background: isDone ? '#dcfce7' : '#f1f5f9', color: isDone ? '#166534' : '#64748b', flexShrink: 0 }}>
-                        {isDone ? '✅ Completed' : `⏳ ${appt.status || 'Pending'}`}
-                      </span>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
+                        <span style={{ fontWeight: 900, fontSize: '0.95rem', color: isDone ? '#166534' : '#94a3b8' }}>
+                          N$ 50.00
+                        </span>
+                        <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: '0.68rem', fontWeight: 700, background: isDone ? '#dcfce7' : '#f1f5f9', color: isDone ? '#166534' : '#64748b' }}>
+                          {isDone ? '✅ Collect at branch' : `⏳ ${appt.status || 'Pending'}`}
+                        </span>
+                      </div>
                     </div>
                   );
                 })}
               </div>
+              {checkupCashbackTotal > 0 && (
+                <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: '10px 14px', fontSize: '0.78rem', color: '#166534', marginTop: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>💚 Collect <strong>{formatCurrency(checkupCashbackTotal)}</strong> in checkup cashback from the branches where the checkups were done.</span>
+                </div>
+              )}
             </>
           )}
         </CardBody>
