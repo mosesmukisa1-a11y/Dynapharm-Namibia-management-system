@@ -745,6 +745,8 @@ function FinanceApprovalsTab() {
   const [issueModal, setIssueModal] = useState(null);
   const [notes, setNotes] = useState('');
   const [processing, setProcessing] = useState(false);
+  const [financeNotices, setFinanceNotices] = useState([]);
+  const [noticesLoading, setNoticesLoading] = useState(true);
 
   const loadRequests = () => {
     setLoading(true);
@@ -754,7 +756,13 @@ function FinanceApprovalsTab() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { loadRequests(); }, []);
+  useEffect(() => {
+    loadRequests();
+    api.finance.notices()
+      .then(d => setFinanceNotices(Array.isArray(d) ? d : d.notices || []))
+      .catch(() => setFinanceNotices([]))
+      .finally(() => setNoticesLoading(false));
+  }, []);
 
   const handleIssue = async () => {
     if (!issueModal) return;
@@ -793,6 +801,36 @@ function FinanceApprovalsTab() {
         <Alert variant={message.startsWith('✅') ? 'success' : message.startsWith('❌') ? 'error' : 'error'}
           onClose={() => setMessage('')}>{message}</Alert>
       )}
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <span className="text-blue-600">📋</span>
+            <h3 className="font-bold text-gray-800">Finance Notices</h3>
+            {financeNotices.length > 0 && <Badge variant="info">{financeNotices.length}</Badge>}
+          </div>
+        </CardHeader>
+        <CardBody>
+          {noticesLoading ? <LoadingSpinner /> : financeNotices.length === 0 ? (
+            <p className="text-sm text-gray-500 py-3 text-center">No finance notices posted.</p>
+          ) : (
+            <div className="space-y-3">
+              {financeNotices.slice(0, 5).map(n => (
+                <div key={n.id} className="border border-blue-100 rounded-lg p-3 bg-blue-50/40">
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <Badge variant={n.priority === 'Urgent' ? 'danger' : n.priority === 'Info' ? 'success' : 'info'}>{n.priority || 'Normal'}</Badge>
+                    {n.title && <span className="font-semibold text-sm text-gray-900">{n.title}</span>}
+                    <span className="text-xs text-gray-400">{n.createdAt || n.created_at ? new Date(n.createdAt || n.created_at).toLocaleString('en-NA') : ''}</span>
+                    {n.createdBy && <span className="text-xs text-gray-400">by {n.createdBy}</span>}
+                  </div>
+                  <p className="text-sm text-gray-700">{n.message}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardBody>
+      </Card>
+
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">

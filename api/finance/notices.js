@@ -74,6 +74,7 @@ export default async function handler(req, res) {
       const id = url.searchParams.get('id');
       if (!id) return res.status(400).json({ success: false, error: 'id is required' });
       await query(`DELETE FROM notifications WHERE id = $1 AND recipient_type = 'finance_notice'`, [id]);
+      await query(`DELETE FROM notifications WHERE id = $1`, [`${id}-BROADCAST`]);
       return res.json({ success: true });
     }
 

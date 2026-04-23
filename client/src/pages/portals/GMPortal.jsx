@@ -3127,6 +3127,15 @@ function CommunicationTab() {
     { id: 3, message: 'Congratulations to Windhoek CBD branch for exceeding March targets!', priority: 'Normal', sender: 'GM Office', timestamp: '2026-03-05T11:00:00Z' },
   ]);
   const [submitMessage, setSubmitMessage] = useState('');
+  const [financeNotices, setFinanceNotices] = useState([]);
+  const [noticesLoading, setNoticesLoading] = useState(true);
+
+  useEffect(() => {
+    api.finance.notices()
+      .then(d => setFinanceNotices(Array.isArray(d) ? d : d.notices || []))
+      .catch(() => setFinanceNotices([]))
+      .finally(() => setNoticesLoading(false));
+  }, []);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -3213,6 +3222,35 @@ function CommunicationTab() {
                     {msg.target && <span className="text-xs text-gray-400">→ {msg.target}</span>}
                   </div>
                   <p className="text-sm text-gray-700">{msg.message}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <span className="text-blue-600">📋</span>
+            <h3 className="font-bold text-gray-800">Finance Notices</h3>
+            {financeNotices.length > 0 && <Badge variant="info">{financeNotices.length}</Badge>}
+          </div>
+        </CardHeader>
+        <CardBody>
+          {noticesLoading ? <LoadingSpinner /> : financeNotices.length === 0 ? (
+            <p className="text-sm text-gray-500 py-4 text-center">No finance notices posted.</p>
+          ) : (
+            <div className="space-y-3">
+              {financeNotices.map(n => (
+                <div key={n.id} className="border border-blue-100 rounded-lg p-4 bg-blue-50/40">
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <Badge variant={n.priority === 'Urgent' ? 'danger' : n.priority === 'Info' ? 'success' : 'info'}>{n.priority || 'Normal'}</Badge>
+                    {n.title && <span className="font-semibold text-sm text-gray-900">{n.title}</span>}
+                    <span className="text-xs text-gray-400">{formatDateTime(n.createdAt || n.created_at)}</span>
+                    {n.createdBy && <span className="text-xs text-gray-400">by {n.createdBy}</span>}
+                  </div>
+                  <p className="text-sm text-gray-700">{n.message}</p>
                 </div>
               ))}
             </div>

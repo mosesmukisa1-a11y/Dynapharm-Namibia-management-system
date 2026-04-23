@@ -235,7 +235,7 @@ export default async function handler(req, res) {
             isApproved ? 'Deposit Verified' : 'Deposit Rejected',
             isApproved
               ? `Your bank deposit of N$${amount} has been verified by Finance.`
-              : `Your bank deposit of N$${amount} was rejected by Finance.${row.decision_notes ? ' Reason: ' + row.decision_notes : ''}`,
+              : `Your bank deposit of N$${amount} was rejected by Finance.${body.decisionNotes || body.notes ? ' Reason: ' + (body.decisionNotes || body.notes) : ''}`,
             isApproved ? 'success' : 'warning',
           ]
         ).catch(e => console.error('[deposits] notification insert failed:', e));

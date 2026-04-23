@@ -181,10 +181,25 @@ export default function BranchPortal() {
   const isAdmin = user?.role === 'admin';
   const isBranchManager = user?.role === 'branch_manager';
   const [selectedPortalBranch, setSelectedPortalBranch] = useState('');
+  const [unreadComms, setUnreadComms] = useState(0);
   const effectiveBranch = selectedPortalBranch || user?.branch || '';
   const displayBranchName = getBranchDisplayName(effectiveBranch) || effectiveBranch || 'Branch Portal';
   const displayUserName = user?.fullName || user?.full_name || user?.name || user?.username || 'Staff';
   const displayRole = user?.role === 'dispenser' ? 'Dispenser' : user?.role === 'branch_manager' ? 'Branch Manager' : user?.role === 'admin' ? 'Administrator' : (user?.role || 'Staff');
+
+  useEffect(() => {
+    api.notifications.list('unread=true')
+      .then(d => {
+        const all = Array.isArray(d) ? d : d.notifications || [];
+        const count = all.filter(n =>
+          n.recipient_type === 'announcement' ||
+          n.recipient_type === 'branch_alert' ||
+          n.recipient_type === 'branch_notice'
+        ).length;
+        setUnreadComms(count);
+      })
+      .catch(() => {});
+  }, []);
 
   const tabs = [
     { id: 'walkIn', label: 'Walk-in Sales', icon: '🛒' },
@@ -195,7 +210,7 @@ export default function BranchPortal() {
     { id: 'distProfit', label: 'Distributor Profit', icon: '💰' },
     { id: 'onlineOrders', label: 'Online Orders', icon: '🛍️' },
     { id: 'bonus', label: 'Bonus', icon: '🎁' },
-    { id: 'communication', label: 'Communication', icon: '💬' },
+    { id: 'communication', label: unreadComms > 0 ? `Communication (${unreadComms})` : 'Communication', icon: '💬' },
     { id: 'staff', label: 'Staff', icon: '👤' },
     { id: 'messages', label: 'My Messages', icon: '📨' },
     { id: 'registration', label: 'Distributor Registration', icon: '📝' },
