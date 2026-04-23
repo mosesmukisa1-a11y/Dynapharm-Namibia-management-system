@@ -3,7 +3,7 @@ import DistributorPerformanceTab from '../../components/DistributorPerformanceTa
 import StaffServicesTab from '../../components/StaffServicesTab';
 import StaffMessagesTab from '../../components/StaffMessagesTab';
 import { api } from '../../lib/api';
-import { formatCurrency, formatDateTime, formatDate, BRANCHES, BRANCH_DETAILS } from '../../lib/constants';
+import { formatCurrency, formatDateTime, formatDate, BRANCHES, BRANCH_DETAILS, BRANCH_ID_TO_NAME } from '../../lib/constants';
 import { getLiveProductList, setLivePrices } from '../../lib/pricing';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, Table, Modal, Alert } from '../../components/ui';
 import { BarChart3, FileSearch, GitCompare, Activity, Receipt, Package, BookOpen, FileEdit, Search, AlertTriangle, Download, Printer } from 'lucide-react';
@@ -225,7 +225,7 @@ function ReconcileTab() {
   };
 
   const rows = result?.rows || [];
-  const fmtBranch = b => b ? b.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '-';
+  const fmtBranch = b => BRANCH_ID_TO_NAME[b] || (b ? b.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '-');
 
   const matched   = rows.filter(r => r.status === 'matched').length;
   const issues    = rows.filter(r => r.status !== 'matched').length;
@@ -329,7 +329,7 @@ function BranchStatusTab() {
   const encoded = statusData?.encoded || [];
   const reconciliation = statusData?.reconciliation || [];
 
-  const fmtBranch = b => b ? b.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '-';
+  const fmtBranch = b => BRANCH_ID_TO_NAME[b] || (b ? b.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '-');
 
   const allBranches = [...new Set([
     ...pending.map(r => r.branch),
@@ -684,7 +684,7 @@ function printStockReportDoc(branchData, title, period) {
   if (!win) return;
   const fmtQty = (n) => Number(n || 0).toLocaleString();
   const fmtCur = (n) => `N$ ${Number(n || 0).toFixed(2)}`;
-  const fmtBranch = (b) => b ? b.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'All Branches';
+  const fmtBranch = (b) => BRANCH_ID_TO_NAME[b] || (b ? b.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'All Branches');
 
   const branchCards = (Array.isArray(branchData) ? branchData : [branchData]).map(br => {
     const f = br.formula || {};
@@ -762,7 +762,7 @@ function printCompanySummaryDoc(summary, branches, period) {
   if (!win) return;
   const fmtQty = (n) => Number(n || 0).toLocaleString();
   const fmtCur = (n) => `N$ ${Number(n || 0).toFixed(2)}`;
-  const fmtBranch = (b) => b ? b.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '-';
+  const fmtBranch = (b) => BRANCH_ID_TO_NAME[b] || (b ? b.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '-');
   const branchRows = (branches || []).map(br =>
     `<tr><td style="font-weight:700">${fmtBranch(br.branch)}</td><td>${fmtQty(br.formula.opening)}</td><td style="color:#166534;font-weight:700">${fmtQty(br.formula.issued)}</td><td style="color:#92400e">${fmtQty(br.formula.returns)}</td><td style="color:#c41e3a">${fmtQty(br.formula.expiring)}</td><td style="color:#c41e3a">${fmtQty(br.formula.sales)}</td><td style="font-weight:800;color:#15803d">${fmtQty(br.formula.closing)}</td><td>${fmtCur(br.formula.closing_value)}</td></tr>`
   ).join('');
@@ -839,40 +839,78 @@ function printCompanySummaryDoc(summary, branches, period) {
   win.document.close();
 }
 
+const branchName = (id) => BRANCH_ID_TO_NAME[id] || (id ? id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '-');
+
 function MISStockTab() {
+  const today = new Date();
+  const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
+  const todayStr = today.toISOString().slice(0, 10);
+
   const [reportData, setReportData] = useState(null);
-  const [basicStock, setBasicStock] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeView, setActiveView] = useState('summary');
   const [selectedBranch, setSelectedBranch] = useState('all');
   const [productSearch, setProductSearch] = useState('');
+  const [stockFilter, setStockFilter] = useState('all');
+  const [startDate, setStartDate] = useState(firstOfMonth);
+  const [endDate, setEndDate] = useState(todayStr);
 
   const loadData = useCallback(() => {
     setLoading(true);
-    Promise.all([
-      api.mis.stockReport().catch(() => null),
-      api.mis.stock().catch(() => []),
-    ]).then(([report, stock]) => {
-      setReportData(report);
-      setBasicStock(Array.isArray(stock) ? stock : stock?.rows || stock?.stock || []);
-    }).finally(() => setLoading(false));
-  }, []);
+    const params = `start=${startDate}&end=${endDate}`;
+    api.mis.stockReport(params)
+      .then(report => setReportData(report))
+      .catch(() => setReportData(null))
+      .finally(() => setLoading(false));
+  }, [startDate, endDate]);
 
   const { connected: wsConnected } = useStockRealtime({ onUpdate: loadData });
 
   useEffect(() => { loadData(); }, []);
 
-  if (loading) return <LoadingSpinner />;
-
   const branches = reportData?.branches || [];
   const summary = reportData?.summary || {};
-  const period = reportData?.period ? `${new Date(reportData.period.start).toLocaleDateString('en-NA',{month:'long',year:'numeric'})}` : 'Current Month';
+  const period = startDate && endDate
+    ? `${startDate} → ${endDate}`
+    : reportData?.period
+      ? `${new Date(reportData.period.start).toLocaleDateString('en-NA', { month: 'long', year: 'numeric' })}`
+      : 'Current Month';
 
   const displayBranches = selectedBranch === 'all' ? branches : branches.filter(b => b.branch === selectedBranch);
-  const fmtBranch = (b) => b ? b.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '-';
 
-  const allProducts = displayBranches.flatMap(b => (b.products || []).map(p => ({ ...p, branch: b.branch })));
-  const filteredProducts = allProducts.filter(p => !productSearch || (p.product_name || '').toLowerCase().includes(productSearch.toLowerCase()));
+  const allProducts = displayBranches.flatMap(b =>
+    (b.products || []).map(p => ({ ...p, branch: b.branch, branchName: branchName(b.branch) }))
+  );
+  const filteredProducts = allProducts.filter(p => {
+    const matchSearch = !productSearch || (p.product_name || '').toLowerCase().includes(productSearch.toLowerCase());
+    const qty = Number(p.closing_qty || 0);
+    const matchStock = stockFilter === 'all' ? true
+      : stockFilter === 'critical' ? qty === 0
+      : stockFilter === 'low' ? qty > 0 && qty < 5
+      : stockFilter === 'warning' ? qty >= 5 && qty < 15
+      : true;
+    return matchSearch && matchStock;
+  });
+
+  const exportProductCSV = () => {
+    if (!filteredProducts.length) return;
+    const headers = ['Branch', 'Product', 'Received', 'Returns', 'Sales', 'Write-offs', 'Closing Qty', 'Stock Value', 'Status'];
+    const rows = filteredProducts.map(r => {
+      const qty = Number(r.closing_qty || 0);
+      const status = qty === 0 ? 'Out of Stock' : qty < 5 ? 'Critical' : qty < 15 ? 'Low Stock' : 'OK';
+      return [
+        branchName(r.branch), r.product_name || '',
+        r.received || 0, r.returns || 0, r.sales || 0, r.write_offs || 0,
+        qty, Number(r.closing_value || 0).toFixed(2), status,
+      ].map(v => `"${String(v).replace(/"/g, '""')}"`);
+    });
+    const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = `stock-breakdown-${startDate}-to-${endDate}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
 
   const statCard = (label, value, color, bg) => (
     <div style={{ background: bg || '#fff', border: '1.5px solid #f0e8ea', borderRadius: 12, padding: '14px 16px', textAlign: 'center', minWidth: 110 }}>
@@ -894,119 +932,175 @@ function MISStockTab() {
       <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', borderRadius: 14, padding: '16px 20px', marginBottom: 18, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
         <div>
           <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.12em', margin: 0 }}>MIS · Stock Intelligence</p>
-          <h3 style={{ color: '#fff', fontSize: '1.1rem', fontWeight: 800, margin: '3px 0 0' }}>📊 Stock Dashboard — All Branches</h3>
+          <h3 style={{ color: '#fff', fontSize: '1.1rem', fontWeight: 800, margin: '3px 0 0' }}>📊 Stock Dashboard — All {BRANCH_DETAILS.length} Branches</h3>
           <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '0.78rem', margin: '3px 0 0' }}>
-            Auto-generated stock formula · {period}
+            {period}
             {wsConnected && <span style={{ marginLeft: 8, background: 'rgba(255,255,255,0.2)', borderRadius: 99, padding: '1px 8px', fontSize: '0.7rem', fontWeight: 700 }}>● LIVE</span>}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button onClick={loadData} style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)', color: '#fff', padding: '7px 14px', borderRadius: 20, fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}>🔄 Refresh</button>
-          <button onClick={() => printCompanySummaryDoc(summary, branches, period)} style={{ background: '#fff', border: 'none', color: '#c41e3a', padding: '7px 14px', borderRadius: 20, fontSize: '0.82rem', fontWeight: 800, cursor: 'pointer' }}>🖨️ Company Summary PDF</button>
-        </div>
-      </div>
-
-      {/* Company KPI summary */}
-      {Object.keys(summary).length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(140px,1fr))', gap: 10, marginBottom: 18 }}>
-          {statCard('Opening Stock', summary.opening, '#1e3a5f', '#f4f7fb')}
-          {statCard('+ Issued / Received', summary.issued, '#166534', '#f0fdf4')}
-          {statCard('− Sales (units)', summary.sales, '#c41e3a', '#fff0f3')}
-          {statCard('− Returns', summary.returns, '#92400e', '#fffbeb')}
-          {statCard('− Expiring / Expired', summary.expiring, '#c41e3a', '#fef2f2')}
-          {statCard('= Closing Stock', summary.closing, '#15803d', '#f0fdf4')}
-          <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', border: 'none', borderRadius: 12, padding: '14px 16px', textAlign: 'center', minWidth: 110 }}>
-            <div style={{ fontSize: '0.68rem', fontWeight: 800, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: '.08em' }}>Stock Value</div>
-            <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#fff', marginTop: 4 }}>N$ {Number(summary.closing_value || 0).toFixed(0)}</div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', background: 'rgba(255,255,255,0.12)', borderRadius: 10, padding: '6px 10px' }}>
+            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
+              style={{ border: 'none', background: 'transparent', color: '#fff', fontSize: '0.78rem', outline: 'none', fontWeight: 600 }} />
+            <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem' }}>→</span>
+            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
+              style={{ border: 'none', background: 'transparent', color: '#fff', fontSize: '0.78rem', outline: 'none', fontWeight: 600 }} />
+            <button onClick={loadData} disabled={loading} style={{ background: '#fff', border: 'none', color: '#c41e3a', padding: '4px 10px', borderRadius: 8, fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer' }}>
+              {loading ? '…' : 'Go'}
+            </button>
           </div>
+          <button onClick={() => printCompanySummaryDoc(summary, branches, period)} style={{ background: '#fff', border: 'none', color: '#c41e3a', padding: '7px 14px', borderRadius: 20, fontSize: '0.82rem', fontWeight: 800, cursor: 'pointer' }}>🖨️ Company PDF</button>
         </div>
-      )}
-
-      {/* View tabs */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-        {[
-          { id: 'summary', label: '📋 Per-Branch Formula' },
-          { id: 'products', label: '📦 Product Breakdown' },
-        ].map(t => (
-          <button key={t.id} onClick={() => setActiveView(t.id)} style={{ padding: '7px 18px', borderRadius: 20, fontSize: '0.83rem', fontWeight: 600, border: 'none', cursor: 'pointer', background: activeView === t.id ? '#c41e3a' : '#f1f5f9', color: activeView === t.id ? '#fff' : '#64748b' }}>{t.label}</button>
-        ))}
-        <select value={selectedBranch} onChange={e => setSelectedBranch(e.target.value)} style={{ marginLeft: 'auto', padding: '7px 12px', border: '1.5px solid #e8d5d8', borderRadius: 20, fontSize: '0.83rem', outline: 'none', color: '#374151', fontWeight: 600 }}>
-          <option value="all">All Branches</option>
-          {branches.map(b => <option key={b.branch} value={b.branch}>{fmtBranch(b.branch)}</option>)}
-        </select>
       </div>
 
-      {/* Per-branch formula view */}
-      {activeView === 'summary' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(340px,1fr))', gap: 14 }}>
-          {displayBranches.length === 0 && (
-            <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '40px 20px', color: '#94a3b8' }}>
-              <div style={{ fontSize: '2.5rem', marginBottom: 12 }}>📦</div>
-              <p style={{ fontWeight: 600 }}>No stock data available for this branch</p>
-              <p style={{ fontSize: '0.82rem', marginTop: 6 }}>Stock data appears here once inventory is loaded from branches</p>
+      {loading && <LoadingSpinner />}
+
+      {!loading && (
+        <>
+          {/* Company KPI summary */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(140px,1fr))', gap: 10, marginBottom: 18 }}>
+            {statCard('Opening Stock', summary.opening, '#1e3a5f', '#f4f7fb')}
+            {statCard('+ Issued', summary.issued, '#166534', '#f0fdf4')}
+            {statCard('− Sales', summary.sales, '#c41e3a', '#fff0f3')}
+            {statCard('− Returns', summary.returns, '#92400e', '#fffbeb')}
+            {statCard('− Expired', summary.expiring, '#c41e3a', '#fef2f2')}
+            {statCard('= Closing', summary.closing, '#15803d', '#f0fdf4')}
+            {statCard('Branches', BRANCH_DETAILS.length, '#1e3a5f', '#f4f7fb')}
+            <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', border: 'none', borderRadius: 12, padding: '14px 16px', textAlign: 'center', minWidth: 110 }}>
+              <div style={{ fontSize: '0.68rem', fontWeight: 800, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: '.08em' }}>Stock Value</div>
+              <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#fff', marginTop: 4 }}>N$ {Number(summary.closing_value || 0).toFixed(0)}</div>
+            </div>
+          </div>
+
+          {/* View tabs + branch/filter controls */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+            {[
+              { id: 'summary', label: '📋 Per-Branch Formula' },
+              { id: 'products', label: '📦 Product Breakdown' },
+            ].map(t => (
+              <button key={t.id} onClick={() => setActiveView(t.id)} style={{ padding: '7px 18px', borderRadius: 20, fontSize: '0.83rem', fontWeight: 600, border: 'none', cursor: 'pointer', background: activeView === t.id ? '#c41e3a' : '#f1f5f9', color: activeView === t.id ? '#fff' : '#64748b' }}>{t.label}</button>
+            ))}
+            <select value={selectedBranch} onChange={e => setSelectedBranch(e.target.value)} style={{ marginLeft: 'auto', padding: '7px 12px', border: '1.5px solid #e8d5d8', borderRadius: 20, fontSize: '0.83rem', outline: 'none', color: '#374151', fontWeight: 600 }}>
+              <option value="all">All Branches ({BRANCH_DETAILS.length})</option>
+              {BRANCH_DETAILS.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+          </div>
+
+          {/* Per-branch formula view */}
+          {activeView === 'summary' && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(340px,1fr))', gap: 14 }}>
+              {displayBranches.map(br => {
+                const f = br.formula || {};
+                const hasData = !br.no_data;
+                const name = branchName(br.branch);
+                const bd = BRANCH_DETAILS.find(b => b.id === br.branch);
+                return (
+                  <div key={br.branch} style={{ background: '#fff', border: hasData ? '1.5px solid #f0e8ea' : '1.5px dashed #e2e8f0', borderRadius: 14, overflow: 'hidden', boxShadow: hasData ? '0 2px 8px rgba(196,30,58,0.06)' : 'none', opacity: hasData ? 1 : 0.65 }}>
+                    <div style={{ background: hasData ? 'linear-gradient(135deg,#c41e3a,#8b0000)' : '#94a3b8', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ color: '#fff', fontWeight: 800, fontSize: '0.95rem' }}>📍 {name}</div>
+                        {bd?.region && <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: '0.72rem', marginTop: 2 }}>{bd.region}</div>}
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.72rem' }}>{br.product_count} products</span>
+                        {hasData && (
+                          <button onClick={() => printStockReportDoc(br, `Stock Report — ${name}`, period)} style={{ background: 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.25)', color: '#fff', padding: '4px 10px', borderRadius: 12, fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer' }}>🖨️ Print</button>
+                        )}
+                      </div>
+                    </div>
+                    {!hasData ? (
+                      <div style={{ padding: '18px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '0.82rem' }}>
+                        No stock activity for this period
+                      </div>
+                    ) : (
+                      <div>
+                        {formulaRow('Opening Stock', f.opening, '#1e3a5f')}
+                        {formulaRow('+ Issued / Received', f.issued, '#166534')}
+                        {formulaRow('− Sales (units sold)', f.sales, '#c41e3a')}
+                        {formulaRow('− Returns', f.returns, '#92400e')}
+                        {formulaRow('− Expiring / Expired', f.expiring, '#c41e3a')}
+                        {f.promotions > 0 && formulaRow('− Promotions', f.promotions, '#c41e3a')}
+                        {f.write_offs > 0 && formulaRow('− Write-offs', f.write_offs, '#7c3aed')}
+                        {f.transfers_in > 0 && formulaRow('+ Transfers In', f.transfers_in, '#166534')}
+                        {f.transfers_out > 0 && formulaRow('− Transfers Out', f.transfers_out, '#c41e3a')}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '11px 16px', background: 'linear-gradient(135deg,#f0fdf4,#dcfce7)', borderTop: '2px solid #86efac' }}>
+                          <span style={{ fontSize: '0.9rem', color: '#166534', fontWeight: 800 }}>= Closing Stock</span>
+                          <span style={{ fontSize: '1.2rem', fontWeight: 900, color: '#15803d' }}>{Number(f.closing || 0).toLocaleString()}</span>
+                        </div>
+                        <div style={{ padding: '8px 16px', background: '#fafafa', display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: '#64748b' }}>
+                          <span>Sales: <strong style={{ color: '#c41e3a' }}>{Number(f.sales || 0).toLocaleString()} units</strong></span>
+                          <span>Value: <strong style={{ color: '#1e3a5f' }}>N$ {Number(f.closing_value || 0).toFixed(2)}</strong></span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
-          {displayBranches.map(br => {
-            const f = br.formula || {};
-            return (
-              <div key={br.branch} style={{ background: '#fff', border: '1.5px solid #f0e8ea', borderRadius: 14, overflow: 'hidden', boxShadow: '0 2px 8px rgba(196,30,58,0.06)' }}>
-                <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ color: '#fff', fontWeight: 800, fontSize: '0.95rem' }}>📍 {fmtBranch(br.branch)}</div>
-                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                    <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.72rem' }}>{br.product_count} products</span>
-                    <button onClick={() => printStockReportDoc(br, `Stock Report — ${fmtBranch(br.branch)}`, period)} style={{ background: 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.25)', color: '#fff', padding: '4px 10px', borderRadius: 12, fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer' }}>🖨️ Print</button>
-                  </div>
-                </div>
-                <div>
-                  {formulaRow('Opening Stock', f.opening, '#1e3a5f')}
-                  {formulaRow('+ Issued / Received', f.issued, '#166534')}
-                  {formulaRow('− Sales (units sold)', f.sales, '#c41e3a')}
-                  {formulaRow('− Returns', f.returns, '#92400e')}
-                  {formulaRow('− Expiring / Expired', f.expiring, '#c41e3a')}
-                  {formulaRow('− Promotions / Campaigns', f.promotions, '#c41e3a')}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '11px 16px', background: 'linear-gradient(135deg,#f0fdf4,#dcfce7)', borderTop: '2px solid #86efac' }}>
-                    <span style={{ fontSize: '0.9rem', color: '#166534', fontWeight: 800 }}>= Closing Stock</span>
-                    <span style={{ fontSize: '1.2rem', fontWeight: 900, color: '#15803d' }}>{Number(f.closing || 0).toLocaleString()}</span>
-                  </div>
-                  <div style={{ padding: '8px 16px', background: '#fafafa', display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: '#64748b' }}>
-                    <span>Sales: <strong style={{ color: '#c41e3a' }}>{Number(f.sales || 0).toLocaleString()} units</strong></span>
-                    <span>Value: <strong style={{ color: '#1e3a5f' }}>N$ {Number(f.closing_value || 0).toFixed(2)}</strong></span>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
 
-      {/* Product breakdown view */}
-      {activeView === 'products' && (
-        <Card>
-          <CardHeader className="flex justify-between items-center">
-            <h3 className="font-bold text-gray-800">Product Stock Breakdown — {selectedBranch === 'all' ? 'All Branches' : fmtBranch(selectedBranch)}</h3>
-            <button onClick={() => printStockReportDoc(displayBranches, 'Per-Branch Product Report', period)} style={{ background: '#c41e3a', color: '#fff', border: 'none', padding: '7px 14px', borderRadius: 8, fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer' }}>🖨️ Print</button>
-          </CardHeader>
-          <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9' }}>
-            <input type="text" value={productSearch} onChange={e => setProductSearch(e.target.value)} placeholder="Search products…" style={{ width: '100%', padding: '8px 12px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.87rem', outline: 'none', boxSizing: 'border-box' }} />
-          </div>
-          <Table
-            columns={[
-              { header: 'Product', render: r => <span style={{ fontWeight: 600 }}>{r.product_name || '-'}</span> },
-              { header: 'Branch', render: r => <Badge variant="info">{fmtBranch(r.branch)}</Badge> },
-              { header: 'Received', render: r => <span style={{ color: '#166534', fontWeight: 700 }}>{Number(r.received || 0)}</span> },
-              { header: 'Returns', render: r => Number(r.returns || 0) || '-' },
-              { header: 'Sales', render: r => <span style={{ color: '#c41e3a', fontWeight: 700 }}>{Number(r.sales || 0) || '-'}</span> },
-              { header: 'Write-offs', render: r => Number(r.write_offs || 0) || '-' },
-              { header: 'Closing Qty', render: r => {
-                const q = Number(r.closing_qty || 0);
-                return <span style={{ fontWeight: 800, color: q === 0 ? '#c41e3a' : q < 10 ? '#d97706' : '#166534' }}>{q}</span>;
-              }},
-              { header: 'Stock Value', render: r => <span style={{ fontWeight: 600, color: '#1e3a5f' }}>N$ {Number(r.closing_value || 0).toFixed(2)}</span> },
-            ]}
-            data={filteredProducts}
-            emptyMessage="No products found"
-          />
-        </Card>
+          {/* Product breakdown view */}
+          {activeView === 'products' && (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <h3 className="font-bold text-gray-800">
+                    Product Breakdown — {selectedBranch === 'all' ? `All Branches` : branchName(selectedBranch)}
+                    <span className="text-sm font-normal text-gray-400 ml-2">({filteredProducts.length} lines)</span>
+                  </h3>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {[
+                      { id: 'all', label: 'All' },
+                      { id: 'critical', label: '🔴 Out of Stock' },
+                      { id: 'low', label: '🟠 Critical (<5)' },
+                      { id: 'warning', label: '🟡 Low (<15)' },
+                    ].map(f => (
+                      <button key={f.id} onClick={() => setStockFilter(f.id)}
+                        className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${stockFilter === f.id ? 'bg-primary text-white border-primary' : 'bg-white text-gray-600 border-gray-300 hover:border-primary'}`}>
+                        {f.label}
+                      </button>
+                    ))}
+                    <Button size="sm" variant="secondary" onClick={exportProductCSV}>
+                      <Download size={13} /> Export CSV
+                    </Button>
+                    <button onClick={() => printStockReportDoc(displayBranches, 'Per-Branch Product Report', period)} style={{ background: '#c41e3a', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: 8, fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer' }}>🖨️ Print</button>
+                  </div>
+                </div>
+              </CardHeader>
+              <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9' }}>
+                <input type="text" value={productSearch} onChange={e => setProductSearch(e.target.value)}
+                  placeholder="Search products…"
+                  style={{ width: '100%', padding: '8px 12px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.87rem', outline: 'none', boxSizing: 'border-box' }} />
+              </div>
+              <Table
+                columns={[
+                  { header: 'Product', render: r => <span style={{ fontWeight: 600 }}>{r.product_name || '-'}</span> },
+                  { header: 'Branch', render: r => <Badge variant="info">{r.branchName || branchName(r.branch)}</Badge> },
+                  { header: 'Received', render: r => <span style={{ color: '#166534', fontWeight: 700 }}>{Number(r.received || 0)}</span> },
+                  { header: 'Returns', render: r => Number(r.returns || 0) || '-' },
+                  { header: 'Sales', render: r => <span style={{ color: '#c41e3a', fontWeight: 700 }}>{Number(r.sales || 0) || '-'}</span> },
+                  { header: 'Write-offs', render: r => Number(r.write_offs || 0) || '-' },
+                  { header: 'Closing Qty', render: r => {
+                    const q = Number(r.closing_qty || 0);
+                    const color = q === 0 ? '#c41e3a' : q < 5 ? '#d97706' : q < 15 ? '#f59e0b' : '#166534';
+                    const label = q === 0 ? ' ⚠ Out' : q < 5 ? ' ⚠' : '';
+                    return <span style={{ fontWeight: 800, color }}>{q}{label}</span>;
+                  }},
+                  { header: 'Stock Value', render: r => <span style={{ fontWeight: 600, color: '#1e3a5f' }}>N$ {Number(r.closing_value || 0).toFixed(2)}</span> },
+                  { header: 'Status', render: r => {
+                    const q = Number(r.closing_qty || 0);
+                    if (q === 0) return <Badge variant="danger">Out of Stock</Badge>;
+                    if (q < 5)  return <Badge variant="warning">Critical</Badge>;
+                    if (q < 15) return <Badge variant="warning">Low Stock</Badge>;
+                    return <Badge variant="success">OK</Badge>;
+                  }},
+                ]}
+                data={filteredProducts}
+                emptyMessage="No products found"
+              />
+            </Card>
+          )}
+        </>
       )}
     </div>
   );
@@ -1471,7 +1565,7 @@ function DraftsTab() {
 
   if (loading) return <LoadingSpinner />;
 
-  const fmtBranch = b => b ? b.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '-';
+  const fmtBranch = b => BRANCH_ID_TO_NAME[b] || (b ? b.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '-');
 
   return (
     <div className="space-y-4">

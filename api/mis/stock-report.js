@@ -1,5 +1,6 @@
 import { applyAuthCors } from '../_lib/auth.js';
 import { getMany } from '../db.js';
+import { ALL_BRANCH_IDS, normalizeBranchSlug } from '../_lib/branchUtils.js';
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
@@ -159,8 +160,19 @@ export default async function handler(req, res) {
       };
     });
 
+    // Ensure all registered branches appear even if they have zero data in the period
+    const resultMap = new Map(result.map(r => [normalizeBranchSlug(r.branch) || r.branch, r]));
+    const emptyBranchEntry = (branchId) => ({
+      branch: branchId,
+      formula: { opening: 0, issued: 0, returns: 0, expiring: 0, promotions: 0, closing: 0, closing_value: 0, sales: 0, transfers_in: 0, transfers_out: 0, write_offs: 0 },
+      products: [],
+      product_count: 0,
+      no_data: true,
+    });
+    const paddedResult = ALL_BRANCH_IDS.map(id => resultMap.get(normalizeBranchSlug(id) || id) || emptyBranchEntry(id));
+
     // Company summary
-    const summary = result.reduce((acc, br) => {
+    const summary = paddedResult.reduce((acc, br) => {
       acc.opening += br.formula.opening;
       acc.issued += br.formula.issued;
       acc.returns += br.formula.returns;
@@ -169,14 +181,14 @@ export default async function handler(req, res) {
       acc.closing += br.formula.closing;
       acc.closing_value += br.formula.closing_value;
       acc.sales += br.formula.sales;
-      acc.branch_count = result.length;
+      acc.branch_count = paddedResult.length;
       return acc;
     }, { opening: 0, issued: 0, returns: 0, expiring: 0, promotions: 0, closing: 0, closing_value: 0, sales: 0, branch_count: 0 });
 
     return res.status(200).json({
       success: true,
       period: { start: startStr, end: endStr },
-      branches: result,
+      branches: paddedResult,
       summary,
     });
 
