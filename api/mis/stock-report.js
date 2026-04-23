@@ -17,23 +17,28 @@ export default async function handler(req, res) {
     const endStr = searchParams.get('end') || now.toISOString();
 
     // 1. Current inventory per branch (= Closing Stock)
+    // Unit price falls back to catalog CP when not set on the batch
     let invQuery = `
       SELECT
-        branch_id,
-        product_name,
-        SUM(quantity) AS closing_qty,
-        SUM(COALESCE(unit_price, 0) * quantity) AS closing_value,
-        COUNT(*) FILTER (WHERE expiry_date IS NOT NULL AND expiry_date < NOW()) AS expired_batches,
-        COUNT(*) FILTER (WHERE expiry_date IS NOT NULL AND expiry_date < NOW() + INTERVAL '30 days' AND expiry_date >= NOW()) AS expiring_soon,
-        SUM(CASE WHEN expiry_date IS NOT NULL AND expiry_date < NOW() THEN quantity ELSE 0 END) AS expired_qty
-      FROM branch_inventory_batches
+        bib.branch_id,
+        bib.product_name,
+        SUM(bib.quantity) AS closing_qty,
+        SUM(
+          COALESCE(NULLIF(bib.unit_price, 0), pp.cp, 0) * bib.quantity
+        ) AS closing_value,
+        COUNT(*) FILTER (WHERE bib.expiry_date IS NOT NULL AND bib.expiry_date < NOW()) AS expired_batches,
+        COUNT(*) FILTER (WHERE bib.expiry_date IS NOT NULL AND bib.expiry_date < NOW() + INTERVAL '30 days' AND bib.expiry_date >= NOW()) AS expiring_soon,
+        SUM(CASE WHEN bib.expiry_date IS NOT NULL AND bib.expiry_date < NOW() THEN bib.quantity ELSE 0 END) AS expired_qty
+      FROM branch_inventory_batches bib
+      LEFT JOIN product_prices pp
+        ON LOWER(TRIM(bib.product_name)) = LOWER(TRIM(pp.description))
     `;
     const invParams = [];
     if (branchFilter) {
       invParams.push(branchFilter);
-      invQuery += ` WHERE branch_id = $1`;
+      invQuery += ` WHERE bib.branch_id = $1`;
     }
-    invQuery += ` GROUP BY branch_id, product_name ORDER BY branch_id, product_name`;
+    invQuery += ` GROUP BY bib.branch_id, bib.product_name ORDER BY bib.branch_id, bib.product_name`;
 
     // 2. Stock movements in period per branch
     let movQuery = `
