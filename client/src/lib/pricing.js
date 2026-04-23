@@ -358,3 +358,44 @@ export const RECOMMENDATION_DATABASE = {
 };
 
 export const PRICE_LIST = [];
+
+/**
+ * buildCatalogFromPriceList — The single function used by the public shop
+ * and distributor portal to build their product catalog.
+ *
+ * Only products present in the GM price list (product_prices table) appear.
+ * DB product metadata (images, category, SKU) is merged in where available.
+ * Products with no DP price are excluded (GM hasn't priced them).
+ *
+ * @param {Array} priceData  — response from GET /api/prices
+ * @param {Array} prodData   — response from GET /api/products (optional, for images/category)
+ * @returns {Array}          — display-ready product objects
+ */
+export function buildCatalogFromPriceList(priceData, prodData = []) {
+  const priceList = (Array.isArray(priceData) ? priceData : []).filter(p => !p.is_package);
+  const dbProds   = Array.isArray(prodData) ? prodData : prodData?.products || [];
+
+  const dbByName = new Map(
+    dbProds.map(p => [(p.name || p.description || '').toUpperCase().trim(), p])
+  );
+
+  return priceList
+    .map(p => {
+      const key = (p.description || '').toUpperCase().trim();
+      const db  = dbByName.get(key);
+      return {
+        id:          db?.id || String(p.id),
+        name:        p.description,
+        description: db?.description || p.description,
+        category:    db?.category || 'General',
+        images:      db?.images   || [],
+        dp:          Number(p.dp)  || 0,
+        cp:          Number(p.cp)  || 0,
+        cif:         Number(p.cif) || 0,
+        bv:          Number(p.bv)  || 0,
+        hasPricing:  true,
+        sku:         db?.sku || '',
+      };
+    })
+    .filter(p => p.dp > 0 || p.cp > 0);
+}
