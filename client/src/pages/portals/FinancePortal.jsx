@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from '../../lib/api';
 import { useStockRealtime } from '../../hooks/useStockRealtime';
-import { PRICE_LIST, findProductPrice, setLivePrices } from '../../lib/pricing';
+import { findProductPrice, setLivePrices } from '../../lib/pricing';
 import { formatCurrency, formatDateTime, formatDate, BRANCH_DETAILS, BRANCHES } from '../../lib/constants';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert } from '../../components/ui';
 import { DollarSign, TrendingUp, Landmark, Upload, CheckCircle, FileSpreadsheet, ClipboardList, Download, Eye, Trash2, Send, MessageSquare, Receipt, Ship, XCircle, Filter, RefreshCw, Wallet, Building2, Users, Printer } from 'lucide-react';

@@ -4,7 +4,7 @@ import { useStockRealtime } from '../../hooks/useStockRealtime';
 import DistributorPerformanceTab from '../../components/DistributorPerformanceTab';
 import DispatchNote from '../../components/DispatchNote';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES, COMPANY_INFO, BRANCH_DETAILS, getBranchDisplayName, getBranchId } from '../../lib/constants';
-import { enrichProductsWithPricing, calculateCartTotals, generateReceiptNumber, PRICE_LIST, PACKAGE_DATABASE, findProductPrice, calculatePrescriptionTotals, getConsultationFee, getPackagesForPOS, setLivePrices } from '../../lib/pricing';
+import { enrichProductsWithPricing, calculateCartTotals, generateReceiptNumber, PACKAGE_DATABASE, findProductPrice, calculatePrescriptionTotals, getConsultationFee, getPackagesForPOS, setLivePrices } from '../../lib/pricing';
 import { generateReceiptHTML, printReceipt, generateSalesPDFHTML, printSalesPDF, generatePrescriptionQuoteHTML, generatePrescriptionQuotePDFHTML } from '../../lib/receipt';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
 import { ShoppingCart, FileText, Package, Landmark, CreditCard, ClipboardList, Gift, MessageSquare, Users, UserPlus, Map, Printer, AlertTriangle, Search, ArrowRightLeft, Trash2, RotateCcw, Heart, CheckCircle, Calendar, Megaphone, Clock, XCircle, Plus } from 'lucide-react';
@@ -344,11 +344,11 @@ function WalkInSalesTab() {
     ]).then(([priceData, productsData]) => {
       if (Array.isArray(priceData) && priceData.length > 0) setLivePrices(priceData);
 
-      // Build product list: start from price list (source of truth), then append
+      // Build product list: start from GM price list (source of truth), then append
       // any DB products that have no price-list entry (backward compat).
-      const effectivePriceList = (Array.isArray(priceData) && priceData.length > 0)
+      const effectivePriceList = Array.isArray(priceData)
         ? priceData.filter(p => !p.is_package)
-        : PRICE_LIST;
+        : [];
 
       const dbProducts = Array.isArray(productsData) ? productsData : productsData.products || [];
 

@@ -4,7 +4,7 @@ import { useStockRealtime } from '../../hooks/useStockRealtime';
 import StaffServicesTab from '../../components/StaffServicesTab';
 import StaffMessagesTab from '../../components/StaffMessagesTab';
 import DispatchNote from '../../components/DispatchNote';
-import { PRICE_LIST, getCIFPrice, getDPCPrice, getProductProfit, findProductPrice, getLiveProductList, setLivePrices } from '../../lib/pricing';
+import { getCIFPrice, getDPCPrice, getProductProfit, findProductPrice, getLiveProductList, setLivePrices } from '../../lib/pricing';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES, BRANCH_DETAILS } from '../../lib/constants';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
 import { Package, Warehouse, Truck, ArrowLeftRight, Globe, BarChart3, ClipboardList, FileSpreadsheet, Zap, Share2, ShoppingCart, Plus, Download, Filter, Search, DollarSign, TrendingUp, Ship, Calendar, CheckCircle, Printer, Tag, Edit2, Clock, XCircle, Brain, AlertTriangle, TrendingDown, MapPin, Users, Activity, Shield, Bell, RefreshCw, Target, Cpu, Megaphone } from 'lucide-react';
@@ -325,7 +325,7 @@ function FieldStockTab() {
   const [branchFilter, setBranchFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('issued');
   const [viewMode, setViewMode]   = useState('officer');  // 'officer' | 'product' | 'branch'
-  const [productOptions, setProductOptions] = useState(PRICE_LIST.map(p => p.description).sort());
+  const [productOptions, setProductOptions] = useState([]);
   const [form, setForm] = useState({
     officer_name: '', team_name: '', product_name: '', batch_no: '',
     expiry_date: '', quantity_issued: '', origin_location: '', origin_type: 'warehouse', notes: '',
@@ -339,10 +339,9 @@ function FieldStockTab() {
     ]).then(([fsData, priceData]) => {
       const rows = Array.isArray(fsData) ? fsData : [];
       setRecords(rows.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
-      const namesSet = new Set(PRICE_LIST.map(p => p.description));
       const prices = Array.isArray(priceData) ? priceData : [];
       if (prices.length > 0) setLivePrices(prices);
-      prices.filter(p => !p.is_package && p.description).forEach(p => namesSet.add(p.description));
+      const namesSet = new Set(prices.filter(p => !p.is_package && p.description).map(p => p.description));
       setProductOptions([...namesSet].sort());
     }).finally(() => setLoading(false));
   }, []);
@@ -2039,7 +2038,7 @@ function SupplierImportTab() {
   const [items, setItems] = useState([{ product_name: '', quantity: '', cif_price: '', dpc_price: '', carton_no: '', expiry_date: '', batch_number: '' }]);
   const [form, setForm] = useState({ supplier: 'Dynapharm International (Malaysia)', shipping_ref: '', grn_number: '', invoice_number: '', arrival_date: '', destination_warehouse: 'country_stock', notes: '' });
   const [errors, setErrors] = useState({});
-  const [productOptions, setProductOptions] = useState(PRICE_LIST.map(p => p.description).sort());
+  const [productOptions, setProductOptions] = useState([]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -2062,7 +2061,7 @@ function SupplierImportTab() {
           const all = Array.isArray(batchData.value) ? batchData.value : batchData.value?.batches || [];
           setImports(all.filter(b => b.location === 'country_stock').sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
         }
-        const namesSet = new Set(PRICE_LIST.map(p => p.description));
+        const namesSet = new Set();
         if (priceData.status === 'fulfilled') {
           const prices = Array.isArray(priceData.value) ? priceData.value : [];
           if (prices.length > 0) setLivePrices(prices);

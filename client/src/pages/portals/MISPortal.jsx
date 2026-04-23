@@ -4,7 +4,7 @@ import StaffServicesTab from '../../components/StaffServicesTab';
 import StaffMessagesTab from '../../components/StaffMessagesTab';
 import { api } from '../../lib/api';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES, BRANCH_DETAILS } from '../../lib/constants';
-import { PRICE_LIST, getLiveProductList, setLivePrices } from '../../lib/pricing';
+import { getLiveProductList, setLivePrices } from '../../lib/pricing';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, Table, Modal, Alert } from '../../components/ui';
 import { BarChart3, FileSearch, GitCompare, Activity, Receipt, Package, BookOpen, FileEdit, Search, AlertTriangle, Download, Printer } from 'lucide-react';
 import { useStockRealtime } from '../../hooks/useStockRealtime';

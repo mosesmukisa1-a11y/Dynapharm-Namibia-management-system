@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, Component } from 'react';
 import { api } from '../../lib/api';
 import { formatDateTime, formatDate, BRANCHES, COMPANY_INFO, getBranchId } from '../../lib/constants';
-import { PRICE_LIST, PACKAGE_DATABASE, BODY_SYSTEMS_DATABASE, RECOMMENDATION_DATABASE, findProductPrice, getLiveProductList, setLivePrices } from '../../lib/pricing';
+import { PACKAGE_DATABASE, BODY_SYSTEMS_DATABASE, RECOMMENDATION_DATABASE, findProductPrice, getLiveProductList, setLivePrices } from '../../lib/pricing';
 import { Button, Input, Badge, LoadingSpinner, Modal, Alert, Textarea } from '../../components/ui';
 import { FileText, Plus, Trash2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
