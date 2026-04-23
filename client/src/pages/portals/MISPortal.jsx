@@ -67,7 +67,7 @@ function AuditTab() {
 
   useEffect(() => {
     api.mis.audit()
-      .then(d => setData(Array.isArray(d) ? d : d.records || []))
+      .then(d => setData(Array.isArray(d) ? d : d.logs || []))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
@@ -79,10 +79,15 @@ function AuditTab() {
       <CardHeader><h3 className="font-bold text-gray-800">Audit Trail</h3></CardHeader>
       <Table
         columns={[
-          { header: 'Date', render: r => formatDateTime(r.created_at || r.timestamp) },
-          { header: 'Action', key: 'action' },
-          { header: 'User', key: 'user' },
-          { header: 'Details', key: 'details' },
+          { header: 'Date', render: r => formatDateTime(r.createdAt || r.created_at) },
+          { header: 'Action', render: r => r.eventType || r.action || '-' },
+          { header: 'User', render: r => r.user || '-' },
+          { header: 'Details', render: r => {
+            const d = r.details;
+            if (!d) return '-';
+            if (typeof d === 'object') return Object.entries(d).map(([k, v]) => `${k}: ${v}`).join(' | ') || '-';
+            return String(d);
+          }},
         ]}
         data={data}
         emptyMessage="No audit records"
@@ -189,31 +194,77 @@ function ReconcileTab() {
 }
 
 function BranchStatusTab() {
-  const [branches, setBranches] = useState([]);
+  const [statusData, setStatusData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     api.mis.branchStatus()
-      .then(d => setBranches(Array.isArray(d) ? d : d.branches || []))
+      .then(d => setStatusData(d))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
   if (loading) return <LoadingSpinner />;
 
+  const pending = statusData?.pending || [];
+  const encoded = statusData?.encoded || [];
+  const reconciliation = statusData?.reconciliation || [];
+
+  const fmtBranch = b => b ? b.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '-';
+
+  const allBranches = [...new Set([
+    ...pending.map(r => r.branch),
+    ...encoded.map(r => r.branch),
+    ...reconciliation.map(r => r.branch),
+  ])].sort();
+
+  const pendingMap = Object.fromEntries(pending.map(r => [r.branch, r]));
+  const encodedMap = Object.fromEntries(encoded.map(r => [r.branch, r]));
+  const reconMap   = Object.fromEntries(reconciliation.map(r => [r.branch, r]));
+
+  const rows = allBranches.map(branch => ({
+    branch,
+    pending: pendingMap[branch]?.pending ?? 0,
+    lastUpload: pendingMap[branch]?.lastUpload || encodedMap[branch]?.lastUpload || null,
+    draft: encodedMap[branch]?.draft ?? 0,
+    verified: encodedMap[branch]?.verified ?? 0,
+    receiptCount: encodedMap[branch]?.receiptCount ?? 0,
+    matched: reconMap[branch]?.matched ?? 0,
+    unmatched: reconMap[branch]?.unmatched ?? 0,
+    discrepancies: reconMap[branch]?.discrepancies || 'No data',
+  }));
+
   return (
-    <Card>
-      <CardHeader><h3 className="font-bold text-gray-800">Branch Status Overview</h3></CardHeader>
-      <Table
-        columns={[
-          { header: 'Branch', key: 'name' },
-          { header: 'Status', render: r => <Badge variant={r.status === 'active' ? 'success' : 'warning'}>{r.status || 'Active'}</Badge> },
-          { header: 'Last Update', render: r => formatDateTime(r.last_update || r.updated_at) },
-        ]}
-        data={branches}
-        emptyMessage="No branch data available"
-      />
-    </Card>
+    <div className="space-y-4">
+      <Card>
+        <CardHeader><h3 className="font-bold text-gray-800">Branch Status Overview</h3></CardHeader>
+        {rows.length === 0 ? (
+          <div className="p-8 text-center text-gray-400 text-sm">No branch activity recorded today</div>
+        ) : (
+          <Table
+            columns={[
+              { header: 'Branch', render: r => <span className="font-semibold">{fmtBranch(r.branch)}</span> },
+              { header: 'Pending Lines', render: r => r.pending > 0
+                ? <Badge variant="warning">{r.pending} pending</Badge>
+                : <Badge variant="success">Clear</Badge> },
+              { header: 'Drafts', render: r => r.draft > 0 ? `${r.draft} total` : '-' },
+              { header: 'Verified', render: r => r.verified > 0
+                ? <Badge variant="success">{r.verified} verified</Badge>
+                : '-' },
+              { header: 'Receipts', render: r => r.receiptCount > 0 ? r.receiptCount : '-' },
+              { header: 'Reconciliation', render: r => (
+                <span className={`text-xs ${r.unmatched > 0 ? 'text-red-600 font-semibold' : 'text-green-600'}`}>
+                  {r.unmatched > 0 ? `${r.unmatched} unmatched` : r.discrepancies}
+                </span>
+              )},
+              { header: 'Last Upload', render: r => r.lastUpload ? formatDateTime(r.lastUpload) : '-' },
+            ]}
+            data={rows}
+            emptyMessage="No branch data available"
+          />
+        )}
+      </Card>
+    </div>
   );
 }
 
@@ -226,7 +277,7 @@ function EncodedSalesTab() {
 
   useEffect(() => {
     api.mis.encodedSales()
-      .then(d => setSales(Array.isArray(d) ? d : d.sales || d.records || []))
+      .then(d => setSales(Array.isArray(d) ? d : d.rows || []))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
@@ -305,12 +356,13 @@ function EncodedSalesTab() {
       <Card>
         <Table
           columns={[
-            { header: 'Date', render: r => formatDate(r.date || r.created_at) },
-            { header: 'Branch', render: r => r.branch || r.branch_id || '-' },
-            { header: 'Product', render: r => r.product || r.product_name || '-' },
+            { header: 'Branch', render: r => r.branch || '-' },
+            { header: 'Product', render: r => r.productName || r.product_name || '-' },
+            { header: 'Distributor', render: r => r.distributorName || '-' },
             { header: 'Qty', render: r => r.quantity || '-' },
-            { header: 'Price', render: r => formatCurrency(r.price || r.amount) },
-            { header: 'Receipt', render: r => r.receipt_number || '-' },
+            { header: 'Unit Price', render: r => formatCurrency(r.unitPrice || r.unit_price || r.amount) },
+            { header: 'Total', render: r => formatCurrency(r.amount || (r.quantity * (r.unitPrice || 0))) },
+            { header: 'Status', render: r => <Badge variant={r.status === 'verified' ? 'success' : 'warning'}>{r.status || 'draft'}</Badge> },
           ]}
           data={sales}
           emptyMessage="No encoded sales"
@@ -370,12 +422,12 @@ function ReceiptsTab() {
         <Card>
           <Table
             columns={[
-              { header: 'Receipt #', render: r => r.receipt_number || r.id || '-' },
-              { header: 'Date', render: r => formatDateTime(r.created_at || r.date) },
-              { header: 'Branch', render: r => r.branch || r.branch_id || '-' },
-              { header: 'Customer', render: r => r.customer_name || r.distributor_name || '-' },
-              { header: 'Amount', render: r => <span className="font-bold">{formatCurrency(r.total || r.amount)}</span> },
-              { header: 'Payment', render: r => <Badge variant="info">{r.payment_method || '-'}</Badge> },
+              { header: 'Receipt #', render: r => r.receiptNumber || r.saleNumber || r.id || '-' },
+              { header: 'Date', render: r => formatDateTime(r.createdAt || r.saleDate || r.timestamp) },
+              { header: 'Branch', render: r => r.branchId || r.branch || '-' },
+              { header: 'Customer', render: r => r.customerName || r.clientName || '-' },
+              { header: 'Amount', render: r => <span className="font-bold">{formatCurrency(r.total || r.totalAmount)}</span> },
+              { header: 'Payment', render: r => <Badge variant="info">{r.paymentMethod || r.payment_method || '-'}</Badge> },
             ]}
             data={receipts}
             emptyMessage="No receipts found"
@@ -1154,16 +1206,19 @@ function DraftsTab() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
 
-  useEffect(() => {
+  const loadDrafts = () => {
+    setLoading(true);
     api.mis.drafts()
       .then(d => setDrafts(Array.isArray(d) ? d : d.drafts || []))
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  };
+
+  useEffect(() => { loadDrafts(); }, []);
 
   const handlePublish = async (id) => {
     try {
-      await api.put(`/mis/drafts/${id}`, { status: 'published' });
+      await api.patch(`/mis/drafts`, { action: 'publish', id });
       setDrafts(prev => prev.map(d => d.id === id ? { ...d, status: 'published' } : d));
       setMessage('Draft published successfully!');
     } catch (err) {
@@ -1173,21 +1228,29 @@ function DraftsTab() {
 
   if (loading) return <LoadingSpinner />;
 
+  const fmtBranch = b => b ? b.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '-';
+
   return (
     <div className="space-y-4">
       {message && <Alert type={message.startsWith('Error') ? 'error' : 'success'}>{message}</Alert>}
       <Card>
-        <CardHeader><h3 className="font-bold text-gray-800">Report Drafts</h3></CardHeader>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold text-gray-800">Sales Drafts</h3>
+            <Button size="sm" variant="secondary" onClick={loadDrafts}>Refresh</Button>
+          </div>
+        </CardHeader>
         <Table
           columns={[
-            { header: 'Title', render: r => r.title || r.name || 'Untitled Draft' },
-            { header: 'Created', render: r => formatDateTime(r.created_at) },
-            { header: 'Status', render: r => <Badge variant={r.status === 'published' ? 'success' : 'warning'}>{r.status || 'draft'}</Badge> },
+            { header: 'Draft ID', render: r => <span className="font-mono text-xs text-gray-600">{r.id}</span> },
+            { header: 'Branch', render: r => fmtBranch(r.branch_id) },
+            { header: 'Lines', render: r => r.line_count ?? '-' },
+            { header: 'Total Amount', render: r => formatCurrency(r.total_amount) },
+            { header: 'Created By', render: r => r.created_by || '-' },
+            { header: 'Last Updated', render: r => formatDateTime(r.updated_at || r.created_at) },
+            { header: 'Status', render: r => <Badge variant={r.status === 'published' ? 'success' : r.status === 'verified' ? 'primary' : 'warning'}>{r.status || 'draft'}</Badge> },
             { header: 'Actions', render: r => r.status !== 'published' && (
-              <div className="flex gap-1">
-                <Button size="sm" variant="secondary">Edit</Button>
-                <Button size="sm" variant="success" onClick={() => handlePublish(r.id)}>Publish</Button>
-              </div>
+              <Button size="sm" variant="success" onClick={() => handlePublish(r.id)}>Publish</Button>
             )},
           ]}
           data={drafts}

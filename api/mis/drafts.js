@@ -277,6 +277,21 @@ export default async function handler(req, res) {
 
     if (req.method === 'PATCH') {
       const body = await parseBody(req);
+      if (body.action === 'publish') {
+        const { searchParams } = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+        const draftId = body.id || searchParams.get('id');
+        if (!draftId) {
+          return res.status(400).json({ success: false, error: 'id is required' });
+        }
+        const { rowCount } = await query(
+          `UPDATE mis_sales_drafts SET status = 'published', updated_at = NOW() WHERE id = $1`,
+          [draftId]
+        );
+        if (rowCount === 0) {
+          return res.status(404).json({ success: false, error: 'Draft not found' });
+        }
+        return res.status(200).json({ success: true });
+      }
       if (body.action !== 'verify') {
         return res.status(400).json({ success: false, error: 'Unsupported action' });
       }
@@ -292,14 +307,20 @@ export default async function handler(req, res) {
     if (req.method === 'GET') {
       const { searchParams } = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
       const id = searchParams.get('id');
-      if (!id) {
-        return res.status(400).json({ success: false, error: 'id parameter is required' });
+      if (id) {
+        const draft = await loadDraft(id);
+        if (!draft) {
+          return res.status(404).json({ success: false, error: 'Draft not found' });
+        }
+        return res.status(200).json({ success: true, draft });
       }
-      const draft = await loadDraft(id);
-      if (!draft) {
-        return res.status(404).json({ success: false, error: 'Draft not found' });
-      }
-      return res.status(200).json({ success: true, draft });
+      const { rows } = await query(
+        `SELECT id, branch_id, status, total_amount, total_quantity, line_count, created_by, updated_at, created_at
+         FROM mis_sales_drafts
+         ORDER BY updated_at DESC NULLS LAST
+         LIMIT 200`
+      );
+      return res.status(200).json({ success: true, drafts: rows });
     }
 
     return res.status(405).json({ success: false, error: 'Method not allowed' });
