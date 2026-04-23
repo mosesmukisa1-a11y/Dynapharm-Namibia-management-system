@@ -820,8 +820,8 @@ function ApprovalsTab() {
     try {
       await api.patch(`/cash-requests/${casModal.id}`, { status: action, note: casNote });
       const msg = action === 'approved'
-        ? `✅ Cash advance approved for ${casModal.staff_name || casModal.requested_by} — N$ ${Math.round(Number(casModal.amount)).toLocaleString('en-ZA')}.`
-        : `❌ Cash advance request rejected.`;
+        ? `✅ Branch expense cash advance approved for ${casModal.branch || 'branch'} — N$ ${Math.round(Number(casModal.amount)).toLocaleString('en-ZA')} (${casModal.expense_category || 'General'}).`
+        : `❌ Branch expense cash advance request rejected.`;
       setMessage(msg);
       setCasRequests(prev => prev.filter(r => r.id !== casModal.id));
       setCasModal(null);
@@ -884,7 +884,7 @@ function ApprovalsTab() {
     { id: 'petty_cash', label: `💵 Petty Cash${pettyCashRequests.length > 0 ? ` (${pettyCashRequests.length})` : ''}` },
     { id: 'rent_edits', label: `🏘️ Rent Edits${rentEditRequests.length > 0 ? ` (${rentEditRequests.length})` : ''}` },
     { id: 'salary_edits', label: `💼 Salary Edits${salaryEditRequests.length > 0 ? ` (${salaryEditRequests.length})` : ''}` },
-    { id: 'cas_approvals', label: `💵 CAS Approvals${casRequests.length > 0 ? ` (${casRequests.length})` : ''}` },
+    { id: 'cas_approvals', label: `🏢 CAS Approvals${casRequests.length > 0 ? ` (${casRequests.length})` : ''}` },
     { id: 'leave_approvals', label: `📅 Leave Approvals${adminLeaveRequests.length > 0 ? ` (${adminLeaveRequests.length})` : ''}` },
     { id: 'bonus_delete', label: `🗑️ Bonus Deletions${bonusDeleteRequests.length > 0 ? ` (${bonusDeleteRequests.length})` : ''}` },
     { id: 'hr_staff_changes', label: `👥 HR Staff Changes${staffChangeRequests.length > 0 ? ` (${staffChangeRequests.length})` : ''}` },
@@ -1447,7 +1447,7 @@ function ApprovalsTab() {
           ) : (
             <div className="space-y-3">
               <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
-                <strong>{casRequests.length}</strong> cash advance request{casRequests.length !== 1 ? 's' : ''} reviewed by Finance awaiting your final approval.
+                <strong>{casRequests.length}</strong> branch expense cash advance request{casRequests.length !== 1 ? 's' : ''} reviewed by Finance awaiting your final approval.
               </div>
               {casRequests.map(r => (
                 <div key={r.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
@@ -1465,12 +1465,11 @@ function ApprovalsTab() {
                   </div>
                   <div className="p-4">
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mb-1">
-                      <span className="text-sm font-bold text-gray-800">{r.staff_name || r.requested_by}</span>
-                      {r.staff_role && <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '1px 6px', borderRadius: 20, background: '#e0e7ff', color: '#3730a3' }}>{r.staff_role.toUpperCase()}</span>}
-                      {(r.staff_branch || r.branch) && <span className="text-xs text-gray-500">📍 {r.staff_branch || r.branch}</span>}
-                      {r.staff_email && <span className="text-xs text-gray-400">✉ {r.staff_email}</span>}
+                      <span className="text-sm font-bold text-gray-800">📍 {r.branch || 'Unknown Branch'}</span>
+                      {r.expense_category && <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '1px 8px', borderRadius: 20, background: '#eff6ff', color: '#1e40af', border: '1px solid #93c5fd' }}>{r.expense_category}</span>}
+                      {(r.submitted_by_name || r.requested_by) && <span className="text-xs text-gray-400">by {r.submitted_by_name || r.requested_by}</span>}
                     </div>
-                    <div className="text-sm text-gray-700 mb-1"><span className="font-semibold">Purpose:</span> {r.purpose}</div>
+                    <div className="text-sm text-gray-700 mb-1"><span className="font-semibold">Expense:</span> {r.purpose}</div>
                     {r.needed_by && <div className="text-xs text-gray-500">Needed by: {r.needed_by}</div>}
                     {r.finance_note && <div className="text-xs mt-2 p-2 rounded bg-blue-50 border border-blue-100 text-blue-800">Finance Note: {r.finance_note}</div>}
                     <div className="text-xs text-gray-400 mt-2">Submitted: {r.created_at ? new Date(r.created_at).toLocaleString('en-NA') : '—'}</div>
@@ -1486,23 +1485,25 @@ function ApprovalsTab() {
         <div onClick={e => { if (e.target === e.currentTarget) { setCasModal(null); setCasNote(''); } }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
           <div style={{ background: 'white', borderRadius: 16, width: '100%', maxWidth: 500, boxShadow: '0 25px 50px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
             <div style={{ padding: '16px 24px', background: 'linear-gradient(135deg,#166534,#15803d)' }}>
-              <h3 style={{ margin: 0, color: '#fff', fontSize: '1rem', fontWeight: 800 }}>💵 Final CAS Approval</h3>
-              <p style={{ margin: '4px 0 0', color: 'rgba(255,255,255,0.7)', fontSize: '0.82rem' }}>{casModal.request_number} · Finance Reviewed</p>
+              <h3 style={{ margin: 0, color: '#fff', fontSize: '1rem', fontWeight: 800 }}>💵 Final CAS Approval — Branch Expense</h3>
+              <p style={{ margin: '4px 0 0', color: 'rgba(255,255,255,0.7)', fontSize: '0.82rem' }}>{casModal.request_number} · {casModal.branch || 'Branch'}{casModal.expense_category ? ` · ${casModal.expense_category}` : ''}</p>
             </div>
             <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div style={{ padding: 14, background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0' }}>
-                <div style={{ marginBottom: 8 }}>
-                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block', marginBottom: 2 }}>Staff Member</span>
-                  <span style={{ fontWeight: 700, color: '#1e293b' }}>{casModal.staff_name || casModal.requested_by}</span>
-                  {casModal.staff_role && <span style={{ marginLeft: 8, fontSize: '0.68rem', fontWeight: 700, padding: '1px 6px', borderRadius: 20, background: '#e0e7ff', color: '#3730a3' }}>{casModal.staff_role.toUpperCase()}</span>}
-                  {(casModal.staff_branch || casModal.branch) && <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 2 }}>📍 {casModal.staff_branch || casModal.branch}</div>}
-                  {casModal.staff_email && <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 1 }}>✉ {casModal.staff_email}</div>}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10, flexWrap: 'wrap', gap: 6 }}>
+                  <div>
+                    <span style={{ fontSize: '0.72rem', color: '#64748b', display: 'block', marginBottom: 2, fontWeight: 700, textTransform: 'uppercase' }}>Branch</span>
+                    <span style={{ fontWeight: 800, color: '#1e293b', fontSize: '0.95rem' }}>📍 {casModal.branch || '—'}</span>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <span style={{ fontSize: '0.72rem', color: '#64748b', display: 'block', marginBottom: 2, fontWeight: 700, textTransform: 'uppercase' }}>Amount</span>
+                    <span style={{ fontWeight: 800, color: '#166534', fontSize: '1.1rem' }}>N$ {Math.round(Number(casModal.amount || 0)).toLocaleString('en-ZA')}</span>
+                  </div>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, borderTop: '1px solid #e2e8f0', paddingTop: 8 }}>
-                  <span style={{ fontSize: '0.82rem', color: '#64748b' }}>Amount</span>
-                  <span style={{ fontWeight: 800, color: '#166534', fontSize: '1.05rem' }}>N$ {Math.round(Number(casModal.amount || 0)).toLocaleString('en-ZA')}</span>
-                </div>
-                <div style={{ fontSize: '0.87rem', color: '#374151', marginTop: 4 }}>{casModal.purpose}</div>
+                {casModal.expense_category && <div style={{ marginBottom: 8 }}><span style={{ padding: '2px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 700, background: '#eff6ff', color: '#1e40af', border: '1px solid #93c5fd' }}>{casModal.expense_category}</span></div>}
+                <div style={{ fontSize: '0.87rem', color: '#374151' }}>{casModal.purpose}</div>
+                {casModal.needed_by && <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 4 }}>Needed by: {casModal.needed_by}</div>}
+                {(casModal.submitted_by_name || casModal.requested_by) && <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 4 }}>Submitted by: {casModal.submitted_by_name || casModal.requested_by}</div>}
                 {casModal.finance_note && <div style={{ marginTop: 8, fontSize: '0.8rem', padding: '6px 10px', background: '#eff6ff', borderRadius: 6, color: '#1e40af' }}>Finance Note: {casModal.finance_note}</div>}
               </div>
               <div>

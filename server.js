@@ -389,10 +389,11 @@ app.get('/api/cash-requests', async (req, res) => {
     const username = (req.user?.sub || req.user?.username || '').toLowerCase();
     const { rows } = await query(
       `SELECT id, request_number AS "requestNumber", requested_by AS staff,
-              data->>'staffName' AS "staffName",
+              branch,
+              COALESCE(data->>'expenseCategory', 'General') AS "expenseCategory",
               CAST(amount AS TEXT) AS amount, purpose,
               INITCAP(status) AS status,
-              (data->>'urgent')::boolean AS urgent,
+              data->>'neededBy' AS "neededBy",
               created_at AS "submittedAt"
        FROM finance_cash_requests
        WHERE LOWER(requested_by) = $1
@@ -411,22 +412,23 @@ app.post('/api/cash-requests', async (req, res) => {
     const { query } = await import('./api/db.js');
     const username = (req.user?.sub || req.user?.username || '').toLowerCase();
     const staffName = req.user?.name || req.user?.full_name || username;
-    const { amount, purpose, urgent, neededBy } = req.body;
+    const { amount, purpose, neededBy, expenseCategory } = req.body;
     if (!amount || !purpose) {
       return res.status(400).json({ success: false, error: 'Missing required fields' });
     }
-    const reqNum = 'CR-' + Date.now();
+    const reqNum = 'CAS-' + Date.now();
+    const branchName = req.user?.branch || 'unknown';
     await query(
       `INSERT INTO finance_cash_requests (id, request_number, branch, amount, purpose, status, requested_by, created_at, data)
        VALUES ($1, $2, $3, $4, $5, 'pending', $6, NOW(), $7::jsonb)`,
       [
-        'CR-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+        'CAS-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
         reqNum,
-        req.user?.branch || 'unknown',
+        branchName,
         parseFloat(amount),
         purpose,
         username,
-        JSON.stringify({ staffName, urgent: !!urgent, neededBy: neededBy || null }),
+        JSON.stringify({ submittedByName: staffName, expenseCategory: expenseCategory || 'General', neededBy: neededBy || null }),
       ]
     );
     res.json({ success: true });
@@ -447,12 +449,8 @@ app.get('/api/cash-requests/admin', async (req, res) => {
     // JOIN users to resolve requester full name, role, and branch
     let sql = `SELECT r.id, r.request_number, r.branch, r.amount, r.purpose, r.status,
                       r.requested_by,
-                      COALESCE(u.full_name, r.data->>'staffName', r.requested_by) AS staff_name,
-                      COALESCE(u.role, '')   AS staff_role,
-                      COALESCE(u.branch, r.branch, '') AS staff_branch,
-                      u.email                AS staff_email,
-                      u.phone                AS staff_phone,
-                      (r.data->>'urgent')::boolean AS urgent,
+                      COALESCE(u.full_name, r.data->>'submittedByName', r.data->>'staffName', r.requested_by) AS submitted_by_name,
+                      COALESCE(r.data->>'expenseCategory', 'General') AS expense_category,
                       r.data->>'neededBy'    AS needed_by,
                       r.data->>'financeNote' AS finance_note,
                       r.data->>'gmNote'      AS gm_note,

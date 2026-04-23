@@ -4841,7 +4841,7 @@ function BankingTab() {
           cas_amount: Number(selectedCAS.amount || 0),
         },
       });
-      setAlert({ type: 'success', message: 'Expense recorded and linked to CAS ' + (selectedCAS.saleNumber || selectedCAS.requestNumber || '') });
+      setAlert({ type: 'success', message: 'Branch expense recorded and linked to CAS ' + (selectedCAS.requestNumber || selectedCAS.saleNumber || '') });
       setExpenseForm({ category: 'Supplies', amount: '', description: '', receipt_ref: '', date: new Date().toISOString().slice(0, 10) });
       setSelectedCAS(null);
       setShowExpenseForm(false);
@@ -4964,13 +4964,13 @@ function BankingTab() {
             <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto', flex: 1 }}>
               {/* CAS selector - required */}
               <div style={{ padding: 14, borderRadius: 10, border: '2px solid', borderColor: selectedCAS ? '#86efac' : '#fca5a5', background: selectedCAS ? '#f0fdf4' : '#fef2f2' }}>
-                <label style={{ ...labelStyle, color: selectedCAS ? '#166534' : '#991b1b' }}>🔗 Link to Approved Cash Advance (CAS) *</label>
+                <label style={{ ...labelStyle, color: selectedCAS ? '#166534' : '#991b1b' }}>🔗 Link to Approved Branch CAS Request *</label>
                 {casLoading ? (
-                  <div style={{ fontSize: '0.82rem', color: '#64748b' }}>Loading your approved CAS requests…</div>
+                  <div style={{ fontSize: '0.82rem', color: '#64748b' }}>Loading approved CAS requests for your branch…</div>
                 ) : approvedCAS.length === 0 ? (
                   <div style={{ fontSize: '0.82rem', color: '#b91c1c', fontWeight: 600 }}>
-                    No approved cash advance requests found. You must have an approved CAS before recording an expense.
-                    <div style={{ marginTop: 4, fontSize: '0.78rem', color: '#64748b', fontWeight: 400 }}>Submit a Cash Advance Request (CAS) from the CAS section and wait for approval.</div>
+                    No approved CAS requests found. You must have a GM-approved Branch Expense Cash Advance (CAS) before recording an expense.
+                    <div style={{ marginTop: 4, fontSize: '0.78rem', color: '#64748b', fontWeight: 400 }}>Submit a CAS request from the Staff tab → CAS Requests and wait for GM approval.</div>
                   </div>
                 ) : (
                   <select value={selectedCAS ? (selectedCAS.id || '') : ''} onChange={e => {
@@ -6819,12 +6819,12 @@ function StaffTab() {
   const [leaveSubmitting, setLeaveSubmitting] = useState(false);
   const [leaveForm, setLeaveForm] = useState({ type: 'Annual', startDate: '', endDate: '', reason: '', urgent: false });
 
-  // Cash state
+  // CAS (Branch Expense Cash Advance) state
   const [cashRequests, setCashRequests] = useState([]);
   const [cashLoading, setCashLoading] = useState(true);
   const [showCashForm, setShowCashForm] = useState(false);
   const [cashSubmitting, setCashSubmitting] = useState(false);
-  const [cashForm, setCashForm] = useState({ amount: '', purpose: '', neededBy: '', urgent: false });
+  const [cashForm, setCashForm] = useState({ amount: '', expenseCategory: 'Office Supplies', purpose: '', neededBy: '' });
 
   useEffect(() => {
     api.get('/leave-requests').then(d => setLeaveRequests(Array.isArray(d) ? d : [])).catch(() => {}).finally(() => setLeaveLoading(false));
@@ -6852,17 +6852,17 @@ function StaffTab() {
 
   const submitCash = async () => {
     if (!cashForm.amount || Number(cashForm.amount) <= 0 || !cashForm.purpose.trim()) {
-      setAlert({ type: 'error', message: 'Please enter a valid amount and purpose' }); return;
+      setAlert({ type: 'error', message: 'Please enter a valid amount and expense description' }); return;
     }
     setCashSubmitting(true);
     try {
-      await api.post('/cash-requests', { amount: Number(cashForm.amount), purpose: cashForm.purpose, neededBy: cashForm.neededBy, urgent: cashForm.urgent });
-      setAlert({ type: 'success', message: 'Cash request submitted successfully' });
-      setCashForm({ amount: '', purpose: '', neededBy: '', urgent: false });
+      await api.post('/cash-requests', { amount: Number(cashForm.amount), purpose: cashForm.purpose, neededBy: cashForm.neededBy, expenseCategory: cashForm.expenseCategory });
+      setAlert({ type: 'success', message: 'Branch expense cash advance (CAS) submitted — awaiting Finance review.' });
+      setCashForm({ amount: '', expenseCategory: 'Office Supplies', purpose: '', neededBy: '' });
       setShowCashForm(false);
       await refreshCash();
     } catch (err) {
-      setAlert({ type: 'error', message: err.message || 'Failed to submit cash request' });
+      setAlert({ type: 'error', message: err.message || 'Failed to submit CAS request' });
     } finally { setCashSubmitting(false); }
   };
 
@@ -6878,12 +6878,12 @@ function StaffTab() {
       <div className="rounded-xl p-5 mb-5 flex justify-between items-center flex-wrap gap-3" style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', boxShadow: '0 4px 20px rgba(196,30,58,0.28)' }}>
         <div>
           <p className="text-white/60 text-xs font-bold uppercase tracking-widest mb-1 m-0">Staff Services</p>
-          <h3 className="text-white text-lg font-bold m-0">👤 Leave & Cash Management</h3>
-          <p className="text-white/70 text-sm mt-1 m-0">Submit and track your leave and cash requests</p>
+          <h3 className="text-white text-lg font-bold m-0">👤 Leave & CAS Management</h3>
+          <p className="text-white/70 text-sm mt-1 m-0">Submit leave requests and branch expense cash advances (CAS)</p>
         </div>
         <div className="flex gap-2">
           <button onClick={() => { setShowLeaveForm(true); setAlert(null); setStaffSubTab('leave'); }} className="px-4 py-2 rounded-full font-semibold text-sm cursor-pointer" style={{ background: '#fff', color: '#c41e3a', border: 'none', fontWeight: 700 }}>📅 Request Leave</button>
-          <button onClick={() => { setShowCashForm(true); setAlert(null); setStaffSubTab('cash'); }} className="px-4 py-2 rounded-full font-semibold text-sm cursor-pointer text-white" style={{ background: 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.25)' }}>💵 Request Cash</button>
+          <button onClick={() => { setShowCashForm(true); setAlert(null); setStaffSubTab('cash'); }} className="px-4 py-2 rounded-full font-semibold text-sm cursor-pointer text-white" style={{ background: 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.25)' }}>💵 New CAS Request</button>
         </div>
       </div>
 
@@ -6891,7 +6891,7 @@ function StaffTab() {
 
       {/* Sub-tabs */}
       <div className="flex gap-2 mb-5">
-        {[{ id: 'leave', label: '📅 Leave Requests' }, { id: 'cash', label: '💵 Cash Requests' }].map(t => (
+        {[{ id: 'leave', label: '📅 Leave Requests' }, { id: 'cash', label: '💵 CAS Requests' }].map(t => (
           <button key={t.id} onClick={() => setStaffSubTab(t.id)}
             style={{ padding: '8px 20px', borderRadius: 20, fontSize: '0.85rem', fontWeight: 600, border: 'none', cursor: 'pointer', background: staffSubTab === t.id ? '#c41e3a' : '#f1f5f9', color: staffSubTab === t.id ? '#fff' : '#64748b', transition: 'all 0.2s' }}>
             {t.label}
@@ -6933,31 +6933,35 @@ function StaffTab() {
         </Card>
       )}
 
-      {/* Cash Requests */}
+      {/* CAS Requests */}
       {staffSubTab === 'cash' && (
         <Card>
           <CardHeader className="flex justify-between items-center">
-            <h3 className="font-bold text-gray-800">My Cash Requests</h3>
+            <div>
+              <h3 className="font-bold text-gray-800">Branch Expense Cash Advances (CAS)</h3>
+              <p className="text-xs text-gray-400 mt-0.5">Cash requested for branch operating expenses</p>
+            </div>
             <button onClick={refreshCash} className="px-3 py-1.5 rounded-lg text-xs font-semibold border-none cursor-pointer" style={{ background: '#f9f5f5', color: '#64748b' }}>🔄 Refresh</button>
           </CardHeader>
           {cashLoading ? <div className="p-6 text-center text-gray-400">Loading…</div> : cashRequests.length === 0 ? (
             <div className="p-10 text-center text-gray-400">
               <div className="text-4xl mb-3">💵</div>
-              <p className="font-semibold text-gray-500">No cash requests yet</p>
-              <p className="text-sm mt-1">Click "Request Cash" to submit a cash request</p>
+              <p className="font-semibold text-gray-500">No CAS requests yet</p>
+              <p className="text-sm mt-1">Click "New CAS Request" to request cash for branch expenses</p>
             </div>
           ) : (
             <div className="divide-y">
               {cashRequests.map((r, i) => (
-                <div key={r.id || i} style={{ padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+                <div key={r.id || i} style={{ padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
                   <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
                       <span style={{ fontWeight: 800, color: '#166534', fontSize: '0.95rem' }}>N$ {Math.round(Number(r.amount || 0)).toLocaleString("en-ZA")}</span>
-                      {r.urgent && <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700, background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5' }}>URGENT</span>}
+                      {r.expenseCategory && <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: '0.68rem', fontWeight: 700, background: '#eff6ff', color: '#1e40af', border: '1px solid #93c5fd' }}>{r.expenseCategory}</span>}
                       {statusBadge(r.status)}
                     </div>
                     <div style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.88rem' }}>{r.purpose}</div>
                     {r.neededBy && <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 2 }}>Needed by: {r.neededBy}</div>}
+                    {r.requestNumber && <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: 2, fontFamily: 'monospace' }}>{r.requestNumber}</div>}
                   </div>
                   <div style={{ fontSize: '0.75rem', color: '#94a3b8', textAlign: 'right' }}>{r.submittedAt ? new Date(r.submittedAt).toLocaleDateString('en-NA') : '-'}</div>
                 </div>
@@ -7011,35 +7015,45 @@ function StaffTab() {
         </div>
       )}
 
-      {/* Cash Request Form Modal */}
+      {/* CAS — Branch Expense Cash Advance Form Modal */}
       {showCashForm && (
         <div onClick={e => { if (e.target === e.currentTarget) setShowCashForm(false); }} style={{ position: 'fixed', inset: 0, background: 'rgba(15,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, backdropFilter: 'blur(3px)' }}>
-          <div style={{ width: '100%', maxWidth: 480, background: '#fff', borderRadius: 20, overflow: 'hidden', boxShadow: '0 30px 80px rgba(196,30,58,0.2)' }}>
-            <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ color: '#fff', fontSize: '1.05rem', fontWeight: 800 }}>💵 Submit Cash Request</div>
+          <div style={{ width: '100%', maxWidth: 500, background: '#fff', borderRadius: 20, overflow: 'hidden', boxShadow: '0 30px 80px rgba(196,30,58,0.2)' }}>
+            <div style={{ background: 'linear-gradient(135deg,#1e40af,#1d4ed8)', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ color: '#fff', fontSize: '1.05rem', fontWeight: 800 }}>💵 Branch Expense Cash Advance (CAS)</div>
+                <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.8rem', marginTop: 2 }}>Request branch operating expense funding</div>
+              </div>
               <button onClick={() => setShowCashForm(false)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 34, height: 34, borderRadius: '50%', cursor: 'pointer', fontSize: '1.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
             </div>
             <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ padding: '10px 14px', background: '#eff6ff', borderRadius: 10, border: '1px solid #bfdbfe', fontSize: '0.8rem', color: '#1e40af' }}>
+                This cash advance request is for <strong>branch operating expenses</strong> — not for personal use. Finance will review and the GM will approve.
+              </div>
+              <div>
+                <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 5 }}>Expense Category *</label>
+                <select value={cashForm.expenseCategory} onChange={e => setCashForm(f => ({ ...f, expenseCategory: e.target.value }))} style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' }}>
+                  {['Office Supplies', 'Rent', 'Utilities', 'Cleaning & Hygiene', 'Maintenance & Repairs', 'Transport & Fuel', 'Security', 'Communication', 'Staff Welfare', 'Marketing & Events', 'Other'].map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
               <div>
                 <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 5 }}>Amount Requested (N$) *</label>
                 <input type="number" min="1" value={cashForm.amount} onChange={e => setCashForm(f => ({ ...f, amount: e.target.value }))} placeholder="0.00" style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '1rem', fontWeight: 700, outline: 'none', boxSizing: 'border-box' }} />
               </div>
               <div>
-                <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 5 }}>Purpose / Reason *</label>
-                <textarea value={cashForm.purpose} onChange={e => setCashForm(f => ({ ...f, purpose: e.target.value }))} rows={3} placeholder="Describe what the cash will be used for…" style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.87rem', resize: 'none', outline: 'none', boxSizing: 'border-box' }} />
+                <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 5 }}>Expense Description *</label>
+                <textarea value={cashForm.purpose} onChange={e => setCashForm(f => ({ ...f, purpose: e.target.value }))} rows={3} placeholder="Describe the expense in detail — what will the cash be used for?" style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.87rem', resize: 'none', outline: 'none', boxSizing: 'border-box' }} />
               </div>
               <div>
                 <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 5 }}>Date Needed By</label>
                 <input type="date" value={cashForm.neededBy} onChange={e => setCashForm(f => ({ ...f, neededBy: e.target.value }))} style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' }} />
               </div>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: '0.88rem', fontWeight: 600, color: '#dc2626', userSelect: 'none' }}>
-                <input type="checkbox" checked={cashForm.urgent} onChange={e => setCashForm(f => ({ ...f, urgent: e.target.checked }))} style={{ width: 16, height: 16, accentColor: '#c41e3a' }} />
-                Mark as URGENT
-              </label>
               <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
                 <button onClick={() => setShowCashForm(false)} style={{ flex: 1, padding: '11px', border: '1.5px solid #e2e8f0', borderRadius: 10, background: '#fff', cursor: 'pointer', color: '#64748b', fontWeight: 600, fontSize: '0.9rem' }}>Cancel</button>
-                <button onClick={submitCash} disabled={cashSubmitting} style={{ flex: 2, padding: '11px', border: 'none', borderRadius: 10, background: 'linear-gradient(135deg,#c41e3a,#8b0000)', color: '#fff', fontWeight: 800, cursor: cashSubmitting ? 'not-allowed' : 'pointer', fontSize: '0.9rem', opacity: cashSubmitting ? 0.65 : 1 }}>
-                  {cashSubmitting ? '⏳ Submitting…' : '💵 Submit Cash Request'}
+                <button onClick={submitCash} disabled={cashSubmitting} style={{ flex: 2, padding: '11px', border: 'none', borderRadius: 10, background: 'linear-gradient(135deg,#1e40af,#1d4ed8)', color: '#fff', fontWeight: 800, cursor: cashSubmitting ? 'not-allowed' : 'pointer', fontSize: '0.9rem', opacity: cashSubmitting ? 0.65 : 1 }}>
+                  {cashSubmitting ? '⏳ Submitting…' : '💵 Submit CAS Request'}
                 </button>
               </div>
             </div>

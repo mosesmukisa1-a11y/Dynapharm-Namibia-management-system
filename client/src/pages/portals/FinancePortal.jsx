@@ -2416,8 +2416,8 @@ function CASReviewTab() {
       <div className="rounded-xl p-5 mb-5 flex justify-between items-center flex-wrap gap-3" style={{ background: 'linear-gradient(135deg,#1e40af,#1d4ed8)', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>
         <div>
           <p className="text-white/60 text-xs font-bold uppercase tracking-widest mb-1 m-0">Finance Department</p>
-          <h3 className="text-white text-lg font-bold m-0">✅ CAS Review — Cash Advance Requests</h3>
-          <p className="text-white/70 text-sm mt-1 m-0">Review staff requests before GM final approval</p>
+          <h3 className="text-white text-lg font-bold m-0">✅ CAS Review — Branch Expense Requests</h3>
+          <p className="text-white/70 text-sm mt-1 m-0">Review branch expense cash advance requests before GM final approval</p>
         </div>
         <button onClick={load} className="px-4 py-2 rounded-full font-semibold text-sm cursor-pointer bg-white" style={{ color: '#1e40af', border: 'none', fontWeight: 700 }}>🔄 Refresh</button>
       </div>
@@ -2437,7 +2437,7 @@ function CASReviewTab() {
         <div className="py-12 text-center text-gray-400">
           <div className="text-4xl mb-3">✅</div>
           <p className="font-semibold text-gray-500">No {statusFilter || ''} requests</p>
-          <p className="text-sm">All cash advance requests have been processed</p>
+          <p className="text-sm">All branch expense cash advance requests have been processed</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -2449,16 +2449,14 @@ function CASReviewTab() {
                     <div className="flex items-center gap-2 flex-wrap mb-2">
                       <span className="font-bold text-gray-800">{r.request_number}</span>
                       {statusBadge(r.status)}
-                      {r.urgent && <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700, background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5' }}>URGENT</span>}
+                      {r.expense_category && <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700, background: '#eff6ff', color: '#1e40af', border: '1px solid #93c5fd' }}>{r.expense_category}</span>}
                       <span className="font-bold text-lg" style={{ color: '#166534' }}>N$ {Number(r.amount || 0).toFixed(2)}</span>
                     </div>
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mb-1">
-                      <span className="text-sm font-bold text-gray-800">{r.staff_name || r.requested_by}</span>
-                      {r.staff_role && <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '1px 7px', borderRadius: 20, background: '#e0e7ff', color: '#3730a3' }}>{r.staff_role.toUpperCase()}</span>}
-                      {(r.staff_branch || r.branch) && <span className="text-xs text-gray-500">📍 {r.staff_branch || r.branch}</span>}
-                      {r.staff_email && <span className="text-xs text-gray-400">✉ {r.staff_email}</span>}
+                      <span className="text-sm font-bold text-gray-800">📍 {r.branch || 'Unknown Branch'}</span>
+                      {(r.submitted_by_name || r.requested_by) && <span className="text-xs text-gray-500">Submitted by: {r.submitted_by_name || r.requested_by}</span>}
                     </div>
-                    <div className="text-sm text-gray-700 mb-1"><span className="font-semibold">Purpose:</span> {r.purpose}</div>
+                    <div className="text-sm text-gray-700 mb-1"><span className="font-semibold">Expense Description:</span> {r.purpose}</div>
                     {r.needed_by && <div className="text-xs text-gray-500">Needed by: {r.needed_by}</div>}
                     {r.finance_note && <div className="text-xs mt-1 p-2 rounded" style={{ background: '#eff6ff' }}>Finance Note: {r.finance_note}</div>}
                     <div className="text-xs text-gray-400 mt-1">Submitted: {r.created_at ? new Date(r.created_at).toLocaleString('en-NA') : '—'}</div>
@@ -2479,15 +2477,25 @@ function CASReviewTab() {
         <div onClick={e => { if (e.target === e.currentTarget) { setReviewModal(null); setReviewNote(''); } }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
           <div style={{ width: '100%', maxWidth: 500, background: '#fff', borderRadius: 20, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
             <div style={{ background: 'linear-gradient(135deg,#1e40af,#1d4ed8)', padding: '16px 24px' }}>
-              <p style={{ color: '#fff', fontWeight: 800, fontSize: '1.05rem', margin: 0 }}>✅ Review Cash Advance Request</p>
-              <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.83rem', margin: '4px 0 0' }}>{reviewModal.request_number} · {reviewModal.staff_name || reviewModal.requested_by}{reviewModal.staff_role ? ` · ${reviewModal.staff_role}` : ''}{reviewModal.staff_branch || reviewModal.branch ? ` · ${reviewModal.staff_branch || reviewModal.branch}` : ''}</p>
+              <p style={{ color: '#fff', fontWeight: 800, fontSize: '1.05rem', margin: 0 }}>✅ Review Branch Expense Request (CAS)</p>
+              <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.83rem', margin: '4px 0 0' }}>{reviewModal.request_number} · {reviewModal.branch || 'Branch'}{reviewModal.expense_category ? ` · ${reviewModal.expense_category}` : ''}</p>
             </div>
             <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div style={{ padding: 14, background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0' }}>
-                <div style={{ fontSize: '0.82rem', color: '#64748b', marginBottom: 4 }}>Request Details</div>
-                <div style={{ fontWeight: 700, color: '#1e293b' }}>N$ {Number(reviewModal.amount || 0).toFixed(2)}</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8, flexWrap: 'wrap', gap: 6 }}>
+                  <div>
+                    <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em' }}>Branch</div>
+                    <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '0.95rem' }}>{reviewModal.branch || '—'}</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em' }}>Amount Requested</div>
+                    <div style={{ fontWeight: 800, color: '#166534', fontSize: '1.1rem' }}>N$ {Number(reviewModal.amount || 0).toFixed(2)}</div>
+                  </div>
+                </div>
+                {reviewModal.expense_category && <div style={{ marginBottom: 6 }}><span style={{ padding: '2px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 700, background: '#eff6ff', color: '#1e40af', border: '1px solid #93c5fd' }}>{reviewModal.expense_category}</span></div>}
                 <div style={{ fontSize: '0.87rem', color: '#374151', marginTop: 4 }}>{reviewModal.purpose}</div>
                 {reviewModal.needed_by && <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 4 }}>Needed by: {reviewModal.needed_by}</div>}
+                {(reviewModal.submitted_by_name || reviewModal.requested_by) && <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 4 }}>Submitted by: {reviewModal.submitted_by_name || reviewModal.requested_by}</div>}
               </div>
               <div>
                 <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 5 }}>Finance Note (optional)</label>
