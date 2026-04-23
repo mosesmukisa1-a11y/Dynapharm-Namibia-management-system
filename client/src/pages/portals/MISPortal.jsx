@@ -61,133 +61,250 @@ export default function MISPortal() {
   );
 }
 
+const AUDIT_EVENT_TYPES = [
+  'sale_created', 'sale_updated', 'sale_deleted',
+  'deposit_created', 'deposit_approved', 'deposit_rejected',
+  'expense_created', 'expense_approved', 'expense_rejected',
+  'lines_verified', 'stock_updated', 'user_login',
+];
+
 function AuditTab() {
   const [data, setData] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [filterBranch, setFilterBranch] = useState('');
+  const [filterEvent, setFilterEvent] = useState('');
 
-  useEffect(() => {
-    api.mis.audit()
-      .then(d => setData(Array.isArray(d) ? d : d.logs || []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+  const fetchAudit = async () => {
+    setLoading(true);
+    const params = [];
+    if (startDate) params.push(`start=${startDate}`);
+    if (endDate)   params.push(`end=${endDate}`);
+    if (filterBranch) params.push(`branch=${encodeURIComponent(filterBranch)}`);
+    if (filterEvent)  params.push(`event=${encodeURIComponent(filterEvent)}`);
+    try {
+      const d = await api.mis.audit(params.join('&'));
+      setData(Array.isArray(d) ? d : d.logs || []);
+      setLoaded(true);
+    } catch {
+      setData([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  if (loading) return <LoadingSpinner />;
+  const exportCSV = () => {
+    if (!data.length) return;
+    const headers = ['Date', 'Event Type', 'User', 'Details'];
+    const rows = data.map(r => {
+      const det = r.details;
+      const detStr = !det ? '' : typeof det === 'object' ? Object.entries(det).map(([k,v]) => `${k}:${v}`).join('; ') : String(det);
+      return [
+        formatDateTime(r.createdAt || r.created_at),
+        r.eventType || r.action || '',
+        r.user || '',
+        detStr,
+      ].map(v => `"${String(v).replace(/"/g, '""')}"`);
+    });
+    const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = `audit-trail-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
 
   return (
-    <Card>
-      <CardHeader><h3 className="font-bold text-gray-800">Audit Trail</h3></CardHeader>
-      <Table
-        columns={[
-          { header: 'Date', render: r => formatDateTime(r.createdAt || r.created_at) },
-          { header: 'Action', render: r => r.eventType || r.action || '-' },
-          { header: 'User', render: r => r.user || '-' },
-          { header: 'Details', render: r => {
-            const d = r.details;
-            if (!d) return '-';
-            if (typeof d === 'object') return Object.entries(d).map(([k, v]) => `${k}: ${v}`).join(' | ') || '-';
-            return String(d);
-          }},
-        ]}
-        data={data}
-        emptyMessage="No audit records"
-      />
-    </Card>
+    <div className="space-y-4">
+      <Card>
+        <CardHeader><h3 className="font-bold text-gray-800">Audit Trail</h3></CardHeader>
+        <CardBody>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
+            <Input label="From" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
+            <Input label="To" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700">Branch</label>
+              <select value={filterBranch} onChange={e => setFilterBranch(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
+                <option value="">All Branches</option>
+                {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700">Event Type</label>
+              <select value={filterEvent} onChange={e => setFilterEvent(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
+                <option value="">All Events</option>
+                {AUDIT_EVENT_TYPES.map(t => <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>)}
+              </select>
+            </div>
+            <Button onClick={fetchAudit} disabled={loading}>
+              <Search size={14} /> {loading ? 'Loading…' : 'Search'}
+            </Button>
+          </div>
+        </CardBody>
+      </Card>
+
+      {loading && <LoadingSpinner />}
+
+      {loaded && !loading && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <h3 className="font-bold text-gray-800">{data.length} record{data.length !== 1 ? 's' : ''}</h3>
+              {data.length > 0 && (
+                <Button size="sm" variant="secondary" onClick={exportCSV}>
+                  <Download size={14} /> Export CSV
+                </Button>
+              )}
+            </div>
+          </CardHeader>
+          <Table
+            columns={[
+              { header: 'Date', render: r => formatDateTime(r.createdAt || r.created_at) },
+              { header: 'Event', render: r => <Badge variant="info">{(r.eventType || r.action || '-').replace(/_/g, ' ')}</Badge> },
+              { header: 'User', render: r => r.user || '-' },
+              { header: 'Details', render: r => {
+                const d = r.details;
+                if (!d) return '-';
+                if (typeof d === 'object') return Object.entries(d).map(([k, v]) => `${k}: ${v}`).join(' | ') || '-';
+                return String(d);
+              }},
+            ]}
+            data={data}
+            emptyMessage="No audit records match these filters"
+          />
+        </Card>
+      )}
+
+      {!loaded && !loading && (
+        <div className="text-center py-12 text-gray-400 text-sm">
+          <FileSearch size={32} className="mx-auto mb-3 opacity-40" />
+          <p>Select filters and click Search to load the audit trail</p>
+        </div>
+      )}
+    </div>
   );
 }
 
 function ReconcileTab() {
-  const [branch, setBranch] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [filterStatus, setFilterStatus] = useState('all');
 
   const handleReconcile = async () => {
     if (!startDate || !endDate) return;
     setLoading(true);
     try {
-      const params = [`start_date=${startDate}`, `end_date=${endDate}`];
-      if (branch) params.push(`branch=${encodeURIComponent(branch)}`);
-
-      const [salesData, depositsData] = await Promise.all([
-        api.branch.walkinSales(params.join('&')).then(d => Array.isArray(d) ? d : d.sales || []).catch(() => []),
-        api.branch.deposits().then(d => Array.isArray(d) ? d : d.deposits || []).catch(() => []),
-      ]);
-
-      const filteredDeposits = depositsData.filter(d => {
-        const date = new Date(d.created_at);
-        return date >= new Date(startDate) && date <= new Date(endDate + 'T23:59:59') &&
-          (!branch || d.branch_id === branch);
-      });
-
-      const totalSales = salesData.reduce((sum, s) => sum + Number(s.total || s.amount || 0), 0);
-      const totalDeposits = filteredDeposits.reduce((sum, d) => sum + Number(d.amount || 0), 0);
-      const discrepancy = totalSales - totalDeposits;
-
-      setResult({ salesData, filteredDeposits, totalSales, totalDeposits, discrepancy });
-    } catch (err) {
+      const data = await api.mis.reconcile({ start: startDate, end: endDate });
+      setResult(data);
+    } catch {
       setResult(null);
     } finally {
       setLoading(false);
     }
   };
 
+  const exportCSV = () => {
+    if (!result?.rows?.length) return;
+    const headers = ['Branch', 'Product', 'Encoded Qty', 'Encoded Amount', 'Receipt Qty', 'Receipt Amount', 'Difference', 'Status'];
+    const rows = result.rows.map(r => [
+      r.branch, r.productName, r.encodedQuantity, r.encodedAmount.toFixed(2),
+      r.receiptQuantity, r.receiptAmount.toFixed(2), r.difference.toFixed(2), r.status,
+    ].map(v => `"${String(v ?? '').replace(/"/g, '""')}"`));
+    const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = `reconciliation-${startDate}-to-${endDate}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  const rows = result?.rows || [];
+  const fmtBranch = b => b ? b.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '-';
+
+  const matched   = rows.filter(r => r.status === 'matched').length;
+  const issues    = rows.filter(r => r.status !== 'matched').length;
+  const totalDiff = rows.reduce((s, r) => s + Math.abs(Number(r.difference || 0)), 0);
+
+  const displayRows = filterStatus === 'all' ? rows : rows.filter(r => r.status === filterStatus);
+
   return (
     <div className="space-y-4">
       <Card>
         <CardHeader><h3 className="font-bold text-gray-800">Data Reconciliation</h3></CardHeader>
         <CardBody>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-            <div className="space-y-1">
-              <label className="block text-sm font-medium text-gray-700">Branch</label>
-              <select value={branch} onChange={e => setBranch(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
-                <option value="">All Branches</option>
-                {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
-              </select>
-            </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
             <Input label="Start Date" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
             <Input label="End Date" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
             <Button onClick={handleReconcile} disabled={loading || !startDate || !endDate}>
-              {loading ? 'Loading...' : 'Reconcile'}
+              <GitCompare size={14} /> {loading ? 'Reconciling…' : 'Run Reconciliation'}
             </Button>
           </div>
         </CardBody>
       </Card>
 
       {result && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card>
-              <CardBody>
-                <p className="text-sm text-gray-500">Total Sales</p>
-                <p className="text-2xl font-bold text-blue-600">{formatCurrency(result.totalSales)}</p>
-                <p className="text-xs text-gray-400">{result.salesData.length} transactions</p>
-              </CardBody>
-            </Card>
-            <Card>
-              <CardBody>
-                <p className="text-sm text-gray-500">Total Deposits</p>
-                <p className="text-2xl font-bold text-green-600">{formatCurrency(result.totalDeposits)}</p>
-                <p className="text-xs text-gray-400">{result.filteredDeposits.length} deposits</p>
-              </CardBody>
-            </Card>
-            <Card className={Math.abs(result.discrepancy) > 0 ? 'border-red-200 bg-red-50' : ''}>
-              <CardBody>
-                <p className="text-sm text-gray-500">Discrepancy</p>
-                <p className={`text-2xl font-bold ${Math.abs(result.discrepancy) > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                  {formatCurrency(Math.abs(result.discrepancy))}
-                </p>
-                {Math.abs(result.discrepancy) > 0 && (
-                  <p className="text-xs text-red-500 flex items-center gap-1">
-                    <AlertTriangle size={12} /> {result.discrepancy > 0 ? 'Under-deposited' : 'Over-deposited'}
-                  </p>
-                )}
-              </CardBody>
-            </Card>
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              { label: 'Total Lines', value: rows.length, color: 'text-gray-800', bg: 'bg-gray-50 border border-gray-200' },
+              { label: '✓ Matched', value: matched, color: 'text-green-700', bg: 'bg-green-50 border border-green-200' },
+              { label: '⚠ With Issues', value: issues, color: 'text-red-700', bg: 'bg-red-50 border border-red-200' },
+              { label: 'Total Variance', value: formatCurrency(totalDiff), color: totalDiff > 0 ? 'text-red-700' : 'text-green-700', bg: totalDiff > 0 ? 'bg-red-50 border border-red-200' : 'bg-green-50 border border-green-200' },
+            ].map(({ label, value, color, bg }) => (
+              <div key={label} className={`rounded-lg px-4 py-3 ${bg}`}>
+                <div className="text-xs font-medium text-gray-500 uppercase tracking-wide">{label}</div>
+                <div className={`text-xl font-bold mt-0.5 ${color}`}>{value}</div>
+              </div>
+            ))}
           </div>
-        </div>
+
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex gap-2">
+                  {['all', 'matched', 'encoded-higher', 'receipt-higher'].map(s => (
+                    <button key={s} onClick={() => setFilterStatus(s)}
+                      className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${filterStatus === s ? 'bg-primary text-white border-primary' : 'bg-white text-gray-600 border-gray-300 hover:border-primary'}`}>
+                      {s === 'all' ? 'All' : s === 'matched' ? '✓ Matched' : s === 'encoded-higher' ? '↑ Encoded Higher' : '↓ Receipt Higher'}
+                    </button>
+                  ))}
+                </div>
+                {rows.length > 0 && (
+                  <Button size="sm" variant="secondary" onClick={exportCSV}>
+                    <Download size={14} /> Export CSV
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            <Table
+              columns={[
+                { header: 'Branch', render: r => <span className="font-semibold">{fmtBranch(r.branch)}</span> },
+                { header: 'Product', render: r => r.productName || '-' },
+                { header: 'Encoded Qty', render: r => <span className="text-right block">{r.encodedQuantity}</span> },
+                { header: 'Encoded Amt', render: r => <span className="text-right block">{formatCurrency(r.encodedAmount)}</span> },
+                { header: 'Receipt Qty', render: r => <span className="text-right block">{r.receiptQuantity}</span> },
+                { header: 'Receipt Amt', render: r => <span className="text-right block">{formatCurrency(r.receiptAmount)}</span> },
+                { header: 'Difference', render: r => {
+                  const d = Number(r.difference || 0);
+                  return <span className={`text-right block font-bold ${Math.abs(d) < 1 ? 'text-green-600' : 'text-red-600'}`}>{d >= 0 ? '+' : ''}{formatCurrency(d)}</span>;
+                }},
+                { header: 'Status', render: r => {
+                  const v = { matched: 'success', 'encoded-higher': 'warning', 'receipt-higher': 'danger' };
+                  const l = { matched: 'Matched', 'encoded-higher': 'Encoded Higher', 'receipt-higher': 'Receipt Higher' };
+                  return <Badge variant={v[r.status] || 'info'}>{l[r.status] || r.status}</Badge>;
+                }},
+              ]}
+              data={displayRows}
+              emptyMessage="No reconciliation data for this period"
+            />
+          </Card>
+        </>
       )}
     </div>
   );
@@ -196,15 +313,17 @@ function ReconcileTab() {
 function BranchStatusTab() {
   const [statusData, setStatusData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [date, setDate] = useState('');
 
-  useEffect(() => {
-    api.mis.branchStatus()
-      .then(d => setStatusData(d))
+  const load = (d) => {
+    setLoading(true);
+    api.mis.branchStatus(d || '')
+      .then(sd => setStatusData(sd))
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  };
 
-  if (loading) return <LoadingSpinner />;
+  useEffect(() => { load(); }, []);
 
   const pending = statusData?.pending || [];
   const encoded = statusData?.encoded || [];
@@ -237,9 +356,22 @@ function BranchStatusTab() {
   return (
     <div className="space-y-4">
       <Card>
-        <CardHeader><h3 className="font-bold text-gray-800">Branch Status Overview</h3></CardHeader>
-        {rows.length === 0 ? (
-          <div className="p-8 text-center text-gray-400 text-sm">No branch activity recorded today</div>
+        <CardHeader>
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <h3 className="font-bold text-gray-800">Branch Status Overview</h3>
+            <div className="flex items-center gap-2">
+              <Input label="" type="date" value={date}
+                onChange={e => { setDate(e.target.value); load(e.target.value); }}
+                className="text-sm" />
+              {date && (
+                <button onClick={() => { setDate(''); load(''); }}
+                  className="text-xs text-gray-400 hover:text-red-500 transition-colors">✕ Today</button>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+        {loading ? <LoadingSpinner /> : rows.length === 0 ? (
+          <div className="p-8 text-center text-gray-400 text-sm">No branch activity recorded{date ? ` for ${date}` : ' today'}</div>
         ) : (
           <Table
             columns={[
@@ -272,36 +404,53 @@ function EncodedSalesTab() {
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ date: '', branch: '', product: '', quantity: '1', price: '', receipt_number: '' });
+  const [header, setHeader] = useState({ date: new Date().toISOString().slice(0,10), branch: '', receipt_number: '' });
+  const emptyRow = () => ({ product: '', quantity: '1', price: '' });
+  const [rows, setRows] = useState([emptyRow()]);
+  const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState('');
 
-  useEffect(() => {
+  const loadSales = () => {
     api.mis.encodedSales()
       .then(d => setSales(Array.isArray(d) ? d : d.rows || []))
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  };
+
+  useEffect(() => { loadSales(); }, []);
+
+  const updateRow = (i, field, value) => setRows(prev => prev.map((r, idx) => idx === i ? { ...r, [field]: value } : r));
+  const addRow = () => setRows(prev => [...prev, emptyRow()]);
+  const removeRow = (i) => setRows(prev => prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.date || !form.branch || !form.product || !form.price) {
-      setMessage('Error: Please fill in all required fields.');
-      return;
-    }
+    if (!header.date || !header.branch) { setMessage('Error: Date and Branch are required.'); return; }
+    const validRows = rows.filter(r => r.product && Number(r.quantity) > 0 && Number(r.price) >= 0);
+    if (!validRows.length) { setMessage('Error: Add at least one product line.'); return; }
+    setSubmitting(true);
     try {
-      await api.mis.createEncodedSale({
-        ...form,
-        quantity: Number(form.quantity),
-        price: Number(form.price),
-      });
-      setMessage('Sale encoded successfully!');
-      setSales(prev => [{ ...form, id: Date.now(), quantity: Number(form.quantity), price: Number(form.price), created_at: new Date().toISOString() }, ...prev]);
-      setForm({ date: '', branch: '', product: '', quantity: '1', price: '', receipt_number: '' });
+      await Promise.all(validRows.map(r => api.mis.createEncodedSale({
+        date: header.date,
+        branch: header.branch,
+        receipt_number: header.receipt_number,
+        product: r.product,
+        quantity: Number(r.quantity),
+        price: Number(r.price),
+      })));
+      setMessage(`${validRows.length} line${validRows.length > 1 ? 's' : ''} encoded successfully!`);
+      setRows([emptyRow()]);
       setShowForm(false);
+      loadSales();
     } catch (err) {
       setMessage('Error: ' + err.message);
+    } finally {
+      setSubmitting(false);
     }
   };
+
+  const products = getLiveProductList();
+  const grandTotal = rows.reduce((s, r) => s + Number(r.quantity || 0) * Number(r.price || 0), 0);
 
   if (loading) return <LoadingSpinner />;
 
@@ -311,43 +460,92 @@ function EncodedSalesTab() {
 
       <div className="flex justify-between items-center">
         <h3 className="font-bold text-gray-800">Encoded Sales</h3>
-        <Button size="sm" onClick={() => setShowForm(!showForm)}>
+        <Button size="sm" onClick={() => { setShowForm(!showForm); setMessage(''); }}>
           {showForm ? 'Cancel' : '+ Encode Sale'}
         </Button>
       </div>
 
       {showForm && (
         <Card>
+          <CardHeader><h4 className="font-semibold text-gray-700">New Encoded Sale — Multi-line Entry</h4></CardHeader>
           <CardBody>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <Input label="Date *" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} />
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <Input label="Date *" type="date" value={header.date} onChange={e => setHeader({ ...header, date: e.target.value })} />
                 <div className="space-y-1">
                   <label className="block text-sm font-medium text-gray-700">Branch *</label>
-                  <select value={form.branch} onChange={e => setForm({ ...form, branch: e.target.value })}
+                  <select value={header.branch} onChange={e => setHeader({ ...header, branch: e.target.value })}
                     className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
                     <option value="">Select Branch</option>
                     {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
                   </select>
                 </div>
+                <Input label="Receipt #" value={header.receipt_number} onChange={e => setHeader({ ...header, receipt_number: e.target.value })} placeholder="RCP-..." />
               </div>
-              <div className="space-y-1">
-                <label className="block text-sm font-medium text-gray-700">Product *</label>
-                <select value={form.product} onChange={e => {
-                  const prod = getLiveProductList().find(p => p.description === e.target.value);
-                  setForm({ ...form, product: e.target.value, price: prod ? String(prod.cp) : form.price });
-                }}
-                  className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
-                  <option value="">Select Product</option>
-                  {getLiveProductList().map(p => <option key={p.description} value={p.description}>{p.description}</option>)}
-                </select>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase">#</th>
+                      <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase">Product *</th>
+                      <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase w-24">Qty *</th>
+                      <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase w-32">Price *</th>
+                      <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase w-28">Line Total</th>
+                      <th className="px-2 py-2 w-8"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((row, i) => (
+                      <tr key={i} className="border-b border-gray-100">
+                        <td className="px-3 py-2 text-gray-400 text-xs">{i + 1}</td>
+                        <td className="px-3 py-2">
+                          <select value={row.product} onChange={e => {
+                            const prod = products.find(p => p.description === e.target.value);
+                            updateRow(i, 'product', e.target.value);
+                            if (prod) updateRow(i, 'price', String(prod.cp));
+                          }} className="w-full px-2 py-1.5 rounded border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20">
+                            <option value="">Select Product</option>
+                            {products.map(p => <option key={p.description} value={p.description}>{p.description}</option>)}
+                          </select>
+                        </td>
+                        <td className="px-3 py-2">
+                          <input type="number" min="1" value={row.quantity} onChange={e => updateRow(i, 'quantity', e.target.value)}
+                            className="w-full px-2 py-1.5 rounded border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                        </td>
+                        <td className="px-3 py-2">
+                          <input type="number" min="0" step="0.01" value={row.price} onChange={e => updateRow(i, 'price', e.target.value)}
+                            className="w-full px-2 py-1.5 rounded border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                        </td>
+                        <td className="px-3 py-2 font-semibold text-gray-700">
+                          {formatCurrency(Number(row.quantity || 0) * Number(row.price || 0))}
+                        </td>
+                        <td className="px-2 py-2">
+                          <button type="button" onClick={() => removeRow(i)}
+                            className="text-red-400 hover:text-red-600 transition-colors text-lg leading-none">×</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-gray-50 border-t-2 border-gray-200">
+                      <td colSpan={4} className="px-3 py-2 text-sm font-semibold text-gray-600 text-right">Grand Total ({rows.length} line{rows.length > 1 ? 's' : ''})</td>
+                      <td className="px-3 py-2 font-bold text-primary">{formatCurrency(grandTotal)}</td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                </table>
               </div>
-              <div className="grid grid-cols-3 gap-4">
-                <Input label="Quantity *" type="number" min="1" value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} />
-                <Input label="Price *" type="number" min="0" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} />
-                <Input label="Receipt #" value={form.receipt_number} onChange={e => setForm({ ...form, receipt_number: e.target.value })} placeholder="RCP-..." />
+
+              <div className="flex items-center justify-between">
+                <button type="button" onClick={addRow}
+                  className="text-sm text-primary font-semibold hover:underline flex items-center gap-1">
+                  + Add Product Line
+                </button>
+                <Button type="submit" disabled={submitting}>
+                  {submitting ? 'Saving…' : `Save ${rows.filter(r => r.product).length || ''} Line${rows.filter(r => r.product).length !== 1 ? 's' : ''}`}
+                </Button>
               </div>
-              <Button type="submit">Save Encoded Sale</Button>
             </form>
           </CardBody>
         </Card>
@@ -375,19 +573,23 @@ function EncodedSalesTab() {
 function ReceiptsTab() {
   const [receipts, setReceipts] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [searched, setSearched] = useState(false);
   const [search, setSearch] = useState('');
-  const [searchDate, setSearchDate] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [searchBranch, setSearchBranch] = useState('');
 
   const handleSearch = async () => {
     setLoading(true);
+    setSearched(true);
     try {
       const params = [];
       if (search) params.push(`q=${encodeURIComponent(search)}`);
-      if (searchDate) params.push(`date=${searchDate}`);
+      if (startDate) params.push(`start=${startDate}`);
+      if (endDate)   params.push(`end=${endDate}`);
       if (searchBranch) params.push(`branch=${encodeURIComponent(searchBranch)}`);
       const data = await api.mis.receipts(params.length ? params.join('&') : '');
-      setReceipts(Array.isArray(data) ? data : data.receipts || data.records || []);
+      setReceipts(Array.isArray(data) ? data : data.receipts || []);
     } catch {
       setReceipts([]);
     } finally {
@@ -395,14 +597,38 @@ function ReceiptsTab() {
     }
   };
 
+  const exportCSV = () => {
+    if (!receipts.length) return;
+    const headers = ['Receipt #', 'Date', 'Branch', 'Customer', 'Phone', 'Type', 'Payment', 'Amount'];
+    const rows = receipts.map(r => [
+      r.receiptNumber || r.saleNumber || r.id || '',
+      r.saleDate || r.date || '',
+      r.branchId || r.branch || '',
+      r.customerName || '',
+      r.customerPhone || '',
+      r.customerType || '',
+      r.paymentMethod || '',
+      Number(r.total || r.totalAmount || 0).toFixed(2),
+    ].map(v => `"${String(v).replace(/"/g, '""')}"`));
+    const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = `receipts-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  const totalAmt = receipts.reduce((s, r) => s + Number(r.total || r.totalAmount || 0), 0);
+
   return (
     <div className="space-y-4">
       <Card>
         <CardHeader><h3 className="font-bold text-gray-800">Receipt Search</h3></CardHeader>
         <CardBody>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-            <Input label="Receipt # or Keyword" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..." />
-            <Input label="Date" type="date" value={searchDate} onChange={e => setSearchDate(e.target.value)} />
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
+            <Input label="Receipt # / Customer" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…" />
+            <Input label="From Date" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
+            <Input label="To Date" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
             <div className="space-y-1">
               <label className="block text-sm font-medium text-gray-700">Branch</label>
               <select value={searchBranch} onChange={e => setSearchBranch(e.target.value)}
@@ -412,25 +638,39 @@ function ReceiptsTab() {
               </select>
             </div>
             <Button onClick={handleSearch} disabled={loading}>
-              <Search size={14} /> {loading ? 'Searching...' : 'Search'}
+              <Search size={14} /> {loading ? 'Searching…' : 'Search'}
             </Button>
           </div>
         </CardBody>
       </Card>
 
-      {receipts.length > 0 && (
+      {searched && !loading && (
         <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <span className="font-bold text-gray-800">{receipts.length} receipt{receipts.length !== 1 ? 's' : ''}</span>
+                {receipts.length > 0 && <span className="text-sm text-gray-500 ml-2">· Total: <strong>{formatCurrency(totalAmt)}</strong></span>}
+              </div>
+              {receipts.length > 0 && (
+                <Button size="sm" variant="secondary" onClick={exportCSV}>
+                  <Download size={14} /> Export CSV
+                </Button>
+              )}
+            </div>
+          </CardHeader>
           <Table
             columns={[
-              { header: 'Receipt #', render: r => r.receiptNumber || r.saleNumber || r.id || '-' },
+              { header: 'Receipt #', render: r => <span className="font-mono text-xs text-blue-700">{r.receiptNumber || r.saleNumber || r.id || '-'}</span> },
               { header: 'Date', render: r => formatDateTime(r.createdAt || r.saleDate || r.timestamp) },
               { header: 'Branch', render: r => r.branchId || r.branch || '-' },
               { header: 'Customer', render: r => r.customerName || r.clientName || '-' },
+              { header: 'Type', render: r => r.customerType ? <Badge variant="info">{r.customerType}</Badge> : '-' },
               { header: 'Amount', render: r => <span className="font-bold">{formatCurrency(r.total || r.totalAmount)}</span> },
-              { header: 'Payment', render: r => <Badge variant="info">{r.paymentMethod || r.payment_method || '-'}</Badge> },
+              { header: 'Payment', render: r => <Badge variant="default">{r.paymentMethod || r.payment_method || '-'}</Badge> },
             ]}
             data={receipts}
-            emptyMessage="No receipts found"
+            emptyMessage="No receipts found for these filters"
           />
         </Card>
       )}
@@ -1045,9 +1285,12 @@ function CSIGroupedTable({ entries }) {
 }
 
 function CSIEntryTab() {
+  const today = new Date();
+  const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
+  const todayStr = today.toISOString().slice(0, 10);
   const [branch, setBranch] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [startDate, setStartDate] = useState(firstOfMonth);
+  const [endDate, setEndDate] = useState(todayStr);
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);

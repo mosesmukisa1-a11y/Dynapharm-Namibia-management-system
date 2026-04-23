@@ -241,13 +241,13 @@ export const api = {
 
   mis: {
     audit: (params = '') => api.get(`/mis/audit${params ? '?' + params : ''}`),
-    branchStatus: () => api.get('/mis/branch-status'),
+    branchStatus: (date = '') => api.get(`/mis/branch-status${date ? '?date=' + date : ''}`),
     catalogs: () => api.get('/mis/catalogs'),
     drafts: () => api.get('/mis/drafts'),
     encodedSales: (params = '') => api.get(`/mis/encoded-sales${params ? '?' + params : ''}`),
     createEncodedSale: (data) => api.post('/mis/encoded-sales', data),
     receipts: (params = '') => api.get(`/mis/receipts${params ? '?' + params : ''}`),
-    reconcile: (params = '') => api.get(`/mis/reconcile${params ? '?' + params : ''}`),
+    reconcile: (body) => api.post('/mis/reconcile', body),
     stock: () => api.get('/mis/stock'),
     stockReport: (params = '') => api.get(`/mis/stock-report${params ? '?' + params : ''}`),
     csiEntries: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/mis/csi-entries${qs ? '?' + qs : ''}`); },

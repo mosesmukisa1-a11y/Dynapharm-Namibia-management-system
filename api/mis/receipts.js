@@ -123,6 +123,7 @@ export default async function handler(req, res) {
     const startParam = searchParams.get('start');
     const endParam = searchParams.get('end');
     const branchParam = searchParams.get('branch');
+    const qParam = searchParams.get('q');
 
     const params = [];
     const where = [];
@@ -155,6 +156,12 @@ export default async function handler(req, res) {
     if (branchParam && branchParam !== 'all') {
       where.push(`branch_id = $${params.length + 1}`);
       params.push(branchParam);
+    }
+
+    if (qParam && qParam.trim()) {
+      const like = `%${qParam.trim()}%`;
+      params.push(like);
+      where.push(`(sale_number ILIKE $${params.length} OR customer_name ILIKE $${params.length} OR customer_phone ILIKE $${params.length})`);
     }
 
     let queryText = `
