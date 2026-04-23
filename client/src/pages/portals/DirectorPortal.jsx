@@ -26,8 +26,11 @@ import StaffMessagesTab from '../../components/StaffMessagesTab';
 const BRANCH_NAME_MAP_D = Object.fromEntries(BRANCH_DETAILS.map(b => [b.id, b.name]));
 const branchLabelD = (id) => BRANCH_NAME_MAP_D[id] || (id === 'head_office' ? 'Head Office' : id || '—');
 
-const today = new Date().toISOString().slice(0, 10);
-const firstOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
+const _pad = (n) => String(n).padStart(2, '0');
+const _localDate = (d) => `${d.getFullYear()}-${_pad(d.getMonth() + 1)}-${_pad(d.getDate())}`;
+const _now = new Date();
+const today = _localDate(_now);
+const firstOfMonth = _localDate(new Date(_now.getFullYear(), _now.getMonth(), 1));
 
 const CHART_COLORS = ['#c41e3a', '#8b0000', '#e05c72', '#b03050', '#d44060',
   '#6b2133', '#a83048', '#cc3355', '#993344', '#dd5566'];
@@ -113,7 +116,6 @@ export default function DirectorPortal() {
 
 function DashboardTab({ start, end }) {
   const { data: summary, loading: sLoad } = useDirectorApi('summary', { startDate: start, endDate: end }, [start, end]);
-  const { data: pl, loading: plLoad } = useDirectorApi('profit-loss', { startDate: start, endDate: end }, [start, end]);
   const { data: trends, loading: tLoad } = useDirectorApi('revenue-trends', { startDate: start, endDate: end }, [start, end]);
   const [liveStockSummary, setLiveStockSummary] = useState(null);
 
@@ -125,33 +127,38 @@ function DashboardTab({ start, end }) {
 
   useEffect(() => { onStockUpdate(); }, []);
 
-  if (sLoad || plLoad || tLoad) return <LoadingSpinner />;
+  if (sLoad || tLoad) return <LoadingSpinner />;
 
   const s = summary || {};
   const sales = s.sales || {};
   const stock = s.stock || {};
   const finance = s.finance || {};
   const network = s.network || {};
-  const p = pl || {};
 
+  const totalSalesRevenue = sales.totalSalesRevenue || 0;
+  const cifCostOfSales = finance.cifCostOfSales || 0;
+  const grossProfit = finance.grossProfit || 0;
+  const totalDeposits = finance.totalDeposits || 0;
   const remittanceDue = finance.remittanceDue || 0;
+  const bonusPayout = finance.bonusPayout || 0;
+  const totalOrders = sales.totalOrders || 0;
 
   return (
     <div>
       <DailySalesCard className="mb-6" />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard title="Total Sales Revenue" value={formatCurrency(sales.totalSalesRevenue || 0)} subtitle={`${sales.totalOrders || 0} transactions`} color="blue" icon={<TrendingUp size={24} />} />
-        <StatCard title="Monthly Revenue" value={formatCurrency(sales.monthlyRevenue || 0)} subtitle={`${start} → ${end}`} color="green" icon={<DollarSign size={24} />} />
-        <StatCard title="CIF Cost of Sales" value={formatCurrency(finance.cifCostOfSales || 0)} subtitle="Import cost" color="red" icon={<Ship size={24} />} />
-        <StatCard title="Gross Profit" value={formatCurrency(finance.grossProfit || 0)} subtitle={sales.totalSalesRevenue > 0 ? `${((finance.grossProfit / sales.totalSalesRevenue) * 100).toFixed(1)}% margin` : ''} color={(finance.grossProfit || 0) >= 0 ? 'green' : 'red'} icon={<BarChart3 size={24} />} />
+        <StatCard title="Total Sales Revenue" value={formatCurrency(totalSalesRevenue)} subtitle={`${totalOrders} transactions`} color="blue" icon={<TrendingUp size={24} />} />
+        <StatCard title="CIF Cost of Sales" value={formatCurrency(cifCostOfSales)} subtitle="Import cost" color="red" icon={<Ship size={24} />} />
+        <StatCard title="Gross Profit" value={formatCurrency(grossProfit)} subtitle={totalSalesRevenue > 0 ? `${((grossProfit / totalSalesRevenue) * 100).toFixed(1)}% margin` : ''} color={grossProfit >= 0 ? 'green' : 'red'} icon={<BarChart3 size={24} />} />
+        <StatCard title="Remittance Due" value={formatCurrency(remittanceDue)} color={remittanceDue > 0 ? 'red' : 'green'} icon={<AlertTriangle size={24} />} />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <StatCard title="Active Branches" value={network.activeBranches || 0} color="purple" icon={<Users size={24} />} />
         <StatCard title="Distributors" value={network.totalDistributors || 0} color="orange" icon={<Package size={24} />} />
-        <StatCard title="Total Deposits" value={formatCurrency(finance.totalDeposits || 0)} color="teal" icon={<DollarSign size={24} />} />
-        <StatCard title="Remittance Due" value={formatCurrency(remittanceDue)} color={remittanceDue > 0 ? 'red' : 'green'} icon={<AlertTriangle size={24} />} />
+        <StatCard title="Total Deposits" value={formatCurrency(totalDeposits)} color="teal" icon={<DollarSign size={24} />} />
+        <StatCard title="Total Orders" value={totalOrders} color="green" icon={<DollarSign size={24} />} />
       </div>
 
       {liveStockSummary && (
@@ -187,12 +194,12 @@ function DashboardTab({ start, end }) {
           <h3 className="font-bold text-indigo-900 mb-3">Profit &amp; Loss Overview</h3>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
             {[
-              { label: 'Total Revenue (DP)', value: formatCurrency(p.totalRevenueDP || 0), cls: 'text-blue-700' },
-              { label: 'CIF Cost', value: formatCurrency(p.cifCost || 0), cls: 'text-red-600' },
-              { label: 'Gross Profit', value: formatCurrency(p.grossProfit || 0), cls: (p.grossProfit || 0) >= 0 ? 'text-green-700' : 'text-red-600' },
-              { label: 'Deposits Received', value: formatCurrency(p.depositsReceived || 0), cls: 'text-teal-700' },
-              { label: 'Remittance', value: (p.remittanceStatusAmount || 0) <= 0 ? 'Clear' : formatCurrency(p.remittanceStatusAmount), cls: (p.remittanceStatusAmount || 0) <= 0 ? 'text-green-700' : 'text-orange-600' },
-              { label: 'Bonus Payout', value: formatCurrency(p.bonusPayout || 0), cls: 'text-purple-700' },
+              { label: 'Total Revenue (DP)', value: formatCurrency(totalSalesRevenue), cls: 'text-blue-700' },
+              { label: 'CIF Cost', value: formatCurrency(cifCostOfSales), cls: 'text-red-600' },
+              { label: 'Gross Profit', value: formatCurrency(grossProfit), cls: grossProfit >= 0 ? 'text-green-700' : 'text-red-600' },
+              { label: 'Deposits Received', value: formatCurrency(totalDeposits), cls: 'text-teal-700' },
+              { label: 'Remittance', value: remittanceDue <= 0 ? 'Clear' : formatCurrency(remittanceDue), cls: remittanceDue <= 0 ? 'text-green-700' : 'text-orange-600' },
+              { label: 'Bonus Payout', value: formatCurrency(bonusPayout), cls: 'text-purple-700' },
             ].map(({ label, value, cls }) => (
               <div key={label} className="bg-white/80 rounded-lg p-3">
                 <p className="text-xs text-gray-500">{label}</p>

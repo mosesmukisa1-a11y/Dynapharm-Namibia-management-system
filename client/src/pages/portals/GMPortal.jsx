@@ -276,14 +276,17 @@ function DashboardTab() {
   const [appliedEnd, setAppliedEnd] = useState(today);
   const [data, setData] = useState({ orders: [], branches: [], products: [], sales: [], deposits: [], expenses: [] });
   const [loading, setLoading] = useState(true);
+  const [summaryLoading, setSummaryLoading] = useState(true);
   const [gmSummary, setGmSummary] = useState(null);
 
   const appliedRangeRef = useRef({ start: firstOfMonth, end: today });
 
   const refreshGmSummary = useCallback((start, end) => {
+    setSummaryLoading(true);
     api.gm.summary({ startDate: start, endDate: end })
       .then(d => { if (d && d.success) setGmSummary(d); })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setSummaryLoading(false));
   }, []);
 
   const { connected: wsConnected } = useStockRealtime({
@@ -329,7 +332,7 @@ function DashboardTab() {
     loadData(effectiveStart, effectiveEnd);
   };
 
-  if (loading) return <LoadingSpinner />;
+  if (loading || summaryLoading) return <LoadingSpinner />;
 
   const totalRevenue = data.orders.reduce((sum, o) => sum + Number(o.total || 0), 0) +
     data.sales.reduce((sum, s) => sum + Number(s.total || s.amount || 0), 0);
