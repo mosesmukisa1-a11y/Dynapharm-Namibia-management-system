@@ -379,11 +379,20 @@ function DashboardTab() {
     branchRevenue[branch] = (branchRevenue[branch] || 0) + Number(s.total || s.amount || 0);
   });
 
+  const beTotalSales = gmSummary?.sales?.totalSales || 0;
+  const beCIFCost = gmSummary?.finance?.cifCostOfSales || 0;
+  const beGrossProfit = gmSummary?.finance?.grossProfit || 0;
+  const beRemittanceDue = gmSummary?.finance?.remittanceDue || 0;
+  const beTotalTransactions = gmSummary?.sales?.totalTransactions || 0;
+  const beTotalBV = gmSummary?.sales?.totalBV || 0;
+  const beActiveBranches = gmSummary?.network?.activeBranches || data.branches.length;
+  const beProductCount = gmSummary?.network?.productCount || data.products.length;
+
   const kpiCards = [
-    { label: 'Total Sales', value: formatCurrency(totalRevenue), icon: '💰', gradient: 'linear-gradient(135deg, #43e97b, #38f9d7)' },
-    { label: 'CIF Cost of Sales', value: formatCurrency(totalCIFCost), icon: '🚢', gradient: 'linear-gradient(135deg, #f093fb, #f5576c)' },
-    { label: 'Gross Profit', value: formatCurrency(grossProfit), icon: '📊', gradient: grossProfit >= 0 ? 'linear-gradient(135deg, #43e97b, #38f9d7)' : 'linear-gradient(135deg, #f5576c, #f093fb)' },
-    { label: 'Remittance Due', value: formatCurrency(Math.max(0, remittanceDue)), icon: '📦', gradient: remittanceDue > 0 ? 'linear-gradient(135deg, #fa709a, #fee140)' : 'linear-gradient(135deg, #43e97b, #38f9d7)' },
+    { label: 'Total Sales', value: formatCurrency(beTotalSales), icon: '💰', gradient: 'linear-gradient(135deg, #43e97b, #38f9d7)' },
+    { label: 'CIF Cost of Sales', value: formatCurrency(beCIFCost), icon: '🚢', gradient: 'linear-gradient(135deg, #f093fb, #f5576c)' },
+    { label: 'Gross Profit', value: formatCurrency(beGrossProfit), icon: '📊', gradient: beGrossProfit >= 0 ? 'linear-gradient(135deg, #43e97b, #38f9d7)' : 'linear-gradient(135deg, #f5576c, #f093fb)' },
+    { label: 'Remittance Due', value: formatCurrency(beRemittanceDue), icon: '📦', gradient: beRemittanceDue > 0 ? 'linear-gradient(135deg, #fa709a, #fee140)' : 'linear-gradient(135deg, #43e97b, #38f9d7)' },
   ];
 
   return (
@@ -483,10 +492,10 @@ function DashboardTab() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard title="Total Orders" value={data.orders.length} color="green" icon={<DollarSign size={24} />} />
-        <StatCard title="Active Branches" value={data.branches.length} color="purple" icon={<Users size={24} />} />
-        <StatCard title="Products" value={data.products.length} color="orange" icon={<Package size={24} />} />
-        <StatCard title="Total BV Points" value={totalBV.toLocaleString()} color="teal" icon={<TrendingUp size={24} />} />
+        <StatCard title="Total Orders" value={beTotalTransactions.toLocaleString()} color="green" icon={<DollarSign size={24} />} />
+        <StatCard title="Active Branches" value={beActiveBranches} color="purple" icon={<Users size={24} />} />
+        <StatCard title="Products" value={beProductCount} color="orange" icon={<Package size={24} />} />
+        <StatCard title="Total BV Points" value={beTotalBV.toLocaleString()} color="teal" icon={<TrendingUp size={24} />} />
       </div>
 
       <Card className="mb-6 bg-gradient-to-r from-emerald-50 to-teal-50 border-emerald-200">
@@ -495,19 +504,19 @@ function DashboardTab() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="bg-white/80 rounded-lg p-3">
               <p className="text-xs text-gray-500">Total Revenue (DP)</p>
-              <p className="text-lg font-bold text-blue-700">{formatCurrency(totalDPRevenue)}</p>
+              <p className="text-lg font-bold text-blue-700">{formatCurrency(beTotalSales)}</p>
             </div>
             <div className="bg-white/80 rounded-lg p-3">
               <p className="text-xs text-gray-500">Total CIF Cost</p>
-              <p className="text-lg font-bold text-red-600">{formatCurrency(totalCIFCost)}</p>
+              <p className="text-lg font-bold text-red-600">{formatCurrency(beCIFCost)}</p>
             </div>
             <div className="bg-white/80 rounded-lg p-3">
               <p className="text-xs text-gray-500">Gross Profit</p>
-              <p className={`text-lg font-bold ${grossProfit >= 0 ? 'text-green-700' : 'text-red-600'}`}>{formatCurrency(grossProfit)}</p>
+              <p className={`text-lg font-bold ${beGrossProfit >= 0 ? 'text-green-700' : 'text-red-600'}`}>{formatCurrency(beGrossProfit)}</p>
             </div>
             <div className="bg-white/80 rounded-lg p-3">
               <p className="text-xs text-gray-500">Margin %</p>
-              <p className="text-lg font-bold text-purple-700">{totalDPRevenue > 0 ? ((grossProfit / totalDPRevenue) * 100).toFixed(1) : '0'}%</p>
+              <p className="text-lg font-bold text-purple-700">{beTotalSales > 0 ? ((beGrossProfit / beTotalSales) * 100).toFixed(1) : '0'}%</p>
             </div>
           </div>
           <p className="text-xs text-emerald-600 mt-2 font-medium">
@@ -516,9 +525,9 @@ function DashboardTab() {
         </CardBody>
       </Card>
 
-      {remittanceDue > 0 && (
+      {beRemittanceDue > 0 && (
         <Alert type="warning" className="mb-6">
-          <strong>Remittance Due:</strong> {formatCurrency(remittanceDue)} — CIF cost of goods sold exceeds deposits received. Coordinate with Finance for remittance to supplier.
+          <strong>Remittance Due:</strong> {formatCurrency(beRemittanceDue)} — CIF cost of goods sold exceeds deposits received. Coordinate with Finance for remittance to supplier.
         </Alert>
       )}
 
