@@ -3298,53 +3298,52 @@ function StaffTab() {
 }
 
 function ProfitAnalysisTab() {
-  const [salesData, setSalesData] = useState([]);
+  const pad = n => String(n).padStart(2, '0');
+  const localDate = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const now = new Date();
+  const [startDate, setStartDate] = useState(localDate(new Date(now.getFullYear(), now.getMonth(), 1)));
+  const [endDate, setEndDate] = useState(localDate(now));
+  const [qtySoldMap, setQtySoldMap] = useState({});
   const [loading, setLoading] = useState(true);
   const [campaignPrices, setCampaignPrices] = useState({});
   const [editingCampaign, setEditingCampaign] = useState(null);
   const [campaignPrice, setCampaignPrice] = useState('');
 
-  useEffect(() => {
-    Promise.all([
-      api.orders.list().then(d => Array.isArray(d) ? d : d.orders || []).catch(() => []),
-      api.branch.walkinSales().then(d => Array.isArray(d) ? d : d.sales || d.walkin_sales || []).catch(() => []),
-    ]).then(([orders, walkinSales]) => {
-      const allItems = [];
-      const processItems = (items) => {
-        (items || []).forEach(item => {
-          const rawName = item.name || item.product_name || 'Unknown';
-          const matched = findProductPrice(rawName);
-          allItems.push({ product_name: matched ? matched.description : rawName, quantity: Number(item.quantity || item.qty || 1) });
+  const load = useCallback(() => {
+    setLoading(true);
+    api.director.profitAnalysis({ startDate, endDate })
+      .then(res => {
+        const map = {};
+        (res?.products || []).forEach(p => {
+          map[p.productName] = p.qtySold;
         });
-      };
-      orders.forEach(o => processItems(o.items));
-      walkinSales.forEach(s => processItems(s.items));
-      setSalesData(allItems);
-    }).finally(() => setLoading(false));
-  }, []);
+        setQtySoldMap(map);
+      })
+      .catch(() => setQtySoldMap({}))
+      .finally(() => setLoading(false));
+  }, [startDate, endDate]);
 
-  if (loading) return <LoadingSpinner />;
-
-  const byProduct = {};
-  salesData.forEach(s => {
-    if (!byProduct[s.product_name]) byProduct[s.product_name] = 0;
-    byProduct[s.product_name] += s.quantity;
-  });
+  useEffect(() => { load(); }, [load]);
 
   const profitRows = getLiveProductList().map(p => {
-    const qtySold = byProduct[p.description] || 0;
+    const qtySold = qtySoldMap[p.description] || 0;
     const campaign = campaignPrices[p.description];
     const sellingPrice = campaign || p.dp;
     const profit = sellingPrice - p.cif;
     const totalProfit = profit * qtySold;
-    const margin = p.cif > 0 ? ((profit / sellingPrice) * 100) : 0;
-    return { product_name: p.description, cif: p.cif, dp: p.dp, cp: p.cp, campaign_price: campaign || null, selling_price: sellingPrice, profit_per_unit: profit, margin: Math.round(margin * 10) / 10, qty_sold: qtySold, total_profit: totalProfit };
+    const margin = sellingPrice > 0 ? ((profit / sellingPrice) * 100) : 0;
+    return {
+      product_name: p.description, cif: p.cif, dp: p.dp, cp: p.cp,
+      campaign_price: campaign || null, selling_price: sellingPrice,
+      profit_per_unit: profit, margin: Math.round(margin * 10) / 10,
+      qty_sold: qtySold, total_profit: totalProfit,
+    };
   }).sort((a, b) => b.total_profit - a.total_profit);
 
-  const totalCIF = profitRows.reduce((s, r) => s + r.cif * r.qty_sold, 0);
+  const totalCIF    = profitRows.reduce((s, r) => s + r.cif * r.qty_sold, 0);
   const totalRevenue = profitRows.reduce((s, r) => s + r.selling_price * r.qty_sold, 0);
-  const grandProfit = profitRows.reduce((s, r) => s + r.total_profit, 0);
-  const avgMargin = totalRevenue > 0 ? ((grandProfit / totalRevenue) * 100).toFixed(1) : '0';
+  const grandProfit  = profitRows.reduce((s, r) => s + r.total_profit, 0);
+  const avgMargin    = totalRevenue > 0 ? ((grandProfit / totalRevenue) * 100).toFixed(1) : '0';
 
   const saveCampaign = () => {
     if (editingCampaign && campaignPrice) setCampaignPrices(prev => ({ ...prev, [editingCampaign]: Number(campaignPrice) }));
@@ -3356,63 +3355,80 @@ function ProfitAnalysisTab() {
     <div className="space-y-6">
       <Card className="bg-gradient-to-r from-emerald-50 to-teal-50 border-emerald-200">
         <CardBody>
-          <div className="flex items-start gap-4">
-            <TrendingUp size={32} className="text-emerald-600 mt-1" />
-            <div>
-              <h3 className="font-bold text-emerald-900">Profit Analysis — CIF vs DP</h3>
-              <p className="text-sm text-emerald-700 mt-1">Stock is imported from Malaysia at CIF price. Sold at DP (Distributor Price). Profit = DP − CIF per unit.</p>
+          <div className="flex flex-col md:flex-row md:items-center gap-4">
+            <div className="flex items-start gap-4 flex-1">
+              <TrendingUp size={32} className="text-emerald-600 mt-1" />
+              <div>
+                <h3 className="font-bold text-emerald-900">Profit Analysis — CIF vs DP</h3>
+                <p className="text-sm text-emerald-700 mt-1">Stock imported at CIF price; sold at DP. Profit = DP − CIF per unit. Qty sold sourced from live stock movements.</p>
+              </div>
+            </div>
+            <div className="flex gap-2 items-end">
+              <div>
+                <label className="block text-xs font-semibold text-emerald-800 mb-1">From</label>
+                <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="border border-emerald-300 rounded px-2 py-1 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-emerald-800 mb-1">To</label>
+                <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="border border-emerald-300 rounded px-2 py-1 text-sm" />
+              </div>
+              <Button size="sm" onClick={load} className="mb-0.5">Apply</Button>
             </div>
           </div>
         </CardBody>
       </Card>
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <StatCard title="Total CIF Cost" value={formatCurrency(totalCIF)} color="red" icon={<Ship size={24} />} />
-        <StatCard title="Total Revenue (DP)" value={formatCurrency(totalRevenue)} color="blue" icon={<DollarSign size={24} />} />
-        <StatCard title="Gross Profit" value={formatCurrency(grandProfit)} color="green" icon={<TrendingUp size={24} />} />
-        <StatCard title="Avg Margin" value={`${avgMargin}%`} color="purple" icon={<BarChart3 size={24} />} />
-      </div>
-      <Card>
-        <CardHeader>
-          <div className="flex justify-between items-center">
-            <h3 className="font-bold text-gray-800">Product Profit Breakdown</h3>
-            <Badge variant="info">{profitRows.filter(r => r.qty_sold > 0).length} products with sales</Badge>
+      {loading ? <LoadingSpinner /> : (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <StatCard title="Total CIF Cost" value={formatCurrency(totalCIF)} color="red" icon={<Ship size={24} />} />
+            <StatCard title="Total Revenue (DP)" value={formatCurrency(totalRevenue)} color="blue" icon={<DollarSign size={24} />} />
+            <StatCard title="Gross Profit" value={formatCurrency(grandProfit)} color="green" icon={<TrendingUp size={24} />} />
+            <StatCard title="Avg Margin" value={`${avgMargin}%`} color="purple" icon={<BarChart3 size={24} />} />
           </div>
-        </CardHeader>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50 text-left">
-                <th className="px-4 py-3 font-semibold text-gray-600">Product</th>
-                <th className="px-4 py-3 font-semibold text-gray-600 text-right">CIF</th>
-                <th className="px-4 py-3 font-semibold text-gray-600 text-right">DP</th>
-                <th className="px-4 py-3 font-semibold text-gray-600 text-right">Campaign</th>
-                <th className="px-4 py-3 font-semibold text-gray-600 text-right">Profit/Unit</th>
-                <th className="px-4 py-3 font-semibold text-gray-600 text-right">Margin</th>
-                <th className="px-4 py-3 font-semibold text-gray-600 text-right">Qty Sold</th>
-                <th className="px-4 py-3 font-semibold text-gray-600 text-right">Total Profit</th>
-                <th className="px-4 py-3 font-semibold text-gray-600">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {profitRows.map(r => (
-                <tr key={r.product_name} className={`border-b border-gray-100 hover:bg-gray-50 ${r.qty_sold > 0 ? '' : 'opacity-50'}`}>
-                  <td className="px-4 py-2.5 text-gray-800 max-w-[250px] truncate" title={r.product_name}>{r.product_name}</td>
-                  <td className="px-4 py-2.5 text-right text-red-600 font-medium">{formatCurrency(r.cif)}</td>
-                  <td className="px-4 py-2.5 text-right font-medium">{formatCurrency(r.dp)}</td>
-                  <td className="px-4 py-2.5 text-right">{r.campaign_price ? <span className="text-orange-600 font-medium">{formatCurrency(r.campaign_price)}</span> : '-'}</td>
-                  <td className="px-4 py-2.5 text-right text-green-700 font-bold">{formatCurrency(r.profit_per_unit)}</td>
-                  <td className="px-4 py-2.5 text-right"><span className={`font-medium ${r.margin >= 50 ? 'text-green-600' : r.margin >= 30 ? 'text-blue-600' : 'text-orange-600'}`}>{r.margin}%</span></td>
-                  <td className="px-4 py-2.5 text-right font-medium">{r.qty_sold > 0 ? r.qty_sold : '-'}</td>
-                  <td className="px-4 py-2.5 text-right font-bold text-green-700">{r.total_profit > 0 ? formatCurrency(r.total_profit) : '-'}</td>
-                  <td className="px-4 py-2.5">
-                    <button className="text-xs text-blue-600 hover:underline" onClick={() => { setEditingCampaign(r.product_name); setCampaignPrice(String(r.campaign_price || r.dp)); }}>Set Campaign</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+          <Card>
+            <CardHeader>
+              <div className="flex justify-between items-center">
+                <h3 className="font-bold text-gray-800">Product Profit Breakdown</h3>
+                <Badge variant="info">{profitRows.filter(r => r.qty_sold > 0).length} products with sales</Badge>
+              </div>
+            </CardHeader>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 text-left">
+                    <th className="px-4 py-3 font-semibold text-gray-600">Product</th>
+                    <th className="px-4 py-3 font-semibold text-gray-600 text-right">CIF</th>
+                    <th className="px-4 py-3 font-semibold text-gray-600 text-right">DP</th>
+                    <th className="px-4 py-3 font-semibold text-gray-600 text-right">Campaign</th>
+                    <th className="px-4 py-3 font-semibold text-gray-600 text-right">Profit/Unit</th>
+                    <th className="px-4 py-3 font-semibold text-gray-600 text-right">Margin</th>
+                    <th className="px-4 py-3 font-semibold text-gray-600 text-right">Qty Sold</th>
+                    <th className="px-4 py-3 font-semibold text-gray-600 text-right">Total Profit</th>
+                    <th className="px-4 py-3 font-semibold text-gray-600">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {profitRows.map(r => (
+                    <tr key={r.product_name} className={`border-b border-gray-100 hover:bg-gray-50 ${r.qty_sold > 0 ? '' : 'opacity-40'}`}>
+                      <td className="px-4 py-2.5 text-gray-800 max-w-[250px] truncate" title={r.product_name}>{r.product_name}</td>
+                      <td className="px-4 py-2.5 text-right text-red-600 font-medium">{formatCurrency(r.cif)}</td>
+                      <td className="px-4 py-2.5 text-right font-medium">{formatCurrency(r.dp)}</td>
+                      <td className="px-4 py-2.5 text-right">{r.campaign_price ? <span className="text-orange-600 font-medium">{formatCurrency(r.campaign_price)}</span> : '-'}</td>
+                      <td className="px-4 py-2.5 text-right text-green-700 font-bold">{formatCurrency(r.profit_per_unit)}</td>
+                      <td className="px-4 py-2.5 text-right"><span className={`font-medium ${r.margin >= 50 ? 'text-green-600' : r.margin >= 30 ? 'text-blue-600' : 'text-orange-600'}`}>{r.margin}%</span></td>
+                      <td className="px-4 py-2.5 text-right font-medium">{r.qty_sold > 0 ? r.qty_sold : '-'}</td>
+                      <td className="px-4 py-2.5 text-right font-bold text-green-700">{r.total_profit > 0 ? formatCurrency(r.total_profit) : '-'}</td>
+                      <td className="px-4 py-2.5">
+                        <button className="text-xs text-blue-600 hover:underline" onClick={() => { setEditingCampaign(r.product_name); setCampaignPrice(String(r.campaign_price || r.dp)); }}>Set Campaign</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </>
+      )}
       <Modal open={!!editingCampaign} onClose={() => setEditingCampaign(null)} title={`Campaign Price: ${editingCampaign}`} size="sm">
         <div className="p-6 space-y-4">
           {editingCampaign && (() => { const prod = getLiveProductList().find(p => p.description === editingCampaign); return prod ? <div className="text-sm text-gray-600 bg-gray-50 p-3 rounded"><p>CIF: {formatCurrency(prod.cif)} | DP: {formatCurrency(prod.dp)} | CP: {formatCurrency(prod.cp)}</p></div> : null; })()}

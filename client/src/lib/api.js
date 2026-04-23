@@ -337,6 +337,7 @@ export const api = {
     branchFastMoving: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/director/products/fast-moving-by-branch${qs ? '?' + qs : ''}`); },
     branchRevenue: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/director/branches/revenue-contribution${qs ? '?' + qs : ''}`); },
     registrations: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/director/registrations/summary${qs ? '?' + qs : ''}`); },
+    profitAnalysis: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/director/products/profit-analysis${qs ? '?' + qs : ''}`); },
   },
 
   system: {

@@ -12,9 +12,15 @@ import {
 } from 'recharts';
 import { FileText, TrendingUp, Scale, Receipt, Building2, Download } from 'lucide-react';
 
-const today = new Date().toISOString().slice(0, 10);
-const firstOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
-const firstOfYear = new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10);
+function localDateStr(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+const today = localDateStr(new Date());
+const firstOfMonth = localDateStr(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+const firstOfYear  = localDateStr(new Date(new Date().getFullYear(), 0, 1));
 
 /* ── Namibian Tax Law Constants ── */
 const CIT_RATE = 0.32;          // Corporate Income Tax: 32%

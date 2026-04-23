@@ -34,9 +34,11 @@ export default async function handler(req, res) {
 
   // CIF cost per branch from stock_movements
   const cifRows = await getMany(
-    `SELECT sm.source_location as branch_id, SUM(sm.quantity * COALESCE(pp.cif, 0)) as cif_cost
+    `SELECT sm.source_location as branch_id,
+            SUM(sm.quantity * COALESCE(sm.unit_cif, pp.cif, 0)) as cif_cost
      FROM stock_movements sm
-     LEFT JOIN product_prices pp ON sm.product_name = pp.description
+     LEFT JOIN product_prices pp
+       ON LOWER(TRIM(sm.product_name)) = LOWER(TRIM(pp.description))
      WHERE sm.status = 'posted'
        AND sm.movement_type IN ('walkin_sale','walkin_member_sale','walkin_non_member_sale',
          'walk_in_member_sale','walk_in_non_member_sale','sale','prescription_dispense')
