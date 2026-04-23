@@ -45,15 +45,27 @@ export default async function handler(req, res) {
         return res.status(400).json({ success: false, error: 'Message is required' });
       }
       const id = generateId();
+      const broadcastId = `${id}-BROADCAST`;
       const sender = req.user.full_name || req.user.username || 'Finance';
+      const noticeTitle = title || 'Finance Notice';
+      const noticeMsg   = message.trim();
+      const noticePriority = priority || 'Normal';
+
       await query(
         `INSERT INTO notifications (id, recipient_type, recipient_id, title, message, type, is_read, created_at)
          VALUES ($1, 'finance_notice', $2, $3, $4, $5, false, NOW())`,
-        [id, sender, title || 'Finance Notice', message.trim(), priority || 'Normal']
+        [id, sender, noticeTitle, noticeMsg, noticePriority]
       );
+
+      await query(
+        `INSERT INTO notifications (id, recipient_type, recipient_id, title, message, type, is_read, created_at)
+         VALUES ($1, 'announcement', 'broadcast', $2, $3, $4, false, NOW())`,
+        [broadcastId, noticeTitle, `[Finance] ${noticeMsg}`, noticePriority]
+      );
+
       return res.status(201).json({
         success: true,
-        notice: { id, title: title || 'Finance Notice', message: message.trim(), priority: priority || 'Normal', createdBy: sender, createdAt: new Date().toISOString() },
+        notice: { id, title: noticeTitle, message: noticeMsg, priority: noticePriority, createdBy: sender, createdAt: new Date().toISOString() },
       });
     }
 

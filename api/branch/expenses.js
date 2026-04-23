@@ -232,6 +232,27 @@ export default async function handler(req, res) {
         ]
       );
 
+      if (status === 'approved' || status === 'rejected') {
+        const branchId = row.branch_id || '';
+        const amount   = Number(row.amount || 0).toFixed(2);
+        const category = row.category || 'Expense';
+        const notifId  = `NOTIF-EXP-${Date.now()}-${Math.random().toString(36).slice(2,7).toUpperCase()}`;
+        const isApproved = status === 'approved';
+        await query(
+          `INSERT INTO notifications (id, recipient_type, recipient_id, title, message, type, is_read, created_at)
+           VALUES ($1, 'branch_alert', $2, $3, $4, $5, false, NOW())`,
+          [
+            notifId,
+            branchId,
+            isApproved ? 'Expense Approved' : 'Expense Rejected',
+            isApproved
+              ? `Your ${category} expense of N$${amount} has been approved by Finance.`
+              : `Your ${category} expense of N$${amount} was rejected by Finance.${body.notes ? ' Reason: ' + body.notes : ''}`,
+            isApproved ? 'success' : 'warning',
+          ]
+        ).catch(e => console.error('[expenses] notification insert failed:', e));
+      }
+
       return res.status(200).json({
         success: true,
         expense: normalizeExpense(updatedRow.rows[0]),

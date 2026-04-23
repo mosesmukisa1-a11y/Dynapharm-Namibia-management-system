@@ -17,6 +17,10 @@ const branchLabel = (id) => {
   return BRANCH_NAME_MAP[id] || id;
 };
 
+const localDate  = (d = new Date()) => { const dt = d instanceof Date ? d : new Date(d); return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`; };
+const localMonth = (d = new Date()) => { const dt = d instanceof Date ? d : new Date(d); return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`; };
+const firstOfCurrentMonth = () => { const n = new Date(); return localDate(new Date(n.getFullYear(), n.getMonth(), 1)); };
+
 export default function FinancePortal() {
   const [activeTab, setActiveTab] = useState('dashboard');
 
@@ -205,10 +209,11 @@ function DashboardTab() {
 
 /* ─── REMITTANCE ─────────────────────────────────────────── */
 function RemittanceTab() {
-  const nowStr = new Date().toISOString().slice(0, 10);
-  const firstOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
+  const nowStr        = localDate();
+  const firstOfMonth  = firstOfCurrentMonth();
 
   const [data, setData] = useState({ sales: [], deposits: [], orders: [] });
+  const [prices, setPrices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [remittances, setRemittances] = useState([]);
   const [showForm, setShowForm] = useState(false);
@@ -220,11 +225,13 @@ function RemittanceTab() {
 
   useEffect(() => {
     Promise.all([
+      api.prices.list().catch(() => []),
       api.branch.walkinSales().then(d => Array.isArray(d) ? d : d.sales || []).catch(() => []),
       api.branch.deposits().then(d => Array.isArray(d) ? d : d.deposits || []).catch(() => []),
       api.orders.list().then(d => Array.isArray(d) ? d : d.orders || []).catch(() => []),
       api.finance.remittances().then(d => Array.isArray(d) ? d : d.remittances || []).catch(() => []),
-    ]).then(([sales, deposits, orders, history]) => {
+    ]).then(([priceData, sales, deposits, orders, history]) => {
+      if (Array.isArray(priceData) && priceData.length > 0) setPrices(priceData);
       setData({ sales, deposits, orders });
       setRemittances(history);
     }).finally(() => setLoading(false));
@@ -233,39 +240,47 @@ function RemittanceTab() {
   const applyCifPreset = (p) => {
     setCifPeriod(p);
     const n = new Date();
-    const today = n.toISOString().slice(0, 10);
+    const today = localDate(n);
     if (p === 'all') { setCifStart(''); setCifEnd(''); return; }
     if (p === 'today') { setCifStart(today); setCifEnd(today); return; }
-    if (p === 'week') { const s = new Date(n); s.setDate(s.getDate() - 7); setCifStart(s.toISOString().slice(0, 10)); setCifEnd(today); return; }
-    if (p === 'month') { const s = new Date(n.getFullYear(), n.getMonth(), 1); setCifStart(s.toISOString().slice(0, 10)); setCifEnd(today); return; }
-    if (p === 'quarter') { const s = new Date(n); s.setMonth(s.getMonth() - 3); setCifStart(s.toISOString().slice(0, 10)); setCifEnd(today); return; }
+    if (p === 'week') { const s = new Date(n); s.setDate(s.getDate() - 7); setCifStart(localDate(s)); setCifEnd(today); return; }
+    if (p === 'month') { const s = new Date(n.getFullYear(), n.getMonth(), 1); setCifStart(localDate(s)); setCifEnd(today); return; }
+    if (p === 'quarter') { const s = new Date(n); s.setMonth(s.getMonth() - 3); setCifStart(localDate(s)); setCifEnd(today); return; }
   };
 
   if (loading) return <LoadingSpinner />;
 
   const inCifRange = (record) => {
-    const d = (record.date || record.created_at || record.sale_date || '').slice(0, 10);
+    const d = (record.payment_date || record.date || record.created_at || record.sale_date || '').slice(0, 10);
     if (cifStart && d < cifStart) return false;
     if (cifEnd && d > cifEnd) return false;
     return true;
   };
 
-  const filteredSales = data.sales.filter(inCifRange);
-  const filteredOrders = data.orders.filter(inCifRange);
-  const filteredDeposits = data.deposits.filter(inCifRange);
+  const filteredSales       = data.sales.filter(inCifRange);
+  const filteredOrders      = data.orders.filter(inCifRange);
+  const filteredDeposits    = data.deposits.filter(inCifRange);
+  const filteredRemittances = remittances.filter(inCifRange);
+
+  const priceIndex = new Map(prices.map(p => [(p.description || '').toUpperCase().trim(), p]));
+  const findCIF = (name) => {
+    const match = priceIndex.get((name || '').toUpperCase().trim());
+    return match ? Number(match.cif) || 0 : 0;
+  };
 
   const allItems = [];
   const processItems = items => (items || []).forEach(item => {
-    const matched = findProductPrice(item.name || item.product_name || '');
-    allItems.push({ quantity: Number(item.quantity || item.qty || 1), cif: matched ? matched.cif : 0 });
+    const cif = findCIF(item.name || item.product_name || '');
+    allItems.push({ quantity: Number(item.quantity || item.qty || 1), cif });
   });
   filteredOrders.forEach(o => processItems(o.items));
   filteredSales.forEach(s => processItems(s.items));
 
-  const totalCIF = allItems.reduce((s, i) => s + i.cif * i.quantity, 0);
-  const totalDeposits = filteredDeposits.reduce((s, d) => s + Number(d.amount || 0), 0);
-  const totalRemitted = remittances.reduce((s, r) => s + Number(r.amount || 0), 0);
-  const remittanceDue = Math.max(0, totalCIF - totalDeposits - totalRemitted);
+  const totalCIF           = allItems.reduce((s, i) => s + i.cif * i.quantity, 0);
+  const totalDeposits      = filteredDeposits.reduce((s, d) => s + Number(d.amount || 0), 0);
+  const totalRemitted      = filteredRemittances.filter(r => r.status === 'completed').reduce((s, r) => s + Number(r.amount || 0), 0);
+  const totalRemittedAllTime = remittances.filter(r => r.status === 'completed').reduce((s, r) => s + Number(r.amount || 0), 0);
+  const remittanceDue      = Math.max(0, totalCIF - totalDeposits - totalRemitted);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -274,7 +289,7 @@ function RemittanceTab() {
     try {
       const saved = await api.finance.createRemittance({ amount: Number(form.amount), reference: form.reference, date: form.date, notes: form.notes, status: 'completed' });
       setRemittances(prev => [saved.remittance || { id: Date.now(), ...form, amount: Number(form.amount), payment_date: form.date, status: 'completed', created_at: new Date().toISOString() }, ...prev]);
-      setForm({ amount: '', reference: '', date: new Date().toISOString().slice(0, 10), notes: '' });
+      setForm({ amount: '', reference: '', date: localDate(), notes: '' });
       setShowForm(false);
       setMessage('Remittance recorded successfully!');
     } catch (err) { setMessage('Error: ' + (err.message || 'Failed to save')); }
@@ -282,8 +297,8 @@ function RemittanceTab() {
 
   const markNoRemittanceDue = async () => {
     try {
-      const saved = await api.finance.createRemittance({ amount: 0, reference: 'STATUS-UPDATE', date: new Date().toISOString().slice(0, 10), notes: 'Status updated: No remittance due', status: 'no_remittance_due' });
-      setRemittances(prev => [saved.remittance || { id: Date.now(), amount: 0, reference: 'STATUS-UPDATE', payment_date: new Date().toISOString().slice(0, 10), status: 'no_remittance_due', created_at: new Date().toISOString() }, ...prev]);
+      const saved = await api.finance.createRemittance({ amount: 0, reference: 'STATUS-UPDATE', date: localDate(), notes: 'Status updated: No remittance due', status: 'no_remittance_due' });
+      setRemittances(prev => [saved.remittance || { id: Date.now(), amount: 0, reference: 'STATUS-UPDATE', payment_date: localDate(), status: 'no_remittance_due', created_at: new Date().toISOString() }, ...prev]);
       setMessage('Status updated: No Remittance Due');
     } catch (err) { setMessage('Error: ' + (err.message || 'Failed')); }
   };
@@ -330,7 +345,7 @@ function RemittanceTab() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard title="Total CIF Cost" value={formatCurrency(totalCIF)} subtitle={cifPeriod === 'all' ? 'All time' : `${cifStart || '—'} to ${cifEnd || '—'}`} color="red" icon={<Ship size={24} />} />
         <StatCard title="Deposits Received" value={formatCurrency(totalDeposits)} subtitle="In selected period" color="blue" icon={<Landmark size={24} />} />
-        <StatCard title="Total Remitted" value={formatCurrency(totalRemitted)} subtitle="Paid to supplier (all time)" color="green" icon={<CheckCircle size={24} />} />
+        <StatCard title="Total Remitted" value={formatCurrency(totalRemittedAllTime)} subtitle="Paid to supplier (all time)" color="green" icon={<CheckCircle size={24} />} />
         <StatCard title={remittanceDue > 0 ? 'Outstanding' : 'Status'} value={remittanceDue > 0 ? formatCurrency(remittanceDue) : 'Settled'} subtitle={remittanceDue > 0 ? 'Due to supplier' : 'No remittance due'} color={remittanceDue > 0 ? 'orange' : 'green'} icon={<DollarSign size={24} />} />
       </div>
       <div className="flex gap-3">
@@ -435,7 +450,7 @@ function DepositsTab() {
     const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    a.download = `deposits-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `deposits-${localDate()}.csv`;
     a.click();
   };
 
@@ -578,7 +593,7 @@ function DepositsTab() {
 /* ─── EXPENSES ───────────────────────────────────────────── */
 function ExpensesTab() {
   const CATEGORIES = ['Office Supplies', 'Transport', 'Utilities', 'Maintenance', 'Marketing', 'Staff Welfare', 'Equipment', 'Cleaning', 'Communication', 'Other'];
-  const emptyHQForm = { description: '', amount: '', category: 'Office Supplies', date: new Date().toISOString().slice(0, 10), receipt_number: '' };
+  const emptyHQForm = { description: '', amount: '', category: 'Office Supplies', date: localDate(), receipt_number: '' };
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
@@ -842,7 +857,7 @@ function BonusUploadSubTab() {
   const [message, setMessage] = useState('');
   const [uploading, setUploading] = useState(false);
   const [committing, setCommitting] = useState(false);
-  const [period, setPeriod] = useState(new Date().toISOString().slice(0, 7));
+  const [period, setPeriod] = useState(localMonth());
   const fileRef = useRef(null);
 
   const handleUpload = async (e) => {
@@ -1017,7 +1032,7 @@ function BonusHistorySubTab() {
     const csv = rows.map(r => r.join(',')).join('\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    a.download = `bonus-history-${search.replace(/[^a-z0-9]/gi,'_')}-${new Date().toISOString().slice(0,10)}.csv`;
+    a.download = `bonus-history-${search.replace(/[^a-z0-9]/gi,'_')}-${localDate()}.csv`;
     a.click();
   };
 
@@ -1186,7 +1201,7 @@ function BonusCommittedSubTab() {
 
   const openPayModal = (bonus) => {
     setPayModal(bonus);
-    setPayDate(new Date().toISOString().slice(0, 10));
+    setPayDate(localDate());
     setPayNotes('');
     setPayError('');
     setPaySuccess('');
@@ -1422,26 +1437,22 @@ function BonusCommittedSubTab() {
 
 /* ─── REPORTS ────────────────────────────────────────────── */
 function ReportsTab() {
-  const now = new Date();
-  const todayStr = now.toISOString().slice(0, 10);
-  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-
   const [branchSummary, setBranchSummary] = useState([]);
   const [stockValue, setStockValue] = useState(null);
   const [writeoffs, setWriteoffs] = useState(null);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState('month');
-  const [startDate, setStartDate] = useState(firstOfMonth);
-  const [endDate, setEndDate] = useState(todayStr);
+  const [startDate, setStartDate] = useState(firstOfCurrentMonth());
+  const [endDate, setEndDate] = useState(localDate());
 
   const getPresetDates = (p) => {
     const n = new Date();
-    const today = n.toISOString().slice(0, 10);
+    const today = localDate(n);
     if (p === 'all') return {};
     if (p === 'today') return { startDate: today, endDate: today };
-    if (p === 'week') { const s = new Date(n); s.setDate(s.getDate() - 7); return { startDate: s.toISOString().slice(0, 10), endDate: today }; }
-    if (p === 'month') { const s = new Date(n.getFullYear(), n.getMonth(), 1); return { startDate: s.toISOString().slice(0, 10), endDate: today }; }
-    if (p === 'quarter') { const s = new Date(n); s.setMonth(s.getMonth() - 3); return { startDate: s.toISOString().slice(0, 10), endDate: today }; }
+    if (p === 'week') { const s = new Date(n); s.setDate(s.getDate() - 7); return { startDate: localDate(s), endDate: today }; }
+    if (p === 'month') { const s = new Date(n.getFullYear(), n.getMonth(), 1); return { startDate: localDate(s), endDate: today }; }
+    if (p === 'quarter') { const s = new Date(n); s.setMonth(s.getMonth() - 3); return { startDate: localDate(s), endDate: today }; }
     return {};
   };
 
@@ -1648,7 +1659,7 @@ const STATUS_COLORS = {
 const EMPTY_VOUCHER = {
   payment_type: 'cash_request', payee_name: '', payee_bank: '', payee_account: '',
   payee_branch_code: '', amount: '', currency: 'NAD', payment_method: 'EFT',
-  reference_number: '', narration: '', authorised_by: '', payment_date: new Date().toISOString().slice(0, 10),
+  reference_number: '', narration: '', authorised_by: '', payment_date: localDate(),
   notes: '', status: 'draft',
 };
 
@@ -2598,7 +2609,7 @@ function PettyCashTab() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard title="Petty Cash Balance" value={formatCurrency(totalBalance)} color="green" icon={<Wallet size={24} />} />
         <StatCard title="Pending Requests" value={pendingReqs.length} subtitle="Awaiting approval" color="orange" icon={<ClipboardList size={24} />} />
-        <StatCard title="Issued This Month" value={formatCurrency(issuedReqs.filter(r => r.issued_at?.startsWith(new Date().toISOString().slice(0,7))).reduce((s,r)=>s+Number(r.amount||0),0))} color="blue" icon={<TrendingUp size={24} />} />
+        <StatCard title="Issued This Month" value={formatCurrency(issuedReqs.filter(r => r.issued_at?.startsWith(localMonth())).reduce((s,r)=>s+Number(r.amount||0),0))} color="blue" icon={<TrendingUp size={24} />} />
         <StatCard title="Total Transactions" value={txns.length} color="primary" icon={<Receipt size={24} />} />
       </div>
 
@@ -2815,7 +2826,7 @@ function OverheadsTab() {
 
 function OverheadExpensesSubTab() {
   const OVERHEAD_CATEGORIES = ['Rent', 'Salaries', 'Utilities', 'Internet & Telecoms', 'Security', 'Cleaning & Hygiene', 'Transport & Fuel', 'Office Supplies', 'Maintenance & Repairs', 'Marketing & Advertising', 'Staff Welfare', 'Insurance', 'Equipment & Assets', 'Professional Services', 'Banking Charges', 'Other Overhead'];
-  const emptyForm = { description: '', amount: '', category: 'Rent', branch_id: 'head_office', date: new Date().toISOString().slice(0, 10), payment_method: 'bank_transfer', notes: '' };
+  const emptyForm = { description: '', amount: '', category: 'Rent', branch_id: 'head_office', date: localDate(), payment_method: 'bank_transfer', notes: '' };
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
@@ -2824,7 +2835,7 @@ function OverheadExpensesSubTab() {
   const [submitting, setSubmitting] = useState(false);
   const [filterBranch, setFilterBranch] = useState('');
   const [filterCat, setFilterCat] = useState('');
-  const [filterMonth, setFilterMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [filterMonth, setFilterMonth] = useState(localMonth());
 
   const load = () => {
     setLoading(true);
@@ -3312,7 +3323,7 @@ function PayrollTab() {
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [month, setMonth] = useState(localMonth());
   const [search, setSearch] = useState('');
   const [adjustments, setAdjustments] = useState({});
   const [showSlip, setShowSlip] = useState(null);
