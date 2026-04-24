@@ -6,6 +6,7 @@ import { Users, Calendar, AlertTriangle, UserX, Clock, Star, MessageSquare, Data
 import SalaryLedgerTab from '../../components/SalaryLedgerTab';
 import StaffServicesTab from '../../components/StaffServicesTab';
 import StaffMessagesTab from '../../components/StaffMessagesTab';
+import { generateWarningLetter, generateTerminationLetter } from '../../lib/labourLetter';
 
 export default function HRPortal() {
   const [activeTab, setActiveTab] = useState('employees');
@@ -751,8 +752,18 @@ function WarningsTab() {
               <Textarea label="Reason" value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))} required />
             </div>
             <Input label="Date" type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} />
-            <div className="flex items-end">
+            <div className="flex items-end gap-3 flex-wrap">
               <Button type="submit">Issue Warning</Button>
+              {form.employee_name && form.reason && (
+                <button
+                  type="button"
+                  onClick={() => generateWarningLetter({ ...form, subtype: form.warning_type })}
+                  style={{ padding: '8px 16px', fontSize: '0.82rem', background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}
+                  title="Preview & print warning letter before submitting"
+                >
+                  🖨 Preview Letter
+                </button>
+              )}
             </div>
           </form>
         </CardBody>
@@ -769,6 +780,15 @@ function WarningsTab() {
             }},
             { header: 'Reason', key: 'reason' },
             { header: 'Date', render: r => formatDate(r.date) },
+            { header: 'Letter', render: r => (
+              <button
+                onClick={() => generateWarningLetter(r)}
+                title="Generate printable warning letter (PDF)"
+                style={{ padding: '4px 10px', fontSize: '0.75rem', background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', whiteSpace: 'nowrap' }}
+              >
+                🖨 PDF Letter
+              </button>
+            )},
           ]}
           data={warnings}
           emptyMessage="No warnings issued"
@@ -847,8 +867,18 @@ function TerminationsTab() {
               <Textarea label="Reason for Termination" value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))} required />
             </div>
             <Input label="Severance Amount (N$)" type="number" min="0" step="0.01" value={form.severance} onChange={e => setForm(f => ({ ...f, severance: e.target.value }))} />
-            <div className="flex items-end">
+            <div className="flex items-end gap-3 flex-wrap">
               <Button type="submit" variant="danger">Process Termination</Button>
+              {form.employee_name && form.reason && form.effective_date && (
+                <button
+                  type="button"
+                  onClick={() => generateTerminationLetter(form)}
+                  style={{ padding: '8px 16px', fontSize: '0.82rem', background: '#7f1d1d', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}
+                  title="Preview & print termination letter before submitting"
+                >
+                  🖨 Preview Letter
+                </button>
+              )}
             </div>
           </form>
         </CardBody>
@@ -863,6 +893,15 @@ function TerminationsTab() {
             { header: 'Effective Date', render: r => formatDate(r.effective_date) },
             { header: 'Severance', render: r => r.severance ? `N$ ${Number(r.severance).toFixed(2)}` : '-' },
             { header: 'Processed', render: r => formatDateTime(r.created_at) },
+            { header: 'Letter', render: r => (
+              <button
+                onClick={() => generateTerminationLetter(r)}
+                title="Generate printable termination letter (PDF)"
+                style={{ padding: '4px 10px', fontSize: '0.75rem', background: '#7f1d1d', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', whiteSpace: 'nowrap' }}
+              >
+                🖨 PDF Letter
+              </button>
+            )},
           ]}
           data={terminations}
           emptyMessage="No terminations processed"
