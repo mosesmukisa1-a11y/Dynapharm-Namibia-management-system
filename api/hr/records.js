@@ -167,6 +167,7 @@ export default async function handler(req, res) {
             const notifMessage = isTermination
               ? `You have received a termination notice. Effective date: ${effective_date || 'TBD'}. Reason: ${reason || 'See HR for details.'}`
               : `You have received a ${warnLabel.toLowerCase()} from HR. Reason: ${reason || 'See HR for details.'}`;
+            const refNo = `DYN/${isTermination ? 'TERM' : 'WARN'}/${new Date().toISOString().slice(0,10).replace(/-/g,'')}/${employee_name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,3)}-${Math.random().toString(36).slice(2,6).toUpperCase()}`;
             await insert('notifications', {
               id: `STAFF-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
               recipient_type: 'staff',
@@ -180,6 +181,11 @@ export default async function handler(req, res) {
                 record_type: type,
                 subtype: finalSubtype,
                 date: date || new Date().toISOString().slice(0, 10),
+                reason: reason || null,
+                employee_name: employee_name,
+                effective_date: effective_date || null,
+                severance: severance ? Number(severance) : null,
+                ref_no: refNo,
               }),
             });
           }

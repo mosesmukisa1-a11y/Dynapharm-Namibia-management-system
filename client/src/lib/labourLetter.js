@@ -9,7 +9,10 @@
 
 const COMPANY = {
   name: 'Dynapharm International Namibia (Pty) Ltd',
-  address: 'Namibia',
+  tradingAs: 'Uganam Dynapharm Namibia',
+  street: 'Independence Avenue, Arno Henker Haus',
+  erf: 'Erf 1654 No. 65-73',
+  city: 'Windhoek, Namibia',
   reg: 'CC / Registration No: [Company Registration Number]',
   phone: '[Company Contact Number]',
   email: '[Company Email]',
@@ -112,7 +115,7 @@ function formatNamibianDate(dateStr) {
   return new Date(dateStr).toLocaleDateString('en-NA', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
-function buildHTML({ type, employeeName, warningType, reason, date, effectiveDate, severance, refNo }) {
+function buildHTML({ type, employeeName, warningType, reason, date, effectiveDate, severance, refNo, acknowledgedAt }) {
   const isTermination = type === 'termination';
   const letterDate = formatNamibianDate(date || effectiveDate);
   const provisions = detectProvisions(reason, warningType || '');
@@ -326,9 +329,12 @@ function buildHTML({ type, employeeName, warningType, reason, date, effectiveDat
   <!-- LETTERHEAD -->
   <div class="letterhead">
     <div>
-      <div class="company-name">${COMPANY.name}</div>
-      <div class="company-sub">${COMPANY.address}</div>
-      <div class="company-sub">${COMPANY.reg}</div>
+      <div class="company-name">${COMPANY.tradingAs}</div>
+      <div class="company-sub" style="font-size:8.5pt;color:#888;">${COMPANY.name}</div>
+      <div class="company-sub">${COMPANY.street}</div>
+      <div class="company-sub">${COMPANY.erf}</div>
+      <div class="company-sub">${COMPANY.city}</div>
+      <div class="company-sub" style="margin-top:3px;">${COMPANY.reg}</div>
       <div class="company-sub">Tel: ${COMPANY.phone} | Email: ${COMPANY.email}</div>
     </div>
     <div class="doc-ref">
@@ -393,21 +399,34 @@ function buildHTML({ type, employeeName, warningType, reason, date, effectiveDat
         <div class="sig-label">Date: ________________________________</div>
       </div>
       <div class="sig-block">
-        <div class="sig-line"></div>
-        <div><strong>Employee Signature</strong></div>
-        <div class="sig-label">Name: <strong>${employeeName}</strong></div>
-        <div class="sig-label">Employee ID / NB No.: ________________</div>
-        <div class="sig-label">Date: ________________________________</div>
+        ${acknowledgedAt
+          ? `<div style="border:2px solid #166534;border-radius:6px;padding:10px;background:#f0fdf4;">
+              <div style="color:#166534;font-weight:bold;font-size:10pt;">✔ Digitally Acknowledged</div>
+              <div class="sig-label" style="margin-top:4px;">Name: <strong>${employeeName}</strong></div>
+              <div class="sig-label">Acknowledged via staff portal on:</div>
+              <div style="font-weight:700;color:#166534;margin-top:2px;">${acknowledgedAt}</div>
+              <div class="sig-label" style="margin-top:4px;">Employee ID / NB No.: ________________</div>
+             </div>`
+          : `<div class="sig-line"></div>
+             <div><strong>Employee Signature</strong></div>
+             <div class="sig-label">Name: <strong>${employeeName}</strong></div>
+             <div class="sig-label">Employee ID / NB No.: ________________</div>
+             <div class="sig-label">Date: ________________________________</div>`
+        }
       </div>
     </div>
 
+    ${acknowledgedAt ? `
+    <div style="margin-top:14px;padding:8px 14px;background:#f0fdf4;border:1px solid #86efac;border-radius:4px;font-size:9.5pt;color:#166534;">
+      This letter was electronically acknowledged by <strong>${employeeName}</strong> on <strong>${acknowledgedAt}</strong> via the Dynapharm Staff Portal. Digital acknowledgement is legally equivalent to physical signature for record-keeping purposes.
+    </div>` : `
     <div style="margin-top:18px; font-size:10pt;">
       <p><em>If the employee refuses to sign, the HR representative should note: "Employee declined to sign on [date]" and have a witness co-sign below.</em></p>
       <div style="margin-top:10px;">
         <div class="sig-line" style="width:50%"></div>
         <div class="sig-label">Witness Signature | Name: __________________ | Date: __________</div>
       </div>
-    </div>
+    </div>`}
   </div>
 
   <div class="footer">
@@ -433,7 +452,7 @@ function makeRef(type, name) {
   return `DYN/${prefix}/${yy}${mm}${dd}/${initials}-${rand}`;
 }
 
-export function generateWarningLetter(record) {
+export function generateWarningLetter(record, acknowledgedAt) {
   const html = buildHTML({
     type: 'warning',
     employeeName: record.employee_name || record.employeeName || 'Unknown Employee',
@@ -441,11 +460,12 @@ export function generateWarningLetter(record) {
     reason: record.reason || '',
     date: record.date || record.created_at,
     refNo: makeRef('warning', record.employee_name || 'EMP'),
+    acknowledgedAt: acknowledgedAt || null,
   });
   openLetterWindow(html);
 }
 
-export function generateTerminationLetter(record) {
+export function generateTerminationLetter(record, acknowledgedAt) {
   const html = buildHTML({
     type: 'termination',
     employeeName: record.employee_name || record.employeeName || 'Unknown Employee',
@@ -454,8 +474,50 @@ export function generateTerminationLetter(record) {
     severance: record.severance,
     date: record.created_at,
     refNo: makeRef('termination', record.employee_name || 'EMP'),
+    acknowledgedAt: acknowledgedAt || null,
   });
   openLetterWindow(html);
+}
+
+/**
+ * Generate a letter from a staff inbox notification (StaffMessagesTab).
+ * The notification metadata carries issued_by, subtype, date, reason, etc.
+ */
+export function generateStaffLetter(notification, acknowledgedAt) {
+  let meta = {};
+  try {
+    meta = typeof notification.metadata === 'string'
+      ? JSON.parse(notification.metadata || '{}')
+      : (notification.metadata || {});
+  } catch (e) {}
+
+  const isTermination = notification.type === 'termination';
+  const employeeName = meta.employee_name || notification.recipient_name || 'Employee';
+
+  if (isTermination) {
+    const html = buildHTML({
+      type: 'termination',
+      employeeName,
+      reason: meta.reason || notification.message || '',
+      effectiveDate: meta.effective_date || null,
+      severance: meta.severance || null,
+      date: meta.date || notification.created_at,
+      refNo: meta.ref_no || makeRef('termination', employeeName),
+      acknowledgedAt: acknowledgedAt || null,
+    });
+    openLetterWindow(html);
+  } else {
+    const html = buildHTML({
+      type: 'warning',
+      employeeName,
+      warningType: meta.subtype || 'Verbal',
+      reason: meta.reason || notification.message || '',
+      date: meta.date || notification.created_at,
+      refNo: meta.ref_no || makeRef('warning', employeeName),
+      acknowledgedAt: acknowledgedAt || null,
+    });
+    openLetterWindow(html);
+  }
 }
 
 function openLetterWindow(html) {
