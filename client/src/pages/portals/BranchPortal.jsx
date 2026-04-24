@@ -7317,8 +7317,8 @@ function printFieldRequestDoc(req, branchName) {
     </ol>
   </div>
   <div class="sig-area">
-    <div class="sig-box"><div class="sig-label">Distributor Signature</div><div class="sig-value">${req.signature||'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;'}</div><div style="font-size:9px;color:#94a3b8;margin-top:2px">${req.distributor_name||''}</div></div>
-    <div class="sig-box"><div class="sig-label">Branch Manager Signature</div><div class="sig-value">&nbsp;</div><div style="font-size:9px;color:#94a3b8;margin-top:2px">Date: ___________________</div></div>
+    <div class="sig-box"><div class="sig-label">Distributor Signature</div><div class="sig-value">${req.signature || req.distributor_name || '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;'}</div><div style="font-size:9px;color:#94a3b8;margin-top:2px">${req.distributor_name||''}</div></div>
+    <div class="sig-box"><div class="sig-label">Branch Manager / Dispenser</div><div class="sig-value">${req.created_by||'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;'}</div><div style="font-size:9px;color:#94a3b8;margin-top:2px">Date: ${req.date ? new Date(req.date).toLocaleDateString('en-NA') : '___________________'}</div></div>
   </div>
   <div class="copy-label">DISTRIBUTOR COPY — Please keep this copy for your records</div>
   </body></html>`);
@@ -7379,6 +7379,7 @@ function FieldProgramTab() {
     setSelectedDistributor(d);
     setDistributorSearch(d.distributor_name || d.name || '');
     setDistributorResults([]);
+    setSignature(d.distributor_name || d.name || '');
   };
 
   const addProductRow = () => setProductRows([...productRows, { product: '', quantity: '', unit: '', suggestions: [], showSug: false }]);
@@ -7532,7 +7533,7 @@ function FieldProgramTab() {
                       <div style={{ fontWeight: 800, color: '#92400e' }}>{selectedDistributor.distributor_name||selectedDistributor.name}</div>
                       <div style={{ fontSize: '0.78rem', color: '#d97706', marginTop: 2 }}>{selectedDistributor.distributor_code||selectedDistributor.nb_number} · {selectedDistributor.mobile_no||selectedDistributor.phone||'—'}</div>
                     </div>
-                    <button onClick={() => { setSelectedDistributor(null); setDistributorSearch(''); }} style={{ border: 'none', background: '#fef3c7', color: '#d97706', cursor: 'pointer', width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>×</button>
+                    <button onClick={() => { setSelectedDistributor(null); setDistributorSearch(''); setSignature(''); }} style={{ border: 'none', background: '#fef3c7', color: '#d97706', cursor: 'pointer', width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>×</button>
                   </div>
                 )}
               </div>
@@ -7629,9 +7630,12 @@ function FieldProgramTab() {
 
               {/* Signature */}
               <div>
-                <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4 }}>Distributor Signature (Type Full Name) *</label>
-                <input type="text" value={signature} onChange={e => setSignature(e.target.value)} placeholder="Type full name as signature"
-                  style={{ width: '100%', padding: '10px 14px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box', fontStyle: 'italic' }} />
+                <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4 }}>
+                  Distributor Signature
+                  {selectedDistributor && <span style={{ fontSize: '0.72rem', color: '#16a34a', fontWeight: 600, marginLeft: 6 }}>✓ Auto-filled from selected distributor</span>}
+                </label>
+                <input type="text" value={signature} readOnly={!!selectedDistributor} onChange={e => !selectedDistributor && setSignature(e.target.value)} placeholder="Select a distributor above to auto-fill…"
+                  style={{ width: '100%', padding: '10px 14px', border: `1.5px solid ${selectedDistributor ? '#bbf7d0' : '#e8d5d8'}`, borderRadius: 9, fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box', fontStyle: 'italic', background: selectedDistributor ? '#f0fdf4' : '#fff', color: '#374151' }} />
               </div>
             </div>
 
