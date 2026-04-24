@@ -1975,6 +1975,11 @@ server.on('error', (error) => {
       `ALTER TABLE file_uploads ADD COLUMN IF NOT EXISTS description TEXT`,
       `ALTER TABLE file_uploads ADD COLUMN IF NOT EXISTS category VARCHAR(100)`,
       `ALTER TABLE file_uploads ADD COLUMN IF NOT EXISTS media_type VARCHAR(50)`,
+      // field_program_requests: distributor info and signature fields
+      `ALTER TABLE field_program_requests ADD COLUMN IF NOT EXISTS distributor_id TEXT`,
+      `ALTER TABLE field_program_requests ADD COLUMN IF NOT EXISTS distributor_name TEXT`,
+      `ALTER TABLE field_program_requests ADD COLUMN IF NOT EXISTS distributor_code TEXT`,
+      `ALTER TABLE field_program_requests ADD COLUMN IF NOT EXISTS signature TEXT`,
     ];
     let schemaSynced = 0;
     for (const sql of schemaSyncs) {

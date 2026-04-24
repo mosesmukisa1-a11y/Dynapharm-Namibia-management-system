@@ -24,6 +24,10 @@ function normalizeRow(row) {
     approved_by: row.approved_by,
     approved_at: row.approved_at,
     created_by: row.created_by,
+    distributor_id: row.distributor_id || null,
+    distributor_name: row.distributor_name || null,
+    distributor_code: row.distributor_code || null,
+    signature: row.signature || null,
     created_at: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
     updated_at: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
   };
@@ -56,8 +60,11 @@ export default async function handler(req, res) {
       const body = await parseJsonBody(req);
       const id = body.id || `FP-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
       await query(
-        `INSERT INTO field_program_requests (id, activity_type, location, date, time, coordinator, target_audience, notes, status, branch, products, returned_items, requires_approval, created_by, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW())`,
+        `INSERT INTO field_program_requests
+           (id, activity_type, location, date, time, coordinator, target_audience, notes, status, branch,
+            products, returned_items, requires_approval, created_by,
+            distributor_id, distributor_name, distributor_code, signature, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,NOW())`,
         [
           id,
           body.activity_type || 'health_screening',
@@ -67,12 +74,16 @@ export default async function handler(req, res) {
           body.coordinator || null,
           body.target_audience || null,
           body.notes || null,
-          body.status || 'scheduled',
+          body.status || 'pending',
           body.branch || null,
           body.products ? JSON.stringify(body.products) : '[]',
           body.returned_items ? JSON.stringify(body.returned_items) : '[]',
-          body.requires_approval || false,
+          body.requires_approval !== undefined ? body.requires_approval : true,
           body.created_by || null,
+          body.distributor_id || null,
+          body.distributor_name || null,
+          body.distributor_code || null,
+          body.signature || null,
         ]
       );
       const row = await getOne('SELECT * FROM field_program_requests WHERE id = $1', [id]);

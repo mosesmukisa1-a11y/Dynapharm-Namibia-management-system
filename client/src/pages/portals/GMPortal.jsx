@@ -585,6 +585,7 @@ function ApprovalsTab() {
   const [stockRequests, setStockRequests] = useState([]);
   const [pendingTransfers, setPendingTransfers] = useState([]);
   const [fieldRequests, setFieldRequests] = useState([]);
+  const [allFieldRequests, setAllFieldRequests] = useState([]);
   const [pettyCashRequests, setPettyCashRequests] = useState([]);
   const [rentEditRequests, setRentEditRequests] = useState([]);
   const [salaryEditRequests, setSalaryEditRequests] = useState([]);
@@ -644,6 +645,7 @@ function ApprovalsTab() {
       setStockRequests(stock.filter(s => s.status === 'pending'));
       setPendingTransfers(transfers);
       setFieldRequests(fieldReqs.filter(r => r.status === 'pending'));
+      setAllFieldRequests(fieldReqs);
       setPettyCashRequests(pcReqs.filter(r => r.status === 'pending_gm'));
       setRentEditRequests(rentReqs);
       setSalaryEditRequests(salaryReqs);
@@ -677,7 +679,9 @@ function ApprovalsTab() {
           approved_at: action === 'approved' ? new Date().toISOString() : null,
           notes: note,
         });
-        setFieldRequests(prev => prev.filter(r => r.id !== id));
+        const refreshed = await api.get('/field_program_requests').then(d => Array.isArray(d) ? d : d.requests || []).catch(() => []);
+        setFieldRequests(refreshed.filter(r => r.status === 'pending'));
+        setAllFieldRequests(refreshed);
       } else if (type === 'petty_cash') {
         if (action === 'approved') {
           await api.finance.pettyCash.approve(id, note);
@@ -1175,6 +1179,7 @@ function ApprovalsTab() {
       {/* Field Stock Requests sub-tab */}
       {approvalTab === 'fieldstock' && (
         <div className="space-y-4">
+          {/* Pending requests needing action */}
           {fieldRequests.length === 0 ? (
             <EmptyState icon={<CheckCircle size={48} />} title="No Pending Field Stock Requests" description="Branch field program requests awaiting your approval will appear here." />
           ) : (
@@ -1241,6 +1246,42 @@ function ApprovalsTab() {
                 })}
               </div>
             </>
+          )}
+
+          {/* History — all processed records */}
+          {allFieldRequests.filter(r => r.status !== 'pending').length > 0 && (
+            <div className="mt-6">
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">📋 Field Stock History</p>
+              <div className="space-y-3">
+                {allFieldRequests.filter(r => r.status !== 'pending').map(r => {
+                  const products = Array.isArray(r.products) ? r.products : [];
+                  const isApproved = r.status === 'approved';
+                  return (
+                    <div key={r.id} className="bg-white border rounded-xl overflow-hidden shadow-sm" style={{ borderColor: isApproved ? '#d1fae5' : '#fee2e2' }}>
+                      <div className="flex items-center justify-between px-4 py-3 border-b" style={{ background: isApproved ? '#f0fdf4' : '#fff1f2', borderColor: isApproved ? '#d1fae5' : '#fecaca' }}>
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <span className="text-sm font-bold" style={{ color: isApproved ? '#166534' : '#991b1b' }}>🌿 {r.id}</span>
+                          <span className="px-2 py-0.5 rounded-full text-xs font-bold" style={{ background: isApproved ? '#dcfce7' : '#fee2e2', color: isApproved ? '#166534' : '#991b1b' }}>
+                            {isApproved ? '✓ Approved' : '✕ Rejected'}
+                          </span>
+                          {r.branch && <Badge variant="info">{r.branch}</Badge>}
+                        </div>
+                        <span className="text-xs text-gray-400">{fmtDate(r.approved_at || r.updated_at || r.created_at)}</span>
+                      </div>
+                      <div className="p-3 grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
+                        <div><span className="text-gray-500">Distributor:</span> <span className="font-semibold">{r.distributor_name || '—'}</span> {r.distributor_code && <span className="text-gray-400">({r.distributor_code})</span>}</div>
+                        <div><span className="text-gray-500">Date:</span> <span className="font-semibold">{fmtDate(r.date)}</span></div>
+                        <div><span className="text-gray-500">Branch:</span> <span className="font-semibold">{r.branch || '—'}</span></div>
+                        <div><span className="text-gray-500">Submitted by:</span> <span className="font-semibold">{r.created_by || '—'}</span></div>
+                        {r.approved_by && <div><span className="text-gray-500">{isApproved ? 'Approved' : 'Rejected'} by:</span> <span className="font-semibold">{r.approved_by}</span></div>}
+                        {r.notes && <div className="col-span-2"><span className="text-gray-500">Notes:</span> <span className="text-gray-600">{r.notes}</span></div>}
+                        {products.length > 0 && <div className="col-span-2 mt-1 text-gray-400">{products.length} product(s): {products.map(p => p.product_name || p.name || p.product).join(', ')}</div>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           )}
         </div>
       )}
