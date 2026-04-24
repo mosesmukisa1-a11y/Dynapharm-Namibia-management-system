@@ -3211,7 +3211,7 @@ function BranchStockTab() {
           const pName = r.product_name || r.productName || r.description || '';
           const normKey = pName.trim().toLowerCase();
           if (!invGroupMap[normKey]) {
-            invGroupMap[normKey] = { productName: pName, batches: [], totalQty: 0, totalRcvd: 0, totalSold: 0, totalDisp: 0, totalTrf: 0, totalWO: 0, totalDpValue: 0, hasExpired: false, hasExpiring: false };
+            invGroupMap[normKey] = { productName: pName, batches: [], totalQty: 0, totalRcvd: 0, totalSold: 0, totalDisp: 0, totalTrf: 0, totalWO: 0, totalOpening: 0, totalDpValue: 0, hasExpired: false, hasExpiring: false };
             invProductGroups.push(invGroupMap[normKey]);
           }
           const g = invGroupMap[normKey];
@@ -3229,6 +3229,11 @@ function BranchStockTab() {
           g.totalDpValue += dpUnit * q;
           if (exp && new Date(exp) < now) g.hasExpired = true;
           if (exp && new Date(exp) <= thirtyDays && new Date(exp) >= now) g.hasExpiring = true;
+        }
+        // Opening = stock present before movement tracking began.
+        // Makes the equation: Opening + Rcvd − Sold − Disp − Trf − W/O = Balance
+        for (const g of invProductGroups) {
+          g.totalOpening = Math.max(0, g.totalQty - (g.totalRcvd - g.totalSold - g.totalDisp - g.totalTrf - g.totalWO));
         }
 
         const totalQty = filteredInv.reduce((s, r) => s + Number(r.quantity || 0), 0);
@@ -3287,6 +3292,7 @@ function BranchStockTab() {
                   <th style={thS}>Product</th>
                   <th style={thS}>Batch</th>
                   <th style={thS}>Expiry</th>
+                  <th style={{ ...thR, color: '#1e3a5f' }} title="Prior stock before movement tracking began">Opening</th>
                   <th style={thR}>Rcvd</th>
                   <th style={thR}>Sold</th>
                   <th style={thR}>Disp</th>
@@ -3302,7 +3308,7 @@ function BranchStockTab() {
               </thead>
               <tbody>
                 {invProductGroups.length === 0 ? (
-                  <tr><td colSpan={14} style={{ textAlign: 'center', padding: '32px 0', color: '#94a3b8' }}>No inventory data for this branch</td></tr>
+                  <tr><td colSpan={15} style={{ textAlign: 'center', padding: '32px 0', color: '#94a3b8' }}>No inventory data for this branch</td></tr>
                 ) : invProductGroups.map((g, gIdx) => {
                   const normKey = g.productName.trim().toLowerCase();
                   const isExpanded = expandedInvProducts.has(normKey);
@@ -3326,6 +3332,7 @@ function BranchStockTab() {
                       </td>
                       <td style={{ ...cellStyle, color: '#94a3b8', fontSize: '0.72rem' }}>{hasManyBatches ? `${g.batches.length} batches` : (g.batches[0]?.batch_no || g.batches[0]?.batchNo || '—')}</td>
                       <td style={{ ...cellStyle, color: '#6b7280' }}>{hasManyBatches ? '—' : (() => { const exp = g.batches[0]?.expiry_date || g.batches[0]?.expiryDate; return exp ? formatDate(exp) : '—'; })()}</td>
+                      <td style={{ ...cellStyle, textAlign: 'right', fontWeight: 600, color: g.totalOpening > 0 ? '#1e3a5f' : '#d1d5db' }} title="Prior stock before movement tracking">{g.totalOpening || '—'}</td>
                       <td style={{ ...cellStyle, textAlign: 'right', color: g.totalRcvd > 0 ? '#166534' : '#d1d5db' }}>{g.totalRcvd || '—'}</td>
                       <td style={{ ...cellStyle, textAlign: 'right', color: g.totalSold > 0 ? '#2563eb' : '#d1d5db' }}>{g.totalSold || '—'}</td>
                       <td style={{ ...cellStyle, textAlign: 'right', color: g.totalDisp > 0 ? '#6366f1' : '#d1d5db' }}>{g.totalDisp || '—'}</td>
@@ -3366,6 +3373,15 @@ function BranchStockTab() {
                             {exp ? formatDate(exp) : '—'}
                             {daysLeft !== null && daysLeft <= 90 && daysLeft >= 0 && <span style={{ display: 'block', fontSize: '0.62rem', color: daysLeft <= 30 ? '#c41e3a' : '#d97706' }}>{daysLeft}d</span>}
                           </td>
+                          {(() => {
+                            const bRcvd = Number(r.qty_received || r.qtyReceived || 0);
+                            const bSold = Number(r.qty_sold || r.qtySold || 0);
+                            const bDisp = Number(r.qty_dispensed || r.qtyDispensed || 0);
+                            const bTrf  = Number(r.qty_transferred || r.qtyTransferred || 0);
+                            const bWO   = Number(r.qty_written_off || r.qtyWrittenOff || 0);
+                            const bOpen = Math.max(0, q - (bRcvd - bSold - bDisp - bTrf - bWO));
+                            return <td style={{ ...batchCellStyle, textAlign: 'right', fontWeight: 600, color: bOpen > 0 ? '#1e3a5f' : '#d1d5db' }}>{bOpen || '—'}</td>;
+                          })()}
                           <td style={{ ...batchCellStyle, textAlign: 'right', color: '#94a3b8' }}>{Number(r.qty_received || r.qtyReceived || 0) || '—'}</td>
                           <td style={{ ...batchCellStyle, textAlign: 'right', color: '#94a3b8' }}>{Number(r.qty_sold || r.qtySold || 0) || '—'}</td>
                           <td style={{ ...batchCellStyle, textAlign: 'right', color: '#94a3b8' }}>{Number(r.qty_dispensed || r.qtyDispensed || 0) || '—'}</td>
@@ -3390,6 +3406,7 @@ function BranchStockTab() {
                 <tfoot>
                   <tr style={{ background: 'linear-gradient(90deg,#fdf2f4,#fef7f8)', borderTop: '2px solid #c41e3a' }}>
                     <td colSpan={3} style={{ padding: '10px 6px', fontWeight: 800, color: '#c41e3a', fontSize: '0.75rem', textTransform: 'uppercase' }}>Totals</td>
+                    <td style={{ padding: '10px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.78rem', color: '#1e3a5f' }}>{invProductGroups.reduce((s, g) => s + g.totalOpening, 0) || ''}</td>
                     <td style={{ padding: '10px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.78rem', color: '#166534' }}>{filteredInv.reduce((s, r) => s + Number(r.qty_received || r.qtyReceived || 0), 0) || ''}</td>
                     <td style={{ padding: '10px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.78rem', color: '#2563eb' }}>{filteredInv.reduce((s, r) => s + Number(r.qty_sold || r.qtySold || 0), 0) || ''}</td>
                     <td style={{ padding: '10px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.78rem', color: '#6366f1' }}>{filteredInv.reduce((s, r) => s + Number(r.qty_dispensed || r.qtyDispensed || 0), 0) || ''}</td>
