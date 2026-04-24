@@ -73,9 +73,9 @@ export default async function handler(req, res) {
     const conditions = [];
     const params = [];
 
-    if (branchId) { conditions.push(`branch_id = $${params.length + 1}`); params.push(branchId); }
-    if (distributorNb) { conditions.push(`distributor_nb = $${params.length + 1}`); params.push(distributorNb); }
-    if (status) { conditions.push(`status = $${params.length + 1}`); params.push(status); }
+    if (branchId) { conditions.push(`bdp.branch_id = $${params.length + 1}`); params.push(branchId); }
+    if (distributorNb) { conditions.push(`bdp.distributor_nb = $${params.length + 1}`); params.push(distributorNb); }
+    if (status) { conditions.push(`bdp.status = $${params.length + 1}`); params.push(status); }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const rows = await getMany(
