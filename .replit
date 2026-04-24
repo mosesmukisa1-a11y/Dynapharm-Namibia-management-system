@@ -52,7 +52,7 @@ outputType = "console"
 
 [deployment]
 deploymentTarget = "autoscale"
-run = ["node", "server.js"]
+run = ["bash", "-c", "PORT=3001 node server.js"]
 build = ["npm", "run", "build"]
 
 [postMerge]
