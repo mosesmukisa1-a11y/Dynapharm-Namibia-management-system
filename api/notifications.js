@@ -43,9 +43,24 @@ export default async function handler(req, res) {
 
     if (method === 'GET') {
       const recipientType = searchParams.get('recipient_type');
-      if (!req.user && !recipientId) {
-        return res.status(400).json({ error: 'recipient_id is required' });
+
+      // Must be authenticated to read notifications
+      if (!req.user) {
+        return res.status(401).json({ error: 'Authentication required' });
       }
+
+      const isAdmin = req.user.role === 'admin';
+      const callerUsername = (req.user.username || '').toLowerCase().trim();
+
+      // Non-admin users can only read their own notifications or company-wide broadcasts
+      if (!isAdmin) {
+        const requestedId = (recipientId || '').toLowerCase().trim();
+        const isBroadcast = requestedId === 'all' && recipientType === 'company';
+        if (!isBroadcast && requestedId !== callerUsername) {
+          return res.status(403).json({ error: 'You are not authorised to view these notifications' });
+        }
+      }
+
       let queryText = 'SELECT * FROM notifications';
       const conditions = [];
       const params = [];
@@ -86,21 +101,37 @@ export default async function handler(req, res) {
     }
 
     if (method === 'PUT') {
+      if (!req.user) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+
       const body = req.body;
+      const isAdmin = req.user.role === 'admin';
+      const callerUsername = (req.user.username || '').toLowerCase().trim();
+
       if (body.markAllRead && body.recipient_id) {
+        // Enforce that non-admins can only mark their own notifications read
+        if (!isAdmin && body.recipient_id.toLowerCase().trim() !== callerUsername) {
+          return res.status(403).json({ error: 'You are not authorised to update these notifications' });
+        }
         await query(
-          'UPDATE notifications SET is_read = TRUE WHERE UPPER(recipient_id) = $1 AND is_read = FALSE',
-          [body.recipient_id.toUpperCase().trim()]
+          'UPDATE notifications SET is_read = TRUE WHERE LOWER(recipient_id) = $1 AND is_read = FALSE',
+          [body.recipient_id.toLowerCase().trim()]
         );
         return res.json({ success: true });
       }
       if (body.id && body.recipient_id) {
         const notif = await getOne('SELECT * FROM notifications WHERE id = $1', [body.id]);
-        if (notif && notif.recipient_id.toUpperCase() === body.recipient_id.toUpperCase().trim()) {
-          const notification = await update('notifications', body.id, { is_read: true }, 'id');
-          return res.json(notification);
+        if (!notif) {
+          return res.status(404).json({ error: 'Notification not found' });
         }
-        return res.status(403).json({ error: 'Not authorized to update this notification' });
+        // Verify the notification belongs to this user (admins bypass)
+        const notifOwner = (notif.recipient_id || '').toLowerCase().trim();
+        if (!isAdmin && notifOwner !== callerUsername) {
+          return res.status(403).json({ error: 'You are not authorised to update this notification' });
+        }
+        const notification = await update('notifications', body.id, { is_read: true }, 'id');
+        return res.json(notification);
       }
       return res.status(400).json({ error: 'Missing id/recipient_id or markAllRead' });
     }
