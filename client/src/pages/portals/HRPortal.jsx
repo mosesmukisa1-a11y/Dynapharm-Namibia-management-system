@@ -13,13 +13,11 @@ export default function HRPortal() {
     { id: 'employees', label: 'Employees', icon: '👥' },
     { id: 'salary', label: 'Salary Ledger', icon: '💼' },
     { id: 'leave', label: 'Leave', icon: '📅' },
-    { id: 'warnings', label: 'Warnings', icon: '⚠️' },
-    { id: 'terminations', label: 'Terminations', icon: '🚫' },
     { id: 'attendance', label: 'Attendance', icon: '🕐' },
     { id: 'performance', label: 'Performance', icon: '⭐' },
-    { id: 'communication', label: 'Communication', icon: '💬' },
+    { id: 'staff', label: 'Staff', icon: '👤' },
     { id: 'data', label: 'Data Collection', icon: '📊' },
-    { id: 'staff', label: 'Staff Services', icon: '👤' },
+    { id: 'services', label: 'My Services', icon: '🛎️' },
     { id: 'messages', label: 'My Messages', icon: '📨' },
   ];
 
@@ -34,13 +32,11 @@ export default function HRPortal() {
         {activeTab === 'employees' && <EmployeesTab />}
         {activeTab === 'salary' && <SalaryLedgerTab role="hr" />}
         {activeTab === 'leave' && <LeaveTab />}
-        {activeTab === 'warnings' && <WarningsTab />}
-        {activeTab === 'terminations' && <TerminationsTab />}
         {activeTab === 'attendance' && <AttendanceTab />}
         {activeTab === 'performance' && <PerformanceTab />}
-        {activeTab === 'communication' && <CommunicationTab />}
+        {activeTab === 'staff' && <StaffActionsTab />}
         {activeTab === 'data' && <DataTab />}
-        {activeTab === 'staff' && <StaffServicesTab />}
+        {activeTab === 'services' && <StaffServicesTab />}
         {activeTab === 'messages' && <StaffMessagesTab accentColor="#dc2626" />}
       </div>
     </div>
@@ -635,6 +631,47 @@ function LeaveTab() {
           </div>
         </Modal>
       )}
+    </div>
+  );
+}
+
+function StaffActionsTab() {
+  const [sub, setSub] = useState('warnings');
+  const subTabs = [
+    { id: 'warnings', label: 'Warnings', icon: '⚠️' },
+    { id: 'terminations', label: 'Terminations', icon: '🚫' },
+    { id: 'communication', label: 'Communication', icon: '💬' },
+  ];
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 24, borderBottom: '2px solid #f1f5f9', paddingBottom: 0 }}>
+        {subTabs.map(t => (
+          <button
+            key={t.id}
+            onClick={() => setSub(t.id)}
+            style={{
+              padding: '8px 20px',
+              fontWeight: sub === t.id ? 700 : 500,
+              fontSize: '0.85rem',
+              color: sub === t.id ? '#dc2626' : '#64748b',
+              background: 'none',
+              border: 'none',
+              borderBottom: sub === t.id ? '2px solid #dc2626' : '2px solid transparent',
+              marginBottom: -2,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              transition: 'color 0.15s',
+            }}
+          >
+            <span>{t.icon}</span>{t.label}
+          </button>
+        ))}
+      </div>
+      {sub === 'warnings' && <WarningsTab />}
+      {sub === 'terminations' && <TerminationsTab />}
+      {sub === 'communication' && <CommunicationTab />}
     </div>
   );
 }
