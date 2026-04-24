@@ -7288,7 +7288,7 @@ function printFieldRequestDoc(req, branchName) {
   </style></head><body>
   <button class="print-btn" onclick="window.print()">🖨️ Print</button>
   <div class="header">
-    <div><div class="company">DYNAPHARM INTERNATIONAL NAMIBIA</div><div class="title">🚐 Field Program Stock Request</div><div style="color:#64748b;font-size:10px;margin-top:3px">${branchName ? branchName + ' Branch' : ''}</div></div>
+    <div><div class="company">Uganam Dynapharm Namibia</div><div class="title">🚐 Field Program Stock Request</div><div style="color:#64748b;font-size:10px;margin-top:3px">${branchName ? branchName + ' Branch' : ''}</div></div>
     <div class="meta">Request ID: <strong>${req.id||'-'}</strong><br>Date: ${req.date ? new Date(req.date).toLocaleDateString('en-NA',{day:'2-digit',month:'long',year:'numeric'}) : '-'}<br>Status: <strong>${(req.status||'Pending').toUpperCase()}</strong><br>Printed: ${new Date().toLocaleDateString('en-NA')}</div>
   </div>
   <div class="section">
