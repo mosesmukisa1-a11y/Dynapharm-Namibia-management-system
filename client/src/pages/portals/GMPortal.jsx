@@ -3523,6 +3523,59 @@ function ProfitAnalysisTab() {
 }
 
 // ── Price List Management Tab ────────────────────────────────────────────────
+
+// Extract all text from a PDF File using pdfjs-dist.
+// Groups text items by Y-coordinate into lines, preserving column gaps as spaces.
+async function extractPdfText(file) {
+  const pdfjsLib = await import('pdfjs-dist');
+  pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+    'pdfjs-dist/build/pdf.worker.min.mjs',
+    import.meta.url
+  ).href;
+
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const allLines = [];
+
+  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+    const page = await pdf.getPage(pageNum);
+    const content = await page.getTextContent();
+
+    // Group items by rounded Y position (PDF Y grows upward, so round to integer)
+    const byY = {};
+    for (const item of content.items) {
+      if (!item.str) continue;
+      const y = Math.round(item.transform[5]);
+      if (!byY[y]) byY[y] = [];
+      byY[y].push({ str: item.str, x: item.transform[4], w: item.width || 0 });
+    }
+
+    // Sort Y descending so top of page comes first
+    const ys = Object.keys(byY).map(Number).sort((a, b) => b - a);
+
+    for (const y of ys) {
+      const items = byY[y].sort((a, b) => a.x - b.x);
+      let line = '';
+      let prevEnd = null;
+
+      for (const item of items) {
+        if (prevEnd !== null) {
+          const gap = item.x - prevEnd;
+          // Gaps ≥ 8pt indicate a column separator → insert 3 spaces
+          if (gap >= 8) line += '   ';
+          else if (gap > 1) line += ' ';
+        }
+        line += item.str;
+        prevEnd = item.x + (item.w > 0 ? item.w : item.str.length * 5);
+      }
+
+      if (line.trim()) allLines.push(line);
+    }
+  }
+
+  return allLines.join('\n');
+}
+
 // Parse a raw price-list text block into [{description,dp,cp,bv}]
 function parsePriceListText(text) {
   const results = [];
@@ -3570,6 +3623,7 @@ function PriceListTab() {
   const [importText, setImportText] = useState('');
   const [importParsed, setImportParsed] = useState([]);
   const [importSaving, setImportSaving] = useState(false);
+  const [importLoading, setImportLoading] = useState(false);
   const importFileRef = useRef(null);
 
   const load = useCallback(() => {
@@ -3658,9 +3712,24 @@ function PriceListTab() {
     setImportParsed(parsePriceListText(text));
   };
 
-  const handleImportFile = (e) => {
+  const handleImportFile = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+    if (isPdf) {
+      setImportText('');
+      setImportParsed([]);
+      setImportLoading(true);
+      try {
+        const text = await extractPdfText(file);
+        handleImportTextChange(text);
+      } catch (err) {
+        setAlert({ type: 'error', msg: 'Could not read PDF: ' + (err.message || 'Unknown error') });
+      } finally {
+        setImportLoading(false);
+      }
+      return;
+    }
     const reader = new FileReader();
     reader.onload = (ev) => handleImportTextChange(ev.target.result || '');
     reader.readAsText(file);
@@ -3826,26 +3895,37 @@ function PriceListTab() {
       <Modal open={showImport} title="📋 Import Price List" onClose={() => { setShowImport(false); setImportText(''); setImportParsed([]); }}>
           <div className="p-4 space-y-4" style={{ width: '100%', maxWidth: 700, boxSizing: 'border-box' }}>
             <div style={{ background: '#fffbeb', border: '1.5px solid #fcd34d', borderRadius: 10, padding: '10px 14px', fontSize: '0.82rem', color: '#92400e' }}>
-              <strong>How to use:</strong> Upload the official Dynapharm price list (.txt file) or paste the text directly below.
-              The system will auto-detect all products with their DP, CP, and BV values and update the price list instantly.
+              <strong>How to use:</strong> Upload the official Dynapharm price list directly as a <strong>PDF</strong>, .txt, or paste the text below.
+              The system will automatically extract and detect all products with their DP, CP, and BV values.
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Upload .txt Price List File</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Upload Price List File</label>
               <label
                 htmlFor="priceListImportFile"
-                style={{ border: '2px dashed #fecaca', borderRadius: 10, padding: '18px', textAlign: 'center', cursor: 'pointer', background: '#fff8f8', color: '#c41e3a', display: 'block' }}
+                style={{ border: '2px dashed #fecaca', borderRadius: 10, padding: '18px', textAlign: 'center', cursor: importLoading ? 'default' : 'pointer', background: importLoading ? '#f9fafb' : '#fff8f8', color: '#c41e3a', display: 'block', opacity: importLoading ? 0.7 : 1 }}
               >
-                <div style={{ fontSize: '2rem', marginBottom: 6 }}>📄</div>
-                <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>Tap to upload a .txt price list</div>
-                <div style={{ fontSize: '0.76rem', color: '#94a3b8', marginTop: 3 }}>Supports the standard Dynapharm price list format (DESCRIPTION · DP · CP · BV)</div>
+                {importLoading ? (
+                  <>
+                    <div style={{ fontSize: '2rem', marginBottom: 6 }}>⏳</div>
+                    <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#374151' }}>Reading PDF…</div>
+                    <div style={{ fontSize: '0.76rem', color: '#94a3b8', marginTop: 3 }}>Extracting product data, please wait</div>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ fontSize: '2rem', marginBottom: 6 }}>📄</div>
+                    <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>Tap to upload price list</div>
+                    <div style={{ fontSize: '0.76rem', color: '#94a3b8', marginTop: 3 }}>Supports <strong style={{ color: '#c41e3a' }}>PDF</strong>, .txt, and .csv — official Dynapharm format (DESCRIPTION · DP · CP · BV)</div>
+                  </>
+                )}
                 <input
                   id="priceListImportFile"
                   ref={importFileRef}
                   type="file"
-                  accept=".txt,.csv"
+                  accept=".pdf,.txt,.csv"
                   style={{ display: 'none' }}
                   onChange={handleImportFile}
+                  disabled={importLoading}
                 />
               </label>
             </div>
