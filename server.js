@@ -587,13 +587,20 @@ app.get('/api/stock-adjustments', async (req, res) => {
   try {
     const { query } = await import('./api/db.js');
     const { status, target_id } = req.query;
-    let sql = 'SELECT * FROM stock_adjustments';
     const params = [];
     const conds = [];
-    if (status) { params.push(status); conds.push(`status = $${params.length}`); }
-    if (target_id) { params.push(target_id); conds.push(`target_id = $${params.length}`); }
-    if (conds.length) sql += ' WHERE ' + conds.join(' AND ');
-    sql += ' ORDER BY created_at DESC';
+    if (status) { params.push(status); conds.push(`sa.status = $${params.length}`); }
+    if (target_id) { params.push(target_id); conds.push(`sa.target_id = $${params.length}`); }
+    const whereClause = conds.length ? ' WHERE ' + conds.join(' AND ') : '';
+    const sql = `SELECT sa.*,
+      COALESCE(
+        CASE WHEN sa.requested_by_name IS NOT NULL AND sa.requested_by_name != sa.requested_by THEN sa.requested_by_name END,
+        u.full_name, u.username, sa.requested_by_name, sa.requested_by
+      ) AS requested_by_name
+      FROM stock_adjustments sa
+      LEFT JOIN users u ON u.id::text = sa.requested_by OR (u.username = sa.requested_by AND sa.requested_by NOT LIKE '%-%-%-%-%')
+      ${whereClause}
+      ORDER BY sa.created_at DESC`;
     const { rows } = await query(sql, params);
     res.json(rows);
   } catch (err) {
@@ -611,8 +618,8 @@ app.post('/api/stock-adjustments', async (req, res) => {
     }
     const id = 'ADJ-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();
     const adj_number = 'ADJ-' + String(Date.now()).slice(-6);
-    const requested_by = req.user?.sub || req.user?.username || 'unknown';
-    const requested_by_name = req.user?.name || requested_by;
+    const requested_by = req.user?.username || req.user?.sub || 'unknown';
+    const requested_by_name = req.user?.fullName || req.user?.full_name || req.user?.name || requested_by;
     await query(
       `INSERT INTO stock_adjustments (id, adj_number, target_type, target_id, product_name, location, field_to_adjust, old_value, new_value, reason, requested_by, requested_by_name, status, created_at, updated_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'pending',NOW(),NOW())`,

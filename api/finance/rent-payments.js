@@ -141,7 +141,7 @@ export default async function handler(req, res) {
       await query(
         `INSERT INTO rent_edit_requests (id, rent_id, proposed_changes, requested_by, status)
          VALUES ($1,$2,$3,$4,'pending')`,
-        [reqId, parts[0], JSON.stringify(changes), req.user.username || req.user.id || 'finance']
+        [reqId, parts[0], JSON.stringify(changes), req.user.fullName || req.user.username || req.user.id || 'finance']
       );
       return res.json({ success: true, message: 'Edit request submitted. Awaiting GM approval.', request_id: reqId });
     }

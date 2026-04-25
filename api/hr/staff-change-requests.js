@@ -9,7 +9,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   const role = req.user?.role || '';
-  const actor = req.user?.full_name || req.user?.username || role;
+  const actor = req.user?.fullName || req.user?.full_name || req.user?.username || role;
 
   try {
     if (req.method === 'GET') {

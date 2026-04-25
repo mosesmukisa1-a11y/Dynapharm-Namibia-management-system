@@ -176,7 +176,7 @@ export default async function handler(req, res) {
       await query(
         `INSERT INTO salary_edit_requests (id, salary_id, action_type, proposed_changes, requested_by, requested_role)
          VALUES ($1,$2,'edit',$3,$4,$5)`,
-        [reqId, parts[0], JSON.stringify(req.body), req.user.username || req.user.id || role, role]
+        [reqId, parts[0], JSON.stringify(req.body), req.user.fullName || req.user.username || req.user.id || role, role]
       );
       return res.json({ success: true, message: 'Edit request submitted for GM approval.', request_id: reqId });
     }
@@ -191,7 +191,7 @@ export default async function handler(req, res) {
       await query(
         `INSERT INTO salary_edit_requests (id, salary_id, action_type, proposed_changes, requested_by, requested_role)
          VALUES ($1,$2,'remove','{}',$3,$4)`,
-        [reqId, parts[0], req.user.username || req.user.id || role, role]
+        [reqId, parts[0], req.user.fullName || req.user.username || req.user.id || role, role]
       );
       return res.json({ success: true, message: `Removal of ${rec.name} submitted for GM approval.`, request_id: reqId });
     }

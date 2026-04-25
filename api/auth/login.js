@@ -96,6 +96,7 @@ export default async function handler(req, res) {
     const payload = {
       sub: user.id,
       username: user.username,
+      fullName: user.full_name || user.username,
       role: user.role,
       branch: normalizedBranch || null,
       branches: user.branches || [],

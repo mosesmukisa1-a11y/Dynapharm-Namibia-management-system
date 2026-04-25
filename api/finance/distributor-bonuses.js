@@ -202,7 +202,7 @@ export default async function handler(req, res) {
         `INSERT INTO bonus_period_delete_requests (id, period, record_count, total_earned, reason, requested_by, status)
          VALUES ($1, $2, $3, $4, $5, $6, 'pending_gm')`,
         [id, period, recordCount, parseFloat(agg.total || 0), reason || null,
-         req.user.full_name || req.user.username || req.user.id]
+         req.user.fullName || req.user.full_name || req.user.username || req.user.id]
       );
 
       return res.json({
