@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { formatCurrency, formatDate } from '../../lib/constants';
-import { buildCatalogFromPriceList, calculateCartTotals, setLivePrices } from '../../lib/pricing';
+import { buildCatalogFromPriceList, calculateCartTotals, setLivePrices, getLiveProductList } from '../../lib/pricing';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Modal, Alert } from '../../components/ui';
 import { ShoppingCart, Heart, Newspaper, MessageSquare, Search, Plus, Minus, Package, Trash2, Send, User, BarChart3, ShoppingBag, Star, UserPlus, Printer, MapPin, ChevronDown, TrendingUp, Calendar, Gift, Tag, Zap, Award, Clock, Trophy, CheckCircle, AlertCircle, ChevronRight, Megaphone, Camera, Upload, QrCode, Share2, Download } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -36,6 +36,7 @@ export default function DistributorPortal() {
     { id: 'campaigns', label: 'Campaigns', icon: '🎯' },
     { id: 'media', label: 'Media & News', icon: '📰' },
     { id: 'testimonials', label: 'Testimonials', icon: '💬' },
+    { id: 'priceList', label: 'Price List', icon: '💲' },
   ];
 
   return (
@@ -56,7 +57,140 @@ export default function DistributorPortal() {
         {activeTab === 'campaigns' && <CampaignsTab />}
         {activeTab === 'media' && <MediaTab />}
         {activeTab === 'testimonials' && <TestimonialsTab />}
+        {activeTab === 'priceList' && <DistributorPriceListTab />}
       </div>
+    </div>
+  );
+}
+
+function DistributorPriceListTab() {
+  const [search, setSearch] = useState('');
+  const [products, setProducts] = useState([]);
+
+  useEffect(() => {
+    const list = getLiveProductList().filter(p => !p.is_package);
+    if (list.length > 0) {
+      setProducts(list);
+    } else {
+      api.prices.list().then(data => {
+        if (Array.isArray(data)) setProducts(data.filter(p => !p.is_package));
+      }).catch(() => {});
+    }
+  }, []);
+
+  const filtered = products.filter(p =>
+    !search || (p.description || '').toLowerCase().includes(search.toLowerCase())
+  );
+
+  const printDistributorPriceList = () => {
+    const win = window.open('', '_blank');
+    if (!win) return;
+    const rows = filtered.map((p, i) => {
+      const profit = (Number(p.cp) || 0) - (Number(p.dp) || 0);
+      return `<tr>
+        <td>${i + 1}</td>
+        <td>${p.description}</td>
+        <td style="text-align:right;font-weight:700;color:#c41e3a">${Number(p.dp || 0).toFixed(0)}</td>
+        <td style="text-align:right;color:#1d4ed8">${Number(p.cp || 0).toFixed(0)}</td>
+        <td style="text-align:right;font-weight:700;color:#16a34a">+${profit.toFixed(0)}</td>
+        <td style="text-align:right">${Number(p.bv || 0).toFixed(0)}</td>
+      </tr>`;
+    }).join('');
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Dynapharm Price List</title>
+    <style>
+      * { margin:0; padding:0; box-sizing:border-box; }
+      body { font-family: Arial, sans-serif; font-size: 10px; color: #1e293b; padding: 24px; }
+      .header { border-bottom: 3px solid #c41e3a; padding-bottom: 10px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: flex-start; }
+      .company { color: #c41e3a; font-weight: 900; font-size: 15px; }
+      .sub { color: #64748b; font-size: 9px; margin-top: 3px; }
+      table { width: 100%; border-collapse: collapse; }
+      th { background: #c41e3a; color: #fff; font-weight: 700; padding: 6px 8px; text-align: left; font-size: 9px; text-transform: uppercase; }
+      th.r { text-align: right; }
+      td { padding: 5px 8px; border-bottom: 1px solid #f1f5f9; font-size: 9.5px; }
+      tr:nth-child(even) td { background: #fdf7f8; }
+      .print-btn { position:fixed; top:10px; right:10px; background:#c41e3a; color:#fff; border:none; padding:7px 16px; border-radius:7px; font-weight:700; cursor:pointer; font-size:11px; }
+      .footer { margin-top:14px; font-size:8.5px; color:#94a3b8; text-align:center; border-top:1px dashed #e2e8f0; padding-top:8px; }
+      @media print { .print-btn { display:none; } * { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }
+    </style></head><body>
+    <button class="print-btn" onclick="window.print()">🖨️ Print</button>
+    <div class="header">
+      <div><div class="company">Uganam Dynapharm Namibia</div><div class="sub">Distributor Price List — ${new Date().toLocaleDateString('en-NA', { day: '2-digit', month: 'long', year: 'numeric' })}</div></div>
+      <div style="text-align:right;font-size:9px;color:#64748b">${filtered.length} products &nbsp;·&nbsp; Confidential — Distributors Only</div>
+    </div>
+    <table>
+      <thead><tr><th style="width:28px">#</th><th>Product</th><th class="r" style="color:#fecaca">Your Cost (DP)</th><th class="r" style="color:#bfdbfe">Client Price (CP)</th><th class="r" style="color:#bbf7d0">Your Profit</th><th class="r">BV</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div class="footer">DP = Your cost (Distributor Price) &nbsp;·&nbsp; CP = Client selling price (Consumer Price) &nbsp;·&nbsp; Profit = CP − DP &nbsp;·&nbsp; BV = Business Volume</div>
+    </body></html>`);
+    win.document.close();
+  };
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <div className="p-4 border-b" style={{ background: 'linear-gradient(135deg,#1d4ed8,#1e3a8a)' }}>
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div>
+              <h2 className="text-lg font-bold text-white">💲 Official Price List</h2>
+              <p className="text-xs" style={{ color: 'rgba(255,255,255,0.7)' }}>{products.length} products &middot; Your buying price (DP) and client selling price (CP)</p>
+            </div>
+            <button
+              onClick={printDistributorPriceList}
+              className="px-3 py-1.5 text-sm font-semibold rounded shadow"
+              style={{ background: '#fff', color: '#1d4ed8' }}
+            >
+              🖨️ Print Price List
+            </button>
+          </div>
+        </div>
+        <CardBody>
+          <div className="mb-3">
+            <input
+              type="text"
+              placeholder="Search products…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+            />
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="bg-gray-50 text-gray-600 text-xs uppercase">
+                  <th className="text-left py-2 px-3 border-b">Product</th>
+                  <th className="text-right py-2 px-3 border-b">Your Cost — DP</th>
+                  <th className="text-right py-2 px-3 border-b">Client Price — CP</th>
+                  <th className="text-right py-2 px-3 border-b">Your Profit</th>
+                  <th className="text-right py-2 px-3 border-b">BV</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.length === 0 && (
+                  <tr><td colSpan={5} className="text-center py-8 text-gray-400">{search ? 'No products match your search.' : 'Price list loading…'}</td></tr>
+                )}
+                {filtered.map((p, i) => {
+                  const profit = (Number(p.cp) || 0) - (Number(p.dp) || 0);
+                  return (
+                    <tr key={p.id || i} className={`border-b hover:bg-gray-50 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}>
+                      <td className="py-2 px-3 font-medium text-gray-800">{p.description}</td>
+                      <td className="py-2 px-3 text-right font-bold text-red-700">{formatCurrency(p.dp)}</td>
+                      <td className="py-2 px-3 text-right font-bold text-blue-700">{formatCurrency(p.cp)}</td>
+                      <td className="py-2 px-3 text-right font-semibold text-green-700">{profit > 0 ? `+${formatCurrency(profit)}` : formatCurrency(profit)}</td>
+                      <td className="py-2 px-3 text-right"><span className="text-xs font-semibold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{Number(p.bv) || 0}</span></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-gray-400 mt-3">
+            <strong>DP</strong> = Your buying price (Distributor Price) &nbsp;·&nbsp;
+            <strong>CP</strong> = Suggested client selling price (Consumer Price) &nbsp;·&nbsp;
+            <strong>Profit</strong> = CP − DP per unit
+          </p>
+        </CardBody>
+      </Card>
     </div>
   );
 }

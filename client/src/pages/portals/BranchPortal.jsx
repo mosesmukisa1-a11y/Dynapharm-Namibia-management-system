@@ -4,7 +4,7 @@ import { useStockRealtime } from '../../hooks/useStockRealtime';
 import DistributorPerformanceTab from '../../components/DistributorPerformanceTab';
 import DispatchNote from '../../components/DispatchNote';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES, COMPANY_INFO, BRANCH_DETAILS, getBranchDisplayName, getBranchId } from '../../lib/constants';
-import { enrichProductsWithPricing, calculateCartTotals, generateReceiptNumber, PACKAGE_DATABASE, findProductPrice, calculatePrescriptionTotals, getConsultationFee, getPackagesForPOS, setLivePrices } from '../../lib/pricing';
+import { enrichProductsWithPricing, calculateCartTotals, generateReceiptNumber, PACKAGE_DATABASE, findProductPrice, calculatePrescriptionTotals, getConsultationFee, getPackagesForPOS, setLivePrices, getLiveProductList } from '../../lib/pricing';
 import { generateReceiptHTML, printReceipt, generateSalesPDFHTML, printSalesPDF, generatePrescriptionQuoteHTML, generatePrescriptionQuotePDFHTML } from '../../lib/receipt';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
 import { ShoppingCart, FileText, Package, Landmark, CreditCard, ClipboardList, Gift, MessageSquare, Users, UserPlus, Map, Printer, AlertTriangle, Search, ArrowRightLeft, Trash2, RotateCcw, Heart, CheckCircle, Calendar, Megaphone, Clock, XCircle, Plus } from 'lucide-react';
@@ -221,6 +221,7 @@ export default function BranchPortal() {
     { id: 'checkup', label: 'Check Up Booking', icon: '🩺' },
     { id: 'campaigns', label: 'Campaigns', icon: '📢' },
     { id: 'training', label: 'Training', icon: '🎓' },
+    { id: 'priceList', label: 'Price List', icon: '💲' },
   ];
 
   return (
@@ -309,6 +310,7 @@ export default function BranchPortal() {
           {activeTab === 'checkup' && <CheckUpBookingTab />}
           {activeTab === 'campaigns' && <BranchCampaignsTab />}
           {activeTab === 'training' && <BranchTrainingTab />}
+          {activeTab === 'priceList' && <BranchPriceListTab />}
         </div>
       </div>
     </PortalBranchContext.Provider>
@@ -318,6 +320,138 @@ export default function BranchPortal() {
 function DistributorPerformanceTabWrapper() {
   const { user } = useAuth();
   return <DistributorPerformanceTab branchFilter={user?.branch || null} title="Distributor Performance" />;
+}
+
+function printPriceListDoc(products) {
+  const win = window.open('', '_blank');
+  if (!win) return;
+  const rows = products.map((p, i) => `
+    <tr>
+      <td>${i + 1}</td>
+      <td>${p.description}</td>
+      <td style="text-align:right">${Number(p.dp||0).toFixed(0)}</td>
+      <td style="text-align:right">${Number(p.cp||0).toFixed(0)}</td>
+      <td style="text-align:right">${Number(p.bv||0).toFixed(0)}</td>
+      <td style="text-align:right;color:#16a34a;font-weight:700">${(Number(p.cp||0) - Number(p.dp||0)).toFixed(0)}</td>
+    </tr>`).join('');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Dynapharm Price List</title>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family: Arial, sans-serif; font-size: 10px; color: #1e293b; padding: 24px; }
+    .header { border-bottom: 3px solid #c41e3a; padding-bottom: 10px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: flex-start; }
+    .company { color: #c41e3a; font-weight: 900; font-size: 15px; }
+    .sub { color: #64748b; font-size: 9px; margin-top: 3px; }
+    .meta { text-align: right; font-size: 9px; color: #64748b; }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #c41e3a; color: #fff; font-weight: 700; padding: 6px 8px; text-align: left; font-size: 9px; text-transform: uppercase; }
+    th.num { text-align: right; }
+    td { padding: 5px 8px; border-bottom: 1px solid #f1f5f9; font-size: 9.5px; }
+    tr:nth-child(even) td { background: #fdf7f8; }
+    .print-btn { position:fixed; top:10px; right:10px; background:#c41e3a; color:#fff; border:none; padding:7px 16px; border-radius:7px; font-weight:700; cursor:pointer; font-size:11px; }
+    .footer { margin-top:14px; font-size:8.5px; color:#94a3b8; text-align:center; border-top:1px dashed #e2e8f0; padding-top:8px; }
+    @media print { .print-btn { display:none; } * { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }
+  </style></head><body>
+  <button class="print-btn" onclick="window.print()">🖨️ Print</button>
+  <div class="header">
+    <div><div class="company">Uganam Dynapharm Namibia</div><div class="sub">Official Price List — ${new Date().toLocaleDateString('en-NA', { day: '2-digit', month: 'long', year: 'numeric' })}</div></div>
+    <div class="meta">${products.length} products &nbsp;·&nbsp; Prices in N$ &nbsp;·&nbsp; For staff reference only</div>
+  </div>
+  <table>
+    <thead><tr><th style="width:30px">#</th><th>Product Description</th><th class="num">DP (N$)</th><th class="num">CP (N$)</th><th class="num">BV</th><th class="num" style="color:#bbf7d0">Margin</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <div class="footer">DP = Distributor Price &nbsp;·&nbsp; CP = Consumer Price &nbsp;·&nbsp; BV = Business Volume &nbsp;·&nbsp; Margin = CP − DP</div>
+  </body></html>`);
+  win.document.close();
+}
+
+function BranchPriceListTab() {
+  const [search, setSearch] = useState('');
+  const [products, setProducts] = useState([]);
+
+  useEffect(() => {
+    const list = getLiveProductList().filter(p => !p.is_package);
+    if (list.length > 0) {
+      setProducts(list);
+    } else {
+      api.prices.list().then(data => {
+        if (Array.isArray(data)) setProducts(data.filter(p => !p.is_package));
+      }).catch(() => {});
+    }
+  }, []);
+
+  const filtered = products.filter(p =>
+    !search || (p.description || '').toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <div className="p-4 border-b" style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)' }}>
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div>
+              <h2 className="text-lg font-bold text-white">💲 Official Price List</h2>
+              <p className="text-xs text-red-100">{products.length} products &middot; Prices set by GM &middot; DP for members · CP for walk-ins</p>
+            </div>
+            <button
+              onClick={() => printPriceListDoc(filtered)}
+              className="px-3 py-1.5 text-sm font-semibold rounded shadow"
+              style={{ background: '#fff', color: '#c41e3a' }}
+            >
+              🖨️ Print Price List
+            </button>
+          </div>
+        </div>
+        <CardBody>
+          <div className="mb-3">
+            <input
+              type="text"
+              placeholder="Search products…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300"
+            />
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="bg-gray-50 text-gray-600 text-xs uppercase">
+                  <th className="text-left py-2 px-3 border-b">Product</th>
+                  <th className="text-right py-2 px-3 border-b">DP — Member (N$)</th>
+                  <th className="text-right py-2 px-3 border-b">CP — Walk-in (N$)</th>
+                  <th className="text-right py-2 px-3 border-b">BV</th>
+                  <th className="text-right py-2 px-3 border-b">Margin</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.length === 0 && (
+                  <tr><td colSpan={5} className="text-center py-8 text-gray-400">{search ? 'No products match your search.' : 'Price list loading…'}</td></tr>
+                )}
+                {filtered.map((p, i) => {
+                  const margin = (Number(p.cp) || 0) - (Number(p.dp) || 0);
+                  return (
+                    <tr key={p.id || i} className={`border-b hover:bg-gray-50 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}>
+                      <td className="py-2 px-3 font-medium text-gray-800">{p.description}</td>
+                      <td className="py-2 px-3 text-right font-bold text-red-700">{formatCurrency(p.dp)}</td>
+                      <td className="py-2 px-3 text-right font-bold text-blue-700">{formatCurrency(p.cp)}</td>
+                      <td className="py-2 px-3 text-right"><span className="text-xs font-semibold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{Number(p.bv) || 0}</span></td>
+                      <td className="py-2 px-3 text-right font-semibold text-green-700">{margin > 0 ? `+${formatCurrency(margin)}` : formatCurrency(margin)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-gray-400 mt-3">
+            <strong>DP</strong> = Distributor / Member Price &nbsp;·&nbsp;
+            <strong>CP</strong> = Consumer / Walk-in Price &nbsp;·&nbsp;
+            <strong>BV</strong> = Business Volume &nbsp;·&nbsp;
+            <strong>Margin</strong> = Branch profit per unit (CP − DP)
+          </p>
+        </CardBody>
+      </Card>
+    </div>
+  );
 }
 
 function WalkInSalesTab() {
