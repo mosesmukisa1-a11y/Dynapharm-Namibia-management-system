@@ -3523,6 +3523,29 @@ function ProfitAnalysisTab() {
 }
 
 // ── Price List Management Tab ────────────────────────────────────────────────
+// Parse a raw price-list text block into [{description,dp,cp,bv}]
+function parsePriceListText(text) {
+  const results = [];
+  const lines = text.split('\n');
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    // Match: description (any text) then 3 numbers at the end (DP CP BV)
+    // Allow single spaces inside description; require 2+ spaces before numbers
+    const m = line.match(/^(.+?)\s{2,}(\d+\.?\d*)\s+(\d+\.?\d*)\s+(\d+\.?\d*)\s*$/);
+    if (!m) continue;
+    const description = m[1].trim().toUpperCase();
+    const dp = Math.round(Number(m[2]));
+    const cp = Math.round(Number(m[3]));
+    const bv = Math.round(Number(m[4]));
+    if (!description || isNaN(dp) || isNaN(cp) || isNaN(bv)) continue;
+    // Skip header row
+    if (description === 'DESCRIPTION') continue;
+    results.push({ description, dp, cp, bv });
+  }
+  return results;
+}
+
 function PriceListTab() {
   const [rows, setRows] = useState([]);
   const [edits, setEdits] = useState({});
@@ -3532,6 +3555,11 @@ function PriceListTab() {
   const [alert, setAlert] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [newProd, setNewProd] = useState({ description: '', dp: '', cp: '', cif: '', bv: '' });
+  const [showImport, setShowImport] = useState(false);
+  const [importText, setImportText] = useState('');
+  const [importParsed, setImportParsed] = useState([]);
+  const [importSaving, setImportSaving] = useState(false);
+  const importFileRef = useRef(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -3614,6 +3642,39 @@ function PriceListTab() {
     }
   };
 
+  const handleImportTextChange = (text) => {
+    setImportText(text);
+    setImportParsed(parsePriceListText(text));
+  };
+
+  const handleImportFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => handleImportTextChange(ev.target.result || '');
+    reader.readAsText(file);
+  };
+
+  const confirmImport = async () => {
+    if (!importParsed.length) return;
+    setImportSaving(true);
+    setAlert(null);
+    try {
+      for (const p of importParsed) {
+        await api.prices.create({ description: p.description, dp: p.dp, cp: p.cp, bv: p.bv });
+      }
+      setAlert({ type: 'success', msg: `✅ ${importParsed.length} product price(s) imported successfully.` });
+      setShowImport(false);
+      setImportText('');
+      setImportParsed([]);
+      load();
+    } catch {
+      setAlert({ type: 'error', msg: 'Import failed. Please check the data and try again.' });
+    } finally {
+      setImportSaving(false);
+    }
+  };
+
   const filtered = rows.filter(r =>
     r.description?.toLowerCase().includes(search.toLowerCase())
   );
@@ -3655,6 +3716,13 @@ function PriceListTab() {
               <p className="text-xs text-red-100">{rows.length} products &middot; {hasEdits ? `${Object.keys(edits).length} unsaved change(s)` : 'No unsaved changes'}</p>
             </div>
             <div className="flex gap-2 flex-wrap">
+              <button
+                onClick={() => { setShowImport(true); setImportText(''); setImportParsed([]); }}
+                className="px-3 py-1.5 text-sm font-semibold rounded shadow"
+                style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)' }}
+              >
+                📋 Import Price List
+              </button>
               <button
                 onClick={() => setShowAdd(true)}
                 className="px-3 py-1.5 bg-white text-red-700 text-sm font-semibold rounded shadow hover:bg-red-50"
@@ -3743,6 +3811,102 @@ function PriceListTab() {
           </p>
         </CardBody>
       </Card>
+
+      {showImport && (
+        <Modal title="📋 Import Price List" onClose={() => { setShowImport(false); setImportText(''); setImportParsed([]); }}>
+          <div className="p-6 space-y-4" style={{ minWidth: 520, maxWidth: 700 }}>
+            <div style={{ background: '#fffbeb', border: '1.5px solid #fcd34d', borderRadius: 10, padding: '10px 14px', fontSize: '0.82rem', color: '#92400e' }}>
+              <strong>How to use:</strong> Upload the official Dynapharm price list (.txt file) or paste the text directly below.
+              The system will auto-detect all products with their DP, CP, and BV values and update the price list instantly.
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Upload .txt Price List File</label>
+              <div
+                onClick={() => importFileRef.current?.click()}
+                style={{ border: '2px dashed #fecaca', borderRadius: 10, padding: '18px', textAlign: 'center', cursor: 'pointer', background: '#fff8f8', color: '#c41e3a' }}
+              >
+                <div style={{ fontSize: '2rem', marginBottom: 6 }}>📄</div>
+                <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>Click to upload a .txt price list</div>
+                <div style={{ fontSize: '0.76rem', color: '#94a3b8', marginTop: 3 }}>Supports the standard Dynapharm price list format (DESCRIPTION · DP · CP · BV)</div>
+              </div>
+              <input ref={importFileRef} type="file" accept=".txt,.csv" style={{ display: 'none' }} onChange={handleImportFile} />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Or Paste Price List Text</label>
+              <textarea
+                value={importText}
+                onChange={e => handleImportTextChange(e.target.value)}
+                rows={8}
+                placeholder={"ARABICA COFFEE MIX W/GOAT'S AND GANO 25gx20's         260     320        43\nBEE POLLEN CAPSULE (100's)                            320     390        75\n..."}
+                className="w-full border border-gray-300 rounded px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-red-300"
+                style={{ resize: 'vertical' }}
+              />
+            </div>
+
+            {importParsed.length > 0 && (
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <span className="text-sm font-bold text-gray-700">Preview — {importParsed.length} product(s) detected</span>
+                  <span style={{ fontSize: '0.75rem', color: '#16a34a', fontWeight: 600 }}>✓ Ready to import</span>
+                </div>
+                <div style={{ maxHeight: 240, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: 8 }}>
+                  <table style={{ width: '100%', fontSize: '0.78rem', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ background: '#f9fafb', position: 'sticky', top: 0 }}>
+                        <th style={{ textAlign: 'left', padding: '6px 10px', borderBottom: '1px solid #e5e7eb', fontWeight: 700, color: '#374151' }}>Description</th>
+                        <th style={{ textAlign: 'right', padding: '6px 8px', borderBottom: '1px solid #e5e7eb', fontWeight: 700, color: '#374151', whiteSpace: 'nowrap' }}>DP (N$)</th>
+                        <th style={{ textAlign: 'right', padding: '6px 8px', borderBottom: '1px solid #e5e7eb', fontWeight: 700, color: '#374151', whiteSpace: 'nowrap' }}>CP (N$)</th>
+                        <th style={{ textAlign: 'right', padding: '6px 8px', borderBottom: '1px solid #e5e7eb', fontWeight: 700, color: '#374151' }}>BV</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {importParsed.map((p, i) => {
+                        const exists = rows.some(r => r.description?.toUpperCase() === p.description);
+                        return (
+                          <tr key={i} style={{ borderBottom: '1px solid #f3f4f6', background: exists ? '#fffbeb' : '#fff' }}>
+                            <td style={{ padding: '5px 10px', fontWeight: 500 }}>
+                              {p.description}
+                              {exists && <span style={{ fontSize: '0.68rem', marginLeft: 6, color: '#d97706', fontWeight: 700 }}>update</span>}
+                              {!exists && <span style={{ fontSize: '0.68rem', marginLeft: 6, color: '#16a34a', fontWeight: 700 }}>new</span>}
+                            </td>
+                            <td style={{ padding: '5px 8px', textAlign: 'right' }}>{p.dp}</td>
+                            <td style={{ padding: '5px 8px', textAlign: 'right' }}>{p.cp}</td>
+                            <td style={{ padding: '5px 8px', textAlign: 'right' }}>{p.bv}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{ marginTop: 6, fontSize: '0.75rem', color: '#64748b' }}>
+                  🟡 <strong>Yellow rows</strong> = existing products that will be updated &nbsp;·&nbsp;
+                  🟢 <strong>Green badge</strong> = new products that will be added
+                </div>
+              </div>
+            )}
+
+            {importText && importParsed.length === 0 && (
+              <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 14px', fontSize: '0.82rem', color: '#b91c1c' }}>
+                No products could be parsed from this text. Make sure the format has the product name followed by DP, CP, and BV numbers separated by spaces.
+              </div>
+            )}
+
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={confirmImport}
+                disabled={importSaving || importParsed.length === 0}
+                className="px-5 py-2 rounded text-sm font-bold text-white disabled:opacity-50"
+                style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)' }}
+              >
+                {importSaving ? `Importing ${importParsed.length} products…` : `✅ Import ${importParsed.length} Product${importParsed.length !== 1 ? 's' : ''}`}
+              </button>
+              <button onClick={() => { setShowImport(false); setImportText(''); setImportParsed([]); }} className="px-4 py-2 rounded text-sm border border-gray-300 text-gray-600 hover:bg-gray-50">Cancel</button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {showAdd && (
         <Modal title="Add New Product" onClose={() => setShowAdd(false)}>
