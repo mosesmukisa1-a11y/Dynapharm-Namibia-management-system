@@ -3526,21 +3526,32 @@ function ProfitAnalysisTab() {
 // Parse a raw price-list text block into [{description,dp,cp,bv}]
 function parsePriceListText(text) {
   const results = [];
+  const seen = new Set();
   const lines = text.split('\n');
   for (const raw of lines) {
     const line = raw.trim();
     if (!line) continue;
-    // Match: description (any text) then 3 numbers at the end (DP CP BV)
-    // Allow single spaces inside description; require 2+ spaces before numbers
-    const m = line.match(/^(.+?)\s{2,}(\d+\.?\d*)\s+(\d+\.?\d*)\s+(\d+\.?\d*)\s*$/);
+
+    // Use GREEDY (.+) so regex takes the longest possible description,
+    // then backtracks to find the LAST run of 2+ spaces before 3 numbers.
+    // This correctly handles product names that contain numbers or internal spaces.
+    // Accepts decimal values (e.g. 11.5 BV) — stored as-is, not rounded.
+    const m = line.match(/^(.+)\s{2,}(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s*$/);
     if (!m) continue;
+
     const description = m[1].trim().toUpperCase();
     const dp = Math.round(Number(m[2]));
     const cp = Math.round(Number(m[3]));
-    const bv = Math.round(Number(m[4]));
-    if (!description || isNaN(dp) || isNaN(cp) || isNaN(bv)) continue;
-    // Skip header row
-    if (description === 'DESCRIPTION') continue;
+    const bv = parseFloat(Number(m[4]).toFixed(2));
+
+    // Skip header or invalid rows
+    if (!description || description === 'DESCRIPTION') continue;
+    if (isNaN(dp) || isNaN(cp) || isNaN(bv)) continue;
+    if (dp <= 0 || cp <= 0) continue;
+    // Skip duplicate descriptions (keep first occurrence)
+    if (seen.has(description)) continue;
+    seen.add(description);
+
     results.push({ description, dp, cp, bv });
   }
   return results;
