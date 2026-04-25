@@ -3812,9 +3812,8 @@ function PriceListTab() {
         </CardBody>
       </Card>
 
-      {showImport && (
-        <Modal title="📋 Import Price List" onClose={() => { setShowImport(false); setImportText(''); setImportParsed([]); }}>
-          <div className="p-6 space-y-4" style={{ minWidth: 520, maxWidth: 700 }}>
+      <Modal open={showImport} title="📋 Import Price List" onClose={() => { setShowImport(false); setImportText(''); setImportParsed([]); }}>
+          <div className="p-4 space-y-4" style={{ width: '100%', maxWidth: 700, boxSizing: 'border-box' }}>
             <div style={{ background: '#fffbeb', border: '1.5px solid #fcd34d', borderRadius: 10, padding: '10px 14px', fontSize: '0.82rem', color: '#92400e' }}>
               <strong>How to use:</strong> Upload the official Dynapharm price list (.txt file) or paste the text directly below.
               The system will auto-detect all products with their DP, CP, and BV values and update the price list instantly.
@@ -3822,15 +3821,22 @@ function PriceListTab() {
 
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">Upload .txt Price List File</label>
-              <div
-                onClick={() => importFileRef.current?.click()}
-                style={{ border: '2px dashed #fecaca', borderRadius: 10, padding: '18px', textAlign: 'center', cursor: 'pointer', background: '#fff8f8', color: '#c41e3a' }}
+              <label
+                htmlFor="priceListImportFile"
+                style={{ border: '2px dashed #fecaca', borderRadius: 10, padding: '18px', textAlign: 'center', cursor: 'pointer', background: '#fff8f8', color: '#c41e3a', display: 'block' }}
               >
                 <div style={{ fontSize: '2rem', marginBottom: 6 }}>📄</div>
-                <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>Click to upload a .txt price list</div>
+                <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>Tap to upload a .txt price list</div>
                 <div style={{ fontSize: '0.76rem', color: '#94a3b8', marginTop: 3 }}>Supports the standard Dynapharm price list format (DESCRIPTION · DP · CP · BV)</div>
-              </div>
-              <input ref={importFileRef} type="file" accept=".txt,.csv" style={{ display: 'none' }} onChange={handleImportFile} />
+                <input
+                  id="priceListImportFile"
+                  ref={importFileRef}
+                  type="file"
+                  accept=".txt,.csv"
+                  style={{ display: 'none' }}
+                  onChange={handleImportFile}
+                />
+              </label>
             </div>
 
             <div>
@@ -3906,10 +3912,8 @@ function PriceListTab() {
             </div>
           </div>
         </Modal>
-      )}
 
-      {showAdd && (
-        <Modal title="Add New Product" onClose={() => setShowAdd(false)}>
+      <Modal open={showAdd} title="Add New Product" onClose={() => setShowAdd(false)}>
           <div className="p-6 space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Product Description *</label>
@@ -3950,7 +3954,6 @@ function PriceListTab() {
             </div>
           </div>
         </Modal>
-      )}
     </div>
   );
 }
