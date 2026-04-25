@@ -3557,23 +3557,46 @@ async function extractPdfText(file) {
       const items = byY[y].sort((a, b) => a.x - b.x);
       let line = '';
       let prevEnd = null;
+      let prevStr = '';
 
       for (const item of items) {
+        const isNum = /^\d+(?:\.\d+)?$/.test(item.str.trim());
+        const prevIsNum = /^\d+(?:\.\d+)?$/.test(prevStr.trim());
+
         if (prevEnd !== null) {
           const gap = item.x - prevEnd;
-          // Gaps ≥ 8pt indicate a column separator → insert 3 spaces
-          if (gap >= 8) line += '   ';
-          else if (gap > 1) line += ' ';
+          if (prevIsNum && isNum) {
+            // Always separate adjacent numbers with spaces (handles "320390" → "320   390")
+            line += '   ';
+          } else if (gap >= 8) {
+            // Large gap between non-number items → column separator
+            line += '   ';
+          } else if (gap > 1) {
+            line += ' ';
+          }
         }
         line += item.str;
         prevEnd = item.x + (item.w > 0 ? item.w : item.str.length * 5);
+        prevStr = item.str;
       }
 
       if (line.trim()) allLines.push(line);
     }
   }
 
-  return allLines.join('\n');
+  // Post-process: merge lines that contain ONLY numbers/spaces into the previous line.
+  // The Dynapharm PDF places description+DP on one text row and CP+BV on the next
+  // (slightly different Y coordinate), so we need to rejoin them before parsing.
+  const merged = [];
+  for (const line of allLines) {
+    if (/^\s*[\d.]+(?:\s+[\d.]+)*\s*$/.test(line) && merged.length > 0) {
+      merged[merged.length - 1] += '   ' + line.trim();
+    } else {
+      merged.push(line);
+    }
+  }
+
+  return merged.join('\n');
 }
 
 // Parse a raw price-list text block into [{description,dp,cp,bv}]
