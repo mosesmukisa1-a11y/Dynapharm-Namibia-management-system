@@ -3527,14 +3527,22 @@ function ProfitAnalysisTab() {
 // Extract all text from a PDF File using pdfjs-dist.
 // Groups text items by Y-coordinate into lines, preserving column gaps as spaces.
 async function extractPdfText(file) {
-  const pdfjsLib = await import('pdfjs-dist');
-  pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-    'pdfjs-dist/build/pdf.worker.min.mjs',
-    import.meta.url
-  ).href;
+  // pdfjs-dist v5 ESM — destructure named exports from the module namespace
+  const pdfjs = await import('pdfjs-dist');
+  const getDocument = pdfjs.getDocument ?? pdfjs.default?.getDocument;
+  const GlobalWorkerOptions = pdfjs.GlobalWorkerOptions ?? pdfjs.default?.GlobalWorkerOptions;
+  const version = pdfjs.version ?? pdfjs.default?.version ?? '5.6.205';
+
+  if (typeof getDocument !== 'function') {
+    throw new Error('pdfjs-dist failed to load — getDocument is not a function');
+  }
+
+  // Use unpkg CDN worker — mirrors npm exactly so the version always exists
+  GlobalWorkerOptions.workerSrc =
+    `https://unpkg.com/pdfjs-dist@${version}/build/pdf.worker.min.mjs`;
 
   const arrayBuffer = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const pdf = await getDocument({ data: arrayBuffer }).promise;
   const allLines = [];
 
   for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
