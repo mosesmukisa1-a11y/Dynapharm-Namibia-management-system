@@ -922,9 +922,10 @@ const _pdfUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize:
 app.post('/api/gm/extract-pdf', _pdfUpload.single('pdf'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No PDF file uploaded' });
-    const pdfParse = (await import('pdf-parse/lib/pdf-parse.js')).default;
-    const data = await pdfParse(req.file.buffer);
-    res.json({ text: data.text });
+    const { PDFParse } = await import('pdf-parse');
+    const parser = new PDFParse({ data: req.file.buffer });
+    const result = await parser.getText();
+    res.json({ text: result.text });
   } catch (err) {
     console.error('PDF extract error:', err.message);
     res.status(500).json({ error: err.message });
