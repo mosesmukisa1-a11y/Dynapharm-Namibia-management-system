@@ -3526,20 +3526,25 @@ function ProfitAnalysisTab() {
 
 // Extract all text from a PDF File using pdfjs-dist.
 // Groups text items by Y-coordinate into lines, preserving column gaps as spaces.
+const PDFJS_VERSION = '5.6.205';
 async function extractPdfText(file) {
-  // pdfjs-dist v5 ESM — destructure named exports from the module namespace
-  const pdfjs = await import('pdfjs-dist');
+  // Load pdfjs directly from CDN at runtime — bypasses Vite bundling issues
+  // entirely. The /* @vite-ignore */ comment tells Vite not to touch this import.
+  const pdfjs = await import(
+    /* @vite-ignore */
+    `https://unpkg.com/pdfjs-dist@${PDFJS_VERSION}/build/pdf.min.mjs`
+  );
+
   const getDocument = pdfjs.getDocument ?? pdfjs.default?.getDocument;
   const GlobalWorkerOptions = pdfjs.GlobalWorkerOptions ?? pdfjs.default?.GlobalWorkerOptions;
-  const version = pdfjs.version ?? pdfjs.default?.version ?? '5.6.205';
 
   if (typeof getDocument !== 'function') {
-    throw new Error('pdfjs-dist failed to load — getDocument is not a function');
+    throw new Error('pdfjs-dist failed to load from CDN — getDocument is not a function');
   }
 
-  // Use unpkg CDN worker — mirrors npm exactly so the version always exists
+  // Worker must also come from CDN (same version, same origin-trust chain)
   GlobalWorkerOptions.workerSrc =
-    `https://unpkg.com/pdfjs-dist@${version}/build/pdf.worker.min.mjs`;
+    `https://unpkg.com/pdfjs-dist@${PDFJS_VERSION}/build/pdf.worker.min.mjs`;
 
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await getDocument({ data: arrayBuffer }).promise;
