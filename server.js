@@ -887,6 +887,30 @@ async function initProductPricesTable() {
       )
     `);
     await query(`ALTER TABLE product_prices ADD COLUMN IF NOT EXISTS is_package BOOLEAN DEFAULT FALSE`);
+
+    // ── One-time normalisation: uppercase all descriptions and remove case-duplicates ──
+    // For any group of rows that share the same UPPER(description), keep the most-recently
+    // updated one and delete the rest, then rename the survivor to its uppercased form.
+    await query(`
+      DELETE FROM product_prices
+      WHERE id IN (
+        SELECT id FROM (
+          SELECT id,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY UPPER(TRIM(REGEXP_REPLACE(description, '\\s+', ' ', 'g')))
+                   ORDER BY updated_at DESC NULLS LAST
+                 ) AS rn
+          FROM product_prices
+        ) ranked
+        WHERE rn > 1
+      )
+    `);
+    await query(`
+      UPDATE product_prices
+      SET description = UPPER(TRIM(REGEXP_REPLACE(description, '\\s+', ' ', 'g')))
+      WHERE description <> UPPER(TRIM(REGEXP_REPLACE(description, '\\s+', ' ', 'g')))
+    `);
+
     let inserted = 0, updated = 0;
     for (const p of STATIC_PRICE_LIST) {
       const res = await query(
@@ -894,7 +918,7 @@ async function initProductPricesTable() {
          ON CONFLICT (description) DO UPDATE
            SET dp=EXCLUDED.dp, cp=EXCLUDED.cp, cif=EXCLUDED.cif, bv=EXCLUDED.bv
            WHERE product_prices.updated_by = 'system'`,
-        [p.description, p.dp, p.cp, p.cif, p.bv]
+        [String(p.description).trim().toUpperCase().replace(/\s+/g,' '), p.dp, p.cp, p.cif, p.bv]
       );
       if (res.rowCount > 0) { if (res.command === 'INSERT') inserted++; else updated++; }
     }
@@ -904,7 +928,7 @@ async function initProductPricesTable() {
       await query(
         `INSERT INTO product_prices (description, dp, cp, cif, bv, is_package) VALUES ($1,$2,$3,$4,$5,TRUE)
          ON CONFLICT (description) DO UPDATE SET dp=$2, cp=$3, bv=$5, is_package=TRUE`,
-        [pkg.description, pkg.dp, pkg.cp, pkg.cif, pkg.bv]
+        [String(pkg.description).trim().toUpperCase().replace(/\s+/g,' '), pkg.dp, pkg.cp, pkg.cif, pkg.bv]
       );
     }
     console.log(`Ensured ${STATIC_PACKAGE_LIST.length} packages in product_prices`);
@@ -996,10 +1020,12 @@ app.post('/api/prices', async (req, res) => {
     const { query } = await import('./api/db.js');
     const { description, dp, cp, cif, bv } = req.body;
     if (!description) return res.status(400).json({ error: 'description is required' });
+    // Always store description as UPPERCASE so ON CONFLICT works regardless of source case
+    const desc = String(description).trim().toUpperCase().replace(/\s+/g, ' ');
     const updatedBy = req.user?.name || req.user?.username || 'gm';
     const { rows } = await query(
       `INSERT INTO product_prices (description, dp, cp, cif, bv, updated_by) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (description) DO UPDATE SET dp=$2,cp=$3,cif=$4,bv=$5,updated_by=$6,updated_at=NOW() RETURNING *`,
-      [description, Number(dp)||0, Number(cp)||0, Number(cif)||0, Number(bv)||0, updatedBy]
+      [desc, Number(dp)||0, Number(cp)||0, Number(cif)||0, Number(bv)||0, updatedBy]
     );
     res.json(rows[0]);
   } catch (err) {
