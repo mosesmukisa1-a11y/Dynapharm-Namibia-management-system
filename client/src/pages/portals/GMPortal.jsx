@@ -3628,7 +3628,8 @@ function parsePriceListText(text) {
     const m = line.match(/^(.+)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s*$/);
     if (!m) continue;
 
-    const description = m[1].trim().toUpperCase();
+    // Normalise: trim, uppercase, collapse any internal whitespace runs to one space
+    const description = m[1].trim().toUpperCase().replace(/\s+/g, ' ');
     const dp = Math.round(Number(m[2]));
     const cp = Math.round(Number(m[3]));
     const bv = parseFloat(Number(m[4]).toFixed(2));
@@ -3637,7 +3638,7 @@ function parsePriceListText(text) {
     if (!description || description === 'DESCRIPTION') continue;
     if (isNaN(dp) || isNaN(cp) || isNaN(bv)) continue;
     if (dp <= 0 || cp <= 0) continue;
-    // Skip duplicate descriptions (keep first occurrence)
+    // Skip duplicate descriptions after normalisation (keep first occurrence)
     if (seen.has(description)) continue;
     seen.add(description);
 
