@@ -2,6 +2,7 @@ import express from 'express';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import multer from 'multer';
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 5000;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -912,6 +913,23 @@ async function initProductPricesTable() {
   }
 }
 initProductPricesTable();
+
+// ── PDF text extraction endpoint ──────────────────────────────────────────────
+// Accepts a PDF file (multipart/form-data field "pdf") and returns extracted text.
+// Runs on the server with pdf-parse so no browser/bundler issues apply.
+const _pdfUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+
+app.post('/api/gm/extract-pdf', _pdfUpload.single('pdf'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No PDF file uploaded' });
+    const pdfParse = (await import('pdf-parse/lib/pdf-parse.js')).default;
+    const data = await pdfParse(req.file.buffer);
+    res.json({ text: data.text });
+  } catch (err) {
+    console.error('PDF extract error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 app.get('/api/prices', async (req, res) => {
   try {

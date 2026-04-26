@@ -3757,7 +3757,14 @@ function PriceListTab() {
       setImportParsed([]);
       setImportLoading(true);
       try {
-        const text = await extractPdfText(file);
+        const formData = new FormData();
+        formData.append('pdf', file);
+        const resp = await fetch('/api/gm/extract-pdf', { method: 'POST', body: formData });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          throw new Error(err.error || `Server error ${resp.status}`);
+        }
+        const { text } = await resp.json();
         handleImportTextChange(text);
       } catch (err) {
         setAlert({ type: 'error', msg: 'Could not read PDF: ' + (err.message || 'Unknown error') });
