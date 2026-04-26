@@ -3625,7 +3625,7 @@ function parsePriceListText(text) {
     // then backtracks to find the LAST run of 2+ spaces before 3 numbers.
     // This correctly handles product names that contain numbers or internal spaces.
     // Accepts decimal values (e.g. 11.5 BV) — stored as-is, not rounded.
-    const m = line.match(/^(.+)\s{2,}(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s*$/);
+    const m = line.match(/^(.+)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s*$/);
     if (!m) continue;
 
     const description = m[1].trim().toUpperCase();
@@ -3660,6 +3660,7 @@ function PriceListTab() {
   const [importParsed, setImportParsed] = useState([]);
   const [importSaving, setImportSaving] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
+  const [importTab, setImportTab] = useState('upload');
   const importFileRef = useRef(null);
 
   const load = useCallback(() => {
@@ -3935,117 +3936,148 @@ function PriceListTab() {
         </CardBody>
       </Card>
 
-      <Modal open={showImport} title="📋 Import Price List" onClose={() => { setShowImport(false); setImportText(''); setImportParsed([]); }}>
-          <div className="p-4 space-y-4" style={{ width: '100%', maxWidth: 700, boxSizing: 'border-box' }}>
-            <div style={{ background: '#fffbeb', border: '1.5px solid #fcd34d', borderRadius: 10, padding: '10px 14px', fontSize: '0.82rem', color: '#92400e' }}>
-              <strong>How to use:</strong> Upload the official Dynapharm price list directly as a <strong>PDF</strong>, .txt, or paste the text below.
-              The system will automatically extract and detect all products with their DP, CP, and BV values.
-            </div>
+      <Modal open={showImport} title="Import Price List" onClose={() => { setShowImport(false); setImportText(''); setImportParsed([]); setImportTab('upload'); }}>
+        <div style={{ width: '100%', maxWidth: 640, boxSizing: 'border-box', padding: '0 4px 4px' }}>
 
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Upload Price List File</label>
-              <label
-                htmlFor="priceListImportFile"
-                style={{ border: '2px dashed #fecaca', borderRadius: 10, padding: '18px', textAlign: 'center', cursor: importLoading ? 'default' : 'pointer', background: importLoading ? '#f9fafb' : '#fff8f8', color: '#c41e3a', display: 'block', opacity: importLoading ? 0.7 : 1 }}
-              >
-                {importLoading ? (
-                  <>
-                    <div style={{ fontSize: '2rem', marginBottom: 6 }}>⏳</div>
-                    <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#374151' }}>Reading PDF…</div>
-                    <div style={{ fontSize: '0.76rem', color: '#94a3b8', marginTop: 3 }}>Extracting product data, please wait</div>
-                  </>
-                ) : (
-                  <>
-                    <div style={{ fontSize: '2rem', marginBottom: 6 }}>📄</div>
-                    <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>Tap to upload price list</div>
-                    <div style={{ fontSize: '0.76rem', color: '#94a3b8', marginTop: 3 }}>Supports <strong style={{ color: '#c41e3a' }}>PDF</strong>, .txt, and .csv — official Dynapharm format (DESCRIPTION · DP · CP · BV)</div>
-                  </>
-                )}
-                <input
-                  id="priceListImportFile"
-                  ref={importFileRef}
-                  type="file"
-                  accept=".pdf,.txt,.csv"
-                  style={{ display: 'none' }}
-                  onChange={handleImportFile}
-                  disabled={importLoading}
-                />
-              </label>
-            </div>
+          {/* Tab switcher */}
+          <div style={{ display: 'flex', borderBottom: '2px solid #f1f5f9', marginBottom: 20 }}>
+            {[['upload', '📎', 'Upload File'], ['paste', '📝', 'Paste Text']].map(([key, icon, label]) => (
+              <button
+                key={key}
+                onClick={() => setImportTab(key)}
+                style={{
+                  padding: '10px 20px', fontSize: '0.85rem', fontWeight: 700, border: 'none', background: 'none',
+                  cursor: 'pointer', borderBottom: importTab === key ? '2px solid #c41e3a' : '2px solid transparent',
+                  color: importTab === key ? '#c41e3a' : '#64748b', marginBottom: -2, transition: 'all 0.15s'
+                }}
+              >{icon} {label}</button>
+            ))}
+          </div>
 
+          {/* Upload tab */}
+          {importTab === 'upload' && (
+            <label
+              htmlFor="priceListImportFile"
+              style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                minHeight: 160, borderRadius: 14, cursor: importLoading ? 'default' : 'pointer',
+                background: importLoading ? '#f8fafc' : 'linear-gradient(135deg,#fff5f5,#fff)',
+                border: '2px dashed ' + (importLoading ? '#cbd5e1' : '#fca5a5'),
+                transition: 'all 0.2s', gap: 8, padding: 24
+              }}
+            >
+              {importLoading ? (
+                <>
+                  <div style={{ fontSize: '2.4rem', lineHeight: 1 }}>⏳</div>
+                  <div style={{ fontWeight: 700, color: '#374151', fontSize: '0.95rem' }}>Reading PDF…</div>
+                  <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Extracting product data, please wait</div>
+                </>
+              ) : (
+                <>
+                  <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.6rem' }}>📄</div>
+                  <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.95rem' }}>Tap to select price list file</div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {['PDF', 'TXT', 'CSV'].map(ext => (
+                      <span key={ext} style={{ fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: ext === 'PDF' ? '#fef2f2' : '#f1f5f9', color: ext === 'PDF' ? '#c41e3a' : '#475569', border: '1px solid ' + (ext === 'PDF' ? '#fecaca' : '#e2e8f0') }}>{ext}</span>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 2 }}>Official Dynapharm format · DESCRIPTION · DP · CP · BV</div>
+                </>
+              )}
+              <input id="priceListImportFile" ref={importFileRef} type="file" accept=".pdf,.txt,.csv" style={{ display: 'none' }} onChange={handleImportFile} disabled={importLoading} />
+            </label>
+          )}
+
+          {/* Paste tab */}
+          {importTab === 'paste' && (
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Or Paste Price List Text</label>
               <textarea
                 value={importText}
                 onChange={e => handleImportTextChange(e.target.value)}
-                rows={8}
-                placeholder={"ARABICA COFFEE MIX W/GOAT'S AND GANO 25gx20's         260     320        43\nBEE POLLEN CAPSULE (100's)                            320     390        75\n..."}
-                className="w-full border border-gray-300 rounded px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-red-300"
-                style={{ resize: 'vertical' }}
+                rows={9}
+                placeholder={"GREEN TEA CAPSULE 30's 195 254 43\nBEE POLLEN CAPSULE (100's) 320 390 75\nSPIRULINA 30's 180 235 40\n..."}
+                style={{ width: '100%', boxSizing: 'border-box', border: '1.5px solid #e2e8f0', borderRadius: 10, padding: '12px 14px', fontSize: '0.78rem', fontFamily: 'monospace', resize: 'vertical', outline: 'none', lineHeight: 1.7, color: '#1e293b', background: '#f8fafc' }}
+                onFocus={e => { e.target.style.borderColor = '#c41e3a'; e.target.style.boxShadow = '0 0 0 3px rgba(196,30,58,0.08)'; }}
+                onBlur={e => { e.target.style.borderColor = '#e2e8f0'; e.target.style.boxShadow = 'none'; }}
               />
+              <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: 6 }}>Each line: product name followed by DP, CP, and BV numbers</div>
             </div>
+          )}
 
-            {importParsed.length > 0 && (
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <span className="text-sm font-bold text-gray-700">Preview — {importParsed.length} product(s) detected</span>
-                  <span style={{ fontSize: '0.75rem', color: '#16a34a', fontWeight: 600 }}>✓ Ready to import</span>
+          {/* Results */}
+          {importParsed.length > 0 && (
+            <div style={{ marginTop: 18 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                <div style={{ background: '#dcfce7', color: '#15803d', fontWeight: 700, fontSize: '0.8rem', padding: '4px 12px', borderRadius: 20, display: 'flex', alignItems: 'center', gap: 5 }}>
+                  ✓ {importParsed.length} products detected
                 </div>
-                <div style={{ maxHeight: 240, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: 8 }}>
-                  <table style={{ width: '100%', fontSize: '0.78rem', borderCollapse: 'collapse' }}>
-                    <thead>
-                      <tr style={{ background: '#f9fafb', position: 'sticky', top: 0 }}>
-                        <th style={{ textAlign: 'left', padding: '6px 10px', borderBottom: '1px solid #e5e7eb', fontWeight: 700, color: '#374151' }}>Description</th>
-                        <th style={{ textAlign: 'right', padding: '6px 8px', borderBottom: '1px solid #e5e7eb', fontWeight: 700, color: '#374151', whiteSpace: 'nowrap' }}>DP (N$)</th>
-                        <th style={{ textAlign: 'right', padding: '6px 8px', borderBottom: '1px solid #e5e7eb', fontWeight: 700, color: '#374151', whiteSpace: 'nowrap' }}>CP (N$)</th>
-                        <th style={{ textAlign: 'right', padding: '6px 8px', borderBottom: '1px solid #e5e7eb', fontWeight: 700, color: '#374151' }}>BV</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {importParsed.map((p, i) => {
-                        const exists = rows.some(r => r.description?.toUpperCase() === p.description);
-                        return (
-                          <tr key={i} style={{ borderBottom: '1px solid #f3f4f6', background: exists ? '#fffbeb' : '#fff' }}>
-                            <td style={{ padding: '5px 10px', fontWeight: 500 }}>
-                              {p.description}
-                              {exists && <span style={{ fontSize: '0.68rem', marginLeft: 6, color: '#d97706', fontWeight: 700 }}>update</span>}
-                              {!exists && <span style={{ fontSize: '0.68rem', marginLeft: 6, color: '#16a34a', fontWeight: 700 }}>new</span>}
-                            </td>
-                            <td style={{ padding: '5px 8px', textAlign: 'right' }}>{p.dp}</td>
-                            <td style={{ padding: '5px 8px', textAlign: 'right' }}>{p.cp}</td>
-                            <td style={{ padding: '5px 8px', textAlign: 'right' }}>{p.bv}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-                <div style={{ marginTop: 6, fontSize: '0.75rem', color: '#64748b' }}>
-                  🟡 <strong>Yellow rows</strong> = existing products that will be updated &nbsp;·&nbsp;
-                  🟢 <strong>Green badge</strong> = new products that will be added
+                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                  {importParsed.filter(p => rows.some(r => r.description?.toUpperCase() === p.description)).length} updates · {importParsed.filter(p => !rows.some(r => r.description?.toUpperCase() === p.description)).length} new
                 </div>
               </div>
-            )}
-
-            {importText && importParsed.length === 0 && (
-              <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 14px', fontSize: '0.82rem', color: '#b91c1c' }}>
-                No products could be parsed from this text. Make sure the format has the product name followed by DP, CP, and BV numbers separated by spaces.
+              <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+                <table style={{ width: '100%', fontSize: '0.78rem', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc', position: 'sticky', top: 0 }}>
+                      <th style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid #e2e8f0', fontWeight: 700, color: '#374151' }}>Product</th>
+                      <th style={{ textAlign: 'right', padding: '8px 10px', borderBottom: '1px solid #e2e8f0', fontWeight: 700, color: '#374151' }}>DP</th>
+                      <th style={{ textAlign: 'right', padding: '8px 10px', borderBottom: '1px solid #e2e8f0', fontWeight: 700, color: '#374151' }}>CP</th>
+                      <th style={{ textAlign: 'right', padding: '8px 10px', borderBottom: '1px solid #e2e8f0', fontWeight: 700, color: '#374151' }}>BV</th>
+                      <th style={{ padding: '8px 10px', borderBottom: '1px solid #e2e8f0' }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {importParsed.map((p, i) => {
+                      const exists = rows.some(r => r.description?.toUpperCase() === p.description);
+                      return (
+                        <tr key={i} style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
+                          <td style={{ padding: '6px 12px', fontWeight: 500, color: '#1e293b', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.description}</td>
+                          <td style={{ padding: '6px 10px', textAlign: 'right', color: '#374151' }}>{p.dp}</td>
+                          <td style={{ padding: '6px 10px', textAlign: 'right', color: '#374151' }}>{p.cp}</td>
+                          <td style={{ padding: '6px 10px', textAlign: 'right', color: '#374151' }}>{p.bv}</td>
+                          <td style={{ padding: '6px 10px', textAlign: 'center' }}>
+                            <span style={{ fontSize: '0.65rem', fontWeight: 700, padding: '2px 7px', borderRadius: 10, background: exists ? '#fef9c3' : '#f0fdf4', color: exists ? '#854d0e' : '#15803d' }}>
+                              {exists ? 'update' : 'new'}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
-            )}
-
-            <div className="flex gap-3 pt-2">
-              <button
-                onClick={confirmImport}
-                disabled={importSaving || importParsed.length === 0}
-                className="px-5 py-2 rounded text-sm font-bold text-white disabled:opacity-50"
-                style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)' }}
-              >
-                {importSaving ? `Importing ${importParsed.length} products…` : `✅ Import ${importParsed.length} Product${importParsed.length !== 1 ? 's' : ''}`}
-              </button>
-              <button onClick={() => { setShowImport(false); setImportText(''); setImportParsed([]); }} className="px-4 py-2 rounded text-sm border border-gray-300 text-gray-600 hover:bg-gray-50">Cancel</button>
             </div>
+          )}
+
+          {/* Parse error */}
+          {importText.trim() && importParsed.length === 0 && !importLoading && (
+            <div style={{ marginTop: 16, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '12px 16px', fontSize: '0.82rem', color: '#b91c1c', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              <span style={{ fontSize: '1.1rem', lineHeight: 1.3 }}>⚠️</span>
+              <span>No products detected. Check that each line has the product name followed by three numbers (DP, CP, BV).</span>
+            </div>
+          )}
+
+          {/* Actions */}
+          <div style={{ display: 'flex', gap: 10, marginTop: 20, paddingTop: 16, borderTop: '1px solid #f1f5f9' }}>
+            <button
+              onClick={confirmImport}
+              disabled={importSaving || importParsed.length === 0}
+              style={{
+                flex: 1, padding: '11px 16px', borderRadius: 10, border: 'none', cursor: importParsed.length === 0 ? 'not-allowed' : 'pointer',
+                background: importParsed.length === 0 ? '#e2e8f0' : 'linear-gradient(135deg,#c41e3a,#9b1730)',
+                color: importParsed.length === 0 ? '#94a3b8' : '#fff', fontWeight: 700, fontSize: '0.88rem',
+                transition: 'all 0.15s', boxShadow: importParsed.length === 0 ? 'none' : '0 2px 8px rgba(196,30,58,0.25)'
+              }}
+            >
+              {importSaving ? `Importing…` : importParsed.length === 0 ? 'No products detected' : `Import ${importParsed.length} Product${importParsed.length !== 1 ? 's' : ''}`}
+            </button>
+            <button
+              onClick={() => { setShowImport(false); setImportText(''); setImportParsed([]); setImportTab('upload'); }}
+              style={{ padding: '11px 20px', borderRadius: 10, border: '1.5px solid #e2e8f0', background: '#fff', color: '#475569', fontWeight: 600, fontSize: '0.88rem', cursor: 'pointer' }}
+            >Cancel</button>
           </div>
-        </Modal>
+        </div>
+      </Modal>
 
       <Modal open={showAdd} title="Add New Product" onClose={() => setShowAdd(false)}>
           <div className="p-6 space-y-4">
