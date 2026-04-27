@@ -186,6 +186,8 @@ function MaterialsTab({ isTrainer, onUpload }) {
 
 function VideoPlayerModal({ video, onClose }) {
   const videoRef = useRef(null);
+  const [status, setStatus] = useState('loading'); // loading | playing | error
+
   useEffect(() => {
     const handler = (e) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', handler);
@@ -208,7 +210,7 @@ function VideoPlayerModal({ video, onClose }) {
               <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 2 }}>{video.category}</div>
             )}
           </div>
-          <div style={{ display: 'flex', gap: 8, shrink: 0 }}>
+          <div style={{ display: 'flex', gap: 8 }}>
             {video.file_url && (
               <a
                 href={video.file_url}
@@ -227,17 +229,36 @@ function VideoPlayerModal({ video, onClose }) {
         </div>
 
         {/* Player */}
-        <div style={{ background: '#000', borderRadius: 12, overflow: 'hidden', boxShadow: '0 24px 48px rgba(0,0,0,0.6)' }}>
+        <div style={{ background: '#000', borderRadius: 12, overflow: 'hidden', boxShadow: '0 24px 48px rgba(0,0,0,0.6)', position: 'relative', minHeight: 200 }}>
+          {status === 'loading' && (
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, color: '#94a3b8' }}>
+              <div style={{ width: 40, height: 40, border: '3px solid #334155', borderTopColor: '#c41e3a', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+              <span style={{ fontSize: '0.8rem' }}>Loading video…</span>
+            </div>
+          )}
+          {status === 'error' && (
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, color: '#94a3b8', padding: 20, textAlign: 'center' }}>
+              <span style={{ fontSize: '2rem' }}>⚠️</span>
+              <p style={{ margin: 0, fontSize: '0.85rem' }}>Could not play this video in the browser.</p>
+              <a href={video.file_url} target="_blank" rel="noreferrer"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '8px 18px', borderRadius: 8, background: '#c41e3a', color: '#fff', fontSize: '0.85rem', fontWeight: 700, textDecoration: 'none', marginTop: 4 }}>
+                <ExternalLink size={14} /> Open in Device Player
+              </a>
+            </div>
+          )}
           <video
             ref={videoRef}
             src={video.file_url}
             controls
             autoPlay
             playsInline
-            controlsList="nodownload"
-            style={{ width: '100%', maxHeight: '72vh', display: 'block', outline: 'none' }}
+            style={{ width: '100%', maxHeight: '72vh', display: status === 'error' ? 'none' : 'block', outline: 'none' }}
+            onCanPlay={() => setStatus('playing')}
+            onLoadedMetadata={() => setStatus('playing')}
+            onError={() => setStatus('error')}
           />
         </div>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
         {video.description && (
           <p style={{ color: '#94a3b8', fontSize: '0.82rem', lineHeight: 1.5, margin: 0 }}>{video.description}</p>

@@ -1,6 +1,7 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
 
@@ -56,8 +57,20 @@ async function getStorageClient() {
   return _objClient;
 }
 
-const _videoCache = new Map(); // objectName → { buffer, ts }
-const VIDEO_CACHE_TTL = 30 * 60 * 1000; // 30 min
+// Temp-file path cache: objectName → { tmpPath, ts }
+const _videoTmpCache = new Map();
+const VIDEO_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+
+// Periodically evict expired temp-file cache entries and delete the files
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, val] of _videoTmpCache) {
+    if (now - val.ts > VIDEO_CACHE_TTL) {
+      _videoTmpCache.delete(key);
+      fs.unlink(val.tmpPath, () => {});
+    }
+  }
+}, 15 * 60 * 1000);
 
 app.get('/api/obj/*', async (req, res) => {
   try {
@@ -67,65 +80,62 @@ app.get('/api/obj/*', async (req, res) => {
 
     const ext = path.extname(objectName).toLowerCase();
     const mimeMap = {
-      '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime',
+      '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/mp4',
       '.ogg': 'video/ogg', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
       '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp',
       '.pdf': 'application/pdf', '.doc': 'application/msword',
       '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     };
     const contentType = mimeMap[ext] || 'application/octet-stream';
-    const isVideo = ['.mp4', '.webm', '.ogg', '.mov', '.avi', '.mkv'].includes(ext);
+    const isVideo = ['.mp4', '.webm', '.ogg', '.mov', '.avi', '.mkv', '.m4v', '.3gp'].includes(ext);
 
     const existsResult = await client.exists(objectName);
     if (!existsResult.ok || !existsResult.value) {
+      console.warn('[obj-serve] not found in storage:', objectName);
       return res.status(404).json({ error: 'File not found in storage' });
     }
 
     if (isVideo) {
-      // For video: download into memory (with cache) then serve with full Range support
-      // so the browser / native player can seek freely.
-      let buffer;
-      const cached = _videoCache.get(objectName);
-      if (cached && Date.now() - cached.ts < VIDEO_CACHE_TTL) {
-        buffer = cached.buffer;
+      // For video: download to a temp file on disk so res.sendFile can serve it with
+      // full HTTP Range request support (206 Partial Content) — required by iOS Safari
+      // and all other mobile players to seek and play correctly.
+      let tmpPath;
+      const cached = _videoTmpCache.get(objectName);
+      if (cached && Date.now() - cached.ts < VIDEO_CACHE_TTL && fs.existsSync(cached.tmpPath)) {
+        tmpPath = cached.tmpPath;
+        console.log('[obj-serve] serving video from disk cache:', objectName);
       } else {
-        const result = await client.downloadAsBytes(objectName);
-        if (!result.ok) return res.status(500).json({ error: 'Failed to read video from storage' });
-        buffer = Buffer.from(result.value);
-        _videoCache.set(objectName, { buffer, ts: Date.now() });
+        tmpPath = path.join(os.tmpdir(), `dynapharm_vid_${Date.now()}_${Math.random().toString(36).slice(2)}${ext}`);
+        console.log('[obj-serve] downloading video to disk:', objectName);
+        const result = await client.downloadToFilename(objectName, tmpPath);
+        if (!result.ok) {
+          console.error('[obj-serve] downloadToFilename failed for:', objectName, result.error);
+          return res.status(500).json({ error: 'Failed to download video from storage' });
+        }
+        _videoTmpCache.set(objectName, { tmpPath, ts: Date.now() });
+        console.log('[obj-serve] video cached on disk:', tmpPath);
       }
 
-      const total = buffer.length;
-      const rangeHeader = req.headers.range;
-
+      // res.sendFile handles Range requests (206 Partial Content) automatically.
+      // This is what iOS Safari / all mobile browsers require to play video.
       res.setHeader('Content-Type', contentType);
-      res.setHeader('Accept-Ranges', 'bytes');
       res.setHeader('Cache-Control', 'public, max-age=3600');
-
-      if (rangeHeader) {
-        const [startStr, endStr] = rangeHeader.replace(/bytes=/, '').split('-');
-        const start = parseInt(startStr, 10);
-        const end = endStr ? parseInt(endStr, 10) : total - 1;
-        const chunkSize = end - start + 1;
-        res.status(206);
-        res.setHeader('Content-Range', `bytes ${start}-${end}/${total}`);
-        res.setHeader('Content-Length', chunkSize);
-        res.end(buffer.slice(start, end + 1));
-      } else {
-        res.status(200);
-        res.setHeader('Content-Length', total);
-        res.end(buffer);
-      }
+      res.sendFile(tmpPath, { headers: { 'Content-Type': contentType } }, (err) => {
+        if (err) {
+          console.error('[obj-serve] sendFile error:', err.message);
+          if (!res.headersSent) res.status(500).json({ error: 'Failed to stream video' });
+        }
+      });
     } else {
-      // Non-video: stream directly
+      // Non-video: stream directly from object storage
       const fileStream = await client.downloadAsStream(objectName);
       res.setHeader('Content-Type', contentType);
       res.setHeader('Cache-Control', 'public, max-age=604800');
       fileStream.pipe(res);
     }
   } catch (err) {
-    console.error('[obj-serve]', err.message);
-    res.status(500).json({ error: 'Failed to serve file' });
+    console.error('[obj-serve] error:', err.message, err.stack?.split('\n')[1]);
+    if (!res.headersSent) res.status(500).json({ error: 'Failed to serve file' });
   }
 });
 
