@@ -18,6 +18,7 @@ export function setLivePrices(prices) {
       cp:          Number(p.cp)  || 0,
       cif:         Number(p.cif) || 0,
       bv:          Number(p.bv)  || 0,
+      is_package:  !!p.is_package,
     }));
   }
 }
@@ -117,22 +118,25 @@ export const PACKAGE_DATABASE = PACKAGE_DATA;
 
 export function getPackagesForPOS() {
   const liveList = getLiveProductList();
-  return Object.entries(PACKAGE_DATABASE).map(([name, pkg], idx) => {
-    const liveOverride = liveList.find(p => p.description?.toLowerCase() === name.toLowerCase());
-    return {
-      id:          `pkg-${idx}-${name.replace(/\s+/g, '-').toLowerCase()}`,
-      name,
-      description: name,
-      dp:          liveOverride ? Number(liveOverride.dp)  || pkg.price.dp  : pkg.price.dp,
-      cp:          liveOverride ? Number(liveOverride.cp)  || pkg.price.cp  : pkg.price.cp,
-      bv:          liveOverride ? Number(liveOverride.bv)  || pkg.price.bv  : pkg.price.bv,
-      cif:         0,
-      price:       liveOverride ? Number(liveOverride.cp)  || pkg.price.cp  : pkg.price.cp,
-      isPackage:   true,
-      components:  pkg.products,
-      hasPricing:  true,
-    };
-  });
+  return liveList
+    .filter(p => p.is_package)
+    .map((p, idx) => {
+      const key = (p.description || '').toLowerCase();
+      const staticEntry = Object.entries(PACKAGE_DATABASE).find(([n]) => n.toLowerCase() === key);
+      return {
+        id:         `pkg-${idx}-${(p.description || '').replace(/\s+/g, '-').toLowerCase()}`,
+        name:        p.description,
+        description: p.description,
+        dp:          Number(p.dp)  || 0,
+        cp:          Number(p.cp)  || 0,
+        bv:          Number(p.bv)  || 0,
+        cif:         Number(p.cif) || 0,
+        price:       Number(p.cp)  || 0,
+        isPackage:   true,
+        components:  staticEntry ? staticEntry[1].products : [],
+        hasPricing:  true,
+      };
+    });
 }
 
 /* ── Health Check / Consultation services ──────────────────────────────────── */
@@ -195,14 +199,9 @@ export function calculatePrescriptionTotals(medicines, membershipStatus) {
   };
   if (!medicines || !medicines.length) return totals;
   medicines.forEach(med => {
-    const isPackage = PACKAGE_DATABASE[med.name];
     let dp = 0, cp = 0, bv = 0;
-    if (isPackage) {
-      dp = isPackage.price.dp; cp = isPackage.price.cp; bv = isPackage.price.bv;
-    } else {
-      const p = findProductPrice(med.name);
-      if (p) { dp = p.dp; cp = p.cp; bv = p.bv; }
-    }
+    const p = findProductPrice(med.name);
+    if (p) { dp = p.dp; cp = p.cp; bv = p.bv; }
     totals.total.dp += dp; totals.total.cp += cp; totals.total.bv += bv;
     if (med.dispensed) {
       totals.dispensed.dp += dp; totals.dispensed.cp += cp; totals.dispensed.bv += bv;

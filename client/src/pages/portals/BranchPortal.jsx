@@ -523,23 +523,8 @@ function WalkInSalesTab() {
         };
       });
 
-      // Append DB products not already on the price list
-      const dbOnlyProducts = dbProducts
-        .filter(db => {
-          const key = (db.name || db.description || '').toUpperCase().trim();
-          return !priceListSet.has(key);
-        })
-        .map(p => ({
-          ...p,
-          dp: Number(p.dp || p.price) || 0,
-          cp: Number(p.cp || p.price) || 0,
-          bv: Number(p.bv || p.bv_points) || 0,
-          cif: 0,
-          hasPricing: false,
-        }));
-
       const packages = getPackagesForPOS();
-      setProducts([...priceListProducts, ...dbOnlyProducts, ...packages]);
+      setProducts([...priceListProducts, ...packages]);
     }).finally(() => setLoading(false));
   }, []);
 
@@ -1658,10 +1643,9 @@ function PrescriptionsTab() {
   };
 
   const getEffectivePrice = (medName) => {
-    const pkg = PACKAGE_DATABASE[medName];
-    if (pkg) return { dp: pkg.price.dp, cp: pkg.price.cp, bv: pkg.price.bv, isPackage: true, products: pkg.products };
     const p = findProductPrice(medName);
-    if (p) return { dp: p.dp, cp: p.cp, bv: p.bv, isPackage: false };
+    const pkg = PACKAGE_DATABASE[medName];
+    if (p) return { dp: p.dp, cp: p.cp, bv: p.bv, isPackage: !!pkg, products: pkg?.products };
     return { dp: 0, cp: 0, bv: 0, isPackage: false };
   };
 

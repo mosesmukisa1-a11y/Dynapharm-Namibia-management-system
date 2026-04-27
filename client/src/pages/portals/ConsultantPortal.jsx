@@ -1091,17 +1091,20 @@ ${consultantNotes ? `
                 <div style={{ background: 'white', border: '1px solid #e0e0e0', borderRadius: '8px', padding: '15px', marginBottom: '20px' }}>
                   <h3 style={{ margin: '0 0 10px', fontSize: '1rem', color: '#2c3e50' }}>Prescription & Medicine Selection</h3>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '8px', maxHeight: '400px', overflowY: 'auto', marginBottom: '12px' }}>
-                    {Object.entries(PACKAGE_DATABASE).map(([pkgName, pkgInfo], idx) => (
+                    {getLiveProductList().filter(p => p.is_package).map((pkg, idx) => {
+                      const staticEntry = PACKAGE_DATABASE[pkg.description];
+                      return (
                       <div key={`pkg-${idx}`} style={{ background: '#e8f5e9', borderLeft: '4px solid #27ae60', padding: '10px', borderRadius: '6px', display: 'flex', alignItems: 'start', gap: '8px' }}>
-                        <input type="checkbox" checked={selectedMedicines.has(pkgName)} onChange={() => toggleMedicine(pkgName)} style={{ marginTop: '3px', width: '16px', height: '16px', cursor: 'pointer' }} />
-                        <label style={{ cursor: 'pointer', flex: 1 }} onClick={() => toggleMedicine(pkgName)}>
-                          <span style={{ fontWeight: 'bold', color: '#27ae60' }}>📦 {pkgName}</span>
-                          <br /><small style={{ color: '#666' }}>Package ({pkgInfo.products.length} products) - DP: N${pkgInfo.price.dp} | CP: N${pkgInfo.price.cp} | BV: {pkgInfo.price.bv}</small>
-                          <br /><small style={{ fontSize: '0.75rem', color: '#888' }}>Contains: {pkgInfo.products.map(p => `${p.name} (Qty: ${p.quantity})`).join(', ')}</small>
+                        <input type="checkbox" checked={selectedMedicines.has(pkg.description)} onChange={() => toggleMedicine(pkg.description)} style={{ marginTop: '3px', width: '16px', height: '16px', cursor: 'pointer' }} />
+                        <label style={{ cursor: 'pointer', flex: 1 }} onClick={() => toggleMedicine(pkg.description)}>
+                          <span style={{ fontWeight: 'bold', color: '#27ae60' }}>📦 {pkg.description}</span>
+                          <br /><small style={{ color: '#666' }}>{staticEntry ? `Package (${staticEntry.products.length} products) - ` : 'Package - '}DP: N${pkg.dp} | CP: N${pkg.cp} | BV: {pkg.bv}</small>
+                          {staticEntry && <><br /><small style={{ fontSize: '0.75rem', color: '#888' }}>Contains: {staticEntry.products.map(p => `${p.name} (Qty: ${p.quantity})`).join(', ')}</small></>}
                         </label>
                       </div>
-                    ))}
-                    {getLiveProductList().map((product, idx) => (
+                      );
+                    })}
+                    {getLiveProductList().filter(p => !p.is_package).map((product, idx) => (
                       <div key={`prod-${idx}`} style={{ padding: '8px', borderRadius: '6px', display: 'flex', alignItems: 'start', gap: '8px', border: '1px solid #f0f0f0' }}>
                         <input type="checkbox" checked={selectedMedicines.has(product.description)} onChange={() => toggleMedicine(product.description)} style={{ marginTop: '3px', width: '16px', height: '16px', cursor: 'pointer' }} />
                         <label style={{ cursor: 'pointer', flex: 1 }} onClick={() => toggleMedicine(product.description)}>
