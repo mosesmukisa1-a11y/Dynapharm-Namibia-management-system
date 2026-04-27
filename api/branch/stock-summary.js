@@ -160,6 +160,7 @@ export default async function handler(req, res) {
         else if (t === 'sale' || t.includes('sale')) br.qty_sold += q;
         else if (t === 'dispense' || t === 'prescription_dispense') br.qty_dispensed += q;
         else if (t === 'return') br.qty_returned += q;
+        else if (t === 'adjustment') br.qty_adjusted += q;
         const ld = fmtDt(sm.created_at);
         if (!br.last_movement || (ld && ld > br.last_movement)) br.last_movement = ld;
       }
@@ -171,6 +172,7 @@ export default async function handler(req, res) {
         else if (t === 'write_off') br.qty_written_off += q;
         else if (t === 'sale' || t.includes('sale')) br.qty_sold += q;
         else if (t === 'dispense' || t === 'prescription_dispense') br.qty_dispensed += q;
+        else if (t === 'adjustment') br.qty_written_off += q;
         const ld = fmtDt(sm.created_at);
         if (!br.last_movement || (ld && ld > br.last_movement)) br.last_movement = ld;
       }

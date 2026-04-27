@@ -1460,7 +1460,7 @@ function AICommandCenter({ branch }) {
   const branchBatchesFlat = data.branchData.flatMap(br => (br.inventory || []).map(inv => ({
     product_name: inv.product_name, description: inv.product_name,
     batch_no: inv.batch_no, expiry_date: inv.expiry_date,
-    quantity: inv.quantity, unit_price: inv.unit_price || getDPCPrice(inv.product_name || ''),
+    quantity: inv.quantity, unit_price: inv.unit_price || getCIFPrice(inv.product_name || ''),
     location: br.branch_id,
   })));
   const allBatches = [...filteredBatches, ...branchBatchesFlat];
@@ -1773,7 +1773,7 @@ function OverviewTab({ branch }) {
   const branchTotalDPC = data.branchData.reduce((s, br) => {
     return s + (br.inventory || []).reduce((si, inv) => {
       const qty = Number(inv.quantity || 0);
-      return si + qty * (Number(inv.unit_price || 0) || getDPCPrice(inv.product_name || ''));
+      return si + qty * (getDPCPrice(inv.product_name || '') || Number(inv.unit_price || 0));
     }, 0);
   }, 0);
 
@@ -4407,6 +4407,7 @@ function InventoryTab({ branch }) {
   const importedValue  = periodImports.reduce((s, i) => s + Number(i.cif_total_value || 0), 0);
 
   const countryStockQty  = batches.filter(b => b.location === 'country_stock').reduce((s, b) => s + Number(b.remaining_quantity || 0), 0);
+  const countryStockDPC  = batches.filter(b => b.location === 'country_stock').reduce((s, b) => s + Number(b.remaining_quantity || 0) * (getDPCPrice(b.product_name || b.description || '') || Number(b.unit_price || 0)), 0);
   const warehouseQty     = batches.filter(b => b.location && b.location !== 'country_stock' && !b.location.includes('branch')).reduce((s, b) => s + Number(b.remaining_quantity || 0), 0);
   const totalAvailable   = batches.filter(b => b.status !== 'expired' && b.status !== 'depleted').reduce((s, b) => s + Number(b.remaining_quantity || 0), 0);
 
@@ -4569,7 +4570,7 @@ function InventoryTab({ branch }) {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
           { label: 'Imported', sub: 'from supplier', value: totalImported, sub2: importedValue ? `CIF: ${formatCurrency(importedValue)}` : null, icon: '🚢', bg: '#f0fdf4', border: '#86efac', color: '#166534' },
-          { label: 'Country Stock', sub: 'on hand', value: countryStockQty, sub2: `${formatCurrency(countryStockQty * getDPCPrice(''))} est. DPC`, icon: '🏪', bg: '#eff6ff', border: '#93c5fd', color: '#1e40af' },
+          { label: 'Country Stock', sub: 'on hand', value: countryStockQty, sub2: countryStockDPC > 0 ? `${formatCurrency(countryStockDPC)} est. DPC` : null, icon: '🏪', bg: '#eff6ff', border: '#93c5fd', color: '#1e40af' },
           { label: 'In Warehouses', sub: 'on hand', value: warehouseQty, icon: '🏭', bg: '#f5f3ff', border: '#c4b5fd', color: '#7c3aed' },
           { label: 'Released to Wh.', sub: 'period movements', value: releasedToWh, icon: '📤', bg: '#fff7ed', border: '#fed7aa', color: '#c2410c' },
           { label: 'At Branches', sub: 'received', value: branchHeld, icon: '📦', bg: '#f0f9ff', border: '#7dd3fc', color: '#0369a1' },
@@ -5606,7 +5607,7 @@ function CountryInventoryTab() {
       aggregated[key] = { product_name: b.product_name, location: b.location || 'Unknown', total_quantity: 0, total_value: 0, batch_count: 0 };
     }
     aggregated[key].total_quantity += Number(b.quantity || 0);
-    aggregated[key].total_value += Number(b.quantity || 0) * Number(b.unit_price || 0);
+    aggregated[key].total_value += Number(b.quantity || 0) * (Number(b.unit_price || 0) || getBatchCIF(b));
     aggregated[key].batch_count += 1;
   });
 
@@ -7284,7 +7285,7 @@ function BranchStockTab({ branch }) {
     const closingQty = data.closing_qty || 0;
     const closingDPC = (data.inventory || []).reduce((s, inv) => {
       const qty = Number(inv.quantity || 0);
-      return s + qty * (Number(inv.unit_price || 0) || getDPCPrice(inv.product_name || inv.description || ''));
+      return s + qty * (getDPCPrice(inv.product_name || inv.description || '') || Number(inv.unit_price || 0));
     }, 0);
     const products = [];
     const productMap = {};
@@ -7294,7 +7295,7 @@ function BranchStockTab({ branch }) {
       if (!productMap[mapKey]) productMap[mapKey] = { product_name: name, qty: 0, dpcValue: 0, batchNo: inv.batch_no || null, expiryDate: inv.expiry_date || null, expiring: false, expired: false, source_warehouse: inv.source_warehouse || null };
       const qty = Number(inv.quantity || 0);
       productMap[mapKey].qty += qty;
-      productMap[mapKey].dpcValue += qty * (Number(inv.unit_price || 0) || getDPCPrice(name));
+      productMap[mapKey].dpcValue += qty * (getDPCPrice(name) || Number(inv.unit_price || 0));
       if (inv.expiry_date) {
         const exp = new Date(inv.expiry_date);
         if (exp < now && qty > 0) productMap[mapKey].expired = true;
@@ -7756,7 +7757,7 @@ function StockReportsTab({ branch }) {
     if (!data) return { name: b, key, formula: { opening: 0, issued: 0, salesQty: 0, dispensed: 0, writeoffs: 0, transferredOut: 0, returns: 0, closing: 0, closingValue: 0, salesRevenue: 0, expiringQty: 0, expiredQty: 0 } };
     const closingDPC = (data.inventory || []).reduce((s, inv) => {
       const qty = Number(inv.quantity || 0);
-      return s + qty * (Number(inv.unit_price || 0) || getDPCPrice(inv.product_name || ''));
+      return s + qty * (getDPCPrice(inv.product_name || '') || Number(inv.unit_price || 0));
     }, 0);
     return {
       name: b, key,
