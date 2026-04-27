@@ -3598,8 +3598,8 @@ async function extractPdfText(file) {
   }
 
   // Post-process: merge lines that contain ONLY numbers/spaces into the previous line.
-  // The Dynapharm PDF places description+DP on one text row and CP+BV on the next
-  // (slightly different Y coordinate), so we need to rejoin them before parsing.
+  // The Dynapharm PDF places description+CIF on one text row and DP+CP+BV (or CP+BV)
+  // on the next (slightly different Y coordinate), so we need to rejoin them before parsing.
   const merged = [];
   for (const line of allLines) {
     if (/^\s*[\d.]+(?:\s+[\d.]+)*\s*$/.test(line) && merged.length > 0) {
@@ -3612,7 +3612,10 @@ async function extractPdfText(file) {
   return merged.join('\n');
 }
 
-// Parse a raw price-list text block into [{description,dp,cp,bv}]
+// Parse a raw price-list text block into [{description,cif,dp,cp,bv}]
+// Supports both:
+//   Official 4-column format:  DESCRIPTION   CIF   DP   CP   BV
+//   Legacy 3-column format:    DESCRIPTION   DP    CP   BV
 function parsePriceListText(text) {
   const results = [];
   const seen = new Set();
@@ -3621,28 +3624,41 @@ function parsePriceListText(text) {
     const line = raw.trim();
     if (!line) continue;
 
+    // Try 4-column format first (official Dynapharm: CIF DP CP BV).
+    // The description is separated from the first number by 2+ spaces so we can
+    // reliably split even when the description itself contains numbers (e.g. "30's").
+    // Accepts decimal values (e.g. 11.5 BV).
+    const m4 = line.match(/^(.+?)\s{2,}(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s*$/);
+    if (m4) {
+      const description = m4[1].trim().toUpperCase().replace(/\s+/g, ' ');
+      const cif = Math.round(Number(m4[2]));
+      const dp  = Math.round(Number(m4[3]));
+      const cp  = Math.round(Number(m4[4]));
+      const bv  = parseFloat(Number(m4[5]).toFixed(2));
+      if (!description || description === 'DESCRIPTION') continue;
+      if (isNaN(dp) || isNaN(cp) || isNaN(bv)) continue;
+      if (dp <= 0 || cp <= 0) continue;
+      if (seen.has(description)) continue;
+      seen.add(description);
+      results.push({ description, cif, dp, cp, bv });
+      continue;
+    }
+
+    // Fallback: legacy 3-column format (DP CP BV) — no CIF column.
     // Use GREEDY (.+) so regex takes the longest possible description,
-    // then backtracks to find the LAST run of 2+ spaces before 3 numbers.
-    // This correctly handles product names that contain numbers or internal spaces.
-    // Accepts decimal values (e.g. 11.5 BV) — stored as-is, not rounded.
-    const m = line.match(/^(.+)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s*$/);
-    if (!m) continue;
-
-    // Normalise: trim, uppercase, collapse any internal whitespace runs to one space
-    const description = m[1].trim().toUpperCase().replace(/\s+/g, ' ');
-    const dp = Math.round(Number(m[2]));
-    const cp = Math.round(Number(m[3]));
-    const bv = parseFloat(Number(m[4]).toFixed(2));
-
-    // Skip header or invalid rows
+    // then backtracks to find 3 numbers at the end.
+    const m3 = line.match(/^(.+)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s*$/);
+    if (!m3) continue;
+    const description = m3[1].trim().toUpperCase().replace(/\s+/g, ' ');
+    const dp  = Math.round(Number(m3[2]));
+    const cp  = Math.round(Number(m3[3]));
+    const bv  = parseFloat(Number(m3[4]).toFixed(2));
     if (!description || description === 'DESCRIPTION') continue;
     if (isNaN(dp) || isNaN(cp) || isNaN(bv)) continue;
     if (dp <= 0 || cp <= 0) continue;
-    // Skip duplicate descriptions after normalisation (keep first occurrence)
     if (seen.has(description)) continue;
     seen.add(description);
-
-    results.push({ description, dp, cp, bv });
+    results.push({ description, cif: 0, dp, cp, bv });
   }
   return results;
 }
@@ -3786,7 +3802,7 @@ function PriceListTab() {
     setAlert(null);
     try {
       for (const p of importParsed) {
-        await api.prices.create({ description: p.description, dp: p.dp, cp: p.cp, bv: p.bv });
+        await api.prices.create({ description: p.description, cif: p.cif || 0, dp: p.dp, cp: p.cp, bv: p.bv });
       }
       setAlert({ type: 'success', msg: `✅ ${importParsed.length} product price(s) imported successfully.` });
       setShowImport(false);
@@ -3982,7 +3998,7 @@ function PriceListTab() {
                       <span key={ext} style={{ fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: ext === 'PDF' ? '#fef2f2' : '#f1f5f9', color: ext === 'PDF' ? '#c41e3a' : '#475569', border: '1px solid ' + (ext === 'PDF' ? '#fecaca' : '#e2e8f0') }}>{ext}</span>
                     ))}
                   </div>
-                  <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 2 }}>Official Dynapharm format · DESCRIPTION · DP · CP · BV</div>
+                  <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 2 }}>Official Dynapharm format · DESCRIPTION · CIF · DP · CP · BV</div>
                 </>
               )}
               <input id="priceListImportFile" ref={importFileRef} type="file" accept=".pdf,.txt,.csv" style={{ display: 'none' }} onChange={handleImportFile} disabled={importLoading} />
@@ -3996,12 +4012,12 @@ function PriceListTab() {
                 value={importText}
                 onChange={e => handleImportTextChange(e.target.value)}
                 rows={9}
-                placeholder={"GREEN TEA CAPSULE 30's 195 254 43\nBEE POLLEN CAPSULE (100's) 320 390 75\nSPIRULINA 30's 180 235 40\n..."}
+                placeholder={"GREEN TEA CAPSULE 30's  90  195 254 43\nBEE POLLEN CAPSULE (100's)  158  320 390 75\nSPIRULINA 30's  95  180 235 40\n..."}
                 style={{ width: '100%', boxSizing: 'border-box', border: '1.5px solid #e2e8f0', borderRadius: 10, padding: '12px 14px', fontSize: '0.78rem', fontFamily: 'monospace', resize: 'vertical', outline: 'none', lineHeight: 1.7, color: '#1e293b', background: '#f8fafc' }}
                 onFocus={e => { e.target.style.borderColor = '#c41e3a'; e.target.style.boxShadow = '0 0 0 3px rgba(196,30,58,0.08)'; }}
                 onBlur={e => { e.target.style.borderColor = '#e2e8f0'; e.target.style.boxShadow = 'none'; }}
               />
-              <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: 6 }}>Each line: product name followed by DP, CP, and BV numbers</div>
+              <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: 6 }}>Each line: product name (2+ spaces) then CIF, DP, CP, BV — or just DP, CP, BV for legacy format</div>
             </div>
           )}
 
@@ -4021,6 +4037,7 @@ function PriceListTab() {
                   <thead>
                     <tr style={{ background: '#f8fafc', position: 'sticky', top: 0 }}>
                       <th style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid #e2e8f0', fontWeight: 700, color: '#374151' }}>Product</th>
+                      <th style={{ textAlign: 'right', padding: '8px 10px', borderBottom: '1px solid #e2e8f0', fontWeight: 700, color: '#374151' }}>CIF</th>
                       <th style={{ textAlign: 'right', padding: '8px 10px', borderBottom: '1px solid #e2e8f0', fontWeight: 700, color: '#374151' }}>DP</th>
                       <th style={{ textAlign: 'right', padding: '8px 10px', borderBottom: '1px solid #e2e8f0', fontWeight: 700, color: '#374151' }}>CP</th>
                       <th style={{ textAlign: 'right', padding: '8px 10px', borderBottom: '1px solid #e2e8f0', fontWeight: 700, color: '#374151' }}>BV</th>
@@ -4033,6 +4050,7 @@ function PriceListTab() {
                       return (
                         <tr key={i} style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
                           <td style={{ padding: '6px 12px', fontWeight: 500, color: '#1e293b', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.description}</td>
+                          <td style={{ padding: '6px 10px', textAlign: 'right', color: '#64748b' }}>{p.cif > 0 ? p.cif : '—'}</td>
                           <td style={{ padding: '6px 10px', textAlign: 'right', color: '#374151' }}>{p.dp}</td>
                           <td style={{ padding: '6px 10px', textAlign: 'right', color: '#374151' }}>{p.cp}</td>
                           <td style={{ padding: '6px 10px', textAlign: 'right', color: '#374151' }}>{p.bv}</td>
