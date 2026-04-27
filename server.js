@@ -56,10 +56,12 @@ async function getStorageClient() {
   return _objClient;
 }
 
+const _videoCache = new Map(); // objectName → { buffer, ts }
+const VIDEO_CACHE_TTL = 30 * 60 * 1000; // 30 min
+
 app.get('/api/obj/*', async (req, res) => {
   try {
     const client = await getStorageClient();
-    // req.path = "/api/obj/public/uploads/filename.mp4"
     const objectName = req.path.replace(/^\/api\/obj\//, '');
     if (!objectName) return res.status(400).json({ error: 'No object path specified' });
 
@@ -72,22 +74,55 @@ app.get('/api/obj/*', async (req, res) => {
       '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     };
     const contentType = mimeMap[ext] || 'application/octet-stream';
+    const isVideo = ['.mp4', '.webm', '.ogg', '.mov', '.avi', '.mkv'].includes(ext);
 
-    // downloadAsStream returns the stream directly (not { ok, value })
-    // check existence first to give a clean 404
     const existsResult = await client.exists(objectName);
     if (!existsResult.ok || !existsResult.value) {
       return res.status(404).json({ error: 'File not found in storage' });
     }
 
-    const fileStream = await client.downloadAsStream(objectName);
+    if (isVideo) {
+      // For video: download into memory (with cache) then serve with full Range support
+      // so the browser / native player can seek freely.
+      let buffer;
+      const cached = _videoCache.get(objectName);
+      if (cached && Date.now() - cached.ts < VIDEO_CACHE_TTL) {
+        buffer = cached.buffer;
+      } else {
+        const result = await client.downloadAsBytes(objectName);
+        if (!result.ok) return res.status(500).json({ error: 'Failed to read video from storage' });
+        buffer = Buffer.from(result.value);
+        _videoCache.set(objectName, { buffer, ts: Date.now() });
+      }
 
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Cache-Control', 'public, max-age=604800');
-    if (['.mp4', '.webm', '.ogg', '.mov'].includes(ext)) {
+      const total = buffer.length;
+      const rangeHeader = req.headers.range;
+
+      res.setHeader('Content-Type', contentType);
       res.setHeader('Accept-Ranges', 'bytes');
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+
+      if (rangeHeader) {
+        const [startStr, endStr] = rangeHeader.replace(/bytes=/, '').split('-');
+        const start = parseInt(startStr, 10);
+        const end = endStr ? parseInt(endStr, 10) : total - 1;
+        const chunkSize = end - start + 1;
+        res.status(206);
+        res.setHeader('Content-Range', `bytes ${start}-${end}/${total}`);
+        res.setHeader('Content-Length', chunkSize);
+        res.end(buffer.slice(start, end + 1));
+      } else {
+        res.status(200);
+        res.setHeader('Content-Length', total);
+        res.end(buffer);
+      }
+    } else {
+      // Non-video: stream directly
+      const fileStream = await client.downloadAsStream(objectName);
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'public, max-age=604800');
+      fileStream.pipe(res);
     }
-    fileStream.pipe(res);
   } catch (err) {
     console.error('[obj-serve]', err.message);
     res.status(500).json({ error: 'Failed to serve file' });

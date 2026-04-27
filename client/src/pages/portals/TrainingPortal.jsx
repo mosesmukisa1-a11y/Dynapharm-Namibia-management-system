@@ -184,9 +184,73 @@ function MaterialsTab({ isTrainer, onUpload }) {
   );
 }
 
+function VideoPlayerModal({ video, onClose }) {
+  const videoRef = useRef(null);
+  useEffect(() => {
+    const handler = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', zIndex: 9999, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+    >
+      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 860, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div style={{ color: '#fff', fontWeight: 700, fontSize: '1rem', flex: 1, minWidth: 0 }}>
+            <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {video.entity_name || video.filename || 'Training Video'}
+            </div>
+            {video.category && video.category !== 'video' && (
+              <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 2 }}>{video.category}</div>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: 8, shrink: 0 }}>
+            {video.file_url && (
+              <a
+                href={video.file_url}
+                target="_blank"
+                rel="noreferrer"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 14px', borderRadius: 8, background: '#1e293b', color: '#cbd5e1', fontSize: '0.8rem', fontWeight: 600, textDecoration: 'none', border: '1px solid #334155' }}
+              >
+                <ExternalLink size={13} /> Open in Player
+              </a>
+            )}
+            <button
+              onClick={onClose}
+              style={{ width: 36, height: 36, borderRadius: 8, background: '#1e293b', border: '1px solid #334155', color: '#cbd5e1', fontSize: '1.2rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            >✕</button>
+          </div>
+        </div>
+
+        {/* Player */}
+        <div style={{ background: '#000', borderRadius: 12, overflow: 'hidden', boxShadow: '0 24px 48px rgba(0,0,0,0.6)' }}>
+          <video
+            ref={videoRef}
+            src={video.file_url}
+            controls
+            autoPlay
+            playsInline
+            controlsList="nodownload"
+            style={{ width: '100%', maxHeight: '72vh', display: 'block', outline: 'none' }}
+          />
+        </div>
+
+        {video.description && (
+          <p style={{ color: '#94a3b8', fontSize: '0.82rem', lineHeight: 1.5, margin: 0 }}>{video.description}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function VideosTab({ isTrainer, onUpload }) {
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [activeVideo, setActiveVideo] = useState(null);
 
   useEffect(() => {
     api.get('/media?upload_type=training')
@@ -205,6 +269,8 @@ function VideosTab({ isTrainer, onUpload }) {
 
   return (
     <div>
+      {activeVideo && <VideoPlayerModal video={activeVideo} onClose={() => setActiveVideo(null)} />}
+
       {isTrainer && (
         <div className="flex justify-end mb-4">
           <button onClick={onUpload}
@@ -213,6 +279,7 @@ function VideosTab({ isTrainer, onUpload }) {
           </button>
         </div>
       )}
+
       {videos.length === 0 ? (
         <EmptyState
           icon={<Video size={48} />}
@@ -222,36 +289,68 @@ function VideosTab({ isTrainer, onUpload }) {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {videos.map(vid => (
-            <Card key={vid.id} className="hover:shadow-md transition-shadow overflow-hidden">
-              <div className="bg-black rounded-t-xl overflow-hidden">
+            <Card key={vid.id} className="overflow-hidden" style={{ cursor: vid.file_url ? 'pointer' : 'default' }}>
+              {/* Thumbnail / preview — click to open modal player */}
+              <div
+                onClick={() => vid.file_url && setActiveVideo(vid)}
+                style={{ background: '#0f172a', position: 'relative', aspectRatio: '16/9', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
+              >
                 {vid.file_url ? (
-                  <video src={vid.file_url} controls playsInline preload="metadata" className="w-full max-h-52 object-contain" />
-                ) : (
-                  <div className="h-40 flex items-center justify-center bg-gray-800">
-                    <div className="w-16 h-16 bg-primary/20 rounded-full flex items-center justify-center">
-                      <Play size={24} className="text-primary ml-1" />
-                    </div>
+                  <video
+                    src={vid.file_url + '#t=0.5'}
+                    preload="metadata"
+                    playsInline
+                    muted
+                    style={{ width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none' }}
+                  />
+                ) : null}
+                {/* Play overlay */}
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.35)', transition: 'background 0.15s' }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,0,0,0.15)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(0,0,0,0.35)'}
+                >
+                  <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'rgba(196,30,58,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 16px rgba(0,0,0,0.4)' }}>
+                    <Play size={22} color="#fff" style={{ marginLeft: 3 }} />
                   </div>
-                )}
-              </div>
-              <CardBody>
-                <div className="flex items-start justify-between gap-2">
-                  <h3 className="font-semibold text-gray-900 text-sm leading-snug">{vid.entity_name || vid.filename || 'Untitled Video'}</h3>
-                  {vid.file_url && (
-                    <a href={vid.file_url} target="_blank" rel="noreferrer" className="text-xs text-primary font-bold shrink-0" style={{ textDecoration: 'none' }}>Open ↗</a>
-                  )}
                 </div>
-                {vid.description && <p className="text-xs text-gray-500 mt-1 line-clamp-2">{vid.description}</p>}
-                <div className="flex items-center gap-2 mt-2 flex-wrap">
+              </div>
+
+              <CardBody>
+                <h3 className="font-semibold text-gray-900 text-sm leading-snug mb-1">
+                  {vid.entity_name || vid.filename || 'Untitled Video'}
+                </h3>
+                {vid.description && <p className="text-xs text-gray-500 line-clamp-2 mb-2">{vid.description}</p>}
+                <div className="flex items-center gap-2 flex-wrap mb-3">
                   {vid.category && vid.category !== 'video' && <Badge variant="info">{vid.category}</Badge>}
                   {vid.uploaded_by && <span className="text-xs text-gray-400">by {vid.uploaded_by}</span>}
                   {vid.file_size && <span className="text-xs text-gray-400">{(vid.file_size / 1024 / 1024).toFixed(1)} MB</span>}
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    onClick={() => vid.file_url && setActiveVideo(vid)}
+                    disabled={!vid.file_url}
+                    style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '8px 12px', borderRadius: 8, background: vid.file_url ? '#c41e3a' : '#e2e8f0', color: vid.file_url ? '#fff' : '#94a3b8', border: 'none', fontWeight: 700, fontSize: '0.8rem', cursor: vid.file_url ? 'pointer' : 'not-allowed' }}
+                  >
+                    <Play size={13} /> Play
+                  </button>
+                  {vid.file_url && (
+                    <a
+                      href={vid.file_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="Open in device media player"
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '8px 10px', borderRadius: 8, background: '#f1f5f9', color: '#475569', textDecoration: 'none', border: '1px solid #e2e8f0' }}
+                    >
+                      <ExternalLink size={14} />
+                    </a>
+                  )}
                 </div>
               </CardBody>
             </Card>
           ))}
         </div>
       )}
+
       {isTrainer && videos.length > 0 && (
         <div className="mt-5 p-4 rounded-xl border-2 border-dashed border-gray-200 text-center">
           <button onClick={onUpload}
