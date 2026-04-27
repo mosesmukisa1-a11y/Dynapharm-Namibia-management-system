@@ -70,6 +70,16 @@ export function getDPCPrice(productName) {
   return product ? product.dp : 0;
 }
 
+export function getCPPrice(productName) {
+  const product = findProductPrice(productName);
+  return product ? product.cp : 0;
+}
+
+export function getBVPoints(productName) {
+  const product = findProductPrice(productName);
+  return product ? product.bv : 0;
+}
+
 export function getProductProfit(productName, campaignPrice) {
   const product = findProductPrice(productName);
   if (!product) return { cif: 0, dp: 0, profit: 0, margin: 0 };

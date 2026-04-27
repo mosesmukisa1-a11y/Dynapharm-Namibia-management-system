@@ -31,7 +31,7 @@ export default async function handler(req, res) {
       const deductions = [];
       const insufficientItems = [];
 
-      const livePriceRows = await getMany(`SELECT description, dp, cp FROM product_prices`);
+      const livePriceRows = await getMany(`SELECT description, dp, cp, bv, cif FROM product_prices`);
       const livePriceMap = {};
       for (const row of livePriceRows) {
         if (row.description) livePriceMap[row.description.toLowerCase()] = row;
@@ -50,10 +50,14 @@ export default async function handler(req, res) {
             const livePrice = livePriceMap[comp.name.toLowerCase()];
             const dp = livePrice ? Number(livePrice.dp) || comp.dp : comp.dp;
             const cp = livePrice ? Number(livePrice.cp) || comp.cp : comp.cp;
+            const bv = livePrice ? Number(livePrice.bv) || 0 : 0;
+            const cif = livePrice ? Number(livePrice.cif) || 0 : 0;
             resolvedItems.push({
               product_name: comp.name,
               quantity: Math.round(Number(comp.quantity || 1) * qty),
               unit_price: isMember ? dp : cp,
+              bv_unit: bv,
+              cif_unit: cif,
               from_package: productName,
             });
           }
@@ -68,6 +72,8 @@ export default async function handler(req, res) {
             product_name: productName,
             quantity: qty,
             unit_price: passedPrice || fallbackPrice || null,
+            bv_unit: livePrice ? Number(livePrice.bv) || 0 : 0,
+            cif_unit: livePrice ? Number(livePrice.cif) || 0 : 0,
             from_package: item.from_package || null,
           });
         }
@@ -121,7 +127,7 @@ export default async function handler(req, res) {
               [smId, batch.product_name, batch.batch_no || '', batch.expiry_date || null, take, movType, branchId, reportId, dispenseNote, unitPrice]
             );
 
-            deductions.push({ product_name: batch.product_name, batch_no: batch.batch_no, quantity: take, unit_price: unitPrice, from_package: fromPackage });
+            deductions.push({ product_name: batch.product_name, batch_no: batch.batch_no, quantity: take, unit_price: unitPrice, bv_unit: item.bv_unit || 0, from_package: fromPackage });
             remaining -= take;
           }
 
@@ -141,6 +147,7 @@ export default async function handler(req, res) {
 
       const totalDispensedQty = deductions.reduce((s, d) => s + Number(d.quantity || 0), 0);
       const totalDispensedValue = deductions.reduce((s, d) => s + (Number(d.quantity || 0) * Number(d.unit_price || 0)), 0);
+      const totalDispensedBV = deductions.reduce((s, d) => s + (Number(d.quantity || 0) * Number(d.bv_unit || 0)), 0);
       const now = new Date();
       const serviceDate = now.toISOString().slice(0, 10);
       const serviceTime = now.toTimeString().slice(0, 8);
@@ -160,6 +167,7 @@ export default async function handler(req, res) {
           form_reference_id: reportId,
           product_total_dp: totalDispensedValue,
           total_qty: totalDispensedQty,
+          total_bv: totalDispensedBV,
           grand_total: totalDispensedValue,
           payment_status: 'paid',
           payment_method: pmNorm,

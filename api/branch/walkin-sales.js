@@ -304,7 +304,7 @@ export default async function handler(req, res) {
       const deductItems = [];
       const isMemberSale = (record.customer_type === 'member');
 
-      const livePriceRows = await getMany(`SELECT description, dp, cp FROM product_prices`);
+      const livePriceRows = await getMany(`SELECT description, dp, cp, bv, cif FROM product_prices`);
       const livePriceMap = {};
       for (const row of livePriceRows) {
         if (row.description) livePriceMap[row.description.toLowerCase()] = row;
