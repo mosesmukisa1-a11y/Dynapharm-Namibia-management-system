@@ -2110,27 +2110,64 @@ function MyProfitTab() {
                         </div>
                       </div>
                       {isExpanded && items.length > 0 && (
-                        <div style={{ borderTop: '1px solid #f1f5f9', padding: '8px 14px 12px', background: '#f8fafc' }}>
-                          <p style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 6 }}>Items Purchased</p>
-                          <div className="space-y-1">
-                            {items.map((item, i) => (
-                              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem', padding: '4px 0', borderBottom: i < items.length - 1 ? '1px dashed #e2e8f0' : 'none' }}>
-                                <div>
-                                  <span style={{ fontWeight: 600, color: '#1e293b' }}>{item.name || item.productName || item.product || `Item ${i + 1}`}</span>
-                                  {item.sku && <span style={{ color: '#94a3b8', marginLeft: 6, fontSize: '0.7rem' }}>({item.sku})</span>}
-                                  {(item.quantity || item.qty) && <span style={{ color: '#64748b', marginLeft: 6 }}>× {item.quantity || item.qty}</span>}
-                                </div>
-                                <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                                  {item.cp != null && <span style={{ color: '#1d4ed8', fontWeight: 700 }}>CP: {formatCurrency(Number(item.cp) * (item.quantity || item.qty || 1))}</span>}
-                                  {item.dp != null && item.cp != null && (
-                                    <span style={{ color: '#16a34a', marginLeft: 8, fontWeight: 700 }}>
-                                      Profit: {formatCurrency((Number(item.cp) - Number(item.dp)) * (item.quantity || item.qty || 1))}
+                        <div style={{ borderTop: '1px solid #e2e8f0', background: '#f8fafc' }}>
+                          {/* Receipt header */}
+                          <div style={{ padding: '8px 14px 6px', borderBottom: '1px dashed #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
+                            <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Receipt Copy</span>
+                            <div style={{ display: 'flex', gap: 10, fontSize: '0.68rem', color: '#94a3b8' }}>
+                              {sale.sale_number && <span style={{ fontFamily: 'monospace', color: '#c41e3a', fontWeight: 700 }}>{sale.sale_number}</span>}
+                              <span>{fmtDate(sale.sale_date)}</span>
+                              <span style={{ padding: '1px 6px', borderRadius: 4, background: '#eff6ff', color: '#1d4ed8', fontWeight: 700 }}>🏢 {fmtBranch(sale.branch_id)}</span>
+                            </div>
+                          </div>
+
+                          {/* Column headers */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 14px', fontSize: '0.65rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '1px solid #e2e8f0' }}>
+                            <span>Product</span>
+                            <div style={{ display: 'flex', gap: 24 }}>
+                              <span>Qty</span>
+                              <span style={{ minWidth: 56, textAlign: 'right' }}>CP Price</span>
+                              <span style={{ minWidth: 56, textAlign: 'right' }}>Your Profit</span>
+                            </div>
+                          </div>
+
+                          {/* Item rows */}
+                          <div style={{ padding: '0 14px' }}>
+                            {items.map((item, i) => {
+                              const name = item.product_name || item.name || item.productName || item.product || `Item ${i + 1}`;
+                              const qty = item.quantity || item.qty || 1;
+                              const cp = item.cpPrice ?? item.cp ?? item.unit_price ?? item.price ?? null;
+                              const dp = item.dpPrice ?? item.dp ?? null;
+                              const lineTotal = item.line_total ?? (cp != null ? cp * qty : null);
+                              const lineProfit = item.lineProfit ?? item.line_profit ?? (cp != null && dp != null ? (cp - dp) * qty : null);
+                              return (
+                                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem', padding: '6px 0', borderBottom: i < items.length - 1 ? '1px dashed #e2e8f0' : 'none' }}>
+                                  <div style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
+                                    <span style={{ fontWeight: 600, color: '#1e293b' }}>{name}</span>
+                                  </div>
+                                  <div style={{ display: 'flex', gap: 24, alignItems: 'center', flexShrink: 0 }}>
+                                    <span style={{ color: '#475569', fontWeight: 600, minWidth: 20, textAlign: 'center' }}>{qty}</span>
+                                    <span style={{ color: '#1d4ed8', fontWeight: 700, minWidth: 56, textAlign: 'right' }}>
+                                      {lineTotal != null ? formatCurrency(Number(lineTotal)) : '—'}
                                     </span>
-                                  )}
-                                  {item.cp == null && item.price != null && <span style={{ color: '#374151', fontWeight: 600 }}>{formatCurrency(Number(item.price) * (item.quantity || item.qty || 1))}</span>}
+                                    <span style={{ color: lineProfit > 0 ? '#16a34a' : '#94a3b8', fontWeight: 700, minWidth: 56, textAlign: 'right' }}>
+                                      {lineProfit != null && lineProfit > 0 ? `+${formatCurrency(Number(lineProfit))}` : '—'}
+                                    </span>
+                                  </div>
                                 </div>
-                              </div>
-                            ))}
+                              );
+                            })}
+                          </div>
+
+                          {/* Totals row */}
+                          <div style={{ margin: '0 14px', borderTop: '2px solid #e2e8f0', padding: '6px 0 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
+                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#374151' }}>Total ({items.length} item{items.length !== 1 ? 's' : ''})</span>
+                            <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+                              <span style={{ fontSize: '0.78rem', color: '#1d4ed8', fontWeight: 800 }}>CP: {formatCurrency(Number(sale.total || 0))}</span>
+                              {sale.profit_amount && (
+                                <span style={{ fontSize: '0.78rem', color: '#16a34a', fontWeight: 800 }}>Your Profit: +{formatCurrency(Number(sale.profit_amount))}</span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       )}
