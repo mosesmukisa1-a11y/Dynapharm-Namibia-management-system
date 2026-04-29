@@ -3045,6 +3045,7 @@ function BranchStockTab() {
         product_name: pName,
         quantity: Number(writeOffForm.quantity),
         movement_type: 'write_off',
+        status: 'pending_approval',
         source_location: user?.branch || '',
         destination_location: 'written_off',
         batch_no: selBatch?.batch_no || selBatch?.batchNo || '',
@@ -3055,7 +3056,7 @@ function BranchStockTab() {
       });
       setShowWriteOffForm(false);
       setWriteOffForm({ product_name: '', quantity: '', reason: 'expired', batch_id: '' });
-      setAlert({ type: 'success', message: `Write-off recorded — ${writeOffForm.quantity} units of ${pName} removed from inventory (DP N$ ${dpVal}).` });
+      setAlert({ type: 'success', message: `Write-off of ${writeOffForm.quantity} units of ${pName} submitted for GM approval (DP N$ ${dpVal}).` });
       setTimeout(() => loadData(), 100);
     } catch (err) {
       setAlert({ type: 'error', message: err.message || 'Failed to record write-off' });
@@ -5131,7 +5132,7 @@ function BranchStockTab() {
                 <button onClick={() => setShowWriteOffForm(false)} style={{ padding: '10px 20px', border: '1.5px solid #e2e8f0', borderRadius: 10, background: '#fff', cursor: 'pointer', color: '#64748b', fontWeight: 600, fontSize: '0.87rem' }}>Cancel</button>
                 <button onClick={handleWriteOff} disabled={submitting || !writeOffForm.quantity || (!writeOffForm.batch_id && !writeOffForm.product_name.trim())}
                   style={{ padding: '10px 28px', border: 'none', borderRadius: 10, background: 'linear-gradient(135deg,#c41e3a,#8b0000)', color: '#fff', fontWeight: 800, cursor: (submitting || !writeOffForm.quantity) ? 'not-allowed' : 'pointer', fontSize: '0.9rem', opacity: submitting ? 0.65 : 1 }}>
-                  {submitting ? 'Processing...' : 'Write Off'}
+                  {submitting ? 'Submitting...' : 'Submit for GM Approval'}
                 </button>
               </div>
             </div>

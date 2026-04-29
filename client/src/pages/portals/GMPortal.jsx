@@ -602,6 +602,9 @@ function ApprovalsTab() {
   const [staffChangeRequests, setStaffChangeRequests] = useState([]);
   const [staffChangeModal, setStaffChangeModal] = useState(null);
   const [staffChangeNote, setStaffChangeNote] = useState('');
+  const [pendingWriteOffs, setPendingWriteOffs] = useState([]);
+  const [woRejectModal, setWoRejectModal] = useState(null);
+  const [woRejectNote, setWoRejectNote] = useState('');
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
   const [noteModal, setNoteModal] = useState(null);
@@ -639,7 +642,8 @@ function ApprovalsTab() {
       api.get('/leave-requests/admin').then(d => Array.isArray(d) ? d : []).catch(() => []),
       api.finance.getBonusPeriodDeleteRequests('pending_gm').then(d => d.requests || []).catch(() => []),
       api.hr.staffChangeRequests.list('pending').then(d => d.requests || []).catch(() => []),
-    ]).then(([cash, leaves, stock, transfers, fieldReqs, pcReqs, rentReqs, salaryReqs, casReqs, adminLeaves, bonusDelReqs, staffChangeReqs]) => {
+      api.get('/stock-movements?type=write_off&status=pending_approval&limit=200').then(d => d.movements || []).catch(() => []),
+    ]).then(([cash, leaves, stock, transfers, fieldReqs, pcReqs, rentReqs, salaryReqs, casReqs, adminLeaves, bonusDelReqs, staffChangeReqs, writeOffs]) => {
       setCashRequests(cash.filter(c => c.status === 'pending'));
       setLeaveRequests(leaves.filter(l => l.status === 'pending'));
       setStockRequests(stock.filter(s => s.status === 'pending'));
@@ -654,6 +658,7 @@ function ApprovalsTab() {
       setAllLeaveHistory(adminLeaves);
       setBonusDeleteRequests(bonusDelReqs);
       setStaffChangeRequests(staffChangeReqs);
+      setPendingWriteOffs(writeOffs.filter(w => w.status === 'pending_approval'));
     }).finally(() => setLoading(false));
   };
 
@@ -788,6 +793,30 @@ function ApprovalsTab() {
     setAmendModal(t);
   };
 
+  const handleWriteOffAction = async (ids, action, noteText) => {
+    setProcessing(true);
+    try {
+      const gmName = user?.full_name || user?.username || 'GM';
+      await api.put('/stock-movements', {
+        action: ids.length === 1 ? action : (action === 'approve' ? 'approve_all' : 'reject_all'),
+        id: ids.length === 1 ? ids[0] : undefined,
+        ids: ids.length > 1 ? ids : undefined,
+        approved_by: gmName,
+        notes: noteText || null,
+      });
+      setPendingWriteOffs(prev => prev.filter(w => !ids.includes(w.id)));
+      setMessage(action === 'approve'
+        ? `✅ ${ids.length} write-off${ids.length > 1 ? 's' : ''} approved — stock has been deducted.`
+        : `❌ ${ids.length} write-off${ids.length > 1 ? 's' : ''} rejected.`);
+      setWoRejectModal(null);
+      setWoRejectNote('');
+    } catch (err) {
+      setMessage('Error: ' + err.message);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
   if (loading) return <LoadingSpinner />;
 
   const getFilteredItems = () => {
@@ -895,6 +924,7 @@ function ApprovalsTab() {
 
   const subTabs = [
     { id: 'transfers', label: `🚚 Transfers${pendingTransfers.length > 0 ? ` (${pendingTransfers.length})` : ''}` },
+    { id: 'writeoffs', label: `✏️ Write-Offs${pendingWriteOffs.length > 0 ? ` (${pendingWriteOffs.length})` : ''}` },
     { id: 'fieldstock', label: `🌿 Field Stock${fieldRequests.length > 0 ? ` (${fieldRequests.length})` : ''}` },
     { id: 'all', label: `All Requests${totalCount > 0 ? ` (${totalCount})` : ''}` },
     { id: 'petty_cash', label: `💵 Petty Cash${pettyCashRequests.length > 0 ? ` (${pettyCashRequests.length})` : ''}` },
@@ -1164,6 +1194,104 @@ function ApprovalsTab() {
                           <button onClick={() => setNoteModal({ type: 'return', id: t.id, action: 'returned', label: `${fromLoc} → ${toLoc}` })}
                             className="px-3 py-2 rounded-lg text-xs font-bold cursor-pointer border border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100">
                             ↩ Return for Correction
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Write-Off Approvals sub-tab */}
+      {approvalTab === 'writeoffs' && (
+        <div className="space-y-4">
+          {pendingWriteOffs.length === 0 ? (
+            <EmptyState icon={<CheckCircle size={48} />} title="No Pending Write-Off Requests" description="Write-off requests submitted by branches will appear here for your approval." />
+          ) : (
+            <>
+              <div style={{ background: '#fef9e6', border: '1px solid #fcd34d', borderRadius: 10, padding: '10px 16px', fontSize: '0.85rem', color: '#92400e', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+                <span><strong>{pendingWriteOffs.length}</strong> write-off request{pendingWriteOffs.length !== 1 ? 's' : ''} awaiting your review. Stock will only be deducted once you approve.</span>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    disabled={processing}
+                    onClick={() => handleWriteOffAction(pendingWriteOffs.map(w => w.id), 'approve', null)}
+                    style={{ padding: '7px 16px', background: '#166534', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: '0.8rem', cursor: processing ? 'not-allowed' : 'pointer', opacity: processing ? 0.65 : 1 }}>
+                    ✓ Approve All ({pendingWriteOffs.length})
+                  </button>
+                  <button
+                    disabled={processing}
+                    onClick={() => setWoRejectModal({ ids: pendingWriteOffs.map(w => w.id), label: `all ${pendingWriteOffs.length} write-offs` })}
+                    style={{ padding: '7px 16px', background: '#991b1b', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: '0.8rem', cursor: processing ? 'not-allowed' : 'pointer', opacity: processing ? 0.65 : 1 }}>
+                    ✕ Reject All
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-3">
+                {pendingWriteOffs.map((wo, idx) => {
+                  const srcLabel = fmtLoc(wo.source_location || wo.sourceLocation || '');
+                  const notesText = wo.notes || '';
+                  const reasonMatch = notesText.match(/Write-off:\s*([^.]+)/i);
+                  const reason = reasonMatch ? reasonMatch[1].trim() : (notesText || '—');
+                  const batchNo = wo.batch_no || wo.batchNo || '—';
+                  const expiry = wo.expiry_date || wo.expiryDate;
+                  const fmtExp = expiry ? fmtDate(expiry) : '—';
+                  const qty = Number(wo.quantity || 0);
+                  const submittedBy = wo.created_by || wo.createdBy || '—';
+                  const submittedAt = fmtDate(wo.created_at || wo.createdAt);
+                  return (
+                    <div key={wo.id || idx} style={{ background: '#fff', border: '1.5px solid #fde68a', borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+                      <div style={{ background: 'linear-gradient(90deg,#fffbeb,#fef9e6)', padding: '10px 16px', borderBottom: '1px solid #fde68a', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <span style={{ background: '#fef3c7', color: '#92400e', fontWeight: 700, fontSize: '0.72rem', padding: '2px 8px', borderRadius: 20, border: '1px solid #fcd34d' }}>⏳ Pending GM Approval</span>
+                          <span style={{ fontFamily: 'monospace', fontSize: '0.72rem', color: '#6b7280' }}>{wo.reference_id || wo.referenceId || wo.id}</span>
+                        </div>
+                        <span style={{ fontSize: '0.75rem', color: '#92400e' }}>Submitted {submittedAt} by <strong>{submittedBy}</strong></span>
+                      </div>
+                      <div style={{ padding: '14px 16px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 14 }}>
+                          <div style={{ background: '#f8fafc', borderRadius: 8, padding: '8px 12px', border: '1px solid #e2e8f0' }}>
+                            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>Branch</div>
+                            <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.85rem' }}>{srcLabel || '—'}</div>
+                          </div>
+                          <div style={{ background: '#f8fafc', borderRadius: 8, padding: '8px 12px', border: '1px solid #e2e8f0' }}>
+                            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>Product</div>
+                            <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.85rem' }}>{wo.product_name || wo.productName || '—'}</div>
+                          </div>
+                          <div style={{ background: '#fef2f2', borderRadius: 8, padding: '8px 12px', border: '1px solid #fecaca' }}>
+                            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#9b1c1c', textTransform: 'uppercase', marginBottom: 2 }}>Qty to Write Off</div>
+                            <div style={{ fontWeight: 900, color: '#dc2626', fontSize: '1rem' }}>{qty.toLocaleString()} units</div>
+                          </div>
+                          <div style={{ background: '#f8fafc', borderRadius: 8, padding: '8px 12px', border: '1px solid #e2e8f0' }}>
+                            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>Batch No.</div>
+                            <div style={{ fontWeight: 600, color: '#6366f1', fontFamily: 'monospace', fontSize: '0.82rem' }}>{batchNo}</div>
+                          </div>
+                          <div style={{ background: batchNo !== '—' && expiry && new Date(expiry) < new Date() ? '#fef2f2' : '#f8fafc', borderRadius: 8, padding: '8px 12px', border: `1px solid ${batchNo !== '—' && expiry && new Date(expiry) < new Date() ? '#fecaca' : '#e2e8f0'}` }}>
+                            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>Expiry Date</div>
+                            <div style={{ fontWeight: 600, color: expiry && new Date(expiry) < new Date() ? '#dc2626' : '#374151', fontSize: '0.82rem' }}>
+                              {fmtExp}{expiry && new Date(expiry) < new Date() ? ' ⚠️ EXPIRED' : ''}
+                            </div>
+                          </div>
+                          <div style={{ background: '#f8fafc', borderRadius: 8, padding: '8px 12px', border: '1px solid #e2e8f0' }}>
+                            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>Reason</div>
+                            <div style={{ fontWeight: 600, color: '#374151', fontSize: '0.82rem', textTransform: 'capitalize' }}>{reason}</div>
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                          <button
+                            disabled={processing}
+                            onClick={() => handleWriteOffAction([wo.id], 'approve', null)}
+                            style={{ padding: '8px 18px', background: '#166534', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: '0.82rem', cursor: processing ? 'not-allowed' : 'pointer', opacity: processing ? 0.65 : 1 }}>
+                            ✓ Approve
+                          </button>
+                          <button
+                            disabled={processing}
+                            onClick={() => setWoRejectModal({ ids: [wo.id], label: `${wo.product_name || 'this item'} (${qty} units)` })}
+                            style={{ padding: '8px 18px', background: '#fff', color: '#991b1b', border: '1.5px solid #fca5a5', borderRadius: 8, fontWeight: 700, fontSize: '0.82rem', cursor: processing ? 'not-allowed' : 'pointer' }}>
+                            ✕ Reject
                           </button>
                         </div>
                       </div>
@@ -1927,9 +2055,41 @@ function ApprovalsTab() {
       )}
 
       {/* Other approval sub-tabs */}
-      {approvalTab !== 'transfers' && approvalTab !== 'fieldstock' && approvalTab !== 'rent_edits' && approvalTab !== 'salary_edits' && approvalTab !== 'cas_approvals' && approvalTab !== 'leave_approvals' && approvalTab !== 'bonus_delete' && approvalTab !== 'hr_staff_changes' && renderRequests()}
+      {approvalTab !== 'transfers' && approvalTab !== 'writeoffs' && approvalTab !== 'fieldstock' && approvalTab !== 'rent_edits' && approvalTab !== 'salary_edits' && approvalTab !== 'cas_approvals' && approvalTab !== 'leave_approvals' && approvalTab !== 'bonus_delete' && approvalTab !== 'hr_staff_changes' && renderRequests()}
 
       {viewDispatch && <DispatchNote transfer={viewDispatch} onClose={() => setViewDispatch(null)} />}
+
+      {/* Write-off reject confirmation modal */}
+      {woRejectModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 480, boxShadow: '0 20px 50px rgba(0,0,0,0.25)' }}>
+            <div style={{ padding: '16px 24px', borderBottom: '1px solid #fecaca', background: '#fff1f2', borderRadius: '12px 12px 0 0' }}>
+              <h2 style={{ margin: 0, fontSize: 17, color: '#991b1b' }}>✕ Confirm Rejection</h2>
+              <p style={{ margin: '4px 0 0', fontSize: 13, color: '#b91c1c' }}>Rejecting: {woRejectModal.label}</p>
+            </div>
+            <div style={{ padding: 24 }}>
+              <label style={{ fontSize: '0.83rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Rejection reason (optional):</label>
+              <textarea
+                value={woRejectNote}
+                onChange={e => setWoRejectNote(e.target.value)}
+                placeholder="e.g. Insufficient justification, please resubmit with proper documentation..."
+                rows={3}
+                style={{ width: '100%', padding: 10, border: '1.5px solid #fca5a5', borderRadius: 8, fontSize: '0.85rem', resize: 'vertical', boxSizing: 'border-box' }}
+              />
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 16 }}>
+                <button onClick={() => { setWoRejectModal(null); setWoRejectNote(''); }}
+                  style={{ padding: '9px 18px', border: '1.5px solid #e2e8f0', borderRadius: 8, background: '#fff', cursor: 'pointer', color: '#64748b', fontWeight: 600, fontSize: '0.85rem' }}>
+                  Cancel
+                </button>
+                <button onClick={() => handleWriteOffAction(woRejectModal.ids, 'reject', woRejectNote)} disabled={processing}
+                  style={{ padding: '9px 20px', background: '#991b1b', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: '0.85rem', cursor: processing ? 'not-allowed' : 'pointer', opacity: processing ? 0.65 : 1 }}>
+                  {processing ? 'Processing...' : 'Confirm Rejection'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {amendModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>

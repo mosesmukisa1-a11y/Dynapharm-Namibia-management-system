@@ -64,6 +64,7 @@ export default async function handler(req, res) {
         branch = requestedBranch;
       }
       const movementType = url.searchParams.get('type');
+      const statusFilter = url.searchParams.get('status');
       const dateFrom = url.searchParams.get('date_from');
       const dateTo = url.searchParams.get('date_to');
       const limit = parseInt(url.searchParams.get('limit') || '100', 10);
@@ -164,6 +165,7 @@ export default async function handler(req, res) {
           const bmParams = [];
           const bmWhere = [];
           if (movementType) { bmParams.push(movementType); bmWhere.push(`movement_type = $${bmParams.length}`); }
+          if (statusFilter) { bmParams.push(statusFilter); bmWhere.push(`status = $${bmParams.length}`); }
           if (dateFrom) { bmParams.push(dateFrom); bmWhere.push(`created_at >= $${bmParams.length}::timestamp`); }
           if (dateTo) { bmParams.push(dateTo + 'T23:59:59'); bmWhere.push(`created_at <= $${bmParams.length}::timestamp`); }
           let bmQuery = 'SELECT * FROM stock_movements';
@@ -226,6 +228,8 @@ export default async function handler(req, res) {
         const srcLocType = inferLocationType(srcLoc);
         const dstLocType = inferLocationType(destLoc);
         const branchId = srcLoc || destLoc;
+        // Allow branch users to submit write-offs pending GM approval
+        const movStatus = body.status === 'pending_approval' ? 'pending_approval' : 'posted';
 
         if (branchScope.enforced) {
           // For outbound movements (write_off, sale, field_use, return): check source branch
@@ -235,16 +239,17 @@ export default async function handler(req, res) {
             return res.status(403).json({ success: false, error: 'Access denied: cannot post movement for this branch' });
           }
         }
-        const needsBranchMirror = branchId && ['write_off', 'sale', 'field_use', 'return'].includes(movType);
+        // For pending write-offs: insert record only (no stock deduction — GM must approve first)
+        const needsBranchMirror = branchId && ['write_off', 'sale', 'field_use', 'return'].includes(movType) && movStatus !== 'pending_approval';
         await withTransaction(async (client) => {
           await client.query(
             `INSERT INTO stock_movements
                (id, product_name, batch_no, expiry_date, quantity, movement_type,
                 source_location, source_location_type, destination_location, destination_location_type,
                 reference_id, notes, created_by, status, movement_date, created_at, updated_at)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'posted',NOW(),NOW(),NOW())`,
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW(),NOW(),NOW())`,
             [id, productName, batchNo, expiryDate, qty, movType,
-             srcLoc, srcLocType, destLoc, dstLocType, referenceId, notes, createdBy]
+             srcLoc, srcLocType, destLoc, dstLocType, referenceId, notes, createdBy, movStatus]
           );
           if (needsBranchMirror) {
             const bimId = `BIM-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
@@ -336,6 +341,110 @@ export default async function handler(req, res) {
       );
 
       return res.status(201).json(normalizeMovement(result.rows[0]));
+    }
+
+    if (req.method === 'PUT') {
+      // Approve or reject pending write-off(s) — GM only
+      const body = req.body || {};
+      const gmName = body.approved_by || req.user?.full_name || req.user?.username || 'GM';
+      const gmNote = body.notes || body.note || null;
+      const action = body.action; // 'approve' | 'reject' | 'approve_all' | 'reject_all'
+
+      const approve = async (client, id) => {
+        // Fetch the pending record
+        const { rows } = await client.query(
+          `SELECT * FROM stock_movements WHERE id = $1 AND movement_type = 'write_off' AND status = 'pending_approval' LIMIT 1`,
+          [id]
+        );
+        if (rows.length === 0) return false;
+        const r = rows[0];
+        const branchId = r.source_location;
+        const productName = r.product_name;
+        const batchNo = r.batch_no;
+        const qty = Number(r.quantity || 0);
+        // Deduct from branch_inventory_batches
+        if (branchId && productName && qty > 0) {
+          let remaining = qty;
+          if (batchNo) {
+            const specific = await client.query(
+              `SELECT id, quantity FROM branch_inventory_batches
+               WHERE LOWER(REPLACE(branch_id,' ','_')) = LOWER(REPLACE($1,' ','_'))
+                 AND LOWER(product_name) = LOWER($2)
+                 AND LOWER(COALESCE(batch_no,'')) = LOWER($3)
+                 AND quantity > 0 LIMIT 1`,
+              [branchId, productName, batchNo]
+            );
+            for (const b of specific.rows) {
+              const take = Math.min(remaining, Number(b.quantity));
+              await client.query(`UPDATE branch_inventory_batches SET quantity = quantity - $1, updated_at = NOW() WHERE id = $2`, [take, b.id]);
+              remaining -= take;
+            }
+          }
+          if (remaining > 0) {
+            const fifo = await client.query(
+              `SELECT id, quantity FROM branch_inventory_batches
+               WHERE LOWER(REPLACE(branch_id,' ','_')) = LOWER(REPLACE($1,' ','_'))
+                 AND LOWER(product_name) = LOWER($2)
+                 AND quantity > 0
+                 ${batchNo ? `AND LOWER(COALESCE(batch_no,'')) != LOWER($3)` : ''}
+               ORDER BY expiry_date ASC NULLS LAST`,
+              batchNo ? [branchId, productName, batchNo] : [branchId, productName]
+            );
+            for (const b of fifo.rows) {
+              if (remaining <= 0) break;
+              const take = Math.min(remaining, Number(b.quantity));
+              await client.query(`UPDATE branch_inventory_batches SET quantity = quantity - $1, updated_at = NOW() WHERE id = $2`, [take, b.id]);
+              remaining -= take;
+            }
+          }
+          // Mirror to branch_inventory_movements
+          const bimId = `BIM-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+          await client.query(
+            `INSERT INTO branch_inventory_movements (id, branch_id, type, product_name, batch_no, quantity, reference, notes, created_by, created_at)
+             VALUES ($1,$2,'write_off',$3,$4,$5,$6,$7,$8,NOW())`,
+            [bimId, branchId, productName, batchNo || '', qty, r.reference_id, r.notes, gmName]
+          );
+        }
+        await client.query(
+          `UPDATE stock_movements SET status = 'approved', approved_by = $1, notes = COALESCE(notes,'') || $2, updated_at = NOW() WHERE id = $3`,
+          [gmName, gmNote ? ` | GM: ${gmNote}` : '', id]
+        );
+        return true;
+      };
+
+      const reject = async (client, id) => {
+        const { rowCount } = await client.query(
+          `UPDATE stock_movements SET status = 'rejected', approved_by = $1, notes = COALESCE(notes,'') || $2, updated_at = NOW()
+           WHERE id = $3 AND movement_type = 'write_off' AND status = 'pending_approval'`,
+          [gmName, gmNote ? ` | GM rejected: ${gmNote}` : ' | Rejected by GM', id]
+        );
+        return rowCount > 0;
+      };
+
+      if (action === 'approve' || action === 'reject') {
+        const id = body.id;
+        if (!id) return res.status(400).json({ success: false, error: 'Missing id' });
+        await withTransaction(async (client) => {
+          if (action === 'approve') await approve(client, id);
+          else await reject(client, id);
+        });
+        recomputeLocationBalances('branch', body.source_location || '').catch(() => {});
+        return res.json({ success: true });
+      }
+
+      if (action === 'approve_all' || action === 'reject_all') {
+        const ids = Array.isArray(body.ids) ? body.ids : [];
+        if (ids.length === 0) return res.status(400).json({ success: false, error: 'No ids provided' });
+        await withTransaction(async (client) => {
+          for (const id of ids) {
+            if (action === 'approve_all') await approve(client, id);
+            else await reject(client, id);
+          }
+        });
+        return res.json({ success: true, count: ids.length });
+      }
+
+      return res.status(400).json({ success: false, error: 'Invalid action — use approve, reject, approve_all, or reject_all' });
     }
 
     return res.status(405).json({ error: 'Method not allowed' });
