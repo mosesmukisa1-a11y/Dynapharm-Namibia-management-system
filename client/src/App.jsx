@@ -21,6 +21,7 @@ import TrainingPortal from './pages/portals/TrainingPortal';
 import SupportStaffPortal from './pages/portals/SupportStaffPortal';
 import { api } from './lib/api';
 import { setLivePrices } from './lib/pricing';
+import { OfflineBanner } from './components/OfflineBanner.jsx';
 
 export default function App() {
   useEffect(() => {
@@ -30,7 +31,9 @@ export default function App() {
   }, []);
 
   return (
-    <Routes>
+    <>
+      <OfflineBanner />
+      <Routes>
       <Route element={<Layout />}>
         <Route path="/" element={<Landing />} />
         <Route path="/shop" element={<Shop />} />
@@ -78,5 +81,6 @@ export default function App() {
         } />
       </Route>
     </Routes>
+    </>
   );
 }

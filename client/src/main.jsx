@@ -3,7 +3,14 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import { AuthProvider } from './contexts/AuthContext';
+import { OfflineProvider } from './lib/OfflineProvider.jsx';
 import './index.css';
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
 
 class RootErrorBoundary extends Component {
   constructor(props) {
@@ -57,7 +64,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <RootErrorBoundary>
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AuthProvider>
-          <App />
+          <OfflineProvider>
+            <App />
+          </OfflineProvider>
         </AuthProvider>
       </BrowserRouter>
     </RootErrorBoundary>

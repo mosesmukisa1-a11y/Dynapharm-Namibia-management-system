@@ -153,6 +153,14 @@ export default async function handler(req, res) {
         return res.status(403).json({ success: false, error: 'Access denied: cannot record expenses for this branch' });
       }
 
+      if (body.offline_id) {
+        const dup = await getOne('SELECT id FROM branch_expenses WHERE offline_id = $1', [body.offline_id]);
+        if (dup) {
+          const existing = await getOne('SELECT * FROM branch_expenses WHERE id = $1', [dup.id]);
+          return res.status(200).json({ success: true, expense: normalizeExpense(existing), duplicate: true });
+        }
+      }
+
       const date = body.date || new Date().toISOString().slice(0, 10);
       const amount = parseNumber(body.amount, null);
       if (amount === null || amount <= 0) {
@@ -164,9 +172,9 @@ export default async function handler(req, res) {
         `
           INSERT INTO branch_expenses
             (id, branch_id, session_id, date, amount, description, category, payment_method,
-             status, notes, created_by, created_at, metadata)
+             status, notes, created_by, created_at, metadata, offline_id)
           VALUES
-            ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), $12)
+            ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), $12, $13)
           RETURNING *
         `,
         [
@@ -182,6 +190,7 @@ export default async function handler(req, res) {
           body.notes || '',
           body.createdBy || currentUser?.fullName || currentUser?.username || 'system',
           body.metadata ? JSON.stringify(body.metadata) : null,
+          body.offline_id || null,
         ]
       );
 

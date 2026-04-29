@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback, useContext, createContext } from 'react';
 import { api } from '../../lib/api';
+import { enqueue, generateOfflineId } from '../../lib/offlineQueue.js';
 import { useStockRealtime } from '../../hooks/useStockRealtime';
 import DistributorPerformanceTab from '../../components/DistributorPerformanceTab';
 import DispatchNote from '../../components/DispatchNote';
@@ -707,7 +708,20 @@ function WalkInSalesTab() {
         },
       };
 
-      await api.branch.createWalkinSale(saleData);
+      const saleOfflineId = generateOfflineId();
+      const salePayloadWithId = { ...saleData, offline_id: saleOfflineId };
+      if (!navigator.onLine) {
+        await enqueue({
+          type: 'walkin_sale',
+          url: '/api/branch/walkin-sales',
+          method: 'POST',
+          body: salePayloadWithId,
+          offlineId: saleOfflineId,
+          label: `Walk-in sale · ${saleData.customer_type} · N$${saleData.total}`,
+        });
+      } else {
+        await api.branch.createWalkinSale(salePayloadWithId);
+      }
 
       const commonReceiptParams = {
         receiptNumber,
@@ -4977,21 +4991,35 @@ function BankingTab() {
     }
     setSubmitting(true);
     try {
-      await api.branch.createExpense({
+      const expOfflineId = generateOfflineId();
+      const expPayload = {
         category: expenseForm.category,
         amount: Number(expenseForm.amount),
         description: expenseForm.description.trim(),
         receipt_ref: expenseForm.receipt_ref.trim(),
         date: expenseForm.date,
         branch: user?.branch || '',
+        offline_id: expOfflineId,
         metadata: {
           cas_id: selectedCAS.id || selectedCAS.staffId,
           cas_number: selectedCAS.saleNumber || selectedCAS.request_number || selectedCAS.requestNumber,
           cas_purpose: selectedCAS.purpose,
           cas_amount: Number(selectedCAS.amount || 0),
         },
-      });
-      setAlert({ type: 'success', message: 'Branch expense recorded and linked to CAS ' + (selectedCAS.requestNumber || selectedCAS.saleNumber || '') });
+      };
+      if (!navigator.onLine) {
+        await enqueue({
+          type: 'expense',
+          url: '/api/branch/expenses',
+          method: 'POST',
+          body: expPayload,
+          offlineId: expOfflineId,
+          label: `Expense · ${expenseForm.category} · N$${expenseForm.amount}`,
+        });
+      } else {
+        await api.branch.createExpense(expPayload);
+      }
+      setAlert({ type: 'success', message: navigator.onLine ? 'Branch expense recorded and linked to CAS ' + (selectedCAS.requestNumber || selectedCAS.saleNumber || '') : 'Expense saved offline — will sync when connected' });
       setExpenseForm({ category: 'Supplies', amount: '', description: '', receipt_ref: '', date: new Date().toISOString().slice(0, 10) });
       setSelectedCAS(null);
       setShowExpenseForm(false);
@@ -5685,7 +5713,8 @@ function BranchPaymentsTab() {
     if (!expenseForm.description.trim() || !expenseForm.amount || Number(expenseForm.amount) <= 0) return;
     setSubmitting(true);
     try {
-      await api.branch.createExpense({
+      const exp2OfflineId = generateOfflineId();
+      const exp2Payload = {
         branchId,
         description: expenseForm.description.trim(),
         amount: Number(expenseForm.amount),
@@ -5693,8 +5722,21 @@ function BranchPaymentsTab() {
         paymentMethod: expenseForm.payment_method,
         notes: expenseForm.notes.trim(),
         date: new Date().toISOString().slice(0, 10),
-      });
-      setAlert({ type: 'success', message: 'Expense recorded successfully.' });
+        offline_id: exp2OfflineId,
+      };
+      if (!navigator.onLine) {
+        await enqueue({
+          type: 'expense',
+          url: '/api/branch/expenses',
+          method: 'POST',
+          body: exp2Payload,
+          offlineId: exp2OfflineId,
+          label: `Expense · ${expenseForm.category} · N$${expenseForm.amount}`,
+        });
+      } else {
+        await api.branch.createExpense(exp2Payload);
+      }
+      setAlert({ type: 'success', message: navigator.onLine ? 'Expense recorded successfully.' : 'Expense saved offline — will sync when connected' });
       setExpenseForm({ description: '', amount: '', category: 'General', payment_method: 'Cash', notes: '' });
       setShowExpenseForm(false);
       load();

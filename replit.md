@@ -25,6 +25,17 @@ The backend operates on an Express.js server, providing robust API services. It 
 - **Serving**: `server.js` includes a `/api/obj/*` route that streams files from object storage. Old pre-migration records with `/uploads/...` URLs are served via `express.static` for backward compatibility.
 - **Env vars**: `DEFAULT_OBJECT_STORAGE_BUCKET_ID`, `PUBLIC_OBJECT_SEARCH_PATHS`, `PRIVATE_OBJECT_DIR` are set by Replit App Storage.
 
+### Offline-First Branch Transactions
+Branches can transact without internet connectivity. The system automatically syncs when connection is restored.
+
+- **`client/src/lib/offlineQueue.js`** — Native IndexedDB queue (`dynapharm_offline_v1` database, `queue` store). Exports: `enqueue`, `getAll`, `remove`, `markFailed`, `getCount`, `clearAll`, `generateOfflineId`.
+- **`client/src/lib/OfflineProvider.jsx`** — React context (`useOffline` hook). Detects online/offline via `navigator.onLine` + window events. Auto-flushes queue on reconnect. Exposes: `isOnline`, `isSyncing`, `pendingCount`, `syncNow`, `lastSyncResult`.
+- **`client/src/components/OfflineBanner.jsx`** — Fixed top banner showing offline state (red), pending sync count (amber), and success (green). Wraps `useOffline`.
+- **`client/public/sw.js`** — Service worker that caches app shell (index.html, JS, CSS) so the page loads without network.
+- **`api/sync/batch.js`** — POST `/api/sync/batch` — batch replay of queued operations. Deduplicates via `offline_id`.
+- **DB columns** — `offline_id VARCHAR(128)` added to `branch_walkin_sales` and `branch_expenses` with partial unique index (`WHERE offline_id IS NOT NULL`) for safe deduplication.
+- **Offline-aware submissions** — Walk-in sales and expense recordings in `BranchPortal.jsx` check `navigator.onLine`. If offline: enqueue to IndexedDB + show success to user. If online: submit to API normally (with `offline_id` included for idempotency).
+
 ### Core Features
 - **Multi-Portal System**: Comprises 12 specialized portals (Distributor, Front Desk, Consultant, Branch, HR, Finance, GM, Director, MIS, Stock, Admin, Training) each offering tailored functionalities and UI/UX.
 - **Role-Based Access Control**: Ensures granular access permissions based on user roles.

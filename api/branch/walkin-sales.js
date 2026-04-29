@@ -187,6 +187,7 @@ function buildSaleRecord(payload, existing = {}) {
     }),
     created_by: payload.soldBy || existing.created_by || null,
     updated_at: new Date().toISOString(),
+    offline_id: payload.offline_id || existing.offline_id || null,
   };
 }
 
@@ -290,6 +291,15 @@ export default async function handler(req, res) {
     if (req.method === 'POST') {
       const body = await parseJsonBody(req);
       const salePayload = body.sale || body;
+
+      if (salePayload.offline_id) {
+        const dup = await getOne('SELECT id FROM branch_walkin_sales WHERE offline_id = $1', [salePayload.offline_id]);
+        if (dup) {
+          const existing = await getOne('SELECT * FROM branch_walkin_sales WHERE id = $1', [dup.id]);
+          return res.status(200).json({ success: true, sale: normalizeSaleRow(existing), duplicate: true });
+        }
+      }
+
       const record = buildSaleRecord(salePayload);
 
       if (branchScope.enforced && !branchScope.branches.includes(record.branch_id)) {
