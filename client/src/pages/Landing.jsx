@@ -6,7 +6,7 @@ import { useState, useEffect } from 'react';
 import { Heart, Leaf, Globe, Users, ShieldCheck, Award, ChevronRight, LogIn, ShoppingCart, Stethoscope, MapPin, Phone, UserCircle } from 'lucide-react';
 import { BRANCH_DETAILS, COMPANY_INFO } from '../lib/constants';
 
-const HERO_SLIDES = [
+const FALLBACK_SLIDES = [
   { bg: 'from-primary to-primary-dark' },
   { bg: 'from-[#1a5276] to-[#2c3e50]' },
   { bg: 'from-[#6c3483] to-[#4a235a]' },
@@ -18,22 +18,68 @@ export default function Landing() {
   const [loginOpen, setLoginOpen] = useState(false);
   const [distributorLoginOpen, setDistributorLoginOpen] = useState(false);
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [heroImages, setHeroImages] = useState([]);
 
   useEffect(() => {
+    fetch('/api/media?upload_type=training', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : [])
+      .then(data => {
+        const rows = Array.isArray(data) ? data : [];
+        const photos = rows.filter(r =>
+          (r.mime_type || '').startsWith('image/') ||
+          r.media_type === 'photo' || r.category === 'photo'
+        );
+        setHeroImages(photos);
+      })
+      .catch(() => {});
+  }, []);
+
+  const slideCount = heroImages.length > 0 ? heroImages.length : FALLBACK_SLIDES.length;
+
+  useEffect(() => {
+    setCurrentSlide(0);
     const timer = setInterval(() => {
-      setCurrentSlide(prev => (prev + 1) % HERO_SLIDES.length);
+      setCurrentSlide(prev => (prev + 1) % slideCount);
     }, 6000);
     return () => clearInterval(timer);
-  }, []);
+  }, [slideCount]);
 
   return (
     <div className="min-h-screen">
-      <section className={`relative bg-gradient-to-br ${HERO_SLIDES[currentSlide].bg} text-white overflow-hidden transition-all duration-1000`}>
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute -top-40 -right-40 w-96 h-96 bg-white rounded-full" />
-          <div className="absolute -bottom-20 -left-20 w-72 h-72 bg-white rounded-full" />
-          <div className="absolute top-20 left-1/3 w-48 h-48 bg-white rounded-full" />
-        </div>
+      <section className="relative text-white overflow-hidden" style={{ background: '#7b1226' }}>
+
+        {/* Photo slideshow backgrounds */}
+        {heroImages.length > 0 ? (
+          <>
+            {heroImages.map((img, idx) => (
+              <div key={img.id || idx} className="absolute inset-0 transition-opacity duration-1000"
+                style={{
+                  opacity: currentSlide === idx ? 1 : 0,
+                  backgroundImage: `url(${img.file_url})`,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                  backgroundRepeat: 'no-repeat',
+                }}
+              />
+            ))}
+            {/* Dark overlay so text stays readable */}
+            <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.52) 0%, rgba(90,10,20,0.72) 100%)' }} />
+          </>
+        ) : (
+          <>
+            {/* Gradient fallback slides */}
+            {FALLBACK_SLIDES.map((slide, idx) => (
+              <div key={idx} className={`absolute inset-0 bg-gradient-to-br ${slide.bg} transition-opacity duration-1000`}
+                style={{ opacity: currentSlide === idx ? 1 : 0 }} />
+            ))}
+            <div className="absolute inset-0 opacity-10">
+              <div className="absolute -top-40 -right-40 w-96 h-96 bg-white rounded-full" />
+              <div className="absolute -bottom-20 -left-20 w-72 h-72 bg-white rounded-full" />
+              <div className="absolute top-20 left-1/3 w-48 h-48 bg-white rounded-full" />
+            </div>
+          </>
+        )}
+
         <div className="relative max-w-[1200px] mx-auto px-6 py-24 text-center">
           <img src={COMPANY_INFO.logo} alt="Dynapharm" className="h-20 mx-auto mb-6 drop-shadow-lg" onError={e => { e.target.style.display = 'none'; }} />
           <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold mb-4 leading-tight">
@@ -76,7 +122,7 @@ export default function Landing() {
           </div>
 
           <div className="flex justify-center gap-2 mt-8">
-            {HERO_SLIDES.map((_, idx) => (
+            {Array.from({ length: slideCount }).map((_, idx) => (
               <button key={idx} onClick={() => setCurrentSlide(idx)}
                 className={`w-3 h-3 rounded-full transition-all cursor-pointer ${currentSlide === idx ? 'bg-white scale-125' : 'bg-white/40'}`} />
             ))}
