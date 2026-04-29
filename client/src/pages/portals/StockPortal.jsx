@@ -7201,7 +7201,7 @@ function WriteOffsTab({ branch }) {
   const [submitting, setSubmitting] = useState(false);
   const [search, setSearch]         = useState('');
   const [form, setForm]             = useState({
-    product_name: '', batch_id: '', quantity: '', reason: '', notes: '',
+    product_name: '', batch_id: '', quantity: '', reason: '', notes: '', location: '',
   });
 
   const load = useCallback(() => {
@@ -7257,7 +7257,7 @@ function WriteOffsTab({ branch }) {
         product_name:      form.product_name,
         movement_type:     'write_off',
         quantity:          qty,
-        source_location:   selectedBatch?.location || (branch !== 'all' ? branch : 'country_stock'),
+        source_location:   selectedBatch?.location || form.location || (branch !== 'all' ? branch : ''),
         batch_no:          selectedBatch?.batch_no || selectedBatch?.batch_number || null,
         notes:             `${form.reason}${form.notes ? ' — ' + form.notes : ''}`,
         created_by:        user?.full_name || user?.username,
@@ -7369,13 +7369,32 @@ function WriteOffsTab({ branch }) {
                   </select>
                 </div>
               </div>
+              {(!selectedBatch || !selectedBatch.location) && (
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Location Written Off From *</label>
+                  <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={form.location}
+                    onChange={e => setForm(f => ({ ...f, location: e.target.value }))} required={!selectedBatch?.location}>
+                    <option value="">Select location…</option>
+                    <optgroup label="Country Stock">
+                      <option value="country_stock">Country Stock (Staging)</option>
+                    </optgroup>
+                    <optgroup label="Warehouses">
+                      <option value="windhoek_warehouse">Windhoek Warehouse</option>
+                      <option value="ondangwa_warehouse">Ondangwa Warehouse</option>
+                    </optgroup>
+                    <optgroup label="Branches">
+                      {BRANCH_DETAILS.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    </optgroup>
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1">Additional Notes</label>
                 <Textarea rows={2} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Any additional context..." />
               </div>
               <div className="flex gap-2">
                 <Button type="submit" disabled={submitting}>{submitting ? 'Saving...' : 'Record Write-Off'}</Button>
-                <Button type="button" variant="secondary" onClick={() => { setShowForm(false); setForm({ product_name: '', batch_id: '', quantity: '', reason: '', notes: '' }); }}>Cancel</Button>
+                <Button type="button" variant="secondary" onClick={() => { setShowForm(false); setForm({ product_name: '', batch_id: '', quantity: '', reason: '', notes: '', location: '' }); }}>Cancel</Button>
               </div>
             </form>
           </CardBody>

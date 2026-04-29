@@ -183,7 +183,7 @@ export default async function handler(req, res) {
             unit_price: r.unit_dp != null ? Number(r.unit_dp) : null,
             unitPrice: r.unit_dp != null ? Number(r.unit_dp) : null,
             unit_dp: r.unit_dp != null ? Number(r.unit_dp) : null,
-            location: r.source_location || r.destination_location || '',
+            location: r.source_location || '',
             sourceLocation: r.source_location, source_location: r.source_location,
             destinationLocation: r.destination_location, destination_location: r.destination_location,
             referenceId: r.reference_id, reference_id: r.reference_id,
