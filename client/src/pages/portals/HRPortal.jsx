@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../lib/api';
-import { formatDate, formatDateTime, BRANCH_DETAILS } from '../../lib/constants';
+import { formatDate, formatDateTime, BRANCH_DETAILS, BRANCHES } from '../../lib/constants';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
 import { Users, Calendar, AlertTriangle, UserX, Clock, Star, MessageSquare, Database, ClipboardList, Plus, CheckCircle2, XCircle, UserCheck, Building2, AlertCircle, Info, Briefcase } from 'lucide-react';
 import SalaryLedgerTab from '../../components/SalaryLedgerTab';
 import StaffServicesTab from '../../components/StaffServicesTab';
 import StaffMessagesTab from '../../components/StaffMessagesTab';
-import { generateWarningLetter, generateTerminationLetter } from '../../lib/labourLetter';
+import { generateWarningLetter, generateTerminationLetter, generateTransferLetter } from '../../lib/labourLetter';
 
 export default function HRPortal() {
   const [activeTab, setActiveTab] = useState('employees');
@@ -641,6 +641,7 @@ function StaffActionsTab() {
   const subTabs = [
     { id: 'warnings', label: 'Warnings', icon: '⚠️' },
     { id: 'terminations', label: 'Terminations', icon: '🚫' },
+    { id: 'transfers', label: 'Transfers', icon: '🔄' },
     { id: 'communication', label: 'Communication', icon: '💬' },
   ];
   return (
@@ -672,6 +673,7 @@ function StaffActionsTab() {
       </div>
       {sub === 'warnings' && <WarningsTab />}
       {sub === 'terminations' && <TerminationsTab />}
+      {sub === 'transfers' && <TransferTab />}
       {sub === 'communication' && <CommunicationTab />}
     </div>
   );
@@ -1214,6 +1216,244 @@ function PerformanceTab() {
           ]}
           data={reviews}
           emptyMessage="No reviews recorded"
+        />
+      </Card>
+    </div>
+  );
+}
+
+function TransferTab() {
+  const [employees, setEmployees] = useState([]);
+  const [transfers, setTransfers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const POSITIONS = [
+    'Branch Manager', 'Assistant Branch Manager', 'Sales Consultant', 'Pharmacist Assistant',
+    'Cashier', 'Stock Controller', 'Warehouse Staff', 'Driver', 'Cleaner', 'Security',
+    'HR Officer', 'Accountant', 'Data Capturer', 'IT Support', 'Other',
+  ];
+  const emptyForm = {
+    employee_name: '', current_branch: '', new_branch: '', current_position: '',
+    new_position: '', transfer_type: 'permanent', effective_date: '', end_date: '',
+    reason: '', issued_by: '',
+  };
+  const [form, setForm] = useState(emptyForm);
+  const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  const loadData = () => {
+    Promise.all([
+      api.employees.list().then(d => Array.isArray(d) ? d : d.employees || []).catch(() => []),
+      api.hr.records('transfer').then(d => Array.isArray(d) ? d : d.records || []).catch(() => []),
+    ]).then(([emps, recs]) => {
+      setEmployees(emps);
+      setTransfers(recs);
+    }).finally(() => setLoading(false));
+  };
+
+  useEffect(() => { loadData(); }, []);
+
+  const handleEmpChange = (name) => {
+    f('employee_name', name);
+    const emp = employees.find(e => e.full_name === name);
+    if (emp) {
+      f('current_branch', emp.branch || '');
+      f('current_position', emp.position || emp.role || '');
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.employee_name || !form.new_branch || !form.effective_date) {
+      setError('Employee, new branch, and effective date are required.');
+      return;
+    }
+    if (form.transfer_type === 'temporary' && !form.end_date) {
+      setError('End date is required for temporary transfers.');
+      return;
+    }
+    setError('');
+    setSubmitting(true);
+    try {
+      await api.hr.createRecord({
+        type: 'transfer',
+        employee_name: form.employee_name,
+        reason: form.reason,
+        date: form.effective_date,
+        subtype: form.transfer_type,
+        metadata: {
+          current_branch:   form.current_branch,
+          new_branch:       form.new_branch,
+          current_position: form.current_position,
+          new_position:     form.new_position || form.current_position,
+          transfer_type:    form.transfer_type,
+          effective_date:   form.effective_date,
+          end_date:         form.end_date || null,
+          issued_by:        form.issued_by,
+        },
+      });
+      setSuccess('Transfer recorded successfully. Generate the PDF letter below.');
+      setTransfers(prev => [{ ...form, id: Date.now(), created_at: new Date().toISOString() }, ...prev]);
+      setTimeout(() => setSuccess(''), 5000);
+      setForm(emptyForm);
+      loadData();
+    } catch (err) {
+      setError(err.message || 'Failed to record transfer');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const getTransferMeta = (rec) => {
+    try {
+      return typeof rec.metadata === 'string' ? JSON.parse(rec.metadata || '{}') : (rec.metadata || {});
+    } catch { return {}; }
+  };
+
+  const openLetter = (rec) => {
+    const meta = getTransferMeta(rec);
+    generateTransferLetter({
+      employee_name:    rec.employee_name,
+      current_branch:   meta.current_branch  || rec.current_branch  || '',
+      new_branch:       meta.new_branch       || rec.new_branch      || '',
+      current_position: meta.current_position || rec.current_position || '',
+      new_position:     meta.new_position     || rec.new_position    || meta.current_position || '',
+      effective_date:   meta.effective_date   || rec.date            || '',
+      end_date:         meta.end_date         || rec.end_date        || null,
+      transfer_type:    meta.transfer_type    || rec.subtype         || 'permanent',
+      reason:           rec.reason            || '',
+      issued_by:        meta.issued_by        || rec.issued_by       || '',
+    });
+  };
+
+  if (loading) return <LoadingSpinner />;
+
+  const branchOptions = [
+    { value: '', label: 'Select Branch' },
+    ...BRANCHES.map(b => ({ value: b, label: b })),
+  ];
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader><h3 className="font-bold text-gray-800">Record Staff Transfer</h3></CardHeader>
+        <CardBody>
+          {error   && <Alert type="error"   className="mb-4">{error}</Alert>}
+          {success && <Alert type="success" className="mb-4">{success}</Alert>}
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Row 1 */}
+            <div className="grid md:grid-cols-2 gap-4">
+              <Select
+                label="Employee *"
+                value={form.employee_name}
+                onChange={e => handleEmpChange(e.target.value)}
+                options={[{ value: '', label: 'Select Employee' }, ...employees.map(e => ({ value: e.full_name, label: e.full_name }))]}
+              />
+              <Select
+                label="Transfer Type *"
+                value={form.transfer_type}
+                onChange={e => f('transfer_type', e.target.value)}
+                options={[
+                  { value: 'permanent', label: 'Permanent Transfer' },
+                  { value: 'temporary', label: 'Temporary Transfer / Secondment' },
+                ]}
+              />
+            </div>
+
+            {/* Row 2 — Branches */}
+            <div className="grid md:grid-cols-2 gap-4">
+              <Select label="From Branch (Current)" value={form.current_branch} onChange={e => f('current_branch', e.target.value)} options={branchOptions} />
+              <Select label="To Branch (New) *"     value={form.new_branch}     onChange={e => f('new_branch', e.target.value)}     options={branchOptions} />
+            </div>
+
+            {/* Row 3 — Positions */}
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#374151', marginBottom: 4 }}>Current Position</label>
+                <input
+                  list="pos-current" value={form.current_position}
+                  onChange={e => f('current_position', e.target.value)}
+                  placeholder="e.g. Sales Consultant"
+                  style={{ width: '100%', padding: '8px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: '0.88rem', outline: 'none', boxSizing: 'border-box' }}
+                />
+                <datalist id="pos-current">{POSITIONS.map(p => <option key={p} value={p} />)}</datalist>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#374151', marginBottom: 4 }}>
+                  New Position <span style={{ fontWeight: 400, color: '#94a3b8' }}>(leave blank to maintain current)</span>
+                </label>
+                <input
+                  list="pos-new" value={form.new_position}
+                  onChange={e => f('new_position', e.target.value)}
+                  placeholder="Leave blank = no change"
+                  style={{ width: '100%', padding: '8px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: '0.88rem', outline: 'none', boxSizing: 'border-box' }}
+                />
+                <datalist id="pos-new">{POSITIONS.map(p => <option key={p} value={p} />)}</datalist>
+              </div>
+            </div>
+
+            {/* Row 4 — Dates */}
+            <div className="grid md:grid-cols-2 gap-4">
+              <Input label="Effective Date *" type="date" value={form.effective_date} onChange={e => f('effective_date', e.target.value)} required />
+              {form.transfer_type === 'temporary' && (
+                <Input label="End Date (Secondment) *" type="date" value={form.end_date} onChange={e => f('end_date', e.target.value)} />
+              )}
+            </div>
+
+            {/* Row 5 — Reason + Issued By */}
+            <Textarea label="Reason / Business Justification (optional)" value={form.reason} onChange={e => f('reason', e.target.value)} rows={2} />
+            <Input label="Authorised By (HR Officer / Manager)" value={form.issued_by} onChange={e => f('issued_by', e.target.value)} placeholder="Full name of authorising manager" />
+
+            {/* Buttons */}
+            <div className="flex gap-3 flex-wrap items-center pt-1">
+              <Button type="submit" disabled={submitting}>{submitting ? 'Saving…' : 'Record Transfer'}</Button>
+              {form.employee_name && form.new_branch && (
+                <button
+                  type="button"
+                  onClick={() => generateTransferLetter({ ...form, new_position: form.new_position || form.current_position })}
+                  style={{ padding: '8px 16px', fontSize: '0.82rem', background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}
+                  title="Preview transfer letter before saving"
+                >
+                  🖨 Preview PDF Letter
+                </button>
+              )}
+            </div>
+          </form>
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader><h3 className="font-bold text-gray-800">Transfer History</h3></CardHeader>
+        <Table
+          columns={[
+            { header: 'Employee', key: 'employee_name' },
+            { header: 'Type', render: r => {
+              const meta = getTransferMeta(r);
+              const t = meta.transfer_type || r.subtype || 'permanent';
+              return <Badge variant={t === 'permanent' ? 'primary' : 'info'}>{t === 'permanent' ? 'Permanent' : 'Temporary'}</Badge>;
+            }},
+            { header: 'From', render: r => { const m = getTransferMeta(r); return m.current_branch || '—'; }},
+            { header: 'To', render: r => { const m = getTransferMeta(r); return m.new_branch || '—'; }},
+            { header: 'Position Change', render: r => {
+              const m = getTransferMeta(r);
+              if (!m.new_position || m.new_position === m.current_position) return <span style={{ color: '#64748b', fontSize: '0.82rem' }}>Same</span>;
+              return <span style={{ fontSize: '0.82rem' }}>{m.current_position} → {m.new_position}</span>;
+            }},
+            { header: 'Effective Date', render: r => { const m = getTransferMeta(r); return formatDate(m.effective_date || r.date); }},
+            { header: 'Letter', render: r => (
+              <button
+                onClick={() => openLetter(r)}
+                style={{ padding: '4px 10px', fontSize: '0.75rem', background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                title="Generate printable transfer letter (PDF)"
+              >
+                🖨 PDF Letter
+              </button>
+            )},
+          ]}
+          data={transfers}
+          emptyMessage="No transfers recorded yet"
         />
       </Card>
     </div>

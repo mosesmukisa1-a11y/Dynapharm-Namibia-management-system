@@ -516,6 +516,218 @@ export function generateStaffLetter(notification, acknowledgedAt) {
   }
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   TRANSFER LETTER — separate builder (no misconduct provisions needed)
+   ───────────────────────────────────────────────────────────────────────────── */
+
+function buildTransferHTML({ employeeName, currentBranch, newBranch, currentPosition, newPosition,
+  effectiveDate, endDate, transferType, reason, issuedBy, refNo }) {
+
+  const letterDate = formatNamibianDate(null);
+  const effDate    = formatNamibianDate(effectiveDate);
+  const endDateStr = endDate ? formatNamibianDate(endDate) : null;
+  const isPermanent = !transferType || transferType === 'permanent';
+  const positionChanged = newPosition && newPosition.trim() && newPosition.trim().toLowerCase() !== currentPosition.trim().toLowerCase();
+
+  const subject = isPermanent
+    ? 'NOTICE OF PERMANENT TRANSFER'
+    : 'NOTICE OF TEMPORARY TRANSFER / SECONDMENT';
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${subject} — ${employeeName}</title>
+  <style>
+    @page { size: A4; margin: 22mm 20mm 25mm 20mm; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Times New Roman', Times, serif; font-size: 11.5pt; line-height: 1.65; color: #1a1a1a; background: #fff; }
+    .letterhead { border-bottom: 3px double #c41e3a; padding-bottom: 14px; margin-bottom: 22px; display: flex; justify-content: space-between; align-items: flex-start; }
+    .company-name { font-size: 15pt; font-weight: bold; color: #c41e3a; letter-spacing: 0.5px; }
+    .company-sub { font-size: 9pt; color: #555; margin-top: 3px; }
+    .doc-ref { text-align: right; font-size: 9pt; color: #555; }
+    .confidential-banner { text-align: center; font-size: 9pt; font-weight: bold; letter-spacing: 2px; color: #1e3a5f; border: 1px solid #bfdbfe; background: #eff6ff; padding: 4px 0; margin-bottom: 18px; }
+    .date-line { margin-bottom: 14px; font-size: 11pt; }
+    .to-block { margin-bottom: 18px; font-size: 11pt; }
+    .to-block p { margin-bottom: 2px; }
+    .subject-line { text-align: center; font-size: 13pt; font-weight: bold; color: #1e3a5f; text-decoration: underline; margin: 20px 0 18px 0; letter-spacing: 0.5px; }
+    p { margin-bottom: 10px; }
+    .section-title { font-size: 11pt; font-weight: bold; color: #1e3a5f; margin: 18px 0 8px 0; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #dbeafe; padding-bottom: 3px; }
+    .details-table { width: 100%; border-collapse: collapse; margin: 10px 0 18px 0; font-size: 11pt; }
+    .details-table td { padding: 7px 10px; border: 1px solid #e2e8f0; vertical-align: top; }
+    .details-table td:first-child { font-weight: bold; color: #1e3a5f; width: 38%; background: #f8fafc; }
+    .provision { background: #f0f4ff; border-left: 4px solid #3b5bdb; padding: 10px 14px; margin-bottom: 12px; border-radius: 0 4px 4px 0; font-size: 10.5pt; }
+    .provision-label { font-weight: bold; color: #1e3a5f; margin-bottom: 5px; font-size: 10.5pt; }
+    .rights-box { background: #fefce8; border: 1px solid #fde68a; border-radius: 4px; padding: 10px 14px; margin: 14px 0; font-size: 10.5pt; }
+    .signature-section { margin-top: 36px; page-break-inside: avoid; }
+    .sig-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 16px; }
+    .sig-block { font-size: 10.5pt; }
+    .sig-line { border-bottom: 1px solid #1a1a1a; height: 38px; margin-bottom: 4px; }
+    .sig-label { font-size: 9.5pt; color: #555; }
+    .footer { margin-top: 28px; border-top: 1px solid #e2e8f0; padding-top: 8px; font-size: 8.5pt; color: #94a3b8; text-align: center; }
+    @media print { body { font-size: 11pt; } .no-print { display: none !important; } }
+    .print-btn { position: fixed; top: 18px; right: 18px; padding: 10px 22px; background: #1e3a5f; color: #fff; border: none; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.18); z-index: 1000; font-family: Arial, sans-serif; }
+    .print-btn:hover { background: #1e40af; }
+  </style>
+</head>
+<body>
+
+  <button class="print-btn no-print" onclick="window.print()">🖨 Print / Save as PDF</button>
+
+  <div class="letterhead">
+    <div>
+      <div class="company-name">${COMPANY.name}</div>
+      <div class="company-sub">${COMPANY.street}</div>
+      <div class="company-sub">${COMPANY.erf}</div>
+      <div class="company-sub">${COMPANY.city}</div>
+      <div class="company-sub" style="margin-top:3px;">Tel: ${COMPANY.phone} | Email: ${COMPANY.email}</div>
+    </div>
+    <div class="doc-ref">
+      <div><strong>Ref:</strong> ${refNo}</div>
+      <div><strong>Classification:</strong> CONFIDENTIAL</div>
+      <div><strong>Date:</strong> ${letterDate}</div>
+    </div>
+  </div>
+
+  <div class="confidential-banner">PRIVATE &amp; CONFIDENTIAL — ADDRESSEE ONLY</div>
+
+  <div class="date-line">${letterDate}</div>
+
+  <div class="to-block">
+    <p><strong>${employeeName}</strong></p>
+    <p>${currentPosition || 'Employee'}</p>
+    <p>${currentBranch || COMPANY.name}</p>
+    <p>${COMPANY.name}</p>
+  </div>
+
+  <div class="subject-line">RE: ${subject}</div>
+
+  <p>Dear <strong>${employeeName}</strong>,</p>
+  <p>
+    We write to formally notify you of your ${isPermanent ? 'permanent transfer' : 'temporary transfer / secondment'} within
+    <strong>${COMPANY.name}</strong>, effective <strong>${effDate}</strong>. This letter sets out the terms and conditions
+    of your transfer and the applicable provisions of Namibian labour law.
+  </p>
+
+  <div class="section-title">Transfer Details</div>
+  <table class="details-table">
+    <tr><td>Employee Name</td><td>${employeeName}</td></tr>
+    <tr><td>Transfer Type</td><td>${isPermanent ? 'Permanent Transfer' : 'Temporary Transfer / Secondment'}</td></tr>
+    <tr><td>From Branch / Location</td><td>${currentBranch || '—'}</td></tr>
+    <tr><td>To Branch / Location</td><td>${newBranch || '—'}</td></tr>
+    <tr><td>Current Position / Role</td><td>${currentPosition || '—'}</td></tr>
+    <tr><td>New Position / Role</td><td>${positionChanged ? newPosition : currentPosition + ' (unchanged)'}</td></tr>
+    <tr><td>Effective Date</td><td>${effDate}</td></tr>
+    ${!isPermanent && endDateStr ? `<tr><td>End Date (Secondment)</td><td>${endDateStr}</td></tr>` : ''}
+    ${reason ? `<tr><td>Reason / Business Justification</td><td>${reason}</td></tr>` : ''}
+    ${issuedBy ? `<tr><td>Authorised By</td><td>${issuedBy}</td></tr>` : ''}
+  </table>
+
+  <div class="section-title">Applicable Namibian Legislation</div>
+  <p>This transfer is effected in accordance with the following provisions of Namibian law:</p>
+
+  <div class="provision">
+    <div class="provision-label">Employer's Management Prerogative — Labour Act 11 of 2007</div>
+    <p>The employer retains the inherent common law right and the right under the <strong>Labour Act 11 of 2007 (Namibia)</strong> to direct, organise, and manage the enterprise. This includes the right to deploy employees across branches and locations to meet legitimate operational requirements. This right must be exercised reasonably, in good faith, and in a manner consistent with the Act.</p>
+  </div>
+
+  <div class="provision">
+    <div class="provision-label">Changes to Conditions of Employment — Section 26, Labour Act 11 of 2007</div>
+    <p>Section 26(1) of the <strong>Labour Act 11 of 2007</strong> provides that an employer may not unilaterally vary the terms and conditions of employment to the material detriment of the employee without either the employee's written consent or a fair and legitimate operational justification. A transfer within the same employer, maintaining equivalent terms, conditions, remuneration, and benefits, does not constitute an unlawful unilateral variation of contract.</p>
+    <p>Where any condition of employment is materially altered as a result of this transfer, Section 26(2) requires prior consultation with the employee and reasonable notice in accordance with Section 45 of the Act.</p>
+  </div>
+
+  <div class="provision">
+    <div class="provision-label">Employment Contract and Constructive Dismissal — Section 33 &amp; Section 49, Labour Act 11 of 2007</div>
+    <p>Section 33 of the <strong>Labour Act 11 of 2007</strong> provides that a constructive dismissal occurs when an employer, by conduct, makes continued employment intolerable. The Company confirms that this transfer does not constitute a constructive dismissal. Your remuneration, leave entitlements, and continuity of service remain unaffected by this transfer unless expressly stated otherwise in writing.</p>
+    <p>In the event of a temporary transfer / secondment, Section 49 of the Act protects the employee's continuity of service and existing terms during the secondment period.</p>
+  </div>
+
+  ${positionChanged ? `
+  <div class="provision">
+    <div class="provision-label">Change of Position — Employment Contract &amp; Section 26, Labour Act 11 of 2007</div>
+    <p>Your position is changed from <strong>${currentPosition}</strong> to <strong>${newPosition}</strong> with effect from ${effDate}. This change is made in accordance with the Company's operational requirements. Your revised duties and responsibilities shall be communicated to you by your new line manager. Where applicable, your remuneration will be adjusted to reflect the new role in accordance with the Company's remuneration policy.</p>
+  </div>` : ''}
+
+  <div class="rights-box">
+    <strong>Employee Rights Notice (Labour Act 11 of 2007):</strong><br/>
+    You have the right to be consulted regarding this transfer. If you believe that this transfer materially and adversely alters your conditions of employment without justification, or amounts to a constructive dismissal, you have the right to refer a dispute to the <strong>Office of the Labour Commissioner (Namibia)</strong> within <strong>one (1) year</strong> of the alleged unfair act, in terms of Section 86 of the Labour Act 11 of 2007. You may be represented by a co-employee or a trade union representative in any such proceedings.
+  </div>
+
+  <div class="section-title">Terms &amp; Conditions During Transfer</div>
+  <p>Unless otherwise specified in writing, the following terms apply during the transfer period:</p>
+  <ul>
+    <li>Your remuneration, benefits, and leave entitlements remain unchanged.</li>
+    <li>Your continuity of service and accrued rights are fully preserved.</li>
+    <li>You are required to report to the Branch Manager at <strong>${newBranch}</strong> on <strong>${effDate}</strong>.</li>
+    <li>You remain subject to all Company policies, procedures, and the Namibian Labour Act 11 of 2007.</li>
+    ${!isPermanent && endDateStr ? `<li>At the end of the secondment period (<strong>${endDateStr}</strong>), you shall revert to your original position and branch, unless otherwise agreed in writing.</li>` : ''}
+  </ul>
+
+  <div class="signature-section">
+    <div class="section-title">Acknowledgement of Receipt</div>
+    <p>The employee acknowledges receipt of this transfer notice and confirms that its contents have been explained and understood. Signing this notice does not waive any rights the employee may have under the Labour Act 11 of 2007. It is an acknowledgement of receipt only.</p>
+
+    <div class="sig-grid">
+      <div class="sig-block">
+        <div class="sig-line"></div>
+        <div><strong>HR Representative / Authorised Signatory</strong></div>
+        <div class="sig-label">Name: ________________________________</div>
+        <div class="sig-label">Designation: _________________________</div>
+        <div class="sig-label">Date: ________________________________</div>
+      </div>
+      <div class="sig-block">
+        <div class="sig-line"></div>
+        <div><strong>Employee Signature</strong></div>
+        <div class="sig-label">Name: <strong>${employeeName}</strong></div>
+        <div class="sig-label">Employee ID / Staff No.: _____________</div>
+        <div class="sig-label">Date: ________________________________</div>
+      </div>
+    </div>
+
+    <div style="margin-top:18px; font-size:10pt;">
+      <p><em>If the employee refuses to sign, the HR representative should note: "Employee declined to sign on [date]" and have a witness co-sign below.</em></p>
+      <div style="margin-top:10px;">
+        <div style="border-bottom:1px solid #1a1a1a;height:32px;width:55%;"></div>
+        <div class="sig-label">Witness Signature | Name: __________________ | Date: __________</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    This document was generated by the ${COMPANY.name} Human Resources Management System. &nbsp;|&nbsp; Generated: ${new Date().toLocaleString('en-NA')} &nbsp;|&nbsp; Ref: ${refNo}
+  </div>
+
+</body>
+</html>`;
+}
+
+export function generateTransferLetter(record) {
+  const ts = new Date();
+  const yy = ts.getFullYear();
+  const mm = String(ts.getMonth() + 1).padStart(2, '0');
+  const dd = String(ts.getDate()).padStart(2, '0');
+  const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
+  const initials = (record.employee_name || 'EMP').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 3);
+  const refNo = `DYN/TRAN/${yy}${mm}${dd}/${initials}-${rand}`;
+
+  const html = buildTransferHTML({
+    employeeName:    record.employee_name   || 'Unknown Employee',
+    currentBranch:   record.current_branch  || '',
+    newBranch:       record.new_branch      || '',
+    currentPosition: record.current_position || '',
+    newPosition:     record.new_position    || record.current_position || '',
+    effectiveDate:   record.effective_date  || record.date || null,
+    endDate:         record.end_date        || null,
+    transferType:    record.transfer_type   || 'permanent',
+    reason:          record.reason          || '',
+    issuedBy:        record.issued_by       || '',
+    refNo,
+  });
+  openLetterWindow(html);
+}
+
 function openLetterWindow(html) {
   const win = window.open('', '_blank', 'width=860,height=960,scrollbars=yes');
   if (!win) {
