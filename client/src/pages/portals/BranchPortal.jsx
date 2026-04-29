@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useMemo, useCallback, useContext, createCo
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { enqueue, generateOfflineId } from '../../lib/offlineQueue.js';
+import { warmCache, addToCache, searchCache } from '../../lib/distributorCache.js';
+import { useOffline } from '../../lib/OfflineProvider.jsx';
 import { useStockRealtime } from '../../hooks/useStockRealtime';
 import DistributorPerformanceTab from '../../components/DistributorPerformanceTab';
 import DispatchNote from '../../components/DispatchNote';
@@ -458,6 +460,7 @@ function BranchPriceListTab() {
 
 function WalkInSalesTab() {
   const { user } = useAuth();
+  const { isOnline } = useOffline();
   const portalBranch = useContext(PortalBranchContext);
   const effectiveBranch = portalBranch || user?.branch || '';
   const [products, setProducts] = useState([]);
@@ -483,12 +486,15 @@ function WalkInSalesTab() {
   const [salesSearch, setSalesSearch] = useState('');
   const [salesDateFrom, setSalesDateFrom] = useState('');
   const [salesDateTo, setSalesDateTo] = useState('');
+  const [regFromCache, setRegFromCache] = useState(false);
+  const [refFromCache, setRefFromCache] = useState(false);
 
   const loadSales = (branch) =>
     api.branch.walkinSales(branch ? `branch_id=${branch}` : '')
       .then(d => setSales(Array.isArray(d) ? d : d.sales || [])).catch(() => {});
 
   useEffect(() => {
+    warmCache(); // pre-warm the local distributor cache while online
     Promise.all([
       api.prices.list().catch(() => []),
       api.products.list().catch(() => []),
@@ -546,26 +552,50 @@ function WalkInSalesTab() {
   const searchRegistered = (q) => {
     setRegSearch(q);
     if (selectedReg) setSelectedReg(null);
-    if (q.length < 2) { setRegResults([]); return; }
+    if (q.length < 2) { setRegResults([]); setRegFromCache(false); return; }
     if (regSearchTimer.current) clearTimeout(regSearchTimer.current);
     regSearchTimer.current = setTimeout(async () => {
-      try { const res = await api.distributors.search(q); setRegResults(Array.isArray(res) ? res : res.distributors || []); } catch { setRegResults([]); }
+      if (!navigator.onLine) {
+        const cached = searchCache(q);
+        setRegResults(cached);
+        setRegFromCache(true);
+        return;
+      }
+      try {
+        const res = await api.distributors.search(q);
+        const results = Array.isArray(res) ? res : res.distributors || [];
+        setRegResults(results);
+        setRegFromCache(false);
+        if (results.length > 0) addToCache(results);
+      } catch { setRegResults(searchCache(q)); setRegFromCache(true); }
     }, 300);
   };
-  const selectRegistered = (d) => { const nd = normalizeDistributor(d); setSelectedReg(nd); setRegResults([]); setRegSearch(nd.nb_number && nd.name ? `${nd.nb_number} — ${nd.name}` : nd.name || nd.nb_number || ''); };
-  const clearRegistered = () => { setSelectedReg(null); setRegSearch(''); };
+  const selectRegistered = (d) => { const nd = normalizeDistributor(d); setSelectedReg(nd); setRegResults([]); setRegFromCache(false); setRegSearch(nd.nb_number && nd.name ? `${nd.nb_number} — ${nd.name}` : nd.name || nd.nb_number || ''); };
+  const clearRegistered = () => { setSelectedReg(null); setRegSearch(''); setRegFromCache(false); };
 
   const refSearchTimer = useRef(null);
   const searchReferrals = (q) => {
     setReferralSearch(q);
-    if (q.length < 2) { setReferralResults([]); return; }
+    if (q.length < 2) { setReferralResults([]); setRefFromCache(false); return; }
     if (refSearchTimer.current) clearTimeout(refSearchTimer.current);
     refSearchTimer.current = setTimeout(async () => {
-      try { const res = await api.distributors.search(q); setReferralResults(Array.isArray(res) ? res : res.distributors || []); } catch { setReferralResults([]); }
+      if (!navigator.onLine) {
+        const cached = searchCache(q);
+        setReferralResults(cached);
+        setRefFromCache(true);
+        return;
+      }
+      try {
+        const res = await api.distributors.search(q);
+        const results = Array.isArray(res) ? res : res.distributors || [];
+        setReferralResults(results);
+        setRefFromCache(false);
+        if (results.length > 0) addToCache(results);
+      } catch { setReferralResults(searchCache(q)); setRefFromCache(true); }
     }, 300);
   };
-  const selectReferral = (d) => { setSelectedReferral(normalizeDistributor(d)); setReferralResults([]); setReferralSearch(''); };
-  const clearReferral = () => { setSelectedReferral(null); setReferralSearch(''); };
+  const selectReferral = (d) => { setSelectedReferral(normalizeDistributor(d)); setReferralResults([]); setRefFromCache(false); setReferralSearch(''); };
+  const clearReferral = () => { setSelectedReferral(null); setReferralSearch(''); setRefFromCache(false); };
 
   const toggleNoReferral = (checked) => {
     setNoReferral(checked);
@@ -981,8 +1011,13 @@ function WalkInSalesTab() {
                         style={{ width: '100%', padding: '9px 12px 9px 34px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.85rem', boxSizing: 'border-box', background: '#fff', outline: 'none' }} />
                       {regResults.length > 0 && (
                         <div style={{ position: 'absolute', zIndex: 2000, width: '100%', background: '#fff', border: '1.5px solid #fecaca', borderRadius: 10, maxHeight: 200, overflowY: 'auto', boxShadow: '0 8px 28px rgba(196,30,58,0.15)', top: 'calc(100% + 4px)', left: 0 }}>
+                          {regFromCache && (
+                            <div style={{ padding: '5px 12px', fontSize: '0.68rem', fontWeight: 700, color: '#b45309', background: '#fef3c7', borderBottom: '1px solid #fde68a', display: 'flex', alignItems: 'center', gap: 5 }}>
+                              📴 Showing offline cached results
+                            </div>
+                          )}
                           {regResults.map(d => (
-                            <button key={d.id} onClick={() => selectRegistered(d)}
+                            <button key={d.id || d.nb_number} onClick={() => selectRegistered(d)}
                               style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 12px', border: 'none', borderBottom: '1px solid #fff5f5', background: 'none', cursor: 'pointer', fontSize: '0.84rem' }}>
                               <div style={{ fontWeight: 700, color: '#1e293b' }}>{d.name || d.fullName || d.full_name}</div>
                               <div style={{ color: '#c41e3a', fontSize: '0.76rem', marginTop: 1 }}>{d.nb_number || d.nbNumber || d.distributor_code}</div>
@@ -1018,8 +1053,13 @@ function WalkInSalesTab() {
                           style={{ width: '100%', padding: '9px 12px 9px 34px', border: '1.5px solid #fcd34d', borderRadius: 9, fontSize: '0.85rem', boxSizing: 'border-box', outline: 'none', opacity: noReferral ? 0.5 : 1, background: noReferral ? '#fef9ee' : '#fff' }} />
                         {referralResults.length > 0 && !noReferral && (
                           <div style={{ position: 'absolute', zIndex: 2000, width: '100%', background: '#fff', border: '1.5px solid #fcd34d', borderRadius: 10, maxHeight: 170, overflowY: 'auto', boxShadow: '0 8px 28px rgba(245,158,11,0.15)', top: 'calc(100% + 4px)', left: 0 }}>
+                            {refFromCache && (
+                              <div style={{ padding: '5px 12px', fontSize: '0.68rem', fontWeight: 700, color: '#b45309', background: '#fef3c7', borderBottom: '1px solid #fde68a', display: 'flex', alignItems: 'center', gap: 5 }}>
+                                📴 Showing offline cached results
+                              </div>
+                            )}
                             {referralResults.map(d => (
-                              <button key={d.id} onClick={() => selectReferral(d)}
+                              <button key={d.id || d.nb_number} onClick={() => selectReferral(d)}
                                 style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 12px', border: 'none', borderBottom: '1px solid #fffbeb', background: 'none', cursor: 'pointer', fontSize: '0.84rem' }}>
                                 <div style={{ fontWeight: 700, color: '#1e293b' }}>{d.name || d.fullName || d.full_name}</div>
                                 <div style={{ color: '#d97706', fontSize: '0.76rem', marginTop: 1 }}>{d.nb_number || d.nbNumber || d.distributor_code}</div>

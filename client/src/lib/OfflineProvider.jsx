@@ -84,7 +84,17 @@ export function OfflineProvider({ children }) {
   }, [refreshCount]);
 
   useEffect(() => {
-    refreshCount();
+    // On mount: load pending count and auto-sync if already online with queued items
+    (async () => {
+      try {
+        const count = await getCount();
+        setPendingCount(count);
+        if (navigator.onLine && count > 0) {
+          // App was re-opened while online — the 'online' event won't fire, so sync now
+          setTimeout(syncNow, 2000);
+        }
+      } catch (_) {}
+    })();
 
     const handleOnline = () => {
       setIsOnline(true);
