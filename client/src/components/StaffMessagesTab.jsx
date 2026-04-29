@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api';
 import { Card, CardBody, CardHeader, Badge, Button, LoadingSpinner, EmptyState } from './ui';
-import { Bell, AlertTriangle, UserX, MessageSquare, CheckCheck, FileText } from 'lucide-react';
-import { generateStaffLetter } from '../lib/labourLetter';
+import { Bell, AlertTriangle, UserX, MessageSquare, CheckCheck, FileText, ArrowRightLeft } from 'lucide-react';
+import { generateStaffLetter, generateTransferLetter } from '../lib/labourLetter';
 
 function formatDateTime(ts) {
   if (!ts) return '—';
@@ -23,8 +23,9 @@ function formatAck(ts) {
 
 function MessageCard({ msg, onMarkRead, currentUser }) {
   const isTermination = msg.type === 'termination';
-  const isWarning    = msg.type === 'warning';
-  const isHR         = isTermination || isWarning;
+  const isWarning     = msg.type === 'warning';
+  const isTransfer    = msg.type === 'transfer';
+  const isHR          = isTermination || isWarning || isTransfer;
 
   let meta = {};
   try { meta = typeof msg.metadata === 'string' ? JSON.parse(msg.metadata || '{}') : (msg.metadata || {}); } catch(e) {}
@@ -38,10 +39,13 @@ function MessageCard({ msg, onMarkRead, currentUser }) {
   });
   const [checking, setChecking] = useState(false);
 
-  const borderColor = isTermination ? 'border-red-400' : isWarning ? 'border-amber-400' : 'border-blue-300';
-  const bgColor     = isTermination ? 'bg-red-50'      : isWarning ? 'bg-amber-50'      : 'bg-blue-50';
-  const badgeVariant = isTermination ? 'danger' : isWarning ? 'warning' : 'info';
-  const Icon = isTermination ? UserX : isWarning ? AlertTriangle : MessageSquare;
+  const borderColor  = isTermination ? 'border-red-400'  : isWarning ? 'border-amber-400' : isTransfer ? 'border-teal-400'  : 'border-blue-300';
+  const bgColor      = isTermination ? 'bg-red-50'        : isWarning ? 'bg-amber-50'       : isTransfer ? 'bg-teal-50'       : 'bg-blue-50';
+  const ringColor    = isTermination ? 'ring-red-200'     : isWarning ? 'ring-amber-200'    : isTransfer ? 'ring-teal-200'    : 'ring-blue-200';
+  const badgeVariant = isTermination ? 'danger'           : isWarning ? 'warning'           : isTransfer ? 'success'         : 'info';
+  const badgeLabel   = isTermination ? 'Termination'      : isWarning ? 'Warning'           : isTransfer ? 'Transfer'        : 'Message';
+  const iconColor    = isTermination ? 'text-red-600'     : isWarning ? 'text-amber-600'    : isTransfer ? 'text-teal-600'   : 'text-blue-600';
+  const Icon         = isTermination ? UserX              : isWarning ? AlertTriangle        : isTransfer ? ArrowRightLeft    : MessageSquare;
 
   const handleAcknowledge = async () => {
     if (acknowledged || checking) return;
@@ -62,25 +66,41 @@ function MessageCard({ msg, onMarkRead, currentUser }) {
 
   const handleViewLetter = () => {
     const employeeName = meta.employee_name || currentUser?.full_name || currentUser?.username || 'Employee';
-    generateStaffLetter(
-      { ...msg, metadata: { ...meta, employee_name: employeeName } },
-      acknowledgedAt
-    );
+    if (isTransfer) {
+      generateTransferLetter({
+        employee_name:    employeeName,
+        current_branch:   meta.current_branch   || '',
+        new_branch:       meta.new_branch        || '',
+        current_position: meta.current_position  || '',
+        new_position:     meta.new_position      || meta.current_position || '',
+        effective_date:   meta.effective_date    || meta.date || '',
+        end_date:         meta.end_date          || null,
+        transfer_type:    meta.transfer_type     || meta.subtype || 'permanent',
+        reason:           meta.reason            || msg.message || '',
+        issued_by:        meta.issued_by         || '',
+      });
+    } else {
+      generateStaffLetter(
+        { ...msg, metadata: { ...meta, employee_name: employeeName } },
+        acknowledgedAt
+      );
+    }
   };
 
+  const ackDocLabel = isTermination ? 'termination notice' : isTransfer ? 'transfer notice' : 'warning letter';
+  const letterBg    = isTermination ? '#7f1d1d' : isTransfer ? '#0f766e' : '#1e3a5f';
+
   return (
-    <div className={`border-l-4 ${borderColor} ${bgColor} rounded-lg p-4 ${!msg.is_read ? 'ring-1 ring-inset ' + (isTermination ? 'ring-red-200' : isWarning ? 'ring-amber-200' : 'ring-blue-200') : 'opacity-90'}`}>
+    <div className={`border-l-4 ${borderColor} ${bgColor} rounded-lg p-4 ${!msg.is_read ? `ring-1 ring-inset ${ringColor}` : 'opacity-90'}`}>
 
       {/* Header row */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3 flex-1">
-          <Icon size={18} className={isTermination ? 'text-red-600 mt-0.5' : isWarning ? 'text-amber-600 mt-0.5' : 'text-blue-600 mt-0.5'} />
+          <Icon size={18} className={`${iconColor} mt-0.5`} />
           <div className="flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-semibold text-gray-900 text-sm">{msg.title}</span>
-              <Badge variant={badgeVariant}>
-                {isTermination ? 'Termination' : isWarning ? 'Warning' : 'Message'}
-              </Badge>
+              <Badge variant={badgeVariant}>{badgeLabel}</Badge>
               {!msg.is_read && <Badge variant="primary">New</Badge>}
               {acknowledged && (
                 <span style={{ fontSize: '0.72rem', color: '#166534', background: '#dcfce7', padding: '1px 8px', borderRadius: 9999, fontWeight: 600 }}>
@@ -89,6 +109,18 @@ function MessageCard({ msg, onMarkRead, currentUser }) {
               )}
             </div>
             <p className="text-sm text-gray-700 mt-1">{msg.message}</p>
+            {/* Transfer detail chips */}
+            {isTransfer && (meta.current_branch || meta.new_branch) && (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                {meta.current_branch && <span style={{ fontSize: '0.72rem', background: '#ccfbf1', color: '#134e4a', borderRadius: 6, padding: '2px 8px', fontWeight: 600 }}>From: {meta.current_branch}</span>}
+                {meta.new_branch     && <span style={{ fontSize: '0.72rem', background: '#0d9488', color: '#fff',     borderRadius: 6, padding: '2px 8px', fontWeight: 600 }}>To: {meta.new_branch}</span>}
+                {meta.new_position && meta.new_position !== meta.current_position && (
+                  <span style={{ fontSize: '0.72rem', background: '#f0fdfa', color: '#0f766e', borderRadius: 6, padding: '2px 8px', fontWeight: 600, border: '1px solid #99f6e4' }}>
+                    New role: {meta.new_position}
+                  </span>
+                )}
+              </div>
+            )}
             {meta.issued_by && (
               <p className="text-xs text-gray-500 mt-1">Issued by: <strong>{meta.issued_by}</strong></p>
             )}
@@ -109,8 +141,6 @@ function MessageCard({ msg, onMarkRead, currentUser }) {
       {/* HR-specific actions: acknowledge + letter */}
       {isHR && (
         <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid rgba(0,0,0,0.07)' }}>
-
-          {/* Checkbox */}
           {!acknowledged ? (
             <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
               <input
@@ -121,19 +151,16 @@ function MessageCard({ msg, onMarkRead, currentUser }) {
                 style={{ marginTop: 2, width: 16, height: 16, cursor: 'pointer', accentColor: '#166534' }}
               />
               <span style={{ fontSize: '0.82rem', color: '#374151', fontWeight: 500, lineHeight: 1.4 }}>
-                I have read and understood the contents of this {isTermination ? 'termination notice' : 'warning letter'}.
+                I have read and understood the contents of this {ackDocLabel}.
                 By checking this box I acknowledge receipt of this document.
               </span>
             </label>
           ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '0.8rem', color: '#166534', fontWeight: 600 }}>
-                ✔ Acknowledged on {acknowledgedAt}
-              </span>
-            </div>
+            <span style={{ fontSize: '0.8rem', color: '#166534', fontWeight: 600 }}>
+              ✔ Acknowledged on {acknowledgedAt}
+            </span>
           )}
 
-          {/* Letter button — shows after acknowledgement */}
           {acknowledged && (
             <button
               onClick={handleViewLetter}
@@ -145,7 +172,7 @@ function MessageCard({ msg, onMarkRead, currentUser }) {
                 padding: '7px 16px',
                 fontSize: '0.8rem',
                 fontWeight: 600,
-                background: isTermination ? '#7f1d1d' : '#1e3a5f',
+                background: letterBg,
                 color: '#fff',
                 border: 'none',
                 borderRadius: 6,
@@ -157,7 +184,6 @@ function MessageCard({ msg, onMarkRead, currentUser }) {
             </button>
           )}
 
-          {/* Prompt before acknowledging */}
           {!acknowledged && (
             <p style={{ marginTop: 8, fontSize: '0.75rem', color: '#6b7280' }}>
               Please tick the box above to confirm receipt. Your letter will then be available to download.

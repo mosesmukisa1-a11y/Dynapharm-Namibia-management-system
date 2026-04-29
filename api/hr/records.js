@@ -153,39 +153,76 @@ export default async function handler(req, res) {
         ]
       );
 
-      // Auto-create a staff inbox notification for warnings and terminations
-      if (type === 'warning' || type === 'termination') {
+      // Auto-create a staff inbox notification for warnings, terminations, and transfers
+      if (type === 'warning' || type === 'termination' || type === 'transfer') {
         try {
           const staffUser = await getOne(
-            `SELECT username FROM users WHERE LOWER(full_name) = LOWER($1) AND role != 'distributor' LIMIT 1`,
+            `SELECT username, full_name FROM users
+             WHERE (LOWER(full_name) = LOWER($1) OR LOWER(username) = LOWER($1))
+               AND role != 'distributor'
+             ORDER BY (LOWER(full_name) = LOWER($1)) DESC
+             LIMIT 1`,
             [employee_name]
           );
-          if (staffUser?.username) {
+          const recipientId = staffUser?.username?.toLowerCase() || null;
+          if (recipientId) {
             const isTermination = type === 'termination';
-            const warnLabel = finalSubtype ? `${finalSubtype} Warning` : 'Warning';
-            const notifTitle = isTermination ? 'Termination Notice' : `HR ${warnLabel}`;
+            const isTransfer    = type === 'transfer';
+            const warnLabel     = finalSubtype ? `${finalSubtype} Warning` : 'Warning';
+
+            // Parse transfer metadata if present
+            let transferMeta = {};
+            if (isTransfer && metadata) {
+              try { transferMeta = typeof metadata === 'string' ? JSON.parse(metadata) : metadata; } catch {}
+            }
+            const transferType   = transferMeta.transfer_type || finalSubtype || 'permanent';
+            const fromBranch     = transferMeta.current_branch || '';
+            const toBranch       = transferMeta.new_branch || '';
+            const newPosition    = transferMeta.new_position || '';
+            const currPosition   = transferMeta.current_position || '';
+            const effDate        = transferMeta.effective_date || effective_date || date || '';
+            const endDate        = transferMeta.end_date || '';
+
+            const notifTitle = isTermination
+              ? 'Termination Notice'
+              : isTransfer
+                ? `Transfer Notice — ${transferType === 'permanent' ? 'Permanent' : 'Temporary'} Transfer`
+                : `HR ${warnLabel}`;
+
             const notifMessage = isTermination
               ? `You have received a termination notice. Effective date: ${effective_date || 'TBD'}. Reason: ${reason || 'See HR for details.'}`
-              : `You have received a ${warnLabel.toLowerCase()} from HR. Reason: ${reason || 'See HR for details.'}`;
-            const refNo = `DYN/${isTermination ? 'TERM' : 'WARN'}/${new Date().toISOString().slice(0,10).replace(/-/g,'')}/${employee_name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,3)}-${Math.random().toString(36).slice(2,6).toUpperCase()}`;
+              : isTransfer
+                ? `You are hereby notified of your ${transferType === 'permanent' ? 'permanent' : 'temporary'} transfer${fromBranch ? ` from ${fromBranch}` : ''}${toBranch ? ` to ${toBranch}` : ''}, effective ${effDate || 'TBD'}.${newPosition && newPosition !== currPosition ? ` Your new position is ${newPosition}.` : ''}${reason ? ` Reason: ${reason}` : ''}`
+                : `You have received a ${warnLabel.toLowerCase()} from HR. Reason: ${reason || 'See HR for details.'}`;
+
+            const refPrefix = isTermination ? 'TERM' : isTransfer ? 'TRAN' : 'WARN';
+            const refNo = `DYN/${refPrefix}/${new Date().toISOString().slice(0,10).replace(/-/g,'')}/${employee_name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,3)}-${Math.random().toString(36).slice(2,6).toUpperCase()}`;
+
             await insert('notifications', {
               id: `STAFF-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
               recipient_type: 'staff',
-              recipient_id: staffUser.username.toLowerCase(),
+              recipient_id: recipientId,
               title: notifTitle,
               message: notifMessage,
-              type: isTermination ? 'termination' : 'warning',
+              type: isTermination ? 'termination' : isTransfer ? 'transfer' : 'warning',
               reference_id: String(result.rows[0]?.id || ''),
               metadata: JSON.stringify({
-                issued_by: req.user?.full_name || req.user?.username || 'HR',
-                record_type: type,
-                subtype: finalSubtype,
-                date: date || new Date().toISOString().slice(0, 10),
-                reason: reason || null,
-                employee_name: employee_name,
-                effective_date: effective_date || null,
-                severance: severance ? Number(severance) : null,
-                ref_no: refNo,
+                issued_by:        req.user?.full_name || req.user?.username || 'HR',
+                record_type:      type,
+                subtype:          finalSubtype,
+                date:             date || new Date().toISOString().slice(0, 10),
+                reason:           reason || null,
+                employee_name:    employee_name,
+                effective_date:   effDate || null,
+                severance:        severance ? Number(severance) : null,
+                ref_no:           refNo,
+                // Transfer-specific fields
+                current_branch:   fromBranch   || null,
+                new_branch:       toBranch     || null,
+                current_position: currPosition || null,
+                new_position:     newPosition  || null,
+                transfer_type:    transferType || null,
+                end_date:         endDate      || null,
               }),
             });
           }
