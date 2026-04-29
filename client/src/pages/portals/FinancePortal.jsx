@@ -103,23 +103,27 @@ function DashboardTab() {
 
   if (loading) return <LoadingSpinner />;
 
-  const totalSales = data.sales.reduce((s, x) => s + Number(x.total || x.amount || 0), 0)
-    + data.orders.reduce((s, x) => s + Number(x.total || 0), 0);
   const pendingDeposits = data.deposits.filter(d => d.status !== 'verified' && d.status !== 'approved');
   const totalPendingAmt = pendingDeposits.reduce((s, d) => s + Number(d.amount || 0), 0);
   const totalVerified = data.deposits.filter(d => d.status === 'verified' || d.status === 'approved').reduce((s, d) => s + Number(d.amount || 0), 0);
   const approvedExpenses = data.expenses.filter(e => e.status === 'approved');
-  const pendingExpenses = data.expenses.filter(e => !e.status || e.status === 'recorded');
+  const pendingExpenses = data.expenses.filter(e => (!e.status || e.status === 'recorded') && Number(e.amount || 0) > 0);
   const totalExpenses = approvedExpenses.reduce((s, e) => s + Number(e.amount || 0), 0);
   const totalPendingExpenses = pendingExpenses.reduce((s, e) => s + Number(e.amount || 0), 0);
+
+  const summaryRevenue = financeSummary?.revenue?.totalSales ?? null;
+  const now = new Date();
+  const monthLabel = now.toLocaleString('default', { month: 'long', year: 'numeric' });
 
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="rounded-xl p-5 text-white bg-gradient-to-br from-purple-500 to-purple-700">
           <p className="text-xs opacity-80 uppercase tracking-wide">Total Sales Revenue</p>
-          <p className="text-2xl font-bold mt-1">{formatCurrency(totalSales)}</p>
-          <p className="text-xs opacity-70 mt-1">All channels combined</p>
+          <p className="text-2xl font-bold mt-1">
+            {summaryRevenue !== null ? formatCurrency(summaryRevenue) : <span className="opacity-60 text-base">Loading…</span>}
+          </p>
+          <p className="text-xs opacity-70 mt-1">{monthLabel} · all channels</p>
         </div>
         <div className="rounded-xl p-5 text-white bg-gradient-to-br from-orange-400 to-orange-600">
           <p className="text-xs opacity-80 uppercase tracking-wide">Pending Deposits</p>
@@ -144,6 +148,7 @@ function DashboardTab() {
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-bold text-gray-900 flex items-center gap-2">
                 <FileSpreadsheet size={16} className="text-indigo-600" /> Finance Summary
+                <span className="text-xs text-gray-500 font-normal">({monthLabel})</span>
                 {wsConnected && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#dcfce7', color: '#166534', borderRadius: 99, padding: '2px 8px', fontSize: '0.7rem', fontWeight: 700 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#16a34a', display: 'inline-block' }} />LIVE</span>}
               </h3>
             </div>
@@ -151,7 +156,7 @@ function DashboardTab() {
               <div className="bg-white/80 rounded-lg p-3 text-center">
                 <p className="text-xs text-gray-500">Total Revenue</p>
                 <p className="text-lg font-bold text-green-700">{formatCurrency(financeSummary.revenue?.totalSales || 0)}</p>
-                <p className="text-xs text-gray-400">Walk-in: {formatCurrency(financeSummary.revenue?.walkinSales || 0)}</p>
+                <p className="text-xs text-gray-400">Walk-in: {formatCurrency(financeSummary.revenue?.walkinSales || 0)}{(financeSummary.revenue?.prescriptionSales || 0) > 0 ? ` · Rx: ${formatCurrency(financeSummary.revenue?.prescriptionSales || 0)}` : ''}</p>
               </div>
               <div className="bg-white/80 rounded-lg p-3 text-center">
                 <p className="text-xs text-gray-500">Member Revenue</p>
