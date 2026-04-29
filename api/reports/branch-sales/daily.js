@@ -18,11 +18,15 @@ export default async function handler(req, res) {
       params.push(branchId);
     }
 
+    const normBranchId = branchId && branchId !== 'all'
+      ? branchId.toLowerCase().replace(/ /g, '_')
+      : null;
+
     const movConds = [`DATE(created_at) = $1`];
     const movParams = [date];
-    if (branchId && branchId !== 'all') {
-      movConds.push(`branch_id = $${movParams.length + 1}`);
-      movParams.push(branchId);
+    if (normBranchId) {
+      movConds.push(`LOWER(REPLACE(branch_id, ' ', '_')) = $${movParams.length + 1}`);
+      movParams.push(normBranchId);
     }
 
     const [txRows, visitRows, rxProductMovements, walkinSalesRows] = await Promise.all([
@@ -31,8 +35,8 @@ export default async function handler(req, res) {
         params
       ),
       getMany(
-        `SELECT * FROM branch_client_visits WHERE checkin_time::date = $1${branchId && branchId !== 'all' ? ' AND branch_id = $2' : ''} ORDER BY checkin_time ASC`,
-        branchId && branchId !== 'all' ? [date, branchId] : [date]
+        `SELECT * FROM branch_client_visits WHERE checkin_time::date = $1${normBranchId ? ' AND LOWER(REPLACE(branch_id, \' \', \'_\')) = $2' : ''} ORDER BY checkin_time ASC`,
+        normBranchId ? [date, normBranchId] : [date]
       ),
       getMany(
         `SELECT reference as form_reference_id, product_name, batch_no,
@@ -43,13 +47,13 @@ export default async function handler(req, res) {
          GROUP BY reference, product_name, batch_no`,
         movParams
       ),
-      // Also read POS walk-in sales from branch_walkin_sales
+      // Also read POS walk-in sales from branch_walkin_sales (case-insensitive branch_id match)
       getMany(
         `SELECT * FROM branch_walkin_sales
-         WHERE sale_date::date = $1${branchId && branchId !== 'all' ? ' AND branch_id = $2' : ''}
+         WHERE sale_date::date = $1${normBranchId ? ' AND LOWER(REPLACE(branch_id, \' \', \'_\')) = $2' : ''}
            AND (status IS NULL OR status NOT IN ('cancelled','voided'))
          ORDER BY created_at ASC`,
-        branchId && branchId !== 'all' ? [date, branchId] : [date]
+        normBranchId ? [date, normBranchId] : [date]
       ),
     ]);
 

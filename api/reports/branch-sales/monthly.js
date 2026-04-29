@@ -22,14 +22,18 @@ export default async function handler(req, res) {
       params.push(branchId);
     }
 
+    const normBranchId = branchId && branchId !== 'all'
+      ? branchId.toLowerCase().replace(/ /g, '_')
+      : null;
+
     const movConds = [`created_at >= $1 AND created_at < $2`];
     const movParams = [monthStart, nextMonth];
-    if (branchId && branchId !== 'all') {
-      movConds.push(`branch_id = $${movParams.length + 1}`);
-      movParams.push(branchId);
+    if (normBranchId) {
+      movConds.push(`LOWER(REPLACE(branch_id, ' ', '_')) = $${movParams.length + 1}`);
+      movParams.push(normBranchId);
     }
 
-    const [txRows, rxProductMovements] = await Promise.all([
+    const [txRows, rxProductMovements, walkinSalesRows] = await Promise.all([
       getMany(
         `SELECT * FROM branch_activity_transactions WHERE ${conds.join(' AND ')} ORDER BY created_at ASC`,
         params
@@ -42,6 +46,14 @@ export default async function handler(req, res) {
          WHERE ${movConds.join(' AND ')} AND type IN ('prescription_dispense','dispense','field_use')
          GROUP BY reference, product_name, batch_no`,
         movParams
+      ),
+      // POS walk-in sales from branch_walkin_sales (case-insensitive branch_id)
+      getMany(
+        `SELECT * FROM branch_walkin_sales
+         WHERE sale_date >= $1 AND sale_date < $2${normBranchId ? ' AND LOWER(REPLACE(branch_id, \' \', \'_\')) = $3' : ''}
+           AND (status IS NULL OR status NOT IN ('cancelled','voided'))
+         ORDER BY created_at ASC`,
+        normBranchId ? [monthStart, nextMonth, normBranchId] : [monthStart, nextMonth]
       ),
     ]);
 
@@ -58,16 +70,47 @@ export default async function handler(req, res) {
       });
     }
 
+    // Merge POS walkin_sales into txRows (same deduplication as daily.js)
+    const alreadyCapturedIds = new Set(
+      txRows
+        .filter(r => ['walkin_sale', 'member_sale', 'non_member_sale'].includes(r.activity_type))
+        .flatMap(r => [r.form_reference_id, r.id].filter(Boolean))
+    );
+    const walkinSynthetic = walkinSalesRows
+      .filter(s => !alreadyCapturedIds.has(s.id) && !alreadyCapturedIds.has(s.sale_number))
+      .map(s => {
+        let items = [];
+        try { items = typeof s.items === 'string' ? JSON.parse(s.items) : (s.items || []); } catch {}
+        const ct = (s.customer_type || 'walk_in').toLowerCase();
+        const actType = ct === 'member' ? 'member_sale' : ct === 'non_member' ? 'non_member_sale' : 'walkin_sale';
+        const totalQty = items.reduce((acc, i) => acc + Number(i.quantity || i.qty || 1), 0);
+        const dpTotal = items.reduce((acc, i) =>
+          acc + Number(i.dpPrice || i.dp || i.unit_price || 0) * Number(i.quantity || i.qty || 1), 0);
+        const saleDateStr = s.sale_date instanceof Date
+          ? s.sale_date.toISOString().slice(0, 10)
+          : String(s.sale_date || '').slice(0, 10);
+        return {
+          id: s.id, branch_id: s.branch_id, activity_type: actType,
+          service_date: saleDateStr, grand_total: Number(s.total || 0),
+          product_total_dp: parseFloat(dpTotal.toFixed(2)),
+          payment_method: s.payment_method || 'cash', payment_status: 'paid',
+          total_qty: totalQty, consultation_fee: 0,
+          client_name: s.customer_name || '', form_reference_id: s.id, _source: 'walkin_sales',
+        };
+      });
+
+    const allTxRows = [...txRows, ...walkinSynthetic];
+
     const sum = (rows, field) => rows.reduce((s, r) => s + Number(r[field] || 0), 0);
     const paidRows = (rows) => rows.filter(r => r.payment_status === 'paid');
     const pendingRows = (rows) => rows.filter(r => r.payment_status !== 'paid');
 
-    const consultRows = txRows.filter(r => ['consultation', 'full_body_checkup'].includes(r.activity_type));
-    const walkinRows = txRows.filter(r => r.activity_type === 'walkin_sale');
-    const memberRows = txRows.filter(r => r.activity_type === 'member_sale');
-    const nonMemberRows = txRows.filter(r => r.activity_type === 'non_member_sale');
-    const onlineRows = txRows.filter(r => r.activity_type === 'online_order');
-    const rxRows = txRows.filter(r => r.activity_type === 'prescription_dispensing');
+    const consultRows = allTxRows.filter(r => ['consultation', 'full_body_checkup'].includes(r.activity_type));
+    const walkinRows = allTxRows.filter(r => r.activity_type === 'walkin_sale');
+    const memberRows = allTxRows.filter(r => r.activity_type === 'member_sale');
+    const nonMemberRows = allTxRows.filter(r => r.activity_type === 'non_member_sale');
+    const onlineRows = allTxRows.filter(r => r.activity_type === 'online_order');
+    const rxRows = allTxRows.filter(r => r.activity_type === 'prescription_dispensing');
 
     const buildPaymentBreakdown = (rows) => {
       const paymentMethods = {};
@@ -137,7 +180,7 @@ export default async function handler(req, res) {
       sum(pendingRows(rxRows), 'grand_total')
     ).toFixed(2));
 
-    const pendingCapture = txRows.filter(r => r.reporting_status === 'pending').length;
+    const pendingCapture = allTxRows.filter(r => r.reporting_status === 'pending').length;
 
     const nmCpTotal = parseFloat(sum(paidRows(nonMemberRows), 'grand_total').toFixed(2));
     const nmDpTotal = parseFloat(sum(paidRows(nonMemberRows), 'product_total_dp').toFixed(2));

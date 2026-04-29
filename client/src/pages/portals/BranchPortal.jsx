@@ -2822,6 +2822,8 @@ function BranchStockTab() {
   const [stockCardData, setStockCardData] = useState(null);
   const [stockCardLoading, setStockCardLoading] = useState(false);
   const [selectedBranch, setSelectedBranch] = useState(user?.branch || '');
+  const [rejectTarget, setRejectTarget] = useState(null);
+  const [rejectReason, setRejectReason] = useState('');
   const [availableBranches, setAvailableBranches] = useState([]);
   useEffect(() => {
     const isAdmin = user?.role === 'admin';
@@ -3053,7 +3055,7 @@ function BranchStockTab() {
       });
       setShowWriteOffForm(false);
       setWriteOffForm({ product_name: '', quantity: '', reason: 'expired', batch_id: '' });
-      setAlert({ type: 'success', message: `Write-off recorded for ${pName} (${writeOffForm.quantity} units, DP N$ ${dpVal}). Pending approval.` });
+      setAlert({ type: 'success', message: `Write-off recorded — ${writeOffForm.quantity} units of ${pName} removed from inventory (DP N$ ${dpVal}).` });
       setTimeout(() => loadData(), 100);
     } catch (err) {
       setAlert({ type: 'error', message: err.message || 'Failed to record write-off' });
@@ -3130,6 +3132,31 @@ function BranchStockTab() {
       setTimeout(() => loadData(), 100);
     } catch (err) {
       setReceiveModalMsg({ type: 'error', text: err.message || 'Failed to receive transfer' });
+    } finally { setSubmitting(false); }
+  };
+
+  const handleReject = async () => {
+    if (!rejectTarget || !rejectReason.trim()) return;
+    setSubmitting(true);
+    try {
+      if (rejectTarget.type === 'transfer') {
+        await api.stock.updateTransfer(rejectTarget.id, {
+          status: 'rejected',
+          rejection_reason: rejectReason.trim(),
+          rejected_by: user?.full_name || user?.username,
+        });
+      } else {
+        await api.stock.updateRequest(rejectTarget.id, {
+          status: 'rejected',
+          rejection_reason: rejectReason.trim(),
+        });
+      }
+      setRejectTarget(null);
+      setRejectReason('');
+      setAlert({ type: 'success', message: `${rejectTarget.type === 'transfer' ? 'Delivery' : 'Request'} rejected. Stock management has been notified.` });
+      setTimeout(() => loadData(), 100);
+    } catch (err) {
+      setAlert({ type: 'error', message: err.message || 'Failed to reject' });
     } finally { setSubmitting(false); }
   };
 
@@ -3889,6 +3916,10 @@ function BranchStockTab() {
                             className="px-3 py-2 rounded-lg text-xs font-bold cursor-pointer border border-gray-200 bg-white text-gray-700 hover:bg-gray-50">
                             📄 View Full Document
                           </button>
+                          <button disabled={submitting} onClick={() => { setRejectTarget({ type: 'transfer', id: t.id, label: t.dispatchReference || t.id }); setRejectReason(''); }}
+                            className="px-4 py-2 rounded-lg text-sm font-bold border-none cursor-pointer" style={{ background: '#fef2f2', color: '#991b1b', border: '1.5px solid #fca5a5', opacity: submitting ? 0.6 : 1 }}>
+                            🚫 Reject
+                          </button>
                           <button disabled={submitting} onClick={() => openReceiveTransferModal(t)}
                             className="flex-1 py-2 rounded-lg text-sm font-bold border-none cursor-pointer" style={{ background: '#1e40af', color: '#fff', opacity: submitting ? 0.6 : 1 }}>
                             📥 Receive Stock
@@ -3919,8 +3950,12 @@ function BranchStockTab() {
                           <div className="text-sm text-gray-500 mt-1">Approved by Stock Management · {formatDateTime(req.createdAt || req.created_at)}</div>
                           {req.notes && <div className="text-xs text-gray-400 mt-1">Notes: {req.notes}</div>}
                         </div>
-                        <div className="flex gap-2 items-center">
+                        <div className="flex gap-2 items-center flex-wrap">
                           <Badge variant={req.status === 'dispatched' ? 'info' : 'success'}>{req.status}</Badge>
+                          <button onClick={() => { setRejectTarget({ type: 'request', id: req.id, label: req.requestNumber || req.request_number || req.id }); setRejectReason(''); }}
+                            className="px-3 py-2 rounded-lg text-xs font-bold cursor-pointer" style={{ background: '#fef2f2', color: '#991b1b', border: '1.5px solid #fca5a5' }}>
+                            🚫 Reject
+                          </button>
                           <button onClick={() => openReceiveForm(req)} className="px-4 py-2 rounded-lg text-sm font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>📥 Receive</button>
                         </div>
                       </div>
@@ -3943,6 +3978,44 @@ function BranchStockTab() {
       )}
 
       {viewDispatchNote && <DispatchNote transfer={viewDispatchNote} onClose={() => setViewDispatchNote(null)} />}
+
+      {rejectTarget && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 440, padding: 28, boxShadow: '0 24px 60px rgba(0,0,0,0.22)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+              <span style={{ fontSize: '1.4rem' }}>🚫</span>
+              <h3 style={{ margin: 0, color: '#991b1b', fontSize: '1.05rem', fontWeight: 800 }}>
+                Reject {rejectTarget.type === 'transfer' ? 'Delivery' : 'Stock Request'}
+              </h3>
+            </div>
+            <p style={{ color: '#6b7280', fontSize: '0.83rem', margin: '0 0 6px' }}>
+              Ref: <strong style={{ color: '#374151' }}>{rejectTarget.label}</strong>
+            </p>
+            <p style={{ color: '#374151', fontSize: '0.85rem', margin: '0 0 14px' }}>
+              Provide a reason — this will be logged and visible to warehouse / stock management.
+            </p>
+            <textarea
+              value={rejectReason}
+              onChange={e => setRejectReason(e.target.value)}
+              placeholder="Reason for rejection (required)…"
+              rows={3}
+              style={{ width: '100%', border: '1.5px solid #fca5a5', borderRadius: 8, padding: '10px 12px', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box', resize: 'vertical', color: '#374151', fontFamily: 'inherit' }}
+            />
+            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+              <button onClick={() => { setRejectTarget(null); setRejectReason(''); }}
+                style={{ flex: 1, padding: '10px', border: '1.5px solid #e5e7eb', borderRadius: 8, background: '#f9fafb', color: '#374151', fontWeight: 600, cursor: 'pointer', fontSize: '0.88rem' }}>
+                Cancel
+              </button>
+              <button
+                disabled={!rejectReason.trim() || submitting}
+                onClick={handleReject}
+                style={{ flex: 1, padding: '10px', border: 'none', borderRadius: 8, background: '#c41e3a', color: '#fff', fontWeight: 700, cursor: (!rejectReason.trim() || submitting) ? 'not-allowed' : 'pointer', fontSize: '0.88rem', opacity: (!rejectReason.trim() || submitting) ? 0.6 : 1 }}>
+                {submitting ? 'Rejecting…' : '✓ Confirm Reject'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {receiveTransferModal && (() => {
         const rtm = receiveTransferModal;
@@ -4172,7 +4245,7 @@ function BranchStockTab() {
             </div>
           </div>
           <div style={{ padding: '8px 16px', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button onClick={() => { const win = window.open('','_blank'); if (!win) return; const rows = transfers.map(r => { const items = (()=>{try{return typeof r.items==='string'?JSON.parse(r.items):(r.items||[]);}catch{return [];}})(); return `<tr><td>${r.from_warehouse||user?.branch||'-'}</td><td>${r.to_branch||'-'}</td><td>${items.map(i=>`${i.product_name} ×${i.quantity}`).join(', ')||'-'}</td><td><span class="badge ${r.status==='delivered'?'badge-green':r.status==='dispatched'?'badge-blue':'badge-amber'}">${r.status||'pending'}</span></td><td>${r.created_at?new Date(r.created_at).toLocaleDateString('en-NA'):'-'}</td></tr>`; }).join(''); win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Stock Transfers</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;padding:24px}.header{display:flex;justify-content:space-between;border-bottom:3px solid #c41e3a;padding-bottom:10px;margin-bottom:16px}.company{color:#c41e3a;font-weight:900;font-size:15px}table{width:100%;border-collapse:collapse;margin-top:8px}th{background:#c41e3a;color:#fff;font-weight:700;padding:7px 8px;text-align:left;font-size:10px}td{padding:6px 8px;border-bottom:1px solid #f1f5f9;font-size:10px}tr:nth-child(even) td{background:#fdf7f8}.badge{display:inline-block;padding:1px 7px;border-radius:20px;font-weight:700;font-size:9px}.badge-green{background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}.badge-blue{background:#eff6ff;color:#1e40af;border:1px solid #93c5fd}.badge-amber{background:#fffbeb;color:#92400e;border:1px solid #fcd34d}.print-btn{position:fixed;top:12px;right:12px;background:#c41e3a;color:#fff;border:none;padding:8px 18px;border-radius:8px;font-weight:700;cursor:pointer}@media print{*{print-color-adjust:exact;-webkit-print-color-adjust:exact}.print-btn{display:none}}</style></head><body><button class="print-btn" onclick="window.print()">🖨️ Print</button><div class="header"><div><div class="company">DYNAPHARM INTERNATIONAL NAMIBIA</div><div style="font-size:14px;font-weight:800;color:#8b0000;margin-top:4px">↔ Stock Transfers Report</div><div style="color:#64748b;font-size:10px;margin-top:3px">${user?.branch||'Branch'}</div></div><div style="text-align:right;color:#64748b;font-size:10px">Date: ${new Date().toLocaleDateString('en-NA',{day:'2-digit',month:'long',year:'numeric'})}</div></div><table><thead><tr><th>From</th><th>To Branch</th><th>Items</th><th>Status</th><th>Date</th></tr></thead><tbody>${rows||'<tr><td colspan="5" style="text-align:center;color:#94a3b8">No transfers</td></tr>'}</tbody></table></body></html>`); win.document.close(); }} className="px-3 py-1.5 rounded-lg text-xs font-bold border-none cursor-pointer" style={{ background: '#f1f5f9', color: '#374151' }}>📄 Print</button>
+              <button onClick={() => { const win = window.open('','_blank'); if (!win) return; const rows = transfers.filter(r => isBranchMatch(r.toBranch || r.to_branch || r.to_location || '')).map(r => { const items = (()=>{try{return typeof r.items==='string'?JSON.parse(r.items):(r.items||[]);}catch{return [];}})(); return `<tr><td>${r.from_warehouse||user?.branch||'-'}</td><td>${r.to_branch||'-'}</td><td>${items.map(i=>`${i.product_name} ×${i.quantity}`).join(', ')||'-'}</td><td><span class="badge ${r.status==='delivered'?'badge-green':r.status==='dispatched'?'badge-blue':'badge-amber'}">${r.status||'pending'}</span></td><td>${r.created_at?new Date(r.created_at).toLocaleDateString('en-NA'):'-'}</td></tr>`; }).join(''); win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Stock Transfers</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;padding:24px}.header{display:flex;justify-content:space-between;border-bottom:3px solid #c41e3a;padding-bottom:10px;margin-bottom:16px}.company{color:#c41e3a;font-weight:900;font-size:15px}table{width:100%;border-collapse:collapse;margin-top:8px}th{background:#c41e3a;color:#fff;font-weight:700;padding:7px 8px;text-align:left;font-size:10px}td{padding:6px 8px;border-bottom:1px solid #f1f5f9;font-size:10px}tr:nth-child(even) td{background:#fdf7f8}.badge{display:inline-block;padding:1px 7px;border-radius:20px;font-weight:700;font-size:9px}.badge-green{background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}.badge-blue{background:#eff6ff;color:#1e40af;border:1px solid #93c5fd}.badge-amber{background:#fffbeb;color:#92400e;border:1px solid #fcd34d}.print-btn{position:fixed;top:12px;right:12px;background:#c41e3a;color:#fff;border:none;padding:8px 18px;border-radius:8px;font-weight:700;cursor:pointer}@media print{*{print-color-adjust:exact;-webkit-print-color-adjust:exact}.print-btn{display:none}}</style></head><body><button class="print-btn" onclick="window.print()">🖨️ Print</button><div class="header"><div><div class="company">DYNAPHARM INTERNATIONAL NAMIBIA</div><div style="font-size:14px;font-weight:800;color:#8b0000;margin-top:4px">↔ Stock Transfers Report</div><div style="color:#64748b;font-size:10px;margin-top:3px">${user?.branch||'Branch'}</div></div><div style="text-align:right;color:#64748b;font-size:10px">Date: ${new Date().toLocaleDateString('en-NA',{day:'2-digit',month:'long',year:'numeric'})}</div></div><table><thead><tr><th>From</th><th>To Branch</th><th>Items</th><th>Status</th><th>Date</th></tr></thead><tbody>${rows||'<tr><td colspan="5" style="text-align:center;color:#94a3b8">No transfers</td></tr>'}</tbody></table></body></html>`); win.document.close(); }} className="px-3 py-1.5 rounded-lg text-xs font-bold border-none cursor-pointer" style={{ background: '#f1f5f9', color: '#374151' }}>📄 Print</button>
               <button onClick={openTransferForm} className="px-4 py-2 rounded-lg text-sm font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>New Transfer</button>
           </div>
           <div style={{ overflowX: 'auto' }}>
@@ -4185,9 +4258,13 @@ function BranchStockTab() {
                 </tr>
               </thead>
               <tbody>
-                {transfers.length === 0 ? (
-                  <tr><td colSpan={9} style={{ textAlign: 'center', padding: '32px 0', color: '#94a3b8' }}>No transfers yet</td></tr>
-                ) : transfers.map((t, idx) => {
+                {(() => {
+                  // Only show transfers where this branch is the destination
+                  const branchTransfers = transfers.filter(t => isBranchMatch(t.toBranch || t.to_branch || t.to_location || ''));
+                  if (branchTransfers.length === 0) return (
+                    <tr><td colSpan={9} style={{ textAlign: 'center', padding: '32px 0', color: '#94a3b8' }}>No transfers for this branch yet</td></tr>
+                  );
+                  return branchTransfers.map((t, idx) => {
                   const items = Array.isArray(t.items) ? t.items : (() => { try { return typeof t.items === 'string' ? JSON.parse(t.items) : []; } catch { return []; } })();
                   const statusColors = { delivered: '#166534', received: '#166534', dispatched: '#1e40af', approved: '#7c3aed', pending: '#d97706', rejected: '#c41e3a' };
                   const statusBgs = { delivered: '#f0fdf4', received: '#f0fdf4', dispatched: '#eff6ff', approved: '#f5f3ff', pending: '#fffbeb', rejected: '#fef2f2' };
@@ -4217,7 +4294,8 @@ function BranchStockTab() {
                       </td>
                     </tr>
                   );
-                })}
+                  });
+                })()}
               </tbody>
             </table>
           </div>

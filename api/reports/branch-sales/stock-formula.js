@@ -44,32 +44,76 @@ export default async function handler(req, res) {
       periodEnd = month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, '0')}-01`;
     }
 
-    // All stock_movements involving this branch (as source or destination)
+    const normBranch = branchId.toLowerCase().replace(/ /g, '_');
+
+    // All stock_movements involving this branch (case-insensitive match)
     // Split into pre-period (for opening) and in-period (for flows)
-    const [prePeriod, inPeriod] = await Promise.all([
+    const [smPre, smIn, bimPre, bimIn] = await Promise.all([
       getMany(
         `SELECT product_name, movement_type, quantity,
                 source_location, source_location_type,
                 destination_location, destination_location_type,
-                COALESCE(unit_dp, 0) as unit_dp
+                COALESCE(unit_dp, 0) as unit_dp,
+                reference_id
          FROM stock_movements
-         WHERE ((destination_location = $1 AND destination_location_type = 'branch')
-            OR (source_location = $1 AND source_location_type = 'branch'))
+         WHERE ((LOWER(REPLACE(destination_location, ' ', '_')) = $1 AND destination_location_type = 'branch')
+            OR (LOWER(REPLACE(source_location, ' ', '_')) = $1 AND source_location_type = 'branch'))
            AND created_at < $2`,
-        [branchId, periodStart]
+        [normBranch, periodStart]
       ),
       getMany(
         `SELECT product_name, movement_type, quantity,
                 source_location, source_location_type,
                 destination_location, destination_location_type,
-                COALESCE(unit_dp, 0) as unit_dp
+                COALESCE(unit_dp, 0) as unit_dp,
+                reference_id
          FROM stock_movements
-         WHERE ((destination_location = $1 AND destination_location_type = 'branch')
-            OR (source_location = $1 AND source_location_type = 'branch'))
+         WHERE ((LOWER(REPLACE(destination_location, ' ', '_')) = $1 AND destination_location_type = 'branch')
+            OR (LOWER(REPLACE(source_location, ' ', '_')) = $1 AND source_location_type = 'branch'))
            AND created_at >= $2 AND created_at < $3`,
-        [branchId, periodStart, periodEnd]
+        [normBranch, periodStart, periodEnd]
+      ),
+      // branch_inventory_movements as supplementary source (catches POS sales not in stock_movements)
+      getMany(
+        `SELECT product_name, type as movement_type, ABS(quantity) as quantity,
+                LOWER(REPLACE(branch_id, ' ', '_')) as source_location,
+                'branch' as source_location_type,
+                '' as destination_location,
+                '' as destination_location_type,
+                0 as unit_dp,
+                reference as reference_id
+         FROM branch_inventory_movements
+         WHERE LOWER(REPLACE(branch_id, ' ', '_')) = $1
+           AND created_at < $2`,
+        [normBranch, periodStart]
+      ),
+      getMany(
+        `SELECT product_name, type as movement_type, ABS(quantity) as quantity,
+                LOWER(REPLACE(branch_id, ' ', '_')) as source_location,
+                'branch' as source_location_type,
+                '' as destination_location,
+                '' as destination_location_type,
+                0 as unit_dp,
+                reference as reference_id
+         FROM branch_inventory_movements
+         WHERE LOWER(REPLACE(branch_id, ' ', '_')) = $1
+           AND created_at >= $2 AND created_at < $3`,
+        [normBranch, periodStart, periodEnd]
       ),
     ]);
+
+    // Deduplicate: stock_movements wins over branch_inventory_movements for same reference
+    const smPreRefs = new Set(smPre.map(r => r.reference_id).filter(Boolean));
+    const smInRefs  = new Set(smIn.map(r => r.reference_id).filter(Boolean));
+
+    const prePeriod = [
+      ...smPre,
+      ...bimPre.filter(r => !r.reference_id || !smPreRefs.has(r.reference_id)),
+    ];
+    const inPeriod = [
+      ...smIn,
+      ...bimIn.filter(r => !r.reference_id || !smInRefs.has(r.reference_id)),
+    ];
 
     const normKey = (s) => (s || '').trim().toLowerCase();
     const nameMap = {};

@@ -255,15 +255,40 @@ export default async function handler(req, res) {
             );
             if (['write_off', 'sale', 'field_use'].includes(movType)) {
               let remaining = qty;
-              const batches = await client.query(
-                `SELECT id, quantity FROM branch_inventory_batches WHERE branch_id = $1 AND product_name = $2 AND quantity > 0 ORDER BY expiry_date ASC NULLS LAST`,
-                [branchId, productName]
-              );
-              for (const b of batches.rows) {
-                if (remaining <= 0) break;
-                const take = Math.min(remaining, Number(b.quantity));
-                await client.query(`UPDATE branch_inventory_batches SET quantity = quantity - $1, updated_at = NOW() WHERE id = $2`, [take, b.id]);
-                remaining -= take;
+              // If a specific batch_no is given, deduct from it first before falling back to FIFO
+              if (batchNo) {
+                const specificBatch = await client.query(
+                  `SELECT id, quantity FROM branch_inventory_batches
+                   WHERE LOWER(REPLACE(branch_id, ' ', '_')) = LOWER(REPLACE($1, ' ', '_'))
+                     AND LOWER(product_name) = LOWER($2)
+                     AND LOWER(COALESCE(batch_no,'')) = LOWER($3)
+                     AND quantity > 0
+                   LIMIT 1`,
+                  [branchId, productName, batchNo]
+                );
+                for (const b of specificBatch.rows) {
+                  if (remaining <= 0) break;
+                  const take = Math.min(remaining, Number(b.quantity));
+                  await client.query(`UPDATE branch_inventory_batches SET quantity = quantity - $1, updated_at = NOW() WHERE id = $2`, [take, b.id]);
+                  remaining -= take;
+                }
+              }
+              if (remaining > 0) {
+                const batches = await client.query(
+                  `SELECT id, quantity FROM branch_inventory_batches
+                   WHERE LOWER(REPLACE(branch_id, ' ', '_')) = LOWER(REPLACE($1, ' ', '_'))
+                     AND LOWER(product_name) = LOWER($2)
+                     AND quantity > 0
+                     ${batchNo ? `AND LOWER(COALESCE(batch_no,'')) != LOWER($3)` : ''}
+                   ORDER BY expiry_date ASC NULLS LAST`,
+                  batchNo ? [branchId, productName, batchNo] : [branchId, productName]
+                );
+                for (const b of batches.rows) {
+                  if (remaining <= 0) break;
+                  const take = Math.min(remaining, Number(b.quantity));
+                  await client.query(`UPDATE branch_inventory_batches SET quantity = quantity - $1, updated_at = NOW() WHERE id = $2`, [take, b.id]);
+                  remaining -= take;
+                }
               }
             }
           }
