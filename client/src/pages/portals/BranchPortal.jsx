@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback, useContext, createContext } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { enqueue, generateOfflineId } from '../../lib/offlineQueue.js';
 import { useStockRealtime } from '../../hooks/useStockRealtime';
@@ -2778,6 +2779,7 @@ function printStockFormulaReport(inventory, movements, sales, branch) {
 
 function BranchStockTab() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [inventory, setInventory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [subTab, setSubTab] = useState('inventory');
@@ -3182,8 +3184,40 @@ function BranchStockTab() {
           <button onClick={() => { setRequestItems([]); setProductSearch(''); setShowRequestForm(true); }} className="px-4 py-2 rounded-full font-semibold text-sm cursor-pointer" style={{ background: '#fff', color: '#c41e3a', border: 'none', fontWeight: 700 }}>📋 Request Stock</button>
           <button onClick={openTransferForm} className="px-4 py-2 rounded-full font-semibold text-sm cursor-pointer text-white" style={{ background: 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.25)' }}>↔ Transfer</button>
           <button onClick={() => setShowWriteOffForm(true)} className="px-4 py-2 rounded-full font-semibold text-sm cursor-pointer text-white" style={{ background: 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.25)' }}>🗑️ Write Off</button>
+          {user?.role === 'admin' && (
+            <button onClick={() => navigate('/stock')} className="px-4 py-2 rounded-full font-semibold text-sm cursor-pointer text-white" style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.35)', display: 'flex', alignItems: 'center', gap: 5 }}>
+              🏭 Stock Portal <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>↗</span>
+            </button>
+          )}
         </div>
       </div>
+
+      {/* KPI Summary Strip */}
+      {(() => {
+        const totalProducts = [...new Set(inventory.map(i => (i.product_name || i.productName || '').trim().toLowerCase()).filter(Boolean))].length;
+        const totalDpValue = inventory.reduce((s, i) => { const p = findProductPrice(i.product_name || i.productName || ''); return s + (p?.dp ? Number(p.dp) : 0) * Number(i.quantity || 0); }, 0);
+        const openReqs = requests.filter(r => r.status === 'pending' || r.status === 'submitted').length;
+        const totalAlerts = outOfStock.length + expiredItems.length + lowStock.length + expiringItems.length;
+        const kpis = [
+          { label: 'Products', value: totalProducts, icon: '📦', color: '#1e3a5f', bg: '#f0f4ff', tab: 'inventory' },
+          { label: 'Stock Value (DP)', value: `N$ ${Math.round(totalDpValue).toLocaleString('en-ZA')}`, icon: '💰', color: '#166534', bg: '#f0fdf4', tab: 'inventory' },
+          { label: 'Pending Deliveries', value: totalPendingReceive, icon: '📥', color: totalPendingReceive > 0 ? '#1e40af' : '#94a3b8', bg: totalPendingReceive > 0 ? '#eff6ff' : '#f8fafc', tab: 'receive' },
+          { label: 'Active Alerts', value: totalAlerts, icon: '⚠️', color: totalAlerts > 0 ? '#c41e3a' : '#94a3b8', bg: totalAlerts > 0 ? '#fef2f2' : '#f8fafc', tab: 'alerts' },
+          { label: 'Open Requests', value: openReqs, icon: '📋', color: openReqs > 0 ? '#d97706' : '#94a3b8', bg: openReqs > 0 ? '#fffbeb' : '#f8fafc', tab: 'requests' },
+        ];
+        return (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(130px,1fr))', gap: 10, marginBottom: 16 }}>
+            {kpis.map(k => (
+              <button key={k.label} onClick={() => setSubTab(k.tab)} style={{ background: k.bg, border: `1.5px solid ${k.color}22`, borderRadius: 12, padding: '12px 14px', cursor: 'pointer', textAlign: 'left', transition: 'box-shadow .15s' }}
+                onMouseEnter={e => e.currentTarget.style.boxShadow = `0 4px 16px ${k.color}22`}
+                onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}>
+                <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 4 }}>{k.icon} {k.label}</div>
+                <div style={{ fontSize: '1.1rem', fontWeight: 900, color: k.color }}>{k.value}</div>
+              </button>
+            ))}
+          </div>
+        );
+      })()}
 
       {alert && <Alert type={alert.type} className="mb-4" onClose={() => setAlert(null)}>{alert.message}</Alert>}
 
@@ -3417,6 +3451,19 @@ function BranchStockTab() {
             )}
             <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: '#94a3b8' }}>{invProductGroups.length} product{invProductGroups.length !== 1 ? 's' : ''} · {filteredInv.length} batch line{filteredInv.length !== 1 ? 's' : ''}</span>
           </div>
+          {/* Data-flow info strip */}
+          <div style={{ padding: '8px 16px', background: '#f8fafc', borderBottom: '1px solid #f0e8ea', display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+            <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.06em' }}>Stock drained by:</span>
+            {[
+              { label: '🛒 Walk-in Sales', color: '#2563eb' },
+              { label: '💊 Rx Dispenses', color: '#6366f1' },
+              { label: '↔ Branch Transfers', color: '#9333ea' },
+              { label: '🗑️ Write-Offs', color: '#c41e3a' },
+            ].map(d => (
+              <span key={d.label} style={{ fontSize: '0.68rem', fontWeight: 700, color: d.color, background: `${d.color}11`, border: `1px solid ${d.color}33`, borderRadius: 20, padding: '2px 9px' }}>{d.label}</span>
+            ))}
+            <span style={{ marginLeft: 'auto', fontSize: '0.68rem', color: '#94a3b8' }}>Click any product row to open its Stock Card ledger</span>
+          </div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.76rem' }}>
               <thead>
@@ -3565,61 +3612,95 @@ function BranchStockTab() {
       {subTab === 'alerts' && (() => {
         const pendingReqs = requests.filter(r => r.status === 'pending' || r.status === 'submitted');
         const alertItems = [
-          ...outOfStock.map(r => ({ ...r, alertType: 'Out of Stock', severity: 'critical', action: 'Request restock from warehouse immediately' })),
-          ...expiredItems.map(r => ({ ...r, alertType: 'Expired', severity: 'critical', action: 'Write off expired stock and remove from shelf' })),
-          ...lowStock.map(r => ({ ...r, alertType: 'Low Stock', severity: 'warning', action: 'Submit restock request before stockout' })),
-          ...expiringItems.map(r => {
+          ...outOfStock.map(r => ({ ...r, alertType: 'Out of Stock', severity: 'critical', action: 'Request restock from warehouse immediately', quickAction: 'request' })),
+          ...expiredItems.map(r => ({ ...r, alertType: 'Expired', severity: 'critical', action: 'Write off expired stock and remove from shelf', quickAction: 'writeoff' })),
+          ...lowStock.map(r => ({ ...r, alertType: 'Low Stock', severity: 'warning', action: 'Submit restock request before stockout', quickAction: 'request' })),
+          ...expiringItems.filter(r => !outOfStock.some(o => (o.product_name || o.productName) === (r.product_name || r.productName) && (o.batch_no || o.batchNo) === (r.batch_no || r.batchNo))).map(r => {
             const exp = r.expiry_date || r.expiryDate;
             const dLeft = exp ? Math.ceil((new Date(exp) - now) / 86400000) : null;
-            return { ...r, alertType: 'Expiring Soon', severity: 'warning', action: dLeft !== null ? `${dLeft} day${dLeft !== 1 ? 's' : ''} until expiry — prioritize sale or plan write-off` : 'Prioritize sale or consider write-off plan' };
+            return { ...r, alertType: 'Expiring Soon', severity: 'warning', action: dLeft !== null ? `${dLeft} day${dLeft !== 1 ? 's' : ''} until expiry — prioritize sale or plan write-off` : 'Prioritize sale or consider write-off plan', quickAction: 'writeoff' };
           }),
-          ...pendingReqs.map(r => ({ product_name: `Request #${r.request_number || r.id}`, alertType: 'Pending Request', severity: 'info', action: 'Awaiting stock management approval', quantity: '-', batch_no: '-', expiry_date: null })),
+          ...pendingReqs.map(r => ({ product_name: `Request #${r.request_number || r.id}`, alertType: 'Pending Request', severity: 'info', action: 'Awaiting stock management approval', quantity: '-', batch_no: '-', expiry_date: null, quickAction: null })),
         ];
         const thA = { textAlign: 'left', padding: '8px 8px', borderBottom: '2px solid #c41e3a', fontSize: '0.68rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase', whiteSpace: 'nowrap' };
+        const totalCritical = outOfStock.length + expiredItems.length;
+        const totalWarning = lowStock.length + expiringItems.length;
         return (
         <div className="space-y-4">
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(130px,1fr))', gap: 10, marginBottom: 16 }}>
+          {/* Priority summary cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(140px,1fr))', gap: 10, marginBottom: 8 }}>
             {[
-              { label: 'Out of Stock', count: outOfStock.length, color: '#c41e3a', bg: '#fef2f2' },
-              { label: 'Expired', count: expiredItems.length, color: '#c41e3a', bg: '#fef2f2' },
-              { label: 'Low Stock', count: lowStock.length, color: '#d97706', bg: '#fffbeb' },
-              { label: 'Expiring', count: expiringItems.length, color: '#d97706', bg: '#fffbeb' },
-              { label: 'Pending Requests', count: pendingReqs.length, color: '#2563eb', bg: '#eff6ff' },
+              { label: 'Out of Stock', count: outOfStock.length, icon: '🚨', color: '#c41e3a', bg: '#fef2f2', note: 'Request immediately' },
+              { label: 'Expired', count: expiredItems.length, icon: '⛔', color: '#c41e3a', bg: '#fef2f2', note: 'Write off & remove' },
+              { label: 'Low Stock', count: lowStock.length, icon: '⚠️', color: '#d97706', bg: '#fffbeb', note: 'Request soon' },
+              { label: 'Expiring Soon', count: expiringItems.length, icon: '⏳', color: '#d97706', bg: '#fffbeb', note: 'Prioritize sale' },
+              { label: 'Pending Requests', count: pendingReqs.length, icon: '📋', color: '#2563eb', bg: '#eff6ff', note: 'Awaiting approval' },
             ].map(s => (
-              <div key={s.label} style={{ background: s.bg, borderRadius: 12, padding: '14px 12px', textAlign: 'center', border: `1px solid ${s.color}22` }}>
-                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: s.color }}>{s.count}</div>
-                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: s.color, textTransform: 'uppercase', letterSpacing: '.05em' }}>{s.label}</div>
+              <div key={s.label} style={{ background: s.bg, borderRadius: 12, padding: '14px 12px', textAlign: 'center', border: `1.5px solid ${s.color}${s.count > 0 ? '33' : '11'}`, opacity: s.count === 0 ? 0.5 : 1 }}>
+                <div style={{ fontSize: '1.3rem', marginBottom: 2 }}>{s.icon}</div>
+                <div style={{ fontSize: '1.6rem', fontWeight: 900, color: s.color, lineHeight: 1 }}>{s.count}</div>
+                <div style={{ fontSize: '0.65rem', fontWeight: 700, color: s.color, textTransform: 'uppercase', letterSpacing: '.05em', marginTop: 3 }}>{s.label}</div>
+                <div style={{ fontSize: '0.6rem', color: '#94a3b8', marginTop: 2 }}>{s.note}</div>
               </div>
             ))}
           </div>
+
+          {/* Urgency banner */}
+          {totalCritical > 0 && (
+            <div style={{ background: 'linear-gradient(90deg,#fef2f2,#fff5f5)', border: '1.5px solid #fecaca', borderRadius: 10, padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#c41e3a' }}>
+                🚨 {totalCritical} critical issue{totalCritical !== 1 ? 's' : ''} require immediate attention
+                {totalWarning > 0 && <span style={{ color: '#d97706', marginLeft: 12 }}>· {totalWarning} warning{totalWarning !== 1 ? 's' : ''} pending</span>}
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={() => { setRequestItems([]); setProductSearch(''); setShowRequestForm(true); }} style={{ padding: '6px 14px', borderRadius: 8, fontSize: '0.76rem', fontWeight: 700, border: 'none', background: '#c41e3a', color: '#fff', cursor: 'pointer' }}>📋 New Request</button>
+                <button onClick={() => setShowWriteOffForm(true)} style={{ padding: '6px 14px', borderRadius: 8, fontSize: '0.76rem', fontWeight: 700, border: '1px solid #fecaca', background: '#fff', color: '#c41e3a', cursor: 'pointer' }}>🗑️ Write Off</button>
+              </div>
+            </div>
+          )}
+
           {alertItems.length === 0 ? (
-            <Card><CardBody><p className="text-center text-green-600 font-semibold py-4">All stock levels are healthy — no alerts</p></CardBody></Card>
+            <Card>
+              <CardBody>
+                <div style={{ textAlign: 'center', padding: '32px 16px' }}>
+                  <div style={{ fontSize: '2.5rem', marginBottom: 8 }}>✅</div>
+                  <div style={{ fontWeight: 700, color: '#166534', fontSize: '1rem', marginBottom: 4 }}>All stock levels are healthy</div>
+                  <div style={{ fontSize: '0.82rem', color: '#94a3b8' }}>No out-of-stock, expired, or low-stock items. Great work!</div>
+                </div>
+              </CardBody>
+            </Card>
           ) : (
-            <div style={{ overflowX: 'auto' }}>
+            <div style={{ overflowX: 'auto', background: '#fff', borderRadius: 12, border: '1px solid #f0e8ea', boxShadow: '0 2px 8px rgba(196,30,58,0.05)' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
                 <thead>
                   <tr style={{ background: '#f8f5f5' }}>
-                    <th style={thA}>Alert Type</th>
+                    <th style={thA}>Priority</th>
+                    <th style={thA}>Alert</th>
                     <th style={thA}>Product</th>
                     <th style={thA}>Batch</th>
                     <th style={thA}>Expiry</th>
                     <th style={{ ...thA, textAlign: 'right' }}>Balance</th>
-                    <th style={thA}>Action Required</th>
+                    <th style={thA}>Guidance</th>
+                    <th style={{ ...thA, textAlign: 'center' }}>Quick Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {alertItems.map((a, i) => {
                     const sevColor = a.severity === 'critical' ? '#c41e3a' : a.severity === 'warning' ? '#d97706' : '#2563eb';
                     const sevBg = a.severity === 'critical' ? '#fef2f2' : a.severity === 'warning' ? '#fffbeb' : '#eff6ff';
+                    const priorityLabel = a.severity === 'critical' ? '🔴 Critical' : a.severity === 'warning' ? '🟡 Warning' : '🔵 Info';
                     const exp = a.expiry_date || a.expiryDate;
                     const isExp = exp ? new Date(exp) < now : false;
                     const dLeft = exp ? Math.ceil((new Date(exp) - now) / 86400000) : null;
+                    const pName = a.product_name || a.productName || a.description || '';
+                    const batchId = a.id || '';
                     return (
                       <tr key={i} style={{ background: i % 2 === 0 ? 'white' : '#fdf8f8', borderBottom: '1px solid #f5f0f0' }}>
+                        <td style={{ padding: '8px 8px', fontSize: '0.7rem', fontWeight: 700, whiteSpace: 'nowrap', color: sevColor }}>{priorityLabel}</td>
                         <td style={{ padding: '8px' }}>
                           <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 20, fontSize: '0.68rem', fontWeight: 700, color: sevColor, background: sevBg, border: `1px solid ${sevColor}22`, whiteSpace: 'nowrap' }}>{a.alertType}</span>
                         </td>
-                        <td style={{ padding: '8px', fontWeight: 600, color: '#1e293b' }}>{a.product_name || a.productName || a.description || '-'}</td>
+                        <td style={{ padding: '8px', fontWeight: 600, color: '#1e293b' }}>{pName || '-'}</td>
                         <td style={{ padding: '8px', color: '#6b7280', fontFamily: 'monospace', fontSize: '0.74rem' }}>{a.batch_no || a.batchNo || '—'}</td>
                         <td style={{ padding: '8px', color: isExp ? '#c41e3a' : (dLeft !== null && dLeft <= 30) ? '#d97706' : '#6b7280', fontWeight: isExp || (dLeft !== null && dLeft <= 30) ? 700 : 400 }}>
                           {exp ? formatDate(exp) : '—'}
@@ -3627,7 +3708,22 @@ function BranchStockTab() {
                           {isExp && <span style={{ display: 'block', fontSize: '0.65rem', color: '#c41e3a', fontWeight: 700 }}>EXPIRED</span>}
                         </td>
                         <td style={{ padding: '8px', textAlign: 'right', fontWeight: 700, fontSize: '0.85rem', color: Number(a.quantity) <= 0 ? '#c41e3a' : Number(a.quantity) < 10 ? '#d97706' : '#1e293b' }}>{a.quantity ?? '—'}</td>
-                        <td style={{ padding: '8px', fontSize: '0.76rem', color: '#64748b', maxWidth: 240 }}>{a.action}</td>
+                        <td style={{ padding: '8px', fontSize: '0.73rem', color: '#64748b', maxWidth: 220 }}>{a.action}</td>
+                        <td style={{ padding: '8px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                          {a.quickAction === 'request' && (
+                            <button onClick={() => { setRequestItems([]); setProductSearch(pName); setShowRequestForm(true); }}
+                              style={{ padding: '4px 10px', borderRadius: 7, fontSize: '0.68rem', fontWeight: 700, border: 'none', background: '#c41e3a', color: '#fff', cursor: 'pointer' }}>
+                              📋 Request
+                            </button>
+                          )}
+                          {a.quickAction === 'writeoff' && (
+                            <button onClick={() => { setWriteOffForm({ product_name: pName, quantity: '', reason: isExp ? 'expired' : 'other', batch_id: batchId }); setShowWriteOffForm(true); }}
+                              style={{ padding: '4px 10px', borderRadius: 7, fontSize: '0.68rem', fontWeight: 700, border: '1px solid #fecaca', background: '#fef2f2', color: '#c41e3a', cursor: 'pointer' }}>
+                              🗑️ Write Off
+                            </button>
+                          )}
+                          {!a.quickAction && <span style={{ color: '#94a3b8', fontSize: '0.68rem' }}>—</span>}
+                        </td>
                       </tr>
                     );
                   })}
@@ -3648,6 +3744,16 @@ function BranchStockTab() {
               <button onClick={() => { setRequestItems([]); setProductSearch(''); setShowRequestForm(true); }} className="px-4 py-2 rounded-lg text-sm font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>📋 New Request</button>
             </div>
           </CardHeader>
+          <div style={{ padding: '8px 16px 0', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, padding: '7px 14px', fontSize: '0.74rem', color: '#0369a1', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span>ℹ️ Requests are reviewed and approved in</span>
+              {user?.role === 'admin'
+                ? <button onClick={() => navigate('/stock')} style={{ fontWeight: 700, color: '#0369a1', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>Stock Portal › Requests tab ↗</button>
+                : <strong>Stock Portal › Requests tab</strong>
+              }
+              <span>— once approved they appear in Receive Stock.</span>
+            </div>
+          </div>
           <Table
             columns={[
               { header: 'Request #', render: r => <span className="font-mono text-xs">{r.requestNumber || r.request_number || r.id}</span> },
@@ -3679,6 +3785,14 @@ function BranchStockTab() {
           <div className="flex justify-between items-center">
             <h3 className="font-bold text-gray-800 text-lg m-0">📥 Receive Incoming Stock</h3>
             <button onClick={loadData} className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 bg-white cursor-pointer font-semibold text-gray-500">↺ Refresh</button>
+          </div>
+          <div style={{ background: 'linear-gradient(90deg,#f0fdf4,#ecfdf5)', border: '1.5px solid #bbf7d0', borderRadius: 10, padding: '10px 16px', fontSize: '0.76rem', color: '#166534', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
+            <span>🏭 Deliveries dispatched from</span>
+            {user?.role === 'admin'
+              ? <button onClick={() => navigate('/stock')} style={{ fontWeight: 700, color: '#166534', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>Stock Portal › Distribution tab ↗</button>
+              : <strong>Stock Portal › Distribution tab</strong>
+            }
+            <span>appear here once approved by GM. Receive them to update your inventory automatically.</span>
           </div>
 
           {incomingDeliveries.length > 0 && (
@@ -4046,10 +4160,21 @@ function BranchStockTab() {
           <CardHeader className="flex justify-between items-center">
             <h3 className="font-bold text-gray-800">Stock Transfers</h3>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={() => { const win = window.open('','_blank'); if (!win) return; const rows = transfers.map(r => { const items = (()=>{try{return typeof r.items==='string'?JSON.parse(r.items):(r.items||[]);}catch{return [];}})(); return `<tr><td>${r.from_warehouse||user?.branch||'-'}</td><td>${r.to_branch||'-'}</td><td>${items.map(i=>`${i.product_name} ×${i.quantity}`).join(', ')||'-'}</td><td><span class="badge ${r.status==='delivered'?'badge-green':r.status==='dispatched'?'badge-blue':'badge-amber'}">${r.status||'pending'}</span></td><td>${r.created_at?new Date(r.created_at).toLocaleDateString('en-NA'):'-'}</td></tr>`; }).join(''); win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Stock Transfers</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;padding:24px}.header{display:flex;justify-content:space-between;border-bottom:3px solid #c41e3a;padding-bottom:10px;margin-bottom:16px}.company{color:#c41e3a;font-weight:900;font-size:15px}table{width:100%;border-collapse:collapse;margin-top:8px}th{background:#c41e3a;color:#fff;font-weight:700;padding:7px 8px;text-align:left;font-size:10px}td{padding:6px 8px;border-bottom:1px solid #f1f5f9;font-size:10px}tr:nth-child(even) td{background:#fdf7f8}.badge{display:inline-block;padding:1px 7px;border-radius:20px;font-weight:700;font-size:9px}.badge-green{background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}.badge-blue{background:#eff6ff;color:#1e40af;border:1px solid #93c5fd}.badge-amber{background:#fffbeb;color:#92400e;border:1px solid #fcd34d}.print-btn{position:fixed;top:12px;right:12px;background:#c41e3a;color:#fff;border:none;padding:8px 18px;border-radius:8px;font-weight:700;cursor:pointer}@media print{*{print-color-adjust:exact;-webkit-print-color-adjust:exact}.print-btn{display:none}}</style></head><body><button class="print-btn" onclick="window.print()">🖨️ Print</button><div class="header"><div><div class="company">DYNAPHARM INTERNATIONAL NAMIBIA</div><div style="font-size:14px;font-weight:800;color:#8b0000;margin-top:4px">↔ Stock Transfers Report</div><div style="color:#64748b;font-size:10px;margin-top:3px">${user?.branch||'Branch'}</div></div><div style="text-align:right;color:#64748b;font-size:10px">Date: ${new Date().toLocaleDateString('en-NA',{day:'2-digit',month:'long',year:'numeric'})}</div></div><table><thead><tr><th>From</th><th>To Branch</th><th>Items</th><th>Status</th><th>Date</th></tr></thead><tbody>${rows||'<tr><td colspan="5" style="text-align:center;color:#94a3b8">No transfers</td></tr>'}</tbody></table></body></html>`); win.document.close(); }} className="px-3 py-1.5 rounded-lg text-xs font-bold border-none cursor-pointer" style={{ background: '#f1f5f9', color: '#374151' }}>📄 Print</button>
-              <button onClick={openTransferForm} className="px-4 py-2 rounded-lg text-sm font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>New Transfer</button>
             </div>
           </CardHeader>
+          <div style={{ padding: '8px 16px 0', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <div style={{ background: '#f5f3ff', border: '1px solid #c4b5fd', borderRadius: 8, padding: '7px 14px', fontSize: '0.74rem', color: '#6d28d9', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span>↔ Warehouse dispatches appear here for receiving. Full transfer lifecycle managed in</span>
+              {user?.role === 'admin'
+                ? <button onClick={() => navigate('/stock')} style={{ fontWeight: 700, color: '#6d28d9', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>Stock Portal › Transfers tab ↗</button>
+                : <strong>Stock Portal › Transfers tab</strong>
+              }
+            </div>
+          </div>
+          <div style={{ padding: '8px 16px', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button onClick={() => { const win = window.open('','_blank'); if (!win) return; const rows = transfers.map(r => { const items = (()=>{try{return typeof r.items==='string'?JSON.parse(r.items):(r.items||[]);}catch{return [];}})(); return `<tr><td>${r.from_warehouse||user?.branch||'-'}</td><td>${r.to_branch||'-'}</td><td>${items.map(i=>`${i.product_name} ×${i.quantity}`).join(', ')||'-'}</td><td><span class="badge ${r.status==='delivered'?'badge-green':r.status==='dispatched'?'badge-blue':'badge-amber'}">${r.status||'pending'}</span></td><td>${r.created_at?new Date(r.created_at).toLocaleDateString('en-NA'):'-'}</td></tr>`; }).join(''); win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Stock Transfers</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;padding:24px}.header{display:flex;justify-content:space-between;border-bottom:3px solid #c41e3a;padding-bottom:10px;margin-bottom:16px}.company{color:#c41e3a;font-weight:900;font-size:15px}table{width:100%;border-collapse:collapse;margin-top:8px}th{background:#c41e3a;color:#fff;font-weight:700;padding:7px 8px;text-align:left;font-size:10px}td{padding:6px 8px;border-bottom:1px solid #f1f5f9;font-size:10px}tr:nth-child(even) td{background:#fdf7f8}.badge{display:inline-block;padding:1px 7px;border-radius:20px;font-weight:700;font-size:9px}.badge-green{background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}.badge-blue{background:#eff6ff;color:#1e40af;border:1px solid #93c5fd}.badge-amber{background:#fffbeb;color:#92400e;border:1px solid #fcd34d}.print-btn{position:fixed;top:12px;right:12px;background:#c41e3a;color:#fff;border:none;padding:8px 18px;border-radius:8px;font-weight:700;cursor:pointer}@media print{*{print-color-adjust:exact;-webkit-print-color-adjust:exact}.print-btn{display:none}}</style></head><body><button class="print-btn" onclick="window.print()">🖨️ Print</button><div class="header"><div><div class="company">DYNAPHARM INTERNATIONAL NAMIBIA</div><div style="font-size:14px;font-weight:800;color:#8b0000;margin-top:4px">↔ Stock Transfers Report</div><div style="color:#64748b;font-size:10px;margin-top:3px">${user?.branch||'Branch'}</div></div><div style="text-align:right;color:#64748b;font-size:10px">Date: ${new Date().toLocaleDateString('en-NA',{day:'2-digit',month:'long',year:'numeric'})}</div></div><table><thead><tr><th>From</th><th>To Branch</th><th>Items</th><th>Status</th><th>Date</th></tr></thead><tbody>${rows||'<tr><td colspan="5" style="text-align:center;color:#94a3b8">No transfers</td></tr>'}</tbody></table></body></html>`); win.document.close(); }} className="px-3 py-1.5 rounded-lg text-xs font-bold border-none cursor-pointer" style={{ background: '#f1f5f9', color: '#374151' }}>📄 Print</button>
+              <button onClick={openTransferForm} className="px-4 py-2 rounded-lg text-sm font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>New Transfer</button>
+          </div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
               <thead>
@@ -4159,6 +4284,17 @@ function BranchStockTab() {
             </div>
             <button onClick={() => printStockMovementsReport(filteredMov, user?.branch||'')} className="px-3 py-1.5 rounded-lg text-xs font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>📄 Print</button>
           </CardHeader>
+          <div style={{ padding: '6px 16px 8px', display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', borderBottom: '1px solid #f0e8ea', background: '#fafafa' }}>
+            <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.06em' }}>Populated by:</span>
+            {[
+              { label: '🛒 Walk-in Sales tab', color: '#2563eb' },
+              { label: '💊 Prescriptions tab', color: '#6366f1' },
+              { label: '📦 Stock Tab actions (receive, transfer, write-off)', color: '#c41e3a' },
+              { label: '🏭 Warehouse dispatches', color: '#9333ea' },
+            ].map(d => (
+              <span key={d.label} style={{ fontSize: '0.65rem', fontWeight: 600, color: d.color, background: `${d.color}10`, border: `1px solid ${d.color}28`, borderRadius: 20, padding: '2px 8px' }}>{d.label}</span>
+            ))}
+          </div>
           <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0e8ea', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
             <input type="text" placeholder="Search product..." value={movFilter.search} onChange={e => setMovFilter(p => ({ ...p, search: e.target.value }))}
               style={{ padding: '7px 12px', border: '1.5px solid #e8d5d8', borderRadius: 8, fontSize: '0.82rem', width: 160, outline: 'none' }} />
@@ -4412,6 +4548,25 @@ function BranchStockTab() {
 
         return (
         <div>
+          {/* Cross-portal data sources banner */}
+          <div style={{ background: 'linear-gradient(90deg,#f8fafc,#f0f4ff)', border: '1.5px solid #c7d2fe', borderRadius: 12, padding: '12px 18px', marginBottom: 16, display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
+            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#1e3a5f' }}>📊 Report data sources:</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, flex: 1 }}>
+              {[
+                { label: '🛒 Walk-in Sales', desc: 'member, non-member, general sales' },
+                { label: '💊 Prescriptions', desc: 'dispenses with patient & product detail' },
+                { label: '📦 Stock Movements', desc: 'receipts, transfers, write-offs' },
+                { label: '💳 Bonus Payments', desc: 'distributor payouts by branch' },
+              ].map(s => (
+                <span key={s.label} title={s.desc} style={{ fontSize: '0.68rem', fontWeight: 600, color: '#3730a3', background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: 20, padding: '3px 10px', cursor: 'help' }}>{s.label}</span>
+              ))}
+            </div>
+            {user?.role === 'admin' && (
+              <button onClick={() => navigate('/stock')} style={{ fontSize: '0.72rem', fontWeight: 700, color: '#1e40af', background: '#eff6ff', border: '1px solid #93c5fd', borderRadius: 8, padding: '5px 12px', cursor: 'pointer' }}>
+                🏭 View Warehouse Reports ↗
+              </button>
+            )}
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 14 }}>
             {[
               { icon: '📊', title: 'Daily DP Sales Report', desc: "Today's sales — all categories including Rx dispenses with payment method breakdown. Server-side aggregation covers all records.", action: handleDailyReport },
