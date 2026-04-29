@@ -1334,18 +1334,19 @@ export default function StockPortal() {
     { id: 'stockReports', label: 'Stock Reports', icon: '📋' },
     { id: 'supplierImport', label: 'Supplier Import', icon: '🚢' },
     { id: 'countryStock', label: 'Country Stock', icon: '🌍' },
-    { id: 'windhoek', label: 'Windhoek', icon: '🏢' },
-    { id: 'ondangwa', label: 'Ondangwa', icon: '🏬' },
+    { id: 'warehouses', label: 'Warehouses', icon: '🏭' },
     { id: 'distribution', label: 'Distribution', icon: '🚚' },
     { id: 'transfers', label: 'Transfers', icon: '🔄' },
     { id: 'inventory', label: 'Inventory', icon: '📦' },
     { id: 'orders', label: 'Orders', icon: '🧾' },
     { id: 'monthlySales', label: 'Monthly Sales', icon: '📈' },
-    { id: 'countryInventory', label: 'Country Inv.', icon: '🗂️' },
+    { id: 'countryInventory', label: 'Full Inventory', icon: '🗂️' },
     { id: 'valuation', label: 'Valuation', icon: '💎' },
     { id: 'barcode', label: 'Barcode', icon: '🏷️' },
     { id: 'reorder', label: 'AI Reorder', icon: '🤖' },
     { id: 'batch', label: 'Batch', icon: '🔢' },
+    { id: 'writeOffs', label: 'Write-Offs', icon: '❌' },
+    { id: 'purchaseOrders', label: 'Purchase Orders', icon: '📋' },
     { id: 'realtime', label: 'Realtime', icon: '⚡' },
     { id: 'fieldStock', label: 'Field Stock', icon: '👥' },
     { id: 'adjustments', label: 'Edit Requests', icon: '✏️' },
@@ -1404,8 +1405,7 @@ export default function StockPortal() {
         {activeTab === 'stockReports' && <StockReportsTab branch={globalBranch} />}
         {activeTab === 'supplierImport' && <SupplierImportTab />}
         {activeTab === 'countryStock' && <CountryStockTab />}
-        {activeTab === 'windhoek' && <WarehouseTab name="Windhoek" />}
-        {activeTab === 'ondangwa' && <WarehouseTab name="Ondangwa" />}
+        {activeTab === 'warehouses' && <WarehousesTab />}
         {activeTab === 'distribution' && <DistributionTab branch={globalBranch} />}
         {activeTab === 'transfers' && <TransfersTab branch={globalBranch} />}
         {activeTab === 'inventory' && <InventoryTab branch={globalBranch} />}
@@ -1416,6 +1416,8 @@ export default function StockPortal() {
         {activeTab === 'barcode' && <BarcodeTab />}
         {activeTab === 'reorder' && <SmartReorderTab branch={globalBranch} />}
         {activeTab === 'batch' && <BatchTab branch={globalBranch} />}
+        {activeTab === 'writeOffs' && <WriteOffsTab branch={globalBranch} />}
+        {activeTab === 'purchaseOrders' && <PurchaseOrdersTab />}
         {activeTab === 'realtime' && <RealtimeTab branch={globalBranch} />}
         {activeTab === 'fieldStock' && <FieldStockTab />}
         {activeTab === 'adjustments' && <AdjustmentsTab />}
@@ -3821,6 +3823,23 @@ function WarehouseTab({ name }) {
   );
 }
 
+function WarehousesTab() {
+  const [selected, setSelected] = useState('windhoek');
+  return (
+    <div>
+      <div className="flex gap-2 mb-4">
+        {[{ id: 'windhoek', label: '🏢 Windhoek Warehouse' }, { id: 'ondangwa', label: '🏬 Ondangwa Warehouse' }].map(w => (
+          <button key={w.id} onClick={() => setSelected(w.id)}
+            style={{ padding: '8px 20px', borderRadius: 99, fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', border: '2px solid', borderColor: selected === w.id ? '#c41e3a' : '#e2e8f0', background: selected === w.id ? '#fff0f3' : '#f8fafc', color: selected === w.id ? '#c41e3a' : '#64748b' }}>
+            {w.label}
+          </button>
+        ))}
+      </div>
+      <WarehouseTab name={selected === 'windhoek' ? 'Windhoek' : 'Ondangwa'} />
+    </div>
+  );
+}
+
 function DistributionTab({ branch }) {
   const { user } = useAuth();
   const [cart, setCart] = useState([]);
@@ -4176,6 +4195,7 @@ function ProductMultiCart({ cart, onCartChange }) {
 // ── End ProductMultiCart ────────────────────────────────────────────────────────
 
 function TransfersTab({ branch }) {
+  const { user } = useAuth();
   const [transfers, setTransfers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
@@ -4216,15 +4236,14 @@ function TransfersTab({ branch }) {
     }
     setSubmitting(true);
     try {
-      for (const item of cart) {
-        await api.stock.createTransfer({
-          from_location: fromLocation,
-          to_location: toLocation,
-          product_name: item.description,
-          quantity: Number(item.qty),
-        });
-      }
-      setAlert({ type: 'success', msg: `${cart.length} transfer${cart.length !== 1 ? 's' : ''} created successfully` });
+      await api.stock.createTransfer({
+        from_location: fromLocation,
+        to_location: toLocation,
+        items: cart.map(item => ({ productName: item.description, quantity: Number(item.qty) })),
+        status: 'pending_approval',
+        created_by: user?.full_name || user?.username,
+      });
+      setAlert({ type: 'success', msg: `Transfer of ${cart.length} product${cart.length !== 1 ? 's' : ''} created successfully` });
       setCart([]);
       setFromLocation('');
       setToLocation('');
@@ -4411,7 +4430,10 @@ function InventoryTab({ branch }) {
   const warehouseQty     = batches.filter(b => b.location && b.location !== 'country_stock' && !b.location.includes('branch')).reduce((s, b) => s + Number(b.remaining_quantity || 0), 0);
   const totalAvailable   = batches.filter(b => b.status !== 'expired' && b.status !== 'depleted').reduce((s, b) => s + Number(b.remaining_quantity || 0), 0);
 
-  const distributedToBranches = periodTransfers.filter(t => ['delivered','received'].includes(t.status) && (t.toBranch || t.to_location || '').toLowerCase().includes('branch') || (t.toBranch || t.to_location || '') && !(t.toBranch || t.to_location || '').toLowerCase().includes('warehouse')).reduce((s, t) => {
+  const distributedToBranches = periodTransfers.filter(t => {
+    const dest = (t.toBranch || t.to_location || '').toLowerCase();
+    return ['delivered','received'].includes(t.status) && dest && !dest.includes('warehouse') && !dest.includes('country_stock');
+  }).reduce((s, t) => {
     const items = Array.isArray(t.items) ? t.items : [];
     return s + (items.length > 0 ? items.reduce((a, i) => a + Number(i.quantityReceived ?? i.quantity_received ?? i.quantity ?? 0), 0) : Number(t.quantity || 0));
   }, 0);
@@ -5606,8 +5628,8 @@ function CountryInventoryTab() {
     if (!aggregated[key]) {
       aggregated[key] = { product_name: b.product_name, location: b.location || 'Unknown', total_quantity: 0, total_value: 0, batch_count: 0 };
     }
-    aggregated[key].total_quantity += Number(b.quantity || 0);
-    aggregated[key].total_value += Number(b.quantity || 0) * (Number(b.unit_price || 0) || getBatchCIF(b));
+    aggregated[key].total_quantity += Number(b.remaining_quantity ?? b.quantity ?? 0);
+    aggregated[key].total_value += Number(b.remaining_quantity ?? b.quantity ?? 0) * (Number(b.unit_price || 0) || getBatchCIF(b));
     aggregated[key].batch_count += 1;
   });
 
@@ -7164,6 +7186,478 @@ function BatchTab({ branch }) {
           </div>
         </form>
       </Modal>
+    </div>
+  );
+}
+
+// ── Write-Offs Tab ─────────────────────────────────────────────────────────────
+function WriteOffsTab({ branch }) {
+  const { user } = useAuth();
+  const [movements, setMovements]   = useState([]);
+  const [batches, setBatches]       = useState([]);
+  const [loading, setLoading]       = useState(true);
+  const [alert, setAlert]           = useState(null);
+  const [showForm, setShowForm]     = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [search, setSearch]         = useState('');
+  const [form, setForm]             = useState({
+    product_name: '', batch_id: '', quantity: '', reason: '', notes: '',
+  });
+
+  const load = useCallback(() => {
+    setLoading(true);
+    Promise.all([
+      api.stock.movements().then(d => Array.isArray(d) ? d : d.movements || []).catch(() => []),
+      api.stock.batches().then(d => Array.isArray(d) ? d : d.batches || []).catch(() => []),
+    ]).then(([mvs, bts]) => {
+      setMovements(mvs);
+      setBatches(bts);
+    }).finally(() => setLoading(false));
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const writeoffs = movements.filter(m => {
+    const t = (m.movement_type || '').toLowerCase();
+    const isWO = t === 'write_off' || t === 'write-off' || t === 'written_off';
+    if (!isWO) return false;
+    if (branch === 'all') return true;
+    const loc = (m.source_location || m.location || '').toLowerCase().replace(/\s+/g, '_');
+    return loc === branch;
+  }).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+  const filtered = search.trim()
+    ? writeoffs.filter(m => (m.product_name || '').toLowerCase().includes(search.toLowerCase()) || (m.notes || '').toLowerCase().includes(search.toLowerCase()))
+    : writeoffs;
+
+  const totalQty  = writeoffs.reduce((s, m) => s + Number(m.quantity || 0), 0);
+  const totalCIF  = writeoffs.reduce((s, m) => s + Number(m.quantity || 0) * getCIFPrice(m.product_name || ''), 0);
+
+  const activeBatches = batches.filter(b => {
+    const rem = Number(b.remaining_quantity ?? b.quantity ?? 0);
+    const st  = (b.status || '').toLowerCase();
+    const ok  = rem > 0 && st !== 'expired' && st !== 'depleted' && st !== 'written_off';
+    if (!ok) return false;
+    if (branch === 'all') return true;
+    return (b.location || '').toLowerCase().replace(/\s+/g, '_') === branch;
+  });
+
+  const selectedBatch = batches.find(b => String(b.id) === String(form.batch_id));
+  const maxQty = selectedBatch ? Number(selectedBatch.remaining_quantity ?? selectedBatch.quantity ?? 0) : 0;
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.product_name) { setAlert({ type: 'error', msg: 'Product name is required' }); return; }
+    const qty = Number(form.quantity);
+    if (!qty || qty <= 0) { setAlert({ type: 'error', msg: 'Enter a valid quantity' }); return; }
+    if (maxQty > 0 && qty > maxQty) { setAlert({ type: 'error', msg: `Cannot write off more than available stock (${maxQty})` }); return; }
+    if (!form.reason) { setAlert({ type: 'error', msg: 'Reason is required' }); return; }
+    setSubmitting(true);
+    try {
+      await api.stock.createMovement({
+        product_name:      form.product_name,
+        movement_type:     'write_off',
+        quantity:          qty,
+        source_location:   selectedBatch?.location || (branch !== 'all' ? branch : 'country_stock'),
+        batch_no:          selectedBatch?.batch_no || selectedBatch?.batch_number || null,
+        notes:             `${form.reason}${form.notes ? ' — ' + form.notes : ''}`,
+        created_by:        user?.full_name || user?.username,
+        reference:         `WO-${Date.now().toString(36).toUpperCase()}`,
+      });
+      if (selectedBatch && qty >= maxQty) {
+        await api.stock.updateBatch(selectedBatch.id, { status: 'written_off' });
+      }
+      setAlert({ type: 'success', msg: `Write-off recorded: ${qty} × ${form.product_name}` });
+      setForm({ product_name: '', batch_id: '', quantity: '', reason: '', notes: '' });
+      setShowForm(false);
+      load();
+    } catch (err) {
+      setAlert({ type: 'error', msg: err.message || 'Failed to record write-off' });
+    } finally { setSubmitting(false); }
+  };
+
+  const fmtDate = ts => { try { return ts ? new Date(ts).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'; } catch { return '—'; } };
+  const fmtLoc  = loc => {
+    const l = (loc || '').toLowerCase();
+    if (l === 'country_stock') return 'Country Stock';
+    if (l === 'windhoek_warehouse') return 'Windhoek WH';
+    if (l === 'ondangwa_warehouse') return 'Ondangwa WH';
+    const bd = BRANCH_DETAILS.find(b => b.id === l);
+    return bd ? bd.name : (loc || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  };
+
+  const productOptions = [...new Set(activeBatches.map(b => b.product_name || b.description).filter(Boolean))].sort();
+
+  if (loading) return <LoadingSpinner />;
+
+  return (
+    <div className="space-y-4">
+      {alert && <Alert type={alert.type} onClose={() => setAlert(null)}>{alert.msg}</Alert>}
+
+      <div style={{ background: 'linear-gradient(135deg,#7f1d1d,#991b1b)', borderRadius: 14, padding: '14px 20px', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+        <div>
+          <h3 style={{ fontWeight: 900, fontSize: '1.05rem', margin: 0 }}>❌ Stock Write-Offs</h3>
+          <p style={{ fontSize: '0.78rem', opacity: 0.85, margin: '3px 0 0' }}>
+            Record and review expired, damaged, or otherwise removed stock · All write-offs create an audit trail
+          </p>
+        </div>
+        <Button onClick={() => setShowForm(s => !s)} style={{ background: '#fff', color: '#991b1b' }}>
+          {showForm ? '✕ Cancel' : '+ New Write-Off'}
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {[
+          { label: 'Total Write-Off Events', value: writeoffs.length, color: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
+          { label: 'Total Units Written Off', value: totalQty.toLocaleString(), color: '#9b1c1c', bg: '#fef2f2', border: '#fecaca' },
+          { label: 'CIF Value Lost', value: formatCurrency(totalCIF), color: '#b45309', bg: '#fffbeb', border: '#fde68a' },
+        ].map(s => (
+          <div key={s.label} style={{ borderRadius: 10, padding: '12px 16px', background: s.bg, border: `1.5px solid ${s.border}` }}>
+            <div style={{ fontSize: '1.5rem', fontWeight: 900, color: s.color }}>{s.value}</div>
+            <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700, marginTop: 2 }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {showForm && (
+        <Card>
+          <CardHeader><h4 className="font-bold text-gray-800">Record New Write-Off</h4></CardHeader>
+          <CardBody>
+            <form onSubmit={handleSubmit} className="space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Product *</label>
+                  <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={form.product_name}
+                    onChange={e => setForm(f => ({ ...f, product_name: e.target.value, batch_id: '' }))}>
+                    <option value="">Select product...</option>
+                    {productOptions.map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Batch (optional)</label>
+                  <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={form.batch_id}
+                    onChange={e => {
+                      const b = batches.find(b => String(b.id) === e.target.value);
+                      setForm(f => ({ ...f, batch_id: e.target.value, product_name: b?.product_name || b?.description || f.product_name }));
+                    }}>
+                    <option value="">No specific batch</option>
+                    {activeBatches.filter(b => !form.product_name || (b.product_name || b.description) === form.product_name).map(b => (
+                      <option key={b.id} value={b.id}>
+                        {b.batch_no || b.batch_number || `B-${b.id}`} · {fmtLoc(b.location)} · {Number(b.remaining_quantity ?? b.quantity ?? 0)} units
+                        {b.expiry_date ? ` · Exp ${new Date(b.expiry_date).toLocaleDateString('en-ZA', { month: 'short', year: 'numeric' })}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">
+                    Quantity to Write Off *{maxQty > 0 && <span className="text-gray-400 font-normal ml-1">(max {maxQty})</span>}
+                  </label>
+                  <Input type="number" min="1" max={maxQty > 0 ? maxQty : undefined} value={form.quantity}
+                    onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} placeholder="0" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Reason *</label>
+                  <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={form.reason}
+                    onChange={e => setForm(f => ({ ...f, reason: e.target.value }))}>
+                    <option value="">Select reason...</option>
+                    <option value="Expired">Expired</option>
+                    <option value="Damaged">Damaged in storage</option>
+                    <option value="Contaminated">Contaminated</option>
+                    <option value="Theft">Theft / Loss</option>
+                    <option value="Quality failure">Quality / Recall</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Additional Notes</label>
+                <Textarea rows={2} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Any additional context..." />
+              </div>
+              <div className="flex gap-2">
+                <Button type="submit" disabled={submitting}>{submitting ? 'Saving...' : 'Record Write-Off'}</Button>
+                <Button type="button" variant="secondary" onClick={() => { setShowForm(false); setForm({ product_name: '', batch_id: '', quantity: '', reason: '', notes: '' }); }}>Cancel</Button>
+              </div>
+            </form>
+          </CardBody>
+        </Card>
+      )}
+
+      <Card>
+        <CardHeader>
+          <div className="flex justify-between items-center flex-wrap gap-2">
+            <h4 className="font-bold text-gray-800">Write-Off History</h4>
+            <div className="relative">
+              <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input className="pl-7 pr-3 py-1.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20"
+                placeholder="Search product or notes..." value={search} onChange={e => setSearch(e.target.value)} />
+            </div>
+          </div>
+        </CardHeader>
+        <CardBody>
+          {filtered.length === 0 ? (
+            <EmptyState icon={<XCircle size={32} />} title="No write-offs recorded" description="Write-offs will appear here once recorded." />
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                <thead>
+                  <tr style={{ background: '#fef2f2' }}>
+                    {['Date', 'Product', 'Batch', 'Location', 'Qty Written Off', 'CIF Value', 'Reason / Notes', 'Recorded By'].map(h => (
+                      <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, color: '#7f1d1d', borderBottom: '1.5px solid #fecaca', whiteSpace: 'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((m, i) => {
+                    const qty = Number(m.quantity || 0);
+                    const cif = qty * getCIFPrice(m.product_name || '');
+                    return (
+                      <tr key={m.id || i} style={{ background: i % 2 === 0 ? '#fff' : '#fafafa', borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '8px 12px', whiteSpace: 'nowrap', color: '#374151' }}>{fmtDate(m.created_at)}</td>
+                        <td style={{ padding: '8px 12px', fontWeight: 600, color: '#111827' }}>{m.product_name || '—'}</td>
+                        <td style={{ padding: '8px 12px', color: '#6b7280', fontFamily: 'monospace' }}>{m.batch_no || '—'}</td>
+                        <td style={{ padding: '8px 12px' }}><span style={{ padding: '2px 8px', borderRadius: 6, background: '#eff6ff', color: '#1d4ed8', fontSize: '0.75rem', fontWeight: 600 }}>{fmtLoc(m.source_location || m.location)}</span></td>
+                        <td style={{ padding: '8px 12px', fontWeight: 700, color: '#dc2626' }}>{qty.toLocaleString()}</td>
+                        <td style={{ padding: '8px 12px', color: '#b45309', fontWeight: 600 }}>{formatCurrency(cif)}</td>
+                        <td style={{ padding: '8px 12px', color: '#374151', maxWidth: 220 }}>{m.notes || '—'}</td>
+                        <td style={{ padding: '8px 12px', color: '#6b7280', fontSize: '0.78rem' }}>{m.created_by || '—'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr style={{ background: '#fef2f2', fontWeight: 700 }}>
+                    <td colSpan={4} style={{ padding: '8px 12px', color: '#7f1d1d' }}>TOTAL ({filtered.length} events)</td>
+                    <td style={{ padding: '8px 12px', color: '#dc2626' }}>{filtered.reduce((s,m) => s + Number(m.quantity||0), 0).toLocaleString()}</td>
+                    <td style={{ padding: '8px 12px', color: '#b45309' }}>{formatCurrency(filtered.reduce((s,m) => s + Number(m.quantity||0)*getCIFPrice(m.product_name||''), 0))}</td>
+                    <td colSpan={2} />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+        </CardBody>
+      </Card>
+    </div>
+  );
+}
+
+// ── Purchase Orders Tab ────────────────────────────────────────────────────────
+function PurchaseOrdersTab() {
+  const { user } = useAuth();
+  const [orders, setOrders]         = useState([]);
+  const [products, setProducts]     = useState([]);
+  const [loading, setLoading]       = useState(true);
+  const [alert, setAlert]           = useState(null);
+  const [showForm, setShowForm]     = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [updatingId, setUpdatingId] = useState(null);
+  const [form, setForm] = useState({ product_name: '', quantity: '', notes: '', priority_label: '' });
+
+  const load = useCallback(() => {
+    setLoading(true);
+    Promise.all([
+      api.stock.supplierOrders().then(d => Array.isArray(d) ? d : d.orders || []).catch(() => []),
+      api.get('/prices').then(d => Array.isArray(d) ? d : d.prices || d.products || []).catch(() => []),
+    ]).then(([ords, priceList]) => {
+      setOrders(ords);
+      setProducts(priceList.filter(p => !p.is_package));
+    }).finally(() => setLoading(false));
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const filtered = statusFilter === 'all' ? orders : orders.filter(o => o.status === statusFilter);
+
+  const statusCfg = {
+    draft:     { label: 'Draft',     color: '#94a3b8', bg: '#f8fafc'  },
+    submitted: { label: 'Submitted', color: '#2563eb', bg: '#eff6ff'  },
+    confirmed: { label: 'Confirmed', color: '#16a34a', bg: '#f0fdf4'  },
+    received:  { label: 'Received',  color: '#059669', bg: '#ecfdf5'  },
+    cancelled: { label: 'Cancelled', color: '#dc2626', bg: '#fef2f2'  },
+  };
+
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    if (!form.product_name || !form.quantity) { setAlert({ type: 'error', msg: 'Product and quantity are required' }); return; }
+    setSubmitting(true);
+    try {
+      await api.stock.createSupplierOrder({
+        product_name:        form.product_name,
+        quantity:            Number(form.quantity),
+        notes:               form.notes || null,
+        priority_label:      form.priority_label || 'Normal',
+        requested_by:        user?.id || user?.username,
+        requested_by_name:   user?.full_name || user?.username,
+      });
+      setAlert({ type: 'success', msg: `Purchase order created for ${form.product_name}` });
+      setForm({ product_name: '', quantity: '', notes: '', priority_label: '' });
+      setShowForm(false);
+      load();
+    } catch (err) {
+      setAlert({ type: 'error', msg: err.message || 'Failed to create order' });
+    } finally { setSubmitting(false); }
+  };
+
+  const updateStatus = async (id, status) => {
+    setUpdatingId(id);
+    try {
+      await api.stock.updateSupplierOrder(id, { status, submitted_by: user?.full_name || user?.username });
+      load();
+    } catch (err) {
+      setAlert({ type: 'error', msg: err.message || 'Update failed' });
+    } finally { setUpdatingId(null); }
+  };
+
+  const fmtDate = ts => { try { return ts ? new Date(ts).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'; } catch { return '—'; } };
+  const productOptions = [...new Set(products.map(p => p.description).filter(Boolean))].sort();
+
+  const counts = { all: orders.length, draft: 0, submitted: 0, confirmed: 0, received: 0, cancelled: 0 };
+  orders.forEach(o => { if (counts[o.status] !== undefined) counts[o.status]++; });
+
+  if (loading) return <LoadingSpinner />;
+
+  return (
+    <div className="space-y-4">
+      {alert && <Alert type={alert.type} onClose={() => setAlert(null)}>{alert.msg}</Alert>}
+
+      <div style={{ background: 'linear-gradient(135deg,#1e3a5f,#1e40af)', borderRadius: 14, padding: '14px 20px', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+        <div>
+          <h3 style={{ fontWeight: 900, fontSize: '1.05rem', margin: 0 }}>🚢 Supplier Purchase Orders</h3>
+          <p style={{ fontSize: '0.78rem', opacity: 0.85, margin: '3px 0 0' }}>
+            Manage stock orders to the Malaysian supplier · Track from draft through to received
+          </p>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          <Button onClick={() => setShowForm(s => !s)} style={{ background: '#fff', color: '#1e40af' }}>
+            {showForm ? '✕ Cancel' : '+ New Purchase Order'}
+          </Button>
+          <button onClick={load} style={{ padding: '6px 14px', background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 99, fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer' }}>🔄 Refresh</button>
+        </div>
+      </div>
+
+      <div className="flex gap-2 flex-wrap">
+        {[['all','All'], ['draft','Draft'], ['submitted','Submitted'], ['confirmed','Confirmed'], ['received','Received'], ['cancelled','Cancelled']].map(([k, lbl]) => (
+          <button key={k} onClick={() => setStatusFilter(k)}
+            style={{ padding: '5px 14px', borderRadius: 99, fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', border: '2px solid', borderColor: statusFilter === k ? '#1e40af' : '#e2e8f0', background: statusFilter === k ? '#eff6ff' : '#f8fafc', color: statusFilter === k ? '#1e40af' : '#64748b' }}>
+            {lbl} ({counts[k] ?? 0})
+          </button>
+        ))}
+      </div>
+
+      {showForm && (
+        <Card>
+          <CardHeader><h4 className="font-bold text-gray-800">New Purchase Order</h4></CardHeader>
+          <CardBody>
+            <form onSubmit={handleCreate} className="space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Product *</label>
+                  <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={form.product_name}
+                    onChange={e => setForm(f => ({ ...f, product_name: e.target.value }))}>
+                    <option value="">Select product...</option>
+                    {productOptions.map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Quantity to Order *</label>
+                  <Input type="number" min="1" value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} placeholder="0" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Priority</label>
+                  <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={form.priority_label}
+                    onChange={e => setForm(f => ({ ...f, priority_label: e.target.value }))}>
+                    <option value="">Normal</option>
+                    <option value="URGENT">URGENT</option>
+                    <option value="CRITICAL">CRITICAL</option>
+                    <option value="OUT OF STOCK">OUT OF STOCK</option>
+                    <option value="PLAN AHEAD">PLAN AHEAD</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Notes</label>
+                  <Input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Additional notes..." />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button type="submit" disabled={submitting}>{submitting ? 'Creating...' : 'Create Purchase Order'}</Button>
+                <Button type="button" variant="secondary" onClick={() => { setShowForm(false); setForm({ product_name: '', quantity: '', notes: '', priority_label: '' }); }}>Cancel</Button>
+              </div>
+            </form>
+          </CardBody>
+        </Card>
+      )}
+
+      <Card>
+        <CardHeader><h4 className="font-bold text-gray-800">Purchase Orders ({filtered.length})</h4></CardHeader>
+        <CardBody>
+          {filtered.length === 0 ? (
+            <EmptyState icon={<Ship size={32} />} title="No purchase orders found" description="Create your first purchase order above." />
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                <thead>
+                  <tr style={{ background: '#eff6ff' }}>
+                    {['PO Ref', 'Product', 'Qty Ordered', 'Priority', 'Status', 'Requested By', 'Date', 'Notes', 'Actions'].map(h => (
+                      <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, color: '#1e3a5f', borderBottom: '1.5px solid #bfdbfe', whiteSpace: 'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((o, i) => {
+                    const cfg = statusCfg[o.status] || { label: o.status, color: '#374151', bg: '#f8fafc' };
+                    const priorityCfg = {
+                      'CRITICAL': { color: '#dc2626', bg: '#fef2f2' }, 'URGENT': { color: '#d97706', bg: '#fffbeb' },
+                      'OUT OF STOCK': { color: '#dc2626', bg: '#fef2f2' }, 'PLAN AHEAD': { color: '#2563eb', bg: '#eff6ff' },
+                    }[o.priority_label] || { color: '#374151', bg: '#f8fafc' };
+                    return (
+                      <tr key={o.id} style={{ background: i % 2 === 0 ? '#fff' : '#fafafa', borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: '0.75rem', color: '#1e40af', fontWeight: 700 }}>{o.order_ref || `PO-${o.id}`}</td>
+                        <td style={{ padding: '8px 12px', fontWeight: 600, color: '#111827' }}>{o.product_name}</td>
+                        <td style={{ padding: '8px 12px', fontWeight: 700, color: '#374151' }}>{Number(o.quantity_ordered || 0).toLocaleString()}</td>
+                        <td style={{ padding: '8px 12px' }}>
+                          {o.priority_label ? <span style={{ padding: '2px 8px', borderRadius: 6, background: priorityCfg.bg, color: priorityCfg.color, fontSize: '0.72rem', fontWeight: 700 }}>{o.priority_label}</span> : <span style={{ color: '#94a3b8' }}>Normal</span>}
+                        </td>
+                        <td style={{ padding: '8px 12px' }}><span style={{ padding: '2px 8px', borderRadius: 6, background: cfg.bg, color: cfg.color, fontSize: '0.75rem', fontWeight: 700 }}>{cfg.label}</span></td>
+                        <td style={{ padding: '8px 12px', color: '#374151' }}>{o.requested_by_name || o.requested_by || '—'}</td>
+                        <td style={{ padding: '8px 12px', color: '#6b7280', whiteSpace: 'nowrap' }}>{fmtDate(o.created_at)}</td>
+                        <td style={{ padding: '8px 12px', color: '#374151', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={o.notes || ''}>{o.notes || '—'}</td>
+                        <td style={{ padding: '8px 12px' }}>
+                          <div className="flex gap-1 flex-wrap">
+                            {o.status === 'draft' && (
+                              <button onClick={() => updateStatus(o.id, 'submitted')} disabled={updatingId === o.id}
+                                style={{ padding: '3px 10px', borderRadius: 6, background: '#eff6ff', color: '#1d4ed8', border: 'none', cursor: 'pointer', fontSize: '0.73rem', fontWeight: 700 }}>
+                                Submit
+                              </button>
+                            )}
+                            {o.status === 'submitted' && (
+                              <button onClick={() => updateStatus(o.id, 'confirmed')} disabled={updatingId === o.id}
+                                style={{ padding: '3px 10px', borderRadius: 6, background: '#f0fdf4', color: '#15803d', border: 'none', cursor: 'pointer', fontSize: '0.73rem', fontWeight: 700 }}>
+                                Confirm
+                              </button>
+                            )}
+                            {o.status === 'confirmed' && (
+                              <button onClick={() => updateStatus(o.id, 'received')} disabled={updatingId === o.id}
+                                style={{ padding: '3px 10px', borderRadius: 6, background: '#ecfdf5', color: '#059669', border: 'none', cursor: 'pointer', fontSize: '0.73rem', fontWeight: 700 }}>
+                                Mark Received
+                              </button>
+                            )}
+                            {!['received','cancelled'].includes(o.status) && (
+                              <button onClick={() => updateStatus(o.id, 'cancelled')} disabled={updatingId === o.id}
+                                style={{ padding: '3px 10px', borderRadius: 6, background: '#fef2f2', color: '#dc2626', border: 'none', cursor: 'pointer', fontSize: '0.73rem', fontWeight: 700 }}>
+                                Cancel
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardBody>
+      </Card>
     </div>
   );
 }
