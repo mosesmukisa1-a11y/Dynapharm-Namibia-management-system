@@ -200,11 +200,17 @@ function DashboardTab() {
         <Table
           columns={[
             { header: 'Date', render: r => formatDateTime(r.created_at) },
-            { header: 'Type', render: r => <Badge variant="info">{r.type || 'Sale'}</Badge> },
+            { header: 'Type', render: r => {
+              const isDeposit = !!(r.deposit_date !== undefined || r.bank_name !== undefined);
+              return <Badge variant={isDeposit ? 'success' : 'info'}>{isDeposit ? 'Bank Deposit' : (r.type || 'Walk-in Sale')}</Badge>;
+            }},
             { header: 'Amount', render: r => <span className="font-bold text-green-600">{formatCurrency(r.amount || r.total)}</span> },
             { header: 'Branch', render: r => branchLabel(r.branch_id || r.branch) },
           ]}
-          data={[...data.sales, ...data.deposits].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 15)}
+          data={[
+            ...data.sales.map(s => ({ ...s, _kind: 'sale' })),
+            ...data.deposits.map(d => ({ ...d, _kind: 'deposit' })),
+          ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 15)}
           emptyMessage="No recent transactions"
         />
       </Card>
@@ -231,7 +237,7 @@ function RemittanceTab() {
   useEffect(() => {
     Promise.all([
       api.prices.list().catch(() => []),
-      api.branch.walkinSales().then(d => Array.isArray(d) ? d : d.sales || []).catch(() => []),
+      api.branch.walkinSales('limit=5000').then(d => Array.isArray(d) ? d : d.sales || []).catch(() => []),
       api.branch.deposits().then(d => Array.isArray(d) ? d : d.deposits || []).catch(() => []),
       api.orders.list().then(d => Array.isArray(d) ? d : d.orders || []).catch(() => []),
       api.finance.remittances().then(d => Array.isArray(d) ? d : d.remittances || []).catch(() => []),
@@ -256,7 +262,7 @@ function RemittanceTab() {
   if (loading) return <LoadingSpinner />;
 
   const inCifRange = (record) => {
-    const d = (record.payment_date || record.date || record.created_at || record.sale_date || '').slice(0, 10);
+    const d = (record.deposit_date || record.payment_date || record.sale_date || record.date || record.created_at || '').slice(0, 10);
     if (cifStart && d < cifStart) return false;
     if (cifEnd && d > cifEnd) return false;
     return true;
@@ -1445,6 +1451,8 @@ function ReportsTab() {
   const [branchSummary, setBranchSummary] = useState([]);
   const [stockValue, setStockValue] = useState(null);
   const [writeoffs, setWriteoffs] = useState(null);
+  const [prescriptionRev, setPrescriptionRev] = useState(0);
+  const [consultFees, setConsultFees] = useState(0);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState('month');
   const [startDate, setStartDate] = useState(firstOfCurrentMonth());
@@ -1467,16 +1475,19 @@ function ReportsTab() {
       api.finance.branchesSummary(params).then(d => Array.isArray(d) ? d : d.branches || []).catch(() => []),
       api.finance.stockValue().then(d => d).catch(() => null),
       api.finance.writeoffs().then(d => d).catch(() => null),
-    ]).then(([branches, stock, wo]) => {
+      api.finance.summary(params).catch(() => null),
+    ]).then(([branches, stock, wo, summary]) => {
       setBranchSummary(branches);
       setStockValue(stock);
       setWriteoffs(wo);
+      setPrescriptionRev(Number(summary?.revenue?.prescriptionSales || 0));
+      setConsultFees(Number(summary?.revenue?.consultationFees || 0));
     }).finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
     const params = getPresetDates(period);
-    if (period === 'month') { setStartDate(params.startDate || firstOfMonth); setEndDate(params.endDate || todayStr); }
+    if (period === 'month') { setStartDate(params.startDate || firstOfCurrentMonth()); setEndDate(params.endDate || localDate()); }
     loadData(params);
   }, [period]);
 
@@ -1486,12 +1497,18 @@ function ReportsTab() {
     loadData({ startDate, endDate });
   };
 
-  const totalRevenue = branchSummary.reduce((s, b) => s + parseFloat(b.salesRevenue || 0), 0);
+  const walkInRevenue = branchSummary.reduce((s, b) => s + parseFloat(b.salesRevenue || 0), 0);
+  const totalRevenue = walkInRevenue + prescriptionRev + consultFees;
   const totalCash = branchSummary.reduce((s, b) => s + parseFloat(b.cashTotal || 0), 0);
   const totalSwipe = branchSummary.reduce((s, b) => s + parseFloat(b.swipeTotal || 0) + parseFloat(b.eftTotal || 0), 0);
 
   const exportBranchCSV = () => {
-    const headers = ['Branch', 'Sales Revenue', 'Units Sold', 'Cash', 'Swipe/EFT', 'Stock Value (DP)'];
+    const now = new Date();
+    const today = localDate(now);
+    const presets = getPresetDates(period);
+    const csvStart = period === 'custom' ? startDate : (presets.startDate || today);
+    const csvEnd = period === 'custom' ? endDate : (presets.endDate || today);
+    const headers = ['Branch', 'Walk-in Revenue', 'Units Sold', 'Cash', 'Swipe/EFT', 'Stock Value (DP)'];
     const rows = branchSummary.map(r => [
       r.branchName || branchLabel(r.branchId),
       r.salesRevenue || 0,
@@ -1500,11 +1517,14 @@ function ReportsTab() {
       (Number(r.swipeTotal || 0) + Number(r.eftTotal || 0)).toFixed(2),
       r.stockValueDP || 0,
     ]);
-    rows.push(['TOTAL', totalRevenue.toFixed(2), '', totalCash.toFixed(2), totalSwipe.toFixed(2), '']);
+    rows.push(['TOTAL Walk-in', walkInRevenue.toFixed(2), '', totalCash.toFixed(2), totalSwipe.toFixed(2), '']);
+    if (prescriptionRev > 0) rows.push(['Prescription Dispense Revenue', prescriptionRev.toFixed(2), '', '', '', '']);
+    if (consultFees > 0) rows.push(['Consultation Fees', consultFees.toFixed(2), '', '', '', '']);
+    rows.push(['GRAND TOTAL', totalRevenue.toFixed(2), '', '', '', '']);
     const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    a.download = `finance-report-${startDate}-to-${endDate}.csv`;
+    a.download = `finance-report-${csvStart}-to-${csvEnd}.csv`;
     a.click();
   };
 
@@ -1548,8 +1568,9 @@ function ReportsTab() {
 
       {loading ? <LoadingSpinner /> : (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <StatCard title="Total Revenue" value={formatCurrency(totalRevenue)} color="green" icon={<TrendingUp size={24} />} />
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <StatCard title="Total Revenue" value={formatCurrency(totalRevenue)} subtitle={`Walk-in: ${formatCurrency(walkInRevenue)}`} color="green" icon={<TrendingUp size={24} />} />
+            {prescriptionRev > 0 && <StatCard title="Prescription Revenue" value={formatCurrency(prescriptionRev)} subtitle="Dispense sales" color="purple" icon={<Receipt size={24} />} />}
             <StatCard title="Cash Collected" value={formatCurrency(totalCash)} color="blue" icon={<DollarSign size={24} />} />
             <StatCard title="Swipe / EFT" value={formatCurrency(totalSwipe)} color="purple" icon={<Landmark size={24} />} />
           </div>
@@ -2296,7 +2317,9 @@ function CommunicationTab() {
     try {
       await api.delete(`/finance/notices?id=${id}`);
       setNotices(prev => prev.filter(n => n.id !== id));
-    } catch { setNotices(prev => prev.filter(n => n.id !== id)); }
+    } catch (err) {
+      setMsgAlert('Error: ' + (err.message || 'Failed to delete notice'));
+    }
   };
 
   const priorityVariant = p => ({ Urgent: 'danger', Normal: 'info', Info: 'success' }[p] || 'default');
@@ -2844,7 +2867,7 @@ function OverheadExpensesSubTab() {
 
   const load = () => {
     setLoading(true);
-    api.branch.expenses()
+    api.branch.expenses({ limit: 5000 })
       .then(d => {
         const all = Array.isArray(d) ? d : d.expenses || [];
         setExpenses(all.filter(e => OVERHEAD_CATEGORIES.includes(e.category)));
