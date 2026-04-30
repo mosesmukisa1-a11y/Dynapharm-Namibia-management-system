@@ -10,6 +10,7 @@ function openDB() {
       if (!db.objectStoreNames.contains(STORE)) {
         const store = db.createObjectStore(STORE, { keyPath: 'localId' });
         store.createIndex('by_created', 'createdAt', { unique: false });
+        store.createIndex('by_status', 'status', { unique: false });
       }
     };
     req.onsuccess = (e) => resolve(e.target.result);
@@ -53,6 +54,22 @@ export async function getAll() {
   });
 }
 
+export async function getPendingOnly() {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readonly');
+    const req = tx.objectStore(STORE).getAll();
+    req.onsuccess = (e) => {
+      const all = e.target.result || [];
+      const pending = all
+        .filter(r => r.status === 'pending')
+        .sort((a, b) => a.createdAt - b.createdAt);
+      resolve(pending);
+    };
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+
 export async function remove(localId) {
   const db = await openDB();
   return new Promise((resolve, reject) => {
@@ -74,6 +91,25 @@ export async function markFailed(localId) {
       if (!record) { resolve(); return; }
       record.status = 'failed';
       record.retryCount = (record.retryCount || 0) + 1;
+      record.lastFailedAt = Date.now();
+      const putReq = store.put(record);
+      putReq.onsuccess = () => resolve();
+      putReq.onerror = (err) => reject(err.target.error);
+    };
+    getReq.onerror = (e) => reject(e.target.error);
+  });
+}
+
+export async function resetFailed(localId) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    const store = tx.objectStore(STORE);
+    const getReq = store.get(localId);
+    getReq.onsuccess = (e) => {
+      const record = e.target.result;
+      if (!record) { resolve(); return; }
+      record.status = 'pending';
       const putReq = store.put(record);
       putReq.onsuccess = () => resolve();
       putReq.onerror = (err) => reject(err.target.error);
@@ -86,8 +122,53 @@ export async function getCount() {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE, 'readonly');
-    const req = tx.objectStore(STORE).count();
-    req.onsuccess = (e) => resolve(e.target.result || 0);
+    const req = tx.objectStore(STORE).getAll();
+    req.onsuccess = (e) => {
+      const all = e.target.result || [];
+      resolve(all.filter(r => r.status === 'pending').length);
+    };
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+
+export async function getFailedCount() {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readonly');
+    const req = tx.objectStore(STORE).getAll();
+    req.onsuccess = (e) => {
+      const all = e.target.result || [];
+      resolve(all.filter(r => r.status === 'failed').length);
+    };
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+
+export async function clearFailed() {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    const store = tx.objectStore(STORE);
+    const req = store.getAll();
+    req.onsuccess = (e) => {
+      const failed = (e.target.result || []).filter(r => r.status === 'failed');
+      let pending = failed.length;
+      if (pending === 0) { resolve(0); return; }
+      let done = 0;
+      let removed = 0;
+      for (const rec of failed) {
+        const del = store.delete(rec.localId);
+        del.onsuccess = () => {
+          removed++;
+          done++;
+          if (done === pending) resolve(removed);
+        };
+        del.onerror = () => {
+          done++;
+          if (done === pending) resolve(removed);
+        };
+      }
+    };
     req.onerror = (e) => reject(e.target.error);
   });
 }
