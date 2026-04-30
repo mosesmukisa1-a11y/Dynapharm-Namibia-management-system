@@ -4044,7 +4044,15 @@ function BranchRequestsPanel() {
                       <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>No items listed</span>
                     ) : items.map((it, i) => (
                       <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 7, padding: '5px 10px' }}>
-                        <span style={{ fontWeight: 600, fontSize: '0.82rem', color: '#1e293b' }}>{it.productName || it.productId || it.product_name || 'Unknown product'}</span>
+                        {(() => {
+                          const name = it.productName || it.productId || it.product_name;
+                          const isUnknown = !name || name === 'Item' || name === 'UNKNOWN';
+                          return (
+                            <span style={{ fontWeight: isUnknown ? 400 : 600, fontSize: '0.82rem', color: isUnknown ? '#94a3b8' : '#1e293b', fontStyle: isUnknown ? 'italic' : 'normal' }}>
+                              {isUnknown ? '⚠ Name not recorded' : name}
+                            </span>
+                          );
+                        })()}
                         <span style={{ fontWeight: 800, fontSize: '0.85rem', color: '#c41e3a', marginLeft: 8, whiteSpace: 'nowrap' }}>× {it.quantity}</span>
                       </div>
                     ))}
@@ -4090,7 +4098,11 @@ function BranchRequestsPanel() {
               <div style={{ fontSize: '0.73rem', fontWeight: 700, color: '#64748b', marginBottom: 6, textTransform: 'uppercase' }}>Items to dispatch</div>
               {(Array.isArray(dispatchReq.items) ? dispatchReq.items : []).map((it, i) => (
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem', padding: '3px 0', borderBottom: i < dispatchReq.items.length - 1 ? '1px solid #f0f0f0' : 'none' }}>
-                  <span style={{ fontWeight: 600 }}>{it.productName || it.productId}</span>
+                  {(() => {
+                    const n = it.productName || it.productId || it.product_name;
+                    const bad = !n || n === 'Item' || n === 'UNKNOWN';
+                    return <span style={{ fontWeight: bad ? 400 : 600, fontStyle: bad ? 'italic' : 'normal', color: bad ? '#94a3b8' : '#1e293b' }}>{bad ? '⚠ Name not recorded' : n}</span>;
+                  })()}
                   <span style={{ fontWeight: 800, color: '#c41e3a' }}>× {it.quantity}</span>
                 </div>
               ))}

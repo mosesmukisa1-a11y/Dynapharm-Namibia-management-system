@@ -2936,10 +2936,11 @@ function BranchStockTab() {
   const filteredProducts = products.filter(p => !productSearch || (p.name || p.description || '').toLowerCase().includes(productSearch.toLowerCase()));
 
   const addToRequestItems = (p) => {
+    const name = p.name || p.description || p.id || 'Unknown Product';
     setRequestItems(prev => {
       const ex = prev.find(i => i.id === p.id);
       if (ex) return prev.map(i => i.id === p.id ? { ...i, quantity: i.quantity + 1 } : i);
-      return [...prev, { id: p.id, product_name: p.name || p.description, quantity: 1, dp: p.dp || p.price || 0, cp: p.cp || p.price || 0 }];
+      return [...prev, { id: p.id, product_name: name, quantity: 1, dp: p.dp || p.price || 0, cp: p.cp || p.price || 0 }];
     });
   };
   const updateRequestQty = (id, delta) => setRequestItems(prev => prev.map(i => i.id === id ? { ...i, quantity: Math.max(1, i.quantity + delta) } : i));
@@ -2965,7 +2966,7 @@ function BranchStockTab() {
       await api.stock.createRequest({
         requesting_branch: user?.branch || '',
         request_type: 'branch_restock',
-        items: JSON.stringify(requestItems.map(i => ({ product_name: i.product_name, quantity: i.quantity }))),
+        items: JSON.stringify(requestItems.map(i => ({ productId: i.id, productName: i.product_name, product_name: i.product_name, quantity: i.quantity }))),
         notes: requestNotes,
         priority: requestPriority,
         created_by: user?.full_name || user?.username || '',
