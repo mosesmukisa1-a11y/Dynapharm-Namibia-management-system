@@ -3081,6 +3081,7 @@ function BranchStockTab() {
     try {
       const dp = findProductPrice(pName);
       const dpVal = dp?.dp ? String(Math.round(Number(dp.dp) * Number(writeOffForm.quantity))) : '0';
+      const reasonLabel = writeOffForm.reason.charAt(0).toUpperCase() + writeOffForm.reason.slice(1);
       await api.stock.createMovement({
         product_name: pName,
         quantity: Number(writeOffForm.quantity),
@@ -3090,6 +3091,8 @@ function BranchStockTab() {
         destination_location: 'written_off',
         batch_no: selBatch?.batch_no || selBatch?.batchNo || '',
         expiry_date: selBatch?.expiry_date || selBatch?.expiryDate || null,
+        reason: reasonLabel,
+        write_off_reason: reasonLabel,
         notes: `Write-off: ${writeOffForm.reason}. Batch: ${selBatch?.batch_no || selBatch?.batchNo || 'N/A'}. Expiry: ${selBatch?.expiry_date || selBatch?.expiryDate || 'N/A'}. DP Value: N$ ${dpVal}`,
         reference_id: `WO-${Date.now()}`,
         created_by: user?.full_name || user?.username || '',

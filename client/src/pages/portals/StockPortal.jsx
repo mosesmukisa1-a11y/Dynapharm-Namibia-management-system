@@ -7191,6 +7191,24 @@ function BatchTab({ branch }) {
 }
 
 // ── Write-Offs Tab ─────────────────────────────────────────────────────────────
+const REASON_CONFIG = {
+  'Expired':          { color: '#b45309', bg: '#fffbeb', border: '#fde68a',  badge: '#f59e0b', label: 'Expired',             icon: '⏰', needsDisposal: true  },
+  'Damaged':          { color: '#dc2626', bg: '#fef2f2', border: '#fecaca',  badge: '#dc2626', label: 'Damaged',             icon: '💥', needsDisposal: true  },
+  'Damaged in storage':{ color: '#dc2626', bg: '#fef2f2', border: '#fecaca',  badge: '#dc2626', label: 'Damaged',            icon: '💥', needsDisposal: true  },
+  'Contaminated':     { color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe',  badge: '#7c3aed', label: 'Contaminated',        icon: '☣️', needsDisposal: true  },
+  'Theft':            { color: '#374151', bg: '#f9fafb', border: '#e5e7eb',  badge: '#374151', label: 'Theft / Loss',        icon: '🚨', needsDisposal: false },
+  'Theft / Loss':     { color: '#374151', bg: '#f9fafb', border: '#e5e7eb',  badge: '#374151', label: 'Theft / Loss',        icon: '🚨', needsDisposal: false },
+  'Quality failure':  { color: '#0369a1', bg: '#f0f9ff', border: '#bae6fd',  badge: '#0369a1', label: 'Quality / Recall',    icon: '🔬', needsDisposal: true  },
+  'Quality / Recall': { color: '#0369a1', bg: '#f0f9ff', border: '#bae6fd',  badge: '#0369a1', label: 'Quality / Recall',    icon: '🔬', needsDisposal: true  },
+  'Other':            { color: '#6b7280', bg: '#f9fafb', border: '#e5e7eb',  badge: '#6b7280', label: 'Other',               icon: '📋', needsDisposal: false },
+};
+const DEFAULT_REASON_CFG = { color: '#6b7280', bg: '#f9fafb', border: '#e5e7eb', badge: '#6b7280', label: 'Other', icon: '📋', needsDisposal: false };
+
+function getReasonCfg(reason) {
+  if (!reason) return DEFAULT_REASON_CFG;
+  return REASON_CONFIG[reason] || Object.entries(REASON_CONFIG).find(([k]) => reason.toLowerCase().includes(k.toLowerCase()))?.[1] || DEFAULT_REASON_CFG;
+}
+
 function WriteOffsTab({ branch }) {
   const { user } = useAuth();
   const [movements, setMovements]   = useState([]);
@@ -7199,7 +7217,9 @@ function WriteOffsTab({ branch }) {
   const [alert, setAlert]           = useState(null);
   const [showForm, setShowForm]     = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [disposing, setDisposing]   = useState({});
   const [search, setSearch]         = useState('');
+  const [historyView, setHistoryView] = useState('pending');
   const [form, setForm]             = useState({
     product_name: '', batch_id: '', quantity: '', reason: '', notes: '', location: '',
   });
@@ -7207,7 +7227,7 @@ function WriteOffsTab({ branch }) {
   const load = useCallback(() => {
     setLoading(true);
     Promise.all([
-      api.stock.movements().then(d => Array.isArray(d) ? d : d.movements || []).catch(() => []),
+      api.stock.movements('limit=2000').then(d => Array.isArray(d) ? d : d.movements || []).catch(() => []),
       api.stock.batches().then(d => Array.isArray(d) ? d : d.batches || []).catch(() => []),
     ]).then(([mvs, bts]) => {
       setMovements(mvs);
@@ -7225,12 +7245,26 @@ function WriteOffsTab({ branch }) {
     return loc === branch;
   }).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
+  // Separate pending disposal vs disposed
+  const pendingDisposal = writeoffs.filter(m => m.disposal_status === 'pending_disposal');
+  const disposedItems   = writeoffs.filter(m => m.disposal_status === 'disposed');
+  const allHistory      = writeoffs;
+
   const filtered = search.trim()
-    ? writeoffs.filter(m => (m.product_name || '').toLowerCase().includes(search.toLowerCase()) || (m.notes || '').toLowerCase().includes(search.toLowerCase()))
-    : writeoffs;
+    ? (historyView === 'pending' ? pendingDisposal : historyView === 'disposed' ? disposedItems : allHistory)
+        .filter(m => (m.product_name || '').toLowerCase().includes(search.toLowerCase()) || (m.notes || '').toLowerCase().includes(search.toLowerCase()) || (m.write_off_reason || '').toLowerCase().includes(search.toLowerCase()))
+    : (historyView === 'pending' ? pendingDisposal : historyView === 'disposed' ? disposedItems : allHistory);
 
   const totalQty  = writeoffs.reduce((s, m) => s + Number(m.quantity || 0), 0);
   const totalCIF  = writeoffs.reduce((s, m) => s + Number(m.quantity || 0) * getCIFPrice(m.product_name || ''), 0);
+
+  // Group pending disposal by reason
+  const pendingByReason = pendingDisposal.reduce((acc, m) => {
+    const r = m.write_off_reason || (m.notes ? m.notes.split(' — ')[0] : null) || 'Other';
+    if (!acc[r]) acc[r] = [];
+    acc[r].push(m);
+    return acc;
+  }, {});
 
   const activeBatches = batches.filter(b => {
     const rem = Number(b.remaining_quantity ?? b.quantity ?? 0);
@@ -7243,6 +7277,34 @@ function WriteOffsTab({ branch }) {
 
   const selectedBatch = batches.find(b => String(b.id) === String(form.batch_id));
   const maxQty = selectedBatch ? Number(selectedBatch.remaining_quantity ?? selectedBatch.quantity ?? 0) : 0;
+
+  const handleDispose = async (id) => {
+    setDisposing(d => ({ ...d, [id]: true }));
+    try {
+      await api.stock.disposeWriteoff(id, { disposed_by: user?.full_name || user?.username });
+      setAlert({ type: 'success', msg: 'Item marked as disposed.' });
+      load();
+    } catch (err) {
+      setAlert({ type: 'error', msg: err.message || 'Failed to mark disposed' });
+    } finally {
+      setDisposing(d => ({ ...d, [id]: false }));
+    }
+  };
+
+  const handleDisposeAll = async (reason) => {
+    const ids = pendingByReason[reason]?.map(m => m.id) || [];
+    if (!ids.length) return;
+    setDisposing(d => ({ ...d, [`group_${reason}`]: true }));
+    try {
+      await api.stock.disposeAllWriteoffs(ids, { disposed_by: user?.full_name || user?.username });
+      setAlert({ type: 'success', msg: `All ${reason} items marked as disposed.` });
+      load();
+    } catch (err) {
+      setAlert({ type: 'error', msg: err.message || 'Failed to dispose group' });
+    } finally {
+      setDisposing(d => ({ ...d, [`group_${reason}`]: false }));
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -7259,6 +7321,8 @@ function WriteOffsTab({ branch }) {
         quantity:          qty,
         source_location:   selectedBatch?.location || form.location || (branch !== 'all' ? branch : ''),
         batch_no:          selectedBatch?.batch_no || selectedBatch?.batch_number || null,
+        reason:            form.reason,
+        write_off_reason:  form.reason,
         notes:             `${form.reason}${form.notes ? ' — ' + form.notes : ''}`,
         created_by:        user?.full_name || user?.username,
         reference:         `WO-${Date.now().toString(36).toUpperCase()}`,
@@ -7266,7 +7330,7 @@ function WriteOffsTab({ branch }) {
       if (selectedBatch && qty >= maxQty) {
         await api.stock.updateBatch(selectedBatch.id, { status: 'written_off' });
       }
-      setAlert({ type: 'success', msg: `Write-off recorded: ${qty} × ${form.product_name}` });
+      setAlert({ type: 'success', msg: `Write-off recorded: ${qty} × ${form.product_name} — awaiting disposal confirmation.` });
       setForm({ product_name: '', batch_id: '', quantity: '', reason: '', notes: '' });
       setShowForm(false);
       load();
@@ -7293,11 +7357,12 @@ function WriteOffsTab({ branch }) {
     <div className="space-y-4">
       {alert && <Alert type={alert.type} onClose={() => setAlert(null)}>{alert.msg}</Alert>}
 
+      {/* Header */}
       <div style={{ background: 'linear-gradient(135deg,#7f1d1d,#991b1b)', borderRadius: 14, padding: '14px 20px', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
         <div>
-          <h3 style={{ fontWeight: 900, fontSize: '1.05rem', margin: 0 }}>❌ Stock Write-Offs</h3>
+          <h3 style={{ fontWeight: 900, fontSize: '1.05rem', margin: 0 }}>Stock Write-Offs & Disposal</h3>
           <p style={{ fontSize: '0.78rem', opacity: 0.85, margin: '3px 0 0' }}>
-            Record and review expired, damaged, or otherwise removed stock · All write-offs create an audit trail
+            Written-off stock is quarantined here · Stock managers must confirm physical disposal · Does not count as operational stock
           </p>
         </div>
         <Button onClick={() => setShowForm(s => !s)} style={{ background: '#fff', color: '#991b1b' }}>
@@ -7305,19 +7370,93 @@ function WriteOffsTab({ branch }) {
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      {/* Summary cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: 'Total Write-Off Events', value: writeoffs.length, color: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
+          { label: 'Pending Disposal', value: pendingDisposal.length, color: '#b45309', bg: '#fffbeb', border: '#fde68a' },
+          { label: 'Disposed', value: disposedItems.length, color: '#166534', bg: '#f0fdf4', border: '#bbf7d0' },
           { label: 'Total Units Written Off', value: totalQty.toLocaleString(), color: '#9b1c1c', bg: '#fef2f2', border: '#fecaca' },
           { label: 'CIF Value Lost', value: formatCurrency(totalCIF), color: '#b45309', bg: '#fffbeb', border: '#fde68a' },
         ].map(s => (
           <div key={s.label} style={{ borderRadius: 10, padding: '12px 16px', background: s.bg, border: `1.5px solid ${s.border}` }}>
-            <div style={{ fontSize: '1.5rem', fontWeight: 900, color: s.color }}>{s.value}</div>
+            <div style={{ fontSize: '1.4rem', fontWeight: 900, color: s.color }}>{s.value}</div>
             <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700, marginTop: 2 }}>{s.label}</div>
           </div>
         ))}
       </div>
 
+      {/* Pending Disposal Banner */}
+      {pendingDisposal.length > 0 && (
+        <div style={{ background: '#fffbeb', border: '2px solid #f59e0b', borderRadius: 12, padding: '14px 18px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <span style={{ fontSize: '1.1rem' }}>⚠️</span>
+            <strong style={{ color: '#92400e', fontSize: '0.95rem' }}>{pendingDisposal.length} item{pendingDisposal.length !== 1 ? 's' : ''} awaiting physical disposal</strong>
+            <span style={{ fontSize: '0.75rem', color: '#92400e', opacity: 0.8 }}>— These are NOT part of operational stock</span>
+          </div>
+
+          {/* Grouped by reason */}
+          <div className="space-y-3">
+            {Object.entries(pendingByReason).map(([reason, items]) => {
+              const cfg = getReasonCfg(reason);
+              const groupQty = items.reduce((s, m) => s + Number(m.quantity || 0), 0);
+              const groupCIF = items.reduce((s, m) => s + Number(m.quantity || 0) * getCIFPrice(m.product_name || ''), 0);
+              const isDisposingGroup = disposing[`group_${reason}`];
+              return (
+                <div key={reason} style={{ background: cfg.bg, border: `1.5px solid ${cfg.border}`, borderRadius: 10, overflow: 'hidden' }}>
+                  {/* Group header */}
+                  <div style={{ padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, borderBottom: `1px solid ${cfg.border}` }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: '1rem' }}>{cfg.icon}</span>
+                      <span style={{ fontWeight: 700, color: cfg.color, fontSize: '0.88rem' }}>{cfg.label}</span>
+                      <span style={{ background: cfg.badge, color: '#fff', borderRadius: 9999, padding: '1px 8px', fontSize: '0.72rem', fontWeight: 700 }}>{items.length} item{items.length !== 1 ? 's' : ''} · {groupQty} units</span>
+                      <span style={{ fontSize: '0.75rem', color: cfg.color, opacity: 0.8 }}>CIF: {formatCurrency(groupCIF)}</span>
+                    </div>
+                    {cfg.needsDisposal && (
+                      <button
+                        onClick={() => handleDisposeAll(reason)}
+                        disabled={isDisposingGroup}
+                        style={{ padding: '5px 14px', fontSize: '0.78rem', fontWeight: 700, background: cfg.color, color: '#fff', border: 'none', borderRadius: 7, cursor: isDisposingGroup ? 'not-allowed' : 'pointer', opacity: isDisposingGroup ? 0.6 : 1 }}
+                      >
+                        {isDisposingGroup ? 'Disposing…' : `Dispose All ${cfg.label}`}
+                      </button>
+                    )}
+                  </div>
+                  {/* Item rows */}
+                  <div>
+                    {items.map((m, i) => (
+                      <div key={m.id || i} style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', borderBottom: i < items.length - 1 ? `1px solid ${cfg.border}` : 'none', background: i % 2 === 0 ? 'transparent' : 'rgba(0,0,0,0.02)' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <span style={{ fontWeight: 700, color: '#111827', fontSize: '0.85rem' }}>{m.product_name}</span>
+                          {m.batch_no && <span style={{ marginLeft: 6, fontFamily: 'monospace', fontSize: '0.75rem', color: '#6b7280' }}>({m.batch_no})</span>}
+                          <span style={{ marginLeft: 8, color: cfg.color, fontWeight: 700, fontSize: '0.82rem' }}>{Number(m.quantity || 0)} units</span>
+                          <span style={{ marginLeft: 8, color: '#6b7280', fontSize: '0.75rem' }}>{fmtLoc(m.source_location || m.location)}</span>
+                          {m.notes && <span style={{ marginLeft: 8, color: '#9ca3af', fontSize: '0.73rem' }}>· {m.notes}</span>}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                          <span style={{ fontSize: '0.73rem', color: '#9ca3af' }}>{fmtDate(m.created_at)}</span>
+                          {cfg.needsDisposal ? (
+                            <button
+                              onClick={() => handleDispose(m.id)}
+                              disabled={disposing[m.id]}
+                              style={{ padding: '4px 12px', fontSize: '0.75rem', fontWeight: 700, background: cfg.color, color: '#fff', border: 'none', borderRadius: 6, cursor: disposing[m.id] ? 'not-allowed' : 'pointer', opacity: disposing[m.id] ? 0.6 : 1 }}
+                            >
+                              {disposing[m.id] ? '…' : 'Confirm Disposed'}
+                            </button>
+                          ) : (
+                            <span style={{ padding: '3px 10px', fontSize: '0.73rem', color: '#6b7280', background: '#f3f4f6', borderRadius: 6, fontWeight: 600 }}>No disposal needed</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* New Write-Off Form */}
       {showForm && (
         <Card>
           <CardHeader><h4 className="font-bold text-gray-800">Record New Write-Off</h4></CardHeader>
@@ -7401,26 +7540,42 @@ function WriteOffsTab({ branch }) {
         </Card>
       )}
 
+      {/* History & Audit Log */}
       <Card>
         <CardHeader>
           <div className="flex justify-between items-center flex-wrap gap-2">
-            <h4 className="font-bold text-gray-800">Write-Off History</h4>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h4 className="font-bold text-gray-800">Write-Off Audit Log</h4>
+              {[
+                { key: 'pending', label: `Pending Disposal (${pendingDisposal.length})` },
+                { key: 'disposed', label: `Disposed (${disposedItems.length})` },
+                { key: 'all', label: `All (${allHistory.length})` },
+              ].map(tab => (
+                <button key={tab.key} onClick={() => setHistoryView(tab.key)}
+                  style={{ padding: '4px 12px', fontSize: '0.78rem', fontWeight: 700, borderRadius: 20, border: 'none', cursor: 'pointer',
+                    background: historyView === tab.key ? '#991b1b' : '#f1f5f9',
+                    color: historyView === tab.key ? '#fff' : '#374151' }}>
+                  {tab.label}
+                </button>
+              ))}
+            </div>
             <div className="relative">
               <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
               <input className="pl-7 pr-3 py-1.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20"
-                placeholder="Search product or notes..." value={search} onChange={e => setSearch(e.target.value)} />
+                placeholder="Search product, reason, or notes..." value={search} onChange={e => setSearch(e.target.value)} />
             </div>
           </div>
         </CardHeader>
         <CardBody>
           {filtered.length === 0 ? (
-            <EmptyState icon={<XCircle size={32} />} title="No write-offs recorded" description="Write-offs will appear here once recorded." />
+            <EmptyState icon={<XCircle size={32} />} title={historyView === 'pending' ? 'No items awaiting disposal' : historyView === 'disposed' ? 'No disposed items yet' : 'No write-offs recorded'}
+              description={historyView === 'pending' ? 'When stock is written off it will appear here awaiting physical disposal confirmation.' : 'Confirmed disposals will appear here.'} />
           ) : (
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                 <thead>
                   <tr style={{ background: '#fef2f2' }}>
-                    {['Date', 'Product', 'Batch', 'Location', 'Qty Written Off', 'CIF Value', 'Reason / Notes', 'Recorded By'].map(h => (
+                    {['Date', 'Product', 'Batch', 'Branch / Location', 'Reason', 'Qty', 'CIF Value', 'Status', 'Recorded By'].map(h => (
                       <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, color: '#7f1d1d', borderBottom: '1.5px solid #fecaca', whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
@@ -7429,15 +7584,34 @@ function WriteOffsTab({ branch }) {
                   {filtered.map((m, i) => {
                     const qty = Number(m.quantity || 0);
                     const cif = qty * getCIFPrice(m.product_name || '');
+                    const reason = m.write_off_reason || (m.notes ? m.notes.split(' — ')[0] : null) || '—';
+                    const cfg = getReasonCfg(reason);
+                    const isDisposed = m.disposal_status === 'disposed';
+                    const isPending  = m.disposal_status === 'pending_disposal';
                     return (
-                      <tr key={m.id || i} style={{ background: i % 2 === 0 ? '#fff' : '#fafafa', borderBottom: '1px solid #f1f5f9' }}>
+                      <tr key={m.id || i} style={{ background: i % 2 === 0 ? '#fff' : '#fafafa', borderBottom: '1px solid #f1f5f9', opacity: isDisposed ? 0.75 : 1 }}>
                         <td style={{ padding: '8px 12px', whiteSpace: 'nowrap', color: '#374151' }}>{fmtDate(m.created_at)}</td>
                         <td style={{ padding: '8px 12px', fontWeight: 600, color: '#111827' }}>{m.product_name || '—'}</td>
-                        <td style={{ padding: '8px 12px', color: '#6b7280', fontFamily: 'monospace' }}>{m.batch_no || '—'}</td>
+                        <td style={{ padding: '8px 12px', color: '#6b7280', fontFamily: 'monospace', fontSize: '0.75rem' }}>{m.batch_no || '—'}</td>
                         <td style={{ padding: '8px 12px' }}><span style={{ padding: '2px 8px', borderRadius: 6, background: '#eff6ff', color: '#1d4ed8', fontSize: '0.75rem', fontWeight: 600 }}>{fmtLoc(m.source_location || m.location)}</span></td>
+                        <td style={{ padding: '8px 12px' }}>
+                          <span style={{ padding: '2px 8px', borderRadius: 6, background: cfg.bg, color: cfg.color, fontSize: '0.72rem', fontWeight: 700, border: `1px solid ${cfg.border}` }}>
+                            {cfg.icon} {cfg.label !== 'Other' ? cfg.label : reason}
+                          </span>
+                        </td>
                         <td style={{ padding: '8px 12px', fontWeight: 700, color: '#dc2626' }}>{qty.toLocaleString()}</td>
                         <td style={{ padding: '8px 12px', color: '#b45309', fontWeight: 600 }}>{formatCurrency(cif)}</td>
-                        <td style={{ padding: '8px 12px', color: '#374151', maxWidth: 220 }}>{m.notes || '—'}</td>
+                        <td style={{ padding: '8px 12px' }}>
+                          {isDisposed ? (
+                            <span style={{ padding: '2px 8px', borderRadius: 9999, background: '#dcfce7', color: '#166534', fontSize: '0.72rem', fontWeight: 700 }}>
+                              ✔ Disposed {m.disposed_by ? `by ${m.disposed_by}` : ''} {m.disposed_at ? `· ${fmtDate(m.disposed_at)}` : ''}
+                            </span>
+                          ) : isPending ? (
+                            <span style={{ padding: '2px 8px', borderRadius: 9999, background: '#fef3c7', color: '#92400e', fontSize: '0.72rem', fontWeight: 700 }}>⏳ Awaiting Disposal</span>
+                          ) : (
+                            <span style={{ padding: '2px 8px', borderRadius: 9999, background: '#f1f5f9', color: '#475569', fontSize: '0.72rem', fontWeight: 600 }}>{m.status || '—'}</span>
+                          )}
+                        </td>
                         <td style={{ padding: '8px 12px', color: '#6b7280', fontSize: '0.78rem' }}>{m.created_by || '—'}</td>
                       </tr>
                     );
@@ -7445,7 +7619,7 @@ function WriteOffsTab({ branch }) {
                 </tbody>
                 <tfoot>
                   <tr style={{ background: '#fef2f2', fontWeight: 700 }}>
-                    <td colSpan={4} style={{ padding: '8px 12px', color: '#7f1d1d' }}>TOTAL ({filtered.length} events)</td>
+                    <td colSpan={5} style={{ padding: '8px 12px', color: '#7f1d1d' }}>TOTAL ({filtered.length} events)</td>
                     <td style={{ padding: '8px 12px', color: '#dc2626' }}>{filtered.reduce((s,m) => s + Number(m.quantity||0), 0).toLocaleString()}</td>
                     <td style={{ padding: '8px 12px', color: '#b45309' }}>{formatCurrency(filtered.reduce((s,m) => s + Number(m.quantity||0)*getCIFPrice(m.product_name||''), 0))}</td>
                     <td colSpan={2} />

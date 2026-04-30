@@ -27,6 +27,11 @@ function normalizeMovement(row) {
     createdBy: row.created_by || '', created_by: row.created_by || '',
     createdAt: createdAt, created_at: createdAt,
     status: row.status || null,
+    approvedBy: row.approved_by || null, approved_by: row.approved_by || null,
+    write_off_reason: row.write_off_reason || null,
+    disposal_status: row.disposal_status || null,
+    disposed_by: row.disposed_by || null,
+    disposed_at: row.disposed_at ? (row.disposed_at instanceof Date ? row.disposed_at.toISOString() : row.disposed_at) : null,
   };
 }
 
@@ -194,6 +199,11 @@ export default async function handler(req, res) {
             createdBy: r.created_by, created_by: r.created_by,
             createdAt: fmtDt(r.created_at), created_at: fmtDt(r.created_at),
             status: r.status || null,
+            approved_by: r.approved_by || null,
+            write_off_reason: r.write_off_reason || null,
+            disposal_status: r.disposal_status || null,
+            disposed_by: r.disposed_by || null,
+            disposed_at: r.disposed_at ? fmtDt(r.disposed_at) : null,
           }));
         }
       } catch (bmErr) {
@@ -241,15 +251,23 @@ export default async function handler(req, res) {
         }
         // For pending write-offs: insert record only (no stock deduction — GM must approve first)
         const needsBranchMirror = branchId && ['write_off', 'sale', 'field_use', 'return'].includes(movType) && movStatus !== 'pending_approval';
+        // Extract write-off reason from explicit field or first segment of notes
+        const rawReason = body.reason || body.write_off_reason || null;
+        const woReason = rawReason || (movType === 'write_off' && notes ? notes.split(' — ')[0].split('|')[0].trim() : null);
+        // Write-offs go into a disposal queue immediately (unless pending GM approval)
+        const disposalStatus = movType === 'write_off' && movStatus === 'posted' ? 'pending_disposal' : null;
+
         await withTransaction(async (client) => {
           await client.query(
             `INSERT INTO stock_movements
                (id, product_name, batch_no, expiry_date, quantity, movement_type,
                 source_location, source_location_type, destination_location, destination_location_type,
-                reference_id, notes, created_by, status, movement_date, created_at, updated_at)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW(),NOW(),NOW())`,
+                reference_id, notes, created_by, status, write_off_reason, disposal_status,
+                movement_date, created_at, updated_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NOW(),NOW(),NOW())`,
             [id, productName, batchNo, expiryDate, qty, movType,
-             srcLoc, srcLocType, destLoc, dstLocType, referenceId, notes, createdBy, movStatus]
+             srcLoc, srcLocType, destLoc, dstLocType, referenceId, notes, createdBy, movStatus,
+             woReason, disposalStatus]
           );
           if (needsBranchMirror) {
             const bimId = `BIM-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
@@ -405,9 +423,18 @@ export default async function handler(req, res) {
             [bimId, branchId, productName, batchNo || '', qty, r.reference_id, r.notes, gmName]
           );
         }
+        // Extract reason from notes if not already stored
+        const existingReason = r.write_off_reason;
+        const derivedReason = existingReason || (r.notes ? r.notes.split(' — ')[0].split('|')[0].trim() : null);
         await client.query(
-          `UPDATE stock_movements SET status = 'approved', approved_by = $1, notes = COALESCE(notes,'') || $2, updated_at = NOW() WHERE id = $3`,
-          [gmName, gmNote ? ` | GM: ${gmNote}` : '', id]
+          `UPDATE stock_movements
+           SET status = 'approved', approved_by = $1,
+               notes = COALESCE(notes,'') || $2,
+               disposal_status = 'pending_disposal',
+               write_off_reason = COALESCE(write_off_reason, $3),
+               updated_at = NOW()
+           WHERE id = $4`,
+          [gmName, gmNote ? ` | GM: ${gmNote}` : '', derivedReason, id]
         );
         return true;
       };
@@ -444,7 +471,28 @@ export default async function handler(req, res) {
         return res.json({ success: true, count: ids.length });
       }
 
-      return res.status(400).json({ success: false, error: 'Invalid action — use approve, reject, approve_all, or reject_all' });
+      // Dispose action — stock manager marks written-off stock as physically disposed
+      if (action === 'dispose' || action === 'dispose_all') {
+        const disposedBy = body.disposed_by || req.user?.full_name || req.user?.username || 'Stock Manager';
+        const ids = action === 'dispose_all'
+          ? (Array.isArray(body.ids) ? body.ids : [])
+          : (body.id ? [body.id] : []);
+        if (ids.length === 0) return res.status(400).json({ success: false, error: 'No id(s) provided' });
+        const { rowCount } = await query(
+          `UPDATE stock_movements
+           SET disposal_status = 'disposed',
+               disposed_by = $1,
+               disposed_at = NOW(),
+               updated_at = NOW()
+           WHERE id = ANY($2::text[])
+             AND movement_type = 'write_off'
+             AND disposal_status = 'pending_disposal'`,
+          [disposedBy, ids]
+        );
+        return res.json({ success: true, disposed: rowCount });
+      }
+
+      return res.status(400).json({ success: false, error: 'Invalid action — use approve, reject, approve_all, reject_all, dispose, or dispose_all' });
     }
 
     return res.status(405).json({ error: 'Method not allowed' });

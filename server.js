@@ -2077,6 +2077,12 @@ server.on('error', (error) => {
       `ALTER TABLE field_program_requests ADD COLUMN IF NOT EXISTS distributor_name TEXT`,
       `ALTER TABLE field_program_requests ADD COLUMN IF NOT EXISTS distributor_code TEXT`,
       `ALTER TABLE field_program_requests ADD COLUMN IF NOT EXISTS signature TEXT`,
+      // Write-off disposal tracking: written-off stock stays in a disposal queue
+      // until the stock manager physically disposes of it
+      `ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS disposal_status VARCHAR(30) DEFAULT NULL`,
+      `ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS disposed_by VARCHAR(255) DEFAULT NULL`,
+      `ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS disposed_at TIMESTAMPTZ DEFAULT NULL`,
+      `ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS write_off_reason VARCHAR(100) DEFAULT NULL`,
     ];
     let schemaSynced = 0;
     for (const sql of schemaSyncs) {
