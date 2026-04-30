@@ -3222,10 +3222,42 @@ function WarehouseTab({ name }) {
                 return <span style={{ fontSize: '0.75rem', fontWeight: 700, color: colors[action] || '#64748b' }}>{(action || '').replace(/_/g, ' ')}</span>;
               }},
               { header: 'Date', render: r => formatDate(r.createdAt || r.created_at) },
-              { header: '', render: r => (
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              { header: 'Action', render: r => (
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                  {r.status === 'approved' && (
+                    <button
+                      onClick={async () => {
+                        try {
+                          await api.stock.updateTransfer(r.id, { status: 'dispatched', dispatched_by: user?.full_name || user?.fullName || user?.username });
+                          setAlert({ type: 'success', msg: `Transfer dispatched — dispatch note created` });
+                          setTimeout(() => loadData(), 100);
+                        } catch (err) {
+                          setAlert({ type: 'error', msg: err.message || 'Dispatch failed' });
+                        }
+                      }}
+                      style={{ background: '#f59e0b', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      🚚 Dispatch
+                    </button>
+                  )}
+                  {r.status === 'dispatched' && (
+                    <button
+                      onClick={async () => {
+                        try {
+                          await api.stock.updateTransfer(r.id, { status: 'in_transit' });
+                          setAlert({ type: 'success', msg: 'Marked as in transit' });
+                          setTimeout(() => loadData(), 100);
+                        } catch (err) {
+                          setAlert({ type: 'error', msg: err.message });
+                        }
+                      }}
+                      style={{ background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      In Transit
+                    </button>
+                  )}
                   <button onClick={() => setViewAuditTransfer(r)} className="text-xs font-bold cursor-pointer border-none bg-transparent" style={{ color: '#6366f1' }}>
-                    Audit Trail
+                    Audit
                   </button>
                   <button onClick={() => setViewDispatchNoteTransfer(r)} className="text-xs font-bold cursor-pointer border-none bg-transparent" style={{ color: '#c41e3a' }} title="View Dispatch Note">
                     <Printer size={13} />
@@ -4258,7 +4290,11 @@ function TransfersTab({ branch }) {
 
   const updateStatus = async (id, newStatus) => {
     try {
-      await api.stock.updateTransfer(id, { status: newStatus });
+      const payload = { status: newStatus };
+      if (newStatus === 'dispatched') {
+        payload.dispatched_by = user?.full_name || user?.fullName || user?.username;
+      }
+      await api.stock.updateTransfer(id, payload);
       setAlert({ type: 'success', msg: `Transfer marked as ${newStatus}` });
       loadTransfers();
     } catch (err) {
@@ -4272,10 +4308,20 @@ function TransfersTab({ branch }) {
     (t.from_location || '').toLowerCase().replace(/\s+/g, '_') === branch ||
     (t.to_location || '').toLowerCase().replace(/\s+/g, '_') === branch
   );
+  const approvedPending = filteredTransfers.filter(t => t.status === 'approved');
 
   return (
     <div>
       {alert && <Alert type={alert.type} className="mb-4">{alert.msg}</Alert>}
+      {approvedPending.length > 0 && (
+        <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10, padding: '10px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: '1.1rem' }}>📦</span>
+          <div>
+            <span style={{ fontWeight: 700, color: '#92400e' }}>{approvedPending.length} GM-approved transfer{approvedPending.length !== 1 ? 's' : ''} awaiting dispatch</span>
+            <span style={{ color: '#a16207', fontSize: '0.82rem', marginLeft: 6 }}>— scroll down to find and click "Dispatch" on each one</span>
+          </div>
+        </div>
+      )}
       <Card>
         <CardHeader>
           <div className="flex justify-between items-center flex-wrap gap-2">
@@ -4296,17 +4342,37 @@ function TransfersTab({ branch }) {
             { header: 'Date', render: r => formatDateTime(r.created_at) },
             { header: 'From', render: r => <span className="text-xs">{fmtLocation(r.from_location)}</span> },
             { header: 'To', render: r => <span className="text-xs">{fmtLocation(r.to_location)}</span> },
-            { header: 'Product', key: 'product_name' },
-            { header: 'Qty', key: 'quantity' },
-            { header: 'Status', render: r => <Badge variant={r.status === 'completed' || r.status === 'delivered' ? 'success' : r.status === 'in_transit' || r.status === 'dispatched' ? 'info' : 'warning'}>{r.status || 'Pending'}</Badge> },
+            { header: 'Product(s)', render: r => {
+              const items = Array.isArray(r.items) ? r.items : [];
+              if (items.length > 0) {
+                const display = items.slice(0, 2).map(i => i.productName || i.product_name || '—').join(', ');
+                return <span className="text-sm" title={items.map(i => `${i.productName || i.product_name} ×${i.quantity_approved ?? i.quantityApproved ?? i.quantity}`).join('\n')}>
+                  {display}{items.length > 2 ? ` +${items.length - 2} more` : ''}
+                </span>;
+              }
+              return <span className="text-sm">{r.product_name || '—'}</span>;
+            }},
+            { header: 'Qty', render: r => {
+              const items = Array.isArray(r.items) ? r.items : [];
+              if (items.length > 1) return <span title={items.map(i => `${i.productName || i.product_name} ×${i.quantity_approved ?? i.quantityApproved ?? i.quantity ?? 0}`).join('\n')}>{items.reduce((s, i) => s + Number(i.quantity_approved ?? i.quantityApproved ?? i.quantity ?? 0), 0)} ({items.length} items)</span>;
+              return r.quantity || 0;
+            }},
+            { header: 'Status', render: r => {
+              if (r.status === 'approved') return <Badge variant="warning" style={{ background: '#fef9c3', color: '#854d0e', border: '1px solid #fde68a' }}>✅ Approved — Ready to Dispatch</Badge>;
+              if (r.status === 'completed' || r.status === 'delivered') return <Badge variant="success">{r.status}</Badge>;
+              if (r.status === 'in_transit' || r.status === 'dispatched') return <Badge variant="info">{r.status.replace(/_/g, ' ')}</Badge>;
+              return <Badge variant="warning">{r.status || 'Pending'}</Badge>;
+            }},
             { header: 'Notes', render: r => {
               const note = r.notes || (r.metadata && r.metadata.notes) || (typeof r.metadata === 'string' ? (() => { try { return JSON.parse(r.metadata).notes; } catch { return ''; } })() : '');
               return note ? <span className="text-xs text-gray-500 truncate max-w-[120px] block" title={note}>{note}</span> : <span className="text-xs text-gray-300">—</span>;
             }},
             { header: 'Actions', render: r => (
               <div className="flex gap-1 flex-wrap">
-                {(!r.status || r.status === 'pending') && (
-                  <Button size="sm" variant="warning" onClick={() => updateStatus(r.id, 'dispatched')}>Dispatch</Button>
+                {(!r.status || r.status === 'pending' || r.status === 'approved') && (
+                  <Button size="sm" variant="warning" onClick={() => updateStatus(r.id, 'dispatched')}>
+                    {r.status === 'approved' ? '🚚 Dispatch' : 'Dispatch'}
+                  </Button>
                 )}
                 {r.status === 'dispatched' && (
                   <Button size="sm" variant="outline" onClick={() => updateStatus(r.id, 'in_transit')}>In Transit</Button>
