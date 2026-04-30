@@ -3868,6 +3868,7 @@ function BranchRequestsPanel() {
   const [dispatchReq, setDispatchReq]     = useState(null);
   const [dispatchWH, setDispatchWH]       = useState('windhoek_warehouse');
   const [dispatching, setDispatching]     = useState(false);
+  const [modalAlert, setModalAlert]       = useState(null);
   const [denyReq, setDenyReq]             = useState(null);
   const [denyReason, setDenyReason]       = useState('');
   const [denying, setDenying]             = useState(false);
@@ -3897,33 +3898,27 @@ function BranchRequestsPanel() {
   const handleDispatch = async () => {
     if (!dispatchReq) return;
     setDispatching(true);
+    setModalAlert(null);
     try {
       const items = Array.isArray(dispatchReq.items) ? dispatchReq.items : [];
       const branchId = (dispatchReq.requestingBranch || dispatchReq.requesting_branch || '').toLowerCase().replace(/\s+/g, '_');
       const actor = user?.full_name || user?.fullName || user?.username || 'Stock Manager';
-      for (const item of items) {
-        await api.stock.createMovement({
-          movement_type: 'branch_dispatch',
-          source_location: dispatchWH,
-          destination_location: branchId,
-          product_name: item.productName || item.productId || item.product_name,
-          quantity: Number(item.quantity || 0),
-          notes: `Branch request ${dispatchReq.requestNumber || dispatchReq.id} — dispatched by ${actor}`,
-          created_by: actor,
-          reference: dispatchReq.id,
-        });
-      }
+      const whLabel = WAREHOUSE_SOURCES.find(w => w.value === dispatchWH)?.label || dispatchWH;
+
       await api.stock.updateRequest(dispatchReq.id, {
         status: 'dispatched',
         dispatch_warehouse: dispatchWH,
         dispatched_by: actor,
         dispatched_at: new Date().toISOString(),
+        notes: `Dispatched from ${whLabel} by ${actor}`,
       });
-      setAlert({ type: 'success', msg: `✅ Dispatched ${items.length} item(s) from ${WAREHOUSE_SOURCES.find(w => w.value === dispatchWH)?.label || dispatchWH} to ${fmtLocation(branchId)}` });
+
+      setAlert({ type: 'success', msg: `✅ ${items.length} item(s) dispatched from ${whLabel} to ${fmtLocation(branchId)}. Branch can now receive the delivery.` });
       setDispatchReq(null);
+      setModalAlert(null);
       setTimeout(() => load(), 150);
     } catch (err) {
-      setAlert({ type: 'error', msg: err.message || 'Dispatch failed' });
+      setModalAlert({ type: 'error', msg: err.message || 'Dispatch failed — please try again' });
     } finally {
       setDispatching(false);
     }
@@ -4065,7 +4060,7 @@ function BranchRequestsPanel() {
                 {r.status === 'approved' && (
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     <button
-                      onClick={() => { setDispatchReq(r); setDispatchWH('windhoek_warehouse'); }}
+                      onClick={() => { setDispatchReq(r); setDispatchWH('windhoek_warehouse'); setModalAlert(null); }}
                       style={{ flex: 1, minWidth: 120, background: '#c41e3a', color: '#fff', border: 'none', borderRadius: 9, padding: '9px 0', fontWeight: 800, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                       🚚 Dispatch
                     </button>
@@ -4110,15 +4105,21 @@ function BranchRequestsPanel() {
             </div>
 
             <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8, padding: '8px 12px', marginBottom: 18, fontSize: '0.78rem', color: '#9a3412' }}>
-              ⚠️ This will immediately deduct stock from the selected source and mark this request as dispatched.
+              ⚠️ This will mark the request as dispatched. The branch will be notified to receive the delivery.
             </div>
+
+            {modalAlert && (
+              <div style={{ background: modalAlert.type === 'error' ? '#fef2f2' : '#f0fdf4', border: `1px solid ${modalAlert.type === 'error' ? '#fca5a5' : '#86efac'}`, borderRadius: 8, padding: '8px 12px', marginBottom: 14, fontSize: '0.83rem', fontWeight: 600, color: modalAlert.type === 'error' ? '#991b1b' : '#166534' }}>
+                {modalAlert.msg}
+              </div>
+            )}
 
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={handleDispatch} disabled={dispatching}
                 style={{ flex: 1, background: '#c41e3a', color: '#fff', border: 'none', borderRadius: 9, padding: '11px 0', fontWeight: 800, fontSize: '0.88rem', cursor: dispatching ? 'not-allowed' : 'pointer', opacity: dispatching ? 0.7 : 1 }}>
                 {dispatching ? 'Dispatching…' : '🚚 Confirm Dispatch'}
               </button>
-              <button onClick={() => setDispatchReq(null)} disabled={dispatching}
+              <button onClick={() => { setDispatchReq(null); setModalAlert(null); }} disabled={dispatching}
                 style={{ background: '#f1f5f9', color: '#64748b', border: 'none', borderRadius: 9, padding: '11px 18px', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}>
                 Cancel
               </button>
