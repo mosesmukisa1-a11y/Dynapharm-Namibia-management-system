@@ -2083,7 +2083,7 @@ server.on('error', (error) => {
       `ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS disposed_by VARCHAR(255) DEFAULT NULL`,
       `ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS disposed_at TIMESTAMPTZ DEFAULT NULL`,
       `ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS write_off_reason VARCHAR(100) DEFAULT NULL`,
-      // Offline sync: idempotency keys to prevent duplicate submissions
+      // Offline sync: idempotency keys to prevent duplicate submissions on reconnect
       `ALTER TABLE branch_walkin_sales ADD COLUMN IF NOT EXISTS offline_id VARCHAR(100) DEFAULT NULL`,
       `ALTER TABLE branch_expenses ADD COLUMN IF NOT EXISTS offline_id VARCHAR(100) DEFAULT NULL`,
       `CREATE UNIQUE INDEX IF NOT EXISTS idx_walkin_sales_offline_id ON branch_walkin_sales (offline_id) WHERE offline_id IS NOT NULL`,
