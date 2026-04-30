@@ -7192,15 +7192,16 @@ function BatchTab({ branch }) {
 
 // ── Write-Offs Tab ─────────────────────────────────────────────────────────────
 const REASON_CONFIG = {
-  'Expired':          { color: '#b45309', bg: '#fffbeb', border: '#fde68a',  badge: '#f59e0b', label: 'Expired',             icon: '⏰', needsDisposal: true  },
-  'Damaged':          { color: '#dc2626', bg: '#fef2f2', border: '#fecaca',  badge: '#dc2626', label: 'Damaged',             icon: '💥', needsDisposal: true  },
-  'Damaged in storage':{ color: '#dc2626', bg: '#fef2f2', border: '#fecaca',  badge: '#dc2626', label: 'Damaged',            icon: '💥', needsDisposal: true  },
-  'Contaminated':     { color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe',  badge: '#7c3aed', label: 'Contaminated',        icon: '☣️', needsDisposal: true  },
-  'Theft':            { color: '#374151', bg: '#f9fafb', border: '#e5e7eb',  badge: '#374151', label: 'Theft / Loss',        icon: '🚨', needsDisposal: false },
-  'Theft / Loss':     { color: '#374151', bg: '#f9fafb', border: '#e5e7eb',  badge: '#374151', label: 'Theft / Loss',        icon: '🚨', needsDisposal: false },
-  'Quality failure':  { color: '#0369a1', bg: '#f0f9ff', border: '#bae6fd',  badge: '#0369a1', label: 'Quality / Recall',    icon: '🔬', needsDisposal: true  },
-  'Quality / Recall': { color: '#0369a1', bg: '#f0f9ff', border: '#bae6fd',  badge: '#0369a1', label: 'Quality / Recall',    icon: '🔬', needsDisposal: true  },
-  'Other':            { color: '#6b7280', bg: '#f9fafb', border: '#e5e7eb',  badge: '#6b7280', label: 'Other',               icon: '📋', needsDisposal: false },
+  'Expired':            { color: '#b45309', bg: '#fffbeb', border: '#fde68a',  badge: '#f59e0b', label: 'Expired',              icon: '⏰', needsDisposal: true,  redistribution: false },
+  'Damaged':            { color: '#dc2626', bg: '#fef2f2', border: '#fecaca',  badge: '#dc2626', label: 'Damaged',              icon: '💥', needsDisposal: true,  redistribution: false },
+  'Damaged in storage': { color: '#dc2626', bg: '#fef2f2', border: '#fecaca',  badge: '#dc2626', label: 'Damaged',              icon: '💥', needsDisposal: true,  redistribution: false },
+  'Contaminated':       { color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe',  badge: '#7c3aed', label: 'Contaminated',         icon: '☣️', needsDisposal: true,  redistribution: false },
+  'Theft':              { color: '#374151', bg: '#f9fafb', border: '#e5e7eb',  badge: '#374151', label: 'Theft / Loss',         icon: '🚨', needsDisposal: false, redistribution: false },
+  'Theft / Loss':       { color: '#374151', bg: '#f9fafb', border: '#e5e7eb',  badge: '#374151', label: 'Theft / Loss',         icon: '🚨', needsDisposal: false, redistribution: false },
+  'Quality failure':    { color: '#0369a1', bg: '#f0f9ff', border: '#bae6fd',  badge: '#0369a1', label: 'Quality / Recall',     icon: '🔬', needsDisposal: true,  redistribution: false },
+  'Quality / Recall':   { color: '#0369a1', bg: '#f0f9ff', border: '#bae6fd',  badge: '#0369a1', label: 'Quality / Recall',     icon: '🔬', needsDisposal: true,  redistribution: false },
+  'Redistribution':     { color: '#0891b2', bg: '#ecfeff', border: '#a5f3fc',  badge: '#0891b2', label: 'Redistribution',       icon: '🔄', needsDisposal: false, redistribution: true  },
+  'Other':              { color: '#6b7280', bg: '#f9fafb', border: '#e5e7eb',  badge: '#6b7280', label: 'Other',                icon: '📋', needsDisposal: false, redistribution: false },
 };
 const DEFAULT_REASON_CFG = { color: '#6b7280', bg: '#f9fafb', border: '#e5e7eb', badge: '#6b7280', label: 'Other', icon: '📋', needsDisposal: false };
 
@@ -7220,8 +7221,10 @@ function WriteOffsTab({ branch }) {
   const [disposing, setDisposing]   = useState({});
   const [search, setSearch]         = useState('');
   const [historyView, setHistoryView] = useState('pending');
+  const emptyItem = () => ({ product_name: '', batch_id: '', quantity: '' });
   const [form, setForm]             = useState({
-    product_name: '', batch_id: '', quantity: '', reason: '', notes: '', location: '',
+    reason: '', notes: '', location: '', target_location: '',
+    items: [emptyItem()],
   });
 
   const load = useCallback(() => {
@@ -7229,11 +7232,24 @@ function WriteOffsTab({ branch }) {
     Promise.all([
       api.stock.movements('limit=2000').then(d => Array.isArray(d) ? d : d.movements || []).catch(() => []),
       api.stock.batches().then(d => Array.isArray(d) ? d : d.batches || []).catch(() => []),
-    ]).then(([mvs, bts]) => {
+      branch && branch !== 'all'
+        ? api.get(`/stock/branch/${branch}/inventory`).then(d => Array.isArray(d) ? d : d.inventory || d.batches || []).catch(() => [])
+        : Promise.resolve([]),
+    ]).then(([mvs, centralBts, branchBts]) => {
       setMovements(mvs);
-      setBatches(bts);
+      const branchMapped = branchBts.map(b => ({
+        ...b,
+        id: b.id || `bib-${b.batch_no || b.batchNo}-${b.branch_id || branch}`,
+        product_name: b.product_name || b.description,
+        batch_no: b.batch_no || b.batchNo || b.batch_number,
+        batch_number: b.batch_no || b.batchNo || b.batch_number,
+        location: b.location || b.branch_id || branch,
+        remaining_quantity: b.remaining_quantity ?? b.quantity ?? 0,
+        status: b.status || 'in_stock',
+      }));
+      setBatches([...centralBts, ...branchMapped]);
     }).finally(() => setLoading(false));
-  }, []);
+  }, [branch]);
   useEffect(() => { load(); }, [load]);
 
   const writeoffs = movements.filter(m => {
@@ -7275,8 +7291,27 @@ function WriteOffsTab({ branch }) {
     return (b.location || '').toLowerCase().replace(/\s+/g, '_') === branch;
   });
 
-  const selectedBatch = batches.find(b => String(b.id) === String(form.batch_id));
-  const maxQty = selectedBatch ? Number(selectedBatch.remaining_quantity ?? selectedBatch.quantity ?? 0) : 0;
+  // Item-level helpers
+  const addItem = () => setForm(f => ({ ...f, items: [...f.items, emptyItem()] }));
+  const removeItem = (idx) => setForm(f => ({ ...f, items: f.items.filter((_, i) => i !== idx) }));
+  const updateItem = (idx, field, val) => setForm(f => ({
+    ...f,
+    items: f.items.map((item, i) => {
+      if (i !== idx) return item;
+      const updated = { ...item, [field]: val };
+      if (field === 'batch_id') {
+        const b = batches.find(b => String(b.id) === val);
+        updated.product_name = b?.product_name || b?.description || item.product_name;
+      }
+      if (field === 'product_name') updated.batch_id = '';
+      return updated;
+    }),
+  }));
+  const getBatch = (item) => batches.find(b => String(b.id) === String(item.batch_id));
+  const getMaxQty = (item) => {
+    const b = getBatch(item);
+    return b ? Number(b.remaining_quantity ?? b.quantity ?? 0) : 0;
+  };
 
   const handleDispose = async (id) => {
     setDisposing(d => ({ ...d, [id]: true }));
@@ -7308,30 +7343,49 @@ function WriteOffsTab({ branch }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.product_name) { setAlert({ type: 'error', msg: 'Product name is required' }); return; }
-    const qty = Number(form.quantity);
-    if (!qty || qty <= 0) { setAlert({ type: 'error', msg: 'Enter a valid quantity' }); return; }
-    if (maxQty > 0 && qty > maxQty) { setAlert({ type: 'error', msg: `Cannot write off more than available stock (${maxQty})` }); return; }
     if (!form.reason) { setAlert({ type: 'error', msg: 'Reason is required' }); return; }
-    setSubmitting(true);
-    try {
-      await api.stock.createMovement({
-        product_name:      form.product_name,
-        movement_type:     'write_off',
-        quantity:          qty,
-        source_location:   selectedBatch?.location || form.location || (branch !== 'all' ? branch : ''),
-        batch_no:          selectedBatch?.batch_no || selectedBatch?.batch_number || null,
-        reason:            form.reason,
-        write_off_reason:  form.reason,
-        notes:             `${form.reason}${form.notes ? ' — ' + form.notes : ''}`,
-        created_by:        user?.full_name || user?.username,
-        reference:         `WO-${Date.now().toString(36).toUpperCase()}`,
-      });
-      if (selectedBatch && qty >= maxQty) {
-        await api.stock.updateBatch(selectedBatch.id, { status: 'written_off' });
+    const isRedistrib = woIsRedistrib;
+    if (isRedistrib && !form.target_location) { setAlert({ type: 'error', msg: 'Select the target location for redistribution' }); return; }
+    const validItems = form.items.filter(it => it.product_name && Number(it.quantity) > 0);
+    if (!validItems.length) { setAlert({ type: 'error', msg: 'Add at least one product with a quantity greater than zero' }); return; }
+    for (const it of validItems) {
+      const mxq = getMaxQty(it);
+      if (mxq > 0 && Number(it.quantity) > mxq) {
+        setAlert({ type: 'error', msg: `Cannot write off more than available stock (${mxq}) for ${it.product_name}` });
+        return;
       }
-      setAlert({ type: 'success', msg: `Write-off recorded: ${qty} × ${form.product_name} — awaiting disposal confirmation.` });
-      setForm({ product_name: '', batch_id: '', quantity: '', reason: '', notes: '' });
+    }
+    const needsLocation = validItems.every(it => !getBatch(it)?.location) && !form.location;
+    if (needsLocation && branch === 'all') { setAlert({ type: 'error', msg: 'Select the location written off from' }); return; }
+    setSubmitting(true);
+    const batchRef = `WO-${Date.now().toString(36).toUpperCase()}`;
+    try {
+      for (const it of validItems) {
+        const sel = getBatch(it);
+        await api.stock.createMovement({
+          product_name:      it.product_name,
+          movement_type:     'write_off',
+          quantity:          Number(it.quantity),
+          source_location:   sel?.location || form.location || (branch !== 'all' ? branch : ''),
+          batch_no:          sel?.batch_no || sel?.batch_number || null,
+          reason:            form.reason,
+          write_off_reason:  form.reason,
+          notes:             `${form.reason}${isRedistrib ? ` → ${form.target_location}` : ''}${form.notes ? ' — ' + form.notes : ''}`,
+          created_by:        user?.full_name || user?.username,
+          reference:         batchRef,
+        });
+        if (sel && Number(it.quantity) >= getMaxQty(it)) {
+          await api.stock.updateBatch(sel.id, { status: 'written_off' });
+        }
+      }
+      const productList = validItems.map(it => `${Number(it.quantity)} × ${it.product_name}`).join(', ');
+      setAlert({
+        type: 'success',
+        msg: isRedistrib
+          ? `Redistribution recorded: ${productList} — stock removed from source, pending receipt at ${form.target_location}.`
+          : `Write-off recorded: ${productList} — ${validItems.length > 1 ? 'items' : 'item'} awaiting disposal confirmation.`,
+      });
+      setForm({ reason: '', notes: '', location: '', target_location: '', items: [emptyItem()] });
       setShowForm(false);
       load();
     } catch (err) {
@@ -7350,6 +7404,8 @@ function WriteOffsTab({ branch }) {
   };
 
   const productOptions = [...new Set(activeBatches.map(b => b.product_name || b.description).filter(Boolean))].sort();
+  const woIsRedistrib = getReasonCfg(form.reason).redistribution;
+  const woShowLocationPicker = !form.items.every(it => getBatch(it)?.location) && branch === 'all';
 
   if (loading) return <LoadingSpinner />;
 
@@ -7442,6 +7498,10 @@ function WriteOffsTab({ branch }) {
                             >
                               {disposing[m.id] ? '…' : 'Confirm Disposed'}
                             </button>
+                          ) : cfg.redistribution ? (
+                            <span style={{ padding: '3px 10px', fontSize: '0.73rem', color: '#0891b2', background: '#ecfeff', borderRadius: 6, fontWeight: 600, border: '1px solid #a5f3fc' }}>
+                              🔄 Pending receipt at {(m.notes || '').match(/→\s*(.+?)(\s*—|$)/)?.[1] || 'target location'}
+                            </span>
                           ) : (
                             <span style={{ padding: '3px 10px', fontSize: '0.73rem', color: '#6b7280', background: '#f3f4f6', borderRadius: 6, fontWeight: 600 }}>No disposal needed</span>
                           )}
@@ -7459,81 +7519,153 @@ function WriteOffsTab({ branch }) {
       {/* New Write-Off Form */}
       {showForm && (
         <Card>
-          <CardHeader><h4 className="font-bold text-gray-800">Record New Write-Off</h4></CardHeader>
+          <CardHeader>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h4 className="font-bold text-gray-800">Record New Write-Off</h4>
+              <span style={{ fontSize: '0.78rem', color: '#6b7280' }}>You can write off multiple products at once</span>
+            </div>
+          </CardHeader>
           <CardBody>
-            <form onSubmit={handleSubmit} className="space-y-3">
+            <form onSubmit={handleSubmit} className="space-y-4" data-testid="writeoff-multi-form" aria-label="Multi-item Write-Off Form">
+
+              {/* Shared: Reason, Location, Notes */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Product *</label>
-                  <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={form.product_name}
-                    onChange={e => setForm(f => ({ ...f, product_name: e.target.value, batch_id: '' }))}>
-                    <option value="">Select product...</option>
-                    {productOptions.map(n => <option key={n} value={n}>{n}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Batch (optional)</label>
-                  <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={form.batch_id}
-                    onChange={e => {
-                      const b = batches.find(b => String(b.id) === e.target.value);
-                      setForm(f => ({ ...f, batch_id: e.target.value, product_name: b?.product_name || b?.description || f.product_name }));
-                    }}>
-                    <option value="">No specific batch</option>
-                    {activeBatches.filter(b => !form.product_name || (b.product_name || b.description) === form.product_name).map(b => (
-                      <option key={b.id} value={b.id}>
-                        {b.batch_no || b.batch_number || `B-${b.id}`} · {fmtLoc(b.location)} · {Number(b.remaining_quantity ?? b.quantity ?? 0)} units
-                        {b.expiry_date ? ` · Exp ${new Date(b.expiry_date).toLocaleDateString('en-ZA', { month: 'short', year: 'numeric' })}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">
-                    Quantity to Write Off *{maxQty > 0 && <span className="text-gray-400 font-normal ml-1">(max {maxQty})</span>}
-                  </label>
-                  <Input type="number" min="1" max={maxQty > 0 ? maxQty : undefined} value={form.quantity}
-                    onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} placeholder="0" />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Reason *</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Reason for Write-Off *</label>
                   <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={form.reason}
-                    onChange={e => setForm(f => ({ ...f, reason: e.target.value }))}>
+                    onChange={e => setForm(f => ({ ...f, reason: e.target.value, target_location: '' }))}>
                     <option value="">Select reason...</option>
                     <option value="Expired">Expired</option>
                     <option value="Damaged">Damaged in storage</option>
                     <option value="Contaminated">Contaminated</option>
                     <option value="Theft">Theft / Loss</option>
                     <option value="Quality failure">Quality / Recall</option>
+                    <option value="Redistribution">Redistribution (Return for redistribution)</option>
                     <option value="Other">Other</option>
                   </select>
+                  {woIsRedistrib && (
+                    <p style={{ fontSize: '0.75rem', color: '#0891b2', marginTop: 4 }}>
+                      🔄 Stock will be removed from source and flagged for receipt at the target location below.
+                    </p>
+                  )}
                 </div>
+
+                {woIsRedistrib && (
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">Target Location (where stock will be received) *</label>
+                    <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={form.target_location}
+                      onChange={e => setForm(f => ({ ...f, target_location: e.target.value }))}>
+                      <option value="">Select destination…</option>
+                      <optgroup label="Country Stock">
+                        <option value="Country Stock">Country Stock (Staging)</option>
+                      </optgroup>
+                      <optgroup label="Warehouses">
+                        <option value="Windhoek Warehouse">Windhoek Warehouse</option>
+                        <option value="Ondangwa Warehouse">Ondangwa Warehouse</option>
+                      </optgroup>
+                      <optgroup label="Branches">
+                        {BRANCH_DETAILS.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+                      </optgroup>
+                    </select>
+                  </div>
+                )}
+
+                {woShowLocationPicker && (
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">Default Source Location *</label>
+                    <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={form.location}
+                      onChange={e => setForm(f => ({ ...f, location: e.target.value }))}>
+                      <option value="">Select location…</option>
+                      <optgroup label="Country Stock">
+                        <option value="country_stock">Country Stock (Staging)</option>
+                      </optgroup>
+                      <optgroup label="Warehouses">
+                        <option value="windhoek_warehouse">Windhoek Warehouse</option>
+                        <option value="ondangwa_warehouse">Ondangwa Warehouse</option>
+                      </optgroup>
+                      <optgroup label="Branches">
+                        {BRANCH_DETAILS.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                      </optgroup>
+                    </select>
+                  </div>
+                )}
               </div>
-              {(!selectedBatch || !selectedBatch.location) && (
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Location Written Off From *</label>
-                  <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={form.location}
-                    onChange={e => setForm(f => ({ ...f, location: e.target.value }))} required={!selectedBatch?.location}>
-                    <option value="">Select location…</option>
-                    <optgroup label="Country Stock">
-                      <option value="country_stock">Country Stock (Staging)</option>
-                    </optgroup>
-                    <optgroup label="Warehouses">
-                      <option value="windhoek_warehouse">Windhoek Warehouse</option>
-                      <option value="ondangwa_warehouse">Ondangwa Warehouse</option>
-                    </optgroup>
-                    <optgroup label="Branches">
-                      {BRANCH_DETAILS.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                    </optgroup>
-                  </select>
+
+              {/* Multi-item rows */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <label className="block text-sm font-semibold text-gray-700">Products to Write Off *</label>
+                  <button type="button" onClick={addItem}
+                    style={{ fontSize: '0.78rem', fontWeight: 700, color: '#991b1b', background: '#fef2f2', border: '1.5px solid #fecaca', borderRadius: 7, padding: '4px 12px', cursor: 'pointer' }}>
+                    + Add Product
+                  </button>
                 </div>
-              )}
+
+                <div className="space-y-2">
+                  {form.items.map((item, idx) => {
+                    const batchesForProduct = activeBatches.filter(b => !item.product_name || (b.product_name || b.description) === item.product_name);
+                    const mxq = getMaxQty(item);
+                    return (
+                      <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr 90px 36px', gap: 6, alignItems: 'end', background: '#fafafa', borderRadius: 8, padding: '8px 10px', border: '1px solid #e5e7eb' }}>
+                        <div>
+                          {idx === 0 && <label className="block text-xs font-semibold text-gray-500 mb-1">Product</label>}
+                          <select className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm" value={item.product_name}
+                            onChange={e => updateItem(idx, 'product_name', e.target.value)}>
+                            <option value="">Select product…</option>
+                            {productOptions.map(n => <option key={n} value={n}>{n}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          {idx === 0 && <label className="block text-xs font-semibold text-gray-500 mb-1">Batch (optional)</label>}
+                          <select className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm" value={item.batch_id}
+                            onChange={e => updateItem(idx, 'batch_id', e.target.value)}>
+                            <option value="">No specific batch</option>
+                            {batchesForProduct.map(b => (
+                              <option key={b.id} value={b.id}>
+                                {b.batch_no || b.batch_number || `B-${b.id}`} · {Number(b.remaining_quantity ?? b.quantity ?? 0)} units
+                                {b.expiry_date ? ` · Exp ${new Date(b.expiry_date).toLocaleDateString('en-ZA', { month: 'short', year: 'numeric' })}` : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          {idx === 0 && <label className="block text-xs font-semibold text-gray-500 mb-1">Qty{mxq > 0 ? ` (max ${mxq})` : ''}</label>}
+                          <input type="number" min="1" max={mxq > 0 ? mxq : undefined} value={item.quantity}
+                            onChange={e => updateItem(idx, 'quantity', e.target.value)}
+                            placeholder="0"
+                            className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-center" />
+                        </div>
+                        <div style={{ display: 'flex', alignItems: idx === 0 ? 'flex-end' : 'center', paddingBottom: idx === 0 ? 0 : 0 }}>
+                          <button type="button" onClick={() => removeItem(idx)}
+                            disabled={form.items.length === 1}
+                            style={{ width: 30, height: 30, borderRadius: 6, border: '1px solid #fecaca', background: form.items.length === 1 ? '#f9fafb' : '#fef2f2', color: form.items.length === 1 ? '#d1d5db' : '#dc2626', cursor: form.items.length === 1 ? 'not-allowed' : 'pointer', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            ×
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Running total */}
+                {form.items.some(it => it.product_name && Number(it.quantity) > 0) && (
+                  <div style={{ marginTop: 8, padding: '6px 12px', background: '#fef2f2', borderRadius: 7, fontSize: '0.8rem', color: '#7f1d1d', fontWeight: 600 }}>
+                    Total: {form.items.reduce((s, it) => s + Number(it.quantity || 0), 0)} units across {form.items.filter(it => it.product_name && Number(it.quantity) > 0).length} product{form.items.filter(it => it.product_name && Number(it.quantity) > 0).length !== 1 ? 's' : ''}
+                    {' '}· CIF: {formatCurrency(form.items.reduce((s, it) => s + Number(it.quantity || 0) * getCIFPrice(it.product_name || ''), 0))}
+                  </div>
+                )}
+              </div>
+
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1">Additional Notes</label>
                 <Textarea rows={2} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Any additional context..." />
               </div>
+
               <div className="flex gap-2">
-                <Button type="submit" disabled={submitting}>{submitting ? 'Saving...' : 'Record Write-Off'}</Button>
-                <Button type="button" variant="secondary" onClick={() => { setShowForm(false); setForm({ product_name: '', batch_id: '', quantity: '', reason: '', notes: '', location: '' }); }}>Cancel</Button>
+                <Button type="submit" disabled={submitting}>
+                  {submitting ? 'Saving...' : woIsRedistrib ? `Record Redistribution (${form.items.filter(it => it.product_name).length} product${form.items.filter(it => it.product_name).length !== 1 ? 's' : ''})` : `Record Write-Off (${form.items.filter(it => it.product_name).length} product${form.items.filter(it => it.product_name).length !== 1 ? 's' : ''})`}
+                </Button>
+                <Button type="button" variant="secondary" onClick={() => { setShowForm(false); setForm({ reason: '', notes: '', location: '', target_location: '', items: [emptyItem()] }); }}>Cancel</Button>
               </div>
             </form>
           </CardBody>

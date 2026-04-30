@@ -2521,9 +2521,10 @@ server.on('error', (error) => {
       { id: 'USR1759829814781', username: 'Geneva', password: 'Pearl_11', fullName: 'Jennifer Joseph', email: 'shange1124@gmail.com', phone: '0852803618', role: 'consultant', branch: 'townshop' },
       { id: 'USR1759830625722', username: 'NAEM', password: 'PASSWORD', fullName: 'NAEM HANGULA', email: 'naemhangula4@gmail.com', phone: '0817499757', role: 'dispenser', branch: 'townshop' },
       { id: 'USR1759928153488', username: 'GEINGOS', password: 'ALBERTO99', fullName: 'HILMA C', email: 'geingoshilma@gmail', phone: '0814137106', role: 'consultant', branch: 'townshop' },
-      // Finance & GM portal access accounts — admin must change these passwords immediately after first login
+      // Finance, GM & Stock portal access accounts — admin must change these passwords immediately after first login
       { id: 'USR_FINANCE_001', username: 'finance', password: 'Finance@2025', fullName: 'Finance Officer', email: 'finance@dynapharm.com.na', phone: '', role: 'finance', branch: 'townshop', mustChangePassword: true },
       { id: 'USR_GM_001', username: 'gm', password: 'GM@2025', fullName: 'General Manager', email: 'gm@dynapharm.com.na', phone: '', role: 'gm', branch: 'townshop', mustChangePassword: true },
+      { id: 'USR_STOCK_001', username: 'stock', password: 'Stock@2025', fullName: 'Stock Manager', email: 'stock@dynapharm.com.na', phone: '', role: 'stock', branch: 'all', mustChangePassword: false },
     ];
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('DEFAULT PORTAL CREDENTIALS (change immediately via Admin panel)');
