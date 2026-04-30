@@ -3855,19 +3855,328 @@ function WarehouseTab({ name }) {
   );
 }
 
+const WAREHOUSE_SOURCES = [
+  { value: 'windhoek_warehouse', label: '🏢 Windhoek Warehouse' },
+  { value: 'ondangwa_warehouse', label: '🏬 Ondangwa Warehouse' },
+  { value: 'country_stock',      label: '📦 Country Stock' },
+];
+
+function BranchRequestsPanel() {
+  const { user } = useAuth();
+  const [requests, setRequests]           = useState([]);
+  const [loading, setLoading]             = useState(true);
+  const [dispatchReq, setDispatchReq]     = useState(null);
+  const [dispatchWH, setDispatchWH]       = useState('windhoek_warehouse');
+  const [dispatching, setDispatching]     = useState(false);
+  const [denyReq, setDenyReq]             = useState(null);
+  const [denyReason, setDenyReason]       = useState('');
+  const [denying, setDenying]             = useState(false);
+  const [alert, setAlert]                 = useState(null);
+  const [statusFilter, setStatusFilter]   = useState('approved');
+
+  const load = useCallback(() => {
+    setLoading(true);
+    api.stock.requests()
+      .then(d => setRequests(Array.isArray(d) ? d : d.requests || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const visibleRequests = requests.filter(r => {
+    if (statusFilter === 'approved') return r.status === 'approved';
+    if (statusFilter === 'pending')  return !r.status || r.status === 'pending';
+    if (statusFilter === 'recent')   return r.status === 'dispatched' || r.status === 'rejected';
+    return true;
+  });
+
+  const approvedCount = requests.filter(r => r.status === 'approved').length;
+  const pendingCount  = requests.filter(r => !r.status || r.status === 'pending').length;
+
+  const handleDispatch = async () => {
+    if (!dispatchReq) return;
+    setDispatching(true);
+    try {
+      const items = Array.isArray(dispatchReq.items) ? dispatchReq.items : [];
+      const branchId = (dispatchReq.requestingBranch || dispatchReq.requesting_branch || '').toLowerCase().replace(/\s+/g, '_');
+      const actor = user?.full_name || user?.fullName || user?.username || 'Stock Manager';
+      for (const item of items) {
+        await api.stock.createMovement({
+          movement_type: 'branch_dispatch',
+          source_location: dispatchWH,
+          destination_location: branchId,
+          product_name: item.productName || item.productId || item.product_name,
+          quantity: Number(item.quantity || 0),
+          notes: `Branch request ${dispatchReq.requestNumber || dispatchReq.id} — dispatched by ${actor}`,
+          created_by: actor,
+          reference: dispatchReq.id,
+        });
+      }
+      await api.stock.updateRequest(dispatchReq.id, {
+        status: 'dispatched',
+        dispatch_warehouse: dispatchWH,
+        dispatched_by: actor,
+        dispatched_at: new Date().toISOString(),
+      });
+      setAlert({ type: 'success', msg: `✅ Dispatched ${items.length} item(s) from ${WAREHOUSE_SOURCES.find(w => w.value === dispatchWH)?.label || dispatchWH} to ${fmtLocation(branchId)}` });
+      setDispatchReq(null);
+      setTimeout(() => load(), 150);
+    } catch (err) {
+      setAlert({ type: 'error', msg: err.message || 'Dispatch failed' });
+    } finally {
+      setDispatching(false);
+    }
+  };
+
+  const handleDeny = async () => {
+    if (!denyReq) return;
+    setDenying(true);
+    try {
+      const actor = user?.full_name || user?.fullName || user?.username || 'Stock Manager';
+      await api.stock.updateRequest(denyReq.id, {
+        status: 'rejected',
+        notes: denyReason || 'Denied by stock manager',
+        reviewed_by: actor,
+        reviewed_at: new Date().toISOString(),
+      });
+      setAlert({ type: 'success', msg: `Request from ${fmtLocation(denyReq.requestingBranch || denyReq.requesting_branch)} denied.` });
+      setDenyReq(null);
+      setDenyReason('');
+      setTimeout(() => load(), 150);
+    } catch (err) {
+      setAlert({ type: 'error', msg: err.message || 'Action failed' });
+    } finally {
+      setDenying(false);
+    }
+  };
+
+  const PRIORITY_STYLE = {
+    urgent: { background: '#fef2f2', color: '#c41e3a', border: '1px solid #fecaca', fontWeight: 700 },
+    high:   { background: '#fffbeb', color: '#92400e', border: '1px solid #fcd34d', fontWeight: 700 },
+    normal: { background: '#f0f9ff', color: '#1e40af', border: '1px solid #bfdbfe' },
+  };
+
+  return (
+    <div style={{ marginBottom: 28 }}>
+      {alert && (
+        <div style={{ background: alert.type === 'error' ? '#fef2f2' : '#f0fdf4', border: `1px solid ${alert.type === 'error' ? '#fca5a5' : '#86efac'}`, borderRadius: 10, padding: '10px 16px', marginBottom: 12, color: alert.type === 'error' ? '#991b1b' : '#166534', fontWeight: 600, fontSize: '0.88rem' }}>
+          {alert.msg}
+          <button onClick={() => setAlert(null)} style={{ float: 'right', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700, color: 'inherit' }}>×</button>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: '1.15rem' }}>📋</span>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: '1rem', color: '#1e293b' }}>Branch Stock Requests</div>
+            <div style={{ fontSize: '0.78rem', color: '#64748b' }}>Stock requested by branches — dispatch or deny directly from here</div>
+          </div>
+          {approvedCount > 0 && (
+            <span style={{ background: '#c41e3a', color: '#fff', borderRadius: 99, padding: '2px 10px', fontWeight: 800, fontSize: '0.78rem' }}>
+              {approvedCount} awaiting dispatch
+            </span>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {[['approved','✅ Approved'], ['pending','⏳ Pending GM'], ['recent','📁 Recent']].map(([v, l]) => (
+            <button key={v} onClick={() => setStatusFilter(v)}
+              style={{ padding: '5px 14px', borderRadius: 99, fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', border: '1.5px solid', borderColor: statusFilter === v ? '#c41e3a' : '#e2e8f0', background: statusFilter === v ? '#fff0f3' : '#f8fafc', color: statusFilter === v ? '#c41e3a' : '#64748b' }}>
+              {l}{v === 'approved' && approvedCount > 0 ? ` (${approvedCount})` : v === 'pending' && pendingCount > 0 ? ` (${pendingCount})` : ''}
+            </button>
+          ))}
+          <button onClick={load} style={{ padding: '5px 12px', borderRadius: 99, fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', border: '1.5px solid #e2e8f0', background: '#f8fafc', color: '#64748b' }}>↺</button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: 24, color: '#94a3b8', fontSize: '0.85rem' }}>Loading requests…</div>
+      ) : visibleRequests.length === 0 ? (
+        <div style={{ background: '#f8fafc', border: '1.5px dashed #e2e8f0', borderRadius: 12, padding: '24px', textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem' }}>
+          {statusFilter === 'approved' ? 'No approved requests waiting for dispatch' : statusFilter === 'pending' ? 'No pending requests' : 'No recent activity'}
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 14 }}>
+          {visibleRequests.map(r => {
+            const items = Array.isArray(r.items) ? r.items : [];
+            const branch = r.requestingBranch || r.requesting_branch || '—';
+            const pri = (r.priority || 'normal').toLowerCase();
+            const priStyle = PRIORITY_STYLE[pri] || PRIORITY_STYLE.normal;
+            return (
+              <div key={r.id} style={{ background: '#fff', border: r.status === 'approved' ? '2px solid #f59e0b' : '1.5px solid #f0f0f0', borderRadius: 14, padding: 18, boxShadow: '0 2px 10px rgba(0,0,0,0.06)', position: 'relative' }}>
+                {r.status === 'approved' && (
+                  <div style={{ position: 'absolute', top: -1, right: 16, background: '#f59e0b', color: '#fff', fontSize: '0.68rem', fontWeight: 800, padding: '2px 10px', borderRadius: '0 0 8px 8px', letterSpacing: '0.04em' }}>
+                    AWAITING DISPATCH
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 10 }}>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: '0.97rem', color: '#1e293b' }}>
+                      📍 {fmtLocation(branch)}
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 2 }}>
+                      {r.requestNumber || r.id} · {formatDateTime(r.createdAt || r.created_at)}
+                    </div>
+                    {r.createdBy && (
+                      <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: 1 }}>
+                        👤 Requested by: <strong>{r.createdBy}</strong>
+                      </div>
+                    )}
+                    {r.approvedBy && (
+                      <div style={{ fontSize: '0.75rem', color: '#16a34a', marginTop: 1 }}>
+                        ✅ Approved by: <strong>{r.approvedBy}</strong>{r.approvedAt ? ` · ${formatDateTime(r.approvedAt)}` : ''}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                    <span style={{ ...priStyle, borderRadius: 99, padding: '2px 10px', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>
+                      {pri === 'urgent' ? '🔴' : pri === 'high' ? '🟠' : '🔵'} {pri}
+                    </span>
+                    <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                      {r.status === 'dispatched' ? `✅ Dispatched from ${fmtLocation(r.dispatchWarehouse || r.dispatch_warehouse || 'warehouse')}` : r.status === 'rejected' ? '❌ Denied' : ''}
+                    </span>
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: '0.73rem', fontWeight: 700, color: '#64748b', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Products Requested ({items.length})
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {items.length === 0 ? (
+                      <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>No items listed</span>
+                    ) : items.map((it, i) => (
+                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 7, padding: '5px 10px' }}>
+                        <span style={{ fontWeight: 600, fontSize: '0.82rem', color: '#1e293b' }}>{it.productName || it.productId || it.product_name || 'Unknown product'}</span>
+                        <span style={{ fontWeight: 800, fontSize: '0.85rem', color: '#c41e3a', marginLeft: 8, whiteSpace: 'nowrap' }}>× {it.quantity}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {r.notes && (
+                  <div style={{ fontSize: '0.78rem', color: '#64748b', fontStyle: 'italic', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 7, padding: '5px 10px', marginBottom: 10 }}>
+                    💬 {r.notes}
+                  </div>
+                )}
+
+                {r.status === 'approved' && (
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <button
+                      onClick={() => { setDispatchReq(r); setDispatchWH('windhoek_warehouse'); }}
+                      style={{ flex: 1, minWidth: 120, background: '#c41e3a', color: '#fff', border: 'none', borderRadius: 9, padding: '9px 0', fontWeight: 800, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                      🚚 Dispatch
+                    </button>
+                    <button
+                      onClick={() => { setDenyReq(r); setDenyReason(''); }}
+                      style={{ background: '#fef2f2', color: '#c41e3a', border: '1.5px solid #fecaca', borderRadius: 9, padding: '9px 14px', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}>
+                      ✕ Deny
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Dispatch Modal */}
+      {dispatchReq && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: '#fff', borderRadius: 16, padding: 28, width: '100%', maxWidth: 480, boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}>
+            <div style={{ fontWeight: 800, fontSize: '1.05rem', color: '#1e293b', marginBottom: 4 }}>🚚 Dispatch Request</div>
+            <div style={{ fontSize: '0.83rem', color: '#64748b', marginBottom: 18 }}>
+              Dispatching stock to <strong>{fmtLocation(dispatchReq.requestingBranch || dispatchReq.requesting_branch)}</strong>
+            </div>
+
+            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 14px', marginBottom: 18 }}>
+              <div style={{ fontSize: '0.73rem', fontWeight: 700, color: '#64748b', marginBottom: 6, textTransform: 'uppercase' }}>Items to dispatch</div>
+              {(Array.isArray(dispatchReq.items) ? dispatchReq.items : []).map((it, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem', padding: '3px 0', borderBottom: i < dispatchReq.items.length - 1 ? '1px solid #f0f0f0' : 'none' }}>
+                  <span style={{ fontWeight: 600 }}>{it.productName || it.productId}</span>
+                  <span style={{ fontWeight: 800, color: '#c41e3a' }}>× {it.quantity}</span>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ marginBottom: 18 }}>
+              <label style={{ display: 'block', fontWeight: 700, fontSize: '0.83rem', color: '#374151', marginBottom: 6 }}>Dispatch From (Source Warehouse)</label>
+              <select value={dispatchWH} onChange={e => setDispatchWH(e.target.value)}
+                style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: '0.88rem', background: '#fff', outline: 'none' }}>
+                {WAREHOUSE_SOURCES.map(w => <option key={w.value} value={w.value}>{w.label}</option>)}
+              </select>
+            </div>
+
+            <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8, padding: '8px 12px', marginBottom: 18, fontSize: '0.78rem', color: '#9a3412' }}>
+              ⚠️ This will immediately deduct stock from the selected source and mark this request as dispatched.
+            </div>
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={handleDispatch} disabled={dispatching}
+                style={{ flex: 1, background: '#c41e3a', color: '#fff', border: 'none', borderRadius: 9, padding: '11px 0', fontWeight: 800, fontSize: '0.88rem', cursor: dispatching ? 'not-allowed' : 'pointer', opacity: dispatching ? 0.7 : 1 }}>
+                {dispatching ? 'Dispatching…' : '🚚 Confirm Dispatch'}
+              </button>
+              <button onClick={() => setDispatchReq(null)} disabled={dispatching}
+                style={{ background: '#f1f5f9', color: '#64748b', border: 'none', borderRadius: 9, padding: '11px 18px', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Deny Modal */}
+      {denyReq && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: '#fff', borderRadius: 16, padding: 28, width: '100%', maxWidth: 420, boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}>
+            <div style={{ fontWeight: 800, fontSize: '1.05rem', color: '#c41e3a', marginBottom: 4 }}>✕ Deny Request</div>
+            <div style={{ fontSize: '0.83rem', color: '#64748b', marginBottom: 16 }}>
+              Denying stock request from <strong>{fmtLocation(denyReq.requestingBranch || denyReq.requesting_branch)}</strong>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontWeight: 700, fontSize: '0.83rem', color: '#374151', marginBottom: 6 }}>Reason for denial (optional)</label>
+              <textarea value={denyReason} onChange={e => setDenyReason(e.target.value)} rows={3}
+                placeholder="e.g. Stock not available, request duplicate…"
+                style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: '0.85rem', resize: 'vertical', outline: 'none', boxSizing: 'border-box' }} />
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={handleDeny} disabled={denying}
+                style={{ flex: 1, background: '#fef2f2', color: '#c41e3a', border: '1.5px solid #fecaca', borderRadius: 9, padding: '11px 0', fontWeight: 800, fontSize: '0.88rem', cursor: denying ? 'not-allowed' : 'pointer', opacity: denying ? 0.7 : 1 }}>
+                {denying ? 'Denying…' : '✕ Confirm Denial'}
+              </button>
+              <button onClick={() => setDenyReq(null)}
+                style={{ background: '#f1f5f9', color: '#64748b', border: 'none', borderRadius: 9, padding: '11px 18px', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function WarehousesTab() {
   const [selected, setSelected] = useState('windhoek');
   return (
     <div>
-      <div className="flex gap-2 mb-4">
-        {[{ id: 'windhoek', label: '🏢 Windhoek Warehouse' }, { id: 'ondangwa', label: '🏬 Ondangwa Warehouse' }].map(w => (
-          <button key={w.id} onClick={() => setSelected(w.id)}
-            style={{ padding: '8px 20px', borderRadius: 99, fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', border: '2px solid', borderColor: selected === w.id ? '#c41e3a' : '#e2e8f0', background: selected === w.id ? '#fff0f3' : '#f8fafc', color: selected === w.id ? '#c41e3a' : '#64748b' }}>
-            {w.label}
-          </button>
-        ))}
+      <BranchRequestsPanel />
+      <div style={{ borderTop: '2px solid #f0f0f0', margin: '8px 0 18px', paddingTop: 18 }}>
+        <div style={{ fontWeight: 800, fontSize: '1rem', color: '#1e293b', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span>🏭</span> Warehouse Management
+        </div>
+        <div className="flex gap-2 mb-4">
+          {[{ id: 'windhoek', label: '🏢 Windhoek Warehouse' }, { id: 'ondangwa', label: '🏬 Ondangwa Warehouse' }].map(w => (
+            <button key={w.id} onClick={() => setSelected(w.id)}
+              style={{ padding: '8px 20px', borderRadius: 99, fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', border: '2px solid', borderColor: selected === w.id ? '#c41e3a' : '#e2e8f0', background: selected === w.id ? '#fff0f3' : '#f8fafc', color: selected === w.id ? '#c41e3a' : '#64748b' }}>
+              {w.label}
+            </button>
+          ))}
+        </div>
+        <WarehouseTab name={selected === 'windhoek' ? 'Windhoek' : 'Ondangwa'} />
       </div>
-      <WarehouseTab name={selected === 'windhoek' ? 'Windhoek' : 'Ondangwa'} />
     </div>
   );
 }
