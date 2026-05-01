@@ -2820,6 +2820,7 @@ function printStockFormulaReport(inventory, movements, sales, branch) {
 function BranchStockTab() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const portalBranch = useContext(PortalBranchContext);
   const [inventory, setInventory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [subTab, setSubTab] = useState('inventory');
@@ -2881,10 +2882,17 @@ function BranchStockTab() {
     // not just branches that happen to have existing inventory batches.
     const allBranchIds = BRANCH_DETAILS.map(b => b.id);
     setAvailableBranches(allBranchIds);
-    // Default to admin's own branch, or the first branch in the list
-    const adminBranch = user?.branch && allBranchIds.includes(user.branch) ? user.branch : allBranchIds[0];
+    // Default to portal-level branch if set, otherwise admin's own branch or first branch
+    const adminBranch = portalBranch || (user?.branch && allBranchIds.includes(user.branch) ? user.branch : allBranchIds[0]);
     setSelectedBranch(adminBranch);
   }, []);
+
+  // Sync with the portal-level "ACT AS BRANCH" selector — when admin switches at top level, mirror it here
+  useEffect(() => {
+    if (portalBranch && user?.role === 'admin') {
+      setSelectedBranch(portalBranch);
+    }
+  }, [portalBranch]);
 
   const { connected: wsConnected } = useStockRealtime({
     onUpdate: useCallback(() => { if (selectedBranch) loadData(); }, [selectedBranch]),
@@ -2964,7 +2972,7 @@ function BranchStockTab() {
     setSubmitting(true);
     try {
       await api.stock.createRequest({
-        requesting_branch: user?.branch || '',
+        requesting_branch: selectedBranch || user?.branch || '',
         request_type: 'branch_restock',
         items: JSON.stringify(requestItems.map(i => ({ productId: i.id, productName: i.product_name, product_name: i.product_name, quantity: i.quantity }))),
         notes: requestNotes,
@@ -3018,7 +3026,7 @@ function BranchStockTab() {
             quantity: qty,
             movement_type: 'received',
             source_location: 'Warehouse',
-            destination_location: user?.branch || 'Branch',
+            destination_location: selectedBranch || user?.branch || 'Branch',
             destination_location_type: 'branch',
             batch_no: batchNo,
             expiry_date: expiryDate,
@@ -3028,7 +3036,7 @@ function BranchStockTab() {
           });
           await api.branch.receiveInventory({
             action: 'receive',
-            branchId: user?.branch || 'Branch',
+            branchId: selectedBranch || user?.branch || 'Branch',
             productName,
             batchNo,
             expiryDate,
@@ -3054,7 +3062,7 @@ function BranchStockTab() {
     setSubmitting(true);
     try {
       await api.stock.createTransfer({
-        fromWarehouse: user?.branch || '',
+        fromWarehouse: selectedBranch || user?.branch || '',
         toBranch: transferToBranch,
         items: transferItems.map(i => ({ product_name: i.product_name, quantity: i.quantity })),
         created_by: user?.full_name || user?.username || '',
@@ -3088,7 +3096,7 @@ function BranchStockTab() {
         quantity: Number(writeOffForm.quantity),
         movement_type: 'write_off',
         status: 'pending_approval',
-        source_location: user?.branch || '',
+        source_location: selectedBranch || user?.branch || '',
         destination_location: 'written_off',
         batch_no: selBatch?.batch_no || selBatch?.batchNo || '',
         expiry_date: selBatch?.expiry_date || selBatch?.expiryDate || null,
@@ -3207,12 +3215,13 @@ function BranchStockTab() {
 
   if (loading) return <LoadingSpinner />;
 
-  const branchKey = user?.branch ? user.branch.toLowerCase().replace(/\s+/g, '_') : '';
+  const effectiveBranchForStock = selectedBranch || user?.branch || '';
+  const branchKey = effectiveBranchForStock ? effectiveBranchForStock.toLowerCase().replace(/\s+/g, '_') : '';
   const branchMatchKeys = branchKey ? [
     branchKey,
     branchKey.replace(/_branch$/, ''),
     branchKey + '_branch',
-    user?.branch?.toLowerCase(),
+    effectiveBranchForStock.toLowerCase(),
   ].filter(Boolean) : [];
   const isBranchMatch = (dest) => {
     if (!branchKey) return true;
@@ -3496,12 +3505,12 @@ function BranchStockTab() {
         <Card>
           <CardHeader className="flex justify-between items-center flex-wrap gap-3">
             <div>
-              <h3 className="font-bold text-gray-800 m-0">Branch Inventory — {getBranchDisplayName(user?.branch) || 'All'}</h3>
+              <h3 className="font-bold text-gray-800 m-0">Branch Inventory — {getBranchDisplayName(selectedBranch || user?.branch) || 'All'}</h3>
               <p className="text-xs text-gray-500 m-0 mt-1">Batch-level live stock with movement aggregates and DP valuations</p>
             </div>
             <button onClick={() => {
               if (!inventory || inventory.length === 0) { alert('No inventory data loaded yet. Please wait a moment and try again.'); return; }
-              printPhysicalStockReport(inventory, user?.branch || '');
+              printPhysicalStockReport(inventory, selectedBranch || user?.branch || '');
             }} className="px-3 py-1.5 rounded-lg text-xs font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>Print Report</button>
           </CardHeader>
           <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0e8ea', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -3812,7 +3821,7 @@ function BranchStockTab() {
           <CardHeader className="flex justify-between items-center">
             <h3 className="font-bold text-gray-800">Stock Requests</h3>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={() => printReceivingStockReport(requests, user?.branch||'')} className="px-3 py-1.5 rounded-lg text-xs font-bold border-none cursor-pointer" style={{ background: '#f1f5f9', color: '#374151' }}>📄 Print</button>
+              <button onClick={() => printReceivingStockReport(requests, selectedBranch || user?.branch||'')} className="px-3 py-1.5 rounded-lg text-xs font-bold border-none cursor-pointer" style={{ background: '#f1f5f9', color: '#374151' }}>📄 Print</button>
               <button onClick={() => { setRequestItems([]); setProductSearch(''); setShowRequestForm(true); }} className="px-4 py-2 rounded-lg text-sm font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>📋 New Request</button>
             </div>
           </CardHeader>
@@ -4405,7 +4414,7 @@ function BranchStockTab() {
               <h3 className="font-bold text-gray-800 m-0">Stock Movement Ledger</h3>
               <p className="text-xs text-gray-500 m-0 mt-1">Complete audit trail — all stock-affecting transactions</p>
             </div>
-            <button onClick={() => printStockMovementsReport(filteredMov, user?.branch||'')} className="px-3 py-1.5 rounded-lg text-xs font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>📄 Print</button>
+            <button onClick={() => printStockMovementsReport(filteredMov, selectedBranch || user?.branch||'')} className="px-3 py-1.5 rounded-lg text-xs font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>📄 Print</button>
           </CardHeader>
           <div style={{ padding: '6px 16px 8px', display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', borderBottom: '1px solid #f0e8ea', background: '#fafafa' }}>
             <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.06em' }}>Populated by:</span>
@@ -4757,7 +4766,7 @@ function BranchStockTab() {
             <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
               <div>
                 <div style={{ color: '#fff', fontSize: '1.1rem', fontWeight: 800 }}>📋 Request Stock from Warehouse</div>
-                <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.78rem', marginTop: 2 }}>{user?.branch ? `${getBranchDisplayName(user.branch)} Branch` : ''} · Select products from catalogue</div>
+                <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.78rem', marginTop: 2 }}>{getBranchDisplayName(selectedBranch || user?.branch) || ''} · Select products from catalogue</div>
               </div>
               <button onClick={() => setShowRequestForm(false)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 34, height: 34, borderRadius: '50%', cursor: 'pointer', fontSize: '1.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
             </div>
@@ -4923,7 +4932,7 @@ function BranchStockTab() {
             <div style={{ background: 'linear-gradient(135deg,#1e3a5f,#0f2040)', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
               <div>
                 <div style={{ color: '#fff', fontSize: '1.1rem', fontWeight: 800 }}>↔ Transfer Stock to Branch</div>
-                <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.78rem', marginTop: 2 }}>From: <strong style={{ color: '#fff' }}>{user?.branch || 'Your Branch'}</strong> · Select destination and products</div>
+                <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.78rem', marginTop: 2 }}>From: <strong style={{ color: '#fff' }}>{getBranchDisplayName(selectedBranch || user?.branch) || 'Your Branch'}</strong> · Select destination and products</div>
               </div>
               <button onClick={() => setShowTransferForm(false)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 34, height: 34, borderRadius: '50%', cursor: 'pointer', fontSize: '1.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
             </div>
@@ -4962,13 +4971,13 @@ function BranchStockTab() {
                   {sectionLabel('Transfer Details')}
                   <div style={{ marginBottom: 10 }}>
                     <label style={{ fontSize: '0.73rem', fontWeight: 700, color: '#1e3a5f', display: 'block', marginBottom: 4 }}>From Branch</label>
-                    <div style={{ padding: '8px 12px', background: '#dbe6f0', borderRadius: 8, fontSize: '0.87rem', fontWeight: 700, color: '#0f2040' }}>{getBranchDisplayName(user?.branch) || 'Your Branch'}</div>
+                    <div style={{ padding: '8px 12px', background: '#dbe6f0', borderRadius: 8, fontSize: '0.87rem', fontWeight: 700, color: '#0f2040' }}>{getBranchDisplayName(selectedBranch || user?.branch) || 'Your Branch'}</div>
                   </div>
                   <div>
                     <label style={{ fontSize: '0.73rem', fontWeight: 700, color: '#1e3a5f', display: 'block', marginBottom: 4 }}>To Branch *</label>
                     <select value={transferToBranch} onChange={e => setTransferToBranch(e.target.value)} style={{ width: '100%', padding: '8px 12px', border: '1.5px solid #c8d8e8', borderRadius: 8, fontSize: '0.87rem', outline: 'none', background: '#fff' }}>
                       <option value="">Select destination branch…</option>
-                      {BRANCH_DETAILS.filter(b => b.id !== user?.branch).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                      {BRANCH_DETAILS.filter(b => b.id !== (selectedBranch || user?.branch)).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                     </select>
                   </div>
                 </div>
