@@ -15,6 +15,7 @@ import { ShoppingCart, FileText, Package, Landmark, CreditCard, ClipboardList, G
 import { useAuth } from '../../contexts/AuthContext';
 import { MembershipAgreementForm } from '../../components/MembershipAgreementForm';
 import StaffMessagesTab from '../../components/StaffMessagesTab';
+import BarcodeScanner from '../../components/BarcodeScanner';
 
 const DEFAULT_REFERRAL = { name: 'Dynapharm Namibia', nb_number: 'NB005676', id: 'DEFAULT_REFERRAL' };
 
@@ -488,6 +489,7 @@ function WalkInSalesTab() {
   const [salesDateTo, setSalesDateTo] = useState('');
   const [regFromCache, setRegFromCache] = useState(false);
   const [refFromCache, setRefFromCache] = useState(false);
+  const [scanMode, setScanMode] = useState(false);
 
   const loadSales = (branch) =>
     api.branch.walkinSales(branch ? `branch_id=${branch}` : '')
@@ -641,6 +643,29 @@ function WalkInSalesTab() {
       if (existing) return prev.map(c => c.id === product.id ? { ...c, qty: c.qty + 1 } : c);
       return [...prev, { ...product, qty: 1 }];
     });
+  };
+
+  const handleBarcodeScan = (result) => {
+    const scannedName = (result.productName || '').toLowerCase().trim();
+    const matched = products.find(p =>
+      (p.name || p.description || '').toLowerCase().trim() === scannedName
+    ) || products.find(p => {
+      const pn = (p.name || p.description || '').toLowerCase();
+      return pn.includes(scannedName) || scannedName.includes(pn);
+    });
+    if (matched) {
+      addToCart(matched);
+    } else if (result.productName) {
+      addToCart({
+        id: `bc-${result.barcode || result.productId || Date.now()}`,
+        name: result.productName,
+        description: result.productName,
+        dp: result.unitPrice || 0,
+        cp: result.unitPrice || 0,
+        price: result.unitPrice || 0,
+        bv: 0,
+      });
+    }
   };
   const updateQty = (id, delta) => setCart(prev => prev.map(c => c.id === id ? { ...c, qty: Math.max(1, c.qty + delta) } : c));
   const removeFromCart = (id) => setCart(prev => prev.filter(c => c.id !== id));
@@ -1108,16 +1133,31 @@ function WalkInSalesTab() {
 
                 {/* Search + price badge */}
                 <div style={{ padding: '12px 16px 0', background: '#fff', flexShrink: 0 }}>
-                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10 }}>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: scanMode ? 6 : 10 }}>
                     <div style={{ position: 'relative', flex: 1 }}>
                       <div style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: '#c41e3a', fontSize: '0.9rem', pointerEvents: 'none' }}>🔍</div>
                       <input type="text" value={productSearch} onChange={e => setProductSearch(e.target.value)} placeholder="Search products…"
                         style={{ width: '100%', padding: '9px 12px 9px 34px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.88rem', outline: 'none', boxSizing: 'border-box' }} />
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => setScanMode(m => !m)}
+                      title="Toggle barcode scanner"
+                      style={{ flexShrink: 0, padding: '7px 13px', borderRadius: 9, border: scanMode ? '2px solid #c41e3a' : '1.5px solid #d1d5db', background: scanMode ? '#fff0f3' : '#f8fafc', color: scanMode ? '#c41e3a' : '#374151', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all .15s' }}
+                    >
+                      🔲 Scan
+                    </button>
                     <span style={{ fontSize: '0.76rem', padding: '6px 12px', borderRadius: 20, fontWeight: 700, whiteSpace: 'nowrap', background: isMember ? '#fff0f3' : '#fffbeb', color: isMember ? '#c41e3a' : '#92400e', border: `1.5px solid ${isMember ? '#fecaca' : '#fcd34d'}` }}>
                       {isMember ? '🏅 DP Price' : '👤 CP Price'}
                     </span>
                   </div>
+                  {scanMode && (
+                    <BarcodeScanner
+                      onResult={handleBarcodeScan}
+                      placeholder="Aim scanner at product barcode…"
+                      style={{ marginBottom: 10 }}
+                    />
+                  )}
 
                   {/* Category filter tabs */}
                   <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 10, scrollbarWidth: 'none' }}>
@@ -4775,6 +4815,25 @@ function BranchStockTab() {
               {/* Product picker */}
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', borderRight: '1px solid #f0e8ea' }}>
                 <div style={{ padding: '14px 16px', borderBottom: '1px solid #f0e8ea', flexShrink: 0 }}>
+                  <BarcodeScanner
+                    autoFocus={false}
+                    placeholder="Scan barcode to add to request…"
+                    style={{ marginBottom: 8 }}
+                    onResult={(result) => {
+                      const scannedName = (result.productName || '').toLowerCase().trim();
+                      const matched = products.find(p =>
+                        (p.name || p.description || '').toLowerCase().trim() === scannedName
+                      ) || products.find(p => {
+                        const pn = (p.name || p.description || '').toLowerCase();
+                        return pn.includes(scannedName) || scannedName.includes(pn);
+                      });
+                      if (matched) {
+                        addToRequestItems(matched);
+                      } else if (result.productName) {
+                        addToRequestItems({ id: `bc-${result.barcode || result.productId || Date.now()}`, name: result.productName, description: result.productName, dp: result.unitPrice || 0, cp: result.unitPrice || 0, price: result.unitPrice || 0 });
+                      }
+                    }}
+                  />
                   <div style={{ position: 'relative' }}>
                     <div style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: '#c41e3a', fontSize: '0.9rem', pointerEvents: 'none' }}>🔍</div>
                     <input type="text" value={productSearch} onChange={e => setProductSearch(e.target.value)} placeholder="Search catalogue products…"
@@ -7790,6 +7849,7 @@ function FieldProgramTab() {
   const [signature, setSignature] = useState('');
   const [catalogue, setCatalogue] = useState([]);
   const [lastSubmitted, setLastSubmitted] = useState(null);
+  const [scanRowIdx, setScanRowIdx] = useState(null);
 
   useEffect(() => {
     Promise.all([
@@ -8015,34 +8075,57 @@ function FieldProgramTab() {
                 <div style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '.12em', color: '#c41e3a', textTransform: 'uppercase', marginBottom: 10 }}>Requested Products *</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {productRows.map((row, idx) => (
-                    <div key={idx} style={{ display: 'grid', gridTemplateColumns: '2fr 0.8fr 0.8fr auto', gap: 8, alignItems: 'end' }}>
-                      <div style={{ position: 'relative' }}>
-                        {idx === 0 && <label style={{ fontSize: '0.73rem', fontWeight: 700, color: '#64748b', display: 'block', marginBottom: 3 }}>Product *</label>}
-                        <input type="text" value={row.product} onChange={e => updateProductRow(idx, 'product', e.target.value)} onFocus={() => focusProductRow(idx)} onBlur={() => blurProductRow(idx)} placeholder="Click to browse or type to search…"
-                          style={{ width: '100%', padding: '8px 11px', border: '1.5px solid #e8d5d8', borderRadius: 8, fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }} />
-                        {row.showSug && row.suggestions.length > 0 && (
-                          <div style={{ position: 'absolute', zIndex: 200, width: '100%', background: '#fff', border: '1.5px solid #fecaca', borderRadius: 9, maxHeight: 170, overflowY: 'auto', boxShadow: '0 6px 20px rgba(196,30,58,.12)', top: '100%', left: 0 }}>
-                            {row.suggestions.map((p, si) => (
-                              <div key={si} onClick={() => selectProductSuggestion(idx, p)} style={{ padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid #fff5f5', fontSize: '0.84rem', display: 'flex', justifyContent: 'space-between' }}>
-                                <span style={{ fontWeight: 600 }}>{p.name||p.description}</span>
-                                <span style={{ color: '#c41e3a', fontSize: '0.78rem', fontWeight: 700 }}>DP: {formatCurrency(p.dp||p.price||0)}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
+                    <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '2fr 0.8fr 0.8fr auto auto', gap: 8, alignItems: 'end' }}>
+                        <div style={{ position: 'relative' }}>
+                          {idx === 0 && <label style={{ fontSize: '0.73rem', fontWeight: 700, color: '#64748b', display: 'block', marginBottom: 3 }}>Product *</label>}
+                          <input type="text" value={row.product} onChange={e => updateProductRow(idx, 'product', e.target.value)} onFocus={() => focusProductRow(idx)} onBlur={() => blurProductRow(idx)} placeholder="Click to browse or type to search…"
+                            style={{ width: '100%', padding: '8px 11px', border: '1.5px solid #e8d5d8', borderRadius: 8, fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }} />
+                          {row.showSug && row.suggestions.length > 0 && (
+                            <div style={{ position: 'absolute', zIndex: 200, width: '100%', background: '#fff', border: '1.5px solid #fecaca', borderRadius: 9, maxHeight: 170, overflowY: 'auto', boxShadow: '0 6px 20px rgba(196,30,58,.12)', top: '100%', left: 0 }}>
+                              {row.suggestions.map((p, si) => (
+                                <div key={si} onClick={() => selectProductSuggestion(idx, p)} style={{ padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid #fff5f5', fontSize: '0.84rem', display: 'flex', justifyContent: 'space-between' }}>
+                                  <span style={{ fontWeight: 600 }}>{p.name||p.description}</span>
+                                  <span style={{ color: '#c41e3a', fontSize: '0.78rem', fontWeight: 700 }}>DP: {formatCurrency(p.dp||p.price||0)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          {idx === 0 && <label style={{ fontSize: '0.73rem', fontWeight: 700, color: '#64748b', display: 'block', marginBottom: 3 }}>Qty *</label>}
+                          <input type="number" value={row.quantity} onChange={e => updateProductRow(idx, 'quantity', e.target.value)} min="1" placeholder="0"
+                            style={{ width: '100%', padding: '8px 11px', border: '1.5px solid #e8d5d8', borderRadius: 8, fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box', textAlign: 'center' }} />
+                        </div>
+                        <div>
+                          {idx === 0 && <label style={{ fontSize: '0.73rem', fontWeight: 700, color: '#64748b', display: 'block', marginBottom: 3 }}>Unit</label>}
+                          <input type="text" value={row.unit} onChange={e => updateProductRow(idx, 'unit', e.target.value)} placeholder="boxes"
+                            style={{ width: '100%', padding: '8px 11px', border: '1.5px solid #e8d5d8', borderRadius: 8, fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }} />
+                        </div>
+                        <button type="button"
+                          onClick={() => setScanRowIdx(scanRowIdx === idx ? null : idx)}
+                          title="Scan barcode for this row"
+                          style={{ padding: '8px 10px', borderRadius: 8, border: scanRowIdx === idx ? '2px solid #c41e3a' : '1.5px solid #d1d5db', background: scanRowIdx === idx ? '#fff0f3' : '#f8fafc', color: scanRowIdx === idx ? '#c41e3a' : '#374151', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem', flexShrink: 0 }}>
+                          🔲
+                        </button>
+                        <button type="button" onClick={() => removeProductRow(idx)} disabled={productRows.length === 1}
+                          style={{ padding: '8px 12px', borderRadius: 8, border: 'none', background: productRows.length===1?'#f1f5f9':'#fef2f2', color: productRows.length===1?'#94a3b8':'#c41e3a', cursor: productRows.length===1?'not-allowed':'pointer', fontWeight: 700, fontSize: '0.85rem' }}>×</button>
                       </div>
-                      <div>
-                        {idx === 0 && <label style={{ fontSize: '0.73rem', fontWeight: 700, color: '#64748b', display: 'block', marginBottom: 3 }}>Qty *</label>}
-                        <input type="number" value={row.quantity} onChange={e => updateProductRow(idx, 'quantity', e.target.value)} min="1" placeholder="0"
-                          style={{ width: '100%', padding: '8px 11px', border: '1.5px solid #e8d5d8', borderRadius: 8, fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box', textAlign: 'center' }} />
-                      </div>
-                      <div>
-                        {idx === 0 && <label style={{ fontSize: '0.73rem', fontWeight: 700, color: '#64748b', display: 'block', marginBottom: 3 }}>Unit</label>}
-                        <input type="text" value={row.unit} onChange={e => updateProductRow(idx, 'unit', e.target.value)} placeholder="boxes"
-                          style={{ width: '100%', padding: '8px 11px', border: '1.5px solid #e8d5d8', borderRadius: 8, fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }} />
-                      </div>
-                      <button type="button" onClick={() => removeProductRow(idx)} disabled={productRows.length === 1}
-                        style={{ padding: '8px 12px', borderRadius: 8, border: 'none', background: productRows.length===1?'#f1f5f9':'#fef2f2', color: productRows.length===1?'#94a3b8':'#c41e3a', cursor: productRows.length===1?'not-allowed':'pointer', fontWeight: 700, fontSize: '0.85rem' }}>×</button>
+                      {scanRowIdx === idx && (
+                        <BarcodeScanner
+                          autoFocus={true}
+                          placeholder="Aim scanner at product barcode…"
+                          style={{ marginLeft: 0 }}
+                          onResult={(result) => {
+                            const rows = [...productRows];
+                            rows[idx].product = result.productName || '';
+                            rows[idx].suggestions = [];
+                            rows[idx].showSug = false;
+                            setProductRows(rows);
+                            setScanRowIdx(null);
+                          }}
+                        />
+                      )}
                     </div>
                   ))}
                 </div>
