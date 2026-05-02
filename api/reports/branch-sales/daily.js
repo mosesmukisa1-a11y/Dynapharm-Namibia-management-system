@@ -214,7 +214,7 @@ export default async function handler(req, res) {
     ).toFixed(2));
     const consultFeeTotal = consultObj.fee_value || 0;
     const branchSales = parseFloat((walkInRxSales - distributorProfit - consultFeeTotal).toFixed(2));
-    const branchSummary = { walkin_rx_sales: walkInRxSales, distributor_profit: distributorProfit, consultation_fees: consultFeeTotal, branch_sales: branchSales };
+    const branchSummary = { walkin_rx_sales: walkInRxSales, distributor_profit: distributorProfit, consultation_fees: consultFeeTotal, branch_sales: branchSales, nm_cp_total: nmCpTotal, nm_dp_total: nmDpTotal };
 
     let stockSnapshot = null;
     try {

@@ -70,9 +70,10 @@ function SalesReviewTab() {
   };
 
   const rows = salesPreviewData?.rows || [];
-  const grandTotal = rows.reduce((s, r) => s + Number(r.total_revenue || 0), 0);
-  const grandTx    = rows.reduce((s, r) => s + Number(r.transactions || 0), 0);
-  const grandWalkIn  = rows.reduce((s, r) => s + Number(r.non_member_total || 0), 0);
+  const grandTotal   = rows.reduce((s, r) => s + Number(r.total_revenue || 0), 0);
+  const grandTx      = rows.reduce((s, r) => s + Number(r.transactions || 0), 0);
+  const grandWalkInDp = rows.reduce((s, r) => s + Number(r.non_member_total || 0), 0);
+  const grandWalkInCp = rows.reduce((s, r) => s + Number(r.non_member_cp_total || 0), 0);
   const grandRx      = rows.reduce((s, r) => s + Number(r.rx_total || 0), 0);
   const grandMember  = rows.reduce((s, r) => s + Number(r.member_total || 0), 0);
   const grandConsult = rows.reduce((s, r) => s + Number(r.consult_total || 0), 0);
@@ -144,10 +145,11 @@ function SalesReviewTab() {
                   <th style={thS}>Branch</th>
                   <th style={thR}>Transactions</th>
                   <th style={thR}>Member Sales</th>
-                  <th style={{ ...thR, background: '#1d6fa4' }}>Walk-in Sales</th>
+                  <th style={{ ...thR, background: '#1d6fa4' }}>Walk-in DP</th>
+                  <th style={{ ...thR, background: '#1e40af' }}>Walk-in CP</th>
                   <th style={{ ...thR, background: '#15803d' }}>Prescription Sales</th>
                   <th style={thR}>Consultation</th>
-                  <th style={{ ...thR, background: '#8b0000' }}>Total Revenue</th>
+                  <th style={{ ...thR, background: '#8b0000' }}>Total Revenue (DP)</th>
                 </tr>
               </thead>
               <tbody>
@@ -157,6 +159,7 @@ function SalesReviewTab() {
                     <td style={tdR}>{Number(r.transactions || 0).toLocaleString()}</td>
                     <td style={tdR}>{fmtN(r.member_total)}</td>
                     <td style={{ ...tdR, color: '#1d6fa4' }}>{fmtN(r.non_member_total)}</td>
+                    <td style={{ ...tdR, color: '#1e40af' }}>{fmtN(r.non_member_cp_total)}</td>
                     <td style={{ ...tdR, color: '#15803d' }}>{fmtN(r.rx_total)}</td>
                     <td style={tdR}>{fmtN(r.consult_total)}</td>
                     <td style={{ ...tdR, color: '#c41e3a', fontWeight: 900, fontSize: '0.95rem' }}>{fmtN(r.total_revenue)}</td>
@@ -166,7 +169,8 @@ function SalesReviewTab() {
                   <td style={{ ...tdS, color: '#fff', fontWeight: 800, background: 'transparent' }}>TOTAL</td>
                   <td style={{ ...tdR, color: '#fff', background: 'transparent' }}>{grandTx.toLocaleString()}</td>
                   <td style={{ ...tdR, color: '#cbd5e1', background: 'transparent' }}>{fmtN(grandMember)}</td>
-                  <td style={{ ...tdR, color: '#93c5fd', background: 'transparent' }}>{fmtN(grandWalkIn)}</td>
+                  <td style={{ ...tdR, color: '#93c5fd', background: 'transparent' }}>{fmtN(grandWalkInDp)}</td>
+                  <td style={{ ...tdR, color: '#bfdbfe', background: 'transparent' }}>{fmtN(grandWalkInCp)}</td>
                   <td style={{ ...tdR, color: '#86efac', background: 'transparent' }}>{fmtN(grandRx)}</td>
                   <td style={{ ...tdR, color: '#cbd5e1', background: 'transparent' }}>{fmtN(grandConsult)}</td>
                   <td style={{ ...tdR, color: '#fbbf24', fontWeight: 900, fontSize: '1rem', background: 'transparent' }}>{fmtN(grandTotal)}</td>
@@ -4589,17 +4593,24 @@ function BranchStockTab() {
           const bs = data.branch_summary || {};
           const totalQty = data.total_qty_sold || 0;
           const totalTx = data.total_transactions || 0;
+          const nmCp = bs.nm_cp_total || 0;
+          const nmDp = bs.nm_dp_total || nm.value || 0;
           const sections = [
             { title: '1. Consultation Fees', tx: c.transactions || 0, qty: c.qty || 0, dp: c.fee_value || c.value || 0, pmBreakdown: c.payment_methods },
             { title: '2. Walk-in Sales (General)', tx: wi.transactions || 0, qty: wi.qty || 0, dp: wi.value || 0, pmBreakdown: wi.payment_methods },
             { title: '3. Member Sales (DP)', tx: mem.transactions || 0, qty: mem.qty || 0, dp: mem.value || 0, pmBreakdown: mem.payment_methods },
-            { title: '4. Non-member Sales', tx: nm.transactions || 0, qty: nm.qty || 0, dp: nm.value || 0, pmBreakdown: nm.payment_methods },
+            { title: '4. Non-member Sales', tx: nm.transactions || 0, qty: nm.qty || 0, dp: nmDp, cp: nmCp, pmBreakdown: nm.payment_methods },
             { title: '5. Online Order Sales', tx: on.transactions || 0, qty: on.qty || 0, dp: on.value || 0, pmBreakdown: on.payment_methods },
             { title: '6. Prescription Dispensing', tx: rx.transactions || 0, qty: rx.qty || 0, dp: rx.value || 0, pmBreakdown: rx.payment_methods, lineItems: rx.line_items },
           ];
-          const sectionRows = sections.map(sec =>
-            `<tr><td style="padding:8px 12px;border-bottom:1px solid #f0e8ea;font-weight:600">${sec.title}</td><td style="padding:8px;border-bottom:1px solid #f0e8ea;text-align:center">${sec.tx}</td><td style="padding:8px;border-bottom:1px solid #f0e8ea;text-align:right">${sec.qty}</td><td style="padding:8px 12px;border-bottom:1px solid #f0e8ea;text-align:right;font-weight:700;color:#166534">${fmtC(sec.dp)}</td></tr>`
-          ).join('');
+          const sectionRows = sections.map(sec => {
+            const hasCP = sec.cp != null;
+            const dpCell = `<td style="padding:8px 12px;border-bottom:1px solid #f0e8ea;text-align:right;font-weight:700;color:#166534">${fmtC(sec.dp)}</td>`;
+            const cpCell = hasCP
+              ? `<td style="padding:8px 12px;border-bottom:1px solid #f0e8ea;text-align:right;font-weight:700;color:#1d4ed8">${fmtC(sec.cp)}</td>`
+              : `<td style="padding:8px 12px;border-bottom:1px solid #f0e8ea;text-align:right;color:#94a3b8">—</td>`;
+            return `<tr><td style="padding:8px 12px;border-bottom:1px solid #f0e8ea;font-weight:600">${sec.title}</td><td style="padding:8px;border-bottom:1px solid #f0e8ea;text-align:center">${sec.tx}</td><td style="padding:8px;border-bottom:1px solid #f0e8ea;text-align:right">${sec.qty}</td>${dpCell}${cpCell}</tr>`;
+          }).join('');
           const detailSections = sections.map(sec => {
             const pmHtml = buildPaymentBreakdownHTML(sec.pmBreakdown);
             const rxHtml = sec.lineItems ? buildRxLineItemsHTML(sec.lineItems) : '';
@@ -4607,10 +4618,10 @@ function BranchStockTab() {
             return `<h4 style="font-size:10px;color:#374151;margin:10px 0 4px;font-weight:700">${sec.title}</h4>${pmHtml}${rxHtml}`;
           }).filter(Boolean).join('');
           printStockDocument(`DP Sales Report — ${period}`, `
-            <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:11px;color:#166534;font-weight:600">All internal values use Distributor Price (DP) only — aggregated server-side from all sale categories</div>
+            <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:11px;color:#166534;font-weight:600">DP = Distributor Price &nbsp;·&nbsp; CP = Consumer Price (shown for Non-member Sales only)</div>
             <h3 style="font-size:12px;color:#c41e3a;margin:16px 0 8px;border-bottom:1px solid #fecaca;padding-bottom:4px">SALES BY CATEGORY</h3>
             <table style="width:100%;border-collapse:collapse;font-size:11px">
-              <thead><tr style="background:#c41e3a;color:#fff"><th style="text-align:left;padding:8px 12px">Category</th><th style="text-align:center;padding:8px">Transactions</th><th style="text-align:right;padding:8px">Qty</th><th style="text-align:right;padding:8px 12px">DP Total</th></tr></thead>
+              <thead><tr style="background:#c41e3a;color:#fff"><th style="text-align:left;padding:8px 12px">Category</th><th style="text-align:center;padding:8px">Transactions</th><th style="text-align:right;padding:8px">Qty</th><th style="text-align:right;padding:8px 12px">DP Total</th><th style="text-align:right;padding:8px 12px;background:#1d4ed8">CP Total</th></tr></thead>
               <tbody>${sectionRows}</tbody>
             </table>
             <h3 style="font-size:12px;color:#c41e3a;margin:20px 0 8px;border-bottom:1px solid #fecaca;padding-bottom:4px">PAYMENT METHOD BREAKDOWN & DISPENSING DETAIL</h3>
@@ -4619,6 +4630,8 @@ function BranchStockTab() {
             <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px">
               <tr style="background:#fdf2f4"><td style="padding:10px 12px;font-weight:800;color:#c41e3a">Total Transactions</td><td style="padding:10px 12px;text-align:right;font-weight:800">${totalTx}</td></tr>
               <tr><td style="padding:8px 12px;font-weight:700">Total Qty Sold</td><td style="padding:8px 12px;text-align:right;font-weight:700">${fmt(totalQty)}</td></tr>
+              <tr style="background:#f0f9ff"><td style="padding:8px 12px;font-weight:700;color:#1d4ed8">Non-member Sales — CP (Gross)</td><td style="padding:8px 12px;text-align:right;font-weight:700;color:#1d4ed8">${fmtC(nmCp)}</td></tr>
+              <tr><td style="padding:8px 12px;font-weight:700;color:#166534">Non-member Sales — DP (Net)</td><td style="padding:8px 12px;text-align:right;font-weight:700;color:#166534">${fmtC(nmDp)}</td></tr>
               <tr style="background:#fdf2f4"><td style="padding:10px 12px;font-weight:800;color:#c41e3a;font-size:12px">Grand Total (DP)</td><td style="padding:10px 12px;text-align:right;font-weight:800;color:#c41e3a;font-size:13px">${fmtC(grandTotal)}</td></tr>
             </table>
             <h3 style="font-size:12px;color:#c41e3a;margin:20px 0 8px;border-bottom:1px solid #fecaca;padding-bottom:4px">BRANCH NET SUMMARY</h3>
@@ -4628,11 +4641,15 @@ function BranchStockTab() {
             </table>
             <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:4px">
               <tr style="background:#f0fdf4">
-                <td style="padding:10px 14px;font-weight:700;color:#166534">Sales (Walk-in + Prescription)</td>
+                <td style="padding:10px 14px;font-weight:700;color:#166534">Sales (Walk-in + Prescription) — CP</td>
                 <td style="padding:10px 14px;text-align:right;font-weight:800;color:#166534;font-size:13px">${fmtC(bs.walkin_rx_sales || 0)}</td>
               </tr>
+              <tr style="background:#f0f9ff">
+                <td style="padding:8px 14px;font-weight:700;color:#1d4ed8">Non-member Sales — DP (excl. distributor margin)</td>
+                <td style="padding:8px 14px;text-align:right;font-weight:700;color:#1d4ed8">${fmtC(nmDp)}</td>
+              </tr>
               <tr>
-                <td style="padding:8px 14px;color:#374151">Less: Distributor Profit</td>
+                <td style="padding:8px 14px;color:#374151">Less: Distributor Profit (CP − DP)</td>
                 <td style="padding:8px 14px;text-align:right;font-weight:700;color:#c41e3a">(${fmtC(bs.distributor_profit || 0)})</td>
               </tr>
               <tr style="background:#fef9f0">
@@ -4644,7 +4661,7 @@ function BranchStockTab() {
                 <td style="padding:14px 14px;text-align:right;font-weight:900;color:#fff;font-size:18px;background:linear-gradient(135deg,#1d4ed8,#1e3a8a)">${fmtC(bs.branch_sales || 0)}</td>
               </tr>
             </table>
-            <div style="font-size:9px;color:#94a3b8;text-align:center;margin-top:6px">Branch Sales = Walk-in + Prescription Sales &minus; Distributor Profit &minus; Consultation Fees</div>`, branchName);
+            <div style="font-size:9px;color:#94a3b8;text-align:center;margin-top:6px">Branch Sales = Walk-in + Prescription Sales (CP) &minus; Distributor Profit &minus; Consultation Fees &nbsp;·&nbsp; DP = Distributor Price &nbsp;·&nbsp; CP = Consumer Price</div>`, branchName);
         };
 
         const printStockFormulaFromData = (data) => {

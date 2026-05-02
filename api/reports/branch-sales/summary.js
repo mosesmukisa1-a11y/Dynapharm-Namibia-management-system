@@ -38,6 +38,9 @@ export default async function handler(req, res) {
          COALESCE(SUM(CASE WHEN activity_type IN ('non_member_sale','walkin_sale')
                            THEN COALESCE(product_total_dp, grand_total)
                            ELSE 0 END), 0)::numeric                      AS non_member_total,
+         COALESCE(SUM(CASE WHEN activity_type IN ('non_member_sale','walkin_sale')
+                           THEN grand_total
+                           ELSE 0 END), 0)::numeric                      AS non_member_cp_total,
          COALESCE(SUM(CASE WHEN activity_type = 'prescription_dispensing'
                            THEN grand_total ELSE 0 END), 0)::numeric     AS rx_total,
          COALESCE(SUM(CASE WHEN activity_type = 'consultation'
@@ -146,6 +149,7 @@ export default async function handler(req, res) {
           days_active:   1,
           member_total:  '0.00',
           non_member_total: '0.00',
+          non_member_cp_total: '0.00',
           rx_total:      parseFloat(s.supplement_rx_total).toFixed(2),
           consult_total: parseFloat(s.supplement_consult_total).toFixed(2),
           walkin_total:  '0.00',
