@@ -99,6 +99,19 @@ function escHtml(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+function calcAge(dob) {
+  if (!dob) return '';
+  try {
+    const birth = new Date(dob);
+    if (isNaN(birth.getTime())) return '';
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const m = today.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+    return age > 0 && age < 130 ? String(age) : '';
+  } catch { return ''; }
+}
+
 /* keyword map: symptom text fragment → RECOMMENDATION_DATABASE key */
 const SYMPTOM_KEYWORD_MAP = [
   { keys: ['fatigue','tired','exhaustion','lethargy'], rec: 'fatigue' },
@@ -407,7 +420,7 @@ function CheckupsSection() {
       rawSymptomStrings,
       medicalHistory: data.medical_history || data.medicalHistory || [],
       gender: data.gender || apt.gender || '',
-      age: data.age || apt.age || '',
+      age: data.age || apt.age || calcAge(data.dob) || '',
       sleepHours: data.sleep_hours || data.sleepHours || '',
       stressLevel: data.stress_level || data.stressLevel || '',
       exerciseFreq: data.exercise_freq || data.exerciseFreq || '',
@@ -624,7 +637,7 @@ function CheckupsSection() {
   <div class="grid3">
     <div class="field"><strong>Full Name:</strong> ${esc(apt.full_name || data.fullName || '')}</div>
     <div class="field"><strong>Gender:</strong> ${esc(data.gender || 'N/A')}</div>
-    <div class="field"><strong>Date of Birth:</strong> ${esc(data.dob || 'N/A')}</div>
+    <div class="field"><strong>Date of Birth:</strong> ${esc(data.dob || 'N/A')}${data.dob ? ` (Age: ${calcAge(data.dob) || 'N/A'})` : ''}</div>
     <div class="field"><strong>Phone:</strong> ${esc(data.phone || apt.phone || 'N/A')}</div>
     <div class="field"><strong>Email:</strong> ${esc(data.email || apt.email || 'N/A')}</div>
     <div class="field"><strong>Branch:</strong> ${esc(data.branch || apt.branch || 'N/A')}</div>
@@ -639,14 +652,14 @@ function CheckupsSection() {
 <h3>Lifestyle &amp; Health Profile</h3>
 <div class="section">
   <div class="grid3">
-    <div class="field"><strong>Primary Reason:</strong> ${esc(data.primaryReason || data.reason || 'N/A')}</div>
-    <div class="field"><strong>Water Intake:</strong> ${esc(data.waterIntake || 'N/A')}</div>
-    <div class="field"><strong>Exercise Frequency:</strong> ${esc(data.exerciseFreq || 'N/A')}</div>
-    <div class="field"><strong>Sleep Hours:</strong> ${esc(data.sleepHours || 'N/A')}</div>
-    <div class="field"><strong>Stress Level:</strong> ${esc(data.stressLevel || 'N/A')}/10</div>
-    <div class="field"><strong>Medications:</strong> ${esc(data.currentMedications || 'None')}</div>
+    <div class="field"><strong>Primary Reason:</strong> ${esc(data.primary_reason || data.primaryReason || data.reason || 'N/A')}</div>
+    <div class="field"><strong>Water Intake:</strong> ${esc(data.water_intake || data.waterIntake || 'N/A')}</div>
+    <div class="field"><strong>Exercise Frequency:</strong> ${esc(data.exercise_freq || data.exerciseFreq || 'N/A')}</div>
+    <div class="field"><strong>Sleep Hours:</strong> ${esc(data.sleep_hours || data.sleepHours || 'N/A')}</div>
+    <div class="field"><strong>Stress Level:</strong> ${esc(data.stress_level || data.stressLevel || 'N/A')}/10</div>
+    <div class="field"><strong>Medications:</strong> ${esc(data.current_medications || data.currentMedications || 'None')}</div>
     <div class="field"><strong>Allergies:</strong> ${esc(data.allergies || 'None')}</div>
-    <div class="field"><strong>Medical History:</strong> ${Array.isArray(data.medicalHistory) ? esc(data.medicalHistory.join(', ')) : esc(data.medicalHistory || 'None')}</div>
+    <div class="field"><strong>Medical History:</strong> ${(() => { const mh = data.medical_history || data.medicalHistory; return Array.isArray(mh) ? esc(mh.join(', ')) : esc(mh || 'None'); })()}</div>
   </div>
 </div>
 
@@ -946,7 +959,7 @@ ${consultantNotes ? `
                 <div style={{ background: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px' }}>
                   <div><strong>Reference:</strong> {apt.id || 'N/A'}</div>
                   <div><strong>Name:</strong> {apt.full_name || data.fullName || ''}</div>
-                  <div><strong>Age:</strong> {data.age || apt.age || 'N/A'}</div>
+                  <div><strong>Age:</strong> {data.age || apt.age || calcAge(data.dob) || 'N/A'}</div>
                   <div><strong>Gender:</strong> {data.gender || ''}</div>
                   <div><strong>Phone:</strong> {data.phone || apt.phone || ''}</div>
                   <div><strong>Date:</strong> {new Date().toLocaleDateString()}</div>
