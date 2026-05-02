@@ -112,13 +112,19 @@ export default async function handler(req, res) {
     const onlineRows = allTxRows.filter(r => r.activity_type === 'online_order');
     const rxRows = allTxRows.filter(r => r.activity_type === 'prescription_dispensing');
 
+    // For non-member sales, grand_total is the customer selling price (DP + distributor margin).
+    // Use product_total_dp (item-level dp × qty) for those rows so all reports show true DP value.
+    const dpValue = (r) => r.activity_type === 'non_member_sale'
+      ? Number(r.product_total_dp || 0)
+      : Number(r.grand_total || 0);
+
     const buildPaymentBreakdown = (rows) => {
       const paymentMethods = {};
       for (const r of paidRows(rows)) {
         const pm = (r.payment_method || 'cash').toLowerCase();
         if (!paymentMethods[pm]) paymentMethods[pm] = { count: 0, value: 0 };
         paymentMethods[pm].count++;
-        paymentMethods[pm].value = parseFloat((paymentMethods[pm].value + Number(r.grand_total || 0)).toFixed(2));
+        paymentMethods[pm].value = parseFloat((paymentMethods[pm].value + dpValue(r)).toFixed(2));
       }
       return paymentMethods;
     };
@@ -128,8 +134,8 @@ export default async function handler(req, res) {
       paid_count: paidRows(rows).length,
       pending_count: pendingRows(rows).length,
       qty: sum(rows, 'total_qty'),
-      value: parseFloat(sum(paidRows(rows), 'grand_total').toFixed(2)),
-      pending_value: parseFloat(sum(pendingRows(rows), 'grand_total').toFixed(2)),
+      value: parseFloat(paidRows(rows).reduce((s, r) => s + dpValue(r), 0).toFixed(2)),
+      pending_value: parseFloat(pendingRows(rows).reduce((s, r) => s + dpValue(r), 0).toFixed(2)),
       status: rows.length === 0 ? 'no_activity'
         : pendingRows(rows).length > 0 && paidRows(rows).length === 0 ? 'unpaid'
         : pendingRows(rows).length > 0 ? 'partial'
@@ -162,22 +168,24 @@ export default async function handler(req, res) {
       pending_fee_value: parseFloat(sum(pendingRows(consultRows), 'consultation_fee').toFixed(2)),
     };
 
+    const sumDp = (rows) => rows.reduce((s, r) => s + dpValue(r), 0);
+
     const grandTotal = parseFloat((
-      sum(paidRows(consultRows), 'grand_total') +
-      sum(paidRows(walkinRows), 'grand_total') +
-      sum(paidRows(memberRows), 'grand_total') +
-      sum(paidRows(nonMemberRows), 'grand_total') +
-      sum(paidRows(onlineRows), 'grand_total') +
-      sum(paidRows(rxRows), 'grand_total')
+      sumDp(paidRows(consultRows)) +
+      sumDp(paidRows(walkinRows)) +
+      sumDp(paidRows(memberRows)) +
+      sumDp(paidRows(nonMemberRows)) +
+      sumDp(paidRows(onlineRows)) +
+      sumDp(paidRows(rxRows))
     ).toFixed(2));
 
     const totalPendingValue = parseFloat((
-      sum(pendingRows(consultRows), 'grand_total') +
-      sum(pendingRows(walkinRows), 'grand_total') +
-      sum(pendingRows(memberRows), 'grand_total') +
-      sum(pendingRows(nonMemberRows), 'grand_total') +
-      sum(pendingRows(onlineRows), 'grand_total') +
-      sum(pendingRows(rxRows), 'grand_total')
+      sumDp(pendingRows(consultRows)) +
+      sumDp(pendingRows(walkinRows)) +
+      sumDp(pendingRows(memberRows)) +
+      sumDp(pendingRows(nonMemberRows)) +
+      sumDp(pendingRows(onlineRows)) +
+      sumDp(pendingRows(rxRows))
     ).toFixed(2));
 
     const pendingCapture = allTxRows.filter(r => r.reporting_status === 'pending').length;

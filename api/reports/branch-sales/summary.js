@@ -20,17 +20,31 @@ export default async function handler(req, res) {
     // ── 1. Main BAT aggregation ──────────────────────────────────────────────
     const batParams = [from, to];
     const batBranchClause = branch ? `AND branch_id = $${batParams.push(branch)}` : '';
+    // For non-member sales, grand_total is the customer selling price (DP + distributor margin).
+    // We use product_total_dp (item-level DP × qty) for those rows to show true DP value,
+    // matching the DP Sales Report and CSI Entry Report.
     const batRows = await getMany(
       `SELECT
          branch_id,
          COUNT(*)::int                                                    AS transactions,
-         COALESCE(SUM(grand_total), 0)::numeric                          AS total_revenue,
+         COALESCE(SUM(
+           CASE WHEN activity_type IN ('non_member_sale','walkin_sale')
+                THEN COALESCE(product_total_dp, grand_total)
+                ELSE grand_total END
+         ), 0)::numeric                                                   AS total_revenue,
          COUNT(DISTINCT service_date)::int                                AS days_active,
-         COALESCE(SUM(CASE WHEN activity_type = 'member_sale'            THEN grand_total ELSE 0 END), 0)::numeric AS member_total,
-         COALESCE(SUM(CASE WHEN activity_type IN ('non_member_sale','walkin_sale') THEN grand_total ELSE 0 END), 0)::numeric AS non_member_total,
-         COALESCE(SUM(CASE WHEN activity_type = 'prescription_dispensing' THEN grand_total ELSE 0 END), 0)::numeric AS rx_total,
-         COALESCE(SUM(CASE WHEN activity_type = 'consultation'           THEN grand_total ELSE 0 END), 0)::numeric AS consult_total,
-         COALESCE(SUM(CASE WHEN activity_type = 'walkin_sale'            THEN grand_total ELSE 0 END), 0)::numeric AS walkin_total
+         COALESCE(SUM(CASE WHEN activity_type = 'member_sale'
+                           THEN grand_total ELSE 0 END), 0)::numeric     AS member_total,
+         COALESCE(SUM(CASE WHEN activity_type IN ('non_member_sale','walkin_sale')
+                           THEN COALESCE(product_total_dp, grand_total)
+                           ELSE 0 END), 0)::numeric                      AS non_member_total,
+         COALESCE(SUM(CASE WHEN activity_type = 'prescription_dispensing'
+                           THEN grand_total ELSE 0 END), 0)::numeric     AS rx_total,
+         COALESCE(SUM(CASE WHEN activity_type = 'consultation'
+                           THEN grand_total ELSE 0 END), 0)::numeric     AS consult_total,
+         COALESCE(SUM(CASE WHEN activity_type = 'walkin_sale'
+                           THEN COALESCE(product_total_dp, grand_total)
+                           ELSE 0 END), 0)::numeric                      AS walkin_total
        FROM branch_activity_transactions
        WHERE service_date >= $1 AND service_date <= $2 ${batBranchClause}
        GROUP BY branch_id

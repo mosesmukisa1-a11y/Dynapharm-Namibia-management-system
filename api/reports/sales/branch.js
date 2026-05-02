@@ -42,14 +42,21 @@ export default async function handler(req, res) {
   let transactions = walkinRows.length;
 
   for (const r of walkinRows) {
-    const amt = Number(r.total || 0);
     const ct = (r.customer_type || '').toLowerCase();
+    // Non-member sales: grand_total is customer price (DP + distributor margin).
+    // Use item-level dp × qty to get the true DP value, matching CSI Entry Report.
+    let amt;
+    const items = Array.isArray(r.items) ? r.items : (r.items ? JSON.parse(r.items) : []);
+    if (ct.includes('non') || (!ct.includes('member') && !ct.includes('online'))) {
+      amt = items.reduce((s, i) => s + Number(i.dpPrice || i.dp || i.unit_price || 0) * Number(i.quantity || i.qty || 1), 0);
+    } else {
+      amt = Number(r.total || 0);
+    }
     walkinSales += amt;
     if (ct.includes('member') && !ct.includes('non')) memberSales += amt;
     else if (ct.includes('online')) onlineSales += amt;
     else nonMemberSales += amt;
 
-    const items = Array.isArray(r.items) ? r.items : (r.items ? JSON.parse(r.items) : []);
     for (const it of items) {
       totalUnits += Number(it.quantity || it.qty || 1);
     }
