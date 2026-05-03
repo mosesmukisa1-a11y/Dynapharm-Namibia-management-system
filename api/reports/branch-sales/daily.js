@@ -29,7 +29,13 @@ export default async function handler(req, res) {
       movParams.push(normBranchId);
     }
 
-    const [txRows, visitRows, rxProductMovements, walkinSalesRows] = await Promise.all([
+    // Supplement params: reports table uses branch name (may be plain or prefixed)
+    const rpParams = [date];
+    const rpBranchClause = normBranchId
+      ? ` AND LOWER(REPLACE(COALESCE(NULLIF(TRIM(r.branch),''),'townshop'),' ','_')) = $${rpParams.push(normBranchId) && rpParams.length}`
+      : '';
+
+    const [txRows, visitRows, rxProductMovements, walkinSalesRows, supplementReports] = await Promise.all([
       getMany(
         `SELECT * FROM branch_activity_transactions WHERE ${conds.join(' AND ')} ORDER BY created_at ASC`,
         params
@@ -47,7 +53,7 @@ export default async function handler(req, res) {
          GROUP BY reference, product_name, batch_no`,
         movParams
       ),
-      // Also read POS walk-in sales from branch_walkin_sales (case-insensitive branch_id match)
+      // POS walk-in sales from branch_walkin_sales (case-insensitive branch_id match)
       getMany(
         `SELECT * FROM branch_walkin_sales
          WHERE sale_date::date = $1${normBranchId ? ' AND LOWER(REPLACE(branch_id, \' \', \'_\')) = $2' : ''}
@@ -55,6 +61,48 @@ export default async function handler(req, res) {
          ORDER BY created_at ASC`,
         normBranchId ? [date, normBranchId] : [date]
       ),
+      // Supplement: Consultant Portal reports not yet captured in BAT
+      // Catches prescriptions/consultations where branch never clicked Dispense
+      getMany(`
+        SELECT
+          r.id                                                                    AS report_id,
+          DATE(r.created_at)::text                                               AS service_date,
+          COALESCE(NULLIF(TRIM(r.branch),''), 'townshop')                        AS branch_id,
+          COALESCE((r.data->>'consultation_fee')::numeric, 0)                    AS consultation_fee,
+          COALESCE(r.data->>'payment_method', 'cash')                            AS payment_method,
+          COALESCE(r.data->>'client_name', r.data->>'patient_name', 'Patient')   AS patient_name,
+          COALESCE((
+            SELECT SUM(
+              COALESCE(
+                CASE WHEN COALESCE((m->>'dp')::numeric, 0) > 0 THEN (m->>'dp')::numeric END,
+                CASE WHEN COALESCE((m->>'dpPrice')::numeric, 0) > 0 THEN (m->>'dpPrice')::numeric END,
+                (SELECT pp.dp FROM product_prices pp
+                 WHERE LOWER(TRIM(pp.description)) = LOWER(TRIM(m->>'name')) LIMIT 1),
+                0
+              ) * COALESCE((m->>'quantity')::numeric, 1)
+            )
+            FROM jsonb_array_elements(COALESCE(r.data->'medicines','[]'::jsonb)) m
+          ), 0)                                                                   AS rx_dp_total,
+          COALESCE((
+            SELECT SUM(COALESCE((m->>'quantity')::numeric, 1))
+            FROM jsonb_array_elements(COALESCE(r.data->'medicines','[]'::jsonb)) m
+          ), 0)                                                                   AS rx_qty,
+          EXISTS (
+            SELECT 1 FROM branch_activity_transactions bat
+            WHERE bat.form_reference_id = r.id AND bat.activity_type = 'prescription_dispensing'
+          )                                                                       AS rx_in_bat,
+          EXISTS (
+            SELECT 1 FROM branch_activity_transactions bat
+            WHERE bat.form_reference_id = r.id AND bat.activity_type = 'consultation'
+          )                                                                       AS consult_in_bat
+        FROM reports r
+        WHERE DATE(r.created_at) = $1
+          ${rpBranchClause}
+          AND (
+            (r.data ? 'medicines' AND jsonb_array_length(COALESCE(r.data->'medicines','[]'::jsonb)) > 0)
+            OR COALESCE((r.data->>'consultation_fee')::numeric, 0) > 0
+          )
+      `, rpParams),
     ]);
 
     // IDs already captured via the old manual-capture flow in branch_activity_transactions
@@ -97,8 +145,52 @@ export default async function handler(req, res) {
         };
       });
 
-    // Merge: activity_transactions + synthetic walkin rows
-    const allTxRows = [...txRows, ...walkinSynthetic];
+    // Supplement: build synthetic BAT rows from reports not yet captured
+    const reportSynthetic = [];
+    for (const rpt of supplementReports) {
+      const rxDp  = parseFloat(Number(rpt.rx_dp_total  || 0).toFixed(2));
+      const rxQty = Number(rpt.rx_qty || 0);
+      const fee   = Number(rpt.consultation_fee || 0);
+      // Prescription dispensing — only if there are medicines and not yet in BAT
+      if (!rpt.rx_in_bat && rxQty > 0) {
+        reportSynthetic.push({
+          id: `rpt-rx-${rpt.report_id}`,
+          branch_id: branchId || rpt.branch_id,
+          activity_type: 'prescription_dispensing',
+          service_date: rpt.service_date,
+          grand_total: rxDp,
+          product_total_dp: rxDp,
+          payment_method: rpt.payment_method || 'cash',
+          payment_status: 'paid',
+          total_qty: rxQty,
+          consultation_fee: 0,
+          client_name: rpt.patient_name || 'Patient',
+          form_reference_id: rpt.report_id,
+          _source: 'reports_supplement',
+        });
+      }
+      // Consultation fee — only if fee > 0 and not yet in BAT
+      if (!rpt.consult_in_bat && fee > 0) {
+        reportSynthetic.push({
+          id: `rpt-c-${rpt.report_id}`,
+          branch_id: branchId || rpt.branch_id,
+          activity_type: 'consultation',
+          service_date: rpt.service_date,
+          grand_total: fee,
+          product_total_dp: 0,
+          payment_method: rpt.payment_method || 'cash',
+          payment_status: 'paid',
+          total_qty: 0,
+          consultation_fee: fee,
+          client_name: rpt.patient_name || 'Patient',
+          form_reference_id: rpt.report_id,
+          _source: 'reports_supplement',
+        });
+      }
+    }
+
+    // Merge: activity_transactions + synthetic walkin rows + reports supplement
+    const allTxRows = [...txRows, ...walkinSynthetic, ...reportSynthetic];
 
     // Group per-product movements by form_reference_id for Rx detail lookup
     const rxProductMap = {};
