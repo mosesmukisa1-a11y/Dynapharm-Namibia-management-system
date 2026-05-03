@@ -1165,105 +1165,192 @@ function DashboardTab() {
         </div>
       )}
 
-      <div className="bg-gradient-to-r from-primary to-primary-dark rounded-2xl p-6 text-white">
-        {/* Hidden file inputs */}
-        <input ref={photoInputRef} type="file" accept="image/*" style={{ display: 'none' }}
-          onChange={e => { if (e.target.files[0]) handlePhotoFile(e.target.files[0]); e.target.value = ''; }} />
-        <input ref={cameraInputRef} type="file" accept="image/*" capture="user" style={{ display: 'none' }}
-          onChange={e => { if (e.target.files[0]) handlePhotoFile(e.target.files[0]); e.target.value = ''; }} />
+      {/* ── Hidden file inputs ── */}
+      <input ref={photoInputRef} type="file" accept="image/*" style={{ display: 'none' }}
+        onChange={e => { if (e.target.files[0]) handlePhotoFile(e.target.files[0]); e.target.value = ''; }} />
+      <input ref={cameraInputRef} type="file" accept="image/*" capture="user" style={{ display: 'none' }}
+        onChange={e => { if (e.target.files[0]) handlePhotoFile(e.target.files[0]); e.target.value = ''; }} />
 
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-4">
-            {/* ── Profile Photo Circle ── */}
-            <div style={{ position: 'relative', flexShrink: 0 }}>
-              <div style={{ width: 72, height: 72, borderRadius: '50%', overflow: 'hidden', border: '3px solid rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.2)', cursor: user ? 'pointer' : 'default', position: 'relative' }}
+      {/* ══════════════════════════════════════════
+          DISTRIBUTOR ID CARD
+      ══════════════════════════════════════════ */}
+      <div style={{
+        background: 'linear-gradient(135deg, #0d0d1a 0%, #1a0a14 45%, #0d0d1a 100%)',
+        borderRadius: 20,
+        overflow: 'hidden',
+        boxShadow: '0 24px 64px rgba(0,0,0,0.45)',
+        position: 'relative',
+        userSelect: 'none',
+      }}>
+        {/* Top accent bar */}
+        <div style={{ height: 5, background: 'linear-gradient(90deg, #8b0000, #c41e3a, #e84057, #c41e3a, #8b0000)' }} />
+
+        {/* Decorative circles */}
+        <div style={{ position: 'absolute', top: -40, right: -40, width: 180, height: 180, borderRadius: '50%', background: 'radial-gradient(circle, rgba(196,30,58,0.18) 0%, transparent 70%)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', bottom: 20, left: -30, width: 130, height: 130, borderRadius: '50%', background: 'radial-gradient(circle, rgba(255,255,255,0.04) 0%, transparent 70%)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', top: '40%', right: '30%', width: 60, height: 60, borderRadius: '50%', background: 'rgba(196,30,58,0.08)', pointerEvents: 'none' }} />
+
+        {/* Card body */}
+        <div style={{ padding: '20px 24px 18px', display: 'flex', alignItems: 'stretch', gap: 20, flexWrap: 'wrap' }}>
+
+          {/* LEFT: Photo column */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, flexShrink: 0, position: 'relative' }}>
+            {/* Outer glow ring */}
+            <div style={{ width: 96, height: 96, borderRadius: '50%', background: 'linear-gradient(135deg,#c41e3a,#8b0000)', padding: 3, position: 'relative', flexShrink: 0 }}>
+              <div style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', background: 'rgba(255,255,255,0.12)', cursor: user ? 'pointer' : 'default', position: 'relative' }}
                 onClick={() => user && setPhotoMenuOpen(o => !o)}>
                 {photoUploading ? (
                   <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <div style={{ width: 24, height: 24, border: '3px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                    <div style={{ width: 28, height: 28, border: '3px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
                   </div>
-                ) : (profile?.photo_url) ? (
+                ) : profile?.photo_url ? (
                   <img src={profile.photo_url} alt={displayName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 ) : (
-                  <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <User size={32} color="white" />
+                  <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg,#1a1a2e,#2d1b2e)', fontSize: '1.8rem', fontWeight: 900, color: '#fff', fontFamily: 'Arial, sans-serif' }}>
+                    {initials}
                   </div>
                 )}
-                {/* Camera overlay badge */}
                 {user && (
-                  <div style={{ position: 'absolute', bottom: 2, right: 2, width: 22, height: 22, borderRadius: '50%', background: '#c41e3a', border: '2px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Camera size={11} color="white" />
+                  <div style={{ position: 'absolute', bottom: 0, right: 0, width: 24, height: 24, borderRadius: '50%', background: '#c41e3a', border: '2px solid #0d0d1a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Camera size={12} color="white" />
                   </div>
                 )}
               </div>
+            </div>
+            {user && <p style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.3)', textAlign: 'center', lineHeight: 1.2 }}>Tap to<br/>update</p>}
 
-              {/* Photo menu dropdown */}
-              {photoMenuOpen && user && (
-                <div style={{ position: 'absolute', top: 80, left: 0, background: '#fff', borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,0.18)', zIndex: 50, minWidth: 200, overflow: 'hidden' }}
-                  onMouseLeave={() => setPhotoMenuOpen(false)}>
-                  <div style={{ padding: '10px 14px', fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', borderBottom: '1px solid #f1f5f9' }}>
-                    Profile Photo
-                  </div>
-                  <button onClick={() => { setPhotoMenuOpen(false); cameraInputRef.current?.click(); }}
-                    style={{ width: '100%', padding: '11px 16px', background: 'none', border: 'none', textAlign: 'left', fontSize: '0.88rem', fontWeight: 600, color: '#1e293b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <Camera size={16} color="#c41e3a" /> Take Photo
-                  </button>
-                  <button onClick={() => { setPhotoMenuOpen(false); photoInputRef.current?.click(); }}
-                    style={{ width: '100%', padding: '11px 16px', background: 'none', border: 'none', textAlign: 'left', fontSize: '0.88rem', fontWeight: 600, color: '#1e293b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, borderTop: '1px solid #f8fafc' }}>
-                    <Upload size={16} color="#1d4ed8" /> Upload from Gallery
-                  </button>
-                  {profile?.photo_url && (
-                    <button onClick={() => { setPhotoMenuOpen(false); setProfile(p => ({ ...p, photo_url: null })); }}
-                      style={{ width: '100%', padding: '11px 16px', background: 'none', border: 'none', textAlign: 'left', fontSize: '0.88rem', fontWeight: 600, color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, borderTop: '1px solid #f8fafc' }}>
-                      🗑 Remove Photo
-                    </button>
-                  )}
+            {/* Photo menu dropdown */}
+            {photoMenuOpen && user && (
+              <div style={{ position: 'absolute', top: 108, left: 0, background: '#fff', borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,0.25)', zIndex: 50, minWidth: 210, overflow: 'hidden' }}
+                onMouseLeave={() => setPhotoMenuOpen(false)}>
+                <div style={{ padding: '10px 14px', fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', borderBottom: '1px solid #f1f5f9', letterSpacing: 1 }}>
+                  Profile Photo
                 </div>
+                <button onClick={() => { setPhotoMenuOpen(false); cameraInputRef.current?.click(); }}
+                  style={{ width: '100%', padding: '11px 16px', background: 'none', border: 'none', textAlign: 'left', fontSize: '0.88rem', fontWeight: 600, color: '#1e293b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <Camera size={16} color="#c41e3a" /> Take Photo
+                </button>
+                <button onClick={() => { setPhotoMenuOpen(false); photoInputRef.current?.click(); }}
+                  style={{ width: '100%', padding: '11px 16px', background: 'none', border: 'none', textAlign: 'left', fontSize: '0.88rem', fontWeight: 600, color: '#1e293b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, borderTop: '1px solid #f8fafc' }}>
+                  <Upload size={16} color="#1d4ed8" /> Upload from Gallery
+                </button>
+                {profile?.photo_url && (
+                  <button onClick={() => { setPhotoMenuOpen(false); setProfile(p => ({ ...p, photo_url: null })); }}
+                    style={{ width: '100%', padding: '11px 16px', background: 'none', border: 'none', textAlign: 'left', fontSize: '0.88rem', fontWeight: 600, color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, borderTop: '1px solid #f8fafc' }}>
+                    🗑 Remove Photo
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* CENTRE: Identity info */}
+          <div style={{ flex: 1, minWidth: 180, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 2 }}>
+            {/* Company branding */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+              <div style={{ width: 3, height: 30, background: 'linear-gradient(180deg,#c41e3a,#8b0000)', borderRadius: 2, flexShrink: 0 }} />
+              <div>
+                <div style={{ fontSize: '0.6rem', color: '#c41e3a', fontWeight: 800, letterSpacing: 2.5, textTransform: 'uppercase' }}>DYNAPHARM</div>
+                <div style={{ fontSize: '0.52rem', color: 'rgba(255,255,255,0.4)', letterSpacing: 1.5, textTransform: 'uppercase' }}>International Namibia</div>
+              </div>
+            </div>
+
+            {/* Name */}
+            <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#ffffff', lineHeight: 1.15, marginBottom: 3, letterSpacing: 0.3 }}>
+              {displayName}
+            </div>
+
+            {/* Position badge */}
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+              <span style={{ background: 'rgba(196,30,58,0.25)', border: '1px solid rgba(196,30,58,0.5)', color: '#f87171', fontSize: '0.68rem', fontWeight: 700, padding: '2px 10px', borderRadius: 20, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+                {position}
+              </span>
+              {branchDisplay && (
+                <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.68rem' }}>
+                  📍 {branchDisplay}
+                </span>
               )}
             </div>
 
-            <div>
-              <h2 className="text-2xl font-bold">{displayName}</h2>
-              <div className="flex items-center gap-3 mt-1">
-                <span className="bg-white/20 px-3 py-0.5 rounded-full text-xs font-semibold">{nbNumber}</span>
-                <span className="bg-white/20 px-3 py-0.5 rounded-full text-xs font-semibold">{position}</span>
+            {/* NB Number — styled like a card number */}
+            <div style={{ marginBottom: 4 }}>
+              <div style={{ fontSize: '0.52rem', color: 'rgba(255,255,255,0.35)', letterSpacing: 2, textTransform: 'uppercase', marginBottom: 4 }}>Distributor NB Number</div>
+              <div style={{
+                fontFamily: '"Courier New", Courier, monospace',
+                fontSize: '1.35rem',
+                fontWeight: 900,
+                color: '#ffffff',
+                letterSpacing: 4,
+                background: 'rgba(255,255,255,0.07)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: 8,
+                padding: '7px 14px',
+                display: 'inline-block',
+                textShadow: '0 0 20px rgba(196,30,58,0.5)',
+              }}>
+                {nbNumber || '—'}
               </div>
-              {user && <p style={{ fontSize: '0.72rem', opacity: 0.6, marginTop: 4 }}>Tap photo to update</p>}
+            </div>
+
+            {/* Joined date */}
+            <div style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.3)', marginTop: 2 }}>
+              Member since {dateJoined}
             </div>
           </div>
-          <div className="flex gap-2 flex-wrap">
-            {profile && (
-              <button onClick={() => printDistributorProfile(profile)}
-                className="flex items-center gap-1.5 px-3 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-xs font-semibold cursor-pointer transition-colors">
-                <Printer size={14} /> Print Profile
-              </button>
-            )}
-            {nbNumber && (
-              <button onClick={() => setQrModalOpen(true)}
-                className="flex items-center gap-1.5 px-3 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-xs font-semibold cursor-pointer transition-colors">
-                <QrCode size={14} /> My ID Card
-              </button>
-            )}
+
+          {/* RIGHT: Status + action buttons */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, flexShrink: 0 }}>
+            {/* Status badge */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(22,163,74,0.15)', border: '1px solid rgba(22,163,74,0.4)', borderRadius: 20, padding: '5px 12px' }}>
+              <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#4ade80', boxShadow: '0 0 6px #4ade80', flexShrink: 0 }} />
+              <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#4ade80', letterSpacing: 1, textTransform: 'uppercase' }}>
+                {(profile?.status || 'Active').toUpperCase()}
+              </span>
+            </div>
+
+            {/* Action buttons */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {nbNumber && (
+                <button onClick={() => setQrModalOpen(true)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 16px', background: 'linear-gradient(135deg,#c41e3a,#8b0000)', color: '#fff', border: 'none', borderRadius: 10, fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 16px rgba(196,30,58,0.4)', whiteSpace: 'nowrap' }}>
+                  <QrCode size={15} /> My ID Card
+                </button>
+              )}
+              {profile && (
+                <button onClick={() => printDistributorProfile(profile)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px', background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.75)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                  <Printer size={13} /> Print Profile
+                </button>
+              )}
+            </div>
           </div>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
-          <div className="bg-white/15 rounded-xl p-4 text-center">
-            <p className="text-white/70 text-xs mb-1">Transactions</p>
-            <p className="text-2xl font-bold">{myOrders.length + branchSales.length}</p>
+
+        {/* Bottom status strip */}
+        <div style={{ background: 'rgba(0,0,0,0.25)', borderTop: '1px solid rgba(255,255,255,0.06)', padding: '10px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#ffffff' }}>{myOrders.length + branchSales.length}</div>
+              <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: 1 }}>Transactions</div>
+            </div>
+            <div style={{ width: 1, background: 'rgba(255,255,255,0.08)', alignSelf: 'stretch' }} />
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#ffffff' }}>{formatCurrency(totalSpent)}</div>
+              <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: 1 }}>Total Spent</div>
+            </div>
+            <div style={{ width: 1, background: 'rgba(255,255,255,0.08)', alignSelf: 'stretch' }} />
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#f59e0b' }}>{totalBV.toFixed(1)}</div>
+              <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: 1 }}>Total BV</div>
+            </div>
           </div>
-          <div className="bg-white/15 rounded-xl p-4 text-center">
-            <p className="text-white/70 text-xs mb-1">Total Spent</p>
-            <p className="text-2xl font-bold">{formatCurrency(totalSpent)}</p>
-          </div>
-          <div className="bg-white/15 rounded-xl p-4 text-center">
-            <p className="text-white/70 text-xs mb-1">Total BV</p>
-            <p className="text-2xl font-bold">{totalBV.toFixed(1)}</p>
-          </div>
-          <div className="bg-white/15 rounded-xl p-4 text-center">
-            <p className="text-white/70 text-xs mb-1">Date Joined</p>
-            <p className="text-lg font-bold">{dateJoined}</p>
+          <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.2)', letterSpacing: 1 }}>
+            DYNAPHARM · HEALTH WEALTH FREEDOM
           </div>
         </div>
+
+        {/* Bottom accent bar */}
+        <div style={{ height: 4, background: 'linear-gradient(90deg, #8b0000, #c41e3a, #e84057, #c41e3a, #8b0000)' }} />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
