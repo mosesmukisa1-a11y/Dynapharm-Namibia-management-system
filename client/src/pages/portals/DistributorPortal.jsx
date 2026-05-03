@@ -881,6 +881,7 @@ function DashboardTab() {
   const position = profile?.position || 'Distributor';
   const dateJoined = profile?.date_joined || (user?.created_at ? formatDate(user.created_at) : 'N/A');
   const initials = displayName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  const branchDisplay = profile?.location || profile?.branch || user?.branch || '';
 
   const generateQRCard = async () => {
     if (!qrCanvasRef.current || !nbNumber) return;
@@ -957,10 +958,15 @@ function DashboardTab() {
       ctx.fillStyle = '#888888';
       ctx.font = '11px monospace';
       ctx.fillText(nbNumber, W / 2, nameBottom + 20);
+      if (branchDisplay) {
+        ctx.fillStyle = '#aaaaaa';
+        ctx.font = '10px Arial, sans-serif';
+        ctx.fillText(`📍 ${branchDisplay}`, W / 2, nameBottom + 36);
+      }
 
       const refUrl = `${window.location.origin}/ref/${nbNumber}`;
       const qrDataUrl = await QRCodeLib.toDataURL(refUrl, {
-        width: 210,
+        width: 200,
         margin: 1,
         color: { dark: '#0b1020', light: '#ffffff' },
         errorCorrectionLevel: 'H',
@@ -968,9 +974,9 @@ function DashboardTab() {
       const qrImg = new Image();
       await new Promise(resolve => { qrImg.onload = resolve; qrImg.src = qrDataUrl; });
 
-      const qrSize = 210;
+      const qrSize = 200;
       const qrX = W / 2 - qrSize / 2;
-      const qrY = nameBottom + 32;
+      const qrY = nameBottom + (branchDisplay ? 52 : 36);
 
       ctx.fillStyle = '#ffffff';
       ctx.beginPath();
@@ -1010,7 +1016,7 @@ function DashboardTab() {
       try {
         if (qrCanvasRef.current) {
           qrCanvasRef.current.toBlob(async (blob) => {
-            const file = new File([blob], `dynapharm-qr-${nbNumber}.png`, { type: 'image/png' });
+            const file = new File([blob], `dynapharm-id-${nbNumber}.png`, { type: 'image/png' });
             await navigator.share({ title: `Shop with ${displayName} — Dynapharm`, text: `${displayName} invites you to Dynapharm. Scan or click to shop, book a check-up, or join!`, url: refUrl, files: navigator.canShare?.({ files: [file] }) ? [file] : undefined });
           });
         } else {
@@ -1021,6 +1027,84 @@ function DashboardTab() {
       await navigator.clipboard.writeText(refUrl).catch(() => {});
       alert('Referral link copied to clipboard!');
     }
+  };
+
+  const shareViaWhatsApp = () => {
+    const refUrl = `${window.location.origin}/ref/${nbNumber}`;
+    const branchPart = branchDisplay ? ` at Dynapharm ${branchDisplay}` : ' at Dynapharm';
+    const msg = encodeURIComponent(
+      `Hi! 👋 I'm *${displayName}*, a Dynapharm distributor (NB: *${nbNumber}*)${branchPart}.\n\n` +
+      `Shop quality health products, book a full body check-up, or join the Dynapharm family through my link:\n\n` +
+      `🔗 ${refUrl}\n\n` +
+      `_Dynapharm International Namibia — Health, Wealth & Freedom_ 💊`
+    );
+    window.open(`https://wa.me/?text=${msg}`, '_blank');
+  };
+
+  const printIDCard = async () => {
+    if (!nbNumber) return;
+    const refUrl = `${window.location.origin}/ref/${nbNumber}`;
+    let qrDataUrl = '';
+    try {
+      qrDataUrl = await QRCodeLib.toDataURL(refUrl, { width: 200, margin: 2, color: { dark: '#1a0a0a', light: '#ffffff' }, errorCorrectionLevel: 'H' });
+    } catch (_) {}
+    const photoHtml = profile?.photo_url
+      ? `<img src="${profile.photo_url}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid #c41e3a;" />`
+      : `<div style="width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,#c41e3a,#8b0000);display:flex;align-items:center;justify-content:center;color:white;font-size:28px;font-weight:bold;border:3px solid #c41e3a;margin:auto;">${initials}</div>`;
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Distributor ID – ${nbNumber}</title>
+<style>
+  @page { size: 85.6mm 54mm; margin: 0; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: Arial, sans-serif; background: white; width: 85.6mm; height: 54mm; }
+  .card { width: 85.6mm; height: 54mm; border: 2px solid #c41e3a; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; }
+  .top { background: linear-gradient(135deg,#c41e3a,#8b0000); color: white; padding: 5px 8px 4px; display: flex; align-items: center; gap: 6px; }
+  .logo-text { font-size: 9px; font-weight: bold; line-height: 1.2; }
+  .logo-sub { font-size: 6px; opacity: 0.8; }
+  .id-label { margin-left: auto; font-size: 7px; background: rgba(255,255,255,0.2); padding: 2px 5px; border-radius: 3px; }
+  .body { display: flex; flex: 1; padding: 5px 8px; gap: 8px; align-items: center; }
+  .photo-col { flex-shrink: 0; display: flex; flex-direction: column; align-items: center; }
+  .photo-col img, .photo-col div { width: 52px; height: 52px; border-radius: 50%; object-fit: cover; border: 2px solid #c41e3a; }
+  .info { flex: 1; min-width: 0; }
+  .name { font-size: 10px; font-weight: bold; color: #1a1a1a; line-height: 1.2; margin-bottom: 2px; }
+  .pos { font-size: 7px; color: #c41e3a; font-weight: bold; margin-bottom: 3px; }
+  .nb { font-size: 11px; font-weight: bold; color: #1a1a1a; font-family: monospace; letter-spacing: 1px; background: #fff5f5; border: 1px solid #fcc; border-radius: 3px; padding: 1px 4px; display: inline-block; margin-bottom: 3px; }
+  .branch { font-size: 7px; color: #555; margin-bottom: 2px; }
+  .joined { font-size: 6.5px; color: #888; }
+  .qr-col { flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 1px; }
+  .qr-col img { width: 60px; height: 60px; }
+  .qr-label { font-size: 5.5px; color: #999; text-align: center; }
+  .footer { background: #f8f8f8; border-top: 1px solid #f0d0d0; padding: 2px 8px; text-align: center; font-size: 5.5px; color: #999; }
+  @media print { body { margin: 0; } }
+</style>
+</head><body>
+<div class="card">
+  <div class="top">
+    <div>
+      <div class="logo-text">DYNAPHARM</div>
+      <div class="logo-sub">INTERNATIONAL NAMIBIA</div>
+    </div>
+    <div class="id-label">DISTRIBUTOR ID</div>
+  </div>
+  <div class="body">
+    <div class="photo-col">${photoHtml}</div>
+    <div class="info">
+      <div class="name">${displayName}</div>
+      <div class="pos">${position}</div>
+      <div class="nb">${nbNumber}</div>
+      ${branchDisplay ? `<div class="branch">📍 ${branchDisplay}</div>` : ''}
+      <div class="joined">Joined: ${dateJoined}</div>
+    </div>
+    <div class="qr-col">
+      ${qrDataUrl ? `<img src="${qrDataUrl}" alt="QR" />` : ''}
+      <div class="qr-label">Scan to<br/>shop/refer</div>
+    </div>
+  </div>
+  <div class="footer">dynapharm.com.na &nbsp;·&nbsp; Health, Wealth &amp; Freedom</div>
+</div>
+<script>window.onload = function(){ window.print(); }<\/script>
+</body></html>`;
+    const w = window.open('', '_blank', 'width=400,height=300');
+    if (w) { w.document.write(html); w.document.close(); }
   };
 
   return (
@@ -1146,7 +1230,7 @@ function DashboardTab() {
             {nbNumber && (
               <button onClick={() => setQrModalOpen(true)}
                 className="flex items-center gap-1.5 px-3 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-xs font-semibold cursor-pointer transition-colors">
-                <QrCode size={14} /> My QR Card
+                <QrCode size={14} /> My ID Card
               </button>
             )}
           </div>
@@ -1356,8 +1440,9 @@ function DashboardTab() {
         </CardBody>
       </Card>
 
-      <Modal open={qrModalOpen} onClose={() => setQrModalOpen(false)} title="My Dynapharm QR Card" size="md">
+      <Modal open={qrModalOpen} onClose={() => setQrModalOpen(false)} title="My Distributor ID Card" size="md">
         <div className="flex flex-col items-center gap-4 py-2">
+          {/* Digital card preview */}
           <div style={{ position: 'relative', width: '100%', display: 'flex', justifyContent: 'center' }}>
             <canvas
               ref={qrCanvasRef}
@@ -1366,30 +1451,63 @@ function DashboardTab() {
             {qrGenerating && (
               <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.8)', borderRadius: 16 }}>
                 <LoadingSpinner />
-                <p className="text-sm text-gray-500 mt-2">Generating your QR card…</p>
+                <p className="text-sm text-gray-500 mt-2">Generating your ID card…</p>
               </div>
             )}
           </div>
+
+          {/* ID summary strip */}
+          <div style={{ width: '100%', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+            <div>
+              <p style={{ fontWeight: 700, fontSize: '0.9rem', color: '#1e293b' }}>{displayName}</p>
+              <p style={{ fontSize: '0.75rem', color: '#c41e3a', fontWeight: 600 }}>{position}</p>
+              {branchDisplay && <p style={{ fontSize: '0.72rem', color: '#64748b' }}>📍 {branchDisplay}</p>}
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <p style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '1.05rem', color: '#1e293b', letterSpacing: 2 }}>{nbNumber}</p>
+              <p style={{ fontSize: '0.68rem', color: '#94a3b8' }}>Distributor NB</p>
+            </div>
+          </div>
+
           <p className="text-xs text-gray-500 text-center max-w-xs">
-            Share this card with clients — when they scan it, you'll be their referral for all purchases, check-ups and new registrations.
+            Share with anyone — scanning the QR code links them directly to you as their Dynapharm referral.
           </p>
-          <div className="flex gap-3 w-full justify-center flex-wrap">
+
+          {/* Action buttons */}
+          <div className="flex gap-2 w-full justify-center flex-wrap">
             <button
               onClick={downloadQRCard}
-              className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-xl text-sm font-semibold hover:bg-primary/90 transition-colors shadow"
+              className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-xl text-sm font-semibold hover:bg-primary/90 transition-colors shadow cursor-pointer"
             >
-              <Download size={15} /> Download PNG
+              <Download size={14} /> Save Image
+            </button>
+            <button
+              onClick={shareViaWhatsApp}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px', background: '#25D366', color: 'white', border: 'none', borderRadius: 12, fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer' }}
+            >
+              📱 Share via WhatsApp
+            </button>
+            <button
+              onClick={printIDCard}
+              className="flex items-center gap-2 px-4 py-2.5 bg-gray-100 text-gray-800 rounded-xl text-sm font-semibold hover:bg-gray-200 transition-colors cursor-pointer"
+            >
+              <Printer size={14} /> Print ID Card
             </button>
             <button
               onClick={shareQRCard}
-              className="flex items-center gap-2 px-5 py-2.5 bg-gray-100 text-gray-800 rounded-xl text-sm font-semibold hover:bg-gray-200 transition-colors"
+              className="flex items-center gap-2 px-4 py-2.5 bg-gray-100 text-gray-800 rounded-xl text-sm font-semibold hover:bg-gray-200 transition-colors cursor-pointer"
             >
-              <Share2 size={15} /> Share Link
+              <Share2 size={14} /> More…
             </button>
           </div>
+
+          {/* Referral link */}
           <div className="w-full bg-gray-50 rounded-xl px-4 py-2.5 text-center">
-            <p className="text-xs text-gray-400 mb-1">Your referral link</p>
-            <p className="text-xs text-primary font-mono break-all select-all">{`${window.location.origin}/ref/${nbNumber}`}</p>
+            <p className="text-xs text-gray-400 mb-1">Your referral link (tap to copy)</p>
+            <p
+              className="text-xs text-primary font-mono break-all select-all cursor-pointer"
+              onClick={() => navigator.clipboard.writeText(`${window.location.origin}/ref/${nbNumber}`).then(() => alert('Link copied!')).catch(() => {})}
+            >{`${window.location.origin}/ref/${nbNumber}`}</p>
           </div>
         </div>
       </Modal>
