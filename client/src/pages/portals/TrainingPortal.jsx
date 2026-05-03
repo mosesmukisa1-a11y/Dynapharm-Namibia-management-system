@@ -614,6 +614,10 @@ const MEETING_PLATFORMS = [
   { id: 'skype',      label: 'Skype',             icon: '💬', color: '#00AFF0', bg: '#eff6ff' },
   { id: 'goto',       label: 'GoTo Meeting',      icon: '🖥️', color: '#f97316', bg: '#fff7ed' },
   { id: 'whatsapp',   label: 'WhatsApp Video',    icon: '📱', color: '#25D366', bg: '#f0fdf4' },
+  { id: 'youtube',    label: 'YouTube Live',       icon: '▶️', color: '#FF0000', bg: '#fff5f5' },
+  { id: 'facebook',   label: 'Facebook Live',      icon: '📘', color: '#1877F2', bg: '#eff6ff' },
+  { id: 'telegram',   label: 'Telegram',           icon: '✈️', color: '#2AABEE', bg: '#f0f9ff' },
+  { id: 'campaign',   label: 'Campaign Event',     icon: '🎯', color: '#c41e3a', bg: '#fff0f3' },
   { id: 'in_person',  label: 'In-Person',         icon: '📍', color: '#64748b', bg: '#f8fafc' },
 ];
 
@@ -767,7 +771,7 @@ function ScheduleTab({ isTrainer }) {
   const handleSave = async (e) => {
     e.preventDefault();
     if (!form.title || !form.date) { setMessage('Error: Title and date are required'); return; }
-    if (form.platform !== 'in_person' && !form.meeting_link) {
+    if (!['in_person', 'campaign'].includes(form.platform) && !form.meeting_link) {
       setMessage('Error: Please enter the meeting link for online sessions'); return;
     }
     setSaving(true);
@@ -801,7 +805,7 @@ function ScheduleTab({ isTrainer }) {
   };
 
   const selectedPlatform = getPlatform(form.platform);
-  const isOnlinePlatform = form.platform !== 'in_person';
+  const isOnlinePlatform = !['in_person', 'campaign'].includes(form.platform);
 
   let visible = events;
   if (!showPast) visible = visible.filter(e => !getIsPast(e));

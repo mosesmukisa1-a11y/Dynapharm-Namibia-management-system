@@ -3910,14 +3910,18 @@ function TrainingTab() {
 
       {!loading && tab === 'schedule' && (() => {
         const DIST_PLATFORMS = [
-          { id: 'zoom',       label: 'Zoom',         icon: '🎥', color: '#2D8CFF', bg: '#eff6ff' },
-          { id: 'teams',      label: 'Teams',        icon: '💼', color: '#5b5ea6', bg: '#f5f3ff' },
-          { id: 'meet',       label: 'Google Meet',  icon: '📹', color: '#0F9D58', bg: '#f0fdf4' },
-          { id: 'webex',      label: 'Webex',        icon: '🌐', color: '#00A0D1', bg: '#ecfeff' },
-          { id: 'skype',      label: 'Skype',        icon: '💬', color: '#00AFF0', bg: '#eff6ff' },
-          { id: 'goto',       label: 'GoTo Meeting', icon: '🖥️', color: '#f97316', bg: '#fff7ed' },
-          { id: 'whatsapp',   label: 'WhatsApp',     icon: '📱', color: '#25D366', bg: '#f0fdf4' },
-          { id: 'in_person',  label: 'In-Person',    icon: '📍', color: '#64748b', bg: '#f8fafc' },
+          { id: 'zoom',       label: 'Zoom',           icon: '🎥', color: '#2D8CFF', bg: '#eff6ff' },
+          { id: 'teams',      label: 'Teams',          icon: '💼', color: '#5b5ea6', bg: '#f5f3ff' },
+          { id: 'meet',       label: 'Google Meet',    icon: '📹', color: '#0F9D58', bg: '#f0fdf4' },
+          { id: 'webex',      label: 'Webex',          icon: '🌐', color: '#00A0D1', bg: '#ecfeff' },
+          { id: 'skype',      label: 'Skype',          icon: '💬', color: '#00AFF0', bg: '#eff6ff' },
+          { id: 'goto',       label: 'GoTo Meeting',   icon: '🖥️', color: '#f97316', bg: '#fff7ed' },
+          { id: 'whatsapp',   label: 'WhatsApp',       icon: '📱', color: '#25D366', bg: '#f0fdf4' },
+          { id: 'youtube',    label: 'YouTube Live',   icon: '▶️', color: '#FF0000', bg: '#fff5f5' },
+          { id: 'facebook',   label: 'Facebook Live',  icon: '📘', color: '#1877F2', bg: '#eff6ff' },
+          { id: 'telegram',   label: 'Telegram',       icon: '✈️', color: '#2AABEE', bg: '#f0f9ff' },
+          { id: 'campaign',   label: 'Campaign Event', icon: '🎯', color: '#c41e3a', bg: '#fff0f3' },
+          { id: 'in_person',  label: 'In-Person',      icon: '📍', color: '#64748b', bg: '#f8fafc' },
         ];
         const distGetPlatform = id => DIST_PLATFORMS.find(p => p.id === id) || DIST_PLATFORMS[DIST_PLATFORMS.length - 1];
         const DIST_AUDIENCES = ['all', 'distributors', 'all_staff'];
