@@ -290,8 +290,48 @@ export default async function handler(req, res) {
         return res.status(404).json({ success: false, error: 'Not found' });
       }
 
-      const batch = await upsertBatch({ ...existing, ...body });
-      return res.status(200).json({ success: true, batch });
+      // Use a direct UPDATE to avoid ON CONFLICT (barcode) clashing with the
+      // existing primary-key when the barcode is being assigned for the first time.
+      const merged = normalizeInboundPayload({ ...existing, ...body });
+      await query(
+        `UPDATE stock_batches
+         SET barcode              = $2,
+             carton_no            = $3,
+             description          = $4,
+             batch_no             = $5,
+             expiry_date          = $6,
+             quantity             = $7,
+             remaining_quantity   = $8,
+             dispatched_quantity  = $9,
+             location             = $10,
+             status               = $11,
+             product_id           = $12,
+             warehouse_id         = $13,
+             unit_price           = $14,
+             notes                = $15,
+             updated_at           = NOW()
+         WHERE id = $1`,
+        [
+          existing.id,
+          merged.barcode,
+          merged.cartonNo  || existing.carton_no  || null,
+          merged.description || existing.description || null,
+          merged.batchNo   || existing.batch_no   || null,
+          toDate(merged.expiryDate || existing.expiry_date),
+          Number(merged.quantity)            >= 0 ? Number(merged.quantity)            : Number(existing.quantity            || 0),
+          Number(merged.remainingQuantity)   >= 0 ? Number(merged.remainingQuantity)   : Number(existing.remaining_quantity  || 0),
+          Number(merged.dispatchedQuantity)  >= 0 ? Number(merged.dispatchedQuantity)  : Number(existing.dispatched_quantity || 0),
+          merged.location  || existing.location  || null,
+          merged.status    || existing.status    || 'available',
+          merged.productId || existing.product_id   || null,
+          merged.warehouseId || existing.warehouse_id || null,
+          Number(merged.unitPrice ?? existing.unit_price ?? 0),
+          merged.notes ?? existing.notes ?? null,
+        ]
+      );
+
+      const updated = await getOne('SELECT * FROM stock_batches WHERE id = $1', [existing.id]);
+      return res.status(200).json({ success: true, batch: normalizeBatch(updated) });
     }
 
     if (req.method === 'DELETE') {

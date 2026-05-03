@@ -83,7 +83,7 @@ export default function BarcodeScanner({
     const gap = now - lastKeyAt.current;
     lastKeyAt.current = now;
 
-    if (gap < 50) {
+    if (gap < 80) {
       clearTimeout(scanTimer.current);
       scanTimer.current = setTimeout(() => {
         setCode(prev => { lookup(prev); return prev; });

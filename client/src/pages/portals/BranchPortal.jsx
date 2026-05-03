@@ -686,14 +686,19 @@ function WalkInSalesTab() {
     if (matched) {
       addToCart(matched);
     } else if (result.productName) {
+      // Fallback: product not found by name in local price list.
+      // Use unitPrice (DP) for dp; try to derive cp from any partial name match.
+      const priceFallback = products.find(p =>
+        (p.name || p.description || '').toLowerCase().includes(scannedName.slice(0, 8))
+      );
       addToCart({
         id: `bc-${result.barcode || result.productId || Date.now()}`,
         name: result.productName,
         description: result.productName,
         dp: result.unitPrice || 0,
-        cp: result.unitPrice || 0,
+        cp: priceFallback?.cp || result.unitPrice || 0,
         price: result.unitPrice || 0,
-        bv: 0,
+        bv: priceFallback?.bv || 0,
       });
     }
   };
@@ -1184,6 +1189,7 @@ function WalkInSalesTab() {
                   {scanMode && (
                     <BarcodeScanner
                       onResult={handleBarcodeScan}
+                      onError={(msg) => setError(msg)}
                       placeholder="Aim scanner at product barcode…"
                       style={{ marginBottom: 10 }}
                     />
@@ -4873,7 +4879,10 @@ function BranchStockTab() {
                       if (matched) {
                         addToRequestItems(matched);
                       } else if (result.productName) {
-                        addToRequestItems({ id: `bc-${result.barcode || result.productId || Date.now()}`, name: result.productName, description: result.productName, dp: result.unitPrice || 0, cp: result.unitPrice || 0, price: result.unitPrice || 0 });
+                        const priceFallback = products.find(p =>
+                          (p.name || p.description || '').toLowerCase().includes(scannedName.slice(0, 8))
+                        );
+                        addToRequestItems({ id: `bc-${result.barcode || result.productId || Date.now()}`, name: result.productName, description: result.productName, dp: result.unitPrice || 0, cp: priceFallback?.cp || result.unitPrice || 0, price: result.unitPrice || 0, bv: priceFallback?.bv || 0 });
                       }
                     }}
                   />
