@@ -67,6 +67,7 @@ export const api = {
     },
     create: (data) => api.post('/orders', data),
     update: (id, data) => api.put('/orders', { ...data, id }),
+    delete: (id) => api.delete(`/orders?id=${encodeURIComponent(id)}`),
   },
 
   distributors: {
@@ -84,6 +85,7 @@ export const api = {
     byReferral: (nb) => api.get(`/appointments?referral_nb=${encodeURIComponent(nb)}&limit=500`),
     create: (data) => api.post('/appointments', data),
     update: (id, data) => api.put('/appointments', { ...data, id }),
+    delete: (id) => api.delete(`/appointments?id=${encodeURIComponent(id)}`),
   },
 
   clients: {

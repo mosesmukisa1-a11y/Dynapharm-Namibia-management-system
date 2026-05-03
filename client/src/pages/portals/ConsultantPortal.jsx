@@ -376,8 +376,24 @@ function CheckupsSection() {
   const loadCheckups = useCallback(() => {
     setLoading(true);
     const branchParam = consultantBranch ? `&branch=${encodeURIComponent(consultantBranch)}` : '';
+    const todayStr = new Date().toISOString().slice(0, 10);
     api.appointments.list(`type=Check${branchParam}`)
-      .then(data => setAppointments(Array.isArray(data) ? data : data.appointments || []))
+      .then(async data => {
+        const apts = Array.isArray(data) ? data : data.appointments || [];
+        const toMark = apts.filter(a => {
+          const s = (a.status || '').toLowerCase();
+          return a.date < todayStr && ['pending', 'scheduled'].includes(s);
+        });
+        if (toMark.length > 0) {
+          await Promise.all(toMark.map(a =>
+            api.appointments.update(a.id, { status: 'no_show' }).catch(() => {})
+          ));
+          const refreshed = await api.appointments.list(`type=Check${branchParam}`);
+          setAppointments(Array.isArray(refreshed) ? refreshed : refreshed.appointments || []);
+        } else {
+          setAppointments(apts);
+        }
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [consultantBranch]);
@@ -812,14 +828,19 @@ ${consultantNotes ? `
   const getStatusColor = (status) => {
     const s = (status || '').toLowerCase();
     if (s === 'completed') return '#22c55e';
+    if (s === 'no_show') return '#f97316';
     if (s === 'walk-in') return '#f59e0b';
     if (s === 'checked_in' || s === 'in_progress') return '#8b5cf6';
     return '#3b82f6';
   };
 
-  const upcoming = appointments.filter(a => (a.status || '').toLowerCase() !== 'completed' && (a.status || '').toLowerCase() !== 'cancelled');
+  const upcoming = appointments.filter(a => {
+    const s = (a.status || '').toLowerCase();
+    return !['completed', 'cancelled', 'no_show'].includes(s);
+  });
   const completed = appointments.filter(a => (a.status || '').toLowerCase() === 'completed');
-  const filtered = filter === 'completed' ? completed : upcoming;
+  const noShows = appointments.filter(a => (a.status || '').toLowerCase() === 'no_show');
+  const filtered = filter === 'completed' ? completed : filter === 'no_show' ? noShows : upcoming;
 
   const parseData = (apt) => {
     try {
@@ -836,15 +857,19 @@ ${consultantNotes ? `
         </div>
         <button onClick={loadCheckups} style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '8px 16px', fontSize: '0.85rem', cursor: 'pointer' }}>Refresh</button>
       </div>
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '18px' }}>
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '18px', flexWrap: 'wrap' }}>
         <button
           onClick={() => setFilter('upcoming')}
           style={{ padding: '8px 20px', borderRadius: '20px', fontSize: '0.85rem', fontWeight: 600, border: 'none', cursor: 'pointer', background: filter === 'upcoming' ? '#c41e3a' : '#f1f5f9', color: filter === 'upcoming' ? '#fff' : '#64748b', transition: 'all 0.2s' }}
-        >Upcoming</button>
+        >Upcoming ({upcoming.length})</button>
         <button
           onClick={() => setFilter('completed')}
           style={{ padding: '8px 20px', borderRadius: '20px', fontSize: '0.85rem', fontWeight: 600, border: 'none', cursor: 'pointer', background: filter === 'completed' ? '#c41e3a' : '#f1f5f9', color: filter === 'completed' ? '#fff' : '#64748b', transition: 'all 0.2s' }}
-        >Completed</button>
+        >Completed ({completed.length})</button>
+        <button
+          onClick={() => setFilter('no_show')}
+          style={{ padding: '8px 20px', borderRadius: '20px', fontSize: '0.85rem', fontWeight: 600, border: filter === 'no_show' ? 'none' : '1px solid #fed7aa', cursor: 'pointer', background: filter === 'no_show' ? '#f97316' : '#fff7ed', color: filter === 'no_show' ? '#fff' : '#c2410c', transition: 'all 0.2s' }}
+        >No Show ({noShows.length})</button>
       </div>
 
       {loading ? (
@@ -881,13 +906,20 @@ ${consultantNotes ? `
                     <span style={{ display: 'inline-block', marginTop: '4px', padding: '3px 10px', background: `${statusColor}20`, color: statusColor, borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, textTransform: 'capitalize' }}>{statusLabel}</span>
                   </div>
                 </div>
-                {sl !== 'completed' && sl !== 'cancelled' && (
+                {sl === 'no_show' && (
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap', borderTop: '1px solid #f3f4f6', paddingTop: '10px' }}>
+                    <button onClick={() => viewDetail(apt)} style={{ padding: '6px 14px', fontSize: '0.85rem', background: '#6b7280', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>View Details</button>
+                    <button onClick={() => updateStatus(apt, 'pending')} style={{ padding: '6px 14px', fontSize: '0.85rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Restore to Pending</button>
+                  </div>
+                )}
+                {sl !== 'completed' && sl !== 'cancelled' && sl !== 'no_show' && (
                   <div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap', borderTop: '1px solid #f3f4f6', paddingTop: '10px' }}>
                     <button onClick={() => viewDetail(apt)} style={{ padding: '6px 14px', fontSize: '0.85rem', background: '#2563eb', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>View Details</button>
                     <button onClick={() => openReportModal(apt)} style={{ padding: '6px 14px', fontSize: '0.85rem', background: '#c41e3a', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Create Report</button>
                     {(sl === 'pending' || sl === 'walk-in') && <button onClick={() => updateStatus(apt, 'checked_in')} style={{ padding: '6px 14px', fontSize: '0.85rem', background: '#8b5cf6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Check In</button>}
                     {sl === 'checked_in' && <button onClick={() => updateStatus(apt, 'in_progress')} style={{ padding: '6px 14px', fontSize: '0.85rem', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Start Checkup</button>}
                     <button onClick={() => updateStatus(apt, 'completed')} style={{ padding: '6px 14px', fontSize: '0.85rem', background: '#22c55e', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Mark Complete</button>
+                    <button onClick={() => updateStatus(apt, 'no_show')} style={{ padding: '6px 14px', fontSize: '0.85rem', background: '#f97316', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Mark No Show</button>
                   </div>
                 )}
                 {sl === 'completed' && (

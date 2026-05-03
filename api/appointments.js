@@ -208,7 +208,7 @@ export default async function handler(req, res) {
         return res.status(403).json({ error: 'Access denied to this appointment' });
       }
 
-      const allowedStatusValues = ['pending', 'walk-in', 'checked_in', 'in_progress', 'completed', 'cancelled', 'scheduled'];
+      const allowedStatusValues = ['pending', 'walk-in', 'checked_in', 'in_progress', 'completed', 'cancelled', 'scheduled', 'no_show'];
       if (body.status && !allowedStatusValues.includes(body.status.toLowerCase())) {
         return res.status(400).json({ error: 'Invalid status value' });
       }

@@ -2532,24 +2532,43 @@ function CommunicationsTab() {
             <CardBody><EmptyState icon={<Calendar size={40} />} title="No checkups booked yet" description="Checkups that are linked to your NB number will appear here." /></CardBody>
           ) : (
             <div className="divide-y">
-              {checkups.map((c, i) => (
-                <div key={c.id || i} className="p-4 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-gray-800">{c.client_name || c.clientName || 'Client'}</p>
-                    <p className="text-xs text-gray-500">{c.type || 'Full Body Checkup'}</p>
-                    <p className="text-xs text-gray-400">{fmtDate(c.date)} {c.time ? `· ${c.time}` : ''} · {c.branch || '—'}</p>
+              {checkups.map((c, i) => {
+                const s = (c.status || '').toLowerCase();
+                const isDeletable = ['pending', 'scheduled'].includes(s);
+                const statusVariant = c.status === 'completed' ? 'success' : c.status === 'cancelled' ? 'danger' : s === 'no_show' ? 'warning' : c.status === 'confirmed' ? 'info' : 'warning';
+                const statusLabel = s === 'no_show' ? 'No Show' : (c.status || 'Pending').charAt(0).toUpperCase() + (c.status || 'pending').slice(1);
+                return (
+                  <div key={c.id || i} className="p-4 flex items-center justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-800">{c.full_name || c.client_name || c.clientName || 'Client'}</p>
+                      <p className="text-xs text-gray-500">{c.type || 'Full Body Checkup'}</p>
+                      <p className="text-xs text-gray-400">{fmtDate(c.date)} {c.time ? `· ${c.time}` : ''} · {c.branch || '—'}</p>
+                    </div>
+                    <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                      <Badge variant={statusVariant}>{statusLabel}</Badge>
+                      {isDeletable && (
+                        <button
+                          onClick={async () => {
+                            if (!window.confirm('Cancel and delete this booking?')) return;
+                            try {
+                              await api.appointments.delete(c.id);
+                              setCheckups(prev => prev.filter(x => x.id !== c.id));
+                            } catch (e) { alert(e.message || 'Could not delete booking'); }
+                          }}
+                          style={{ fontSize: '0.72rem', padding: '3px 10px', borderRadius: 6, border: '1px solid #fca5a5', background: '#fef2f2', color: '#b91c1c', cursor: 'pointer' }}
+                        >Delete</button>
+                      )}
+                    </div>
                   </div>
-                  <Badge variant={c.status === 'completed' ? 'success' : c.status === 'cancelled' ? 'danger' : c.status === 'confirmed' ? 'info' : 'warning'}>
-                    {(c.status || 'Pending').charAt(0).toUpperCase() + (c.status || 'pending').slice(1)}
-                  </Badge>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
           {checkups.length > 0 && (
-            <div className="px-4 py-2 bg-gray-50 text-xs text-gray-500 flex gap-4 border-t">
+            <div className="px-4 py-2 bg-gray-50 text-xs text-gray-500 flex gap-4 border-t flex-wrap">
               <span>✅ Completed: <strong>{completedCheckups}</strong></span>
-              <span>⏳ Pending: <strong>{checkups.filter(c => !['completed','cancelled'].includes(c.status)).length}</strong></span>
+              <span>⏳ Pending: <strong>{checkups.filter(c => !['completed','cancelled','no_show'].includes(c.status)).length}</strong></span>
+              <span>🔴 No Show: <strong>{checkups.filter(c => c.status === 'no_show').length}</strong></span>
               <span>❌ Cancelled: <strong>{checkups.filter(c => c.status === 'cancelled').length}</strong></span>
             </div>
           )}
@@ -2570,6 +2589,7 @@ function CommunicationsTab() {
               {onlineOrders.map((o, i) => {
                 const items = parseItems(o.items);
                 const statusColor = { delivered: 'success', processing: 'info', pending: 'warning', cancelled: 'danger' }[o.status] || 'warning';
+                const canDelete = ['pending', 'processing'].includes(o.status || '');
                 return (
                   <div key={o.id || i} className="p-4">
                     <div className="flex items-center justify-between mb-1">
@@ -2586,6 +2606,20 @@ function CommunicationsTab() {
                       <p className="text-xs text-gray-500 mt-1">
                         {items.map(it => `${it.name || it.product_name || 'Item'} ×${it.quantity || 1}`).join(', ')}
                       </p>
+                    )}
+                    {canDelete && (
+                      <div className="mt-2 flex justify-end">
+                        <button
+                          onClick={async () => {
+                            if (!window.confirm('Delete this order? This cannot be undone.')) return;
+                            try {
+                              await api.orders.delete(o.id);
+                              setOnlineOrders(prev => prev.filter(x => x.id !== o.id));
+                            } catch (e) { alert(e.message || 'Could not delete order'); }
+                          }}
+                          style={{ fontSize: '0.75rem', padding: '4px 12px', borderRadius: 6, border: '1px solid #fca5a5', background: '#fef2f2', color: '#b91c1c', cursor: 'pointer' }}
+                        >Cancel Order</button>
+                      </div>
                     )}
                   </div>
                 );

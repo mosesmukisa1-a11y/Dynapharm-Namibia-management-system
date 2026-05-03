@@ -240,6 +240,33 @@ export default async function handler(req, res) {
       return res.json(order);
     }
 
+    if (req.method === 'DELETE') {
+      const id = req.query?.id || req.body?.id;
+      if (!id) return res.status(400).json({ error: 'Order ID is required' });
+
+      const existing = await getOne('SELECT * FROM online_orders WHERE id = $1', [id]);
+      if (!existing) return res.status(404).json({ error: 'Order not found' });
+
+      if (branchScope.enforced && !branchScope.branches.includes(existing.branch_id || null)) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      const userRole = (req.user?.role || '').toLowerCase();
+      if (userRole === 'distributor') {
+        const userNb = (req.user?.username || '').toUpperCase();
+        if ((existing.distributor_code || '').toUpperCase() !== userNb) {
+          return res.status(403).json({ error: 'You can only delete your own orders' });
+        }
+        if (!['pending', 'processing'].includes(existing.status || '')) {
+          return res.status(400).json({ error: 'Only pending or processing orders can be deleted' });
+        }
+      }
+
+      await query('DELETE FROM online_orders WHERE id = $1', [id]);
+      await publishRealtimeEvent('orders', 'deleted', { id });
+      return res.json({ success: true });
+    }
+
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (error) {
     console.error('Orders API error:', error);
