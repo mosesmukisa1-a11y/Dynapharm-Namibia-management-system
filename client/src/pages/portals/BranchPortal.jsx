@@ -350,26 +350,49 @@ function printPriceListDoc(products) {
     .header { border-bottom: 3px solid #c41e3a; padding-bottom: 10px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: flex-start; }
     .company { color: #c41e3a; font-weight: 900; font-size: 15px; }
     .sub { color: #64748b; font-size: 9px; margin-top: 3px; }
+    .source { color: #7c3aed; font-size: 8px; margin-top: 2px; font-style: italic; }
     .meta { text-align: right; font-size: 9px; color: #64748b; }
     table { width: 100%; border-collapse: collapse; }
     th { background: #c41e3a; color: #fff; font-weight: 700; padding: 6px 8px; text-align: left; font-size: 9px; text-transform: uppercase; }
     th.num { text-align: right; }
     td { padding: 5px 8px; border-bottom: 1px solid #f1f5f9; font-size: 9.5px; }
     tr:nth-child(even) td { background: #fdf7f8; }
+    .dp-col { color: #991b1b; font-weight: 700; }
+    .cp-col { color: #1e40af; font-weight: 700; }
+    .margin-col { color: #15803d; font-weight: 700; }
     .print-btn { position:fixed; top:10px; right:10px; background:#c41e3a; color:#fff; border:none; padding:7px 16px; border-radius:7px; font-weight:700; cursor:pointer; font-size:11px; }
     .footer { margin-top:14px; font-size:8.5px; color:#94a3b8; text-align:center; border-top:1px dashed #e2e8f0; padding-top:8px; }
+    .legend { display:flex; gap:16px; flex-wrap:wrap; justify-content:center; }
     @media print { .print-btn { display:none; } * { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }
   </style></head><body>
   <button class="print-btn" onclick="window.print()">🖨️ Print</button>
   <div class="header">
-    <div><div class="company">Uganam Dynapharm Namibia</div><div class="sub">Official Price List — ${new Date().toLocaleDateString('en-NA', { day: '2-digit', month: 'long', year: 'numeric' })}</div></div>
-    <div class="meta">${products.length} products &nbsp;·&nbsp; Prices in N$ &nbsp;·&nbsp; For staff reference only</div>
+    <div>
+      <div class="company">Uganam Dynapharm Namibia</div>
+      <div class="sub">Official Price List — ${new Date().toLocaleDateString('en-NA', { day: '2-digit', month: 'long', year: 'numeric' })}</div>
+      <div class="source">Prices sourced from GM Master Price List</div>
+    </div>
+    <div class="meta">${products.length} products &nbsp;·&nbsp; All prices in NAD (N$) &nbsp;·&nbsp; Staff reference only</div>
   </div>
   <table>
-    <thead><tr><th style="width:30px">#</th><th>Product Description</th><th class="num">DP (N$)</th><th class="num">CP (N$)</th><th class="num">BV</th><th class="num" style="color:#bbf7d0">Margin</th></tr></thead>
+    <thead><tr>
+      <th style="width:30px">#</th>
+      <th>Product Description</th>
+      <th class="num" title="Distributor Price — charged to registered members">DP — Member (N$)</th>
+      <th class="num" title="Consumer Price — charged to walk-in clients">CP — Walk-in (N$)</th>
+      <th class="num">BV</th>
+      <th class="num" style="color:#bbf7d0" title="Branch margin per unit sold at CP">Margin (CP−DP)</th>
+    </tr></thead>
     <tbody>${rows}</tbody>
   </table>
-  <div class="footer">DP = Distributor Price &nbsp;·&nbsp; CP = Consumer Price &nbsp;·&nbsp; BV = Business Volume &nbsp;·&nbsp; Margin = CP − DP</div>
+  <div class="footer">
+    <div class="legend">
+      <span><strong>DP</strong> = Distributor Price (Member rate)</span>
+      <span><strong>CP</strong> = Consumer Price (Walk-in rate)</span>
+      <span><strong>BV</strong> = Business Volume points</span>
+      <span><strong>Margin</strong> = Branch profit per unit when selling at CP</span>
+    </div>
+  </div>
   </body></html>`);
   win.document.close();
 }
@@ -400,7 +423,7 @@ function BranchPriceListTab() {
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div>
               <h2 className="text-lg font-bold text-white">💲 Official Price List</h2>
-              <p className="text-xs text-red-100">{products.length} products &middot; Prices set by GM &middot; DP for members · CP for walk-ins</p>
+              <p className="text-xs text-red-100">{products.length} products &middot; Source: GM Master Price List &middot; <span style={{ color: '#fca5a5' }}>DP = Member rate &nbsp;·&nbsp; CP = Walk-in rate</span></p>
             </div>
             <button
               onClick={() => printPriceListDoc(filtered)}
@@ -424,12 +447,12 @@ function BranchPriceListTab() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm border-collapse">
               <thead>
-                <tr className="bg-gray-50 text-gray-600 text-xs uppercase">
-                  <th className="text-left py-2 px-3 border-b">Product</th>
-                  <th className="text-right py-2 px-3 border-b">DP — Member (N$)</th>
-                  <th className="text-right py-2 px-3 border-b">CP — Walk-in (N$)</th>
-                  <th className="text-right py-2 px-3 border-b">BV</th>
-                  <th className="text-right py-2 px-3 border-b">Margin</th>
+                <tr className="text-xs uppercase" style={{ background: '#f8fafc' }}>
+                  <th className="text-left py-2 px-3 border-b text-gray-600">Product</th>
+                  <th className="text-right py-2 px-3 border-b" style={{ color: '#c41e3a' }} title="Distributor Price — applied to registered members">DP — Member (N$)</th>
+                  <th className="text-right py-2 px-3 border-b" style={{ color: '#1d4ed8' }} title="Consumer Price — applied to walk-in clients">CP — Walk-in (N$)</th>
+                  <th className="text-right py-2 px-3 border-b text-gray-500">BV</th>
+                  <th className="text-right py-2 px-3 border-b" style={{ color: '#15803d' }} title="Branch margin when selling at CP = CP − DP">Margin (CP−DP)</th>
                 </tr>
               </thead>
               <tbody>
@@ -437,12 +460,14 @@ function BranchPriceListTab() {
                   <tr><td colSpan={5} className="text-center py-8 text-gray-400">{search ? 'No products match your search.' : 'Price list loading…'}</td></tr>
                 )}
                 {filtered.map((p, i) => {
-                  const margin = (Number(p.cp) || 0) - (Number(p.dp) || 0);
+                  const dp     = Number(p.dp) || 0;
+                  const cp     = Number(p.cp) || 0;
+                  const margin = cp - dp;
                   return (
                     <tr key={p.id || i} className={`border-b hover:bg-gray-50 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}>
                       <td className="py-2 px-3 font-medium text-gray-800">{p.description}</td>
-                      <td className="py-2 px-3 text-right font-bold text-red-700">{formatCurrency(p.dp)}</td>
-                      <td className="py-2 px-3 text-right font-bold text-blue-700">{formatCurrency(p.cp)}</td>
+                      <td className="py-2 px-3 text-right font-bold text-red-700">{formatCurrency(dp)}</td>
+                      <td className="py-2 px-3 text-right font-bold text-blue-700">{formatCurrency(cp)}</td>
                       <td className="py-2 px-3 text-right"><span className="text-xs font-semibold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{Number(p.bv) || 0}</span></td>
                       <td className="py-2 px-3 text-right font-semibold text-green-700">{margin > 0 ? `+${formatCurrency(margin)}` : formatCurrency(margin)}</td>
                     </tr>
@@ -451,12 +476,13 @@ function BranchPriceListTab() {
               </tbody>
             </table>
           </div>
-          <p className="text-xs text-gray-400 mt-3">
-            <strong>DP</strong> = Distributor / Member Price &nbsp;·&nbsp;
-            <strong>CP</strong> = Consumer / Walk-in Price &nbsp;·&nbsp;
-            <strong>BV</strong> = Business Volume &nbsp;·&nbsp;
-            <strong>Margin</strong> = Branch profit per unit (CP − DP)
-          </p>
+          <div className="flex flex-wrap gap-4 mt-3 text-xs text-gray-500">
+            <span><strong style={{ color: '#c41e3a' }}>DP</strong> = Distributor / Member Price</span>
+            <span><strong style={{ color: '#1d4ed8' }}>CP</strong> = Consumer / Walk-in Price</span>
+            <span><strong>BV</strong> = Business Volume points</span>
+            <span><strong style={{ color: '#15803d' }}>Margin</strong> = Branch profit per unit sold at CP</span>
+            <span className="text-purple-600">Prices sourced from GM Master Price List — read-only</span>
+          </div>
         </CardBody>
       </Card>
     </div>

@@ -3870,10 +3870,10 @@ function PriceListTab() {
         return {
           id: Number(id),
           description: fields.description ?? row.description,
-          dp: Math.round(Number(fields.dp ?? row.dp)) || 0,
-          cp: Math.round(Number(fields.cp ?? row.cp)) || 0,
+          dp:  Math.round(Number(fields.dp  ?? row.dp))  || 0,
+          cp:  Math.round(Number(fields.cp  ?? row.cp))  || 0,
           cif: Math.round(Number(fields.cif ?? row.cif)) || 0,
-          bv: Math.round(Number(fields.bv ?? row.bv)) || 0,
+          bv:  Number((Number(fields.bv ?? row.bv) || 0).toFixed(2)),
         };
       });
       await api.prices.bulkUpdate(updates);
@@ -3894,10 +3894,10 @@ function PriceListTab() {
     try {
       await api.prices.create({
         description: newProd.description.trim(),
-        dp: Math.round(Number(newProd.dp)) || 0,
-        cp: Math.round(Number(newProd.cp)) || 0,
+        dp:  Math.round(Number(newProd.dp))  || 0,
+        cp:  Math.round(Number(newProd.cp))  || 0,
         cif: Math.round(Number(newProd.cif)) || 0,
-        bv: Math.round(Number(newProd.bv)) || 0,
+        bv:  Number((Number(newProd.bv) || 0).toFixed(2)),
       });
       setShowAdd(false);
       setNewProd({ description: '', dp: '', cp: '', cif: '', bv: '' });
@@ -3983,21 +3983,29 @@ function PriceListTab() {
   const getVal = (row, field) => {
     if (edits[row.id]?.[field] !== undefined) return edits[row.id][field];
     const v = row[field];
-    return (field !== 'description' && v !== null && v !== undefined) ? Math.round(Number(v)) : v;
+    if (field === 'description' || v === null || v === undefined) return v;
+    return field === 'bv' ? Number(Number(v).toFixed(2)) : Math.round(Number(v));
   };
 
-  const fieldInput = (row, field, label) => (
-    <input
-      type="number"
-      min="0"
-      step="1"
-      value={getVal(row, field)}
-      onChange={e => setEdit(row.id, field, e.target.value)}
-      onBlur={e => { const v = Math.round(Number(e.target.value)); setEdit(row.id, field, isNaN(v) ? 0 : v); }}
-      className={`w-24 text-right border rounded px-1 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-red-400 ${edits[row.id]?.[field] !== undefined ? 'border-amber-400 bg-amber-50' : 'border-gray-200 bg-white'}`}
-      title={label}
-    />
-  );
+  const fieldInput = (row, field, label) => {
+    const isBV = field === 'bv';
+    return (
+      <input
+        type="number"
+        min="0"
+        step={isBV ? '0.01' : '1'}
+        value={getVal(row, field)}
+        onChange={e => setEdit(row.id, field, e.target.value)}
+        onBlur={e => {
+          const raw = Number(e.target.value);
+          const v = isBV ? Number(raw.toFixed(2)) : Math.round(raw);
+          setEdit(row.id, field, isNaN(v) ? 0 : v);
+        }}
+        className={`w-24 text-right border rounded px-1 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-red-400 ${edits[row.id]?.[field] !== undefined ? 'border-amber-400 bg-amber-50' : 'border-gray-200 bg-white'}`}
+        title={label}
+      />
+    );
+  };
 
   if (loading) return <LoadingSpinner />;
 
@@ -4013,8 +4021,8 @@ function PriceListTab() {
         <div className="p-4 border-b" style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)' }}>
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div>
-              <h2 className="text-lg font-bold text-white">Product Price List</h2>
-              <p className="text-xs text-red-100">{rows.length} products &middot; {hasEdits ? `${Object.keys(edits).length} unsaved change(s)` : 'No unsaved changes'}</p>
+              <h2 className="text-lg font-bold text-white">🏦 GM Master Price List</h2>
+              <p className="text-xs text-red-100">{rows.length} products &middot; Source of truth for all portals &middot; {hasEdits ? `${Object.keys(edits).length} unsaved change(s)` : 'All changes saved'}</p>
             </div>
             <div className="flex gap-2 flex-wrap">
               <button
@@ -4057,46 +4065,69 @@ function PriceListTab() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm border-collapse">
               <thead>
-                <tr className="bg-gray-50 text-gray-600 text-xs uppercase">
-                  <th className="text-left py-2 px-3 border-b">Product Description</th>
-                  <th className="text-right py-2 px-3 border-b">CIF (N$)</th>
-                  <th className="text-right py-2 px-3 border-b">DP (N$)</th>
-                  <th className="text-right py-2 px-3 border-b">CP (N$)</th>
-                  <th className="text-right py-2 px-3 border-b">BV</th>
-                  <th className="text-center py-2 px-3 border-b">Action</th>
+                <tr className="text-xs uppercase" style={{ background: '#f8fafc' }}>
+                  <th className="text-left py-2 px-3 border-b text-gray-600">Product Description</th>
+                  <th className="text-right py-2 px-3 border-b" style={{ color: '#6b21a8' }} title="Cost Insurance &amp; Freight — actual import cost from Malaysia">CIF (N$)</th>
+                  <th className="text-right py-2 px-3 border-b" style={{ color: '#c41e3a' }} title="Distributor Price — what members &amp; distributors pay">DP (N$)</th>
+                  <th className="text-right py-2 px-3 border-b" style={{ color: '#1d4ed8' }} title="Consumer Price — walk-in retail price">CP (N$)</th>
+                  <th className="text-right py-2 px-3 border-b text-gray-500" title="Business Volume points">BV</th>
+                  <th className="text-right py-2 px-3 border-b" style={{ color: '#15803d' }} title="Gross Profit = DP − CIF">GP (N$)</th>
+                  <th className="text-right py-2 px-3 border-b" style={{ color: '#15803d' }} title="Gross Profit Margin % = (DP − CIF) / DP × 100">GP%</th>
+                  <th className="text-right py-2 px-3 border-b" style={{ color: '#b45309' }} title="Retail Margin = CP − DP (branch/distributor earn)">Retail+</th>
+                  <th className="text-center py-2 px-3 border-b text-gray-500">Action</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 && (
-                  <tr><td colSpan={6} className="text-center py-8 text-gray-400">No products found.</td></tr>
+                  <tr><td colSpan={9} className="text-center py-8 text-gray-400">No products found.</td></tr>
                 )}
                 {filtered.map((row, i) => {
                   const changed = !!edits[row.id];
+                  const cifVal = Number(edits[row.id]?.cif ?? row.cif) || 0;
+                  const dpVal  = Number(edits[row.id]?.dp  ?? row.dp)  || 0;
+                  const cpVal  = Number(edits[row.id]?.cp  ?? row.cp)  || 0;
+                  const gp     = dpVal - cifVal;
+                  const gpPct  = dpVal > 0 ? ((gp / dpVal) * 100).toFixed(1) : '—';
+                  const retail = cpVal - dpVal;
+                  const noCIF  = !row.is_package && cifVal === 0;
                   return (
-                    <tr key={row.id} className={`border-b hover:bg-gray-50 ${changed ? 'bg-amber-50' : row.is_package ? 'bg-blue-50/40' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+                    <tr key={row.id} className={`border-b hover:bg-gray-50 ${changed ? 'bg-amber-50' : noCIF ? 'bg-orange-50/60' : row.is_package ? 'bg-blue-50/40' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
                       <td className="py-2 px-3">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-medium text-gray-800">{row.description}</span>
-                          {row.is_package && (
-                            <span className="text-xs px-1.5 py-0.5 rounded font-bold" style={{ background: '#dbeafe', color: '#1d4ed8' }}>📦 Package</span>
-                          )}
+                          {row.is_package && <span className="text-xs px-1.5 py-0.5 rounded font-bold" style={{ background: '#dbeafe', color: '#1d4ed8' }}>📦 Package</span>}
+                          {noCIF && <span className="text-xs px-1.5 py-0.5 rounded font-bold" style={{ background: '#ffedd5', color: '#c2410c' }} title="CIF is 0 — set the import cost for accurate profit and remittance calculations">⚠ No CIF</span>}
                           {changed && <span className="text-xs text-amber-600 font-semibold">&bull; unsaved</span>}
                         </div>
                       </td>
-                      <td className="py-2 px-2 text-right">{row.is_package ? <span className="text-xs text-gray-400 italic">bundle</span> : fieldInput(row, 'cif', 'Cost Insurance Freight')}</td>
-                      <td className="py-2 px-2 text-right">{fieldInput(row, 'dp', 'Distributor Price')}</td>
-                      <td className="py-2 px-2 text-right">{fieldInput(row, 'cp', 'Consumer Price')}</td>
-                      <td className="py-2 px-2 text-right">{fieldInput(row, 'bv', 'Business Volume')}</td>
+                      <td className="py-2 px-2 text-right">{row.is_package ? <span className="text-xs text-gray-400 italic">bundle</span> : fieldInput(row, 'cif', 'Cost Insurance Freight (import cost from Malaysia)')}</td>
+                      <td className="py-2 px-2 text-right">{fieldInput(row, 'dp', 'Distributor Price — what members & distributors pay')}</td>
+                      <td className="py-2 px-2 text-right">{fieldInput(row, 'cp', 'Consumer Price — walk-in retail price')}</td>
+                      <td className="py-2 px-2 text-right">{fieldInput(row, 'bv', 'Business Volume points (supports 2 decimal places)')}</td>
+                      <td className="py-2 px-2 text-right">
+                        {row.is_package ? <span className="text-xs text-gray-400 italic">—</span> : (
+                          <span className={`text-xs font-semibold ${gp > 0 ? 'text-green-700' : 'text-red-600'}`}>
+                            {gp > 0 ? '+' : ''}{gp.toLocaleString('en-ZA', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-2 px-2 text-right">
+                        {row.is_package ? <span className="text-xs text-gray-400 italic">—</span> : (
+                          <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${gp > 0 ? 'bg-green-100 text-green-700' : cifVal === 0 ? 'bg-orange-100 text-orange-600' : 'bg-red-100 text-red-600'}`}>
+                            {cifVal === 0 ? '? %' : `${gpPct}%`}
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-2 px-2 text-right">
+                        <span className={`text-xs font-semibold ${retail > 0 ? 'text-amber-700' : 'text-gray-400'}`}>
+                          {retail > 0 ? `+${retail.toLocaleString('en-ZA', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : retail === 0 ? '—' : retail.toFixed(0)}
+                        </span>
+                      </td>
                       <td className="py-2 px-2 text-center">
                         {row.is_package ? (
                           <span className="text-xs text-blue-400 italic">auto-seeded</span>
                         ) : (
-                          <button
-                            onClick={() => deleteRow(row.id)}
-                            className="text-xs text-red-500 hover:text-red-700 px-2 py-1 rounded hover:bg-red-50"
-                          >
-                            Remove
-                          </button>
+                          <button onClick={() => deleteRow(row.id)} className="text-xs text-red-500 hover:text-red-700 px-2 py-1 rounded hover:bg-red-50">Remove</button>
                         )}
                       </td>
                     </tr>
@@ -4106,10 +4137,14 @@ function PriceListTab() {
             </table>
           </div>
 
-          <p className="text-xs text-gray-400 mt-3">
-            CIF = Cost Insurance &amp; Freight &middot; DP = Distributor Price &middot; CP = Consumer Price &middot; BV = Business Volume.
-            Click any field to edit, then click <strong>Save All Changes</strong>.
-          </p>
+          <div className="flex flex-wrap gap-4 mt-3 text-xs text-gray-500">
+            <span><strong style={{ color: '#6b21a8' }}>CIF</strong> = Import cost (Cost, Insurance &amp; Freight) from Malaysia</span>
+            <span><strong style={{ color: '#c41e3a' }}>DP</strong> = Distributor / Member Price</span>
+            <span><strong style={{ color: '#1d4ed8' }}>CP</strong> = Consumer / Walk-in Price</span>
+            <span><strong style={{ color: '#15803d' }}>GP%</strong> = Gross Profit Margin (DP−CIF)/DP</span>
+            <span><strong style={{ color: '#b45309' }}>Retail+</strong> = Branch/Distributor Margin (CP−DP)</span>
+            <span className="text-orange-600">⚠ No CIF = set import cost for accurate profit &amp; remittance</span>
+          </div>
         </CardBody>
       </Card>
 

@@ -157,26 +157,35 @@ function DistributorPriceListTab() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm border-collapse">
               <thead>
-                <tr className="bg-gray-50 text-gray-600 text-xs uppercase">
-                  <th className="text-left py-2 px-3 border-b">Product</th>
-                  <th className="text-right py-2 px-3 border-b">Your Cost — DP</th>
-                  <th className="text-right py-2 px-3 border-b">Client Price — CP</th>
-                  <th className="text-right py-2 px-3 border-b">Your Profit</th>
-                  <th className="text-right py-2 px-3 border-b">BV</th>
+                <tr className="text-xs uppercase" style={{ background: '#f8fafc' }}>
+                  <th className="text-left py-2 px-3 border-b text-gray-600">Product</th>
+                  <th className="text-right py-2 px-3 border-b" style={{ color: '#c41e3a' }} title="Distributor Price — what you pay">Your Cost (DP)</th>
+                  <th className="text-right py-2 px-3 border-b" style={{ color: '#1d4ed8' }} title="Consumer Price — what you sell to clients">Client Price (CP)</th>
+                  <th className="text-right py-2 px-3 border-b" style={{ color: '#15803d' }}>Profit (N$)</th>
+                  <th className="text-right py-2 px-3 border-b" style={{ color: '#15803d' }}>Margin %</th>
+                  <th className="text-right py-2 px-3 border-b text-gray-500">BV</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 && (
-                  <tr><td colSpan={5} className="text-center py-8 text-gray-400">{search ? 'No products match your search.' : 'Price list loading…'}</td></tr>
+                  <tr><td colSpan={6} className="text-center py-8 text-gray-400">{search ? 'No products match your search.' : 'Price list loading…'}</td></tr>
                 )}
                 {filtered.map((p, i) => {
-                  const profit = (Number(p.cp) || 0) - (Number(p.dp) || 0);
+                  const dp     = Number(p.dp) || 0;
+                  const cp     = Number(p.cp) || 0;
+                  const profit = cp - dp;
+                  const pct    = cp > 0 ? ((profit / cp) * 100).toFixed(1) : null;
                   return (
                     <tr key={p.id || i} className={`border-b hover:bg-gray-50 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}>
                       <td className="py-2 px-3 font-medium text-gray-800">{p.description}</td>
-                      <td className="py-2 px-3 text-right font-bold text-red-700">{formatCurrency(p.dp)}</td>
-                      <td className="py-2 px-3 text-right font-bold text-blue-700">{formatCurrency(p.cp)}</td>
+                      <td className="py-2 px-3 text-right font-bold text-red-700">{formatCurrency(dp)}</td>
+                      <td className="py-2 px-3 text-right font-bold text-blue-700">{formatCurrency(cp)}</td>
                       <td className="py-2 px-3 text-right font-semibold text-green-700">{profit > 0 ? `+${formatCurrency(profit)}` : formatCurrency(profit)}</td>
+                      <td className="py-2 px-3 text-right">
+                        {pct !== null ? (
+                          <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${profit > 0 ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{pct}%</span>
+                        ) : <span className="text-gray-400 text-xs">—</span>}
+                      </td>
                       <td className="py-2 px-3 text-right"><span className="text-xs font-semibold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{Number(p.bv) || 0}</span></td>
                     </tr>
                   );
@@ -187,7 +196,9 @@ function DistributorPriceListTab() {
           <p className="text-xs text-gray-400 mt-3">
             <strong>DP</strong> = Your buying price (Distributor Price) &nbsp;·&nbsp;
             <strong>CP</strong> = Suggested client selling price (Consumer Price) &nbsp;·&nbsp;
-            <strong>Profit</strong> = CP − DP per unit
+            <strong>Profit</strong> = CP − DP per unit &nbsp;·&nbsp;
+            <strong>Margin %</strong> = Profit ÷ CP &nbsp;·&nbsp;
+            Prices set by GM — read-only
           </p>
         </CardBody>
       </Card>
