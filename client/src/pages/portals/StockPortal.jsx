@@ -6100,9 +6100,14 @@ function ValuationTab({ branch }) {
   );
 }
 
-// ── Code128 SVG barcode generator ───────────────────────────────────────────
+// ── Code128-B SVG barcode generator ─────────────────────────────────────────
+// Only ASCII 32–126 (Code128-B charset) is supported. Characters outside that
+// range are silently stripped so the SVG is always valid.
 function code128SVG(value) {
   if (!value) return '';
+  // Strip characters outside Code128-B printable range (space=32 … ~=126)
+  const safe = String(value).replace(/[^\x20-\x7E]/g, '');
+  if (!safe) return '';
   const CODE128_START_B = 104, CODE128_STOP = 106;
   const P = [
     '11011001100','11001101100','11001100110','10010011000','10010001100','10001001100','10011001000','10011000100','10001100100','11001001000',
@@ -6118,7 +6123,12 @@ function code128SVG(value) {
   ];
   const cv = c => c.charCodeAt(0) - 32;
   let chk = CODE128_START_B, bits = P[CODE128_START_B];
-  for (let i = 0; i < value.length; i++) { const v = cv(value[i]); chk += v * (i + 1); bits += P[v]; }
+  for (let i = 0; i < safe.length; i++) {
+    const v = cv(safe[i]);
+    if (v < 0 || v > 95 || !P[v]) continue; // skip unmapped chars defensively
+    chk += v * (i + 1);
+    bits += P[v];
+  }
   bits += P[chk % 103] + P[CODE128_STOP];
   const bw = 2, bh = 56;
   let x = 0, rects = '';
@@ -6126,7 +6136,9 @@ function code128SVG(value) {
     if (bits[i] === '1') rects += `<rect x="${x}" y="0" width="${bw}" height="${bh}" fill="black"/>`;
     x += bw;
   }
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${x}" height="${bh + 16}" viewBox="0 0 ${x} ${bh + 16}" style="max-width:240px">${rects}<text x="${x/2}" y="${bh + 12}" text-anchor="middle" font-family="monospace" font-size="11" font-weight="bold">${value}</text></svg>`;
+  // Escape the human-readable text to prevent SVG injection
+  const label = safe.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${x}" height="${bh + 16}" viewBox="0 0 ${x} ${bh + 16}" style="max-width:240px">${rects}<text x="${x/2}" y="${bh + 12}" text-anchor="middle" font-family="monospace" font-size="11" font-weight="bold">${label}</text></svg>`;
 }
 
 function BarcodeLabelDisplay({ code, name, batch, expiry, location, qty, dp }) {

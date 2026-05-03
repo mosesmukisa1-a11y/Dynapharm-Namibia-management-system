@@ -676,6 +676,11 @@ function WalkInSalesTab() {
   };
 
   const handleBarcodeScan = (result) => {
+    // Out-of-stock guard — API now returns outOfStock flag
+    if (result.outOfStock) {
+      setError(`No stock available for "${result.productName || 'this product'}"`);
+      return;
+    }
     const scannedName = (result.productName || '').toLowerCase().trim();
     const matched = products.find(p =>
       (p.name || p.description || '').toLowerCase().trim() === scannedName
@@ -686,19 +691,15 @@ function WalkInSalesTab() {
     if (matched) {
       addToCart(matched);
     } else if (result.productName) {
-      // Fallback: product not found by name in local price list.
-      // Use unitPrice (DP) for dp; try to derive cp from any partial name match.
-      const priceFallback = products.find(p =>
-        (p.name || p.description || '').toLowerCase().includes(scannedName.slice(0, 8))
-      );
+      // API now returns enriched dp/cp/bv from product_prices — use them directly.
       addToCart({
         id: `bc-${result.barcode || result.productId || Date.now()}`,
         name: result.productName,
         description: result.productName,
-        dp: result.unitPrice || 0,
-        cp: priceFallback?.cp || result.unitPrice || 0,
-        price: result.unitPrice || 0,
-        bv: priceFallback?.bv || 0,
+        dp: result.dp || result.unitPrice || 0,
+        cp: result.cp || result.dp || result.unitPrice || 0,
+        price: result.dp || result.unitPrice || 0,
+        bv: result.bv || 0,
       });
     }
   };
@@ -4876,13 +4877,12 @@ function BranchStockTab() {
                         const pn = (p.name || p.description || '').toLowerCase();
                         return pn.includes(scannedName) || scannedName.includes(pn);
                       });
-                      if (matched) {
+                      if (result.outOfStock) {
+                        return;
+                      } else if (matched) {
                         addToRequestItems(matched);
                       } else if (result.productName) {
-                        const priceFallback = products.find(p =>
-                          (p.name || p.description || '').toLowerCase().includes(scannedName.slice(0, 8))
-                        );
-                        addToRequestItems({ id: `bc-${result.barcode || result.productId || Date.now()}`, name: result.productName, description: result.productName, dp: result.unitPrice || 0, cp: priceFallback?.cp || result.unitPrice || 0, price: result.unitPrice || 0, bv: priceFallback?.bv || 0 });
+                        addToRequestItems({ id: `bc-${result.barcode || result.productId || Date.now()}`, name: result.productName, description: result.productName, dp: result.dp || result.unitPrice || 0, cp: result.cp || result.dp || result.unitPrice || 0, price: result.dp || result.unitPrice || 0, bv: result.bv || 0 });
                       }
                     }}
                   />
