@@ -112,6 +112,41 @@ function calcAge(dob) {
   } catch { return ''; }
 }
 
+/* Health benefits of each Dynapharm product — used to explain AI recommendations */
+const PRODUCT_HEALTH_BENEFITS = {
+  "SPIRULINA TABLET (100's)":                           "Rich in protein, iron, B-vitamins and antioxidants — boosts energy, strengthens immunity, supports detoxification and overall cellular health.",
+  "DYNA TONIC (780ml)":                                 "Traditional herbal tonic — restores vitality, reduces chronic fatigue, improves blood circulation and replenishes natural energy levels.",
+  "BEE POLLEN CAPSULE (100's)":                         "Complete natural superfood — enhances stamina, supports immune function, reduces inflammation and improves respiratory health.",
+  "GINSENG CAPSULE 9 x 10's":                           "Adaptogenic herb — combats mental and physical fatigue, sharpens concentration, regulates blood sugar and enhances endurance.",
+  "Yeeginako Tabs 90's , 30's":                         "Traditional vitality tablets — combat chronic fatigue, boost stamina and support overall systemic balance.",
+  "DYNA C- 100 TABLET 150's":                           "High-dose Vitamin C — potent antioxidant that strengthens immune defence, promotes collagen synthesis and accelerates wound healing.",
+  "INSTANT COFFEE W/ GINKGO & GINSENG 20's x 21g":     "Ginkgo biloba + Ginseng blend — improves cerebral blood flow, sharpens memory, relieves mental fatigue and supports cardiovascular health.",
+  "NUTMEG OINTMENT (2's x 20g)":                        "Topical analgesic — relieves muscle aches, joint pain and headaches by improving local blood circulation.",
+  "INSTANT GINSENG HONEY GINGER 500g":                  "Ginseng, honey and ginger blend — soothes nausea, warms digestion, boosts immunity and provides sustained natural energy.",
+  "D.I. INSTANT SOYBEAN MIXTURE WITH GINGER 25g x 20'":"Soy protein + ginger — supports hormonal balance, eases digestive discomfort and provides complete plant-based nutrition.",
+  "DI NONI JUICE 1 L":                                  "Morinda citrifolia — powerful immune booster with antioxidant, anti-inflammatory and detoxifying properties supporting liver and digestive health.",
+  "HERBA WARISAN MAHARANI 6 x 10g":                     "Traditional women's formula — regulates hormonal balance, improves sleep quality and supports reproductive and feminine health.",
+  "SEA CUCUMBER JELLY (500ml)":                         "Marine collagen + sea cucumber — promotes joint lubrication, skin elasticity, cartilage repair and reduces inflammatory joint pain.",
+  "DYNA 'S' TABLET 120's":                              "Chondroitin and glucosamine formula — rebuilds cartilage, lubricates joints and reduces chronic joint and knee pain.",
+  "PRO- LSB TABLET 150's":                              "Probiotic formula — restores gut microbiome balance, improves digestion, reduces bloating and strengthens intestinal immunity.",
+  "HIGH FIBER NUTRITION FOOD 30'sx25g":                 "High-fibre meal supplement — promotes healthy bowel movement, lowers cholesterol, stabilises blood sugar and supports weight management.",
+  "GANODERMA TOOTHPASTE (150g)":                        "Ganoderma (Reishi) infused dental care — antibacterial, anti-inflammatory, supports gum health and oral hygiene.",
+  "E-VITA CREAM (50g)":                                 "Vitamin E enriched cream — deeply moisturises, repairs damaged skin, reduces inflammation and protects against free radical damage.",
+  "MILK THISTLE TABLET 120's":                          "Silymarin (milk thistle extract) — protects and regenerates liver cells, supports detoxification and antioxidant defence.",
+  "INSTANT COFFEE W/ GANO, GREEN TEA 20's x 21g":      "Ganoderma + green tea — calming adaptogen blend that reduces stress, promotes restful sleep and provides gentle antioxidant support.",
+  "INSTANT COFFEE MIX W/GANODERMA, COLLAGEN & KACIP":  "Collagen + Kacip Fatimah for women — supports skin elasticity, hormonal balance, bone density and feminine vitality.",
+  "INSTANT COFFEE MIX W/TONGKAT & MACA POWDER(15'sx21g)": "Tongkat Ali + Maca for men — boosts testosterone naturally, enhances physical endurance, libido and muscle strength.",
+  "DYNA SERENOA TABLET 100's":                          "Saw palmetto extract — supports prostate health, reduces frequent urination and promotes healthy male hormonal balance.",
+  "NONI PLUS TEA 30's x 3g":                            "Noni herbal tea — rich in antioxidants, supports blood sugar regulation, immune function and kidney health.",
+  "Healthy Joints Package":                              "Complete joint health bundle — combines cartilage-rebuilding, anti-inflammatory and pain-relief products for comprehensive musculoskeletal support.",
+  "Blood Circulation Pack":                              "Cardiovascular wellness bundle — improves blood flow, reduces clotting risk, supports heart function and peripheral circulation.",
+  "Gastric Package":                                     "Digestive health bundle — relieves gastric discomfort, heals gut lining, restores beneficial bacteria and improves overall digestion.",
+  "Weight Management Pack":                              "Metabolic support bundle — controls appetite, boosts metabolism, provides fibre and nutrients to support healthy, sustainable weight loss.",
+  "Cleansing And Detoxification Package":                "Full-body detox bundle — supports liver, kidney and colon cleansing to eliminate accumulated toxins and restore systemic health.",
+  "Womens Package":                                      "Women's wellness bundle — addresses hormonal balance, bone density, skin health and overall reproductive well-being.",
+  "Mens Health Package":                                 "Men's vitality bundle — supports prostate health, testosterone balance, physical endurance and masculine well-being.",
+};
+
 /* keyword map: symptom text fragment → RECOMMENDATION_DATABASE key */
 const SYMPTOM_KEYWORD_MAP = [
   { keys: ['fatigue','tired','exhaustion','lethargy'], rec: 'fatigue' },
@@ -366,6 +401,7 @@ function CheckupsSection() {
   const [followUpDate, setFollowUpDate] = useState('');
   const [followUpNotes, setFollowUpNotes] = useState('');
   const [selectedMedicines, setSelectedMedicines] = useState(new Set());
+  const [medSearch, setMedSearch] = useState('');
   const [selectedSystems, setSelectedSystems] = useState({});
   const [selectedSymptomChecks, setSelectedSymptomChecks] = useState({});
   const [currentRecommendations, setCurrentRecommendations] = useState(null);
@@ -411,6 +447,7 @@ function CheckupsSection() {
     setConsultantNotes('');
     setFollowUpNotes('');
     setSelectedMedicines(new Set());
+    setMedSearch('');
     setSelectedSystems({});
     setSelectedSymptomChecks({});
     setReportRequired(true);
@@ -540,6 +577,7 @@ function CheckupsSection() {
       setShowReport(false);
       setSelectedCheckup(null);
       setSelectedMedicines(new Set());
+      setMedSearch('');
       setSelectedSystems({});
       setSelectedSymptomChecks({});
       setConsultantNotes('');
@@ -1079,31 +1117,51 @@ ${consultantNotes ? `
 
                 {currentRecommendations && (
                   <div style={{ background: '#e8f5e9', borderLeft: '5px solid #27ae60', borderRadius: '8px', padding: '15px', marginBottom: '20px' }}>
-                    <h3 style={{ color: '#27ae60', margin: '0 0 8px', fontSize: '1rem' }}>🎯 AI-Powered Product Recommendations</h3>
-                    <p style={{ marginBottom: '12px', color: '#666', fontSize: '0.9rem' }}>Based on symptoms and health conditions, here are suggested products:</p>
-                    <div style={{ background: 'white', padding: '12px', borderRadius: '8px', border: '2px solid #27ae60' }}>
+                    <h3 style={{ color: '#27ae60', margin: '0 0 4px', fontSize: '1rem' }}>🎯 AI-Powered Product Recommendations</h3>
+                    <p style={{ marginBottom: '12px', color: '#555', fontSize: '0.85rem' }}>
+                      Matched to this client's reported symptoms, medical history, lifestyle and gender. Each product's Dynapharm health benefit is shown below.
+                    </p>
+                    <div style={{ background: 'white', borderRadius: '8px', border: '2px solid #27ae60', overflow: 'hidden' }}>
                       {Array.from(currentRecommendations.recommendations).map((medicine, i) => {
                         const reasons = currentRecommendations.reasonsMap.get(medicine) || [];
                         const uniqueReasons = [...new Set(reasons)];
+                        const benefit = PRODUCT_HEALTH_BENEFITS[medicine] || null;
+                        const isAdded = selectedMedicines.has(medicine);
+                        const recArr = Array.from(currentRecommendations.recommendations);
                         return (
-                          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: i < currentRecommendations.recommendations.size - 1 ? '1px solid #e0e0e0' : 'none' }}>
-                            <div style={{ flex: 1 }}>
-                              <strong style={{ color: '#27ae60', fontSize: '1rem' }}>✓ {medicine}</strong>
-                              <div style={{ marginTop: '4px', fontSize: '0.8rem', color: '#666' }}>
-                                {uniqueReasons.map((r, ri) => (
-                                  <span key={ri} style={{ background: '#fff', padding: '2px 8px', borderRadius: '10px', marginRight: '5px', display: 'inline-block', marginTop: '3px', border: '1px solid #ddd' }}>🎯 {r}</span>
-                                ))}
+                          <div key={i} style={{ padding: '12px 14px', borderBottom: i < recArr.length - 1 ? '1px solid #e8f5e9' : 'none', background: isAdded ? '#f0fdf4' : 'white' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                                  <strong style={{ color: '#166534', fontSize: '0.95rem' }}>{medicine}</strong>
+                                  {isAdded && <span style={{ fontSize: '0.72rem', background: '#dcfce7', color: '#16a34a', padding: '1px 7px', borderRadius: '10px', fontWeight: 700 }}>✓ Prescribed</span>}
+                                </div>
+                                {benefit && (
+                                  <p style={{ margin: '0 0 6px', fontSize: '0.82rem', color: '#374151', lineHeight: 1.5 }}>
+                                    <span style={{ color: '#16a34a', fontWeight: 700 }}>Health Benefit: </span>{benefit}
+                                  </p>
+                                )}
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                  {uniqueReasons.map((r, ri) => (
+                                    <span key={ri} style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '2px 8px', borderRadius: '10px', fontSize: '0.75rem', color: '#15803d', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                      <span style={{ opacity: 0.7 }}>↳</span> {r}
+                                    </span>
+                                  ))}
+                                </div>
                               </div>
+                              <button
+                                onClick={() => selectRecommendedMedicine(medicine)}
+                                style={{ flexShrink: 0, padding: '6px 14px', fontSize: '0.82rem', background: isAdded ? '#16a34a' : '#27ae60', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}
+                              >
+                                {isAdded ? '✓ Added' : '+ Prescribe'}
+                              </button>
                             </div>
-                            <button onClick={() => selectRecommendedMedicine(medicine)} style={{ padding: '5px 15px', fontSize: '0.85rem', background: selectedMedicines.has(medicine) ? '#2ecc71' : '#27ae60', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', marginLeft: '10px' }}>
-                              {selectedMedicines.has(medicine) ? '✓ Added' : 'Add'}
-                            </button>
                           </div>
                         );
                       })}
                     </div>
-                    <button onClick={applyAllRecommendations} style={{ marginTop: '12px', width: '100%', padding: '10px', background: '#27ae60', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '0.95rem' }}>
-                      ✅ Apply All Recommended Products
+                    <button onClick={applyAllRecommendations} style={{ marginTop: '10px', width: '100%', padding: '10px', background: '#27ae60', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '0.95rem' }}>
+                      ✅ Prescribe All Recommended Products
                     </button>
                   </div>
                 )}
@@ -1133,41 +1191,77 @@ ${consultantNotes ? `
                   </div>
                 </div>
 
-                <div style={{ background: 'white', border: '1px solid #e0e0e0', borderRadius: '8px', padding: '15px', marginBottom: '20px' }}>
-                  <h3 style={{ margin: '0 0 10px', fontSize: '1rem', color: '#2c3e50' }}>Prescription & Medicine Selection</h3>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '8px', maxHeight: '400px', overflowY: 'auto', marginBottom: '12px' }}>
-                    {getLiveProductList().filter(p => p.is_package).map((pkg, idx) => {
-                      const staticEntry = PACKAGE_DATABASE[pkg.description];
-                      return (
-                      <div key={`pkg-${idx}`} style={{ background: '#e8f5e9', borderLeft: '4px solid #27ae60', padding: '10px', borderRadius: '6px', display: 'flex', alignItems: 'start', gap: '8px' }}>
-                        <input type="checkbox" checked={selectedMedicines.has(pkg.description)} onChange={() => toggleMedicine(pkg.description)} style={{ marginTop: '3px', width: '16px', height: '16px', cursor: 'pointer' }} />
-                        <label style={{ cursor: 'pointer', flex: 1 }} onClick={() => toggleMedicine(pkg.description)}>
-                          <span style={{ fontWeight: 'bold', color: '#27ae60' }}>📦 {pkg.description}</span>
-                          <br /><small style={{ color: '#666' }}>{staticEntry ? `Package (${staticEntry.products.length} products) - ` : 'Package - '}DP: N${pkg.dp} | CP: N${pkg.cp} | BV: {pkg.bv}</small>
-                          {staticEntry && <><br /><small style={{ fontSize: '0.75rem', color: '#888' }}>Contains: {staticEntry.products.map(p => `${p.name} (Qty: ${p.quantity})`).join(', ')}</small></>}
-                        </label>
+                {(() => {
+                  const allProducts = getLiveProductList();
+                  const seenPkg = new Set();
+                  const dedupPackages = allProducts.filter(p => p.is_package && !seenPkg.has(p.description) && seenPkg.add(p.description));
+                  const pkgNames = new Set(dedupPackages.map(p => p.description));
+                  const seenProd = new Set();
+                  const dedupProducts = allProducts.filter(p => !p.is_package && !pkgNames.has(p.description) && !seenProd.has(p.description) && seenProd.add(p.description));
+                  const medSearchLower = (medSearch || '').toLowerCase();
+                  const filteredPkgs = medSearchLower ? dedupPackages.filter(p => p.description.toLowerCase().includes(medSearchLower)) : dedupPackages;
+                  const filteredProds = medSearchLower ? dedupProducts.filter(p => p.description.toLowerCase().includes(medSearchLower)) : dedupProducts;
+                  const totalVisible = filteredPkgs.length + filteredProds.length;
+                  return (
+                    <div style={{ background: 'white', border: '1px solid #e0e0e0', borderRadius: '8px', padding: '15px', marginBottom: '20px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+                        <h3 style={{ margin: 0, fontSize: '1rem', color: '#2c3e50' }}>Prescription &amp; Medicine Selection</h3>
+                        <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>{totalVisible} products · {selectedMedicines.size} selected</span>
                       </div>
-                      );
-                    })}
-                    {getLiveProductList().filter(p => !p.is_package).map((product, idx) => (
-                      <div key={`prod-${idx}`} style={{ padding: '8px', borderRadius: '6px', display: 'flex', alignItems: 'start', gap: '8px', border: '1px solid #f0f0f0' }}>
-                        <input type="checkbox" checked={selectedMedicines.has(product.description)} onChange={() => toggleMedicine(product.description)} style={{ marginTop: '3px', width: '16px', height: '16px', cursor: 'pointer' }} />
-                        <label style={{ cursor: 'pointer', flex: 1 }} onClick={() => toggleMedicine(product.description)}>
-                          {product.description}
-                          <br /><small style={{ color: '#666', fontSize: '0.85rem' }}>DP: N${product.dp} | CP: N${product.cp} | BV: {product.bv}</small>
-                        </label>
+                      <input
+                        type="text"
+                        placeholder="Search products…"
+                        value={medSearch}
+                        onChange={e => setMedSearch(e.target.value)}
+                        style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '0.9rem', marginBottom: '10px', boxSizing: 'border-box' }}
+                      />
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '8px', maxHeight: '420px', overflowY: 'auto', marginBottom: '12px' }}>
+                        {filteredPkgs.map((pkg, idx) => {
+                          const staticEntry = PACKAGE_DATABASE[pkg.description];
+                          const isChecked = selectedMedicines.has(pkg.description);
+                          return (
+                            <div key={`pkg-${idx}`} style={{ background: isChecked ? '#dcfce7' : '#e8f5e9', borderLeft: `4px solid ${isChecked ? '#16a34a' : '#27ae60'}`, padding: '10px', borderRadius: '6px', display: 'flex', alignItems: 'start', gap: '8px', cursor: 'pointer' }} onClick={() => toggleMedicine(pkg.description)}>
+                              <input type="checkbox" checked={isChecked} onChange={() => toggleMedicine(pkg.description)} style={{ marginTop: '3px', width: '16px', height: '16px', cursor: 'pointer' }} onClick={e => e.stopPropagation()} />
+                              <label style={{ cursor: 'pointer', flex: 1 }}>
+                                <span style={{ fontWeight: 'bold', color: '#166534' }}>📦 {pkg.description}</span>
+                                <br /><small style={{ color: '#555' }}>{staticEntry ? `${staticEntry.products.length}-product bundle` : 'Bundle'} · DP: N${pkg.dp} · CP: N${pkg.cp} · BV: {pkg.bv}</small>
+                                {staticEntry && <><br /><small style={{ fontSize: '0.72rem', color: '#888' }}>Contains: {staticEntry.products.map(p => p.name).join(', ')}</small></>}
+                              </label>
+                            </div>
+                          );
+                        })}
+                        {filteredProds.map((product, idx) => {
+                          const isChecked = selectedMedicines.has(product.description);
+                          return (
+                            <div key={`prod-${idx}`} style={{ padding: '8px 10px', borderRadius: '6px', display: 'flex', alignItems: 'start', gap: '8px', border: `1px solid ${isChecked ? '#86efac' : '#f0f0f0'}`, background: isChecked ? '#f0fdf4' : 'white', cursor: 'pointer' }} onClick={() => toggleMedicine(product.description)}>
+                              <input type="checkbox" checked={isChecked} onChange={() => toggleMedicine(product.description)} style={{ marginTop: '3px', width: '16px', height: '16px', cursor: 'pointer' }} onClick={e => e.stopPropagation()} />
+                              <label style={{ cursor: 'pointer', flex: 1 }}>
+                                <span style={{ fontWeight: isChecked ? 600 : 400, color: isChecked ? '#166534' : '#1e293b' }}>{product.description}</span>
+                                <br /><small style={{ color: '#666', fontSize: '0.82rem' }}>DP: N${product.dp} · CP: N${product.cp} · BV: {product.bv}</small>
+                              </label>
+                            </div>
+                          );
+                        })}
+                        {totalVisible === 0 && (
+                          <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '30px', color: '#9ca3af', fontSize: '0.9rem' }}>No products match "{medSearch}"</div>
+                        )}
                       </div>
-                    ))}
-                  </div>
-                  {selectedMedicines.size > 0 && (
-                    <div style={{ background: '#f0fdf4', padding: '12px', borderRadius: '8px', border: '1px solid #86efac' }}>
-                      <h4 style={{ margin: '0 0 8px', color: '#166534' }}>Prescribed Medicines:</h4>
-                      <ul style={{ margin: 0, paddingLeft: '20px' }}>
-                        {Array.from(selectedMedicines).map((med, i) => <li key={i} style={{ padding: '2px 0', color: '#166534' }}>{med}</li>)}
-                      </ul>
+                      {selectedMedicines.size > 0 && (
+                        <div style={{ background: '#f0fdf4', padding: '12px', borderRadius: '8px', border: '1px solid #86efac' }}>
+                          <h4 style={{ margin: '0 0 8px', color: '#166534', fontSize: '0.9rem' }}>✅ Prescribed ({selectedMedicines.size}):</h4>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                            {Array.from(selectedMedicines).map((med, i) => (
+                              <span key={i} style={{ background: '#dcfce7', border: '1px solid #86efac', color: '#166534', padding: '3px 10px', borderRadius: '20px', fontSize: '0.82rem', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                                {med}
+                                <button onClick={() => toggleMedicine(med)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#16a34a', fontWeight: 700, fontSize: '0.9rem', padding: 0, lineHeight: 1 }}>×</button>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
+                  );
+                })()}
 
                 <div style={{ background: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '20px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
