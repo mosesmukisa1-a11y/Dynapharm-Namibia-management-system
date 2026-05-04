@@ -104,14 +104,14 @@ export default async function handler(req, res) {
             OR COALESCE((r.data->>'consultation_fee')::numeric, 0) > 0
           )
       `, rpParams),
-      // Campaign sales from inventory movements (not captured in BAT)
+      // Campaign sales from inventory movements — per-product rows for detail map
       getMany(
-        `SELECT reference, branch_id,
+        `SELECT reference, branch_id, product_name, batch_no,
                 SUM(ABS(quantity))                        AS total_qty,
                 SUM(ABS(quantity) * COALESCE(unit_price, 0)) AS total_dp
          FROM branch_inventory_movements
          WHERE ${movConds.join(' AND ')} AND type = 'campaign_sale'
-         GROUP BY reference, branch_id`,
+         GROUP BY reference, branch_id, product_name, batch_no`,
         movParams
       ),
       // Approved refund return movements — deducted from sales totals
@@ -221,8 +221,32 @@ export default async function handler(req, res) {
       void fee; // intentionally not counted here
     }
 
-    // Campaign sales: build synthetic rows from inventory movements
-    const campaignSynthetic = campaignMovements.map(c => ({
+    // Build per-product map and per-reference aggregates from campaign movements.
+    // Each campaign sale may span multiple product rows; aggregate into one synthetic row per reference.
+    const campaignProductMap = {};
+    const campaignRefAgg = {};
+    for (const c of campaignMovements) {
+      const ref = c.reference;
+      if (!campaignProductMap[ref]) campaignProductMap[ref] = [];
+      campaignProductMap[ref].push({
+        product_name: c.product_name,
+        batch_no: c.batch_no,
+        qty: Number(c.total_qty || 0),
+        dp_value: parseFloat(Number(c.total_dp || 0).toFixed(2)),
+      });
+      if (!campaignRefAgg[ref]) campaignRefAgg[ref] = { reference: ref, branch_id: c.branch_id, total_qty: 0, total_dp: 0 };
+      campaignRefAgg[ref].total_qty += Number(c.total_qty || 0);
+      campaignRefAgg[ref].total_dp  += Number(c.total_dp  || 0);
+    }
+
+    // Set of campaign sale reference IDs (= saleId) that exist in inventory movements.
+    // Used to prevent double-counting: these sales are also inserted into branch_walkin_sales
+    // and branch_activity_transactions as member_sale/non_member_sale — we exclude those
+    // copies and use only the campaignSynthetic rows as the authoritative source.
+    const campaignRefIds = new Set(Object.keys(campaignRefAgg));
+
+    // Campaign sales: one synthetic row per unique reference (campaign sale)
+    const campaignSynthetic = Object.values(campaignRefAgg).map(c => ({
       id: `camp-${c.reference}`,
       branch_id: c.branch_id,
       activity_type: 'campaign_sale',
@@ -238,8 +262,14 @@ export default async function handler(req, res) {
       _source: 'campaign_movements',
     }));
 
-    // Merge: activity_transactions + synthetic walkin rows + campaign rows + reports supplement
-    const allTxRows = [...txRows, ...walkinSynthetic, ...campaignSynthetic, ...reportSynthetic];
+    // Merge: exclude campaign refs from txRows and walkinSynthetic (same sale already in
+    // campaignSynthetic), then add campaignSynthetic as the sole campaign source.
+    const allTxRows = [
+      ...txRows.filter(r => !campaignRefIds.has(r.form_reference_id)),
+      ...walkinSynthetic.filter(s => !campaignRefIds.has(s.form_reference_id)),
+      ...campaignSynthetic,
+      ...reportSynthetic,
+    ];
 
     const sum = (rows, field) => rows.reduce((s, r) => s + Number(r[field] || 0), 0);
     const paidRows = (rows) => rows.filter(r => r.payment_status === 'paid');
@@ -296,6 +326,23 @@ export default async function handler(req, res) {
           date: r.service_date,
           total_qty: Number(r.total_qty || 0),
           total_dp_value: parseFloat(Number(r.product_total_dp || r.grand_total || 0).toFixed(2)),
+          payment_method: r.payment_method || 'cash',
+          payment_status: r.payment_status,
+          products,
+        };
+      });
+      return { ...base, line_items };
+    };
+
+    const buildCampaignWithDetail = (rows) => {
+      const base = build(rows);
+      const line_items = rows.map(r => {
+        const products = campaignProductMap[r.form_reference_id] || [];
+        return {
+          reference_id: r.form_reference_id,
+          date: r.service_date,
+          total_qty: Number(r.total_qty || 0),
+          total_dp_value: parseFloat(Number(r.grand_total || 0).toFixed(2)),
           payment_method: r.payment_method || 'cash',
           payment_status: r.payment_status,
           products,
@@ -384,7 +431,7 @@ export default async function handler(req, res) {
       non_member_sales: build(nonMemberRows),
       online_order_sales: build(onlineRows),
       prescription_dispensing: buildRxWithDetail(rxRows),
-      campaign_sales: build(campaignRows),
+      campaign_sales: buildCampaignWithDetail(campaignRows),
       refund_deductions: { count: refundCount, total_amount: refundTotal },
       pending_unposted_records: pendingCapture,
       grand_total: grandTotal,

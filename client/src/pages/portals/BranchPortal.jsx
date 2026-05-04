@@ -5035,6 +5035,20 @@ function BranchStockTab() {
           return `<table style="width:100%;border-collapse:collapse;margin-top:4px"><thead><tr style="background:#6366f1;color:#fff"><th style="padding:4px 8px;font-size:9px;text-align:left">Patient</th><th style="padding:4px 8px;font-size:9px;text-align:left">Type</th><th style="padding:4px 8px;font-size:9px;text-align:center">Qty</th><th style="padding:4px 8px;font-size:9px;text-align:right">DP Value</th><th style="padding:4px 8px;font-size:9px;text-align:left">Payment</th></tr></thead><tbody>${rows}</tbody></table>`;
         };
 
+        const buildCampaignLineItemsHTML = (lineItems) => {
+          if (!Array.isArray(lineItems) || lineItems.length === 0) return '';
+          const rows = lineItems.map((li, idx) => {
+            const productRows = Array.isArray(li.products) && li.products.length > 0
+              ? li.products.map(p =>
+                  `<tr style="background:#fffbeb"><td style="padding:3px 8px 3px 20px;font-size:9px;color:#92400e" colspan="2">&rarr; ${p.product_name || '—'}${p.batch_no ? ` [${p.batch_no}]` : ''}</td><td style="padding:3px 8px;font-size:9px;text-align:center;color:#92400e">${p.qty}</td><td style="padding:3px 8px;font-size:9px;text-align:right;color:#b45309;font-weight:700">${fmtC(p.dp_value)}</td></tr>`
+                ).join('')
+              : '';
+            const refShort = (li.reference_id || '').slice(-8).toUpperCase();
+            return `<tr style="background:${idx % 2 === 0 ? '#fff' : '#fafaf8'}"><td style="padding:4px 8px;font-size:10px;color:#92400e;font-family:monospace">${refShort}</td><td style="padding:4px 8px;font-size:10px;text-align:center">${li.total_qty || 0}</td><td style="padding:4px 8px;font-size:10px;text-align:right;font-weight:700;color:#b45309">${fmtC(li.total_dp_value || 0)}</td></tr>${productRows}`;
+          }).join('');
+          return `<table style="width:100%;border-collapse:collapse;margin-top:4px;border-radius:6px;overflow:hidden"><thead><tr style="background:#b45309;color:#fff"><th style="padding:4px 8px;font-size:9px;text-align:left">Sale Ref</th><th style="padding:4px 8px;font-size:9px;text-align:center">Qty</th><th style="padding:4px 8px;font-size:9px;text-align:right">DP Value</th></tr></thead><tbody>${rows}</tbody></table>`;
+        };
+
         const printDPSalesReportFromData = (data, period) => {
           const c = data.consultations || {};
           const wi = data.walkin_sales || {};
@@ -5042,12 +5056,15 @@ function BranchStockTab() {
           const nm = data.non_member_sales || {};
           const on = data.online_order_sales || {};
           const rx = data.prescription_dispensing || {};
+          const camp = data.campaign_sales || {};
           const grandTotal = data.grand_total || 0;
           const bs = data.branch_summary || {};
           const totalQty = data.total_qty_sold || 0;
           const totalTx = data.total_transactions || 0;
           const nmCp = bs.nm_cp_total || 0;
           const nmDp = bs.nm_dp_total || nm.value || 0;
+          const campDp = camp.value || bs.campaign_total || 0;
+          const refundTotal = data.refund_deductions?.total_amount || bs.refund_deductions || 0;
 
           // Merge payment method maps from multiple sources
           const mergePMs = (...maps) => {
@@ -5080,19 +5097,23 @@ function BranchStockTab() {
             },
             { title: '3. Prescription Sales (after consultation)', tx: rx.transactions || 0, qty: rx.qty || 0, dp: rx.value || 0, pmBreakdown: rx.payment_methods, lineItems: rx.line_items },
             { title: '4. Online Order Sales', tx: on.transactions || 0, qty: on.qty || 0, dp: on.value || 0, pmBreakdown: on.payment_methods },
+            ...(camp.transactions > 0 ? [{ title: '5. Campaign Sales (DP)', tx: camp.transactions || 0, qty: camp.qty || 0, dp: campDp, pmBreakdown: camp.payment_methods, campaignLineItems: camp.line_items, isCampaign: true }] : []),
           ];
 
           const sectionRows = sections.map(sec => {
             const hasCP = sec.cp != null && sec.cp > 0;
-            const dpCell = `<td style="padding:8px 12px;border-bottom:1px solid #f0e8ea;text-align:right;font-weight:700;color:#166534">${fmtC(sec.dp)}</td>`;
+            const isCamp = sec.isCampaign;
+            const dpCell = `<td style="padding:8px 12px;border-bottom:1px solid #f0e8ea;text-align:right;font-weight:700;color:${isCamp ? '#b45309' : '#166534'}">${fmtC(sec.dp)}</td>`;
             const cpCell = hasCP
               ? `<td style="padding:8px 12px;border-bottom:1px solid #f0e8ea;text-align:right;font-weight:700;color:#1d4ed8">${fmtC(sec.cp)}</td>`
               : `<td style="padding:8px 12px;border-bottom:1px solid #f0e8ea;text-align:right;color:#94a3b8">—</td>`;
-            return `<tr><td style="padding:8px 12px;border-bottom:1px solid #f0e8ea;font-weight:600">${sec.title}</td><td style="padding:8px;border-bottom:1px solid #f0e8ea;text-align:center">${sec.tx}</td><td style="padding:8px;border-bottom:1px solid #f0e8ea;text-align:right">${sec.qty}</td>${dpCell}${cpCell}</tr>`;
+            const titleStyle = isCamp ? 'padding:8px 12px;border-bottom:1px solid #f0e8ea;font-weight:700;color:#b45309;background:#fffbeb' : 'padding:8px 12px;border-bottom:1px solid #f0e8ea;font-weight:600';
+            return `<tr><td style="${titleStyle}">${sec.title}</td><td style="padding:8px;border-bottom:1px solid #f0e8ea;text-align:center">${sec.tx}</td><td style="padding:8px;border-bottom:1px solid #f0e8ea;text-align:right">${sec.qty}</td>${dpCell}${cpCell}</tr>`;
           }).join('');
 
           const detailSections = sections.map(sec => {
             const rxHtml = sec.lineItems ? buildRxLineItemsHTML(sec.lineItems) : '';
+            const campHtml = sec.campaignLineItems ? buildCampaignLineItemsHTML(sec.campaignLineItems) : '';
             // Walk-in: show sub-section breakdowns per type
             if (sec.subSections && sec.subSections.length > 0) {
               const subHtml = sec.subSections.map(s => {
@@ -5101,6 +5122,10 @@ function BranchStockTab() {
               }).filter(Boolean).join('');
               if (!subHtml) return '';
               return `<h4 style="font-size:10px;color:#374151;margin:10px 0 4px;font-weight:700">${sec.title}</h4>${subHtml}`;
+            }
+            if (sec.isCampaign) {
+              if (!campHtml) return '';
+              return `<h4 style="font-size:10px;color:#b45309;margin:10px 0 4px;font-weight:700;background:#fffbeb;padding:4px 6px;border-radius:4px">🎁 ${sec.title}</h4>${campHtml}`;
             }
             const pmHtml = buildPaymentBreakdownHTML(sec.pmBreakdown);
             if (!pmHtml && !rxHtml) return '';
@@ -5143,7 +5168,8 @@ function BranchStockTab() {
                 <td style="padding:9px 14px;text-align:right;font-weight:700;color:#166534">${fmtC(rx.value || 0)}</td>
               </tr>
               ${on.transactions > 0 ? `<tr><td style="padding:9px 14px;font-weight:700;color:#1e293b">Online Order Sales (DP)</td><td style="padding:9px 14px;text-align:right;font-weight:700;color:#1e293b">${fmtC(on.value || 0)}</td></tr>` : ''}
-              ${(bs.refund_deductions?.total_amount || 0) > 0 ? `<tr style="background:#fef2f2"><td style="padding:9px 14px;font-weight:700;color:#dc2626">Less: Credit Refunds (Approved)</td><td style="padding:9px 14px;text-align:right;font-weight:700;color:#dc2626">− ${fmtC(bs.refund_deductions.total_amount)}</td></tr>` : ''}
+              ${campDp > 0 ? `<tr style="background:#fffbeb"><td style="padding:9px 14px;font-weight:700;color:#b45309">🎁 Campaign Sales (DP)</td><td style="padding:9px 14px;text-align:right;font-weight:700;color:#b45309">${fmtC(campDp)}</td></tr>` : ''}
+              ${refundTotal > 0 ? `<tr style="background:#fef2f2"><td style="padding:9px 14px;font-weight:700;color:#dc2626">Less: Credit Refunds (Approved)</td><td style="padding:9px 14px;text-align:right;font-weight:700;color:#dc2626">− ${fmtC(refundTotal)}</td></tr>` : ''}
               <tr style="border-top:2px solid #c41e3a">
                 <td style="padding:14px 14px;font-weight:900;color:#fff;font-size:13px;letter-spacing:0.03em;background:linear-gradient(135deg,#c41e3a,#8b0000)">TOTAL DP SALES</td>
                 <td style="padding:14px 14px;text-align:right;font-weight:900;color:#fff;font-size:18px;background:linear-gradient(135deg,#c41e3a,#8b0000)">${fmtC(grandTotal)}</td>
