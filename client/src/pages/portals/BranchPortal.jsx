@@ -689,19 +689,27 @@ function RefundRequestsTab() {
   const portalBranch = useContext(PortalBranchContext);
   const { user } = useAuth();
   const effectiveBranch = portalBranch || user?.branch || '';
+  const todayISO = new Date().toISOString().slice(0, 10);
 
-  const [requests, setRequests] = useState([]);
-  const [loading, setLoading]   = useState(false);
-  const [showForm, setShowForm] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [alert, setAlert]   = useState(null);
-  const [filter, setFilter] = useState('all');
-  const [form, setForm] = useState({
-    product_name: '', batch_no: '', quantity: '',
-    unit_price: '', sale_reference: '', reason: '',
-  });
+  // Existing requests list state
+  const [requests, setRequests]   = useState([]);
+  const [loading, setLoading]     = useState(false);
+  const [alert, setAlert]         = useState(null);
+  const [filter, setFilter]       = useState('all');
 
-  const load = async () => {
+  // Receipt-picker state
+  const [showNewRefund, setShowNewRefund] = useState(false);
+  const [refundDate, setRefundDate]       = useState(todayISO);
+  const [receipts, setReceipts]           = useState([]);
+  const [receiptsLoading, setReceiptsLoading] = useState(false);
+  const [receiptsLoaded, setReceiptsLoaded]   = useState(false);
+  const [selectedReceipt, setSelectedReceipt] = useState(null);
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [refundQty, setRefundQty]         = useState('');
+  const [reason, setReason]               = useState('');
+  const [submitting, setSubmitting]       = useState(false);
+
+  const loadRequests = async () => {
     setLoading(true);
     try {
       const data = await api.branch.refundRequests(effectiveBranch ? { branch_id: effectiveBranch } : {});
@@ -711,9 +719,82 @@ function RefundRequestsTab() {
     } finally { setLoading(false); }
   };
 
-  useEffect(() => { load(); }, [effectiveBranch]);
+  useEffect(() => { loadRequests(); }, [effectiveBranch]);
 
-  const fmtDate = ts => { try { return ts ? new Date(ts).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'; } catch { return '—'; } };
+  const loadReceipts = async () => {
+    if (!refundDate) return;
+    setReceiptsLoading(true);
+    setReceiptsLoaded(false);
+    setReceipts([]);
+    setSelectedReceipt(null);
+    setSelectedProduct(null);
+    try {
+      const qs = new URLSearchParams({ from: refundDate, to: refundDate, ...(effectiveBranch ? { branch: effectiveBranch } : {}) }).toString();
+      const data = await api.branch.walkinSales(qs);
+      setReceipts(data.sales || []);
+      setReceiptsLoaded(true);
+    } catch (err) {
+      setAlert({ type: 'error', msg: 'Could not load receipts: ' + err.message });
+    } finally { setReceiptsLoading(false); }
+  };
+
+  const resetNewRefund = () => {
+    setShowNewRefund(false);
+    setRefundDate(todayISO);
+    setReceipts([]);
+    setReceiptsLoaded(false);
+    setSelectedReceipt(null);
+    setSelectedProduct(null);
+    setRefundQty('');
+    setReason('');
+  };
+
+  const handleSelectReceipt = (receipt) => {
+    setSelectedReceipt(receipt);
+    setSelectedProduct(null);
+    setRefundQty('');
+  };
+
+  const handleSelectProduct = (product) => {
+    setSelectedProduct(product);
+    setRefundQty(String(Number(product.quantity || product.qty || 1)));
+  };
+
+  const handleSubmitRefund = async () => {
+    if (!selectedProduct || !reason.trim()) {
+      setAlert({ type: 'error', msg: 'Please select a product and enter a reason for the refund.' });
+      return;
+    }
+    const qty = parseFloat(refundQty);
+    if (!qty || qty <= 0) {
+      setAlert({ type: 'error', msg: 'Quantity must be greater than zero.' });
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const productName = selectedProduct.product_name || selectedProduct.name || selectedProduct.description || '';
+      const unitPrice   = parseFloat(selectedProduct.dpPrice || selectedProduct.dp || selectedProduct.unit_price || 0);
+      const batchNo     = selectedProduct.batch_no || selectedProduct.batchNo || null;
+      const saleRef     = selectedReceipt.saleNumber || selectedReceipt.sale_number || selectedReceipt.id || '';
+      await api.branch.submitRefundRequest({
+        branch_id:     effectiveBranch,
+        product_name:  productName,
+        batch_no:      batchNo,
+        quantity:      qty,
+        unit_price:    unitPrice,
+        sale_reference: saleRef,
+        reason:        reason.trim(),
+        requested_by:  user?.full_name || user?.username || 'Branch Staff',
+      });
+      setAlert({ type: 'success', msg: '✅ Refund request submitted — awaiting Stock Manager approval.' });
+      resetNewRefund();
+      loadRequests();
+    } catch (err) {
+      setAlert({ type: 'error', msg: err.message });
+    } finally { setSubmitting(false); }
+  };
+
+  const fmtDate = ts => { try { return ts ? new Date(ts).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'; } catch { return '—'; } };
   const fmtN = n => `N$ ${Number(n || 0).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   const statusBadge = status => {
@@ -725,35 +806,6 @@ function RefundRequestsTab() {
     return <span style={{ fontSize: '0.72rem', fontWeight: 800, padding: '3px 10px', borderRadius: 99, background: c[0], color: c[1], border: `1px solid ${c[2]}` }}>{c[3]}</span>;
   };
 
-  const handleSubmit = async e => {
-    e.preventDefault();
-    if (!form.product_name || !form.quantity || !form.unit_price || !form.reason) {
-      setAlert({ type: 'error', msg: 'Please fill in all required fields.' });
-      return;
-    }
-    setSubmitting(true);
-    try {
-      await api.branch.submitRefundRequest({
-        branch_id:     effectiveBranch,
-        product_name:  form.product_name.trim(),
-        batch_no:      form.batch_no.trim() || null,
-        quantity:      parseFloat(form.quantity),
-        unit_price:    parseFloat(form.unit_price),
-        sale_reference: form.sale_reference.trim() || null,
-        reason:        form.reason.trim(),
-        requested_by:  user?.full_name || user?.username || 'Branch Staff',
-      });
-      setAlert({ type: 'success', msg: '✅ Refund request submitted — awaiting Stock Manager approval.' });
-      setShowForm(false);
-      setForm({ product_name: '', batch_no: '', quantity: '', unit_price: '', sale_reference: '', reason: '' });
-      load();
-    } catch (err) {
-      setAlert({ type: 'error', msg: err.message });
-    } finally { setSubmitting(false); }
-  };
-
-  const lblS = { display: 'block', fontSize: '0.72rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 4 };
-  const inpS = { width: '100%', padding: '9px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: '0.88rem', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' };
   const filtered = filter === 'all' ? requests : requests.filter(r => r.status === filter);
 
   return (
@@ -763,62 +815,157 @@ function RefundRequestsTab() {
         <div>
           <h3 style={{ fontWeight: 900, fontSize: '1.08rem', margin: 0 }}>↩️ Credit Refund Requests</h3>
           <p style={{ fontSize: '0.8rem', opacity: 0.8, margin: '3px 0 0' }}>
-            Submit product return / refund requests. Stock Manager approves — stock is restored and sales adjusted automatically.
+            Select a date, pick a receipt, choose a product — Stock Manager approves and stock is restored automatically.
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={load} style={{ padding: '7px 14px', background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.35)', borderRadius: 99, fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer' }}>↺ Refresh</button>
-          <button onClick={() => setShowForm(s => !s)} style={{ padding: '8px 18px', background: showForm ? 'rgba(255,255,255,0.15)' : '#fff', color: showForm ? '#fff' : '#8b0000', border: '1.5px solid rgba(255,255,255,0.5)', borderRadius: 99, fontWeight: 800, fontSize: '0.87rem', cursor: 'pointer' }}>
-            {showForm ? '✕ Cancel' : '+ New Refund Request'}
+          <button onClick={loadRequests} style={{ padding: '7px 14px', background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.35)', borderRadius: 99, fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer' }}>↺ Refresh</button>
+          <button onClick={() => showNewRefund ? resetNewRefund() : setShowNewRefund(true)}
+            style={{ padding: '8px 18px', background: showNewRefund ? 'rgba(255,255,255,0.15)' : '#fff', color: showNewRefund ? '#fff' : '#8b0000', border: '1.5px solid rgba(255,255,255,0.5)', borderRadius: 99, fontWeight: 800, fontSize: '0.87rem', cursor: 'pointer' }}>
+            {showNewRefund ? '✕ Cancel' : '+ New Refund Request'}
           </button>
         </div>
       </div>
 
       {alert && <Alert type={alert.type} onClose={() => setAlert(null)}>{alert.msg}</Alert>}
 
-      {/* New Refund Form */}
-      {showForm && (
-        <form onSubmit={handleSubmit} style={{ background: '#fdf7f8', border: '2px solid #fecaca', borderRadius: 14, padding: '22px 24px' }}>
+      {/* ── RECEIPT-BASED REFUND FLOW ── */}
+      {showNewRefund && (
+        <div style={{ background: '#fdf7f8', border: '2px solid #fecaca', borderRadius: 14, padding: '22px 24px' }}>
           <div style={{ fontWeight: 900, color: '#8b0000', fontSize: '1rem', marginBottom: 18 }}>📋 New Credit Refund Request</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
-            <div>
-              <label style={lblS}>Product Name *</label>
-              <input value={form.product_name} onChange={e => setForm(f => ({ ...f, product_name: e.target.value }))} required placeholder="e.g. BEE POLLEN CAPSULE (100'S)" style={inpS} />
+
+          {/* Step 1: Date picker */}
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 6 }}>
+              Step 1 — Select Sale Date
             </div>
-            <div>
-              <label style={lblS}>Batch No (optional)</label>
-              <input value={form.batch_no} onChange={e => setForm(f => ({ ...f, batch_no: e.target.value }))} placeholder="e.g. BT-2024-001" style={inpS} />
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <input type="date" value={refundDate} onChange={e => { setRefundDate(e.target.value); setReceiptsLoaded(false); setReceipts([]); setSelectedReceipt(null); setSelectedProduct(null); }}
+                style={{ padding: '9px 14px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: '0.9rem', outline: 'none', cursor: 'pointer' }} />
+              <button onClick={loadReceipts} disabled={receiptsLoading || !refundDate}
+                style={{ padding: '9px 22px', background: receiptsLoading ? '#fecaca' : 'linear-gradient(135deg,#c41e3a,#8b0000)', color: '#fff', border: 'none', borderRadius: 9, fontWeight: 800, fontSize: '0.87rem', cursor: receiptsLoading ? 'default' : 'pointer' }}>
+                {receiptsLoading ? '⏳ Loading…' : '🔍 Load Receipts'}
+              </button>
             </div>
-            <div>
-              <label style={lblS}>Quantity to Refund *</label>
-              <input type="number" min="0.01" step="0.01" value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} required placeholder="e.g. 2" style={inpS} />
+          </div>
+
+          {/* Step 2: Receipt list */}
+          {receiptsLoaded && (
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>
+                Step 2 — Select a Receipt ({receipts.length} found for {refundDate})
+              </div>
+              {receipts.length === 0 ? (
+                <div style={{ padding: '20px', textAlign: 'center', color: '#94a3b8', background: '#fff', border: '1px solid #f0e8ea', borderRadius: 10 }}>
+                  No sales receipts found for this date.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 340, overflowY: 'auto' }}>
+                  {receipts.map(receipt => {
+                    const isSelected = selectedReceipt?.id === receipt.id;
+                    const products = receipt.products || [];
+                    return (
+                      <div key={receipt.id} onClick={() => handleSelectReceipt(receipt)}
+                        style={{ padding: '12px 16px', borderRadius: 10, border: `2px solid ${isSelected ? '#c41e3a' : '#e8d5d8'}`, background: isSelected ? '#fff0f3' : '#fff', cursor: 'pointer', transition: 'all 0.15s' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                          <div>
+                            <span style={{ fontWeight: 800, fontSize: '0.9rem', color: '#8b0000' }}>{receipt.saleNumber || receipt.id}</span>
+                            {receipt.customerName && <span style={{ marginLeft: 10, fontSize: '0.82rem', color: '#64748b' }}>{receipt.customerName}</span>}
+                            <span style={{ marginLeft: 10, fontSize: '0.75rem', fontWeight: 600, padding: '2px 8px', borderRadius: 99, background: '#f0e8ea', color: '#8b0000' }}>{(receipt.customerType || 'customer').replace('_', ' ')}</span>
+                          </div>
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontWeight: 900, color: '#c41e3a', fontSize: '0.95rem' }}>{fmtN(receipt.total)}</div>
+                            <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{fmtDate(receipt.timestamp)}</div>
+                          </div>
+                        </div>
+                        <div style={{ marginTop: 6, fontSize: '0.78rem', color: '#475569' }}>
+                          {products.slice(0, 3).map((p, i) => <span key={i}>{i > 0 ? ' · ' : ''}{p.product_name || p.name || p.description}</span>)}
+                          {products.length > 3 && <span> +{products.length - 3} more</span>}
+                        </div>
+                        {/* Expanded: show selectable products when this receipt is selected */}
+                        {isSelected && products.length > 0 && (
+                          <div style={{ marginTop: 12, borderTop: '1px solid #fecaca', paddingTop: 10 }}>
+                            <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>
+                              Step 3 — Select Product to Refund
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                              {products.map((p, i) => {
+                                const isSelProd = selectedProduct === p;
+                                const pName = p.product_name || p.name || p.description || 'Unknown Product';
+                                const pQty  = Number(p.quantity || p.qty || 0);
+                                const pDp   = Number(p.dpPrice || p.dp || p.unit_price || 0);
+                                return (
+                                  <div key={i} onClick={e => { e.stopPropagation(); handleSelectProduct(p); }}
+                                    style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderRadius: 8, border: `2px solid ${isSelProd ? '#c41e3a' : '#f0e8ea'}`, background: isSelProd ? '#fff0f3' : '#fdf7f8', cursor: 'pointer' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                      <span style={{ fontSize: '1rem' }}>{isSelProd ? '🔴' : '⭕'}</span>
+                                      <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>{pName}</span>
+                                    </div>
+                                    <div style={{ textAlign: 'right', fontSize: '0.82rem', color: '#475569' }}>
+                                      <span style={{ fontWeight: 700 }}>Qty: {pQty}</span>
+                                      <span style={{ marginLeft: 10 }}>{fmtN(pDp)} DP</span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-            <div>
-              <label style={lblS}>Unit Price N$ (DP) *</label>
-              <input type="number" min="0" step="0.01" value={form.unit_price} onChange={e => setForm(f => ({ ...f, unit_price: e.target.value }))} required placeholder="e.g. 290.00" style={inpS} />
-            </div>
-            <div>
-              <label style={lblS}>Original Receipt / Sale Ref (optional)</label>
-              <input value={form.sale_reference} onChange={e => setForm(f => ({ ...f, sale_reference: e.target.value }))} placeholder="e.g. RCP-20260504-1234" style={inpS} />
-            </div>
-            {form.quantity && form.unit_price && (
-              <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-                <div style={{ padding: '10px 16px', background: '#fff0f3', border: '2px solid #fecaca', borderRadius: 10, fontWeight: 900, color: '#c41e3a', fontSize: '1rem', width: '100%' }}>
-                  Refund Amount: {fmtN(parseFloat(form.quantity || 0) * parseFloat(form.unit_price || 0))}
+          )}
+
+          {/* Step 4: Qty + Reason + Submit — only shown after product selected */}
+          {selectedProduct && (
+            <div style={{ marginTop: 4 }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 10 }}>
+                Step 4 — Confirm &amp; Submit
+              </div>
+
+              {/* Summary card */}
+              <div style={{ padding: '12px 16px', background: '#fff0f3', border: '2px solid #fecaca', borderRadius: 10, marginBottom: 14 }}>
+                <div style={{ fontWeight: 800, fontSize: '0.88rem', color: '#8b0000', marginBottom: 4 }}>
+                  {selectedProduct.product_name || selectedProduct.name || selectedProduct.description}
+                </div>
+                <div style={{ fontSize: '0.8rem', color: '#475569', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                  <span>Receipt: <strong>{selectedReceipt.saleNumber || selectedReceipt.id}</strong></span>
+                  <span>DP Price: <strong>{fmtN(selectedProduct.dpPrice || selectedProduct.dp || selectedProduct.unit_price)}</strong></span>
+                  <span>Max Qty: <strong>{Number(selectedProduct.quantity || selectedProduct.qty || 0)}</strong></span>
                 </div>
               </div>
-            )}
-          </div>
-          <div style={{ marginTop: 14 }}>
-            <label style={lblS}>Reason for Refund *</label>
-            <textarea value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))} required placeholder="Describe why the product is being returned / credit is required…" rows={3} style={{ ...inpS, resize: 'vertical' }} />
-          </div>
-          <div style={{ marginTop: 16 }}>
-            <button type="submit" disabled={submitting} style={{ padding: '10px 28px', background: submitting ? '#fecaca' : 'linear-gradient(135deg,#c41e3a,#8b0000)', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 800, fontSize: '0.92rem', cursor: submitting ? 'default' : 'pointer' }}>
-              {submitting ? '⏳ Submitting…' : '📤 Submit Refund Request'}
-            </button>
-          </div>
-        </form>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr', gap: 12, alignItems: 'flex-start', marginBottom: 12 }}>
+                <div>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 4 }}>Qty to Refund</div>
+                  <input type="number" min="1" max={Number(selectedProduct.quantity || selectedProduct.qty || 999)} step="1"
+                    value={refundQty} onChange={e => setRefundQty(e.target.value)}
+                    style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 4 }}>Reason for Refund *</div>
+                  <textarea value={reason} onChange={e => setReason(e.target.value)} required
+                    placeholder="Describe why the product is being returned…" rows={2}
+                    style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: '0.88rem', outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                </div>
+              </div>
+
+              {refundQty && reason.trim() && (
+                <div style={{ padding: '10px 16px', background: '#fff0f3', border: '1.5px solid #fecaca', borderRadius: 8, fontWeight: 800, color: '#c41e3a', marginBottom: 12, fontSize: '0.9rem' }}>
+                  Refund Total: {fmtN(parseFloat(refundQty || 0) * parseFloat(selectedProduct.dpPrice || selectedProduct.dp || selectedProduct.unit_price || 0))}
+                </div>
+              )}
+
+              <button onClick={handleSubmitRefund} disabled={submitting || !reason.trim() || !refundQty}
+                style={{ padding: '10px 28px', background: (submitting || !reason.trim() || !refundQty) ? '#fecaca' : 'linear-gradient(135deg,#c41e3a,#8b0000)', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 800, fontSize: '0.92rem', cursor: (submitting || !reason.trim() || !refundQty) ? 'default' : 'pointer' }}>
+                {submitting ? '⏳ Submitting…' : '📤 Submit Refund Request'}
+              </button>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Stat Cards */}
