@@ -255,6 +255,27 @@ export default async function handler(req, res) {
         );
       }
 
+      // Record a stock_transfers row (status='received') so the warehouse Incoming → Receipt History
+      // tab can surface this release. The stock is already credited to the warehouse at this point.
+      const transferId = `TR-${refId}-${Math.random().toString(36).slice(2,5).toUpperCase()}`;
+      await client.query(
+        `INSERT INTO stock_transfers
+           (id, from_warehouse, to_branch, status,
+            dispatch_reference, product_name, quantity,
+            dispatched_by, dispatched_at,
+            received_by, received_at,
+            created_by, metadata)
+         VALUES ($1::varchar, 'country_stock', $2::varchar, 'received',
+                 $3::varchar, $4::varchar, $5::numeric,
+                 $6::varchar, NOW(),
+                 $6::varchar, NOW(),
+                 $6::varchar,
+                 jsonb_build_object('release_ref',$3::text,'batch_no',$7::text,'auto_received',true))
+         ON CONFLICT DO NOTHING`,
+        [transferId, warehouseId, refId, productName, quantity,
+         releasedBy || 'system', batchNo || '']
+      );
+
       released.push({ productName, batchNo, expiryDate, quantity });
     }
   });

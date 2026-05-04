@@ -2862,11 +2862,12 @@ function WarehouseTab({ name }) {
   const statusColor = { pending: 'warning', pending_approval: 'warning', submitted: 'info', approved: 'success', dispatched: 'info', in_transit: 'info', received: 'success', delivered: 'success', rejected: 'danger', cancelled: 'default' };
 
   const incomingFromCountry = incomingTransfers.filter(t => {
-    const from = (t.fromWarehouse || t.from_location || '').toLowerCase().replace(/\s+/g, '_');
+    const from = (t.fromWarehouse || t.from_warehouse || t.from_location || '').toLowerCase().replace(/\s+/g, '_');
     return from === 'country_stock';
   });
   const pendingReceipt = incomingFromCountry.filter(t => t.status === 'submitted' || t.status === 'in_transit' || t.status === 'pending' || t.status === 'approved');
   const receivedHistory = incomingFromCountry.filter(t => t.status === 'received' || t.status === 'delivered');
+
 
   const branchDestinations = [
     { value: '', label: 'Select destination branch...' },
@@ -2875,7 +2876,7 @@ function WarehouseTab({ name }) {
 
   const whSubTabs = [
     { id: 'inventory', label: `📦 Inventory (${batches.length})` },
-    { id: 'incoming', label: `📥 Incoming (${pendingReceipt.length})${pendingReceipt.length > 0 ? ' 🔔' : ''}` },
+    { id: 'incoming', label: `📥 Incoming (${pendingReceipt.length + receivedHistory.length})${pendingReceipt.length > 0 ? ' 🔔' : ''}` },
     { id: 'outbound', label: `🚚 Outbound (${outboundTransfers.length})` },
     { id: 'movements', label: `📊 Movements (${movements.length})` },
     { id: 'returns', label: `↩ Branch Returns (${writeoffReturns.length})${writeoffReturns.length > 0 ? ' 🔔' : ''}` },
