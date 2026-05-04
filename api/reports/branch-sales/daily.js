@@ -146,48 +146,48 @@ export default async function handler(req, res) {
         };
       });
 
-    // Supplement: build synthetic BAT rows from reports not yet captured
+    // Supplement: build synthetic BAT rows from reports not yet captured in BAT.
+    // Rules:
+    //   Prescription — only include if stock actually moved (inventory movement exists for
+    //   this report_id). Use the actual dispensed amount from rxProductMap, NOT the full
+    //   prescribed amount. Clients who didn't buy or only bought some medicines will
+    //   therefore only contribute what was genuinely dispensed and paid.
+    //   Consultation fee — only count fees that have a confirmed BAT entry (consult_in_bat).
+    //   Without a BAT record we cannot verify the fee was actually collected, so we skip
+    //   unconfirmed supplement consultations entirely.
     const reportSynthetic = [];
     for (const rpt of supplementReports) {
-      const rxDp  = parseFloat(Number(rpt.rx_dp_total  || 0).toFixed(2));
-      const rxQty = Number(rpt.rx_qty || 0);
-      const fee   = Number(rpt.consultation_fee || 0);
-      // Prescription dispensing — only if there are medicines and not yet in BAT
-      if (!rpt.rx_in_bat && rxQty > 0) {
-        reportSynthetic.push({
-          id: `rpt-rx-${rpt.report_id}`,
-          branch_id: branchId || rpt.branch_id,
-          activity_type: 'prescription_dispensing',
-          service_date: rpt.service_date,
-          grand_total: rxDp,
-          product_total_dp: rxDp,
-          payment_method: rpt.payment_method || 'cash',
-          payment_status: 'paid',
-          total_qty: rxQty,
-          consultation_fee: 0,
-          client_name: rpt.patient_name || 'Patient',
-          form_reference_id: rpt.report_id,
-          _source: 'reports_supplement',
-        });
+      const fee = Number(rpt.consultation_fee || 0);
+
+      // Prescription dispensing: only include when actual inventory movements confirm
+      // that medicines were dispensed and paid for.
+      if (!rpt.rx_in_bat) {
+        const actualProducts = rxProductMap[String(rpt.report_id)] || [];
+        const actualDpTotal  = parseFloat(actualProducts.reduce((s, p) => s + Number(p.dp_value || 0), 0).toFixed(2));
+        const actualQty      = actualProducts.reduce((s, p) => s + Number(p.qty || 0), 0);
+        if (actualProducts.length > 0 && actualQty > 0) {
+          reportSynthetic.push({
+            id: `rpt-rx-${rpt.report_id}`,
+            branch_id: branchId || rpt.branch_id,
+            activity_type: 'prescription_dispensing',
+            service_date: rpt.service_date,
+            grand_total: actualDpTotal,
+            product_total_dp: actualDpTotal,
+            payment_method: rpt.payment_method || 'cash',
+            payment_status: 'paid',
+            total_qty: actualQty,
+            consultation_fee: 0,
+            client_name: rpt.patient_name || 'Patient',
+            form_reference_id: rpt.report_id,
+            _source: 'reports_supplement',
+          });
+        }
       }
-      // Consultation fee — only if fee > 0 and not yet in BAT
-      if (!rpt.consult_in_bat && fee > 0) {
-        reportSynthetic.push({
-          id: `rpt-c-${rpt.report_id}`,
-          branch_id: branchId || rpt.branch_id,
-          activity_type: 'consultation',
-          service_date: rpt.service_date,
-          grand_total: fee,
-          product_total_dp: 0,
-          payment_method: rpt.payment_method || 'cash',
-          payment_status: 'paid',
-          total_qty: 0,
-          consultation_fee: fee,
-          client_name: rpt.patient_name || 'Patient',
-          form_reference_id: rpt.report_id,
-          _source: 'reports_supplement',
-        });
-      }
+
+      // Consultation fee: only count fees already confirmed in BAT (consult_in_bat = true).
+      // Those rows come through txRows with their own payment_status from the database.
+      // Supplement rows without a BAT entry cannot be verified as paid — skip them.
+      void fee; // intentionally not counted here
     }
 
     // Merge: activity_transactions + synthetic walkin rows + reports supplement
