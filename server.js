@@ -2499,6 +2499,21 @@ server.on('error', (error) => {
          FROM inventory_balances ib
          WHERE ib.location_type = 'branch'
            AND GREATEST(ib.closing_qty, 0) > 0
+           -- Never re-insert stock that has an approved write-off at this branch/product/batch.
+           -- Without this guard a stale inventory_balances row (under a different branch_id
+           -- slug variant) would resurrect written-off stock on every server restart.
+           AND NOT EXISTS (
+             SELECT 1 FROM stock_movements sm
+             WHERE sm.movement_type = 'write_off'
+               AND sm.status        = 'approved'
+               AND LOWER(TRIM(sm.product_name)) = LOWER(TRIM(ib.product_name))
+               AND COALESCE(sm.batch_no,'')     = COALESCE(ib.batch_no,'')
+               AND LOWER(REPLACE(sm.source_location,' ','_')) = ANY(ARRAY[
+                     LOWER(REPLACE(ib.location_id,' ','_')),
+                     LOWER(REPLACE(ib.location_id,' ','_')) || '_branch',
+                     REGEXP_REPLACE(LOWER(REPLACE(ib.location_id,' ','_')),'_branch$','')
+                   ])
+           )
          ON CONFLICT DO NOTHING`
       );
       if (bfBatch && bfBatch.rowCount > 0) {
@@ -2539,6 +2554,19 @@ server.on('error', (error) => {
           if (qty <= 0) continue;
           const batchNo = wo.batch_no || '';
           // Try to update an existing stock_batches row
+          // Check if we already created a write-off-return stock_batches row for this movement
+          const alreadyDone = await query(
+            `SELECT 1 FROM stock_batches
+             WHERE id LIKE 'SB-WO-%'
+               AND location = $1
+               AND LOWER(description) = LOWER($2)
+               AND LOWER(COALESCE(batch_no,'')) = LOWER($3)
+             LIMIT 1`,
+            [warehouseId, wo.product_name, batchNo]
+          );
+          if (alreadyDone?.rows?.length) continue;
+
+          // Try to increment an existing batch first
           const sbUpd = await query(
             `UPDATE stock_batches
              SET remaining_quantity = remaining_quantity + $1,
@@ -2546,44 +2574,27 @@ server.on('error', (error) => {
                  updated_at = NOW()
              WHERE location = $2
                AND LOWER(description) = LOWER($3)
-               AND LOWER(COALESCE(batch_no,'')) = LOWER($4)
-               AND NOT EXISTS (
-                 SELECT 1 FROM warehouse_inventory_movements
-                 WHERE movement_type = 'write_off_return'
-                   AND reference = $5
-                   AND warehouse_id = $2
-                   AND LOWER(product_name) = LOWER($3)
-               )`,
-            [qty, warehouseId, wo.product_name, batchNo, wo.reference_id]
+               AND LOWER(COALESCE(batch_no,'')) = LOWER($4)`,
+            [qty, warehouseId, wo.product_name, batchNo]
           );
           if (sbUpd && sbUpd.rowCount > 0) {
             woBackfilled++;
-          } else if (sbUpd && sbUpd.rowCount === 0) {
-            // No existing batch row AND not already credited — insert new
-            const alreadyCredited = await query(
-              `SELECT 1 FROM stock_batches
-               WHERE location = $1
-                 AND LOWER(description) = LOWER($2)
-                 AND LOWER(COALESCE(batch_no,'')) = LOWER($3)
-               LIMIT 1`,
-              [warehouseId, wo.product_name, batchNo]
+          } else {
+            // No existing row — create a new stock_batches entry
+            const sbId = `SB-WO-${Date.now()}-${Math.random().toString(36).slice(2,8).toUpperCase()}`;
+            const cif = Number(wo.unit_cif || 0);
+            const dpc = Number(wo.unit_dp || 0);
+            await query(
+              `INSERT INTO stock_batches
+                 (id, description, batch_no, expiry_date, quantity, remaining_quantity,
+                  location, status, cif_unit_cost, dpc_unit_value,
+                  cif_total_value, dpc_total_value, created_at, updated_at)
+               VALUES ($1,$2,$3,$4::date,$5,$5,$6,'available',$7,$8,$9,$10,NOW(),NOW())
+               ON CONFLICT DO NOTHING`,
+              [sbId, wo.product_name, batchNo || null, wo.expiry_date || null, qty,
+               warehouseId, cif, dpc, qty * cif, qty * dpc]
             );
-            if (!alreadyCredited?.rows?.length) {
-              const sbId = `SB-WO-${Date.now()}-${Math.random().toString(36).slice(2,8).toUpperCase()}`;
-              const cif = Number(wo.unit_cif || 0);
-              const dpc = Number(wo.unit_dp || 0);
-              await query(
-                `INSERT INTO stock_batches
-                   (id, description, batch_no, expiry_date, quantity, remaining_quantity,
-                    location, status, cif_unit_cost, dpc_unit_value,
-                    cif_total_value, dpc_total_value, created_at, updated_at)
-                 VALUES ($1,$2,$3,$4::date,$5,$5,$6,'available',$7,$8,$9,$10,NOW(),NOW())
-                 ON CONFLICT DO NOTHING`,
-                [sbId, wo.product_name, batchNo || null, wo.expiry_date || null, qty,
-                 warehouseId, cif, dpc, qty * cif, qty * dpc]
-              );
-              woBackfilled++;
-            }
+            woBackfilled++;
           }
         } catch (_) {}
       }

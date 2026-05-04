@@ -418,6 +418,23 @@ export default async function handler(req, res) {
           );
           const effectiveBranchId = resolvedRow.rows[0]?.branch_id || branchId;
 
+          // Immediately zero-out inventory_balances for ALL candidate branch-id variants
+          // (e.g. both 'ondangwa' and 'ondangwa_branch') inside this transaction so that
+          // no stale row can feed the item back on refresh or server-restart backfill.
+          if (qty > 0) {
+            await client.query(
+              `UPDATE inventory_balances
+               SET closing_qty = GREATEST(closing_qty - $1, 0),
+                   outward_qty = outward_qty + $1,
+                   updated_at  = NOW()
+               WHERE location_type = 'branch'
+                 AND LOWER(REPLACE(location_id,' ','_')) = ANY($2)
+                 AND LOWER(TRIM(product_name)) = LOWER(TRIM($3))
+                 AND COALESCE(batch_no,'') = COALESCE($4,'')`,
+              [qty, branchCandidates, productName, batchNo || null]
+            );
+          }
+
           let remaining = qty;
           if (batchNo) {
             const specific = await client.query(
@@ -570,8 +587,8 @@ export default async function handler(req, res) {
            WHERE id = $5`,
           [gmName, gmNote ? ` | GM: ${gmNote}` : '', disposalStatus, derivedReason, id]
         );
-        // Return branchId + warehouseId so callers can recompute both
-        return { branchId: branchId || null, warehouseId: returnedWarehouseId };
+        // Return all branch-id variants + warehouseId so callers recompute everything
+        return { branchId: branchId || null, effectiveBranchId: effectiveBranchId || null, warehouseId: returnedWarehouseId };
       };
 
       const reject = async (client, id) => {
@@ -593,12 +610,13 @@ export default async function handler(req, res) {
         });
         // Await synchronously so inventory_balances is up-to-date before the
         // client receives the success response and re-fetches inventory.
-        if (result?.branchId) {
-          await recomputeLocationBalances('branch', result.branchId).catch(() => {});
-        }
-        if (result?.warehouseId) {
-          await recomputeLocationBalances('warehouse', result.warehouseId).catch(() => {});
-        }
+        // Recompute for BOTH branch-id variants (e.g. 'ondangwa' AND 'ondangwa_branch')
+        // because normalization failures can leave rows under either slug.
+        const branchVariants = new Set([result?.branchId, result?.effectiveBranchId].filter(Boolean));
+        await Promise.all([
+          ...[...branchVariants].map(bid => recomputeLocationBalances('branch', bid).catch(() => {})),
+          result?.warehouseId ? recomputeLocationBalances('warehouse', result.warehouseId).catch(() => {}) : null,
+        ].filter(Boolean));
         return res.json({ success: true });
       }
 
@@ -612,6 +630,7 @@ export default async function handler(req, res) {
             if (action === 'approve_all') {
               const result = await approve(client, id);
               if (result?.branchId) affectedBranches.add(result.branchId);
+              if (result?.effectiveBranchId) affectedBranches.add(result.effectiveBranchId);
               if (result?.warehouseId) affectedWarehouses.add(result.warehouseId);
             } else {
               await reject(client, id);
