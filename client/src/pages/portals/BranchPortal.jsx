@@ -2926,7 +2926,8 @@ function BranchStockTab() {
   const [receiveNotes, setReceiveNotes] = useState('');
   const [viewDispatchNote, setViewDispatchNote] = useState(null);
   const [transferForm, setTransferForm] = useState({ product_name: '', quantity: '', to_branch: '', notes: '' });
-  const [writeOffForm, setWriteOffForm] = useState({ product_name: '', quantity: '', reason: 'expired', batch_id: '' });
+  const [writeOffSelected, setWriteOffSelected] = useState({}); // { [batchId]: { quantity: '', reason: 'expired' } }
+  const [writeOffSearch, setWriteOffSearch] = useState('');
   const [transferItems, setTransferItems] = useState([]);
   const [transferProductSearch, setTransferProductSearch] = useState('');
   const [transferToBranch, setTransferToBranch] = useState('');
@@ -3155,37 +3156,50 @@ function BranchStockTab() {
   };
 
   const handleWriteOff = async () => {
-    const selBatch = writeOffForm.batch_id ? inventory.find(i => i.id === writeOffForm.batch_id) : null;
-    const pName = selBatch ? (selBatch.product_name || selBatch.productName) : writeOffForm.product_name;
-    if (!pName || !writeOffForm.quantity || !writeOffForm.reason) return;
-    const availQty = selBatch ? Number(selBatch.quantity || 0) : 0;
-    if (selBatch && Number(writeOffForm.quantity) > availQty) {
-      setAlert({ type: 'error', message: `Cannot write off ${writeOffForm.quantity} — only ${availQty} available in this batch` });
-      return;
+    const entries = Object.entries(writeOffSelected).filter(([, v]) => Number(v.quantity) > 0);
+    if (!entries.length) return;
+    // Validate quantities don't exceed available stock
+    for (const [batchId, { quantity }] of entries) {
+      const batch = inventory.find(i => i.id === batchId);
+      if (batch && Number(quantity) > Number(batch.quantity || 0)) {
+        const pName = batch.product_name || batch.productName;
+        setAlert({ type: 'error', message: `Cannot write off ${quantity} of ${pName} — only ${batch.quantity} available in this batch` });
+        return;
+      }
     }
     setSubmitting(true);
+    let successCount = 0;
+    let totalDP = 0;
     try {
-      const dp = findProductPrice(pName);
-      const dpVal = dp?.dp ? String(Math.round(Number(dp.dp) * Number(writeOffForm.quantity))) : '0';
-      const reasonLabel = writeOffForm.reason.charAt(0).toUpperCase() + writeOffForm.reason.slice(1);
-      await api.stock.createMovement({
-        product_name: pName,
-        quantity: Number(writeOffForm.quantity),
-        movement_type: 'write_off',
-        status: 'pending_approval',
-        source_location: selectedBranch || user?.branch || '',
-        destination_location: 'written_off',
-        batch_no: selBatch?.batch_no || selBatch?.batchNo || '',
-        expiry_date: selBatch?.expiry_date || selBatch?.expiryDate || null,
-        reason: reasonLabel,
-        write_off_reason: reasonLabel,
-        notes: `Write-off: ${writeOffForm.reason}. Batch: ${selBatch?.batch_no || selBatch?.batchNo || 'N/A'}. Expiry: ${selBatch?.expiry_date || selBatch?.expiryDate || 'N/A'}. DP Value: N$ ${dpVal}`,
-        reference_id: `WO-${Date.now()}`,
-        created_by: user?.full_name || user?.username || '',
-      });
+      for (const [batchId, { quantity, reason }] of entries) {
+        const batch = inventory.find(i => i.id === batchId);
+        if (!batch) continue;
+        const pName = batch.product_name || batch.productName;
+        const dp = findProductPrice(pName);
+        const dpVal = dp?.dp ? Math.round(Number(dp.dp) * Number(quantity)) : 0;
+        totalDP += dpVal;
+        const reasonLabel = reason.charAt(0).toUpperCase() + reason.slice(1);
+        await api.stock.createMovement({
+          product_name: pName,
+          quantity: Number(quantity),
+          movement_type: 'write_off',
+          status: 'pending_approval',
+          source_location: selectedBranch || user?.branch || '',
+          destination_location: 'written_off',
+          batch_no: batch.batch_no || batch.batchNo || '',
+          expiry_date: batch.expiry_date || batch.expiryDate || null,
+          reason: reasonLabel,
+          write_off_reason: reasonLabel,
+          notes: `Write-off: ${reason}. Batch: ${batch.batch_no || batch.batchNo || 'N/A'}. Expiry: ${batch.expiry_date || batch.expiryDate || 'N/A'}. DP Value: N$ ${dpVal}`,
+          reference_id: `WO-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+          created_by: user?.full_name || user?.username || '',
+        });
+        successCount++;
+      }
       setShowWriteOffForm(false);
-      setWriteOffForm({ product_name: '', quantity: '', reason: 'expired', batch_id: '' });
-      setAlert({ type: 'success', message: `Write-off of ${writeOffForm.quantity} units of ${pName} submitted for GM approval (DP N$ ${dpVal}).` });
+      setWriteOffSelected({});
+      setWriteOffSearch('');
+      setAlert({ type: 'success', message: `${successCount} write-off${successCount !== 1 ? 's' : ''} submitted for GM approval. Total DP value: N$ ${totalDP.toLocaleString('en-ZA')}.` });
       setTimeout(() => loadData(), 100);
     } catch (err) {
       setAlert({ type: 'error', message: err.message || 'Failed to record write-off' });
@@ -3877,7 +3891,7 @@ function BranchStockTab() {
                             </button>
                           )}
                           {a.quickAction === 'writeoff' && (
-                            <button onClick={() => { setWriteOffForm({ product_name: pName, quantity: '', reason: isExp ? 'expired' : 'other', batch_id: batchId }); setShowWriteOffForm(true); }}
+                            <button onClick={() => { setWriteOffSelected({ [batchId]: { quantity: '', reason: isExp ? 'expired' : 'other' } }); setWriteOffSearch(''); setShowWriteOffForm(true); }}
                               style={{ padding: '4px 10px', borderRadius: 7, fontSize: '0.68rem', fontWeight: 700, border: '1px solid #fecaca', background: '#fef2f2', color: '#c41e3a', cursor: 'pointer' }}>
                               🗑️ Write Off
                             </button>
@@ -5232,79 +5246,184 @@ function BranchStockTab() {
         </div>
       )}
 
-      {showWriteOffForm && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,0,0,0.65)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px', backdropFilter: 'blur(3px)' }}>
-          <div style={{ width: '100%', maxWidth: 560, background: '#fff', borderRadius: 20, overflow: 'hidden', boxShadow: '0 30px 80px rgba(196,30,58,0.2)' }}>
-            <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ color: '#fff', fontSize: '1.1rem', fontWeight: 800 }}>Write Off Stock</div>
-                <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.78rem', marginTop: 2 }}>Select product from inventory to write off</div>
-              </div>
-              <button onClick={() => setShowWriteOffForm(false)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 34, height: 34, borderRadius: '50%', cursor: 'pointer', fontSize: '1.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>x</button>
-            </div>
-            <div style={{ padding: '20px 24px', maxHeight: '70vh', overflowY: 'auto' }}>
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 6 }}>Select Product (from inventory)</label>
-                <select value={writeOffForm.batch_id} onChange={e => {
-                  const b = inventory.find(i => i.id === e.target.value);
-                  setWriteOffForm(f => ({ ...f, batch_id: e.target.value, product_name: b ? (b.product_name || b.productName) : '', quantity: '' }));
-                }} style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.87rem', outline: 'none' }}>
-                  <option value="">-- Select product & batch --</option>
-                  {inventory.filter(i => Number(i.quantity || 0) > 0).map(i => (
-                    <option key={i.id} value={i.id}>
-                      {i.product_name || i.productName} — Batch: {i.batch_no || i.batchNo || 'N/A'} — Qty: {i.quantity} — Exp: {i.expiry_date || i.expiryDate ? formatDate(i.expiry_date || i.expiryDate) : 'N/A'}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              {writeOffForm.batch_id && (() => {
-                const sel = inventory.find(i => i.id === writeOffForm.batch_id);
-                if (!sel) return null;
-                const dp = findProductPrice(sel.product_name || sel.productName);
-                const dpUnit = dp?.dp ? Number(dp.dp) : 0;
-                const woQty = Number(writeOffForm.quantity || 0);
-                return (
-                  <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '12px 16px', marginBottom: 16 }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: '0.82rem' }}>
-                      <div><span style={{ color: '#6b7280', fontWeight: 600 }}>Product:</span> <strong>{sel.product_name || sel.productName}</strong></div>
-                      <div><span style={{ color: '#6b7280', fontWeight: 600 }}>Batch:</span> {sel.batch_no || sel.batchNo || 'N/A'}</div>
-                      <div><span style={{ color: '#6b7280', fontWeight: 600 }}>Expiry:</span> {(sel.expiry_date || sel.expiryDate) ? formatDate(sel.expiry_date || sel.expiryDate) : 'N/A'}</div>
-                      <div><span style={{ color: '#6b7280', fontWeight: 600 }}>Available:</span> <strong style={{ color: '#c41e3a' }}>{sel.quantity}</strong></div>
-                      <div><span style={{ color: '#6b7280', fontWeight: 600 }}>DP Unit:</span> N$ {Math.round(dpUnit).toLocaleString("en-ZA")}</div>
-                      <div><span style={{ color: '#6b7280', fontWeight: 600 }}>Write-off DP:</span> <strong style={{ color: '#c41e3a' }}>N$ {Math.round(dpUnit * woQty).toLocaleString("en-ZA")}</strong></div>
-                    </div>
-                  </div>
-                );
-              })()}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+      {showWriteOffForm && (() => {
+        const woInv = inventory.filter(i => Number(i.quantity || 0) > 0);
+        const woSearchLc = writeOffSearch.toLowerCase();
+        const woFiltered = writeOffSearch
+          ? woInv.filter(i => (i.product_name || i.productName || '').toLowerCase().includes(woSearchLc) || (i.batch_no || i.batchNo || '').toLowerCase().includes(woSearchLc))
+          : woInv;
+        const selectedIds = Object.keys(writeOffSelected);
+        const allVisibleChecked = woFiltered.length > 0 && woFiltered.every(i => writeOffSelected[i.id]);
+        const validEntries = Object.entries(writeOffSelected).filter(([, v]) => Number(v.quantity) > 0);
+        const totalDP = validEntries.reduce((sum, [batchId, { quantity }]) => {
+          const batch = inventory.find(i => i.id === batchId);
+          if (!batch) return sum;
+          const dp = findProductPrice(batch.product_name || batch.productName);
+          return sum + (dp?.dp ? Math.round(Number(dp.dp) * Number(quantity)) : 0);
+        }, 0);
+        const toggleAll = () => {
+          if (allVisibleChecked) {
+            const next = { ...writeOffSelected };
+            woFiltered.forEach(i => delete next[i.id]);
+            setWriteOffSelected(next);
+          } else {
+            const next = { ...writeOffSelected };
+            woFiltered.forEach(i => { if (!next[i.id]) next[i.id] = { quantity: '', reason: 'expired' }; });
+            setWriteOffSelected(next);
+          }
+        };
+        const toggleRow = (id) => {
+          const next = { ...writeOffSelected };
+          if (next[id]) { delete next[id]; } else { next[id] = { quantity: '', reason: 'expired' }; }
+          setWriteOffSelected(next);
+        };
+        const updateRow = (id, field, value) => setWriteOffSelected(prev => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
+        return (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,0,0,0.65)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px', backdropFilter: 'blur(3px)' }}>
+            <div style={{ width: '100%', maxWidth: 860, background: '#fff', borderRadius: 20, overflow: 'hidden', boxShadow: '0 30px 80px rgba(196,30,58,0.22)', display: 'flex', flexDirection: 'column', maxHeight: '90vh' }}>
+              {/* Header */}
+              <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
                 <div>
-                  <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4 }}>Quantity to Write Off *</label>
-                  <input type="number" min="1" max={writeOffForm.batch_id ? Number(inventory.find(i => i.id === writeOffForm.batch_id)?.quantity || 999) : 999} value={writeOffForm.quantity} onChange={e => setWriteOffForm(f => ({ ...f, quantity: e.target.value }))}
-                    style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.87rem', outline: 'none', boxSizing: 'border-box' }} />
+                  <div style={{ color: '#fff', fontSize: '1.1rem', fontWeight: 800 }}>Write Off Stock</div>
+                  <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: '0.78rem', marginTop: 2 }}>Check items below, enter quantities, then submit for GM approval</div>
                 </div>
-                <div>
-                  <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4 }}>Reason *</label>
-                  <select value={writeOffForm.reason} onChange={e => setWriteOffForm(f => ({ ...f, reason: e.target.value }))}
-                    style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.87rem', outline: 'none' }}>
-                    <option value="expired">Expired</option>
-                    <option value="damaged">Damaged</option>
-                    <option value="lost">Lost</option>
-                    <option value="spoiled">Spoiled</option>
-                    <option value="adjustment-approved">Adjustment (Approved)</option>
-                  </select>
-                </div>
+                <button onClick={() => { setShowWriteOffForm(false); setWriteOffSelected({}); setWriteOffSearch(''); }} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 34, height: 34, borderRadius: '50%', cursor: 'pointer', fontSize: '1.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
               </div>
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-                <button onClick={() => setShowWriteOffForm(false)} style={{ padding: '10px 20px', border: '1.5px solid #e2e8f0', borderRadius: 10, background: '#fff', cursor: 'pointer', color: '#64748b', fontWeight: 600, fontSize: '0.87rem' }}>Cancel</button>
-                <button onClick={handleWriteOff} disabled={submitting || !writeOffForm.quantity || (!writeOffForm.batch_id && !writeOffForm.product_name.trim())}
-                  style={{ padding: '10px 28px', border: 'none', borderRadius: 10, background: 'linear-gradient(135deg,#c41e3a,#8b0000)', color: '#fff', fontWeight: 800, cursor: (submitting || !writeOffForm.quantity) ? 'not-allowed' : 'pointer', fontSize: '0.9rem', opacity: submitting ? 0.65 : 1 }}>
-                  {submitting ? 'Submitting...' : 'Submit for GM Approval'}
-                </button>
+              {/* Search bar */}
+              <div style={{ padding: '12px 20px', borderBottom: '1px solid #f1f5f9', flexShrink: 0, display: 'flex', gap: 10, alignItems: 'center' }}>
+                <input
+                  type="text"
+                  placeholder="Search by product name or batch..."
+                  value={writeOffSearch}
+                  onChange={e => setWriteOffSearch(e.target.value)}
+                  style={{ flex: 1, padding: '8px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: '0.85rem', outline: 'none' }}
+                />
+                {selectedIds.length > 0 && (
+                  <span style={{ fontSize: '0.78rem', color: '#c41e3a', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                    {selectedIds.length} item{selectedIds.length !== 1 ? 's' : ''} selected
+                  </span>
+                )}
+              </div>
+              {/* Table */}
+              <div style={{ overflowY: 'auto', flex: 1 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                  <thead>
+                    <tr style={{ background: '#fef2f2', borderBottom: '2px solid #fecaca' }}>
+                      <th style={{ padding: '10px 12px', textAlign: 'center', width: 36 }}>
+                        <input type="checkbox" checked={allVisibleChecked} onChange={toggleAll} style={{ cursor: 'pointer', width: 15, height: 15 }} title="Select all visible" />
+                      </th>
+                      <th style={{ padding: '10px 12px', textAlign: 'left', color: '#7f1d1d', fontWeight: 700 }}>Product</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'left', color: '#7f1d1d', fontWeight: 700 }}>Batch</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'left', color: '#7f1d1d', fontWeight: 700 }}>Expiry</th>
+                      <th style={{ padding: '10px 8px', textAlign: 'right', color: '#7f1d1d', fontWeight: 700 }}>Available</th>
+                      <th style={{ padding: '10px 8px', textAlign: 'center', color: '#7f1d1d', fontWeight: 700, minWidth: 100 }}>Write-off Qty</th>
+                      <th style={{ padding: '10px 8px', textAlign: 'center', color: '#7f1d1d', fontWeight: 700, minWidth: 130 }}>Reason</th>
+                      <th style={{ padding: '10px 8px', textAlign: 'right', color: '#7f1d1d', fontWeight: 700 }}>DP Value</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {woFiltered.length === 0 && (
+                      <tr><td colSpan={8} style={{ padding: '28px', textAlign: 'center', color: '#94a3b8', fontStyle: 'italic' }}>No inventory items match your search</td></tr>
+                    )}
+                    {woFiltered.map((item, idx) => {
+                      const id = item.id;
+                      const isChecked = !!writeOffSelected[id];
+                      const sel = writeOffSelected[id] || {};
+                      const pName = item.product_name || item.productName;
+                      const dp = findProductPrice(pName);
+                      const dpUnit = dp?.dp ? Number(dp.dp) : 0;
+                      const woQty = Number(sel.quantity || 0);
+                      const dpLine = isChecked && woQty > 0 ? Math.round(dpUnit * woQty) : null;
+                      const expRaw = item.expiry_date || item.expiryDate;
+                      const isExp = expRaw ? new Date(expRaw) < new Date() : false;
+                      const rowBg = isChecked ? '#fff5f5' : idx % 2 === 0 ? '#fff' : '#fafafa';
+                      const overQty = isChecked && woQty > Number(item.quantity || 0);
+                      return (
+                        <tr key={id} style={{ background: rowBg, borderBottom: '1px solid #f1f5f9', transition: 'background 0.15s' }}>
+                          <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                            <input type="checkbox" checked={isChecked} onChange={() => toggleRow(id)} style={{ cursor: 'pointer', width: 15, height: 15 }} />
+                          </td>
+                          <td style={{ padding: '8px 12px', fontWeight: isChecked ? 700 : 400, color: '#1e293b' }}>
+                            {pName}
+                          </td>
+                          <td style={{ padding: '8px 12px', color: '#475569', fontFamily: 'monospace', fontSize: '0.78rem' }}>
+                            {item.batch_no || item.batchNo || <span style={{ color: '#cbd5e1' }}>N/A</span>}
+                          </td>
+                          <td style={{ padding: '8px 12px', color: isExp ? '#dc2626' : '#475569', fontWeight: isExp ? 700 : 400 }}>
+                            {expRaw ? formatDate(expRaw) : <span style={{ color: '#cbd5e1' }}>N/A</span>}
+                            {isExp && <span style={{ marginLeft: 4, fontSize: '0.7rem', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 4, padding: '1px 4px', color: '#dc2626' }}>EXP</span>}
+                          </td>
+                          <td style={{ padding: '8px 8px', textAlign: 'right', fontWeight: 700, color: '#1e293b' }}>
+                            {Number(item.quantity || 0).toLocaleString('en-ZA')}
+                          </td>
+                          <td style={{ padding: '6px 8px', textAlign: 'center' }}>
+                            {isChecked ? (
+                              <input
+                                type="number"
+                                min="1"
+                                max={Number(item.quantity || 0)}
+                                value={sel.quantity}
+                                onChange={e => updateRow(id, 'quantity', e.target.value)}
+                                placeholder="Qty"
+                                style={{ width: 80, padding: '5px 8px', border: `1.5px solid ${overQty ? '#dc2626' : '#e2e8f0'}`, borderRadius: 7, fontSize: '0.82rem', outline: 'none', textAlign: 'center', background: overQty ? '#fef2f2' : '#fff' }}
+                              />
+                            ) : (
+                              <span style={{ color: '#cbd5e1', fontSize: '0.75rem' }}>—</span>
+                            )}
+                          </td>
+                          <td style={{ padding: '6px 8px', textAlign: 'center' }}>
+                            {isChecked ? (
+                              <select
+                                value={sel.reason || 'expired'}
+                                onChange={e => updateRow(id, 'reason', e.target.value)}
+                                style={{ padding: '5px 6px', border: '1.5px solid #e2e8f0', borderRadius: 7, fontSize: '0.78rem', outline: 'none', background: '#fff' }}
+                              >
+                                <option value="expired">Expired</option>
+                                <option value="damaged">Damaged</option>
+                                <option value="lost">Lost</option>
+                                <option value="spoiled">Spoiled</option>
+                                <option value="adjustment-approved">Adjustment</option>
+                              </select>
+                            ) : (
+                              <span style={{ color: '#cbd5e1', fontSize: '0.75rem' }}>—</span>
+                            )}
+                          </td>
+                          <td style={{ padding: '8px 8px', textAlign: 'right', fontWeight: 700, color: dpLine !== null ? '#c41e3a' : '#cbd5e1', fontSize: '0.8rem' }}>
+                            {dpLine !== null ? `N$ ${dpLine.toLocaleString('en-ZA')}` : '—'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {/* Footer */}
+              <div style={{ padding: '14px 20px', borderTop: '2px solid #fef2f2', background: '#fffbfb', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                <div style={{ fontSize: '0.85rem', color: '#64748b' }}>
+                  {validEntries.length > 0 ? (
+                    <>
+                      <span style={{ fontWeight: 700, color: '#1e293b' }}>{validEntries.length}</span> item{validEntries.length !== 1 ? 's' : ''} to write off &nbsp;·&nbsp;
+                      Total DP: <span style={{ fontWeight: 800, color: '#c41e3a' }}>N$ {totalDP.toLocaleString('en-ZA')}</span>
+                    </>
+                  ) : (
+                    <span style={{ color: '#94a3b8' }}>Check items and enter quantities to submit</span>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button onClick={() => { setShowWriteOffForm(false); setWriteOffSelected({}); setWriteOffSearch(''); }} style={{ padding: '10px 20px', border: '1.5px solid #e2e8f0', borderRadius: 10, background: '#fff', cursor: 'pointer', color: '#64748b', fontWeight: 600, fontSize: '0.87rem' }}>Cancel</button>
+                  <button
+                    onClick={handleWriteOff}
+                    disabled={submitting || validEntries.length === 0}
+                    style={{ padding: '10px 28px', border: 'none', borderRadius: 10, background: 'linear-gradient(135deg,#c41e3a,#8b0000)', color: '#fff', fontWeight: 800, cursor: (submitting || validEntries.length === 0) ? 'not-allowed' : 'pointer', fontSize: '0.9rem', opacity: (submitting || validEntries.length === 0) ? 0.55 : 1 }}
+                  >
+                    {submitting ? 'Submitting...' : `Submit ${validEntries.length > 0 ? validEntries.length : ''} for GM Approval`}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
     </div>
   );
