@@ -2790,12 +2790,16 @@ function WarehouseTab({ name }) {
 
   const getBatchSource = (batch) => {
     const notes = (batch.notes || '').toLowerCase();
-    const batchNo = (batch.batch_no || batch.batchNo || batch.batch_number || '').toUpperCase();
     const id = (batch.id || '').toUpperCase();
     if (id.startsWith('SB-WO-') || notes.includes('write-off return') || notes.includes('write_off_return') || notes.includes('returned from branch')) return 'Branch Return';
-    if (notes.includes('country stock') || batchNo.startsWith('RCV-')) return 'Country Stock';
-    return 'Supplier Import';
+    return 'Country Stock';
   };
+
+  const returnsMap = writeoffReturns.reduce((m, r) => {
+    const key = (r.batch_no || '').toLowerCase() + '||' + (r.product_name || '').toLowerCase();
+    if (!m[key]) m[key] = r;
+    return m;
+  }, {});
 
   const handleDispatchToBranch = async (e) => {
     e.preventDefault();
@@ -2920,9 +2924,21 @@ function WarehouseTab({ name }) {
               { header: 'Batch #', render: r => r.batch_no || r.batch_number || '—' },
               { header: 'Source', render: r => {
                 const src = getBatchSource(r);
-                if (src === 'Branch Return') return <span style={{ background: '#fef3c7', color: '#92400e', padding: '2px 8px', borderRadius: 5, fontSize: '0.72rem', fontWeight: 700, whiteSpace: 'nowrap' }}>↩ Branch Return</span>;
-                if (src === 'Country Stock') return <span style={{ background: '#eff6ff', color: '#1d4ed8', padding: '2px 8px', borderRadius: 5, fontSize: '0.72rem', fontWeight: 700, whiteSpace: 'nowrap' }}>📦 Country Stock</span>;
-                return <span style={{ background: '#f0fdf4', color: '#166534', padding: '2px 8px', borderRadius: 5, fontSize: '0.72rem', fontWeight: 700, whiteSpace: 'nowrap' }}>🏭 Supplier Import</span>;
+                if (src === 'Branch Return') {
+                  const key = (r.batch_no || r.batch_number || '').toLowerCase() + '||' + (r.description || r.product_name || '').toLowerCase();
+                  const retEntry = returnsMap[key];
+                  const sourceBranch = retEntry?.source_branch || (() => {
+                    const m = (retEntry?.notes || r.dispatch_source || r.notes || '').match(/Branch:\s*([^\s.,]+)/i);
+                    return m ? m[1] : null;
+                  })();
+                  const branchLabel = sourceBranch ? fmtLocation(sourceBranch) : 'Branch';
+                  return <span style={{ background: '#fef3c7', color: '#92400e', padding: '2px 8px', borderRadius: 5, fontSize: '0.72rem', fontWeight: 700, whiteSpace: 'nowrap' }}>↩ {branchLabel}</span>;
+                }
+                const dispSrc = r.dispatch_source;
+                const fromLabel = dispSrc
+                  ? (dispSrc.toLowerCase().includes('country') ? 'Country Stock' : fmtLocation(dispSrc))
+                  : 'Country Stock';
+                return <span style={{ background: '#eff6ff', color: '#1d4ed8', padding: '2px 8px', borderRadius: 5, fontSize: '0.72rem', fontWeight: 700, whiteSpace: 'nowrap' }}>📦 {fromLabel}</span>;
               }},
               { header: 'Available', render: r => <span className={Number(r.remaining_quantity || r.quantity) < 10 ? 'text-red-600 font-bold' : 'font-medium'}>{r.remaining_quantity || r.quantity}</span> },
               { header: 'Dispatched', render: r => r.dispatched_quantity || 0 },

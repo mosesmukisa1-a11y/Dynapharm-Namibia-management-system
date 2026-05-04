@@ -2,11 +2,27 @@ import { getMany } from '../../db.js';
 
 export async function getWarehouseBatches(warehouseKey) {
   return getMany(
-    `SELECT id, description, batch_no, barcode, location, remaining_quantity, quantity,
-            cif_unit_cost, dpc_unit_value, unit_price, expiry_date, dispatched_quantity, import_date as created_at
-     FROM stock_batches
-     WHERE location = $1
-     ORDER BY description ASC, expiry_date ASC NULLS LAST`,
+    `SELECT sb.id, sb.description, sb.batch_no, sb.barcode, sb.location,
+            sb.remaining_quantity, sb.quantity,
+            sb.cif_unit_cost, sb.dpc_unit_value, sb.unit_price,
+            sb.expiry_date, sb.dispatched_quantity,
+            sb.import_date AS created_at,
+            sb.notes,
+            COALESCE(
+              wim.notes,
+              (SELECT st.from_warehouse
+               FROM stock_transfers st
+               WHERE st.to_branch = $1
+                 AND st.items::text ILIKE '%' || sb.batch_no || '%'
+               ORDER BY st.created_at DESC LIMIT 1)
+            ) AS dispatch_source
+     FROM stock_batches sb
+     LEFT JOIN warehouse_inventory_movements wim
+            ON wim.warehouse_id = $1
+           AND wim.batch_no    = sb.batch_no
+           AND wim.movement_type = 'write_off_return'
+     WHERE sb.location = $1
+     ORDER BY sb.description ASC, sb.expiry_date ASC NULLS LAST`,
     [warehouseKey]
   );
 }
@@ -50,8 +66,7 @@ export async function getWarehouseWriteoffReturns(warehouseKey) {
             wim.created_at,
             sm.source_location  AS source_branch,
             sm.expiry_date      AS expiry_date,
-            sm.write_off_reason AS write_off_reason,
-            sm.reason           AS reason
+            sm.write_off_reason AS write_off_reason
      FROM warehouse_inventory_movements wim
      LEFT JOIN stock_movements sm
             ON sm.reference_id = wim.reference
