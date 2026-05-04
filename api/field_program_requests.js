@@ -7,6 +7,8 @@ function normalizeRow(row) {
   if (typeof products === 'string') try { products = JSON.parse(products); } catch { products = []; }
   let returned_items = row.returned_items;
   if (typeof returned_items === 'string') try { returned_items = JSON.parse(returned_items); } catch { returned_items = []; }
+  let distributors = row.distributors;
+  if (typeof distributors === 'string') try { distributors = JSON.parse(distributors); } catch { distributors = []; }
   return {
     id: row.id,
     activity_type: row.activity_type,
@@ -20,9 +22,12 @@ function normalizeRow(row) {
     branch: row.branch,
     products: products || [],
     returned_items: returned_items || [],
+    distributors: distributors || [],
     requires_approval: row.requires_approval || false,
     approved_by: row.approved_by,
     approved_at: row.approved_at,
+    reconciled_by: row.reconciled_by || null,
+    reconciled_at: row.reconciled_at instanceof Date ? row.reconciled_at.toISOString() : row.reconciled_at || null,
     created_by: row.created_by,
     distributor_id: row.distributor_id || null,
     distributor_name: row.distributor_name || null,
@@ -62,9 +67,9 @@ export default async function handler(req, res) {
       await query(
         `INSERT INTO field_program_requests
            (id, activity_type, location, date, time, coordinator, target_audience, notes, status, branch,
-            products, returned_items, requires_approval, created_by,
+            products, returned_items, distributors, requires_approval, created_by,
             distributor_id, distributor_name, distributor_code, signature, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,NOW())`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,NOW())`,
         [
           id,
           body.activity_type || 'health_screening',
@@ -78,6 +83,7 @@ export default async function handler(req, res) {
           body.branch || null,
           body.products ? JSON.stringify(body.products) : '[]',
           body.returned_items ? JSON.stringify(body.returned_items) : '[]',
+          body.distributors ? JSON.stringify(body.distributors) : '[]',
           body.requires_approval !== undefined ? body.requires_approval : true,
           body.created_by || null,
           body.distributor_id || null,
@@ -100,8 +106,11 @@ export default async function handler(req, res) {
       let idx = 1;
       if (body.status !== undefined) { sets.push(`status = $${idx++}`); vals.push(body.status); }
       if (body.returned_items !== undefined) { sets.push(`returned_items = $${idx++}`); vals.push(JSON.stringify(body.returned_items)); }
+      if (body.distributors !== undefined) { sets.push(`distributors = $${idx++}`); vals.push(JSON.stringify(body.distributors)); }
       if (body.approved_by !== undefined) { sets.push(`approved_by = $${idx++}`); vals.push(body.approved_by); }
       if (body.approved_at !== undefined) { sets.push(`approved_at = $${idx++}`); vals.push(body.approved_at); }
+      if (body.reconciled_by !== undefined) { sets.push(`reconciled_by = $${idx++}`); vals.push(body.reconciled_by); }
+      if (body.reconciled_at !== undefined) { sets.push(`reconciled_at = $${idx++}`); vals.push(body.reconciled_at); }
       if (body.notes !== undefined) { sets.push(`notes = $${idx++}`); vals.push(body.notes); }
       sets.push(`updated_at = NOW()`);
 

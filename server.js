@@ -2077,6 +2077,9 @@ server.on('error', (error) => {
       `ALTER TABLE field_program_requests ADD COLUMN IF NOT EXISTS distributor_name TEXT`,
       `ALTER TABLE field_program_requests ADD COLUMN IF NOT EXISTS distributor_code TEXT`,
       `ALTER TABLE field_program_requests ADD COLUMN IF NOT EXISTS signature TEXT`,
+      `ALTER TABLE field_program_requests ADD COLUMN IF NOT EXISTS distributors JSONB DEFAULT '[]'`,
+      `ALTER TABLE field_program_requests ADD COLUMN IF NOT EXISTS reconciled_at TIMESTAMPTZ`,
+      `ALTER TABLE field_program_requests ADD COLUMN IF NOT EXISTS reconciled_by TEXT`,
       // Write-off disposal tracking: written-off stock stays in a disposal queue
       // until the stock manager physically disposes of it
       `ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS disposal_status VARCHAR(30) DEFAULT NULL`,

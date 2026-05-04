@@ -7885,6 +7885,7 @@ function printFieldRequestDoc(req, branchName) {
 
 function FieldProgramTab() {
   const { user } = useAuth();
+  const [fpTab, setFpTab] = useState('requests');
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -7892,23 +7893,27 @@ function FieldProgramTab() {
   const [alert, setAlert] = useState(null);
   const [distributorSearch, setDistributorSearch] = useState('');
   const [distributorResults, setDistributorResults] = useState([]);
-  const [selectedDistributor, setSelectedDistributor] = useState(null);
+  const [selectedDistributors, setSelectedDistributors] = useState([]);
   const [productRows, setProductRows] = useState([{ product: '', quantity: '', unit: '', suggestions: [], showSug: false }]);
   const [requestDate, setRequestDate] = useState(new Date().toISOString().slice(0, 10));
   const [requestBranch, setRequestBranch] = useState(user?.branch || '');
   const [requestNotes, setRequestNotes] = useState('');
   const [agreeTerms, setAgreeTerms] = useState(false);
-  const [signature, setSignature] = useState('');
   const [catalogue, setCatalogue] = useState([]);
   const [lastSubmitted, setLastSubmitted] = useState(null);
   const [scanRowIdx, setScanRowIdx] = useState(null);
+  const [reconcileId, setReconcileId] = useState(null);
+  const [returnedQtys, setReturnedQtys] = useState({});
+  const [dpPricesMap, setDpPricesMap] = useState({});
+  const [reconcileNotes, setReconcileNotes] = useState('');
+  const [reconciling, setReconciling] = useState(false);
 
   useEffect(() => {
     Promise.all([
       api.get('/field_program_requests').catch(() => []),
       api.products.list().catch(() => []),
     ]).then(([d, prods]) => {
-      setActivities(Array.isArray(d) ? d : d.activities || d.requests || []);
+      setActivities(Array.isArray(d) ? d : d.requests || d.activities || []);
       setCatalogue(Array.isArray(prods) ? prods : prods.products || []);
     }).finally(() => setLoading(false));
   }, []);
@@ -7916,7 +7921,7 @@ function FieldProgramTab() {
   const loadActivities = async () => {
     setLoading(true);
     const res = await api.get('/field_program_requests').catch(() => []);
-    setActivities(Array.isArray(res) ? res : res.activities || res.requests || []);
+    setActivities(Array.isArray(res) ? res : res.requests || res.activities || []);
     setLoading(false);
   };
 
@@ -7929,17 +7934,19 @@ function FieldProgramTab() {
       try {
         const res = await api.distributors.search(val);
         const list = Array.isArray(res) ? res : res.distributors || [];
-        setDistributorResults(list.slice(0, 8));
+        setDistributorResults(list.filter(r => !selectedDistributors.find(s => s.id === r.id)).slice(0, 8));
       } catch { setDistributorResults([]); }
     }, 300);
   };
 
-  const selectDistributor = (d) => {
-    setSelectedDistributor(d);
-    setDistributorSearch(d.distributor_name || d.name || '');
+  const addDistributor = (d) => {
+    if (selectedDistributors.find(x => x.id === d.id)) return;
+    setSelectedDistributors(prev => [...prev, d]);
+    setDistributorSearch('');
     setDistributorResults([]);
-    setSignature(d.distributor_name || d.name || '');
   };
+
+  const removeDistributor = (id) => setSelectedDistributors(prev => prev.filter(d => d.id !== id));
 
   const addProductRow = () => setProductRows([...productRows, { product: '', quantity: '', unit: '', suggestions: [], showSug: false }]);
   const removeProductRow = (idx) => setProductRows(productRows.filter((_, i) => i !== idx));
@@ -7981,20 +7988,22 @@ function FieldProgramTab() {
 
   const handleSubmit = async (e) => {
     e?.preventDefault?.();
-    if (!selectedDistributor || !agreeTerms || !signature.trim()) return;
+    if (selectedDistributors.length === 0 || !agreeTerms) return;
     const validProducts = productRows.filter(r => r.product.trim() && r.quantity);
     if (validProducts.length === 0) return;
     setSubmitting(true);
+    const primary = selectedDistributors[0];
     const reqData = {
       id: `FP-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      distributor_id: selectedDistributor.id,
-      distributor_name: selectedDistributor.distributor_name || selectedDistributor.name,
-      distributor_code: selectedDistributor.distributor_code || selectedDistributor.nb_number,
+      distributor_id: primary.id,
+      distributor_name: primary.distributor_name || primary.name,
+      distributor_code: primary.distributor_code || primary.nb_number,
+      distributors: selectedDistributors.map(d => ({ id: d.id, name: d.distributor_name || d.name, code: d.distributor_code || d.nb_number })),
       date: requestDate,
-      branch: requestBranch,
+      branch: requestBranch || user?.branch || '',
       products: validProducts.map(r => ({ product_name: r.product, quantity: Number(r.quantity), unit: r.unit })),
       notes: requestNotes.trim(),
-      signature: signature.trim(),
+      signature: selectedDistributors.map(d => d.distributor_name || d.name).join(', '),
       status: 'pending',
       created_by: user?.full_name || user?.username || '',
     };
@@ -8003,22 +8012,83 @@ function FieldProgramTab() {
       setAlert({ type: 'success', message: 'Field program request submitted successfully' });
       setLastSubmitted(reqData);
       setShowForm(false);
-      setSelectedDistributor(null);
+      setSelectedDistributors([]);
       setDistributorSearch('');
       setProductRows([{ product: '', quantity: '', unit: '', suggestions: [], showSug: false }]);
       setRequestNotes('');
       setAgreeTerms(false);
-      setSignature('');
       loadActivities();
     } catch (err) {
       setAlert({ type: 'error', message: err.message || 'Failed to submit request' });
     } finally { setSubmitting(false); }
   };
 
+  const reconcileTarget = activities.find(a => a.id === reconcileId) || null;
+
+  const openReconcile = (req) => {
+    const prods = Array.isArray(req.products) ? req.products : [];
+    const returned = Array.isArray(req.returned_items) ? req.returned_items : [];
+    const initQtys = {};
+    const initDp = {};
+    prods.forEach(p => {
+      const name = p.product_name;
+      const ret = returned.find(r => r.product_name === name);
+      initQtys[name] = ret ? String(ret.returned_qty) : '';
+      const cat = catalogue.find(c => (c.name || c.description || '').toLowerCase() === name.toLowerCase());
+      initDp[name] = ret?.dp_price != null ? String(ret.dp_price) : cat ? String(cat.dp || 0) : '';
+    });
+    setReturnedQtys(initQtys);
+    setDpPricesMap(initDp);
+    setReconcileNotes(req.notes || '');
+    setReconcileId(req.id);
+  };
+
+  const closeReconcile = () => setReconcileId(null);
+
+  const handleReconcileSave = async () => {
+    if (!reconcileTarget) return;
+    setReconciling(true);
+    const prods = Array.isArray(reconcileTarget.products) ? reconcileTarget.products : [];
+    const returned_items = prods.map(p => ({
+      product_name: p.product_name,
+      issued_qty: Number(p.quantity) || 0,
+      returned_qty: Number(returnedQtys[p.product_name] || 0),
+      dp_price: Number(dpPricesMap[p.product_name] || 0),
+    }));
+    try {
+      await api.put('/field_program_requests', {
+        id: reconcileTarget.id,
+        returned_items,
+        status: 'reconciled',
+        notes: reconcileNotes,
+        reconciled_by: user?.full_name || user?.username || '',
+        reconciled_at: new Date().toISOString(),
+      });
+      setAlert({ type: 'success', message: 'Reconciliation saved. DP payable has been calculated.' });
+      await loadActivities();
+      setReconcileId(null);
+    } catch (err) {
+      setAlert({ type: 'error', message: err.message || 'Failed to save reconciliation' });
+    } finally { setReconciling(false); }
+  };
+
+  const reconcileProducts = reconcileTarget ? (Array.isArray(reconcileTarget.products) ? reconcileTarget.products : []) : [];
+  const reconcileTotalPayable = reconcileProducts.reduce((sum, p) => {
+    const net = Math.max(0, (Number(p.quantity) || 0) - Number(returnedQtys[p.product_name] || 0));
+    return sum + net * Number(dpPricesMap[p.product_name] || 0);
+  }, 0);
+
+  const getDistributorDisplay = (req) => {
+    const dists = Array.isArray(req.distributors) && req.distributors.length > 0 ? req.distributors : null;
+    if (dists) return dists.map(d => d.name).join(', ');
+    return req.distributor_name || '-';
+  };
+
   if (loading) return <LoadingSpinner />;
 
   return (
     <div>
+      {/* Header */}
       <div className="rounded-xl p-5 mb-5 flex justify-between items-center flex-wrap gap-3" style={{ background: 'linear-gradient(135deg,#c41e3a 0%,#8b0000 100%)', boxShadow: '0 4px 20px rgba(196,30,58,0.28)' }}>
         <div>
           <h3 className="text-white text-lg font-bold m-0">🚐 Field Program — Stock Requests</h3>
@@ -8029,33 +8099,234 @@ function FieldProgramTab() {
 
       {alert && <Alert type={alert.type} className="mb-4" onClose={() => setAlert(null)}>{alert.message}</Alert>}
 
-      {lastSubmitted && (
-        <div style={{ background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: 12, padding: '12px 16px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ fontSize: '0.87rem', color: '#166534', fontWeight: 600 }}>Last request: <span className="font-mono">{lastSubmitted.id}</span> for {lastSubmitted.distributor_name}</div>
-          <button onClick={() => printFieldRequestDoc(lastSubmitted, user?.branch||'')} className="px-4 py-2 rounded-lg text-sm font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>🖨️ Print Distributor Copy</button>
+      {/* Sub-tabs */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16, borderBottom: '2px solid #f1f5f9' }}>
+        {[
+          { id: 'requests', label: '📋 Requests', count: activities.length },
+          { id: 'reconcile', label: '⚖️ Reconcile', count: activities.filter(a => a.status !== 'reconciled').length },
+        ].map(t => (
+          <button key={t.id} onClick={() => { setFpTab(t.id); if (t.id === 'requests') setReconcileId(null); }}
+            style={{ padding: '9px 18px', border: 'none', borderRadius: '8px 8px 0 0', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem', marginBottom: -2, borderBottom: fpTab === t.id ? '2px solid #c41e3a' : '2px solid transparent', background: fpTab === t.id ? '#fff0f3' : 'transparent', color: fpTab === t.id ? '#c41e3a' : '#64748b' }}>
+            {t.label}
+            {t.count > 0 && <span style={{ marginLeft: 6, background: fpTab === t.id ? '#c41e3a' : '#e2e8f0', color: fpTab === t.id ? '#fff' : '#64748b', borderRadius: 10, padding: '1px 7px', fontSize: '0.73rem' }}>{t.count}</span>}
+          </button>
+        ))}
+      </div>
+
+      {/* ── REQUESTS tab ── */}
+      {fpTab === 'requests' && (
+        <>
+          {lastSubmitted && (
+            <div style={{ background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: 12, padding: '12px 16px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontSize: '0.87rem', color: '#166534', fontWeight: 600 }}>Last request: <span className="font-mono">{lastSubmitted.id}</span> — {getDistributorDisplay(lastSubmitted)}</div>
+              <button onClick={() => printFieldRequestDoc(lastSubmitted, user?.branch||'')} className="px-4 py-2 rounded-lg text-sm font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>🖨️ Print Distributor Copy</button>
+            </div>
+          )}
+          <Card>
+            <CardHeader className="flex justify-between items-center">
+              <h3 className="font-bold text-gray-800">Field Program Requests</h3>
+              <button onClick={loadActivities} className="px-3 py-1.5 rounded-lg text-xs font-semibold border-none cursor-pointer" style={{ background: '#f9f5f5', color: '#64748b' }}>🔄 Refresh</button>
+            </CardHeader>
+            <Table
+              columns={[
+                { header: 'ID', render: r => <span className="text-xs font-mono">{r.id}</span> },
+                { header: 'Distributor(s)', render: r => (
+                  <div>
+                    <div className="font-semibold text-sm">{getDistributorDisplay(r)}</div>
+                    {Array.isArray(r.distributors) && r.distributors.length > 1 && <div className="text-xs font-medium" style={{ color: '#3b82f6' }}>{r.distributors.length} members</div>}
+                  </div>
+                )},
+                { header: 'Date', render: r => formatDate(r.date) },
+                { header: 'Products', render: r => { const prods = Array.isArray(r.products)?r.products:[]; return <span className="text-xs text-gray-600">{prods.slice(0,2).map(p=>`${p.product_name} ×${p.quantity}`).join(', ')}{prods.length>2?` +${prods.length-2} more`:''}</span>; }},
+                { header: 'Status', render: r => <Badge variant={r.status==='approved'||r.status==='reconciled'?'success':r.status==='rejected'?'danger':'warning'}>{(r.status||'Pending').replace(/_/g,' ')}</Badge> },
+                { header: '', render: r => (
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'nowrap' }}>
+                    <button onClick={() => printFieldRequestDoc(r, user?.branch||'')} className="px-3 py-1.5 text-xs rounded-lg font-bold border-none cursor-pointer" style={{ background: '#f8fafc', color: '#64748b', border: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>🖨️ Print</button>
+                    <button onClick={() => { setFpTab('reconcile'); openReconcile(r); }} className="px-3 py-1.5 text-xs rounded-lg font-bold border-none cursor-pointer" style={{ background: r.status === 'reconciled' ? '#f0fdf4' : '#c41e3a', color: r.status === 'reconciled' ? '#166534' : '#fff', border: 'none', whiteSpace: 'nowrap' }}>
+                      {r.status === 'reconciled' ? '✅ Reconciled' : '⚖️ Reconcile'}
+                    </button>
+                  </div>
+                )},
+              ]}
+              data={activities}
+              emptyMessage="No field program requests yet"
+            />
+          </Card>
+        </>
+      )}
+
+      {/* ── RECONCILE tab ── */}
+      {fpTab === 'reconcile' && (
+        <div>
+          {!reconcileTarget ? (
+            <Card>
+              <CardHeader>
+                <h3 className="font-bold text-gray-800">⚖️ Select a Request to Reconcile</h3>
+                <p className="text-sm text-gray-500 mt-0.5">Mark what stock was returned and the system will calculate the DP amount payable by the distributor(s).</p>
+              </CardHeader>
+              {activities.length === 0 ? (
+                <CardBody><EmptyState icon={<span style={{ fontSize: 40 }}>📋</span>} title="No requests yet" description="Submit a field program stock request first, then reconcile it here." /></CardBody>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ background: '#fdf7f8' }}>
+                        {['ID', 'Distributor(s)', 'Date', 'Products', 'Status', ''].map(h => (
+                          <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: '0.73rem', fontWeight: 800, color: '#c41e3a', textTransform: 'uppercase', letterSpacing: '.06em', borderBottom: '2px solid #fecaca', whiteSpace: 'nowrap' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {activities.map((r, i) => {
+                        const isReconciled = r.status === 'reconciled';
+                        const prods = Array.isArray(r.products) ? r.products : [];
+                        return (
+                          <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? '#fff' : '#fdf7f8', opacity: isReconciled ? 0.75 : 1 }}>
+                            <td style={{ padding: '10px 14px', fontSize: '0.78rem', fontFamily: 'monospace', color: '#64748b' }}>{r.id}</td>
+                            <td style={{ padding: '10px 14px' }}>
+                              <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>{getDistributorDisplay(r)}</div>
+                              {Array.isArray(r.distributors) && r.distributors.length > 1 && <div style={{ fontSize: '0.72rem', color: '#3b82f6' }}>{r.distributors.length} members</div>}
+                            </td>
+                            <td style={{ padding: '10px 14px', fontSize: '0.82rem', color: '#64748b', whiteSpace: 'nowrap' }}>{formatDate(r.date)}</td>
+                            <td style={{ padding: '10px 14px', fontSize: '0.78rem', color: '#64748b' }}>
+                              {prods.slice(0, 2).map(p => `${p.product_name} ×${p.quantity}`).join(', ')}
+                              {prods.length > 2 && ` +${prods.length - 2} more`}
+                            </td>
+                            <td style={{ padding: '10px 14px' }}>
+                              <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 10, fontSize: '0.72rem', fontWeight: 700, background: isReconciled ? '#dcfce7' : r.status === 'rejected' ? '#fef2f2' : '#fef3c7', color: isReconciled ? '#166534' : r.status === 'rejected' ? '#c41e3a' : '#92400e' }}>
+                                {(r.status || 'pending').replace(/_/g, ' ')}
+                              </span>
+                            </td>
+                            <td style={{ padding: '10px 14px' }}>
+                              <button onClick={() => openReconcile(r)}
+                                style={{ padding: '7px 14px', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 700, fontSize: '0.8rem', background: isReconciled ? '#f0fdf4' : 'linear-gradient(135deg,#c41e3a,#8b0000)', color: isReconciled ? '#166534' : '#fff', whiteSpace: 'nowrap' }}>
+                                {isReconciled ? '✅ View / Edit' : '⚖️ Reconcile'}
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Card>
+          ) : (
+            <div>
+              <button onClick={closeReconcile} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', border: '1.5px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#64748b', cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem', marginBottom: 14 }}>
+                ← Back to list
+              </button>
+              <Card>
+                <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', borderRadius: '12px 12px 0 0', padding: '14px 20px' }}>
+                  <div style={{ color: '#fff', fontWeight: 800, fontSize: '1rem' }}>⚖️ Reconcile: {reconcileTarget.id}</div>
+                  <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.8rem', marginTop: 3 }}>
+                    {formatDate(reconcileTarget.date)} · {getDistributorDisplay(reconcileTarget)}
+                    {Array.isArray(reconcileTarget.distributors) && reconcileTarget.distributors.length > 1 && ` (${reconcileTarget.distributors.length} members)`}
+                  </div>
+                </div>
+                <CardBody>
+                  {/* Participating distributors chips */}
+                  {Array.isArray(reconcileTarget.distributors) && reconcileTarget.distributors.length > 1 && (
+                    <div style={{ marginBottom: 18 }}>
+                      <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#c41e3a', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 8 }}>Participating Distributors</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                        {reconcileTarget.distributors.map((d, i) => (
+                          <div key={i} style={{ padding: '4px 12px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 20, fontSize: '0.8rem', fontWeight: 600, color: '#1e40af' }}>
+                            {d.name}{d.code ? <span style={{ opacity: 0.6, marginLeft: 6 }}>· {d.code}</span> : ''}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Reconcile table */}
+                  <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#c41e3a', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 10 }}>Stock Reconciliation — Enter Returned Quantities</div>
+                  <div style={{ overflowX: 'auto', marginBottom: 20 }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                      <thead>
+                        <tr style={{ background: '#fdf7f8' }}>
+                          {['Product', 'Issued', 'Returned', 'Net Sold/Used', 'DP Price (N$)', 'DP Payable (N$)'].map(h => (
+                            <th key={h} style={{ padding: '9px 12px', textAlign: ['Issued','Returned','Net Sold/Used','DP Price (N$)','DP Payable (N$)'].includes(h) ? 'center' : 'left', fontSize: '0.71rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.05em', borderBottom: '2px solid #f1f5f9', whiteSpace: 'nowrap' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {reconcileProducts.map((p, i) => {
+                          const issued = Number(p.quantity) || 0;
+                          const returned = Number(returnedQtys[p.product_name] || 0);
+                          const net = Math.max(0, issued - returned);
+                          const dp = Number(dpPricesMap[p.product_name] || 0);
+                          const payable = net * dp;
+                          return (
+                            <tr key={i} style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? '#fff' : '#fdf7f8' }}>
+                              <td style={{ padding: '10px 12px', fontWeight: 600, color: '#1e293b' }}>{p.product_name}</td>
+                              <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 700, color: '#374151' }}>{issued}</td>
+                              <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                                <input type="number" min="0" max={issued} value={returnedQtys[p.product_name] ?? ''} onChange={e => setReturnedQtys(prev => ({ ...prev, [p.product_name]: e.target.value }))} placeholder="0"
+                                  style={{ width: 70, padding: '5px 8px', border: '1.5px solid #fcd34d', borderRadius: 7, textAlign: 'center', fontSize: '0.85rem', outline: 'none', background: '#fffbeb' }} />
+                              </td>
+                              <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 800, color: net > 0 ? '#c41e3a' : '#166534' }}>{net}</td>
+                              <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                                <input type="number" min="0" step="0.01" value={dpPricesMap[p.product_name] ?? ''} onChange={e => setDpPricesMap(prev => ({ ...prev, [p.product_name]: e.target.value }))} placeholder="0.00"
+                                  style={{ width: 84, padding: '5px 8px', border: '1.5px solid #e8d5d8', borderRadius: 7, textAlign: 'center', fontSize: '0.85rem', outline: 'none' }} />
+                              </td>
+                              <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 800, color: payable > 0 ? '#8b0000' : '#64748b' }}>
+                                {payable > 0 ? `N$ ${payable.toFixed(2)}` : '—'}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      <tfoot>
+                        <tr style={{ background: '#fdf7f8', borderTop: '2px solid #fecaca' }}>
+                          <td colSpan={5} style={{ padding: '12px 14px', fontWeight: 800, color: '#8b0000', fontSize: '0.9rem', textAlign: 'right' }}>Total DP Payable by Distributor(s):</td>
+                          <td style={{ padding: '12px 14px', textAlign: 'center', fontWeight: 900, color: '#8b0000', fontSize: '1.1rem' }}>N$ {reconcileTotalPayable.toFixed(2)}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+
+                  {/* Summary card */}
+                  <div style={{ background: reconcileTotalPayable > 0 ? '#fff0f3' : '#f0fdf4', border: `2px solid ${reconcileTotalPayable > 0 ? '#fecaca' : '#86efac'}`, borderRadius: 12, padding: '16px 20px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+                    <div>
+                      <div style={{ fontSize: '0.72rem', fontWeight: 800, color: reconcileTotalPayable > 0 ? '#c41e3a' : '#166534', textTransform: 'uppercase', letterSpacing: '.08em' }}>
+                        {reconcileTotalPayable > 0 ? '💳 DP Amount Payable' : '✅ No Payment Due'}
+                      </div>
+                      <div style={{ fontSize: '1.75rem', fontWeight: 900, color: reconcileTotalPayable > 0 ? '#8b0000' : '#166534', marginTop: 2 }}>
+                        N$ {reconcileTotalPayable.toFixed(2)}
+                      </div>
+                      <div style={{ fontSize: '0.73rem', color: '#64748b', marginTop: 2 }}>Net stock sold/used × DP price per unit</div>
+                    </div>
+                    <div style={{ fontSize: '0.8rem', color: '#64748b', textAlign: 'right' }}>
+                      <div>Distributor(s): <strong>{getDistributorDisplay(reconcileTarget)}</strong></div>
+                      <div>Request: <span style={{ fontFamily: 'monospace' }}>{reconcileTarget.id}</span></div>
+                      {reconcileTarget.reconciled_at && <div style={{ color: '#16a34a', marginTop: 2 }}>Previously reconciled: {new Date(reconcileTarget.reconciled_at).toLocaleDateString('en-NA')}</div>}
+                    </div>
+                  </div>
+
+                  {/* Notes */}
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4 }}>Reconciliation Notes</label>
+                    <textarea value={reconcileNotes} onChange={e => setReconcileNotes(e.target.value)} rows={2} placeholder="Optional notes about returns, damages, or adjustments…"
+                      style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.85rem', resize: 'none', outline: 'none', boxSizing: 'border-box' }} />
+                  </div>
+
+                  {/* Actions */}
+                  <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                    <button onClick={closeReconcile} style={{ padding: '10px 20px', border: '1.5px solid #e8d5d8', borderRadius: 11, background: '#fff', cursor: 'pointer', color: '#64748b', fontWeight: 600, fontSize: '0.87rem' }}>Cancel</button>
+                    <button onClick={handleReconcileSave} disabled={reconciling}
+                      style={{ padding: '11px 28px', border: 'none', borderRadius: 11, background: 'linear-gradient(135deg,#c41e3a,#8b0000)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontSize: '0.9rem', opacity: reconciling ? 0.6 : 1, boxShadow: '0 4px 14px rgba(196,30,58,0.3)' }}>
+                      {reconciling ? '⏳ Saving…' : '💾 Save Reconciliation'}
+                    </button>
+                  </div>
+                </CardBody>
+              </Card>
+            </div>
+          )}
         </div>
       )}
 
-      <Card>
-        <CardHeader className="flex justify-between items-center">
-          <h3 className="font-bold text-gray-800">Field Program Requests</h3>
-          <button onClick={loadActivities} className="px-3 py-1.5 rounded-lg text-xs font-semibold border-none cursor-pointer" style={{ background: '#f9f5f5', color: '#64748b' }}>🔄 Refresh</button>
-        </CardHeader>
-        <Table
-          columns={[
-            { header: 'ID', render: r => <span className="text-xs font-mono">{r.id}</span> },
-            { header: 'Distributor', render: r => <div><div className="font-semibold">{r.distributor_name||'-'}</div><div className="text-xs text-gray-400">{r.distributor_code||''}</div></div> },
-            { header: 'Date', render: r => formatDate(r.date) },
-            { header: 'Products', render: r => { const prods = Array.isArray(r.products)?r.products:[]; return <span className="text-xs text-gray-600">{prods.slice(0,2).map(p=>`${p.product_name} ×${p.quantity}`).join(', ')}{prods.length>2?` +${prods.length-2} more`:''}</span>; }},
-            { header: 'Status', render: r => <Badge variant={r.status==='approved'?'success':r.status==='rejected'?'danger':'warning'}>{(r.status||'Pending').replace(/_/g,' ')}</Badge> },
-            { header: '', render: r => <button onClick={() => printFieldRequestDoc(r, user?.branch||'')} className="px-3 py-1.5 text-xs rounded-lg font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff', whiteSpace: 'nowrap' }}>🖨️ Print</button> },
-          ]}
-          data={activities}
-          emptyMessage="No field program requests yet"
-        />
-      </Card>
-
-      {/* Field Program Request Form Modal */}
+      {/* ── FORM MODAL (multiple distributors) ── */}
       {showForm && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,0,0,0.7)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px', backdropFilter: 'blur(3px)' }}>
           <div style={{ width: '100%', maxWidth: 720, background: '#fff', borderRadius: 22, overflow: 'hidden', maxHeight: '96vh', display: 'flex', flexDirection: 'column', boxShadow: '0 30px 80px rgba(196,30,58,0.25)' }}>
@@ -8069,30 +8340,49 @@ function FieldProgramTab() {
 
             <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-              {/* Distributor verification */}
+              {/* ── MULTIPLE DISTRIBUTORS ── */}
               <div style={{ background: '#fffbeb', border: '2px solid #fcd34d', borderRadius: 12, padding: 16 }}>
-                <div style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '.12em', color: '#92400e', textTransform: 'uppercase', marginBottom: 10 }}>Distributor Verification *</div>
+                <div style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '.12em', color: '#92400e', textTransform: 'uppercase', marginBottom: 10 }}>
+                  Distributors *
+                  <span style={{ fontWeight: 400, fontSize: '0.75rem', textTransform: 'none', color: '#b45309', marginLeft: 6 }}>— add one or more members participating in the field program</span>
+                </div>
+
+                {/* Added distributors list */}
+                {selectedDistributors.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+                    {selectedDistributors.map((d, i) => (
+                      <div key={d.id} style={{ padding: '8px 12px', background: '#fff', border: '1px solid #fcd34d', borderRadius: 9, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#92400e', marginRight: 8 }}>#{i + 1}{i === 0 ? ' (Primary)' : ''}</span>
+                          <span style={{ fontWeight: 700, color: '#1e293b' }}>{d.distributor_name || d.name}</span>
+                          <span style={{ fontSize: '0.78rem', color: '#d97706', marginLeft: 10 }}>{d.distributor_code || d.nb_number}</span>
+                        </div>
+                        <button onClick={() => removeDistributor(d.id)} style={{ border: 'none', background: '#fef3c7', color: '#d97706', cursor: 'pointer', width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, flexShrink: 0 }}>×</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Search to add more distributors */}
                 <div style={{ position: 'relative' }}>
-                  <input type="text" value={distributorSearch} onChange={e => searchDistributor(e.target.value)} placeholder="Search by NB/DZ number or name…" autoComplete="off"
+                  <input type="text" value={distributorSearch} onChange={e => searchDistributor(e.target.value)}
+                    placeholder={selectedDistributors.length === 0 ? 'Search by NB/DZ number or name…' : '➕ Add another distributor…'}
+                    autoComplete="off"
                     style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #fcd34d', borderRadius: 9, fontSize: '0.87rem', outline: 'none', boxSizing: 'border-box' }} />
                   {distributorResults.length > 0 && (
                     <div style={{ position: 'absolute', zIndex: 100, width: '100%', background: '#fff', border: '1.5px solid #fcd34d', borderRadius: 10, maxHeight: 200, overflowY: 'auto', boxShadow: '0 8px 24px rgba(245,158,11,.15)', top: 'calc(100% + 4px)', left: 0 }}>
                       {distributorResults.map((d, i) => (
-                        <div key={d.id||i} onClick={() => selectDistributor(d)} style={{ padding: '9px 12px', cursor: 'pointer', borderBottom: '1px solid #fffbeb', fontSize: '0.85rem' }}>
-                          <div style={{ fontWeight: 700, color: '#1e293b' }}>{d.distributor_name||d.name}</div>
-                          <div style={{ color: '#d97706', fontSize: '0.76rem', marginTop: 2 }}>{d.distributor_code||d.nb_number}{d.mobile_no||d.phone ? ` · ${d.mobile_no||d.phone}` : ''}</div>
+                        <div key={d.id || i} onClick={() => addDistributor(d)} style={{ padding: '9px 12px', cursor: 'pointer', borderBottom: '1px solid #fffbeb', fontSize: '0.85rem' }}>
+                          <div style={{ fontWeight: 700, color: '#1e293b' }}>{d.distributor_name || d.name}</div>
+                          <div style={{ color: '#d97706', fontSize: '0.76rem', marginTop: 2 }}>{d.distributor_code || d.nb_number}{d.mobile_no || d.phone ? ` · ${d.mobile_no || d.phone}` : ''}</div>
                         </div>
                       ))}
                     </div>
                   )}
                 </div>
-                {selectedDistributor && (
-                  <div style={{ marginTop: 10, padding: '10px 14px', background: '#fff', border: '1px solid #fcd34d', borderRadius: 9, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <div style={{ fontWeight: 800, color: '#92400e' }}>{selectedDistributor.distributor_name||selectedDistributor.name}</div>
-                      <div style={{ fontSize: '0.78rem', color: '#d97706', marginTop: 2 }}>{selectedDistributor.distributor_code||selectedDistributor.nb_number} · {selectedDistributor.mobile_no||selectedDistributor.phone||'—'}</div>
-                    </div>
-                    <button onClick={() => { setSelectedDistributor(null); setDistributorSearch(''); setSignature(''); }} style={{ border: 'none', background: '#fef3c7', color: '#d97706', cursor: 'pointer', width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>×</button>
+                {selectedDistributors.length > 0 && (
+                  <div style={{ fontSize: '0.73rem', color: '#92400e', marginTop: 7, fontWeight: 600 }}>
+                    ✓ {selectedDistributors.length} distributor{selectedDistributors.length > 1 ? 's' : ''} added
                   </div>
                 )}
               </div>
@@ -8122,7 +8412,7 @@ function FieldProgramTab() {
                 </div>
               </div>
 
-              {/* Requested Products with catalogue search */}
+              {/* Requested Products */}
               <div>
                 <div style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '.12em', color: '#c41e3a', textTransform: 'uppercase', marginBottom: 10 }}>Requested Products *</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -8137,8 +8427,8 @@ function FieldProgramTab() {
                             <div style={{ position: 'absolute', zIndex: 200, width: '100%', background: '#fff', border: '1.5px solid #fecaca', borderRadius: 9, maxHeight: 170, overflowY: 'auto', boxShadow: '0 6px 20px rgba(196,30,58,.12)', top: '100%', left: 0 }}>
                               {row.suggestions.map((p, si) => (
                                 <div key={si} onClick={() => selectProductSuggestion(idx, p)} style={{ padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid #fff5f5', fontSize: '0.84rem', display: 'flex', justifyContent: 'space-between' }}>
-                                  <span style={{ fontWeight: 600 }}>{p.name||p.description}</span>
-                                  <span style={{ color: '#c41e3a', fontSize: '0.78rem', fontWeight: 700 }}>DP: {formatCurrency(p.dp||p.price||0)}</span>
+                                  <span style={{ fontWeight: 600 }}>{p.name || p.description}</span>
+                                  <span style={{ color: '#c41e3a', fontSize: '0.78rem', fontWeight: 700 }}>DP: {formatCurrency(p.dp || p.price || 0)}</span>
                                 </div>
                               ))}
                             </div>
@@ -8154,9 +8444,7 @@ function FieldProgramTab() {
                           <input type="text" value={row.unit} onChange={e => updateProductRow(idx, 'unit', e.target.value)} placeholder="boxes"
                             style={{ width: '100%', padding: '8px 11px', border: '1.5px solid #e8d5d8', borderRadius: 8, fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }} />
                         </div>
-                        <button type="button"
-                          onClick={() => setScanRowIdx(scanRowIdx === idx ? null : idx)}
-                          title="Scan barcode for this row"
+                        <button type="button" onClick={() => setScanRowIdx(scanRowIdx === idx ? null : idx)} title="Scan barcode for this row"
                           style={{ padding: '8px 10px', borderRadius: 8, border: scanRowIdx === idx ? '2px solid #c41e3a' : '1.5px solid #d1d5db', background: scanRowIdx === idx ? '#fff0f3' : '#f8fafc', color: scanRowIdx === idx ? '#c41e3a' : '#374151', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem', flexShrink: 0 }}>
                           🔲
                         </button>
@@ -8164,10 +8452,7 @@ function FieldProgramTab() {
                           style={{ padding: '8px 12px', borderRadius: 8, border: 'none', background: productRows.length===1?'#f1f5f9':'#fef2f2', color: productRows.length===1?'#94a3b8':'#c41e3a', cursor: productRows.length===1?'not-allowed':'pointer', fontWeight: 700, fontSize: '0.85rem' }}>×</button>
                       </div>
                       {scanRowIdx === idx && (
-                        <BarcodeScanner
-                          autoFocus={true}
-                          placeholder="Aim scanner at product barcode…"
-                          style={{ marginLeft: 0 }}
+                        <BarcodeScanner autoFocus={true} placeholder="Aim scanner at product barcode…" style={{ marginLeft: 0 }}
                           onResult={(result) => {
                             const rows = [...productRows];
                             rows[idx].product = result.productName || '';
@@ -8209,23 +8494,13 @@ function FieldProgramTab() {
                   I have read and agree to the Terms and Conditions of Stock Handling Commitment *
                 </label>
               </div>
-
-              {/* Signature */}
-              <div>
-                <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4 }}>
-                  Distributor Signature
-                  {selectedDistributor && <span style={{ fontSize: '0.72rem', color: '#16a34a', fontWeight: 600, marginLeft: 6 }}>✓ Auto-filled from selected distributor</span>}
-                </label>
-                <input type="text" value={signature} readOnly={!!selectedDistributor} onChange={e => !selectedDistributor && setSignature(e.target.value)} placeholder="Select a distributor above to auto-fill…"
-                  style={{ width: '100%', padding: '10px 14px', border: `1.5px solid ${selectedDistributor ? '#bbf7d0' : '#e8d5d8'}`, borderRadius: 9, fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box', fontStyle: 'italic', background: selectedDistributor ? '#f0fdf4' : '#fff', color: '#374151' }} />
-              </div>
             </div>
 
-            {/* Footer buttons */}
+            {/* Footer */}
             <div style={{ padding: '14px 24px', borderTop: '1px solid #f0e8ea', display: 'flex', gap: 10, justifyContent: 'flex-end', background: '#fff', flexShrink: 0 }}>
               <button onClick={() => setShowForm(false)} style={{ padding: '10px 20px', border: '1.5px solid #e8d5d8', borderRadius: 11, background: '#fff', cursor: 'pointer', color: '#64748b', fontWeight: 600, fontSize: '0.87rem' }}>Cancel</button>
-              <button onClick={handleSubmit} disabled={submitting || !agreeTerms || !selectedDistributor || !signature.trim() || productRows.filter(r=>r.product.trim()&&r.quantity).length===0}
-                style={{ padding: '11px 32px', border: 'none', borderRadius: 11, background: 'linear-gradient(135deg,#c41e3a,#8b0000)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontSize: '0.92rem', opacity: (submitting||!agreeTerms||!selectedDistributor||!signature.trim())?0.55:1, boxShadow: '0 4px 14px rgba(196,30,58,0.3)' }}>
+              <button onClick={handleSubmit} disabled={submitting || !agreeTerms || selectedDistributors.length === 0 || productRows.filter(r => r.product.trim() && r.quantity).length === 0}
+                style={{ padding: '11px 32px', border: 'none', borderRadius: 11, background: 'linear-gradient(135deg,#c41e3a,#8b0000)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontSize: '0.92rem', opacity: (submitting || !agreeTerms || selectedDistributors.length === 0) ? 0.55 : 1, boxShadow: '0 4px 14px rgba(196,30,58,0.3)' }}>
                 {submitting ? '⏳ Submitting…' : '✅ Submit Request'}
               </button>
             </div>
