@@ -81,6 +81,7 @@ export default async function handler(req, res) {
   const actor = receivedBy || req.user?.fullName || req.user?.username || 'warehouse';
   const allRecomputeTargets = [];
 
+  try {
   await withTransaction(async (client) => {
     for (const item of itemRows) {
       const { product_name: productName, batch_no: batchNo, quantity } = item;
@@ -177,9 +178,10 @@ export default async function handler(req, res) {
       }
 
       // 4. Create warehouse stock_batches row
-      const newBatchId = `WRECV-${Date.now()}-${Math.random().toString(36).slice(2,5).toUpperCase()}`;
-      const newBarcode = `BC-RECV-${(batchNo || 'NB')}-${Date.now().toString(36).toUpperCase()}`;
-      await client.query(
+      const rnd = Math.random().toString(36).slice(2, 7).toUpperCase();
+      const newBatchId = `WRECV-${Date.now()}-${rnd}`;
+      const newBarcode = `BC-RECV-${(batchNo || 'NB')}-${Date.now().toString(36).toUpperCase()}-${rnd}`;
+      const insertResult = await client.query(
         `INSERT INTO stock_batches
            (id, barcode, description, batch_no, expiry_date, quantity, remaining_quantity,
             dispatched_quantity, import_date, location, status, product_id, warehouse_id,
@@ -188,7 +190,8 @@ export default async function handler(req, res) {
          VALUES ($1,$2,$3,$4,$5,$6,$6, 0,$7,$8,'available',$9,$8,$10,$11,$12,$13,$14,
            jsonb_build_object('received_from','country_stock','dispatch_ref',$15::text,'transfer_id',$16::text),
            NOW(),NOW())
-         ON CONFLICT DO NOTHING`,
+         ON CONFLICT (barcode) DO NOTHING
+         RETURNING id`,
         [
           newBatchId, newBarcode,
           productName, batchNo || null, expiryDate,
@@ -242,4 +245,8 @@ export default async function handler(req, res) {
     itemsReceived: itemRows.length,
     message: `${itemRows.length} item(s) received into ${warehouseId} from Country Stock.`,
   });
+  } catch (err) {
+    console.error('[receive-stock] Accept error:', err.message);
+    return res.status(500).json({ success: false, error: err.message || 'Failed to accept dispatch' });
+  }
 }

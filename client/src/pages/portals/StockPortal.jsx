@@ -2715,10 +2715,10 @@ function WarehouseTab({ name }) {
   const loadData = useCallback(() => {
     setLoading(true);
     Promise.all([
-      api.stock.batches().then(d => (Array.isArray(d) ? d : d.batches || []).filter(b => b.location === location)),
-      api.stock.transfers(`branch=${encodeURIComponent(location)}`).then(d => Array.isArray(d) ? d : d.transfers || []),
-      api.stock.transfers(`fromWarehouse=${encodeURIComponent(location)}`).then(d => Array.isArray(d) ? d : d.transfers || []),
-      api.stock.movements().then(d => Array.isArray(d) ? d : d.movements || []),
+      api.stock.batches().then(d => (Array.isArray(d) ? d : d.batches || []).filter(b => b.location === location)).catch(() => []),
+      api.stock.transfers(`branch=${encodeURIComponent(location)}`).then(d => Array.isArray(d) ? d : d.transfers || []).catch(() => []),
+      api.stock.transfers(`fromWarehouse=${encodeURIComponent(location)}`).then(d => Array.isArray(d) ? d : d.transfers || []).catch(() => []),
+      api.stock.movements().then(d => Array.isArray(d) ? d : d.movements || []).catch(() => []),
       api.stock.warehouseReturns(whKey).then(d => Array.isArray(d) ? d : d.returns || []).catch(() => []),
     ])
       .then(([batchData, inbound, outbound, movData, returnsData]) => {
@@ -2733,7 +2733,6 @@ function WarehouseTab({ name }) {
         }));
         setWriteoffReturns(returnsData);
       })
-      .catch(() => {})
       .finally(() => setLoading(false));
   }, [location, name, whKey]);
 
