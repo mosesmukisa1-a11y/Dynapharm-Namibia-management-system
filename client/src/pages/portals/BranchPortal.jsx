@@ -856,7 +856,7 @@ function WalkInSalesTab() {
     { id: 'bank', label: 'Bank', icon: '🏦' },
   ];
 
-  if (loading) return <LoadingSpinner />;
+  if (loading && products.length === 0 && sales.length === 0) return <LoadingSpinner />;
 
   return (
     <div>
@@ -1510,7 +1510,7 @@ function PrescriptionsTab() {
       .finally(() => setLoading(false));
   }, [effectiveBranch]);
 
-  if (loading) return <LoadingSpinner />;
+  if (loading && reports.length === 0) return <LoadingSpinner />;
 
   const getConsultMode = (reportId, isMem = false) => consultFeeMode[reportId] || (isMem ? 'inclusive' : 'separate');
   const setConsultMode = (reportId, mode) => setConsultFeeMode(prev => ({ ...prev, [reportId]: mode }));
@@ -5433,7 +5433,7 @@ function BankingTab() {
   };
   const drawerBalance = Number(drawerOpening || 0) + drawerEntries.reduce((s, e) => s + (e.type === 'in' ? e.amount : -e.amount), 0);
 
-  if (loading) return <LoadingSpinner />;
+  if (loading && deposits.length === 0 && expenses.length === 0) return <LoadingSpinner />;
 
   const inputStyle = { width: '100%', padding: '10px 12px', border: '1.5px solid #e8d5d8', borderRadius: 9, fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' };
   const labelStyle = { fontSize: '0.8rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 5 };
@@ -6200,7 +6200,7 @@ function BranchPaymentsTab() {
 
   const countByType = (type) => allEntries.filter(e => e.type === type).length;
 
-  if (loading) return <LoadingSpinner />;
+  if (loading && allEntries.length === 0) return <LoadingSpinner />;
 
   return (
     <div className="space-y-4">
@@ -6787,7 +6787,7 @@ function OnlineOrdersTab() {
     return <span className="text-xs font-bold text-orange-600 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-full">⏳ Unpaid</span>;
   };
 
-  if (loading) return <LoadingSpinner />;
+  if (loading && orders.length === 0) return <LoadingSpinner />;
 
   const filterMap = {
     active: orders.filter(o => ['pending','processing','shipped'].includes(o.status)),
@@ -7077,7 +7077,7 @@ function BonusTab() {
   const totalOutstanding = filtered.reduce((s, b) => s + Math.max(0, Number(b.amount_earned) - Number(b.amount_paid)), 0);
   const totalPaidThisBranch = paidHistory.reduce((s, p) => s + Number(p.amount || 0), 0);
 
-  if (loading) return <LoadingSpinner />;
+  if (loading && pendingBonuses.length === 0 && paidHistory.length === 0) return <LoadingSpinner />;
 
   return (
     <div className="space-y-4">
@@ -7326,7 +7326,7 @@ function CommunicationTab() {
     ? announcements
     : announcements.filter(a => (a.target || a.type || '').toLowerCase().includes(commFilter));
 
-  if (loading) return <LoadingSpinner />;
+  if (loading && announcements.length === 0) return <LoadingSpinner />;
 
   return (
     <div>
@@ -8106,7 +8106,7 @@ function FieldProgramTab() {
     return req.distributor_name || '-';
   };
 
-  if (loading) return <LoadingSpinner />;
+  if (loading && activities.length === 0) return <LoadingSpinner />;
 
   return (
     <div>
