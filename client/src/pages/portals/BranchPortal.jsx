@@ -5215,6 +5215,41 @@ function BranchStockTab() {
           const campDp = camp.value || bs.campaign_total || 0;
           const refundTotal = data.refund_deductions?.total_amount || bs.refund_deductions || 0;
 
+          // ── Build unified "Products Sold" aggregate from all sources ──────────────
+          const allProductsMap = {};
+          const mergeProduct = (name, qty, dpVal, source) => {
+            if (!name || !qty) return;
+            const key = name.trim().toUpperCase();
+            if (!allProductsMap[key]) allProductsMap[key] = { product_name: name.trim(), qty: 0, dp_value: 0, source };
+            allProductsMap[key].qty      += Number(qty || 0);
+            allProductsMap[key].dp_value  = parseFloat((allProductsMap[key].dp_value + Number(dpVal || 0)).toFixed(2));
+          };
+          // Walk-in sales products
+          for (const p of (data.walkin_products || [])) mergeProduct(p.product_name, p.qty, p.dp_value, 'Walk-in');
+          // Prescription dispensing products (from each line_item's products array)
+          for (const li of (rx.line_items || [])) for (const p of (li.products || [])) mergeProduct(p.product_name, p.qty, p.dp_value, 'Prescription');
+          // Campaign products
+          for (const li of (camp.line_items || [])) for (const p of (li.products || [])) mergeProduct(p.product_name, p.qty, p.dp_value, 'Campaign');
+
+          const allProducts = Object.values(allProductsMap).sort((a, b) => b.dp_value - a.dp_value);
+          const totalProductsQty = allProducts.reduce((s, p) => s + p.qty, 0);
+          const totalProductsDp  = allProducts.reduce((s, p) => s + p.dp_value, 0);
+
+          const productsHTML = allProducts.length === 0
+            ? '<tr><td colspan="4" style="padding:12px;text-align:center;color:#94a3b8;font-size:10px">No product detail available</td></tr>'
+            : allProducts.map((p, i) => `
+                <tr style="background:${i % 2 === 0 ? '#fff' : '#fdf7f8'}">
+                  <td style="padding:6px 10px;font-size:10px;font-weight:600">${p.product_name}</td>
+                  <td style="padding:6px 10px;font-size:9px;text-align:center;color:#64748b;text-transform:capitalize">${p.source}</td>
+                  <td style="padding:6px 10px;font-size:10px;text-align:right;font-weight:700">${Number(p.qty).toLocaleString()}</td>
+                  <td style="padding:6px 10px;font-size:10px;text-align:right;font-weight:700;color:#166534">${fmtC(p.dp_value)}</td>
+                </tr>`).join('') +
+              `<tr style="background:#fdf2f4;border-top:2px solid #c41e3a">
+                  <td style="padding:8px 10px;font-size:10px;font-weight:900;color:#c41e3a" colspan="2">TOTAL</td>
+                  <td style="padding:8px 10px;font-size:10px;text-align:right;font-weight:900;color:#c41e3a">${Number(totalProductsQty).toLocaleString()}</td>
+                  <td style="padding:8px 10px;font-size:10px;text-align:right;font-weight:900;color:#c41e3a">${fmtC(totalProductsDp)}</td>
+                </tr>`;
+
           // Merge payment method maps from multiple sources
           const mergePMs = (...maps) => {
             const merged = {};
@@ -5283,13 +5318,29 @@ function BranchStockTab() {
 
           printStockDocument(`DP Sales Report — ${period}`, `
             <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:11px;color:#166534;font-weight:600">DP = Distributor Price &nbsp;·&nbsp; CP = Consumer Price (shown for Non-member Walk-in Sales only)</div>
+
             <h3 style="font-size:12px;color:#c41e3a;margin:16px 0 8px;border-bottom:1px solid #fecaca;padding-bottom:4px">SALES BY CATEGORY</h3>
             <table style="width:100%;border-collapse:collapse;font-size:11px">
               <thead><tr style="background:#c41e3a;color:#fff"><th style="text-align:left;padding:8px 12px">Category</th><th style="text-align:center;padding:8px">Transactions</th><th style="text-align:right;padding:8px">Qty</th><th style="text-align:right;padding:8px 12px">DP Total</th><th style="text-align:right;padding:8px 12px;background:#1d4ed8">CP Total</th></tr></thead>
               <tbody>${sectionRows}</tbody>
             </table>
-            <h3 style="font-size:12px;color:#c41e3a;margin:20px 0 8px;border-bottom:1px solid #fecaca;padding-bottom:4px">PAYMENT METHOD BREAKDOWN & DISPENSING DETAIL</h3>
+
+            <h3 style="font-size:12px;color:#c41e3a;margin:20px 0 8px;border-bottom:1px solid #fecaca;padding-bottom:4px">PAYMENT METHOD BREAKDOWN &amp; DISPENSING DETAIL</h3>
             ${detailSections || '<p style="font-size:10px;color:#94a3b8">No transactions recorded</p>'}
+
+            <h3 style="font-size:12px;color:#c41e3a;margin:20px 0 8px;border-bottom:1px solid #fecaca;padding-bottom:4px">PRODUCTS SOLD</h3>
+            <table style="width:100%;border-collapse:collapse;font-size:11px">
+              <thead>
+                <tr style="background:#1e293b;color:#fff">
+                  <th style="text-align:left;padding:7px 10px;font-size:9px">Product Name</th>
+                  <th style="text-align:center;padding:7px 10px;font-size:9px">Source</th>
+                  <th style="text-align:right;padding:7px 10px;font-size:9px">Qty Sold</th>
+                  <th style="text-align:right;padding:7px 10px;font-size:9px">DP Total</th>
+                </tr>
+              </thead>
+              <tbody>${productsHTML}</tbody>
+            </table>
+
             <h3 style="font-size:12px;color:#c41e3a;margin:20px 0 8px;border-bottom:1px solid #fecaca;padding-bottom:4px">TOTALS</h3>
             <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px">
               <tr style="background:#fdf2f4"><td style="padding:10px 12px;font-weight:800;color:#c41e3a">Total Transactions</td><td style="padding:10px 12px;text-align:right;font-weight:800">${totalTx}</td></tr>
@@ -5298,6 +5349,7 @@ function BranchStockTab() {
               <tr><td style="padding:8px 12px;font-weight:700;color:#166534">Non-member Walk-in — DP (Net)</td><td style="padding:8px 12px;text-align:right;font-weight:700;color:#166534">${fmtC(nmDp)}</td></tr>
               <tr style="background:#fdf2f4"><td style="padding:10px 12px;font-weight:800;color:#c41e3a;font-size:12px">Grand Total (DP)</td><td style="padding:10px 12px;text-align:right;font-weight:800;color:#c41e3a;font-size:13px">${fmtC(grandTotal)}</td></tr>
             </table>
+
             <h3 style="font-size:12px;color:#c41e3a;margin:20px 0 8px;border-bottom:1px solid #fecaca;padding-bottom:4px">DP SALES SUMMARY</h3>
             <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px">
               <tr style="background:#f8fafc"><td style="padding:6px 12px;border-bottom:1px solid #f0e8ea">Branch</td><td style="padding:6px 12px;text-align:right;border-bottom:1px solid #f0e8ea;font-weight:700">${branchName}</td></tr>
@@ -5317,7 +5369,7 @@ function BranchStockTab() {
                 <td style="padding:9px 14px;text-align:right;font-weight:700;color:#166534">${fmtC(rx.value || 0)}</td>
               </tr>
               ${on.transactions > 0 ? `<tr><td style="padding:9px 14px;font-weight:700;color:#1e293b">Online Order Sales (DP)</td><td style="padding:9px 14px;text-align:right;font-weight:700;color:#1e293b">${fmtC(on.value || 0)}</td></tr>` : ''}
-              ${campDp > 0 ? `<tr style="background:#fffbeb"><td style="padding:9px 14px;font-weight:700;color:#b45309">🎁 Campaign Sales (DP)</td><td style="padding:9px 14px;text-align:right;font-weight:700;color:#b45309">${fmtC(campDp)}</td></tr>` : ''}
+              ${campDp > 0 ? `<tr style="background:#fffbeb"><td style="padding:9px 14px;font-weight:700;color:#b45309">Campaign Sales (DP)</td><td style="padding:9px 14px;text-align:right;font-weight:700;color:#b45309">${fmtC(campDp)}</td></tr>` : ''}
               ${refundTotal > 0 ? `<tr style="background:#fef2f2"><td style="padding:9px 14px;font-weight:700;color:#dc2626">Less: Credit Refunds (Approved)</td><td style="padding:9px 14px;text-align:right;font-weight:700;color:#dc2626">− ${fmtC(refundTotal)}</td></tr>` : ''}
               <tr style="border-top:2px solid #c41e3a">
                 <td style="padding:14px 14px;font-weight:900;color:#fff;font-size:13px;letter-spacing:0.03em;background:linear-gradient(135deg,#c41e3a,#8b0000)">TOTAL DP SALES</td>

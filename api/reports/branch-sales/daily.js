@@ -221,6 +221,24 @@ export default async function handler(req, res) {
       void fee; // intentionally not counted here
     }
 
+    // Build per-product aggregate for ALL walk-in sales (member + non-member + general)
+    const walkinProductAgg = {};
+    for (const s of walkinSalesRows) {
+      let items = [];
+      try { items = typeof s.items === 'string' ? JSON.parse(s.items) : (Array.isArray(s.items) ? s.items : []); } catch {}
+      for (const item of items) {
+        const name = (item.product_name || item.name || item.description || '').trim();
+        if (!name) continue;
+        const qty = Number(item.quantity || item.qty || 0);
+        const dp  = Number(item.dpPrice || item.dp || item.unit_price || 0);
+        if (!walkinProductAgg[name]) walkinProductAgg[name] = { product_name: name, qty: 0, dp_value: 0, unit_dp: dp };
+        walkinProductAgg[name].qty      += qty;
+        walkinProductAgg[name].dp_value  = parseFloat((walkinProductAgg[name].dp_value + qty * dp).toFixed(2));
+        if (dp > 0) walkinProductAgg[name].unit_dp = dp;
+      }
+    }
+    const walkinProducts = Object.values(walkinProductAgg).sort((a, b) => b.dp_value - a.dp_value);
+
     // Build per-product map and per-reference aggregates from campaign movements.
     // Each campaign sale may span multiple product rows; aggregate into one synthetic row per reference.
     const campaignProductMap = {};
@@ -432,6 +450,7 @@ export default async function handler(req, res) {
       online_order_sales: build(onlineRows),
       prescription_dispensing: buildRxWithDetail(rxRows),
       campaign_sales: buildCampaignWithDetail(campaignRows),
+      walkin_products: walkinProducts,
       refund_deductions: { count: refundCount, total_amount: refundTotal },
       pending_unposted_records: pendingCapture,
       grand_total: grandTotal,
