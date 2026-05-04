@@ -447,18 +447,72 @@ export default async function handler(req, res) {
         // Extract reason from notes if not already stored
         const existingReason = r.write_off_reason;
         const derivedReason = existingReason || (r.notes ? r.notes.split(' — ')[0].split('|')[0].trim() : null);
+
+        // Determine if this batch is expired — expired stock is disposed at branch, non-expired is returned to warehouse
+        const expiryDate = r.expiry_date ? new Date(r.expiry_date) : null;
+        const isExpired = (expiryDate && expiryDate < new Date()) ||
+          ['expired'].includes((derivedReason || '').toLowerCase().trim());
+
+        let disposalStatus = 'dispose_off';
+        let returnedWarehouseId = null;
+
+        if (!isExpired && qty > 0) {
+          // Find the warehouse that last dispatched this product to this branch
+          const dispatchSrc = await client.query(
+            `SELECT source_location FROM stock_movements
+             WHERE movement_type = 'warehouse_dispatch'
+               AND LOWER(REPLACE(destination_location,' ','_')) = LOWER(REPLACE($1,' ','_'))
+               AND LOWER(product_name) = LOWER($2)
+             ORDER BY created_at DESC LIMIT 1`,
+            [branchId, productName]
+          );
+          returnedWarehouseId = dispatchSrc.rows[0]?.source_location || 'country_stock';
+
+          // Try to add quantity back to an existing warehouse_inventory row
+          const upd = await client.query(
+            `UPDATE warehouse_inventory
+             SET quantity = quantity + $1, updated_at = NOW()
+             WHERE warehouse_id = $2
+               AND LOWER(product_name) = LOWER($3)
+               AND LOWER(COALESCE(batch_no,'')) = LOWER($4)`,
+            [qty, returnedWarehouseId, productName, batchNo || '']
+          );
+          if (upd.rowCount === 0) {
+            // No matching row — insert a new inventory entry for this product/batch
+            const wiId = `WI-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+            await client.query(
+              `INSERT INTO warehouse_inventory
+                 (id, warehouse_id, product_name, batch_no, expiry_date, quantity, status, created_at, updated_at)
+               VALUES ($1, $2, $3, $4, $5, $6, 'available', NOW(), NOW())`,
+              [wiId, returnedWarehouseId, productName, batchNo || null, r.expiry_date || null, qty]
+            );
+          }
+
+          // Log the return movement in warehouse_inventory_movements
+          const wimId = `WIM-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+          await client.query(
+            `INSERT INTO warehouse_inventory_movements
+               (id, warehouse_id, product_name, batch_no, movement_type, quantity, reference, notes, created_by, created_at)
+             VALUES ($1, $2, $3, $4, 'write_off_return', $5, $6, $7, $8, NOW())`,
+            [wimId, returnedWarehouseId, productName, batchNo || '', qty,
+              r.reference_id, `Returned from branch write-off. Branch: ${branchId}. Reason: ${derivedReason || 'N/A'}. ${r.notes || ''}`.trim(), gmName]
+          );
+
+          disposalStatus = 'returned_to_warehouse';
+        }
+
         await client.query(
           `UPDATE stock_movements
            SET status = 'approved', approved_by = $1,
                notes = COALESCE(notes,'') || $2,
-               disposal_status = 'pending_disposal',
-               write_off_reason = COALESCE(write_off_reason, $3),
+               disposal_status = $3,
+               write_off_reason = COALESCE(write_off_reason, $4),
                updated_at = NOW()
-           WHERE id = $4`,
-          [gmName, gmNote ? ` | GM: ${gmNote}` : '', derivedReason, id]
+           WHERE id = $5`,
+          [gmName, gmNote ? ` | GM: ${gmNote}` : '', disposalStatus, derivedReason, id]
         );
-        // Return branchId so the caller can recompute inventory_balances
-        return branchId || null;
+        // Return branchId + warehouseId so callers can recompute both
+        return { branchId: branchId || null, warehouseId: returnedWarehouseId };
       };
 
       const reject = async (client, id) => {
@@ -473,13 +527,16 @@ export default async function handler(req, res) {
       if (action === 'approve' || action === 'reject') {
         const id = body.id;
         if (!id) return res.status(400).json({ success: false, error: 'Missing id' });
-        let affectedBranch = null;
+        let result = null;
         await withTransaction(async (client) => {
-          if (action === 'approve') affectedBranch = await approve(client, id);
+          if (action === 'approve') result = await approve(client, id);
           else await reject(client, id);
         });
-        if (affectedBranch) {
-          recomputeLocationBalances('branch', affectedBranch).catch(() => {});
+        if (result?.branchId) {
+          recomputeLocationBalances('branch', result.branchId).catch(() => {});
+        }
+        if (result?.warehouseId) {
+          recomputeLocationBalances('warehouse', result.warehouseId).catch(() => {});
         }
         return res.json({ success: true });
       }
@@ -488,19 +545,24 @@ export default async function handler(req, res) {
         const ids = Array.isArray(body.ids) ? body.ids : [];
         if (ids.length === 0) return res.status(400).json({ success: false, error: 'No ids provided' });
         const affectedBranches = new Set();
+        const affectedWarehouses = new Set();
         await withTransaction(async (client) => {
           for (const id of ids) {
             if (action === 'approve_all') {
-              const bid = await approve(client, id);
-              if (bid) affectedBranches.add(bid);
+              const result = await approve(client, id);
+              if (result?.branchId) affectedBranches.add(result.branchId);
+              if (result?.warehouseId) affectedWarehouses.add(result.warehouseId);
             } else {
               await reject(client, id);
             }
           }
         });
-        // Recompute inventory_balances for every affected branch
+        // Recompute inventory_balances for every affected branch and warehouse
         for (const bid of affectedBranches) {
           recomputeLocationBalances('branch', bid).catch(() => {});
+        }
+        for (const wid of affectedWarehouses) {
+          recomputeLocationBalances('warehouse', wid).catch(() => {});
         }
         return res.json({ success: true, count: ids.length });
       }

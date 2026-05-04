@@ -7438,9 +7438,12 @@ function WriteOffsTab({ branch }) {
     return loc === branch;
   }).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-  // Separate pending disposal vs disposed
-  const pendingDisposal = writeoffs.filter(m => m.disposal_status === 'pending_disposal');
+  // Separate pending disposal vs disposed vs returned to warehouse
+  // dispose_off = expired batches, need physical disposal at branch
+  // returned_to_warehouse = non-expired, already re-credited to warehouse automatically
+  const pendingDisposal = writeoffs.filter(m => m.disposal_status === 'pending_disposal' || m.disposal_status === 'dispose_off');
   const disposedItems   = writeoffs.filter(m => m.disposal_status === 'disposed');
+  const returnedItems   = writeoffs.filter(m => m.disposal_status === 'returned_to_warehouse');
   const allHistory      = writeoffs;
 
   const filtered = search.trim()
@@ -7915,6 +7918,10 @@ function WriteOffsTab({ branch }) {
                             <span style={{ padding: '2px 8px', borderRadius: 9999, background: '#dcfce7', color: '#166534', fontSize: '0.72rem', fontWeight: 700 }}>
                               ✔ Disposed {m.disposed_by ? `by ${m.disposed_by}` : ''} {m.disposed_at ? `· ${fmtDate(m.disposed_at)}` : ''}
                             </span>
+                          ) : m.disposal_status === 'dispose_off' ? (
+                            <span style={{ padding: '2px 8px', borderRadius: 9999, background: '#fef2f2', color: '#991b1b', fontSize: '0.72rem', fontWeight: 700, border: '1px solid #fecaca' }}>🗑️ Dispose Off (Expired)</span>
+                          ) : m.disposal_status === 'returned_to_warehouse' ? (
+                            <span style={{ padding: '2px 8px', borderRadius: 9999, background: '#f0fdf4', color: '#166534', fontSize: '0.72rem', fontWeight: 700, border: '1px solid #bbf7d0' }}>↩ Returned to Warehouse</span>
                           ) : isPending ? (
                             <span style={{ padding: '2px 8px', borderRadius: 9999, background: '#fef3c7', color: '#92400e', fontSize: '0.72rem', fontWeight: 700 }}>⏳ Awaiting Disposal</span>
                           ) : (
