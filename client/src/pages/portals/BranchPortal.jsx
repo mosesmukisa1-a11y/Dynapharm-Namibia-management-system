@@ -7900,6 +7900,7 @@ function FieldProgramTab() {
   const [requestNotes, setRequestNotes] = useState('');
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [catalogue, setCatalogue] = useState([]);
+  const [priceList, setPriceList] = useState([]);
   const [lastSubmitted, setLastSubmitted] = useState(null);
   const [scanRowIdx, setScanRowIdx] = useState(null);
   const [reconcileId, setReconcileId] = useState(null);
@@ -7912,9 +7913,11 @@ function FieldProgramTab() {
     Promise.all([
       api.get('/field_program_requests').catch(() => []),
       api.products.list().catch(() => []),
-    ]).then(([d, prods]) => {
+      api.prices.list().catch(() => []),
+    ]).then(([d, prods, pl]) => {
       setActivities(Array.isArray(d) ? d : d.requests || d.activities || []);
       setCatalogue(Array.isArray(prods) ? prods : prods.products || []);
+      setPriceList(Array.isArray(pl) ? pl : pl.prices || []);
     }).finally(() => setLoading(false));
   }, []);
 
@@ -8025,6 +8028,20 @@ function FieldProgramTab() {
 
   const reconcileTarget = activities.find(a => a.id === reconcileId) || null;
 
+  const lookupDpPrice = (productName) => {
+    const needle = (productName || '').trim().toUpperCase();
+    // 1. Try price list first (product_prices table — same source as GM price list)
+    const plMatch = priceList.find(p => (p.description || '').trim().toUpperCase() === needle);
+    if (plMatch && plMatch.dp != null && Number(plMatch.dp) > 0) return Number(plMatch.dp);
+    // 2. Partial match in price list
+    const plPartial = priceList.find(p => (p.description || '').trim().toUpperCase().includes(needle) || needle.includes((p.description || '').trim().toUpperCase()));
+    if (plPartial && plPartial.dp != null && Number(plPartial.dp) > 0) return Number(plPartial.dp);
+    // 3. Fall back to products catalogue
+    const catMatch = catalogue.find(c => (c.name || c.description || '').trim().toUpperCase() === needle);
+    if (catMatch && catMatch.dp != null) return Number(catMatch.dp);
+    return '';
+  };
+
   const openReconcile = (req) => {
     const prods = Array.isArray(req.products) ? req.products : [];
     const returned = Array.isArray(req.returned_items) ? req.returned_items : [];
@@ -8034,8 +8051,13 @@ function FieldProgramTab() {
       const name = p.product_name;
       const ret = returned.find(r => r.product_name === name);
       initQtys[name] = ret ? String(ret.returned_qty) : '';
-      const cat = catalogue.find(c => (c.name || c.description || '').toLowerCase() === name.toLowerCase());
-      initDp[name] = ret?.dp_price != null ? String(ret.dp_price) : cat ? String(cat.dp || 0) : '';
+      // If already reconciled use stored price, otherwise look up from price list
+      if (ret?.dp_price != null && Number(ret.dp_price) > 0) {
+        initDp[name] = String(ret.dp_price);
+      } else {
+        const found = lookupDpPrice(name);
+        initDp[name] = found !== '' ? String(found) : '';
+      }
     });
     setReturnedQtys(initQtys);
     setDpPricesMap(initDp);
