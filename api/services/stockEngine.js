@@ -71,13 +71,15 @@ export async function recomputeInventoryBalance(key) {
   const batchNoVal = batchNo || '';
   let expiryVal = expiryDate || null;
 
-  // Fetch ALL posted movements for this product+batch (filter location in JS for legacy compatibility)
+  // Fetch ALL finalized movements for this product+batch.
+  // Include 'approved' as well as 'posted' because write-offs approved by GM
+  // land in status='approved' (not 'posted') and must count as outward stock.
   const result = await query(
     `SELECT movement_type, quantity, source_location, destination_location,
             source_location_type, destination_location_type,
             unit_dp, unit_cif, expiry_date, created_at
      FROM stock_movements
-     WHERE status = 'posted'
+     WHERE status IN ('posted', 'approved')
        AND LOWER(TRIM(product_name)) = LOWER(TRIM($1))
        AND COALESCE(batch_no, '') = $2
      ORDER BY created_at ASC`,
@@ -432,7 +434,7 @@ export async function recomputeLocationBalances(locationType, locationId) {
   const result = await query(
     `SELECT DISTINCT product_name, COALESCE(batch_no,'') as batch_no, expiry_date
      FROM stock_movements
-     WHERE status = 'posted'
+     WHERE status IN ('posted', 'approved')
        AND (
          (source_location_type = $1 AND source_location = $2)
          OR (destination_location_type = $1 AND destination_location = $2)

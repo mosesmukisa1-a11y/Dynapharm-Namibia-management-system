@@ -401,15 +401,32 @@ export default async function handler(req, res) {
         const qty = Number(r.quantity || 0);
         // Deduct from branch_inventory_batches
         if (branchId && productName && qty > 0) {
+          // Resolve the actual branch_id stored in branch_inventory_batches.
+          // The normalization may have left rows under a _branch-suffixed variant
+          // (e.g. 'ondangwa_branch') even though source_location is 'ondangwa'.
+          // Build a candidate list and pick whichever slug is actually in the table.
+          const branchSlug = branchId.toLowerCase().replace(/\s+/g, '_');
+          const branchCandidates = Array.from(new Set([
+            branchSlug,
+            branchSlug.endsWith('_branch') ? branchSlug : branchSlug + '_branch',
+            branchSlug.replace(/_branch$/, ''),
+          ]));
+          const resolvedRow = await client.query(
+            `SELECT DISTINCT branch_id FROM branch_inventory_batches
+             WHERE LOWER(REPLACE(branch_id,' ','_')) = ANY($1) LIMIT 1`,
+            [branchCandidates]
+          );
+          const effectiveBranchId = resolvedRow.rows[0]?.branch_id || branchId;
+
           let remaining = qty;
           if (batchNo) {
             const specific = await client.query(
               `SELECT id, quantity FROM branch_inventory_batches
-               WHERE LOWER(REPLACE(branch_id,' ','_')) = LOWER(REPLACE($1,' ','_'))
+               WHERE branch_id = $1
                  AND LOWER(product_name) = LOWER($2)
                  AND LOWER(COALESCE(batch_no,'')) = LOWER($3)
                  AND quantity > 0 LIMIT 1`,
-              [branchId, productName, batchNo]
+              [effectiveBranchId, productName, batchNo]
             );
             for (const b of specific.rows) {
               const take = Math.min(remaining, Number(b.quantity));
@@ -421,12 +438,12 @@ export default async function handler(req, res) {
           if (remaining > 0) {
             const fifo = await client.query(
               `SELECT id, quantity FROM branch_inventory_batches
-               WHERE LOWER(REPLACE(branch_id,' ','_')) = LOWER(REPLACE($1,' ','_'))
+               WHERE branch_id = $1
                  AND LOWER(product_name) = LOWER($2)
                  AND quantity > 0
                  ${batchNo ? `AND LOWER(COALESCE(batch_no,'')) != LOWER($3)` : ''}
                ORDER BY expiry_date ASC NULLS LAST`,
-              batchNo ? [branchId, productName, batchNo] : [branchId, productName]
+              batchNo ? [effectiveBranchId, productName, batchNo] : [effectiveBranchId, productName]
             );
             for (const b of fifo.rows) {
               if (remaining <= 0) break;
@@ -436,12 +453,12 @@ export default async function handler(req, res) {
               remaining -= take;
             }
           }
-          // Mirror to branch_inventory_movements
+          // Mirror to branch_inventory_movements (use the resolved id so the ledger is consistent)
           const bimId = `BIM-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
           await client.query(
             `INSERT INTO branch_inventory_movements (id, branch_id, type, product_name, batch_no, quantity, reference, notes, created_by, created_at)
              VALUES ($1,$2,'write_off',$3,$4,$5,$6,$7,$8,NOW())`,
-            [bimId, branchId, productName, batchNo || '', qty, r.reference_id, r.notes, gmName]
+            [bimId, effectiveBranchId, productName, batchNo || '', qty, r.reference_id, r.notes, gmName]
           );
         }
         // Extract reason from notes if not already stored
