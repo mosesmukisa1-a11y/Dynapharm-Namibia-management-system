@@ -150,12 +150,13 @@ function SalesReviewTab() {
   };
 
   const rows = salesPreviewData?.rows || [];
-  const grandTotal   = rows.reduce((s, r) => s + Number(r.total_revenue || 0), 0);
-  const grandTx      = rows.reduce((s, r) => s + Number(r.transactions || 0), 0);
-  const grandWalkInDp = rows.reduce((s, r) => s + Number(r.non_member_total || 0), 0);
-  const grandRx      = rows.reduce((s, r) => s + Number(r.rx_total || 0), 0);
-  const grandMember  = rows.reduce((s, r) => s + Number(r.member_total || 0), 0);
-  const grandConsult = rows.reduce((s, r) => s + Number(r.consult_total || 0), 0);
+  const grandTotal    = rows.reduce((s, r) => s + Number(r.total_revenue || 0), 0);
+  const grandTx       = rows.reduce((s, r) => s + Number(r.transactions || 0), 0);
+  // Walk-in Sales = member walk-in + non-member/general walk-in + prescription dispensing
+  // All are in-branch customers — the distinction is internal only
+  const grandWalkIn   = rows.reduce((s, r) =>
+    s + Number(r.member_total || 0) + Number(r.non_member_total || 0) + Number(r.rx_total || 0), 0);
+  const grandConsult  = rows.reduce((s, r) => s + Number(r.consult_total || 0), 0);
   const grandCampaign = rows.reduce((s, r) => s + Number(r.campaign_total || 0), 0);
   const grandRefund   = rows.reduce((s, r) => s + Number(r.refund_deductions || 0), 0);
   const thS = { padding: '9px 12px', textAlign: 'left', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '.04em', color: '#fff', background: '#c41e3a', whiteSpace: 'nowrap' };
@@ -225,9 +226,7 @@ function SalesReviewTab() {
                 <tr>
                   <th style={thS}>Branch</th>
                   <th style={thR}>Transactions</th>
-                  <th style={thR}>Member Sales (DP)</th>
                   <th style={{ ...thR, background: '#1d6fa4' }}>Walk-in Sales (DP)</th>
-                  <th style={{ ...thR, background: '#15803d' }}>Prescription Sales (DP)</th>
                   <th style={thR}>Consultation Fees</th>
                   <th style={{ ...thR, background: '#b45309' }}>Campaign Sales</th>
                   <th style={{ ...thR, background: '#dc2626' }}>Refund Deductions</th>
@@ -235,13 +234,13 @@ function SalesReviewTab() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r, i) => (
+                {rows.map((r, i) => {
+                  const rowWalkIn = Number(r.member_total || 0) + Number(r.non_member_total || 0) + Number(r.rx_total || 0);
+                  return (
                   <tr key={r.branch_id || i} style={{ background: i % 2 === 0 ? '#fff' : '#fdf7f8' }}>
                     <td style={tdS}><strong>{branchLabel(r.branch_id)}</strong></td>
                     <td style={tdR}>{Number(r.transactions || 0).toLocaleString()}</td>
-                    <td style={tdR}>{fmtN(r.member_total)}</td>
-                    <td style={{ ...tdR, color: '#1d6fa4' }}>{fmtN(r.non_member_total)}</td>
-                    <td style={{ ...tdR, color: '#15803d' }}>{fmtN(r.rx_total)}</td>
+                    <td style={{ ...tdR, color: '#1d6fa4' }}>{fmtN(rowWalkIn)}</td>
                     <td style={tdR}>{fmtN(r.consult_total)}</td>
                     <td style={{ ...tdR, color: '#b45309' }}>{fmtN(r.campaign_total)}</td>
                     <td style={{ ...tdR, color: Number(r.refund_deductions || 0) > 0 ? '#dc2626' : '#94a3b8' }}>
@@ -249,13 +248,12 @@ function SalesReviewTab() {
                     </td>
                     <td style={{ ...tdR, color: '#c41e3a', fontWeight: 900, fontSize: '0.95rem' }}>{fmtN(r.total_revenue)}</td>
                   </tr>
-                ))}
+                  );
+                })}
                 <tr style={{ background: '#1e293b' }}>
                   <td style={{ ...tdS, color: '#fff', fontWeight: 800, background: 'transparent' }}>TOTAL</td>
                   <td style={{ ...tdR, color: '#fff', background: 'transparent' }}>{grandTx.toLocaleString()}</td>
-                  <td style={{ ...tdR, color: '#cbd5e1', background: 'transparent' }}>{fmtN(grandMember)}</td>
-                  <td style={{ ...tdR, color: '#93c5fd', background: 'transparent' }}>{fmtN(grandWalkInDp)}</td>
-                  <td style={{ ...tdR, color: '#86efac', background: 'transparent' }}>{fmtN(grandRx)}</td>
+                  <td style={{ ...tdR, color: '#93c5fd', background: 'transparent' }}>{fmtN(grandWalkIn)}</td>
                   <td style={{ ...tdR, color: '#cbd5e1', background: 'transparent' }}>{fmtN(grandConsult)}</td>
                   <td style={{ ...tdR, color: '#fcd34d', background: 'transparent' }}>{fmtN(grandCampaign)}</td>
                   <td style={{ ...tdR, color: grandRefund > 0 ? '#fca5a5' : '#94a3b8', background: 'transparent' }}>
