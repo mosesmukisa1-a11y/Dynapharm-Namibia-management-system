@@ -399,6 +399,9 @@ export default async function handler(req, res) {
         const productName = r.product_name;
         const batchNo = r.batch_no;
         const qty = Number(r.quantity || 0);
+        // Hoist effectiveBranchId so it is accessible in the return value below
+        // even when the deduction block is skipped (qty=0 / no productName).
+        let effectiveBranchId = branchId;
         // Deduct from branch_inventory_batches
         if (branchId && productName && qty > 0) {
           // Resolve the actual branch_id stored in branch_inventory_batches.
@@ -416,7 +419,7 @@ export default async function handler(req, res) {
              WHERE LOWER(REPLACE(branch_id,' ','_')) = ANY($1) LIMIT 1`,
             [branchCandidates]
           );
-          const effectiveBranchId = resolvedRow.rows[0]?.branch_id || branchId;
+          effectiveBranchId = resolvedRow.rows[0]?.branch_id || branchId;
 
           // Immediately zero-out inventory_balances for ALL candidate branch-id variants
           // (e.g. both 'ondangwa' and 'ondangwa_branch') inside this transaction so that
