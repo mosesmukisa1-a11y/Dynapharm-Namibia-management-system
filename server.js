@@ -1,4 +1,4 @@
-, webkitURLimport express from 'express';
+import express from 'express';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';

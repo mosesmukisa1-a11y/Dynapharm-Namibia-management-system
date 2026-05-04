@@ -179,8 +179,9 @@ async function getInventoryByBranch(branchId, enriched = false) {
       } else if (ibQty > 0) {
         // Item only exists in inventory_balances — add it
         const expiryDate = ib.expiry_date ? (ib.expiry_date instanceof Date ? ib.expiry_date.toISOString().slice(0, 10) : String(ib.expiry_date).slice(0, 10)) : null;
+        const syntheticId = `IB-${(resolvedId || '').toLowerCase().replace(/\s+/g, '_')}-${(ib.product_name || '').trim().toLowerCase().replace(/\s+/g, '_')}-${(ib.batch_no || 'nobatch').trim().toLowerCase()}`;
         normalized.push({
-          id: null,
+          id: syntheticId,
           branchId: resolvedId, branch_id: resolvedId,
           productName: ib.product_name, product_name: ib.product_name,
           productCode: null, product_code: null,

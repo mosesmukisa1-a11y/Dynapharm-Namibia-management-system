@@ -393,7 +393,7 @@ export default async function handler(req, res) {
           `SELECT * FROM stock_movements WHERE id = $1 AND movement_type = 'write_off' AND status = 'pending_approval' LIMIT 1`,
           [id]
         );
-        if (rows.length === 0) return false;
+        if (rows.length === 0) return null;
         const r = rows[0];
         const branchId = r.source_location;
         const productName = r.product_name;
@@ -455,7 +455,8 @@ export default async function handler(req, res) {
            WHERE id = $4`,
           [gmName, gmNote ? ` | GM: ${gmNote}` : '', derivedReason, id]
         );
-        return true;
+        // Return branchId so the caller can recompute inventory_balances
+        return branchId || null;
       };
 
       const reject = async (client, id) => {
@@ -470,23 +471,35 @@ export default async function handler(req, res) {
       if (action === 'approve' || action === 'reject') {
         const id = body.id;
         if (!id) return res.status(400).json({ success: false, error: 'Missing id' });
+        let affectedBranch = null;
         await withTransaction(async (client) => {
-          if (action === 'approve') await approve(client, id);
+          if (action === 'approve') affectedBranch = await approve(client, id);
           else await reject(client, id);
         });
-        recomputeLocationBalances('branch', body.source_location || '').catch(() => {});
+        if (affectedBranch) {
+          recomputeLocationBalances('branch', affectedBranch).catch(() => {});
+        }
         return res.json({ success: true });
       }
 
       if (action === 'approve_all' || action === 'reject_all') {
         const ids = Array.isArray(body.ids) ? body.ids : [];
         if (ids.length === 0) return res.status(400).json({ success: false, error: 'No ids provided' });
+        const affectedBranches = new Set();
         await withTransaction(async (client) => {
           for (const id of ids) {
-            if (action === 'approve_all') await approve(client, id);
-            else await reject(client, id);
+            if (action === 'approve_all') {
+              const bid = await approve(client, id);
+              if (bid) affectedBranches.add(bid);
+            } else {
+              await reject(client, id);
+            }
           }
         });
+        // Recompute inventory_balances for every affected branch
+        for (const bid of affectedBranches) {
+          recomputeLocationBalances('branch', bid).catch(() => {});
+        }
         return res.json({ success: true, count: ids.length });
       }
 

@@ -3290,7 +3290,7 @@ function BranchStockTab() {
     } finally { setSubmitting(false); }
   };
 
-  if (loading) return <LoadingSpinner />;
+  if (loading && inventory.length === 0 && requests.length === 0) return <LoadingSpinner />;
 
   const effectiveBranchForStock = selectedBranch || user?.branch || '';
   const branchKey = effectiveBranchForStock ? effectiveBranchForStock.toLowerCase().replace(/\s+/g, '_') : '';
