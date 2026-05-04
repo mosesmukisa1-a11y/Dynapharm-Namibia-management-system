@@ -1245,9 +1245,16 @@ function ApprovalsTab() {
                   return (
                     <div key={wo.id || idx} style={{ background: '#fff', border: '1.5px solid #fde68a', borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
                       <div style={{ background: 'linear-gradient(90deg,#fffbeb,#fef9e6)', padding: '10px 16px', borderBottom: '1px solid #fde68a', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                           <span style={{ background: '#fef3c7', color: '#92400e', fontWeight: 700, fontSize: '0.72rem', padding: '2px 8px', borderRadius: 20, border: '1px solid #fcd34d' }}>⏳ Pending GM Approval</span>
                           <span style={{ fontFamily: 'monospace', fontSize: '0.72rem', color: '#6b7280' }}>{wo.reference_id || wo.referenceId || wo.id}</span>
+                          {(() => {
+                            const expRaw = wo.expiry_date || wo.expiryDate;
+                            const isExpiredBatch = (expRaw && new Date(expRaw) < new Date()) || (wo.write_off_reason || '').toLowerCase() === 'expired';
+                            return isExpiredBatch
+                              ? <span style={{ background: '#fef2f2', color: '#991b1b', fontWeight: 700, fontSize: '0.68rem', padding: '2px 8px', borderRadius: 20, border: '1px solid #fecaca' }}>🗑️ Approval → Dispose Off</span>
+                              : <span style={{ background: '#f0fdf4', color: '#166534', fontWeight: 700, fontSize: '0.68rem', padding: '2px 8px', borderRadius: 20, border: '1px solid #bbf7d0' }}>↩ Approval → Return to Warehouse</span>;
+                          })()}
                         </div>
                         <span style={{ fontSize: '0.75rem', color: '#92400e' }}>Submitted {submittedAt} by <strong>{submittedBy}</strong></span>
                       </div>
