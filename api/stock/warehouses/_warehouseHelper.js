@@ -37,6 +37,33 @@ export async function getWarehouseMovements(warehouseKey) {
   ).catch(() => []);
 }
 
+export async function getWarehouseWriteoffReturns(warehouseKey) {
+  return getMany(
+    `SELECT wim.id,
+            wim.warehouse_id,
+            wim.product_name,
+            wim.batch_no,
+            wim.quantity,
+            wim.reference,
+            wim.notes,
+            wim.created_by,
+            wim.created_at,
+            sm.source_location  AS source_branch,
+            sm.expiry_date      AS expiry_date,
+            sm.write_off_reason AS write_off_reason,
+            sm.reason           AS reason
+     FROM warehouse_inventory_movements wim
+     LEFT JOIN stock_movements sm
+            ON sm.reference_id = wim.reference
+           AND sm.movement_type = 'write_off'
+     WHERE wim.warehouse_id = $1
+       AND wim.movement_type = 'write_off_return'
+     ORDER BY wim.created_at DESC
+     LIMIT 200`,
+    [warehouseKey]
+  ).catch(() => []);
+}
+
 export function buildWarehouseSummary(warehouseName, batches, inbound, outbound) {
   const totalProductLines = new Set(batches.map(b => b.description)).size;
   const totalUnits = batches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0), 0);

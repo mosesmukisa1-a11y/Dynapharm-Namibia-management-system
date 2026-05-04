@@ -2705,7 +2705,9 @@ function WarehouseTab({ name }) {
   const [mvDateTo, setMvDateTo] = useState('');
   const [mvTypeFilter, setMvTypeFilter] = useState('');
   const [mvProductSearch, setMvProductSearch] = useState('');
+  const [writeoffReturns, setWriteoffReturns] = useState([]);
   const location = name.toLowerCase() + '_warehouse';
+  const whKey = name.toLowerCase();
 
   const loadData = useCallback(() => {
     setLoading(true);
@@ -2714,8 +2716,9 @@ function WarehouseTab({ name }) {
       api.stock.transfers(`branch=${encodeURIComponent(location)}`).then(d => Array.isArray(d) ? d : d.transfers || []),
       api.stock.transfers(`fromWarehouse=${encodeURIComponent(location)}`).then(d => Array.isArray(d) ? d : d.transfers || []),
       api.stock.movements().then(d => Array.isArray(d) ? d : d.movements || []),
+      api.stock.warehouseReturns(whKey).then(d => Array.isArray(d) ? d : d.returns || []).catch(() => []),
     ])
-      .then(([batchData, inbound, outbound, movData]) => {
+      .then(([batchData, inbound, outbound, movData, returnsData]) => {
         setBatches(batchData);
         setIncomingTransfers(inbound.filter(t => t.status !== 'cancelled'));
         setOutboundTransfers(outbound.filter(t => t.status !== 'cancelled'));
@@ -2725,10 +2728,11 @@ function WarehouseTab({ name }) {
           const dst = (m.destination_location || '').toLowerCase();
           return src.includes(locKey) || dst.includes(locKey) || src.includes(name.toLowerCase()) || dst.includes(name.toLowerCase());
         }));
+        setWriteoffReturns(returnsData);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [location, name]);
+  }, [location, name, whKey]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -2787,6 +2791,8 @@ function WarehouseTab({ name }) {
   const getBatchSource = (batch) => {
     const notes = (batch.notes || '').toLowerCase();
     const batchNo = (batch.batch_no || batch.batchNo || batch.batch_number || '').toUpperCase();
+    const id = (batch.id || '').toUpperCase();
+    if (id.startsWith('SB-WO-') || notes.includes('write-off return') || notes.includes('write_off_return') || notes.includes('returned from branch')) return 'Branch Return';
     if (notes.includes('country stock') || batchNo.startsWith('RCV-')) return 'Country Stock';
     return 'Supplier Import';
   };
@@ -2868,6 +2874,7 @@ function WarehouseTab({ name }) {
     { id: 'incoming', label: `📥 Incoming (${pendingReceipt.length})${pendingReceipt.length > 0 ? ' 🔔' : ''}` },
     { id: 'outbound', label: `🚚 Outbound (${outboundTransfers.length})` },
     { id: 'movements', label: `📊 Movements (${movements.length})` },
+    { id: 'returns', label: `↩ Branch Returns (${writeoffReturns.length})${writeoffReturns.length > 0 ? ' 🔔' : ''}` },
   ];
 
   if (loading) return <LoadingSpinner />;
@@ -2911,6 +2918,12 @@ function WarehouseTab({ name }) {
             columns={[
               { header: 'Product', render: r => <span className="text-xs font-medium">{r.description || r.product_name || ''}</span> },
               { header: 'Batch #', render: r => r.batch_no || r.batch_number || '—' },
+              { header: 'Source', render: r => {
+                const src = getBatchSource(r);
+                if (src === 'Branch Return') return <span style={{ background: '#fef3c7', color: '#92400e', padding: '2px 8px', borderRadius: 5, fontSize: '0.72rem', fontWeight: 700, whiteSpace: 'nowrap' }}>↩ Branch Return</span>;
+                if (src === 'Country Stock') return <span style={{ background: '#eff6ff', color: '#1d4ed8', padding: '2px 8px', borderRadius: 5, fontSize: '0.72rem', fontWeight: 700, whiteSpace: 'nowrap' }}>📦 Country Stock</span>;
+                return <span style={{ background: '#f0fdf4', color: '#166534', padding: '2px 8px', borderRadius: 5, fontSize: '0.72rem', fontWeight: 700, whiteSpace: 'nowrap' }}>🏭 Supplier Import</span>;
+              }},
               { header: 'Available', render: r => <span className={Number(r.remaining_quantity || r.quantity) < 10 ? 'text-red-600 font-bold' : 'font-medium'}>{r.remaining_quantity || r.quantity}</span> },
               { header: 'Dispatched', render: r => r.dispatched_quantity || 0 },
               { header: 'Expiry', render: r => {
@@ -3591,6 +3604,121 @@ function WarehouseTab({ name }) {
           </div>
         );
       })()}
+
+      {subTab === 'returns' && (
+        <div className="space-y-4">
+          <div style={{ background: '#fffbeb', border: '2px solid #f59e0b', borderRadius: 12, padding: '12px 18px' }}>
+            <p className="text-sm" style={{ color: '#92400e' }}>
+              <strong>↩ Branch Returns</strong> — Stock that was written off at a branch and approved to be returned to this warehouse by the General Manager.
+              Each entry here corresponds to a GM-approved write-off that credited stock back to <strong>{name} Warehouse</strong>.
+            </p>
+          </div>
+
+          {writeoffReturns.length === 0 ? (
+            <Card>
+              <CardBody>
+                <EmptyState
+                  icon={<Package size={40} />}
+                  title="No Branch Returns Yet"
+                  description={`No written-off stock has been returned to ${name} Warehouse so far. When a GM approves a branch write-off with redistribution back to this warehouse, the entries will appear here.`}
+                />
+              </CardBody>
+            </Card>
+          ) : (
+            <Card>
+              <CardHeader>
+                <div className="flex justify-between items-center flex-wrap gap-2">
+                  <div>
+                    <h3 className="font-bold text-gray-800">↩ Branch Returns — {name} Warehouse</h3>
+                    <p className="text-xs text-gray-500 mt-0.5">{writeoffReturns.length} return event{writeoffReturns.length !== 1 ? 's' : ''} — stock credited back from branch write-offs</p>
+                  </div>
+                  <Button size="sm" variant="secondary" onClick={loadData}>↺ Refresh</Button>
+                </div>
+              </CardHeader>
+              <div className="overflow-x-auto">
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                  <thead>
+                    <tr style={{ background: '#fffbeb', borderBottom: '2px solid #fcd34d' }}>
+                      <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#92400e' }}>Product</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#92400e' }}>Batch #</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 700, color: '#92400e' }}>Qty Returned</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#92400e' }}>Source Branch</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#92400e' }}>Write-Off Reason</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#92400e' }}>Approved By</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#92400e' }}>Reference</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#92400e' }}>Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {writeoffReturns.map((r, idx) => {
+                      const branch = r.source_branch || (() => {
+                        const m = (r.notes || '').match(/Branch:\s*([^\s.]+)/i);
+                        return m ? m[1] : null;
+                      })();
+                      const branchLabel = branch ? fmtLocation(branch) : '—';
+                      const reason = r.write_off_reason || r.reason || (() => {
+                        const m = (r.notes || '').match(/Reason:\s*([^.]+)/i);
+                        return m ? m[1].trim() : null;
+                      })();
+                      return (
+                        <tr key={r.id || idx} style={{ background: idx % 2 === 0 ? '#fff' : '#fffbeb', borderBottom: '1px solid #fef3c7' }}>
+                          <td style={{ padding: '9px 12px', fontWeight: 600, color: '#1e293b' }}>{r.product_name || '—'}</td>
+                          <td style={{ padding: '9px 12px' }}>
+                            <span style={{ background: '#fef3c7', color: '#92400e', padding: '2px 8px', borderRadius: 5, fontFamily: 'monospace', fontSize: '0.76rem', fontWeight: 700 }}>
+                              {r.batch_no || '—'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 800, color: '#d97706', fontSize: '0.95rem' }}>
+                            +{Number(r.quantity || 0).toLocaleString()}
+                          </td>
+                          <td style={{ padding: '9px 12px' }}>
+                            <span style={{ background: '#fef2f2', color: '#991b1b', padding: '2px 8px', borderRadius: 5, fontSize: '0.76rem', fontWeight: 700 }}>
+                              {branchLabel}
+                            </span>
+                          </td>
+                          <td style={{ padding: '9px 12px', color: '#64748b', fontSize: '0.78rem' }}>
+                            {reason ? <span style={{ fontStyle: 'italic' }}>{String(reason).replace(/_/g, ' ')}</span> : <span style={{ color: '#cbd5e1' }}>—</span>}
+                          </td>
+                          <td style={{ padding: '9px 12px' }}>
+                            {r.created_by ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                                <span style={{ width: 22, height: 22, borderRadius: '50%', background: '#fef3c7', color: '#92400e', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.65rem', flexShrink: 0 }}>
+                                  {r.created_by[0]?.toUpperCase()}
+                                </span>
+                                <span style={{ fontSize: '0.78rem', color: '#374151' }}>{r.created_by}</span>
+                              </div>
+                            ) : <span style={{ color: '#cbd5e1' }}>—</span>}
+                          </td>
+                          <td style={{ padding: '9px 12px' }}>
+                            <span style={{ fontFamily: 'monospace', fontSize: '0.73rem', color: '#64748b' }}>{r.reference || '—'}</span>
+                          </td>
+                          <td style={{ padding: '9px 12px', color: '#64748b', whiteSpace: 'nowrap' }}>
+                            <div style={{ fontWeight: 600, color: '#374151', fontSize: '0.78rem' }}>{formatDate(r.created_at)}</div>
+                            <div style={{ color: '#94a3b8', fontSize: '0.69rem' }}>{r.created_at ? new Date(r.created_at).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' }) : ''}</div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ background: '#fef3c7', borderTop: '2px solid #fcd34d' }}>
+                      <td colSpan={2} style={{ padding: '8px 12px', fontWeight: 700, color: '#92400e', fontSize: '0.8rem' }}>
+                        TOTAL RETURNS ({writeoffReturns.length} events)
+                      </td>
+                      <td style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 900, color: '#d97706', fontSize: '0.9rem' }}>
+                        +{writeoffReturns.reduce((s, r) => s + Number(r.quantity || 0), 0).toLocaleString()}
+                      </td>
+                      <td colSpan={5} style={{ padding: '8px 12px', fontSize: '0.75rem', color: '#92400e' }}>
+                        units returned from branch write-offs
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </Card>
+          )}
+        </div>
+      )}
 
       <Modal open={showDispatch} onClose={() => setShowDispatch(false)} title={`Dispatch from ${name} Warehouse to Branch`} size="lg">
         <form onSubmit={handleDispatchToBranch} style={{ display: 'flex', flexDirection: 'column' }}>
