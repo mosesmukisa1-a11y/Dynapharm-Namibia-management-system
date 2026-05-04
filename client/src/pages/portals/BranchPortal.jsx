@@ -73,7 +73,6 @@ function SalesReviewTab() {
   const grandTotal   = rows.reduce((s, r) => s + Number(r.total_revenue || 0), 0);
   const grandTx      = rows.reduce((s, r) => s + Number(r.transactions || 0), 0);
   const grandWalkInDp = rows.reduce((s, r) => s + Number(r.non_member_total || 0), 0);
-  const grandWalkInCp = rows.reduce((s, r) => s + Number(r.non_member_cp_total || 0), 0);
   const grandRx      = rows.reduce((s, r) => s + Number(r.rx_total || 0), 0);
   const grandMember  = rows.reduce((s, r) => s + Number(r.member_total || 0), 0);
   const grandConsult = rows.reduce((s, r) => s + Number(r.consult_total || 0), 0);
@@ -144,12 +143,11 @@ function SalesReviewTab() {
                 <tr>
                   <th style={thS}>Branch</th>
                   <th style={thR}>Transactions</th>
-                  <th style={thR}>Member Sales</th>
-                  <th style={{ ...thR, background: '#1d6fa4' }}>Walk-in DP</th>
-                  <th style={{ ...thR, background: '#1e40af' }}>Walk-in CP</th>
-                  <th style={{ ...thR, background: '#15803d' }}>Prescription Sales</th>
-                  <th style={thR}>Consultation</th>
-                  <th style={{ ...thR, background: '#8b0000' }}>Total Revenue (DP)</th>
+                  <th style={thR}>Member Sales (DP)</th>
+                  <th style={{ ...thR, background: '#1d6fa4' }}>Walk-in Sales (DP)</th>
+                  <th style={{ ...thR, background: '#15803d' }}>Prescription Sales (DP)</th>
+                  <th style={thR}>Consultation Fees</th>
+                  <th style={{ ...thR, background: '#8b0000' }}>Total DP Sales</th>
                 </tr>
               </thead>
               <tbody>
@@ -159,7 +157,6 @@ function SalesReviewTab() {
                     <td style={tdR}>{Number(r.transactions || 0).toLocaleString()}</td>
                     <td style={tdR}>{fmtN(r.member_total)}</td>
                     <td style={{ ...tdR, color: '#1d6fa4' }}>{fmtN(r.non_member_total)}</td>
-                    <td style={{ ...tdR, color: '#1e40af' }}>{fmtN(r.non_member_cp_total)}</td>
                     <td style={{ ...tdR, color: '#15803d' }}>{fmtN(r.rx_total)}</td>
                     <td style={tdR}>{fmtN(r.consult_total)}</td>
                     <td style={{ ...tdR, color: '#c41e3a', fontWeight: 900, fontSize: '0.95rem' }}>{fmtN(r.total_revenue)}</td>
@@ -170,7 +167,6 @@ function SalesReviewTab() {
                   <td style={{ ...tdR, color: '#fff', background: 'transparent' }}>{grandTx.toLocaleString()}</td>
                   <td style={{ ...tdR, color: '#cbd5e1', background: 'transparent' }}>{fmtN(grandMember)}</td>
                   <td style={{ ...tdR, color: '#93c5fd', background: 'transparent' }}>{fmtN(grandWalkInDp)}</td>
-                  <td style={{ ...tdR, color: '#bfdbfe', background: 'transparent' }}>{fmtN(grandWalkInCp)}</td>
                   <td style={{ ...tdR, color: '#86efac', background: 'transparent' }}>{fmtN(grandRx)}</td>
                   <td style={{ ...tdR, color: '#cbd5e1', background: 'transparent' }}>{fmtN(grandConsult)}</td>
                   <td style={{ ...tdR, color: '#fbbf24', fontWeight: 900, fontSize: '1rem', background: 'transparent' }}>{fmtN(grandTotal)}</td>
@@ -4729,34 +4725,31 @@ function BranchStockTab() {
               <tr><td style="padding:8px 12px;font-weight:700;color:#166534">Non-member Walk-in — DP (Net)</td><td style="padding:8px 12px;text-align:right;font-weight:700;color:#166534">${fmtC(nmDp)}</td></tr>
               <tr style="background:#fdf2f4"><td style="padding:10px 12px;font-weight:800;color:#c41e3a;font-size:12px">Grand Total (DP)</td><td style="padding:10px 12px;text-align:right;font-weight:800;color:#c41e3a;font-size:13px">${fmtC(grandTotal)}</td></tr>
             </table>
-            <h3 style="font-size:12px;color:#c41e3a;margin:20px 0 8px;border-bottom:1px solid #fecaca;padding-bottom:4px">BRANCH NET SUMMARY</h3>
+            <h3 style="font-size:12px;color:#c41e3a;margin:20px 0 8px;border-bottom:1px solid #fecaca;padding-bottom:4px">DP SALES SUMMARY</h3>
             <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px">
               <tr style="background:#f8fafc"><td style="padding:6px 12px;border-bottom:1px solid #f0e8ea">Branch</td><td style="padding:6px 12px;text-align:right;border-bottom:1px solid #f0e8ea;font-weight:700">${branchName}</td></tr>
               <tr><td style="padding:6px 12px;border-bottom:1px solid #f0e8ea">Period</td><td style="padding:6px 12px;text-align:right;border-bottom:1px solid #f0e8ea;font-weight:700">${period}</td></tr>
             </table>
             <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:4px">
               <tr style="background:#f0fdf4">
-                <td style="padding:10px 14px;font-weight:700;color:#166534">Walk-in Sales + Prescription Sales — CP</td>
-                <td style="padding:10px 14px;text-align:right;font-weight:800;color:#166534;font-size:13px">${fmtC(bs.walkin_rx_sales || 0)}</td>
-              </tr>
-              <tr style="background:#f0f9ff">
-                <td style="padding:8px 14px;font-weight:700;color:#1d4ed8">Non-member Walk-in — DP (excl. distributor margin)</td>
-                <td style="padding:8px 14px;text-align:right;font-weight:700;color:#1d4ed8">${fmtC(nmDp)}</td>
+                <td style="padding:9px 14px;font-weight:700;color:#166534">Consultation Fees (DP)</td>
+                <td style="padding:9px 14px;text-align:right;font-weight:700;color:#166534">${fmtC(c.fee_value || c.value || 0)}</td>
               </tr>
               <tr>
-                <td style="padding:8px 14px;color:#374151">Less: Distributor Profit (CP − DP)</td>
-                <td style="padding:8px 14px;text-align:right;font-weight:700;color:#c41e3a">(${fmtC(bs.distributor_profit || 0)})</td>
+                <td style="padding:9px 14px;font-weight:700;color:#1e293b">Walk-in Sales — Members &amp; Non-members (DP)</td>
+                <td style="padding:9px 14px;text-align:right;font-weight:700;color:#1e293b">${fmtC(wiDp)}</td>
               </tr>
-              <tr style="background:#fef9f0">
-                <td style="padding:8px 14px;color:#374151">Less: Consultation Fees</td>
-                <td style="padding:8px 14px;text-align:right;font-weight:700;color:#92400e">(${fmtC(bs.consultation_fees || 0)})</td>
+              <tr style="background:#f0fdf4">
+                <td style="padding:9px 14px;font-weight:700;color:#166534">Prescription Sales (DP)</td>
+                <td style="padding:9px 14px;text-align:right;font-weight:700;color:#166534">${fmtC(rx.value || 0)}</td>
               </tr>
-              <tr style="border-top:2px solid #1e3a8a">
-                <td style="padding:14px 14px;font-weight:900;color:#fff;font-size:13px;letter-spacing:0.03em;background:linear-gradient(135deg,#1d4ed8,#1e3a8a)">BRANCH SALES FOR THE DAY</td>
-                <td style="padding:14px 14px;text-align:right;font-weight:900;color:#fff;font-size:18px;background:linear-gradient(135deg,#1d4ed8,#1e3a8a)">${fmtC(bs.branch_sales || 0)}</td>
+              ${on.transactions > 0 ? `<tr><td style="padding:9px 14px;font-weight:700;color:#1e293b">Online Order Sales (DP)</td><td style="padding:9px 14px;text-align:right;font-weight:700;color:#1e293b">${fmtC(on.value || 0)}</td></tr>` : ''}
+              <tr style="border-top:2px solid #c41e3a">
+                <td style="padding:14px 14px;font-weight:900;color:#fff;font-size:13px;letter-spacing:0.03em;background:linear-gradient(135deg,#c41e3a,#8b0000)">TOTAL DP SALES</td>
+                <td style="padding:14px 14px;text-align:right;font-weight:900;color:#fff;font-size:18px;background:linear-gradient(135deg,#c41e3a,#8b0000)">${fmtC(grandTotal)}</td>
               </tr>
             </table>
-            <div style="font-size:9px;color:#94a3b8;text-align:center;margin-top:6px">Branch Sales = Walk-in + Prescription Sales (CP) &minus; Distributor Profit &minus; Consultation Fees &nbsp;·&nbsp; DP = Distributor Price &nbsp;·&nbsp; CP = Consumer Price</div>`, branchName);
+            <div style="font-size:9px;color:#94a3b8;text-align:center;margin-top:6px">All amounts shown at Distributor Price (DP) — the amount that belongs to the company</div>`, branchName);
         };
 
         const printStockFormulaFromData = (data) => {
