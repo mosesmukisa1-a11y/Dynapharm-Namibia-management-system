@@ -209,6 +209,21 @@ async function getInventoryByBranch(branchId, enriched = false) {
   // and separately pull sold quantities from branch_walkin_sales (the authoritative sales source).
   let movAgg = [];
   let walkinSoldAgg = [];
+  let bibSourceMap = {}; // product_name (lower) → source_warehouse from branch_inventory_batches
+  try {
+    // Also pull source_warehouse directly from branch_inventory_batches as a fallback for
+    // historical dispatch receipts that were inserted before source_branch_id was recorded
+    // in branch_inventory_movements.
+    const bibSources = await getMany(
+      `SELECT LOWER(TRIM(product_name)) AS pname, source_warehouse
+       FROM branch_inventory_batches
+       WHERE branch_id = $1 AND source_warehouse IS NOT NULL`,
+      [resolvedId]
+    );
+    for (const row of bibSources) {
+      if (row.pname && row.source_warehouse) bibSourceMap[row.pname] = row.source_warehouse;
+    }
+  } catch (_) {}
   try {
     [movAgg, walkinSoldAgg] = await Promise.all([
       getMany(
@@ -268,7 +283,14 @@ async function getInventoryByBranch(branchId, enriched = false) {
     const a = aggMap[key];
     const q = Number(r.total_qty || 0);
     const t = (r.type || '').toLowerCase();
-    if (t === 'receive' || t === 'received' || t === 'stock_receipt' || t === 'transfer_in') { a.received += q; if (r.source) a.source_warehouse = r.source; }
+    if (t === 'receive' || t === 'received' || t === 'stock_receipt' || t === 'transfer_in') {
+      a.received += q;
+      // source_branch_id in branch_inventory_movements is the warehouse that dispatched this stock.
+      // Fall back to branch_inventory_batches.source_warehouse for historical records where
+      // source_branch_id was not recorded at receipt time.
+      if (r.source) a.source_warehouse = r.source;
+      else if (!a.source_warehouse && bibSourceMap[key]) a.source_warehouse = bibSourceMap[key];
+    }
     else if (t === 'sale' || t === 'walk_in_member_sale' || t === 'walk_in_non_member_sale' || t === 'online_order_sale') a.walkin_sold += q;
     else if (t === 'dispense' || t === 'prescription_dispense' || t === 'field_use') a.dispensed += q;
     else if (t === 'transfer_out' || t === 'transfer') a.transferred += q;
@@ -276,6 +298,12 @@ async function getInventoryByBranch(branchId, enriched = false) {
     else if (t === 'adjustment' || t === 'return' || t === 'return_in') a.adjusted += q;
     const ld = r.last_date instanceof Date ? r.last_date.toISOString() : r.last_date;
     if (!a.last_movement || (ld && ld > a.last_movement)) a.last_movement = ld;
+  }
+  // Apply bibSourceMap fallback for products that never had a 'receive' movement recorded
+  // (e.g. stock loaded via the startup backfill or direct DB insert) so SOURCE always shows.
+  for (const [pname, srcWh] of Object.entries(bibSourceMap)) {
+    if (!aggMap[pname]) aggMap[pname] = EMPTY_AGG();
+    if (!aggMap[pname].source_warehouse) aggMap[pname].source_warehouse = srcWh;
   }
 
   // Merge walkin sold from branch_walkin_sales (authoritative — always recorded even when

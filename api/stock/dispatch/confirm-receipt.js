@@ -221,11 +221,14 @@ export default async function handler(req, res) {
         );
 
         // 4. Insert into branch_inventory_movements
+        // source_branch_id = source warehouse so the branch inventory enrichment
+        // query can surface the SOURCE column in the branch portal.
         const bimId = generateId('BIM');
         await client.query(
-          `INSERT INTO branch_inventory_movements (id, branch_id, type, product_name, batch_no, quantity, unit_price, reference, notes, created_by, created_at)
-           VALUES ($1, $2, 'receive', $3, $4, $5, $6, $7, $8, $9, NOW())`,
+          `INSERT INTO branch_inventory_movements (id, branch_id, type, product_name, batch_no, quantity, unit_price, source_branch_id, reference, notes, created_by, created_at)
+           VALUES ($1, $2, 'receive', $3, $4, $5, $6, $7, $8, $9, $10, NOW())`,
           [bimId, branchId, productName, batchNo, qtyReceived, unitDP || null,
+           sourceLocation || null,
            dispatchNoteId,
            `Received from warehouse — dispatch ${dispatchNoteId}${item.discrepancyNote ? ` (${item.discrepancyNote})` : ''}`,
            receivedBy || 'system']

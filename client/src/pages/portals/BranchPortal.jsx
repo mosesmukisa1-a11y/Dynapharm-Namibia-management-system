@@ -3551,7 +3551,7 @@ function BranchStockTab() {
           const pName = r.product_name || r.productName || r.description || '';
           const normKey = pName.trim().toLowerCase();
           if (!invGroupMap[normKey]) {
-            invGroupMap[normKey] = { productName: pName, batches: [], totalQty: 0, totalRcvd: 0, totalSold: 0, totalDisp: 0, totalTrf: 0, totalWO: 0, totalOpening: 0, totalDpValue: 0, hasExpired: false, hasExpiring: false };
+            invGroupMap[normKey] = { productName: pName, batches: [], totalQty: 0, totalRcvd: 0, totalSold: 0, totalDisp: 0, totalTrf: 0, totalWO: 0, totalOpening: 0, totalDpValue: 0, hasExpired: false, hasExpiring: false, sourceWarehouse: null, lastMovement: null };
             invProductGroups.push(invGroupMap[normKey]);
           }
           const g = invGroupMap[normKey];
@@ -3569,6 +3569,11 @@ function BranchStockTab() {
           g.totalDpValue += dpUnit * q;
           if (exp && new Date(exp) < now) g.hasExpired = true;
           if (exp && new Date(exp) <= thirtyDays && new Date(exp) >= now) g.hasExpiring = true;
+          // Propagate source warehouse and last movement from batch rows to the group
+          const bSrc = r.source_warehouse || r.sourceWarehouse;
+          if (bSrc && !g.sourceWarehouse) g.sourceWarehouse = bSrc;
+          const bLast = r.last_movement_date || r.lastMovementDate;
+          if (bLast && (!g.lastMovement || bLast > g.lastMovement)) g.lastMovement = bLast;
         }
         // Opening = stock present before movement tracking began.
         // Makes the equation: Opening + Rcvd − Sold − Disp − Trf − W/O = Balance
@@ -3697,8 +3702,12 @@ function BranchStockTab() {
                       </td>
                       <td style={{ ...cellStyle, textAlign: 'right', color: '#166534', fontWeight: 600 }}>{dpUnit > 0 ? `N$ ${Math.round(dpUnit).toLocaleString("en-ZA")}` : '—'}</td>
                       <td style={{ ...cellStyle, textAlign: 'right', fontWeight: 700, color: g.totalDpValue > 0 ? '#1e293b' : '#94a3b8' }}>{g.totalDpValue > 0 ? `N$ ${Math.round(g.totalDpValue).toLocaleString("en-ZA")}` : '—'}</td>
-                      <td style={{ ...cellStyle, color: '#6b7280', fontSize: '0.72rem' }}>—</td>
-                      <td style={{ ...cellStyle, color: '#6b7280', fontSize: '0.72rem' }}>—</td>
+                      <td style={{ ...cellStyle, color: '#6b7280', fontSize: '0.72rem', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={g.sourceWarehouse || ''}>
+                        {g.sourceWarehouse ? fmtLocation(g.sourceWarehouse) : '—'}
+                      </td>
+                      <td style={{ ...cellStyle, color: '#6b7280', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>
+                        {g.lastMovement ? formatDateTime(g.lastMovement) : '—'}
+                      </td>
                     </tr>
                   )];
                   if (hasManyBatches && isExpanded) {
