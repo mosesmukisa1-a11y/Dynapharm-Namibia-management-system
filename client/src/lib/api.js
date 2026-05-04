@@ -239,6 +239,7 @@ export const api = {
     branchSalesMonthly: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/reports/branch-sales/monthly${qs ? '?' + qs : ''}`); },
     branchStockFormula: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/reports/branch-sales/stock-formula${qs ? '?' + qs : ''}`); },
     branchSalesSummary: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/reports/branch-sales/summary${qs ? '?' + qs : ''}`); },
+    branchDailyProducts: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/reports/branch-sales/daily-products${qs ? '?' + qs : ''}`); },
   },
 
   admin: {
