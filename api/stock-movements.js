@@ -478,13 +478,24 @@ export default async function handler(req, res) {
             [qty, returnedWarehouseId, productName, batchNo || '']
           );
           if (upd.rowCount === 0) {
-            // No matching row — insert a new inventory entry for this product/batch
+            // No matching row — insert a new inventory entry for this product/batch.
+            // product_id is NOT NULL: reuse the id from an existing row for this product,
+            // falling back to a URL-slug generated from the product name.
+            const existingPid = await client.query(
+              `SELECT product_id FROM warehouse_inventory
+               WHERE LOWER(product_name) = LOWER($1) AND product_id IS NOT NULL LIMIT 1`,
+              [productName]
+            );
+            const productId = existingPid.rows[0]?.product_id
+              || productName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
             const wiId = `WI-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
             await client.query(
               `INSERT INTO warehouse_inventory
-                 (id, warehouse_id, product_name, batch_no, expiry_date, quantity, status, created_at, updated_at)
-               VALUES ($1, $2, $3, $4, $5, $6, 'available', NOW(), NOW())`,
-              [wiId, returnedWarehouseId, productName, batchNo || null, r.expiry_date || null, qty]
+                 (id, warehouse_id, product_id, product_name, batch_no, expiry_date, quantity, status, created_at, updated_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, 'available', NOW(), NOW())
+               ON CONFLICT (warehouse_id, product_id, batch_no, expiry_date) DO UPDATE
+                 SET quantity = warehouse_inventory.quantity + EXCLUDED.quantity, updated_at = NOW()`,
+              [wiId, returnedWarehouseId, productId, productName, batchNo || null, r.expiry_date || null, qty]
             );
           }
 
