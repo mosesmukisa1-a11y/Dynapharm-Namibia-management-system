@@ -3907,6 +3907,27 @@ function BranchRequestsPanel() {
         notes: `Dispatched from ${whLabel} by ${actor}`,
       });
 
+      // Record an outbound warehouse_dispatch movement for every item so
+      // warehouse inventory_balances are reduced and a full audit trail exists.
+      const dispatchedAt = new Date().toISOString();
+      for (const item of items) {
+        const productName = item.productName || item.product_name || '';
+        const qty = Number(item.quantity || 0);
+        if (!productName || qty <= 0) continue;
+        await api.stock.createMovement({
+          movement_type: 'warehouse_dispatch',
+          product_name: productName,
+          quantity: qty,
+          source_location: dispatchWH,
+          source_location_type: 'warehouse',
+          destination_location: branchId,
+          destination_location_type: 'branch',
+          reference_id: dispatchReq.id,
+          notes: `Dispatched from ${whLabel} to ${fmtLocation(branchId)} — request ${dispatchReq.requestNumber || dispatchReq.request_number || dispatchReq.id}`,
+          created_by: actor,
+        }).catch(err => console.warn('[dispatch] movement record failed:', err.message));
+      }
+
       setAlert({ type: 'success', msg: `✅ ${items.length} item(s) dispatched from ${whLabel} to ${fmtLocation(branchId)}. Branch can now receive the delivery.` });
       setDispatchReq(null);
       setModalAlert(null);

@@ -1,5 +1,6 @@
 import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
 import { query, getMany, getOne, withTransaction } from '../db.js';
+import { recomputeLocationBalances } from '../services/stockEngine.js';
 
 function parseNumber(value, fallback = 0) {
   if (value === null || value === undefined || value === '') return fallback;
@@ -748,6 +749,12 @@ export default async function handler(req, res) {
       switch (action) {
         case 'receive':
           result = await handleReceive(body, currentUser);
+          // Refresh inventory_balances cache for the branch after receiving stock
+          if (targetBranchId) {
+            recomputeLocationBalances('branch', targetBranchId).catch(e =>
+              console.error('[branch/inventory] post-receive recompute error:', e.message)
+            );
+          }
           break;
         case 'transfer':
           result = await handleTransfer(body, currentUser);

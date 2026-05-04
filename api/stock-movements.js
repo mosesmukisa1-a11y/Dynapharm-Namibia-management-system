@@ -228,20 +228,24 @@ export default async function handler(req, res) {
       const notes = body.notes || null;
       const createdBy = body.createdBy || body.created_by || null;
 
-      if (['write_off', 'sale', 'return', 'field_use', 'received'].includes(movType)) {
+      if (['write_off', 'sale', 'return', 'field_use', 'received', 'warehouse_dispatch'].includes(movType)) {
         const id = `MOV-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
         const referenceId = body.reference_id || body.referenceId || null;
         const batchNo = body.batch_no || body.batchNo || null;
         const expiryDate = body.expiry_date || body.expiryDate || null;
         const srcLoc = body.source_location || body.sourceLocation || null;
         const destLoc = body.destination_location || body.destinationLocation || null;
-        const srcLocType = inferLocationType(srcLoc);
-        const dstLocType = inferLocationType(destLoc);
+        const srcLocType = body.source_location_type || inferLocationType(srcLoc);
+        const dstLocType = body.destination_location_type || inferLocationType(destLoc);
         const branchId = srcLoc || destLoc;
         // Allow branch users to submit write-offs pending GM approval
         const movStatus = body.status === 'pending_approval' ? 'pending_approval' : 'posted';
 
         if (branchScope.enforced) {
+          // Branch users cannot post warehouse_dispatch movements
+          if (movType === 'warehouse_dispatch') {
+            return res.status(403).json({ success: false, error: 'Access denied: cannot post warehouse dispatch movements' });
+          }
           // For outbound movements (write_off, sale, field_use, return): check source branch
           // For inbound movements (received): check destination branch
           const primaryBranchLoc = movType === 'received' ? (destLoc || srcLoc) : (srcLoc || destLoc);
@@ -250,6 +254,7 @@ export default async function handler(req, res) {
           }
         }
         // For pending write-offs: insert record only (no stock deduction — GM must approve first)
+        // warehouse_dispatch is a warehouse-level outbound — no branch mirror needed here
         const needsBranchMirror = branchId && ['write_off', 'sale', 'field_use', 'return'].includes(movType) && movStatus !== 'pending_approval';
         // Extract write-off reason from explicit field or first segment of notes
         const rawReason = body.reason || body.write_off_reason || null;
@@ -316,12 +321,26 @@ export default async function handler(req, res) {
             }
           }
         });
-        // Recompute inventory_balances for affected locations
+        // Recompute inventory_balances for the primary affected location
         const locType = srcLocType || dstLocType;
         const locId = srcLoc || destLoc;
         if (locType && locId) {
           recomputeLocationBalances(locType, locId).catch(e =>
             console.error('[stockEngine] stock-movements recompute error:', e.message)
+          );
+        }
+        // For 'received': the primary loc resolves to the warehouse source — also recompute
+        // the destination branch so its inventory_balances cache stays current.
+        if (movType === 'received' && dstLocType === 'branch' && destLoc) {
+          recomputeLocationBalances('branch', destLoc).catch(e =>
+            console.error('[stockEngine] stock-movements received→branch recompute error:', e.message)
+          );
+        }
+        // For 'warehouse_dispatch': src is warehouse (already recomputed above) — also
+        // recompute the destination branch so its in-transit balance is reflected.
+        if (movType === 'warehouse_dispatch' && dstLocType === 'branch' && destLoc) {
+          recomputeLocationBalances('branch', destLoc).catch(e =>
+            console.error('[stockEngine] stock-movements dispatch→branch recompute error:', e.message)
           );
         }
         return res.status(201).json({
