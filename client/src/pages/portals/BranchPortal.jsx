@@ -3520,6 +3520,8 @@ function BranchStockTab() {
           const exp = r.expiry_date || r.expiryDate;
           const isExp = exp ? new Date(exp) < now : false;
           const isExpiring = exp ? new Date(exp) <= thirtyDays && new Date(exp) >= now : false;
+          // Hide zero-quantity batches unless the user explicitly filters for Out of Stock
+          if (q <= 0 && invFilter.status !== 'out') return false;
           if (invFilter.status === 'low' && !(q > 0 && q < 10)) return false;
           if (invFilter.status === 'out' && q > 0) return false;
           if (invFilter.status === 'expired' && !isExp) return false;

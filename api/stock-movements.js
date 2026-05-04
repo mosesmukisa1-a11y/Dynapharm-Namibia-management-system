@@ -414,6 +414,7 @@ export default async function handler(req, res) {
             for (const b of specific.rows) {
               const take = Math.min(remaining, Number(b.quantity));
               await client.query(`UPDATE branch_inventory_batches SET quantity = quantity - $1, updated_at = NOW() WHERE id = $2`, [take, b.id]);
+              await client.query(`DELETE FROM branch_inventory_batches WHERE id = $1 AND quantity <= 0`, [b.id]);
               remaining -= take;
             }
           }
@@ -431,6 +432,7 @@ export default async function handler(req, res) {
               if (remaining <= 0) break;
               const take = Math.min(remaining, Number(b.quantity));
               await client.query(`UPDATE branch_inventory_batches SET quantity = quantity - $1, updated_at = NOW() WHERE id = $2`, [take, b.id]);
+              await client.query(`DELETE FROM branch_inventory_batches WHERE id = $1 AND quantity <= 0`, [b.id]);
               remaining -= take;
             }
           }

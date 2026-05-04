@@ -134,7 +134,7 @@ async function resolveBranchId(raw) {
 async function getInventoryByBranch(branchId, enriched = false) {
   const resolvedId = await resolveBranchId(branchId);
   const rows = await getMany(
-    `SELECT * FROM branch_inventory_batches WHERE branch_id = $1 ORDER BY product_name ASC, expiry_date ASC NULLS LAST`,
+    `SELECT * FROM branch_inventory_batches WHERE branch_id = $1 AND quantity > 0 ORDER BY product_name ASC, expiry_date ASC NULLS LAST`,
     [resolvedId]
   );
   const normalized = rows.map(normalizeInventoryRow).filter(Boolean);
