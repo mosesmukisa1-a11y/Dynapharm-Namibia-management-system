@@ -66,7 +66,8 @@ export default async function handler(req, res) {
       getMany(`
         SELECT
           r.id                                                                    AS report_id,
-          DATE(r.created_at)::text                                               AS service_date,
+          COALESCE(NULLIF(LEFT(TRIM(r.data->>'date'),10),''), DATE(r.created_at)::text)
+                                                                                 AS service_date,
           COALESCE(NULLIF(TRIM(r.branch),''), 'townshop')                        AS branch_id,
           COALESCE((r.data->>'consultation_fee')::numeric, 0)                    AS consultation_fee,
           COALESCE(r.data->>'payment_method', 'cash')                            AS payment_method,
@@ -96,7 +97,8 @@ export default async function handler(req, res) {
             WHERE bat.form_reference_id = r.id AND bat.activity_type = 'consultation'
           )                                                                       AS consult_in_bat
         FROM reports r
-        WHERE r.created_at >= $1 AND r.created_at < $2
+        WHERE COALESCE(NULLIF(LEFT(TRIM(r.data->>'date'),10),''), DATE(r.created_at)::text)::date >= $1::date
+          AND COALESCE(NULLIF(LEFT(TRIM(r.data->>'date'),10),''), DATE(r.created_at)::text)::date < $2::date
           ${rpBranchClause}
           AND (
             (r.data ? 'medicines' AND jsonb_array_length(COALESCE(r.data->'medicines','[]'::jsonb)) > 0)
