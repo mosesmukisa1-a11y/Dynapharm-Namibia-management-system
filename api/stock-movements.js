@@ -591,11 +591,13 @@ export default async function handler(req, res) {
           if (action === 'approve') result = await approve(client, id);
           else await reject(client, id);
         });
+        // Await synchronously so inventory_balances is up-to-date before the
+        // client receives the success response and re-fetches inventory.
         if (result?.branchId) {
-          recomputeLocationBalances('branch', result.branchId).catch(() => {});
+          await recomputeLocationBalances('branch', result.branchId).catch(() => {});
         }
         if (result?.warehouseId) {
-          recomputeLocationBalances('warehouse', result.warehouseId).catch(() => {});
+          await recomputeLocationBalances('warehouse', result.warehouseId).catch(() => {});
         }
         return res.json({ success: true });
       }
@@ -616,13 +618,11 @@ export default async function handler(req, res) {
             }
           }
         });
-        // Recompute inventory_balances for every affected branch and warehouse
-        for (const bid of affectedBranches) {
-          recomputeLocationBalances('branch', bid).catch(() => {});
-        }
-        for (const wid of affectedWarehouses) {
-          recomputeLocationBalances('warehouse', wid).catch(() => {});
-        }
+        // Await all recomputes before responding so the client sees correct data on refresh
+        await Promise.all([
+          ...[...affectedBranches].map(bid => recomputeLocationBalances('branch', bid).catch(() => {})),
+          ...[...affectedWarehouses].map(wid => recomputeLocationBalances('warehouse', wid).catch(() => {})),
+        ]);
         return res.json({ success: true, count: ids.length });
       }
 

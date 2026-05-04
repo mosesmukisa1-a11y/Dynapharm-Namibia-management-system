@@ -169,13 +169,9 @@ async function getInventoryByBranch(branchId, enriched = false) {
       const key = normKey(ib.product_name, ib.batch_no);
       const ibQty = parseNumber(ib.quantity);
       if (existingMap.has(key)) {
-        // Item already in branch_inventory_batches — update quantity to GREATEST of the two
-        const idx = existingMap.get(key);
-        const existingQty = parseNumber(normalized[idx].quantity);
-        if (ibQty > existingQty) {
-          normalized[idx].quantity = ibQty;
-          normalized[idx].status = ibQty > 0 ? 'in_stock' : 'out_of_stock';
-        }
+        // Item already in branch_inventory_batches — that table is authoritative.
+        // Do NOT override with inventory_balances value; doing so would cause
+        // written-off stock to reappear if inventory_balances is momentarily stale.
       } else if (ibQty > 0) {
         // Item only exists in inventory_balances — add it
         const expiryDate = ib.expiry_date ? (ib.expiry_date instanceof Date ? ib.expiry_date.toISOString().slice(0, 10) : String(ib.expiry_date).slice(0, 10)) : null;
