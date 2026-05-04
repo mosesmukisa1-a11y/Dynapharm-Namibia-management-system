@@ -146,6 +146,19 @@ export default async function handler(req, res) {
         };
       });
 
+    // Group per-product movements by form_reference_id for Rx detail lookup
+    const rxProductMap = {};
+    for (const m of rxProductMovements) {
+      const ref = m.form_reference_id || 'unknown';
+      if (!rxProductMap[ref]) rxProductMap[ref] = [];
+      rxProductMap[ref].push({
+        product_name: m.product_name,
+        batch_no: m.batch_no,
+        qty: Number(m.qty || 0),
+        dp_value: parseFloat(Number(m.dp_value || 0).toFixed(2)),
+      });
+    }
+
     // Supplement: build synthetic BAT rows from reports not yet captured in BAT.
     // Rules:
     //   Prescription — only include if stock actually moved (inventory movement exists for
@@ -192,19 +205,6 @@ export default async function handler(req, res) {
 
     // Merge: activity_transactions + synthetic walkin rows + reports supplement
     const allTxRows = [...txRows, ...walkinSynthetic, ...reportSynthetic];
-
-    // Group per-product movements by form_reference_id for Rx detail lookup
-    const rxProductMap = {};
-    for (const m of rxProductMovements) {
-      const ref = m.form_reference_id || 'unknown';
-      if (!rxProductMap[ref]) rxProductMap[ref] = [];
-      rxProductMap[ref].push({
-        product_name: m.product_name,
-        batch_no: m.batch_no,
-        qty: Number(m.qty || 0),
-        dp_value: parseFloat(Number(m.dp_value || 0).toFixed(2)),
-      });
-    }
 
     const sum = (rows, field) => rows.reduce((s, r) => s + Number(r[field] || 0), 0);
     const paidRows = (rows) => rows.filter(r => r.payment_status === 'paid');
