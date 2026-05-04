@@ -5328,19 +5328,6 @@ function BranchStockTab() {
             <h3 style="font-size:12px;color:#c41e3a;margin:20px 0 8px;border-bottom:1px solid #fecaca;padding-bottom:4px">PAYMENT METHOD BREAKDOWN &amp; DISPENSING DETAIL</h3>
             ${detailSections || '<p style="font-size:10px;color:#94a3b8">No transactions recorded</p>'}
 
-            <h3 style="font-size:12px;color:#c41e3a;margin:20px 0 8px;border-bottom:1px solid #fecaca;padding-bottom:4px">PRODUCTS SOLD</h3>
-            <table style="width:100%;border-collapse:collapse;font-size:11px">
-              <thead>
-                <tr style="background:#1e293b;color:#fff">
-                  <th style="text-align:left;padding:7px 10px;font-size:9px">Product Name</th>
-                  <th style="text-align:center;padding:7px 10px;font-size:9px">Source</th>
-                  <th style="text-align:right;padding:7px 10px;font-size:9px">Qty Sold</th>
-                  <th style="text-align:right;padding:7px 10px;font-size:9px">DP Total</th>
-                </tr>
-              </thead>
-              <tbody>${productsHTML}</tbody>
-            </table>
-
             <h3 style="font-size:12px;color:#c41e3a;margin:20px 0 8px;border-bottom:1px solid #fecaca;padding-bottom:4px">TOTALS</h3>
             <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px">
               <tr style="background:#fdf2f4"><td style="padding:10px 12px;font-weight:800;color:#c41e3a">Total Transactions</td><td style="padding:10px 12px;text-align:right;font-weight:800">${totalTx}</td></tr>
