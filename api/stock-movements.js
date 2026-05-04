@@ -526,6 +526,37 @@ export default async function handler(req, res) {
               r.reference_id, `Returned from branch write-off. Branch: ${branchId}. Reason: ${derivedReason || 'N/A'}. ${r.notes || ''}`.trim(), gmName]
           );
 
+          // Credit stock_batches — this is the table the warehouse portal display reads from.
+          // Try to increment remaining_quantity on an existing batch first.
+          const sbUpd = await client.query(
+            `UPDATE stock_batches
+             SET remaining_quantity = remaining_quantity + $1,
+                 quantity = quantity + $1,
+                 updated_at = NOW()
+             WHERE location = $2
+               AND LOWER(description) = LOWER($3)
+               AND LOWER(COALESCE(batch_no,'')) = LOWER($4)`,
+            [qty, returnedWarehouseId, productName, batchNo || '']
+          );
+          if (sbUpd.rowCount === 0) {
+            // No existing batch — create a new stock_batches row so it appears in
+            // the warehouse inventory immediately, with pricing from the write-off record.
+            const sbId = `SB-WO-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+            const cifCost = Number(r.unit_cif || 0);
+            const dpcCost = Number(r.unit_dp || 0);
+            await client.query(
+              `INSERT INTO stock_batches
+                 (id, description, batch_no, expiry_date, quantity, remaining_quantity,
+                  location, status, cif_unit_cost, dpc_unit_value,
+                  cif_total_value, dpc_total_value, created_at, updated_at)
+               VALUES ($1,$2,$3,$4::date,$5,$5,$6,'available',$7,$8,$9,$10,NOW(),NOW())
+               ON CONFLICT DO NOTHING`,
+              [sbId, productName, batchNo || null, r.expiry_date || null, qty,
+               returnedWarehouseId, cifCost, dpcCost,
+               qty * cifCost, qty * dpcCost]
+            );
+          }
+
           disposalStatus = 'returned_to_warehouse';
         }
 

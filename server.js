@@ -2507,6 +2507,92 @@ server.on('error', (error) => {
     } catch (bfErr) {
       console.warn('[branch_inventory_batches backfill]', bfErr.message);
     }
+
+    // ── Backfill stock_batches for write-offs returned to warehouse ──────────
+    // Approved write-offs with disposal_status='returned_to_warehouse' wrote their
+    // stock credit to warehouse_inventory (a legacy table) but NOT to stock_batches
+    // (which is what the warehouse portal display reads from).  Find all such
+    // write-offs and ensure a stock_batches row exists for each.
+    try {
+      const woReturns = await query(
+        `SELECT sm.id, sm.product_name, sm.batch_no, sm.expiry_date, sm.quantity,
+                sm.unit_cif, sm.unit_dp, sm.source_location, sm.reference_id,
+                wim.warehouse_id AS returned_warehouse_id
+         FROM stock_movements sm
+         LEFT JOIN warehouse_inventory_movements wim
+               ON wim.reference = sm.reference_id
+              AND wim.movement_type = 'write_off_return'
+         WHERE sm.movement_type = 'write_off'
+           AND sm.status = 'approved'
+           AND sm.disposal_status = 'returned_to_warehouse'`
+      );
+      let woBackfilled = 0;
+      for (const wo of (woReturns?.rows || [])) {
+        try {
+          const warehouseId = wo.returned_warehouse_id || (() => {
+            // Fallback: infer warehouse from branch name
+            const br = (wo.source_location || '').toLowerCase();
+            if (br.includes('ondangwa')) return 'ondangwa_warehouse';
+            return 'windhoek_warehouse';
+          })();
+          const qty = Number(wo.quantity || 0);
+          if (qty <= 0) continue;
+          const batchNo = wo.batch_no || '';
+          // Try to update an existing stock_batches row
+          const sbUpd = await query(
+            `UPDATE stock_batches
+             SET remaining_quantity = remaining_quantity + $1,
+                 quantity = quantity + $1,
+                 updated_at = NOW()
+             WHERE location = $2
+               AND LOWER(description) = LOWER($3)
+               AND LOWER(COALESCE(batch_no,'')) = LOWER($4)
+               AND NOT EXISTS (
+                 SELECT 1 FROM warehouse_inventory_movements
+                 WHERE movement_type = 'write_off_return'
+                   AND reference = $5
+                   AND warehouse_id = $2
+                   AND LOWER(product_name) = LOWER($3)
+               )`,
+            [qty, warehouseId, wo.product_name, batchNo, wo.reference_id]
+          );
+          if (sbUpd && sbUpd.rowCount > 0) {
+            woBackfilled++;
+          } else if (sbUpd && sbUpd.rowCount === 0) {
+            // No existing batch row AND not already credited — insert new
+            const alreadyCredited = await query(
+              `SELECT 1 FROM stock_batches
+               WHERE location = $1
+                 AND LOWER(description) = LOWER($2)
+                 AND LOWER(COALESCE(batch_no,'')) = LOWER($3)
+               LIMIT 1`,
+              [warehouseId, wo.product_name, batchNo]
+            );
+            if (!alreadyCredited?.rows?.length) {
+              const sbId = `SB-WO-${Date.now()}-${Math.random().toString(36).slice(2,8).toUpperCase()}`;
+              const cif = Number(wo.unit_cif || 0);
+              const dpc = Number(wo.unit_dp || 0);
+              await query(
+                `INSERT INTO stock_batches
+                   (id, description, batch_no, expiry_date, quantity, remaining_quantity,
+                    location, status, cif_unit_cost, dpc_unit_value,
+                    cif_total_value, dpc_total_value, created_at, updated_at)
+                 VALUES ($1,$2,$3,$4::date,$5,$5,$6,'available',$7,$8,$9,$10,NOW(),NOW())
+                 ON CONFLICT DO NOTHING`,
+                [sbId, wo.product_name, batchNo || null, wo.expiry_date || null, qty,
+                 warehouseId, cif, dpc, qty * cif, qty * dpc]
+              );
+              woBackfilled++;
+            }
+          }
+        } catch (_) {}
+      }
+      if (woBackfilled > 0) {
+        console.log(`[write-off backfill] Credited ${woBackfilled} returned-to-warehouse item(s) into stock_batches`);
+      }
+    } catch (woErr) {
+      console.warn('[write-off backfill]', woErr.message);
+    }
     // ───────────────────────────────────────────────────────────────────────
 
     // ── Start automated stock reporting scheduler ────────────────────────────
