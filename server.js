@@ -2091,6 +2091,24 @@ server.on('error', (error) => {
       `ALTER TABLE branch_expenses ADD COLUMN IF NOT EXISTS offline_id VARCHAR(100) DEFAULT NULL`,
       `CREATE UNIQUE INDEX IF NOT EXISTS idx_walkin_sales_offline_id ON branch_walkin_sales (offline_id) WHERE offline_id IS NOT NULL`,
       `CREATE UNIQUE INDEX IF NOT EXISTS idx_branch_expenses_offline_id ON branch_expenses (offline_id) WHERE offline_id IS NOT NULL`,
+      `CREATE TABLE IF NOT EXISTS branch_refund_requests (
+        id               VARCHAR(60)   PRIMARY KEY,
+        branch_id        VARCHAR(100)  NOT NULL,
+        sale_reference   VARCHAR(100),
+        product_name     VARCHAR(200)  NOT NULL,
+        batch_no         VARCHAR(100),
+        quantity         NUMERIC(10,2) NOT NULL,
+        unit_price       NUMERIC(10,2) NOT NULL,
+        refund_amount    NUMERIC(10,2) NOT NULL,
+        reason           TEXT          NOT NULL,
+        status           VARCHAR(20)   NOT NULL DEFAULT 'pending',
+        requested_by     VARCHAR(150),
+        approved_by      VARCHAR(150),
+        rejection_reason TEXT,
+        movement_id      VARCHAR(100),
+        created_at       TIMESTAMPTZ   DEFAULT NOW(),
+        processed_at     TIMESTAMPTZ
+      )`,
     ];
     let schemaSynced = 0;
     for (const sql of schemaSyncs) {

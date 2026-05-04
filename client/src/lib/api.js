@@ -171,6 +171,9 @@ export const api = {
     adjustments: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/stock-adjustments${qs ? '?' + qs : ''}`); },
     approveAdjustment: (id, data = {}) => api.patch(`/stock-adjustments/${id}/approve`, data),
     rejectAdjustment: (id, data = {}) => api.patch(`/stock-adjustments/${id}/reject`, data),
+    listRefundRequests: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/stock/refund-requests${qs ? '?' + qs : ''}`); },
+    approveRefundRequest: (id, data = {}) => api.patch('/stock/refund-requests', { ...data, id, action: 'approve' }),
+    rejectRefundRequest:  (id, data = {}) => api.patch('/stock/refund-requests', { ...data, id, action: 'reject'  }),
     valuation: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/stock/valuation${qs ? '?' + qs : ''}`); },
     valuationLocations: () => api.get('/stock/valuation/locations'),
     valuationProducts: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/stock/valuation/products${qs ? '?' + qs : ''}`); },
@@ -220,6 +223,8 @@ export const api = {
     bonusPayments: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/branch/bonus-payments${qs ? '?' + qs : ''}`); },
     recordBonusPayment: (data) => api.post('/branch/bonus-payments', data),
     campaignSale: (data) => api.post('/branch/campaign-sale', data),
+    refundRequests: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/branch/refund-requests${qs ? '?' + qs : ''}`); },
+    submitRefundRequest: (data) => api.post('/branch/refund-requests', data),
   },
 
   branchActivity: {

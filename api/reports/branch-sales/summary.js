@@ -139,6 +139,25 @@ export default async function handler(req, res) {
       rxParams
     );
 
+    // ── 3b. Refund deductions per branch ────────────────────────────────────
+    const refParams = [from, to];
+    const refBranchClause = branch
+      ? `AND LOWER(REPLACE(branch_id, ' ', '_')) = LOWER(REPLACE($${refParams.push(branch)}, ' ', '_'))`
+      : '';
+    const refundRows = await getMany(
+      `SELECT branch_id,
+              COUNT(*)::int                                                         AS refund_count,
+              COALESCE(SUM(ABS(quantity) * COALESCE(unit_price, 0)), 0)::numeric   AS refund_total
+       FROM branch_inventory_movements
+       WHERE type = 'refund_return'
+         AND DATE(created_at) >= $1 AND DATE(created_at) <= $2
+         ${refBranchClause}
+       GROUP BY branch_id`,
+      refParams
+    );
+    const refundMap = {};
+    for (const r of refundRows) refundMap[r.branch_id?.toLowerCase()] = r;
+
     // ── 4. Merge campaign + supplement into BAT rows ─────────────────────────
     const supplementMap = {};
     for (const s of rxSupplementRows) {
@@ -148,18 +167,21 @@ export default async function handler(req, res) {
     const merged = batRows.map(row => {
       const s = supplementMap[row.branch_id];
       const camp = campaignMap[row.branch_id];
+      const ref = refundMap[row.branch_id?.toLowerCase()];
       const campTotal  = parseFloat(camp?.campaign_total || 0);
       const campTx     = parseInt(camp?.campaign_transactions || 0);
       const rxTotal    = parseFloat(row.rx_total)     + parseFloat(s?.supplement_rx_total    || 0);
       const consultTotal = parseFloat(row.consult_total) + parseFloat(s?.supplement_consult_total || 0);
       const suppExtra  = parseFloat(s?.supplement_rx_total || 0) + parseFloat(s?.supplement_consult_total || 0);
+      const refundTotal = parseFloat(ref?.refund_total || 0);
       return {
         ...row,
-        rx_total:       rxTotal.toFixed(2),
-        consult_total:  consultTotal.toFixed(2),
-        campaign_total: campTotal.toFixed(2),
-        total_revenue:  (parseFloat(row.total_revenue) + suppExtra + campTotal).toFixed(2),
-        transactions:   row.transactions + (s?.supplement_rx_count || 0) + campTx,
+        rx_total:         rxTotal.toFixed(2),
+        consult_total:    consultTotal.toFixed(2),
+        campaign_total:   campTotal.toFixed(2),
+        refund_deductions: refundTotal.toFixed(2),
+        total_revenue:    (parseFloat(row.total_revenue) + suppExtra + campTotal - refundTotal).toFixed(2),
+        transactions:     row.transactions + (s?.supplement_rx_count || 0) + campTx,
       };
     });
 

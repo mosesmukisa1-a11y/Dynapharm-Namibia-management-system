@@ -157,6 +157,7 @@ function SalesReviewTab() {
   const grandMember  = rows.reduce((s, r) => s + Number(r.member_total || 0), 0);
   const grandConsult = rows.reduce((s, r) => s + Number(r.consult_total || 0), 0);
   const grandCampaign = rows.reduce((s, r) => s + Number(r.campaign_total || 0), 0);
+  const grandRefund   = rows.reduce((s, r) => s + Number(r.refund_deductions || 0), 0);
   const thS = { padding: '9px 12px', textAlign: 'left', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '.04em', color: '#fff', background: '#c41e3a', whiteSpace: 'nowrap' };
   const thR = { ...thS, textAlign: 'right' };
   const tdS = { padding: '9px 12px', fontSize: '0.85rem', borderBottom: '1px solid #f0e8ea', color: '#1e293b', whiteSpace: 'nowrap' };
@@ -229,6 +230,7 @@ function SalesReviewTab() {
                   <th style={{ ...thR, background: '#15803d' }}>Prescription Sales (DP)</th>
                   <th style={thR}>Consultation Fees</th>
                   <th style={{ ...thR, background: '#b45309' }}>Campaign Sales</th>
+                  <th style={{ ...thR, background: '#dc2626' }}>Refund Deductions</th>
                   <th style={{ ...thR, background: '#8b0000' }}>Total DP Sales</th>
                 </tr>
               </thead>
@@ -242,6 +244,9 @@ function SalesReviewTab() {
                     <td style={{ ...tdR, color: '#15803d' }}>{fmtN(r.rx_total)}</td>
                     <td style={tdR}>{fmtN(r.consult_total)}</td>
                     <td style={{ ...tdR, color: '#b45309' }}>{fmtN(r.campaign_total)}</td>
+                    <td style={{ ...tdR, color: Number(r.refund_deductions || 0) > 0 ? '#dc2626' : '#94a3b8' }}>
+                      {Number(r.refund_deductions || 0) > 0 ? `− ${fmtN(r.refund_deductions)}` : '—'}
+                    </td>
                     <td style={{ ...tdR, color: '#c41e3a', fontWeight: 900, fontSize: '0.95rem' }}>{fmtN(r.total_revenue)}</td>
                   </tr>
                 ))}
@@ -253,6 +258,9 @@ function SalesReviewTab() {
                   <td style={{ ...tdR, color: '#86efac', background: 'transparent' }}>{fmtN(grandRx)}</td>
                   <td style={{ ...tdR, color: '#cbd5e1', background: 'transparent' }}>{fmtN(grandConsult)}</td>
                   <td style={{ ...tdR, color: '#fcd34d', background: 'transparent' }}>{fmtN(grandCampaign)}</td>
+                  <td style={{ ...tdR, color: grandRefund > 0 ? '#fca5a5' : '#94a3b8', background: 'transparent' }}>
+                    {grandRefund > 0 ? `− ${fmtN(grandRefund)}` : '—'}
+                  </td>
                   <td style={{ ...tdR, color: '#fbbf24', fontWeight: 900, fontSize: '1rem', background: 'transparent' }}>{fmtN(grandTotal)}</td>
                 </tr>
               </tbody>
@@ -410,6 +418,7 @@ export default function BranchPortal() {
     { id: 'fieldProgram', label: 'Field Program', icon: '🚐' },
     { id: 'distributorPerf', label: 'Distributor Performance', icon: '👥' },
     { id: 'salesReview', label: 'Sales Review', icon: '📈' },
+    { id: 'refunds', label: 'Refund Requests', icon: '↩️' },
     { id: 'checkup', label: 'Check Up Booking', icon: '🩺' },
     { id: 'campaigns', label: 'Campaigns', icon: '📢' },
     { id: 'training', label: 'Training', icon: '🎓' },
@@ -499,6 +508,7 @@ export default function BranchPortal() {
           {activeTab === 'fieldProgram' && <FieldProgramTab />}
           {activeTab === 'distributorPerf' && <DistributorPerformanceTabWrapper />}
           {activeTab === 'salesReview' && <SalesReviewTab />}
+          {activeTab === 'refunds' && <RefundRequestsTab />}
           {activeTab === 'checkup' && <CheckUpBookingTab />}
           {activeTab === 'campaigns' && <BranchCampaignsTab />}
           {activeTab === 'training' && <BranchTrainingTab />}
@@ -668,6 +678,208 @@ function BranchPriceListTab() {
           </div>
         </CardBody>
       </Card>
+    </div>
+  );
+}
+
+// ── Credit Refund Requests Tab ─────────────────────────────────────────────────
+function RefundRequestsTab() {
+  const portalBranch = useContext(PortalBranchContext);
+  const { user } = useAuth();
+  const effectiveBranch = portalBranch || user?.branch || '';
+
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading]   = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [alert, setAlert]   = useState(null);
+  const [filter, setFilter] = useState('all');
+  const [form, setForm] = useState({
+    product_name: '', batch_no: '', quantity: '',
+    unit_price: '', sale_reference: '', reason: '',
+  });
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const data = await api.branch.refundRequests(effectiveBranch ? { branch_id: effectiveBranch } : {});
+      setRequests(data.requests || []);
+    } catch (err) {
+      setAlert({ type: 'error', msg: err.message });
+    } finally { setLoading(false); }
+  };
+
+  useEffect(() => { load(); }, [effectiveBranch]);
+
+  const fmtDate = ts => { try { return ts ? new Date(ts).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'; } catch { return '—'; } };
+  const fmtN = n => `N$ ${Number(n || 0).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  const statusBadge = status => {
+    const c = {
+      pending:  ['#fffbeb', '#b45309', '#fde68a', '⏳ Pending Approval'],
+      approved: ['#f0fdf4', '#16a34a', '#86efac', '✅ Approved'],
+      rejected: ['#fef2f2', '#dc2626', '#fecaca', '❌ Rejected'],
+    }[status] || ['#f1f5f9', '#64748b', '#e2e8f0', 'Unknown'];
+    return <span style={{ fontSize: '0.72rem', fontWeight: 800, padding: '3px 10px', borderRadius: 99, background: c[0], color: c[1], border: `1px solid ${c[2]}` }}>{c[3]}</span>;
+  };
+
+  const handleSubmit = async e => {
+    e.preventDefault();
+    if (!form.product_name || !form.quantity || !form.unit_price || !form.reason) {
+      setAlert({ type: 'error', msg: 'Please fill in all required fields.' });
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await api.branch.submitRefundRequest({
+        branch_id:     effectiveBranch,
+        product_name:  form.product_name.trim(),
+        batch_no:      form.batch_no.trim() || null,
+        quantity:      parseFloat(form.quantity),
+        unit_price:    parseFloat(form.unit_price),
+        sale_reference: form.sale_reference.trim() || null,
+        reason:        form.reason.trim(),
+        requested_by:  user?.full_name || user?.username || 'Branch Staff',
+      });
+      setAlert({ type: 'success', msg: '✅ Refund request submitted — awaiting Stock Manager approval.' });
+      setShowForm(false);
+      setForm({ product_name: '', batch_no: '', quantity: '', unit_price: '', sale_reference: '', reason: '' });
+      load();
+    } catch (err) {
+      setAlert({ type: 'error', msg: err.message });
+    } finally { setSubmitting(false); }
+  };
+
+  const lblS = { display: 'block', fontSize: '0.72rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 4 };
+  const inpS = { width: '100%', padding: '9px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: '0.88rem', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' };
+  const filtered = filter === 'all' ? requests : requests.filter(r => r.status === filter);
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', borderRadius: 14, padding: '16px 22px', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <h3 style={{ fontWeight: 900, fontSize: '1.08rem', margin: 0 }}>↩️ Credit Refund Requests</h3>
+          <p style={{ fontSize: '0.8rem', opacity: 0.8, margin: '3px 0 0' }}>
+            Submit product return / refund requests. Stock Manager approves — stock is restored and sales adjusted automatically.
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={load} style={{ padding: '7px 14px', background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.35)', borderRadius: 99, fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer' }}>↺ Refresh</button>
+          <button onClick={() => setShowForm(s => !s)} style={{ padding: '8px 18px', background: showForm ? 'rgba(255,255,255,0.15)' : '#fff', color: showForm ? '#fff' : '#8b0000', border: '1.5px solid rgba(255,255,255,0.5)', borderRadius: 99, fontWeight: 800, fontSize: '0.87rem', cursor: 'pointer' }}>
+            {showForm ? '✕ Cancel' : '+ New Refund Request'}
+          </button>
+        </div>
+      </div>
+
+      {alert && <Alert type={alert.type} onClose={() => setAlert(null)}>{alert.msg}</Alert>}
+
+      {/* New Refund Form */}
+      {showForm && (
+        <form onSubmit={handleSubmit} style={{ background: '#fdf7f8', border: '2px solid #fecaca', borderRadius: 14, padding: '22px 24px' }}>
+          <div style={{ fontWeight: 900, color: '#8b0000', fontSize: '1rem', marginBottom: 18 }}>📋 New Credit Refund Request</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
+            <div>
+              <label style={lblS}>Product Name *</label>
+              <input value={form.product_name} onChange={e => setForm(f => ({ ...f, product_name: e.target.value }))} required placeholder="e.g. BEE POLLEN CAPSULE (100'S)" style={inpS} />
+            </div>
+            <div>
+              <label style={lblS}>Batch No (optional)</label>
+              <input value={form.batch_no} onChange={e => setForm(f => ({ ...f, batch_no: e.target.value }))} placeholder="e.g. BT-2024-001" style={inpS} />
+            </div>
+            <div>
+              <label style={lblS}>Quantity to Refund *</label>
+              <input type="number" min="0.01" step="0.01" value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} required placeholder="e.g. 2" style={inpS} />
+            </div>
+            <div>
+              <label style={lblS}>Unit Price N$ (DP) *</label>
+              <input type="number" min="0" step="0.01" value={form.unit_price} onChange={e => setForm(f => ({ ...f, unit_price: e.target.value }))} required placeholder="e.g. 290.00" style={inpS} />
+            </div>
+            <div>
+              <label style={lblS}>Original Receipt / Sale Ref (optional)</label>
+              <input value={form.sale_reference} onChange={e => setForm(f => ({ ...f, sale_reference: e.target.value }))} placeholder="e.g. RCP-20260504-1234" style={inpS} />
+            </div>
+            {form.quantity && form.unit_price && (
+              <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                <div style={{ padding: '10px 16px', background: '#fff0f3', border: '2px solid #fecaca', borderRadius: 10, fontWeight: 900, color: '#c41e3a', fontSize: '1rem', width: '100%' }}>
+                  Refund Amount: {fmtN(parseFloat(form.quantity || 0) * parseFloat(form.unit_price || 0))}
+                </div>
+              </div>
+            )}
+          </div>
+          <div style={{ marginTop: 14 }}>
+            <label style={lblS}>Reason for Refund *</label>
+            <textarea value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))} required placeholder="Describe why the product is being returned / credit is required…" rows={3} style={{ ...inpS, resize: 'vertical' }} />
+          </div>
+          <div style={{ marginTop: 16 }}>
+            <button type="submit" disabled={submitting} style={{ padding: '10px 28px', background: submitting ? '#fecaca' : 'linear-gradient(135deg,#c41e3a,#8b0000)', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 800, fontSize: '0.92rem', cursor: submitting ? 'default' : 'pointer' }}>
+              {submitting ? '⏳ Submitting…' : '📤 Submit Refund Request'}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* Stat Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10 }}>
+        {[
+          { label: 'Pending Approval', value: requests.filter(r => r.status === 'pending').length, color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
+          { label: 'Approved',         value: requests.filter(r => r.status === 'approved').length, color: '#16a34a', bg: '#f0fdf4', border: '#86efac' },
+          { label: 'Rejected',         value: requests.filter(r => r.status === 'rejected').length, color: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
+          { label: 'Total Submitted',  value: requests.length, color: '#374151', bg: '#f8fafc', border: '#e2e8f0' },
+        ].map(s => (
+          <div key={s.label} style={{ padding: '11px 14px', background: s.bg, border: `1.5px solid ${s.border}`, borderRadius: 10, textAlign: 'center' }}>
+            <div style={{ fontSize: '1.6rem', fontWeight: 900, color: s.color, lineHeight: 1 }}>{s.value}</div>
+            <div style={{ fontSize: '0.69rem', color: '#64748b', fontWeight: 700, marginTop: 3 }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Filter Tabs */}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {['all', 'pending', 'approved', 'rejected'].map(s => (
+          <button key={s} onClick={() => setFilter(s)} style={{ padding: '5px 14px', borderRadius: 99, border: '1.5px solid', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', borderColor: filter === s ? '#c41e3a' : '#e2e8f0', background: filter === s ? '#fff0f3' : '#fff', color: filter === s ? '#c41e3a' : '#64748b' }}>
+            {s.charAt(0).toUpperCase() + s.slice(1)} ({s === 'all' ? requests.length : requests.filter(r => r.status === s).length})
+          </button>
+        ))}
+      </div>
+
+      {loading && <LoadingSpinner />}
+      {!loading && filtered.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>
+          <div style={{ fontSize: '2.5rem', marginBottom: 10 }}>↩️</div>
+          <div style={{ fontWeight: 700, fontSize: '1.05rem' }}>No refund requests</div>
+          <div style={{ fontSize: '0.85rem', marginTop: 4 }}>Use the button above to submit a new credit refund request.</div>
+        </div>
+      )}
+
+      {filtered.length > 0 && (
+        <div style={{ overflowX: 'auto', borderRadius: 12, border: '1px solid #f0e8ea' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+            <thead>
+              <tr style={{ background: '#c41e3a' }}>
+                {['Date', 'Product', 'Qty', 'Unit Price', 'Refund Amount', 'Sale Ref', 'Reason', 'Status', 'Notes'].map(h => (
+                  <th key={h} style={{ padding: '9px 12px', color: '#fff', fontWeight: 700, fontSize: '0.72rem', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((r, i) => (
+                <tr key={r.id} style={{ background: i % 2 === 0 ? '#fff' : '#fdf7f8' }}>
+                  <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>{fmtDate(r.created_at)}</td>
+                  <td style={{ padding: '9px 12px', fontWeight: 700, maxWidth: 180 }}>{r.product_name}</td>
+                  <td style={{ padding: '9px 12px', textAlign: 'right' }}>{Number(r.quantity)}</td>
+                  <td style={{ padding: '9px 12px', textAlign: 'right' }}>{fmtN(r.unit_price)}</td>
+                  <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 900, color: '#c41e3a' }}>{fmtN(r.refund_amount)}</td>
+                  <td style={{ padding: '9px 12px', color: '#64748b', fontSize: '0.78rem' }}>{r.sale_reference || '—'}</td>
+                  <td style={{ padding: '9px 12px', maxWidth: 200, color: '#475569', fontSize: '0.82rem' }}>{r.reason}</td>
+                  <td style={{ padding: '9px 12px' }}>{statusBadge(r.status)}</td>
+                  <td style={{ padding: '9px 12px', color: '#64748b', fontSize: '0.78rem', maxWidth: 150 }}>{r.rejection_reason || (r.approved_by ? `By: ${r.approved_by}` : '—')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
@@ -4931,6 +5143,7 @@ function BranchStockTab() {
                 <td style="padding:9px 14px;text-align:right;font-weight:700;color:#166534">${fmtC(rx.value || 0)}</td>
               </tr>
               ${on.transactions > 0 ? `<tr><td style="padding:9px 14px;font-weight:700;color:#1e293b">Online Order Sales (DP)</td><td style="padding:9px 14px;text-align:right;font-weight:700;color:#1e293b">${fmtC(on.value || 0)}</td></tr>` : ''}
+              ${(bs.refund_deductions?.total_amount || 0) > 0 ? `<tr style="background:#fef2f2"><td style="padding:9px 14px;font-weight:700;color:#dc2626">Less: Credit Refunds (Approved)</td><td style="padding:9px 14px;text-align:right;font-weight:700;color:#dc2626">− ${fmtC(bs.refund_deductions.total_amount)}</td></tr>` : ''}
               <tr style="border-top:2px solid #c41e3a">
                 <td style="padding:14px 14px;font-weight:900;color:#fff;font-size:13px;letter-spacing:0.03em;background:linear-gradient(135deg,#c41e3a,#8b0000)">TOTAL DP SALES</td>
                 <td style="padding:14px 14px;text-align:right;font-weight:900;color:#fff;font-size:18px;background:linear-gradient(135deg,#c41e3a,#8b0000)">${fmtC(grandTotal)}</td>

@@ -945,6 +945,189 @@ function FieldStockTab() {
   );
 }
 
+// ── Credit Refund Approvals Tab ────────────────────────────────────────────────
+function RefundApprovalsTab() {
+  const { user } = useAuth();
+  const [requests, setRequests]           = useState([]);
+  const [loading, setLoading]             = useState(true);
+  const [filter, setFilter]               = useState('pending');
+  const [acting, setActing]               = useState({});
+  const [rejectionReasons, setRejectionReasons] = useState({});
+  const [showReject, setShowReject]       = useState({});
+  const [alert, setAlert]                 = useState(null);
+
+  const load = () => {
+    setLoading(true);
+    api.stock.listRefundRequests()
+      .then(d => setRequests(d.requests || []))
+      .catch(() => setRequests([]))
+      .finally(() => setLoading(false));
+  };
+  useEffect(() => { load(); }, []);
+
+  const fmtDate = ts => { try { return ts ? new Date(ts).toLocaleString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'; } catch { return '—'; } };
+  const fmtN = n => `N$ ${Number(n || 0).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const fmtLoc = loc => {
+    const bd = BRANCH_DETAILS.find(b => b.id === (loc || '').toLowerCase().replace(/ /g,'_'));
+    return bd ? bd.name : (loc || '—').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  };
+
+  const handleApprove = async req => {
+    setActing(a => ({ ...a, [req.id]: 'approving' }));
+    try {
+      await api.stock.approveRefundRequest(req.id, { approved_by: user?.full_name || user?.username || 'Stock Manager' });
+      setAlert({ type: 'success', msg: `✅ Refund approved — ${req.quantity} × "${req.product_name}" stock restored to ${fmtLoc(req.branch_id)}.` });
+      load();
+    } catch (e) {
+      setAlert({ type: 'error', msg: `Failed: ${e.message}` });
+    } finally { setActing(a => ({ ...a, [req.id]: undefined })); }
+  };
+
+  const handleReject = async req => {
+    const reason = rejectionReasons[req.id]?.trim();
+    if (!reason) { setAlert({ type: 'error', msg: 'Please enter a rejection reason.' }); return; }
+    setActing(a => ({ ...a, [req.id]: 'rejecting' }));
+    try {
+      await api.stock.rejectRefundRequest(req.id, { approved_by: user?.full_name || user?.username || 'Stock Manager', rejection_reason: reason });
+      setAlert({ type: 'success', msg: `Refund request for "${req.product_name}" rejected.` });
+      setShowReject(s => ({ ...s, [req.id]: false }));
+      load();
+    } catch (e) {
+      setAlert({ type: 'error', msg: `Failed: ${e.message}` });
+    } finally { setActing(a => ({ ...a, [req.id]: undefined })); }
+  };
+
+  const pending = requests.filter(r => r.status === 'pending');
+  const today   = new Date().toISOString().slice(0, 10);
+  const approvedToday = requests.filter(r => r.status === 'approved' && (r.processed_at || '').slice(0, 10) === today);
+  const filtered = filter === 'all' ? requests : requests.filter(r => r.status === filter);
+
+  if (loading) return <LoadingSpinner />;
+
+  return (
+    <div className="space-y-4">
+      {alert && <Alert type={alert.type} onClose={() => setAlert(null)}>{alert.msg}</Alert>}
+
+      {/* Header */}
+      <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', borderRadius: 14, padding: '16px 22px', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <h3 style={{ fontWeight: 900, fontSize: '1.08rem', margin: 0 }}>↩️ Credit Refund Approvals</h3>
+          <p style={{ fontSize: '0.8rem', opacity: 0.8, margin: '3px 0 0' }}>
+            Review branch refund requests. Approval returns stock to the branch and deducts the amount from branch sales automatically.
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {pending.length > 0 && <span style={{ background: '#fbbf24', color: '#78350f', borderRadius: 99, padding: '5px 14px', fontSize: '0.8rem', fontWeight: 800 }}>⏳ {pending.length} Pending</span>}
+          <button onClick={load} style={{ padding: '7px 16px', background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.35)', borderRadius: 99, fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer' }}>↺ Refresh</button>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
+        {[
+          { label: 'Pending Approval',    value: pending.length, color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
+          { label: 'Approved Today',      value: approvedToday.length, color: '#16a34a', bg: '#f0fdf4', border: '#86efac' },
+          { label: 'Total Approved',      value: requests.filter(r => r.status === 'approved').length, color: '#0284c7', bg: '#f0f9ff', border: '#bae6fd' },
+          { label: 'Total Rejected',      value: requests.filter(r => r.status === 'rejected').length, color: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
+          { label: 'Value (Approved)',     value: fmtN(requests.filter(r => r.status === 'approved').reduce((s, r) => s + Number(r.refund_amount || 0), 0)), color: '#374151', bg: '#f8fafc', border: '#e2e8f0' },
+        ].map(s => (
+          <div key={s.label} style={{ padding: '11px 14px', background: s.bg, border: `1.5px solid ${s.border}`, borderRadius: 10, textAlign: 'center' }}>
+            <div style={{ fontSize: typeof s.value === 'string' ? '0.9rem' : '1.6rem', fontWeight: 900, color: s.color, lineHeight: 1 }}>{s.value}</div>
+            <div style={{ fontSize: '0.69rem', color: '#64748b', fontWeight: 700, marginTop: 3 }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Filter */}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {['all', 'pending', 'approved', 'rejected'].map(s => (
+          <button key={s} onClick={() => setFilter(s)} style={{ padding: '5px 14px', borderRadius: 99, border: '1.5px solid', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', borderColor: filter === s ? '#c41e3a' : '#e2e8f0', background: filter === s ? '#fff0f3' : '#fff', color: filter === s ? '#c41e3a' : '#64748b' }}>
+            {s.charAt(0).toUpperCase() + s.slice(1)} ({s === 'all' ? requests.length : requests.filter(r => r.status === s).length})
+          </button>
+        ))}
+      </div>
+
+      {filtered.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>
+          <div style={{ fontSize: '2.5rem', marginBottom: 10 }}>✅</div>
+          <div style={{ fontWeight: 700 }}>No {filter === 'all' ? '' : filter} refund requests</div>
+        </div>
+      )}
+
+      {/* Refund Cards */}
+      <div className="space-y-3">
+        {filtered.map(req => {
+          const borderColor = req.status === 'pending' ? '#fde68a' : req.status === 'approved' ? '#86efac' : '#fecaca';
+          const bgColor     = req.status === 'pending' ? '#fffbeb' : req.status === 'approved' ? '#f0fdf4' : '#fef2f2';
+          const badgeColor  = req.status === 'pending' ? ['#fffbeb','#b45309','#fde68a','⏳ Pending'] : req.status === 'approved' ? ['#f0fdf4','#16a34a','#86efac','✅ Approved'] : ['#fef2f2','#dc2626','#fecaca','❌ Rejected'];
+          return (
+            <div key={req.id} style={{ border: `2px solid ${borderColor}`, borderRadius: 14, padding: '18px 20px', background: bgColor }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 14 }}>
+                {/* Left info */}
+                <div style={{ flex: 1, minWidth: 220 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 800, padding: '3px 10px', borderRadius: 99, background: badgeColor[0], color: badgeColor[1], border: `1.5px solid ${badgeColor[2]}` }}>{badgeColor[3]}</span>
+                    <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Submitted: {fmtDate(req.created_at)}</span>
+                    <span style={{ fontSize: '0.75rem', color: '#64748b' }}>ID: {req.id}</span>
+                  </div>
+                  <div style={{ fontWeight: 900, fontSize: '1.05rem', color: '#1e293b', marginBottom: 6 }}>{req.product_name}</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 16px', fontSize: '0.83rem', color: '#475569' }}>
+                    <span>🏬 <strong>{fmtLoc(req.branch_id)}</strong></span>
+                    <span>📦 Qty: <strong>{Number(req.quantity)}</strong></span>
+                    <span>💰 Unit: <strong>{fmtN(req.unit_price)}</strong></span>
+                    <span>💳 Total Refund: <strong style={{ color: '#c41e3a', fontSize: '0.95rem' }}>{fmtN(req.refund_amount)}</strong></span>
+                    {req.batch_no       && <span>🔖 Batch: <strong>{req.batch_no}</strong></span>}
+                    {req.sale_reference && <span>🧾 Ref: <strong>{req.sale_reference}</strong></span>}
+                  </div>
+                  <div style={{ marginTop: 8, fontSize: '0.85rem', color: '#374151' }}><strong>Reason:</strong> {req.reason}</div>
+                  <div style={{ marginTop: 4, fontSize: '0.78rem', color: '#94a3b8' }}>
+                    Requested by: {req.requested_by || '—'}
+                    {req.approved_by && ` · Processed by: ${req.approved_by}`}
+                    {req.processed_at && ` on ${fmtDate(req.processed_at)}`}
+                  </div>
+                  {req.rejection_reason && (
+                    <div style={{ marginTop: 6, padding: '6px 10px', background: '#fee2e2', borderRadius: 8, fontSize: '0.82rem', color: '#b91c1c' }}>
+                      <strong>Rejection Reason:</strong> {req.rejection_reason}
+                    </div>
+                  )}
+                </div>
+                {/* Action buttons (pending only) */}
+                {req.status === 'pending' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 170 }}>
+                    <button onClick={() => handleApprove(req)} disabled={!!acting[req.id]}
+                      style={{ padding: '9px 20px', background: acting[req.id] === 'approving' ? '#d1fae5' : 'linear-gradient(135deg,#16a34a,#15803d)', color: acting[req.id] === 'approving' ? '#15803d' : '#fff', border: 'none', borderRadius: 9, fontWeight: 800, fontSize: '0.88rem', cursor: acting[req.id] ? 'default' : 'pointer' }}>
+                      {acting[req.id] === 'approving' ? '⏳ Approving…' : '✅ Approve Refund'}
+                    </button>
+                    <button onClick={() => setShowReject(s => ({ ...s, [req.id]: !s[req.id] }))} disabled={!!acting[req.id]}
+                      style={{ padding: '9px 20px', background: '#fff', color: '#dc2626', border: '2px solid #fecaca', borderRadius: 9, fontWeight: 800, fontSize: '0.88rem', cursor: 'pointer' }}>
+                      ❌ Reject
+                    </button>
+                    {showReject[req.id] && (
+                      <div>
+                        <textarea
+                          value={rejectionReasons[req.id] || ''}
+                          onChange={e => setRejectionReasons(r => ({ ...r, [req.id]: e.target.value }))}
+                          placeholder="Reason for rejection (required)…"
+                          rows={2}
+                          style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #fca5a5', borderRadius: 8, fontSize: '0.83rem', fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box' }}
+                        />
+                        <button onClick={() => handleReject(req)} disabled={!!acting[req.id]}
+                          style={{ marginTop: 4, width: '100%', padding: '8px 0', background: '#dc2626', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 800, fontSize: '0.85rem', cursor: 'pointer' }}>
+                          {acting[req.id] === 'rejecting' ? '⏳ Rejecting…' : 'Confirm Rejection'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── Adjustment Requests History Tab ───────────────────────────────────────────
 function AdjustmentsTab() {
   const { user } = useAuth();
@@ -1346,6 +1529,7 @@ export default function StockPortal() {
     { id: 'writeOffs', label: 'Write-Offs', icon: '❌' },
     { id: 'realtime', label: 'Realtime', icon: '⚡' },
     { id: 'fieldStock', label: 'Field Stock', icon: '👥' },
+    { id: 'refundApprovals', label: 'Refund Approvals', icon: '↩️' },
     { id: 'adjustments', label: 'Edit Requests', icon: '✏️' },
     { id: 'campaigns', label: 'Campaigns', icon: '📢' },
     { id: 'staffServices', label: 'Staff Services', icon: '👤' },
@@ -1414,6 +1598,7 @@ export default function StockPortal() {
         {activeTab === 'writeOffs' && <WriteOffsTab branch={globalBranch} />}
         {activeTab === 'realtime' && <RealtimeTab branch={globalBranch} />}
         {activeTab === 'fieldStock' && <FieldStockTab />}
+        {activeTab === 'refundApprovals' && <RefundApprovalsTab />}
         {activeTab === 'adjustments' && <AdjustmentsTab />}
         {activeTab === 'campaigns' && <StockCampaignsTab />}
         {activeTab === 'staffServices' && <StaffServicesTab accentColor="#92400e" />}

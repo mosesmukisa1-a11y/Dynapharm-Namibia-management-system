@@ -35,7 +35,7 @@ export default async function handler(req, res) {
       ? ` AND LOWER(REPLACE(COALESCE(NULLIF(TRIM(r.branch),''),'townshop'),' ','_')) = $${rpParams.push(normBranchId) && rpParams.length}`
       : '';
 
-    const [txRows, visitRows, rxProductMovements, walkinSalesRows, supplementReports, campaignMovements] = await Promise.all([
+    const [txRows, visitRows, rxProductMovements, walkinSalesRows, supplementReports, campaignMovements, refundMovements] = await Promise.all([
       getMany(
         `SELECT * FROM branch_activity_transactions WHERE ${conds.join(' AND ')} ORDER BY created_at ASC`,
         params
@@ -112,6 +112,14 @@ export default async function handler(req, res) {
          FROM branch_inventory_movements
          WHERE ${movConds.join(' AND ')} AND type = 'campaign_sale'
          GROUP BY reference, branch_id`,
+        movParams
+      ),
+      // Approved refund return movements — deducted from sales totals
+      getMany(
+        `SELECT COUNT(*)::int AS refund_count,
+                COALESCE(SUM(ABS(quantity) * COALESCE(unit_price, 0)), 0)::numeric AS refund_total
+         FROM branch_inventory_movements
+         WHERE ${movConds.join(' AND ')} AND type = 'refund_return'`,
         movParams
       ),
     ]);
@@ -304,6 +312,9 @@ export default async function handler(req, res) {
 
     const sumDp = (rows) => rows.reduce((s, r) => s + dpValue(r), 0);
 
+    const refundTotal = parseFloat(Number(refundMovements[0]?.refund_total || 0).toFixed(2));
+    const refundCount = parseInt(refundMovements[0]?.refund_count || 0);
+
     const grandTotal = parseFloat((
       sumDp(paidRows(consultRows)) +
       sumDp(paidRows(walkinRows)) +
@@ -311,7 +322,8 @@ export default async function handler(req, res) {
       sumDp(paidRows(nonMemberRows)) +
       sumDp(paidRows(onlineRows)) +
       sumDp(paidRows(rxRows)) +
-      sumDp(paidRows(campaignRows))
+      sumDp(paidRows(campaignRows)) -
+      refundTotal
     ).toFixed(2));
 
     const totalPendingValue = parseFloat((
@@ -338,8 +350,8 @@ export default async function handler(req, res) {
       campaignDpTotal
     ).toFixed(2));
     const consultFeeTotal = consultObj.fee_value || 0;
-    const branchSales = parseFloat((walkInRxSales - distributorProfit - consultFeeTotal).toFixed(2));
-    const branchSummary = { walkin_rx_sales: walkInRxSales, distributor_profit: distributorProfit, consultation_fees: consultFeeTotal, branch_sales: branchSales, nm_cp_total: nmCpTotal, nm_dp_total: nmDpTotal, campaign_total: campaignDpTotal };
+    const branchSales = parseFloat((walkInRxSales - distributorProfit - consultFeeTotal - refundTotal).toFixed(2));
+    const branchSummary = { walkin_rx_sales: walkInRxSales, distributor_profit: distributorProfit, consultation_fees: consultFeeTotal, refund_deductions: refundTotal, branch_sales: branchSales, nm_cp_total: nmCpTotal, nm_dp_total: nmDpTotal, campaign_total: campaignDpTotal };
 
     let stockSnapshot = null;
     try {
@@ -373,6 +385,7 @@ export default async function handler(req, res) {
       online_order_sales: build(onlineRows),
       prescription_dispensing: buildRxWithDetail(rxRows),
       campaign_sales: build(campaignRows),
+      refund_deductions: { count: refundCount, total_amount: refundTotal },
       pending_unposted_records: pendingCapture,
       grand_total: grandTotal,
       total_pending_value: totalPendingValue,
