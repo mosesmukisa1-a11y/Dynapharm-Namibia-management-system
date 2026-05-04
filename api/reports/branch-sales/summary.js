@@ -55,7 +55,27 @@ export default async function handler(req, res) {
       batParams
     );
 
-    // ── 2. Prescription revenue from reports table ───────────────────────────
+    // ── 2. Campaign sales from branch_inventory_movements ───────────────────
+    const campParams = [from, to];
+    const campBranchClause = branch
+      ? `AND LOWER(REPLACE(branch_id, ' ', '_')) = LOWER(REPLACE($${campParams.push(branch)}, ' ', '_'))`
+      : '';
+    const campaignRows = await getMany(
+      `SELECT
+         branch_id,
+         COUNT(DISTINCT reference)::int                                  AS campaign_transactions,
+         COALESCE(SUM(ABS(quantity) * COALESCE(unit_price, 0)), 0)::numeric AS campaign_total
+       FROM branch_inventory_movements
+       WHERE type = 'campaign_sale'
+         AND DATE(created_at) >= $1 AND DATE(created_at) <= $2
+         ${campBranchClause}
+       GROUP BY branch_id`,
+      campParams
+    );
+    const campaignMap = {};
+    for (const c of campaignRows) campaignMap[c.branch_id] = c;
+
+    // ── 3. Prescription revenue from reports table ───────────────────────────
     // Picks up paid medicines on reports NOT already captured in BAT.
     // Uses the report's branch column if set; falls back to 'townshop' (HQ default).
     const rxParams = [from, to];
@@ -119,7 +139,7 @@ export default async function handler(req, res) {
       rxParams
     );
 
-    // ── 3. Merge supplement into BAT rows ────────────────────────────────────
+    // ── 4. Merge campaign + supplement into BAT rows ─────────────────────────
     const supplementMap = {};
     for (const s of rxSupplementRows) {
       supplementMap[s.branch_id] = s;
@@ -127,33 +147,62 @@ export default async function handler(req, res) {
 
     const merged = batRows.map(row => {
       const s = supplementMap[row.branch_id];
-      if (!s) return row;
-      const rxTotal      = parseFloat(row.rx_total)     + parseFloat(s.supplement_rx_total);
-      const consultTotal = parseFloat(row.consult_total) + parseFloat(s.supplement_consult_total);
+      const camp = campaignMap[row.branch_id];
+      const campTotal  = parseFloat(camp?.campaign_total || 0);
+      const campTx     = parseInt(camp?.campaign_transactions || 0);
+      const rxTotal    = parseFloat(row.rx_total)     + parseFloat(s?.supplement_rx_total    || 0);
+      const consultTotal = parseFloat(row.consult_total) + parseFloat(s?.supplement_consult_total || 0);
+      const suppExtra  = parseFloat(s?.supplement_rx_total || 0) + parseFloat(s?.supplement_consult_total || 0);
       return {
         ...row,
-        rx_total:     rxTotal.toFixed(2),
-        consult_total: consultTotal.toFixed(2),
-        total_revenue: (parseFloat(row.total_revenue) + parseFloat(s.supplement_rx_total) + parseFloat(s.supplement_consult_total)).toFixed(2),
-        transactions: row.transactions + s.supplement_rx_count,
+        rx_total:       rxTotal.toFixed(2),
+        consult_total:  consultTotal.toFixed(2),
+        campaign_total: campTotal.toFixed(2),
+        total_revenue:  (parseFloat(row.total_revenue) + suppExtra + campTotal).toFixed(2),
+        transactions:   row.transactions + (s?.supplement_rx_count || 0) + campTx,
       };
     });
 
     // Add supplement rows for branches not yet in BAT at all
+    const allBranchIds = new Set(batRows.map(r => r.branch_id));
     for (const s of rxSupplementRows) {
-      if (!batRows.find(r => r.branch_id === s.branch_id)) {
+      if (!allBranchIds.has(s.branch_id)) {
+        const camp = campaignMap[s.branch_id];
+        const campTotal = parseFloat(camp?.campaign_total || 0);
         merged.push({
-          branch_id:     s.branch_id,
-          transactions:  s.supplement_rx_count,
-          total_revenue: (parseFloat(s.supplement_rx_total) + parseFloat(s.supplement_consult_total)).toFixed(2),
-          days_active:   1,
-          member_total:  '0.00',
+          branch_id:       s.branch_id,
+          transactions:    s.supplement_rx_count + parseInt(camp?.campaign_transactions || 0),
+          total_revenue:   (parseFloat(s.supplement_rx_total) + parseFloat(s.supplement_consult_total) + campTotal).toFixed(2),
+          days_active:     1,
+          member_total:    '0.00',
           non_member_total: '0.00',
           non_member_cp_total: '0.00',
-          rx_total:      parseFloat(s.supplement_rx_total).toFixed(2),
-          consult_total: parseFloat(s.supplement_consult_total).toFixed(2),
-          walkin_total:  '0.00',
+          rx_total:        parseFloat(s.supplement_rx_total).toFixed(2),
+          consult_total:   parseFloat(s.supplement_consult_total).toFixed(2),
+          walkin_total:    '0.00',
+          campaign_total:  campTotal.toFixed(2),
         });
+        allBranchIds.add(s.branch_id);
+      }
+    }
+
+    // Add campaign-only branches (not in BAT or supplement)
+    for (const c of campaignRows) {
+      if (!allBranchIds.has(c.branch_id)) {
+        merged.push({
+          branch_id:       c.branch_id,
+          transactions:    parseInt(c.campaign_transactions || 0),
+          total_revenue:   parseFloat(c.campaign_total || 0).toFixed(2),
+          days_active:     1,
+          member_total:    '0.00',
+          non_member_total: '0.00',
+          non_member_cp_total: '0.00',
+          rx_total:        '0.00',
+          consult_total:   '0.00',
+          walkin_total:    '0.00',
+          campaign_total:  parseFloat(c.campaign_total || 0).toFixed(2),
+        });
+        allBranchIds.add(c.branch_id);
       }
     }
 

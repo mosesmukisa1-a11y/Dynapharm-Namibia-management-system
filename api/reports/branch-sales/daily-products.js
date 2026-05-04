@@ -26,14 +26,16 @@ export default async function handler(req, res) {
         bim.product_name,
         SUM(ABS(bim.quantity))                                              AS total_qty,
         SUM(ABS(bim.quantity) * COALESCE(bim.unit_price, 0))               AS dp_amount,
-        COALESCE(MAX(pp.bv), 0) * SUM(ABS(bim.quantity))                   AS bv_total
+        COALESCE(MAX(pp.bv), 0) * SUM(
+          CASE WHEN bim.type = 'campaign_free_item' THEN 0 ELSE ABS(bim.quantity) END
+        )                                                                   AS bv_total
       FROM branch_inventory_movements bim
       LEFT JOIN product_prices pp
              ON LOWER(TRIM(pp.description)) = LOWER(TRIM(bim.product_name))
       WHERE DATE(bim.created_at) = $1::date
         AND bim.type IN (
           'walk_in_member_sale', 'walk_in_non_member_sale',
-          'prescription_dispense', 'sale', 'campaign_sale',
+          'prescription_dispense', 'sale', 'campaign_sale', 'campaign_free_item',
           'field_use', 'dispense'
         )
         ${branchClause}

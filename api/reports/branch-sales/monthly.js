@@ -39,7 +39,7 @@ export default async function handler(req, res) {
       ? ` AND LOWER(REPLACE(COALESCE(NULLIF(TRIM(r.branch),''),'townshop'),' ','_')) = $${rpParams.push(normBranchId) && rpParams.length}`
       : '';
 
-    const [txRows, rxProductMovements, walkinSalesRows, supplementReports] = await Promise.all([
+    const [txRows, rxProductMovements, walkinSalesRows, supplementReports, campaignMovements] = await Promise.all([
       getMany(
         `SELECT * FROM branch_activity_transactions WHERE ${conds.join(' AND ')} ORDER BY created_at ASC`,
         params
@@ -105,6 +105,16 @@ export default async function handler(req, res) {
             OR COALESCE((r.data->>'consultation_fee')::numeric, 0) > 0
           )
       `, rpParams),
+      // Campaign sales from inventory movements (not captured in BAT)
+      getMany(
+        `SELECT reference, branch_id,
+                SUM(ABS(quantity))                        AS total_qty,
+                SUM(ABS(quantity) * COALESCE(unit_price, 0)) AS total_dp
+         FROM branch_inventory_movements
+         WHERE ${movConds.join(' AND ')} AND type = 'campaign_sale'
+         GROUP BY reference, branch_id`,
+        movParams
+      ),
     ]);
 
     // Group per-product movements by form_reference_id for Rx detail lookup
@@ -193,8 +203,25 @@ export default async function handler(req, res) {
       void fee; // intentionally not counted here
     }
 
-    // Merge: activity_transactions + synthetic walkin rows + reports supplement
-    const allTxRows = [...txRows, ...walkinSynthetic, ...reportSynthetic];
+    // Campaign sales: build synthetic rows from inventory movements
+    const campaignSynthetic = campaignMovements.map(c => ({
+      id: `camp-${c.reference}`,
+      branch_id: c.branch_id,
+      activity_type: 'campaign_sale',
+      service_date: monthStart,
+      grand_total: parseFloat(Number(c.total_dp || 0).toFixed(2)),
+      product_total_dp: parseFloat(Number(c.total_dp || 0).toFixed(2)),
+      payment_method: 'cash',
+      payment_status: 'paid',
+      total_qty: Number(c.total_qty || 0),
+      consultation_fee: 0,
+      client_name: '',
+      form_reference_id: c.reference,
+      _source: 'campaign_movements',
+    }));
+
+    // Merge: activity_transactions + synthetic walkin rows + campaign rows + reports supplement
+    const allTxRows = [...txRows, ...walkinSynthetic, ...campaignSynthetic, ...reportSynthetic];
 
     const sum = (rows, field) => rows.reduce((s, r) => s + Number(r[field] || 0), 0);
     const paidRows = (rows) => rows.filter(r => r.payment_status === 'paid');
@@ -206,6 +233,7 @@ export default async function handler(req, res) {
     const nonMemberRows = allTxRows.filter(r => r.activity_type === 'non_member_sale');
     const onlineRows = allTxRows.filter(r => r.activity_type === 'online_order');
     const rxRows = allTxRows.filter(r => r.activity_type === 'prescription_dispensing');
+    const campaignRows = allTxRows.filter(r => r.activity_type === 'campaign_sale');
 
     // For non-member sales, grand_total is the customer selling price (DP + distributor margin).
     // Use product_total_dp (item-level dp × qty) for those rows so all reports show true DP value.
@@ -271,7 +299,8 @@ export default async function handler(req, res) {
       sumDp(paidRows(memberRows)) +
       sumDp(paidRows(nonMemberRows)) +
       sumDp(paidRows(onlineRows)) +
-      sumDp(paidRows(rxRows))
+      sumDp(paidRows(rxRows)) +
+      sumDp(paidRows(campaignRows))
     ).toFixed(2));
 
     const totalPendingValue = parseFloat((
@@ -280,7 +309,8 @@ export default async function handler(req, res) {
       sumDp(pendingRows(memberRows)) +
       sumDp(pendingRows(nonMemberRows)) +
       sumDp(pendingRows(onlineRows)) +
-      sumDp(pendingRows(rxRows))
+      sumDp(pendingRows(rxRows)) +
+      sumDp(pendingRows(campaignRows))
     ).toFixed(2));
 
     const pendingCapture = allTxRows.filter(r => r.reporting_status === 'pending').length;
@@ -288,15 +318,17 @@ export default async function handler(req, res) {
     const nmCpTotal = parseFloat(sum(paidRows(nonMemberRows), 'grand_total').toFixed(2));
     const nmDpTotal = parseFloat(sum(paidRows(nonMemberRows), 'product_total_dp').toFixed(2));
     const distributorProfit = parseFloat(Math.max(0, nmCpTotal - nmDpTotal).toFixed(2));
+    const campaignDpTotal = parseFloat(sum(paidRows(campaignRows), 'grand_total').toFixed(2));
     const walkInRxSales = parseFloat((
       sum(paidRows(walkinRows), 'grand_total') +
       sum(paidRows(memberRows), 'grand_total') +
       nmCpTotal +
-      sum(paidRows(rxRows), 'grand_total')
+      sum(paidRows(rxRows), 'grand_total') +
+      campaignDpTotal
     ).toFixed(2));
     const consultFeeTotal = consultObj.fee_value || 0;
     const branchSales = parseFloat((walkInRxSales - distributorProfit - consultFeeTotal).toFixed(2));
-    const branchSummary = { walkin_rx_sales: walkInRxSales, distributor_profit: distributorProfit, consultation_fees: consultFeeTotal, branch_sales: branchSales, nm_cp_total: nmCpTotal, nm_dp_total: nmDpTotal };
+    const branchSummary = { walkin_rx_sales: walkInRxSales, distributor_profit: distributorProfit, consultation_fees: consultFeeTotal, branch_sales: branchSales, nm_cp_total: nmCpTotal, nm_dp_total: nmDpTotal, campaign_total: campaignDpTotal };
 
     // Try to attach pre-computed stock snapshot for this month/branch
     let stockSnapshot = null;
@@ -329,6 +361,7 @@ export default async function handler(req, res) {
       non_member_sales: build(nonMemberRows),
       online_order_sales: build(onlineRows),
       prescription_dispensing: buildRxWithDetail(rxRows),
+      campaign_sales: build(campaignRows),
       pending_unposted_records: pendingCapture,
       grand_total: grandTotal,
       total_pending_value: totalPendingValue,

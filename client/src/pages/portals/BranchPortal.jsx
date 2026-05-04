@@ -156,6 +156,7 @@ function SalesReviewTab() {
   const grandRx      = rows.reduce((s, r) => s + Number(r.rx_total || 0), 0);
   const grandMember  = rows.reduce((s, r) => s + Number(r.member_total || 0), 0);
   const grandConsult = rows.reduce((s, r) => s + Number(r.consult_total || 0), 0);
+  const grandCampaign = rows.reduce((s, r) => s + Number(r.campaign_total || 0), 0);
   const thS = { padding: '9px 12px', textAlign: 'left', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '.04em', color: '#fff', background: '#c41e3a', whiteSpace: 'nowrap' };
   const thR = { ...thS, textAlign: 'right' };
   const tdS = { padding: '9px 12px', fontSize: '0.85rem', borderBottom: '1px solid #f0e8ea', color: '#1e293b', whiteSpace: 'nowrap' };
@@ -227,6 +228,7 @@ function SalesReviewTab() {
                   <th style={{ ...thR, background: '#1d6fa4' }}>Walk-in Sales (DP)</th>
                   <th style={{ ...thR, background: '#15803d' }}>Prescription Sales (DP)</th>
                   <th style={thR}>Consultation Fees</th>
+                  <th style={{ ...thR, background: '#b45309' }}>Campaign Sales</th>
                   <th style={{ ...thR, background: '#8b0000' }}>Total DP Sales</th>
                 </tr>
               </thead>
@@ -239,6 +241,7 @@ function SalesReviewTab() {
                     <td style={{ ...tdR, color: '#1d6fa4' }}>{fmtN(r.non_member_total)}</td>
                     <td style={{ ...tdR, color: '#15803d' }}>{fmtN(r.rx_total)}</td>
                     <td style={tdR}>{fmtN(r.consult_total)}</td>
+                    <td style={{ ...tdR, color: '#b45309' }}>{fmtN(r.campaign_total)}</td>
                     <td style={{ ...tdR, color: '#c41e3a', fontWeight: 900, fontSize: '0.95rem' }}>{fmtN(r.total_revenue)}</td>
                   </tr>
                 ))}
@@ -249,6 +252,7 @@ function SalesReviewTab() {
                   <td style={{ ...tdR, color: '#93c5fd', background: 'transparent' }}>{fmtN(grandWalkInDp)}</td>
                   <td style={{ ...tdR, color: '#86efac', background: 'transparent' }}>{fmtN(grandRx)}</td>
                   <td style={{ ...tdR, color: '#cbd5e1', background: 'transparent' }}>{fmtN(grandConsult)}</td>
+                  <td style={{ ...tdR, color: '#fcd34d', background: 'transparent' }}>{fmtN(grandCampaign)}</td>
                   <td style={{ ...tdR, color: '#fbbf24', fontWeight: 900, fontSize: '1rem', background: 'transparent' }}>{fmtN(grandTotal)}</td>
                 </tr>
               </tbody>
