@@ -2407,7 +2407,7 @@ function CountryStockTab() {
         releasedBy: user?.full_name || user?.username || 'system',
         notes: releaseNotes || undefined,
       });
-      setReleaseAlert({ type: 'success', msg: `${result.itemsReleased} item(s) released to ${fmtLocation(releaseWarehouse)} (Ref: ${result.referenceId})` });
+      setReleaseAlert({ type: 'success', msg: `Dispatch submitted for GM approval — ${toSend.length} item(s) to ${fmtLocation(releaseWarehouse)} (Ref: ${result.referenceId}). Stock remains at Country Stock until the warehouse confirms receipt after GM approval.` });
       setTimeout(() => { setReleaseOpen(false); loadData(); }, 1800);
     } catch (err) {
       setReleaseAlert({ type: 'error', msg: err.message || 'Release failed' });
@@ -2694,6 +2694,9 @@ function WarehouseTab({ name }) {
   }, [dispatchCart, showDispatch, batches]);
 
   const [receivingId, setReceivingId] = useState(null);
+  const [rejectingId, setRejectingId] = useState(null);
+  const [rejectModal, setRejectModal] = useState(null);
+  const [rejectReason, setRejectReason] = useState('');
   const [alert, setAlert] = useState(null);
   const [adjRecord, setAdjRecord] = useState(null);
   const [subTab, setSubTab] = useState('inventory');
@@ -2736,38 +2739,39 @@ function WarehouseTab({ name }) {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  const handleReceiveDistribution = async (transfer) => {
+  const handleAcceptDispatch = async (transfer) => {
     setReceivingId(transfer.id);
     try {
-      const items = Array.isArray(transfer.items) ? transfer.items : [];
-      if (items.length > 0) {
-        for (const item of items) {
-          if (Number(item.quantity) > 0) {
-            await api.stock.createBatch({
-              product_name: item.productName || item.productId || transfer.product_name,
-              quantity: Number(item.quantity),
-              location,
-              batch_number: `RCV-${transfer.id.slice(-6).toUpperCase()}`,
-              notes: `Received from Country Stock — transfer ${transfer.id}`,
-            });
-          }
-        }
-      } else if (transfer.product_name) {
-        await api.stock.createBatch({
-          product_name: transfer.product_name,
-          quantity: transfer.quantity,
-          location,
-          batch_number: `RCV-${transfer.id.slice(-6).toUpperCase()}`,
-          notes: `Received from Country Stock — transfer ${transfer.id}`,
-        });
-      }
-      await api.stock.updateTransfer(transfer.id, { status: 'received', received_by: user?.full_name || user?.username });
-      setAlert({ type: 'success', msg: `Stock received into ${name} Warehouse from Country Stock` });
+      await api.stock.warehouseReceiveStock({
+        transferId: transfer.id,
+        action: 'accept',
+        receivedBy: user?.full_name || user?.username,
+      });
+      setAlert({ type: 'success', msg: `✅ Stock accepted into ${name} Warehouse — inventory updated` });
       setTimeout(() => loadData(), 100);
     } catch (err) {
-      setAlert({ type: 'error', msg: err.message || 'Failed to receive transfer' });
+      setAlert({ type: 'error', msg: err.message || 'Failed to accept dispatch' });
     } finally {
       setReceivingId(null);
+    }
+  };
+
+  const handleRejectDispatch = async (transfer, reason) => {
+    setRejectingId(transfer.id);
+    try {
+      await api.stock.warehouseReceiveStock({
+        transferId: transfer.id,
+        action: 'reject',
+        rejectionReason: reason || 'Rejected by warehouse',
+      });
+      setAlert({ type: 'warning', msg: `❌ Dispatch rejected — stock remains in Country Stock. Stock Controller notified.` });
+      setRejectModal(null);
+      setRejectReason('');
+      setTimeout(() => loadData(), 100);
+    } catch (err) {
+      setAlert({ type: 'error', msg: err.message || 'Failed to reject dispatch' });
+    } finally {
+      setRejectingId(null);
     }
   };
 
@@ -2865,8 +2869,10 @@ function WarehouseTab({ name }) {
     const from = (t.fromWarehouse || t.from_warehouse || t.from_location || '').toLowerCase().replace(/\s+/g, '_');
     return from === 'country_stock';
   });
-  const pendingReceipt = incomingFromCountry.filter(t => t.status === 'submitted' || t.status === 'in_transit' || t.status === 'pending' || t.status === 'approved');
+  const pendingGMApproval = incomingFromCountry.filter(t => t.status === 'pending_approval' || t.status === 'pending');
+  const pendingReceipt = incomingFromCountry.filter(t => t.status === 'approved');
   const receivedHistory = incomingFromCountry.filter(t => t.status === 'received' || t.status === 'delivered');
+  const rejectedTransfers = incomingFromCountry.filter(t => t.status === 'rejected' || t.status === 'cancelled');
 
 
   const branchDestinations = [
@@ -2876,7 +2882,7 @@ function WarehouseTab({ name }) {
 
   const whSubTabs = [
     { id: 'inventory', label: `📦 Inventory (${batches.length})` },
-    { id: 'incoming', label: `📥 Incoming (${pendingReceipt.length + receivedHistory.length})${pendingReceipt.length > 0 ? ' 🔔' : ''}` },
+    { id: 'incoming', label: `📥 Incoming (${pendingGMApproval.length + pendingReceipt.length + receivedHistory.length})${(pendingGMApproval.length + pendingReceipt.length) > 0 ? ' 🔔' : ''}` },
     { id: 'outbound', label: `🚚 Outbound (${outboundTransfers.length})` },
     { id: 'movements', label: `📊 Movements (${movements.length})` },
     { id: 'returns', label: `↩ Branch Returns (${writeoffReturns.length})${writeoffReturns.length > 0 ? ' 🔔' : ''}` },
@@ -2965,81 +2971,87 @@ function WarehouseTab({ name }) {
 
       {subTab === 'incoming' && (
         <div className="space-y-4">
-          <Card className="bg-gradient-to-r from-blue-50 to-cyan-50 border-blue-200">
+          {/* Reject confirmation modal */}
+          {rejectModal && (
+            <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ background: '#fff', borderRadius: 14, padding: 28, width: 440, maxWidth: '95vw', boxShadow: '0 25px 60px rgba(0,0,0,0.25)' }}>
+                <h3 style={{ fontWeight: 800, fontSize: '1.1rem', color: '#1e293b', marginBottom: 8 }}>Reject Warehouse Dispatch?</h3>
+                <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: 16 }}>
+                  Rejecting will cancel this dispatch. Stock remains in Country Stock. The Stock Controller can resubmit a corrected dispatch.
+                </p>
+                <div style={{ marginBottom: 18 }}>
+                  <label style={{ fontWeight: 700, fontSize: '0.83rem', color: '#374151', display: 'block', marginBottom: 6 }}>Rejection Reason (optional)</label>
+                  <textarea
+                    rows={3}
+                    value={rejectReason}
+                    onChange={e => setRejectReason(e.target.value)}
+                    placeholder="e.g. Incorrect quantities, wrong products, batch mismatch..."
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: '0.85rem', resize: 'vertical' }}
+                  />
+                </div>
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                  <button onClick={() => { setRejectModal(null); setRejectReason(''); }}
+                    style={{ padding: '8px 20px', borderRadius: 8, border: '1px solid #d1d5db', background: '#f8fafc', color: '#374151', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem' }}>
+                    Cancel
+                  </button>
+                  <button onClick={() => handleRejectDispatch(rejectModal, rejectReason)} disabled={rejectingId === rejectModal.id}
+                    style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: '#dc2626', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem', opacity: rejectingId === rejectModal.id ? 0.7 : 1 }}>
+                    {rejectingId === rejectModal.id ? 'Rejecting…' : 'Confirm Rejection'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <Card style={{ background: 'linear-gradient(135deg,#eff6ff,#f0fdf4)', borderColor: '#bfdbfe' }}>
             <CardBody>
-              <p className="text-sm text-blue-800">
-                <strong>Incoming from Country Stock</strong> — These are distributions allocated to {name} Warehouse.
-                Click "Confirm Receipt" to add the stock to your warehouse inventory.
+              <p className="text-sm" style={{ color: '#1e3a8a' }}>
+                <strong>Country Stock Dispatch Workflow:</strong> Stock Controller submits dispatch → GM approves → Warehouse accepts or rejects. Stock only moves into warehouse inventory on acceptance.
               </p>
             </CardBody>
           </Card>
 
-          {pendingReceipt.length > 0 && (
+          {/* Section 1: Awaiting GM Approval */}
+          {pendingGMApproval.length > 0 && (
             <Card>
-              <CardHeader>
-                <h3 className="font-bold text-gray-800">📥 Pending Receipt ({pendingReceipt.length})</h3>
-                <p className="text-xs text-gray-500 mt-0.5">Distributions from Country Stock awaiting your confirmation. Each product line is shown individually.</p>
+              <CardHeader style={{ background: '#fefce8', borderBottom: '1px solid #fde68a', borderRadius: '12px 12px 0 0' }}>
+                <h3 className="font-bold" style={{ color: '#92400e' }}>⏳ Awaiting GM Approval ({pendingGMApproval.length})</h3>
+                <p className="text-xs mt-0.5" style={{ color: '#b45309' }}>These dispatches are pending General Manager approval. Stock is still at Country Stock — no action needed from warehouse yet.</p>
               </CardHeader>
               <div className="overflow-x-auto">
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
                   <thead>
-                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-                      <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Product Name</th>
-                      <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Batch #</th>
-                      <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Expiry</th>
-                      <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 700, color: '#374151' }}>Qty</th>
-                      <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>From</th>
-                      <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Status</th>
-                      <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Date</th>
-                      <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Action</th>
+                    <tr style={{ background: '#fefce8', borderBottom: '2px solid #fde68a' }}>
+                      <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#92400e' }}>Product(s)</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#92400e' }}>Batch #</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 700, color: '#92400e' }}>Qty</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#92400e' }}>Submitted By</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#92400e' }}>Date</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#92400e' }}>Ref</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#92400e' }}>Status</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {pendingReceipt.map((transfer, ti) => {
+                    {pendingGMApproval.map((transfer, ti) => {
                       const items = Array.isArray(transfer.items) && transfer.items.length > 0
                         ? transfer.items
-                        : [{ productName: transfer.product_name || '—', batchNo: null, expiryDate: null, quantity: transfer.quantity || 0 }];
-                      const rowBg = ti % 2 === 0 ? '#fff' : '#fafafa';
+                        : [{ productName: transfer.product_name || '—', batchNo: null, quantity: transfer.quantity || 0 }];
                       return items.map((item, ii) => (
-                        <tr key={`${transfer.id}-${ii}`} style={{ background: rowBg, borderBottom: '1px solid #f1f5f9' }}>
-                          <td style={{ padding: '9px 12px', fontWeight: 600, color: '#1e293b' }}>
-                            {item.productName || item.product_name || '—'}
-                          </td>
+                        <tr key={`${transfer.id}-${ii}`} style={{ background: ti % 2 === 0 ? '#fffbeb' : '#fefce8', borderBottom: '1px solid #fde68a' }}>
+                          <td style={{ padding: '9px 12px', fontWeight: 600, color: '#1e293b' }}>{item.productName || '—'}</td>
                           <td style={{ padding: '9px 12px' }}>
-                            <span style={{ background: '#eff6ff', color: '#1d4ed8', padding: '2px 8px', borderRadius: 5, fontFamily: 'monospace', fontSize: '0.78rem', fontWeight: 700 }}>
+                            <span style={{ background: '#fef3c7', color: '#92400e', padding: '2px 8px', borderRadius: 5, fontFamily: 'monospace', fontSize: '0.78rem', fontWeight: 700 }}>
                               {item.batchNo || item.batch_no || '—'}
                             </span>
                           </td>
-                          <td style={{ padding: '9px 12px' }}>
-                            {(() => {
-                              const d = item.expiryDate || item.expiry_date;
-                              if (!d) return <span style={{ color: '#94a3b8' }}>—</span>;
-                              const days = Math.floor((new Date(d) - new Date()) / 86400000);
-                              return (
-                                <span style={{ color: days <= 30 ? '#dc2626' : days <= 90 ? '#d97706' : '#16a34a', fontWeight: days <= 90 ? 700 : 400 }}>
-                                  {formatDate(d)}{days <= 90 ? ` (${days}d)` : ''}
-                                </span>
-                              );
-                            })()}
-                          </td>
-                          <td style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 800, color: '#7c3aed', fontSize: '0.95rem' }}>
-                            {Number(item.quantity || 0).toLocaleString()}
-                          </td>
+                          <td style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 800, color: '#7c3aed' }}>{Number(item.quantity || 0).toLocaleString()}</td>
                           {ii === 0 && (
                             <>
-                              <td style={{ padding: '9px 12px', color: '#64748b' }} rowSpan={items.length}>
-                                {fmtLocation(transfer.fromWarehouse || transfer.from_location)}
-                              </td>
+                              <td style={{ padding: '9px 12px', color: '#64748b', fontSize: '0.8rem' }} rowSpan={items.length}>{transfer.createdBy || transfer.dispatchedBy || '—'}</td>
+                              <td style={{ padding: '9px 12px', color: '#64748b', whiteSpace: 'nowrap', fontSize: '0.8rem' }} rowSpan={items.length}>{formatDate(transfer.createdAt || transfer.created_at)}</td>
+                              <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontSize: '0.75rem', color: '#64748b' }} rowSpan={items.length}>{transfer.dispatchReference || transfer.id?.slice(-8) || '—'}</td>
                               <td style={{ padding: '9px 12px' }} rowSpan={items.length}>
-                                <Badge variant={statusColor[transfer.status] || 'default'}>{(transfer.status || 'pending').replace(/_/g, ' ')}</Badge>
-                              </td>
-                              <td style={{ padding: '9px 12px', color: '#64748b', whiteSpace: 'nowrap' }} rowSpan={items.length}>
-                                {formatDate(transfer.createdAt || transfer.created_at)}
-                              </td>
-                              <td style={{ padding: '9px 12px' }} rowSpan={items.length}>
-                                <Button size="sm" variant="success" onClick={() => handleReceiveDistribution(transfer)} disabled={receivingId === transfer.id}>
-                                  {receivingId === transfer.id ? 'Receiving…' : '✓ Confirm Receipt'}
-                                </Button>
+                                <Badge variant="warning">Awaiting GM</Badge>
                               </td>
                             </>
                           )}
@@ -3052,23 +3064,103 @@ function WarehouseTab({ name }) {
             </Card>
           )}
 
+          {/* Section 2: GM-Approved — Awaiting Warehouse Receipt */}
+          {pendingReceipt.length > 0 && (
+            <Card>
+              <CardHeader style={{ background: '#f0fdf4', borderBottom: '1px solid #bbf7d0', borderRadius: '12px 12px 0 0' }}>
+                <h3 className="font-bold" style={{ color: '#166534' }}>✅ GM Approved — Awaiting Your Receipt ({pendingReceipt.length})</h3>
+                <p className="text-xs mt-0.5" style={{ color: '#15803d' }}>These dispatches are approved. Inspect the stock details then Accept to add to warehouse inventory, or Reject if there is an issue.</p>
+              </CardHeader>
+              <div className="overflow-x-auto">
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
+                  <thead>
+                    <tr style={{ background: '#f0fdf4', borderBottom: '2px solid #bbf7d0' }}>
+                      <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#166534' }}>Product Name</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#166534' }}>Batch #</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#166534' }}>Expiry</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 700, color: '#166534' }}>Qty</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#166534' }}>Approved By</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#166534' }}>Date</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#166534' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pendingReceipt.map((transfer, ti) => {
+                      const items = Array.isArray(transfer.items) && transfer.items.length > 0
+                        ? transfer.items
+                        : [{ productName: transfer.product_name || '—', batchNo: null, expiryDate: null, quantity: transfer.quantity || 0 }];
+                      const isBusy = receivingId === transfer.id || rejectingId === transfer.id;
+                      return items.map((item, ii) => (
+                        <tr key={`${transfer.id}-${ii}`} style={{ background: ti % 2 === 0 ? '#fff' : '#f0fdf4', borderBottom: '1px solid #dcfce7' }}>
+                          <td style={{ padding: '9px 12px', fontWeight: 600, color: '#1e293b' }}>{item.productName || '—'}</td>
+                          <td style={{ padding: '9px 12px' }}>
+                            <span style={{ background: '#dcfce7', color: '#166534', padding: '2px 8px', borderRadius: 5, fontFamily: 'monospace', fontSize: '0.78rem', fontWeight: 700 }}>
+                              {item.batchNo || item.batch_no || '—'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '9px 12px' }}>
+                            {(() => {
+                              const d = item.expiryDate || item.expiry_date;
+                              if (!d) return <span style={{ color: '#94a3b8' }}>—</span>;
+                              const days = Math.floor((new Date(d) - new Date()) / 86400000);
+                              return <span style={{ color: days <= 30 ? '#dc2626' : days <= 90 ? '#d97706' : '#16a34a', fontWeight: days <= 90 ? 700 : 400 }}>{formatDate(d)}{days <= 90 ? ` (${days}d)` : ''}</span>;
+                            })()}
+                          </td>
+                          <td style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 800, color: '#7c3aed', fontSize: '0.95rem' }}>
+                            {Number(item.quantity || 0).toLocaleString()}
+                          </td>
+                          {ii === 0 && (
+                            <>
+                              <td style={{ padding: '9px 12px', color: '#15803d', fontSize: '0.8rem', fontWeight: 600 }} rowSpan={items.length}>
+                                {transfer.gmApprovedBy || '—'}
+                              </td>
+                              <td style={{ padding: '9px 12px', color: '#64748b', whiteSpace: 'nowrap', fontSize: '0.8rem' }} rowSpan={items.length}>
+                                {formatDate(transfer.gmApprovedAt || transfer.createdAt)}
+                              </td>
+                              <td style={{ padding: '9px 12px' }} rowSpan={items.length}>
+                                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                  <button
+                                    onClick={() => handleAcceptDispatch(transfer)}
+                                    disabled={isBusy}
+                                    style={{ padding: '5px 14px', borderRadius: 7, border: 'none', background: isBusy ? '#d1d5db' : '#16a34a', color: '#fff', fontWeight: 700, cursor: isBusy ? 'not-allowed' : 'pointer', fontSize: '0.8rem' }}>
+                                    {receivingId === transfer.id ? 'Accepting…' : '✓ Accept'}
+                                  </button>
+                                  <button
+                                    onClick={() => { setRejectModal(transfer); setRejectReason(''); }}
+                                    disabled={isBusy}
+                                    style={{ padding: '5px 14px', borderRadius: 7, border: '1px solid #fca5a5', background: isBusy ? '#f8fafc' : '#fef2f2', color: '#dc2626', fontWeight: 700, cursor: isBusy ? 'not-allowed' : 'pointer', fontSize: '0.8rem' }}>
+                                    ✕ Reject
+                                  </button>
+                                </div>
+                              </td>
+                            </>
+                          )}
+                        </tr>
+                      ));
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
+
+          {/* Section 3: Receipt History */}
           {receivedHistory.length > 0 && (
             <Card>
               <CardHeader>
-                <h3 className="font-bold text-gray-800">✓ Receipt History</h3>
-                <p className="text-xs text-gray-500 mt-0.5">All stock received into {name} Warehouse from Country Stock.</p>
+                <h3 className="font-bold text-gray-800">✓ Receipt History ({receivedHistory.length})</h3>
+                <p className="text-xs text-gray-500 mt-0.5">All stock successfully received into {name} Warehouse from Country Stock.</p>
               </CardHeader>
               <div className="overflow-x-auto">
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
                   <thead>
                     <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-                      <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Product Name</th>
-                      <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Batch #</th>
-                      <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Expiry</th>
-                      <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 700, color: '#374151' }}>Qty Received</th>
-                      <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Received By</th>
-                      <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Date Received</th>
-                      <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Status</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Product Name</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Batch #</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Expiry</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 700, color: '#374151' }}>Qty Received</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Received By</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Date Received</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3076,14 +3168,11 @@ function WarehouseTab({ name }) {
                       const items = Array.isArray(transfer.items) && transfer.items.length > 0
                         ? transfer.items
                         : [{ productName: transfer.product_name || '—', batchNo: null, expiryDate: null, quantity: transfer.quantity || 0 }];
-                      const rowBg = ti % 2 === 0 ? '#fff' : '#fafafa';
                       const receivedBy = transfer.receivedBy || transfer.received_by || '—';
-                      const receivedAt = transfer.receivedAt || transfer.received_at || transfer.updatedAt || transfer.updated_at || transfer.createdAt || transfer.created_at;
+                      const receivedAt = transfer.receivedAt || transfer.received_at || transfer.updatedAt || transfer.updated_at;
                       return items.map((item, ii) => (
-                        <tr key={`${transfer.id}-${ii}`} style={{ background: rowBg, borderBottom: '1px solid #f1f5f9' }}>
-                          <td style={{ padding: '9px 12px', fontWeight: 600, color: '#1e293b' }}>
-                            {item.productName || item.product_name || '—'}
-                          </td>
+                        <tr key={`${transfer.id}-${ii}`} style={{ background: ti % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '9px 12px', fontWeight: 600, color: '#1e293b' }}>{item.productName || '—'}</td>
                           <td style={{ padding: '9px 12px' }}>
                             <span style={{ background: '#f0fdf4', color: '#166534', padding: '2px 8px', borderRadius: 5, fontFamily: 'monospace', fontSize: '0.78rem', fontWeight: 700 }}>
                               {item.batchNo || item.batch_no || '—'}
@@ -3094,11 +3183,7 @@ function WarehouseTab({ name }) {
                               const d = item.expiryDate || item.expiry_date;
                               if (!d) return <span style={{ color: '#94a3b8' }}>—</span>;
                               const days = Math.floor((new Date(d) - new Date()) / 86400000);
-                              return (
-                                <span style={{ color: days <= 30 ? '#dc2626' : days <= 90 ? '#d97706' : '#16a34a', fontWeight: days <= 90 ? 700 : 400 }}>
-                                  {formatDate(d)}{days <= 90 ? ` (${days}d)` : ''}
-                                </span>
-                              );
+                              return <span style={{ color: days <= 30 ? '#dc2626' : days <= 90 ? '#d97706' : '#16a34a', fontWeight: days <= 90 ? 700 : 400 }}>{formatDate(d)}{days <= 90 ? ` (${days}d)` : ''}</span>;
                             })()}
                           </td>
                           <td style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 800, color: '#7c3aed', fontSize: '0.95rem' }}>
@@ -3114,11 +3199,8 @@ function WarehouseTab({ name }) {
                                   <span style={{ color: '#1e293b', fontWeight: 600, fontSize: '0.82rem' }}>{receivedBy}</span>
                                 </div>
                               </td>
-                              <td style={{ padding: '9px 12px', color: '#64748b', whiteSpace: 'nowrap' }} rowSpan={items.length}>
+                              <td style={{ padding: '9px 12px', color: '#64748b', whiteSpace: 'nowrap', fontSize: '0.8rem' }} rowSpan={items.length}>
                                 {receivedAt ? formatDate(receivedAt) : '—'}
-                              </td>
-                              <td style={{ padding: '9px 12px' }} rowSpan={items.length}>
-                                <Badge variant="success">Received</Badge>
                               </td>
                             </>
                           )}
@@ -3131,8 +3213,47 @@ function WarehouseTab({ name }) {
             </Card>
           )}
 
-          {pendingReceipt.length === 0 && receivedHistory.length === 0 && (
-            <EmptyState icon={<Package size={48} />} title="No Incoming Distributions" description={`No stock has been distributed to ${name} Warehouse from Country Stock yet. Use the Distribution tab to allocate stock.`} />
+          {/* Section 4: Rejected */}
+          {rejectedTransfers.length > 0 && (
+            <Card>
+              <CardHeader style={{ background: '#fef2f2', borderBottom: '1px solid #fecaca', borderRadius: '12px 12px 0 0' }}>
+                <h3 className="font-bold" style={{ color: '#991b1b' }}>❌ Rejected Dispatches ({rejectedTransfers.length})</h3>
+                <p className="text-xs mt-0.5" style={{ color: '#b91c1c' }}>Dispatches rejected by this warehouse. The Stock Controller can resubmit with corrections.</p>
+              </CardHeader>
+              <div className="overflow-x-auto">
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
+                  <thead>
+                    <tr style={{ background: '#fef2f2', borderBottom: '2px solid #fecaca' }}>
+                      <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#991b1b' }}>Product(s)</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 700, color: '#991b1b' }}>Qty</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#991b1b' }}>Rejection Reason</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#991b1b' }}>Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rejectedTransfers.map((transfer, ti) => {
+                      const items = Array.isArray(transfer.items) && transfer.items.length > 0
+                        ? transfer.items
+                        : [{ productName: transfer.product_name || '—', quantity: transfer.quantity || 0 }];
+                      const totalQty = items.reduce((s, i) => s + Number(i.quantity || 0), 0);
+                      const productNames = [...new Set(items.map(i => i.productName || '—'))].join(', ');
+                      return (
+                        <tr key={transfer.id} style={{ background: ti % 2 === 0 ? '#fff' : '#fef2f2', borderBottom: '1px solid #fecaca' }}>
+                          <td style={{ padding: '9px 12px', fontWeight: 600, color: '#1e293b' }}>{productNames}</td>
+                          <td style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 700, color: '#7c3aed' }}>{totalQty.toLocaleString()}</td>
+                          <td style={{ padding: '9px 12px', color: '#64748b', fontSize: '0.8rem', fontStyle: 'italic' }}>{transfer.dispatchNotes || transfer.dispatch_notes || '—'}</td>
+                          <td style={{ padding: '9px 12px', color: '#64748b', whiteSpace: 'nowrap', fontSize: '0.8rem' }}>{formatDate(transfer.updatedAt || transfer.createdAt)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
+
+          {pendingGMApproval.length === 0 && pendingReceipt.length === 0 && receivedHistory.length === 0 && rejectedTransfers.length === 0 && (
+            <EmptyState icon={<Package size={48} />} title="No Incoming Dispatches" description={`No stock has been dispatched to ${name} Warehouse from Country Stock yet. The Stock Controller uses Country Stock to submit warehouse dispatches.`} />
           )}
         </div>
       )}
