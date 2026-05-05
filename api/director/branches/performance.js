@@ -13,7 +13,7 @@ export default async function handler(req, res) {
 
   const { start, end } = getDateRange(req.query);
 
-  const [branchLocations, allBranchSales] = await Promise.all([
+  const [branchLocations, allBranchSales, refundRows] = await Promise.all([
     getAllBranchLocations(),
     getMany(
       `SELECT branch_id, COALESCE(SUM(total),0) as revenue, COUNT(*) as txns
@@ -23,10 +23,31 @@ export default async function handler(req, res) {
        GROUP BY branch_id`,
       [start, end]
     ),
+    getMany(
+      `SELECT branch_id, COALESCE(SUM(refund_amount), 0) AS refund_total
+       FROM branch_refund_requests
+       WHERE status = 'approved'
+         AND processed_at::date >= $1::date
+         AND processed_at::date <= $2::date
+       GROUP BY branch_id`,
+      [start, end]
+    ),
   ]);
 
+  // Refund deduction map (keyed by normalised branch_id)
+  const refundMap = new Map(refundRows.map(r => [
+    (r.branch_id || '').toLowerCase().replace(/ /g, '_'),
+    Number(r.refund_total || 0),
+  ]));
+
   const salesByBranch = new Map(
-    allBranchSales.map(r => [r.branch_id, { revenue: Number(r.revenue), txns: Number(r.txns) }])
+    allBranchSales.map(r => {
+      const refund = refundMap.get((r.branch_id || '').toLowerCase().replace(/ /g, '_')) || 0;
+      return [r.branch_id, {
+        revenue: Math.max(0, Number(r.revenue) - refund),
+        txns: Number(r.txns),
+      }];
+    })
   );
 
   // Total company revenue for contribution %

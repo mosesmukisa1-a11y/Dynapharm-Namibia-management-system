@@ -192,16 +192,28 @@ export async function getLocationMovements(locationType, locationId, start, end)
  * Sales revenue from branch_walkin_sales (completed sales only).
  */
 export async function getBranchSalesRevenue(branchId, start, end) {
-  const rows = await getMany(
-    `SELECT customer_type, payment_method, total, subtotal, items
-     FROM branch_walkin_sales
-     WHERE branch_id = $1
-       AND status = 'completed'
-       AND sale_date >= $2::date
-       AND sale_date <= ($3 || 'T23:59:59')::timestamp`,
-    [branchId, start, end]
-  );
+  const [rows, refundRows] = await Promise.all([
+    getMany(
+      `SELECT customer_type, payment_method, total, subtotal, items
+       FROM branch_walkin_sales
+       WHERE branch_id = $1
+         AND status = 'completed'
+         AND sale_date >= $2::date
+         AND sale_date <= ($3 || 'T23:59:59')::timestamp`,
+      [branchId, start, end]
+    ),
+    getMany(
+      `SELECT COALESCE(SUM(refund_amount), 0) AS refund_total
+       FROM branch_refund_requests
+       WHERE status = 'approved'
+         AND LOWER(REPLACE(branch_id,' ','_')) = LOWER(REPLACE($1,' ','_'))
+         AND processed_at::date >= $2::date
+         AND processed_at::date <= $3::date`,
+      [branchId, start, end]
+    ),
+  ]);
 
+  const refundTotal = Number(refundRows[0]?.refund_total || 0);
   let totalSales = 0, memberSales = 0, nonMemberSales = 0, onlineSales = 0;
   let cashTotal = 0, swipeTotal = 0, eftTotal = 0;
 
@@ -219,6 +231,10 @@ export async function getBranchSalesRevenue(branchId, start, end) {
     else if (pm === 'swipe' || pm === 'card') swipeTotal += amt;
     else if (pm === 'eft') eftTotal += amt;
   }
+
+  // Deduct approved refunds processed in this period
+  totalSales     = Math.max(0, totalSales     - refundTotal);
+  nonMemberSales = Math.max(0, nonMemberSales - refundTotal);
 
   // Consultation fees per branch from activity transactions
   const consultRow = await getOne(
@@ -323,15 +339,26 @@ export async function getCompanyStockSummary() {
  * All sales across the company (all branches).
  */
 export async function getAllBranchesSalesRevenue(start, end) {
-  const rows = await getMany(
-    `SELECT branch_id, customer_type, payment_method, total
-     FROM branch_walkin_sales
-     WHERE status = 'completed'
-       AND sale_date >= $1::date
-       AND sale_date <= ($2 || 'T23:59:59')::timestamp`,
-    [start, end]
-  );
+  const [rows, refundRow] = await Promise.all([
+    getMany(
+      `SELECT branch_id, customer_type, payment_method, total
+       FROM branch_walkin_sales
+       WHERE status = 'completed'
+         AND sale_date >= $1::date
+         AND sale_date <= ($2 || 'T23:59:59')::timestamp`,
+      [start, end]
+    ),
+    getOne(
+      `SELECT COALESCE(SUM(refund_amount), 0) AS refund_total
+       FROM branch_refund_requests
+       WHERE status = 'approved'
+         AND processed_at::date >= $1::date
+         AND processed_at::date <= $2::date`,
+      [start, end]
+    ),
+  ]);
 
+  const refundTotal = Number(refundRow?.refund_total || 0);
   let walkinSales = 0, memberSales = 0, nonMemberSales = 0, onlineSales = 0, prescriptionSales = 0;
 
   for (const r of rows) {
@@ -342,6 +369,10 @@ export async function getAllBranchesSalesRevenue(start, end) {
     else nonMemberSales += amt;
     walkinSales += amt;
   }
+
+  // Deduct approved refunds processed in this period
+  walkinSales    = Math.max(0, walkinSales    - refundTotal);
+  nonMemberSales = Math.max(0, nonMemberSales - refundTotal);
 
   // Prescription dispense revenue from stock_movements (qty * unit_dp)
   const dispensed = await getMany(

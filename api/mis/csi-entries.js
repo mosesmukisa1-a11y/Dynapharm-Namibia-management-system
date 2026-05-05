@@ -156,7 +156,20 @@ export default async function handler(req, res) {
       LEFT JOIN distributors d
         ON s.customer_type IS DISTINCT FROM 'member'
        AND TRIM(UPPER(d.distributor_code)) = TRIM(UPPER(s.referral_nb))
-      ${whereClause}
+      -- Exclude line items that have been refunded (approved refund for this sale + product)
+      WHERE NOT EXISTS (
+        SELECT 1 FROM branch_refund_requests rr
+        WHERE rr.status = 'approved'
+          AND rr.sale_reference = s.sale_number
+          AND LOWER(TRIM(rr.product_name)) = LOWER(TRIM(
+            COALESCE(
+              NULLIF(TRIM(item->>'product_name'), ''),
+              NULLIF(TRIM(item->>'name'),         ''),
+              NULLIF(TRIM(item->>'description'),  '')
+            )
+          ))
+      )
+      AND (${where.join(' AND ')})
       ORDER BY s.sale_date DESC, s.id DESC
       LIMIT 5000
     `;
