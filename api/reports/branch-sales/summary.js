@@ -108,17 +108,44 @@ export default async function handler(req, res) {
     }
 
     // ── 2. Campaign sales from branch_inventory_movements ───────────────────
+    // Captures all three movement types a campaign sale can generate:
+    //   campaign_sale          — member paid item (unit_price = DP)
+    //   walk_in_non_member_sale— non-member paid item (unit_price = DP, see campaign-sale.js)
+    //   campaign_free_item     — free item (unit_price = NULL → 0 DP; excluded from sum)
+    // References for non-member paid items are identified via branch_walkin_sales.data->>'sale_type'.
     const campParams = [from, to];
     const campBranchClause = branch
       ? `AND LOWER(REPLACE(branch_id, ' ', '_')) = LOWER(REPLACE($${campParams.push(branch)}, ' ', '_'))`
       : '';
+    // Reuse the same branch param ($3 if set) inside the sub-select
+    const campSubBranchClause = branch
+      ? `AND LOWER(REPLACE(branch_id, ' ', '_')) = LOWER(REPLACE($3, ' ', '_'))`
+      : '';
     const campaignRows = await getMany(
       `SELECT
          branch_id,
-         COUNT(DISTINCT reference)::int                                  AS campaign_transactions,
-         COALESCE(SUM(ABS(quantity) * COALESCE(unit_price, 0)), 0)::numeric AS campaign_total
+         -- Count distinct paid references only (free items share the same reference)
+         COUNT(DISTINCT CASE WHEN type != 'campaign_free_item' THEN reference END)::int
+                                                                         AS campaign_transactions,
+         -- Sum DP value; free items have unit_price = NULL so COALESCE gives 0 (excluded)
+         COALESCE(SUM(
+           CASE WHEN type = 'campaign_free_item' THEN 0
+                ELSE ABS(quantity) * COALESCE(unit_price, 0)
+           END
+         ), 0)::numeric                                                  AS campaign_total
        FROM branch_inventory_movements
-       WHERE type = 'campaign_sale'
+       WHERE (
+           type IN ('campaign_sale', 'campaign_free_item')
+           OR (
+             type = 'walk_in_non_member_sale'
+             AND reference IN (
+               SELECT id FROM branch_walkin_sales
+               WHERE sale_date::date >= $1 AND sale_date::date <= $2
+                 ${campSubBranchClause}
+                 AND data->>'sale_type' = 'campaign_sale'
+             )
+           )
+         )
          AND DATE(created_at) >= $1 AND DATE(created_at) <= $2
          ${campBranchClause}
        GROUP BY branch_id`,

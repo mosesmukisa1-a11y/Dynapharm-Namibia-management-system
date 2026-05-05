@@ -241,13 +241,20 @@ export default async function handler(req, res) {
       void fee; // intentionally not counted here
     }
 
-    // Build per-product aggregate for ALL walk-in sales (member + non-member + general)
-    // Group by normalised key (UPPER+TRIM) so "Product X", "product x", "Product X " collapse into one row.
+    // Build per-product aggregate for regular walk-in sales (member + non-member + general).
+    // Campaign sales are excluded here — they appear separately in the campaign detail section.
+    // Group by normalised key (UPPER+TRIM) so casing/spacing variants collapse into one row.
     const walkinProductAgg = {};
     for (const s of walkinSalesRows) {
+      // Skip campaign sales — identified by data->>'sale_type' = 'campaign_sale'
+      let sData = {};
+      try { sData = typeof s.data === 'string' ? JSON.parse(s.data) : (s.data || {}); } catch {}
+      if (sData.sale_type === 'campaign_sale') continue;
+
       let items = [];
       try { items = typeof s.items === 'string' ? JSON.parse(s.items) : (Array.isArray(s.items) ? s.items : []); } catch {}
       for (const item of items) {
+        if (item.is_free) continue;  // free campaign items have no DP value
         const name = (item.product_name || item.name || item.description || '').trim();
         if (!name) continue;
         const key = name.toUpperCase();
