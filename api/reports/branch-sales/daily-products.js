@@ -23,7 +23,8 @@ export default async function handler(req, res) {
 
     const rows = await getMany(`
       SELECT
-        bim.product_name,
+        -- Use the most-common casing/spelling for display; group by normalised key
+        MIN(TRIM(bim.product_name))                                         AS product_name,
         SUM(ABS(bim.quantity))                                              AS total_qty,
         SUM(ABS(bim.quantity) * COALESCE(bim.unit_price, 0))               AS dp_amount,
         COALESCE(MAX(pp.bv), 0) * SUM(
@@ -39,7 +40,7 @@ export default async function handler(req, res) {
           'field_use', 'dispense'
         )
         ${branchClause}
-      GROUP BY bim.product_name
+      GROUP BY LOWER(TRIM(bim.product_name))
       ORDER BY dp_amount DESC
     `, params);
 
