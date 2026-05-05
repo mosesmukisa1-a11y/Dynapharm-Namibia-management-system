@@ -49,8 +49,16 @@ export default async function handler(req, res) {
            COALESCE(SUM(CASE WHEN activity_type = 'walkin_sale'
                              THEN COALESCE(product_total_dp, grand_total)
                              ELSE 0 END), 0)::numeric                      AS walkin_total
-         FROM branch_activity_transactions
+         FROM branch_activity_transactions bat
          WHERE service_date >= $1 AND service_date <= $2 ${batBranchClause}
+           -- Exclude campaign sale records: those are counted separately via
+           -- branch_inventory_movements (campaign_sale type). Including them here
+           -- AND in campaign_total would double-count the campaign DP amount.
+           AND NOT EXISTS (
+             SELECT 1 FROM branch_walkin_sales bws
+             WHERE bws.id = bat.form_reference_id
+               AND bws.data->>'sale_type' = 'campaign_sale'
+           )
          GROUP BY branch_id
          ORDER BY total_revenue DESC`,
         batParams
