@@ -45,12 +45,13 @@ export default async function handler(req, res) {
         normBranchId ? [date, normBranchId] : [date]
       ),
       getMany(
-        `SELECT reference as form_reference_id, product_name, batch_no,
+        `SELECT reference as form_reference_id,
+                MIN(TRIM(product_name)) AS product_name,
                 SUM(ABS(quantity)) as qty,
                 SUM(ABS(quantity) * COALESCE(unit_price, 0)) as dp_value
          FROM branch_inventory_movements
          WHERE ${movConds.join(' AND ')} AND type IN ('prescription_dispense','dispense','field_use')
-         GROUP BY reference, product_name, batch_no`,
+         GROUP BY reference, LOWER(TRIM(product_name))`,
         movParams
       ),
       // POS walk-in sales from branch_walkin_sales (case-insensitive branch_id match)
@@ -106,12 +107,13 @@ export default async function handler(req, res) {
       `, rpParams),
       // Campaign sales from inventory movements — per-product rows for detail map
       getMany(
-        `SELECT reference, branch_id, product_name, batch_no,
+        `SELECT reference, branch_id,
+                MIN(TRIM(product_name)) AS product_name,
                 SUM(ABS(quantity))                        AS total_qty,
                 SUM(ABS(quantity) * COALESCE(unit_price, 0)) AS total_dp
          FROM branch_inventory_movements
          WHERE ${movConds.join(' AND ')} AND type = 'campaign_sale'
-         GROUP BY reference, branch_id, product_name, batch_no`,
+         GROUP BY reference, branch_id, LOWER(TRIM(product_name))`,
         movParams
       ),
       // Approved refund return movements — deducted from sales totals
@@ -222,6 +224,7 @@ export default async function handler(req, res) {
     }
 
     // Build per-product aggregate for ALL walk-in sales (member + non-member + general)
+    // Group by normalised key (UPPER+TRIM) so "Product X", "product x", "Product X " collapse into one row.
     const walkinProductAgg = {};
     for (const s of walkinSalesRows) {
       let items = [];
@@ -229,12 +232,13 @@ export default async function handler(req, res) {
       for (const item of items) {
         const name = (item.product_name || item.name || item.description || '').trim();
         if (!name) continue;
+        const key = name.toUpperCase();
         const qty = Number(item.quantity || item.qty || 0);
         const dp  = Number(item.dpPrice || item.dp || item.unit_price || 0);
-        if (!walkinProductAgg[name]) walkinProductAgg[name] = { product_name: name, qty: 0, dp_value: 0, unit_dp: dp };
-        walkinProductAgg[name].qty      += qty;
-        walkinProductAgg[name].dp_value  = parseFloat((walkinProductAgg[name].dp_value + qty * dp).toFixed(2));
-        if (dp > 0) walkinProductAgg[name].unit_dp = dp;
+        if (!walkinProductAgg[key]) walkinProductAgg[key] = { product_name: name, qty: 0, dp_value: 0, unit_dp: dp };
+        walkinProductAgg[key].qty      += qty;
+        walkinProductAgg[key].dp_value  = parseFloat((walkinProductAgg[key].dp_value + qty * dp).toFixed(2));
+        if (dp > 0) walkinProductAgg[key].unit_dp = dp;
       }
     }
     const walkinProducts = Object.values(walkinProductAgg).sort((a, b) => b.dp_value - a.dp_value);
