@@ -178,7 +178,13 @@ export default async function handler(req, res) {
 
     // ── Prescription dispensing query ─────────────────────────────────────────
     const rxParams = [];
-    const rxWhere = [`bat.activity_type = 'prescription_dispensing'`];
+    const rxWhere = [
+      `bat.activity_type = 'prescription_dispensing'`,
+      // Only fully paid + fully dispensed prescriptions.
+      // capture-rx.js writes workflow_source='dispense_draft' ONLY when allDispensed AND allPaid.
+      // dispense.js writes workflow_source='branch_portal' for every dispense click (incl. partial).
+      `bat.workflow_source = 'dispense_draft'`,
+    ];
 
     if (dateParam) {
       const parsed = parseDate(dateParam);
