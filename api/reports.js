@@ -88,6 +88,7 @@ export default async function handler(req, res) {
   const clientId = searchParams.get('clientId');
   const branch = searchParams.get('branch');
   const consultant = searchParams.get('consultant');
+  const appointmentId = searchParams.get('appointment_id');
 
   try {
     if (req.method === 'GET') {
@@ -110,6 +111,10 @@ export default async function handler(req, res) {
       if (consultant) {
         conditions.push(`consultant = $${params.length + 1}`);
         params.push(consultant);
+      }
+      if (appointmentId) {
+        conditions.push(`data->>'appointment_id' = $${params.length + 1}`);
+        params.push(appointmentId);
       }
 
       if (conditions.length > 0) {

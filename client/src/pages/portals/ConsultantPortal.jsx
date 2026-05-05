@@ -383,6 +383,160 @@ function generateRecommendations(client) {
   return { recommendations, reasonsMap };
 }
 
+function PrescriptionEditModal({ report, onClose, onSaved }) {
+  const [meds, setMeds] = useState(() => {
+    const existing = Array.isArray(report.prescriptions)
+      ? report.prescriptions.map(p => typeof p === 'string' ? p : (p.product || p.name || ''))
+      : Array.isArray(report.medicines)
+        ? report.medicines.map(m => typeof m === 'string' ? m : (m.name || ''))
+        : [];
+    return new Set(existing.filter(Boolean));
+  });
+  const [notes, setNotes] = useState(report.diagnosis || report.recommendations || '');
+  const [followUp, setFollowUp] = useState(
+    report.follow_up_date ? String(report.follow_up_date).slice(0, 10) : ''
+  );
+  const [followUpNotes, setFollowUpNotes] = useState(report.follow_up_notes || '');
+  const [medSearch, setMedSearch] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const toggleMed = (name) => setMeds(prev => {
+    const next = new Set(prev); if (next.has(name)) next.delete(name); else next.add(name); return next;
+  });
+
+  const handleSave = async () => {
+    setSaving(true); setError('');
+    try {
+      const medicines = Array.from(meds).map(name => ({ name, dispensed: false }));
+      const prescriptions = medicines.map(m => ({ product: m.name, quantity: 1 }));
+      await api.reports.update(report.id, {
+        diagnosis: notes, recommendations: notes,
+        medicines, prescriptions,
+        follow_up_date: followUp || null,
+        follow_up_notes: followUpNotes || null,
+      });
+      if (onSaved) onSaved();
+      onClose();
+    } catch (err) {
+      setError(err.message || 'Failed to save prescription');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const allProducts = getLiveProductList();
+  const seenPkg = new Set();
+  const packages = allProducts.filter(p => p.is_package && !seenPkg.has(p.description) && seenPkg.add(p.description));
+  const pkgNames = new Set(packages.map(p => p.description));
+  const seenProd = new Set();
+  const products = allProducts.filter(p => !p.is_package && !pkgNames.has(p.description) && !seenProd.has(p.description) && seenProd.add(p.description));
+  const q = (medSearch || '').toLowerCase();
+  const visPkgs = q ? packages.filter(p => p.description.toLowerCase().includes(q)) : packages;
+  const visProds = q ? products.filter(p => p.description.toLowerCase().includes(q)) : products;
+
+  return (
+    <div onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 1000001, overflowY: 'auto', padding: '20px', boxSizing: 'border-box' }}>
+      <div style={{ maxWidth: '900px', margin: '20px auto', background: 'white', borderRadius: '14px', boxShadow: '0 12px 48px rgba(0,0,0,0.35)', overflow: 'hidden' }}>
+        <div style={{ background: 'linear-gradient(135deg,#c41e3a,#a01830)', padding: '18px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h3 style={{ margin: 0, color: '#fff', fontSize: '1.1rem', fontWeight: 700 }}>✏️ Edit Prescription</h3>
+            <p style={{ margin: '3px 0 0', color: 'rgba(255,255,255,0.8)', fontSize: '0.83rem' }}>Report ID: {report.id} — {report.client_name || 'Unknown Patient'}</p>
+          </div>
+          <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', fontSize: '1.6rem', cursor: 'pointer', borderRadius: '6px', padding: '1px 10px', lineHeight: 1 }}>×</button>
+        </div>
+
+        <div style={{ padding: '24px' }}>
+          {error && <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', color: '#b91c1c', padding: '10px 14px', borderRadius: '8px', marginBottom: '16px', fontSize: '0.9rem' }}>{error}</div>}
+
+          <div style={{ marginBottom: '18px' }}>
+            <label style={{ display: 'block', fontWeight: 700, marginBottom: '6px', color: '#1e293b', fontSize: '0.9rem' }}>Consultant Notes &amp; Diagnosis</label>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={4}
+              style={{ width: '100%', padding: '10px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '0.9rem', resize: 'vertical', boxSizing: 'border-box' }}
+              placeholder="Updated diagnosis and treatment notes..." />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '20px' }}>
+            <div>
+              <label style={{ display: 'block', fontWeight: 700, marginBottom: '6px', color: '#1e293b', fontSize: '0.9rem' }}>Follow-up Date</label>
+              <input type="date" value={followUp} onChange={e => setFollowUp(e.target.value)}
+                style={{ width: '100%', padding: '9px 12px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '0.9rem', boxSizing: 'border-box' }} />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontWeight: 700, marginBottom: '6px', color: '#1e293b', fontSize: '0.9rem' }}>Follow-up Notes</label>
+              <input value={followUpNotes} onChange={e => setFollowUpNotes(e.target.value)}
+                placeholder="e.g. Review progress, adjust dosage..."
+                style={{ width: '100%', padding: '9px 12px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '0.9rem', boxSizing: 'border-box' }} />
+            </div>
+          </div>
+
+          <div style={{ border: '1px solid #e0e0e0', borderRadius: '10px', padding: '16px', marginBottom: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+              <h4 style={{ margin: 0, color: '#1e293b', fontSize: '0.95rem' }}>Prescribed Products</h4>
+              <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>{meds.size} selected</span>
+            </div>
+            <input type="text" placeholder="Search products…" value={medSearch} onChange={e => setMedSearch(e.target.value)}
+              style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '0.9rem', marginBottom: '10px', boxSizing: 'border-box' }} />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(270px, 1fr))', gap: '7px', maxHeight: '340px', overflowY: 'auto', marginBottom: '12px' }}>
+              {visPkgs.map((pkg, idx) => {
+                const isChecked = meds.has(pkg.description);
+                return (
+                  <div key={`epkg-${idx}`} onClick={() => toggleMed(pkg.description)}
+                    style={{ background: isChecked ? '#dcfce7' : '#e8f5e9', borderLeft: `4px solid ${isChecked ? '#16a34a' : '#27ae60'}`, padding: '9px 10px', borderRadius: '6px', display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={isChecked} onChange={() => toggleMed(pkg.description)} style={{ marginTop: '3px', cursor: 'pointer' }} onClick={e => e.stopPropagation()} />
+                    <label style={{ cursor: 'pointer', flex: 1, fontSize: '0.87rem' }}>
+                      <span style={{ fontWeight: 700, color: '#166534' }}>📦 {pkg.description}</span>
+                      <br /><small style={{ color: '#555' }}>Bundle · DP: N${pkg.dp}</small>
+                    </label>
+                  </div>
+                );
+              })}
+              {visProds.map((product, idx) => {
+                const isChecked = meds.has(product.description);
+                return (
+                  <div key={`eprod-${idx}`} onClick={() => toggleMed(product.description)}
+                    style={{ padding: '8px 10px', borderRadius: '6px', display: 'flex', alignItems: 'flex-start', gap: '8px', border: `1px solid ${isChecked ? '#86efac' : '#f0f0f0'}`, background: isChecked ? '#f0fdf4' : 'white', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={isChecked} onChange={() => toggleMed(product.description)} style={{ marginTop: '3px', cursor: 'pointer' }} onClick={e => e.stopPropagation()} />
+                    <label style={{ cursor: 'pointer', flex: 1, fontSize: '0.87rem' }}>
+                      <span style={{ fontWeight: isChecked ? 600 : 400, color: isChecked ? '#166534' : '#1e293b' }}>{product.description}</span>
+                      <br /><small style={{ color: '#666' }}>DP: N${product.dp} · BV: {product.bv}</small>
+                    </label>
+                  </div>
+                );
+              })}
+              {visPkgs.length + visProds.length === 0 && (
+                <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '30px', color: '#9ca3af', fontSize: '0.9rem' }}>No products match "{medSearch}"</div>
+              )}
+            </div>
+            {meds.size > 0 && (
+              <div style={{ background: '#f0fdf4', padding: '12px', borderRadius: '8px', border: '1px solid #86efac' }}>
+                <h4 style={{ margin: '0 0 8px', color: '#166534', fontSize: '0.88rem' }}>✅ Prescribed ({meds.size}):</h4>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {Array.from(meds).map((med, i) => (
+                    <span key={i} style={{ background: '#dcfce7', border: '1px solid #86efac', color: '#166534', padding: '3px 10px', borderRadius: '20px', fontSize: '0.82rem', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                      {med}
+                      <button onClick={() => toggleMed(med)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#16a34a', fontWeight: 700, fontSize: '1rem', padding: 0, lineHeight: 1 }}>×</button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+            <button onClick={onClose} style={{ padding: '10px 22px', background: '#6b7280', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem' }}>Cancel</button>
+            <button onClick={handleSave} disabled={saving}
+              style={{ padding: '10px 22px', background: saving ? '#9b1c2e' : '#c41e3a', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem', opacity: saving ? 0.7 : 1 }}>
+              {saving ? '⏳ Saving...' : '💾 Save Prescription'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CheckupsSection() {
   const { user } = useAuth();
   const [appointments, setAppointments] = useState([]);
@@ -406,6 +560,8 @@ function CheckupsSection() {
   const [selectedSymptomChecks, setSelectedSymptomChecks] = useState({});
   const [currentRecommendations, setCurrentRecommendations] = useState(null);
   const [reportRequired, setReportRequired] = useState(true);
+  const [editPrescLoadingId, setEditPrescLoadingId] = useState(null);
+  const [editPrescReport, setEditPrescReport] = useState(null);
 
   const consultantBranch = user?.branch || '';
 
@@ -781,6 +937,24 @@ ${consultantNotes ? `
     w.document.close();
   };
 
+  const openEditPrescription = async (apt) => {
+    setEditPrescLoadingId(apt.id);
+    try {
+      const result = await api.reports.list({ appointment_id: apt.id });
+      const reports = Array.isArray(result) ? result : (result?.reports || []);
+      const report = reports[0] || null;
+      if (!report) {
+        alert('No consultation report found for this appointment. The consultant must create a report first before it can be edited.');
+        return;
+      }
+      setEditPrescReport(report);
+    } catch (err) {
+      alert('Failed to load report: ' + (err.message || 'Unknown error'));
+    } finally {
+      setEditPrescLoadingId(null);
+    }
+  };
+
   const updateStatus = async (apt, newStatus) => {
     try {
       await api.appointments.update(apt.id, { status: newStatus });
@@ -963,12 +1137,27 @@ ${consultantNotes ? `
                 {sl === 'completed' && (
                   <div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap', borderTop: '1px solid #f3f4f6', paddingTop: '10px' }}>
                     <button onClick={() => viewDetail(apt)} style={{ padding: '6px 14px', fontSize: '0.85rem', background: '#6b7280', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>View Details</button>
+                    <button
+                      onClick={() => openEditPrescription(apt)}
+                      disabled={editPrescLoadingId === apt.id}
+                      style={{ padding: '6px 14px', fontSize: '0.85rem', background: '#c41e3a', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', opacity: editPrescLoadingId === apt.id ? 0.6 : 1, fontWeight: 600 }}
+                    >
+                      {editPrescLoadingId === apt.id ? '⏳ Loading...' : '✏️ Edit Prescription'}
+                    </button>
                   </div>
                 )}
               </div>
             );
           })}
         </div>
+      )}
+
+      {editPrescReport && (
+        <PrescriptionEditModal
+          report={editPrescReport}
+          onClose={() => setEditPrescReport(null)}
+          onSaved={() => loadCheckups()}
+        />
       )}
 
       {showDetail && detailCheckup && (
@@ -2085,6 +2274,7 @@ function ReportsSection() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedReport, setSelectedReport] = useState(null);
+  const [editReport, setEditReport] = useState(null);
 
   const loadReports = useCallback(() => {
     setLoading(true);
@@ -2184,6 +2374,12 @@ function ReportsSection() {
                       style={{ padding: '8px 14px', background: '#1e293b', color: '#fff', border: 'none', borderRadius: '7px', fontWeight: 600, cursor: 'pointer', fontSize: '0.83rem' }}
                     >
                       👁 View Report
+                    </button>
+                    <button
+                      onClick={() => setEditReport(r)}
+                      style={{ padding: '8px 14px', background: '#c41e3a', color: '#fff', border: 'none', borderRadius: '7px', fontWeight: 600, cursor: 'pointer', fontSize: '0.83rem' }}
+                    >
+                      ✏️ Edit Rx
                     </button>
                     <button
                       onClick={() => printReportFromDB(r)}
@@ -2342,6 +2538,14 @@ function ReportsSection() {
             </div>
           </div>
         </div>
+      )}
+
+      {editReport && (
+        <PrescriptionEditModal
+          report={editReport}
+          onClose={() => setEditReport(null)}
+          onSaved={() => { loadReports(); setEditReport(null); }}
+        />
       )}
     </div>
   );

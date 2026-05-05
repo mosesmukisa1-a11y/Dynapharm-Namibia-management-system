@@ -40,7 +40,8 @@ Branches can transact without internet connectivity. The system automatically sy
 - **Referral Landing Page**: Public page for distributors to promote their network.
 - **Distributor and Staff Management**: Features for registration, bulk import, agreement management, and staff administration with approval workflows.
 - **Reporting and Analytics**: Dashboards and reports for sales, profits, branch performance, and KPIs.
-- **Consultant Portal**: Manages client interactions, check-ups, reports, and consultation fees.
+- **Consultant Portal**: Manages client interactions, check-ups, reports, and consultation fees. Consultants can now edit the prescription (diagnosis, medicines, follow-up) of completed consultations directly from the Checkups (completed tab) and Reports sections via the "✏️ Edit Prescription" / "✏️ Edit Rx" buttons, which opens `PrescriptionEditModal`.
+- **Admin Appointment Editor**: Admins have a new "📅 Appointments" tab in AdminPortal that lists all appointments with search/filter. Each appointment has an "Edit" button opening a tabbed full-edit modal covering: Personal & Referral, Appointment Details, Health Profile, Lifestyle, and Prescription (if a report exists). Saves update both the `appointments` row and the linked `reports` row atomically.
 - **Director Portal**: Executive intelligence through 10 API endpoints and a rewritten frontend with 7 tabs for comprehensive analysis using `recharts`.
 - **Branch Activity Capture System**: Centralizes transaction capture via `branch_activity_transactions` for all branch-facing workflows.
 - **Transactional Stock Deduction**: Walk-in sales use transactional FEFO multi-batch stock deduction with row locking.
