@@ -54,8 +54,9 @@ export default async function handler(req, res) {
       const userRole = req.user ? (req.user.role || '').toLowerCase() : '';
       const userBranch = normBranch(req.user ? (req.user.branch || '') : '');
       const FULL_ACCESS = new Set(['admin', 'gm', 'director', 'stock']);
-      // Distributors querying their own checkups via client_reference skip branch restriction
-      const isDistributorSelfQuery = userRole === 'distributor' && clientRef;
+      // Distributors querying their own checkups (via client_reference) or their referred
+      // appointments (via referral_nb) skip branch restriction so they see cross-branch data
+      const isDistributorSelfQuery = userRole === 'distributor' && (clientRef || referralNb);
 
       if (req.user && !FULL_ACCESS.has(userRole) && !isDistributorSelfQuery && !branch) {
         if (userBranch) {

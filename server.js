@@ -2063,6 +2063,10 @@ server.on('error', (error) => {
       // Distributor referral tracking on branch walk-in sales
       `ALTER TABLE branch_walkin_sales ADD COLUMN IF NOT EXISTS referral_nb VARCHAR(50)`,
       `ALTER TABLE branch_walkin_sales ADD COLUMN IF NOT EXISTS distributor_nb VARCHAR(50)`,
+      // Distributor profile photo persistence
+      `ALTER TABLE distributors ADD COLUMN IF NOT EXISTS photo_url TEXT`,
+      `ALTER TABLE distributors ADD COLUMN IF NOT EXISTS photo_filename TEXT`,
+      `ALTER TABLE distributors ADD COLUMN IF NOT EXISTS photo_updated_at TEXT`,
       // CAS: finance_cash_requests updated_at column (unblocks Finance PATCH)
       `ALTER TABLE stock_requests ADD COLUMN IF NOT EXISTS dispatch_warehouse VARCHAR(100)`,
       `ALTER TABLE stock_requests ADD COLUMN IF NOT EXISTS dispatched_by VARCHAR(255)`,

@@ -88,6 +88,9 @@ export default async function handler(req, res) {
     await query(`ALTER TABLE distributors ADD COLUMN IF NOT EXISTS sponsor_code TEXT`);
     await query(`ALTER TABLE distributors ADD COLUMN IF NOT EXISTS sex TEXT`);
     await query(`ALTER TABLE distributors ADD COLUMN IF NOT EXISTS level INTEGER`);
+    await query(`ALTER TABLE distributors ADD COLUMN IF NOT EXISTS photo_url TEXT`);
+    await query(`ALTER TABLE distributors ADD COLUMN IF NOT EXISTS photo_filename TEXT`);
+    await query(`ALTER TABLE distributors ADD COLUMN IF NOT EXISTS photo_updated_at TEXT`);
 
     const body = req.body || {};
     const rows = body.distributors || [];
