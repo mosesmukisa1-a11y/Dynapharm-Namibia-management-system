@@ -1,5 +1,7 @@
 import { applyAuthCors } from '../_lib/auth.js';
-import { getMany, getOne, query } from '../db.js';
+import { getMany, getOne, query, withTransaction } from '../db.js';
+import { generateBatId } from '../_lib/activityCapture.js';
+import { recomputeLocationBalances } from '../services/stockEngine.js';
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
@@ -42,23 +44,142 @@ export default async function handler(req, res) {
         return res.status(400).json({ success: false, error: 'Request has already been processed' });
 
       if (action === 'approve') {
-        const movId = `RFND-${Date.now()}-${Math.random().toString(36).slice(2,5).toUpperCase()}`;
-        await query(
-          `INSERT INTO branch_inventory_movements
-             (id, branch_id, type, product_name, batch_no, quantity, unit_price, reference, notes, created_by, created_at)
-           VALUES ($1,$2,'refund_return',$3,$4,$5,$6,$7,$8,$9,NOW())`,
-          [movId, refund.branch_id, refund.product_name, refund.batch_no || null,
-           refund.quantity, refund.unit_price, refund.id,
-           `Refund approved — ${refund.reason}`, approved_by || 'Stock Manager']
+        const now      = new Date();
+        const movId    = `RFND-${Date.now()}-${Math.random().toString(36).slice(2,5).toUpperCase()}`;
+        const smId     = `SM-RFND-${Date.now()}-${Math.random().toString(36).slice(2,6).toUpperCase()}`;
+        const batId    = generateBatId();
+        const qty      = parseFloat(refund.quantity);
+        const unitDp   = parseFloat(refund.unit_price);
+        const dpTotal  = parseFloat(refund.refund_amount);
+        const branchId = refund.branch_id;
+        const product  = refund.product_name;
+        const batchNo  = refund.batch_no || '';
+        const approver = approved_by || 'Stock Manager';
+        const today    = now.toISOString().slice(0, 10);
+
+        await withTransaction(async (client) => {
+          // ── 1. branch_inventory_movements — financial refund record ──────────
+          await client.query(
+            `INSERT INTO branch_inventory_movements
+               (id, branch_id, type, product_name, batch_no, quantity, unit_price,
+                reference, notes, created_by, created_at)
+             VALUES ($1,$2,'refund_return',$3,$4,$5,$6,$7,$8,$9,NOW())`,
+            [movId, branchId, product, batchNo || null, qty, unitDp,
+             refund.id, `Refund approved — ${refund.reason}`, approver]
+          );
+
+          // ── 2. branch_inventory_batches — restore physical stock ─────────────
+          // Find the batch first (match branch + product + batch_no if available)
+          let batchRow = null;
+          if (batchNo) {
+            batchRow = await client.query(
+              `SELECT id FROM branch_inventory_batches
+               WHERE branch_id = $1
+                 AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))
+                 AND COALESCE(batch_no,'') = $3
+               LIMIT 1`,
+              [branchId, product, batchNo]
+            ).then(r => r.rows[0] || null);
+          }
+          if (!batchRow) {
+            // Fall back to any batch for this product in this branch
+            batchRow = await client.query(
+              `SELECT id FROM branch_inventory_batches
+               WHERE branch_id = $1
+                 AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))
+               ORDER BY updated_at DESC LIMIT 1`,
+              [branchId, product]
+            ).then(r => r.rows[0] || null);
+          }
+          if (batchRow) {
+            await client.query(
+              `UPDATE branch_inventory_batches
+               SET quantity = quantity + $1, updated_at = NOW()
+               WHERE id = $2`,
+              [qty, batchRow.id]
+            );
+          } else {
+            // Create a new batch entry for the returned stock
+            const newBatchId = `BIB-RFND-${Date.now()}-${Math.random().toString(36).slice(2,6).toUpperCase()}`;
+            await client.query(
+              `INSERT INTO branch_inventory_batches
+                 (id, branch_id, product_name, batch_no, quantity, unit_cost, created_at, updated_at)
+               VALUES ($1,$2,$3,$4,$5,$6,NOW(),NOW())`,
+              [newBatchId, branchId, product, batchNo || null, qty, unitDp]
+            );
+          }
+
+          // ── 3. stock_movements — return_in for stockEngine / inventory_balances
+          await client.query(
+            `INSERT INTO stock_movements
+               (id, product_name, batch_no, expiry_date, quantity, movement_type,
+                source_location, source_location_type,
+                destination_location, destination_location_type,
+                reference_id, notes, status, unit_dp, movement_date, created_at, updated_at)
+             VALUES ($1,$2,$3,NULL,$4,'return_in',
+                     'customer',NULL,$5,'branch',
+                     $6,$7,'posted',$8,NOW(),NOW(),NOW())`,
+            [smId, product, batchNo || null, qty, branchId,
+             refund.id, `Refund return — ${refund.reason}`, unitDp]
+          );
+
+          // ── 4. branch_activity_transactions — reversal record ────────────────
+          // Posts a negative-value row so daily.js and summary.js totals reflect
+          // the deduction automatically when they sum grand_total / product_total_dp.
+          await client.query(
+            `INSERT INTO branch_activity_transactions
+               (id, branch_id, branch_name, client_name, client_type,
+                service_date, service_time, activity_type, workflow_source,
+                form_reference_id, product_total_dp, product_total_cp, total_qty,
+                grand_total, payment_status, payment_method, stock_impact,
+                stock_status, prescription_status, consultation_status,
+                reporting_status, captured_by, created_at, updated_at)
+             VALUES ($1,$2,$2,'Refund','walk_in',
+                     $3,$4,'refund_return','branch_portal',
+                     $5,$6,$7,$8,
+                     $9,'refunded','cash',true,
+                     'returned','none','none',
+                     'posted',$10,NOW(),NOW())`,
+            [batId, branchId, today,
+             now.toTimeString().slice(0, 8),
+             refund.id,
+             -dpTotal, -dpTotal, -qty,
+             -dpTotal,
+             approver]
+          );
+
+          // ── 5. branch_refund_requests — mark approved ────────────────────────
+          await client.query(
+            `UPDATE branch_refund_requests
+             SET status='approved', approved_by=$1, movement_id=$2, processed_at=NOW()
+             WHERE id=$3`,
+            [approver, movId, id]
+          );
+        });
+
+        // ── 6. Recompute inventory_balances (async, non-blocking) ────────────
+        recomputeLocationBalances('branch', branchId).catch(e =>
+          console.error('[refundApproval] inventory recompute error:', e.message)
         );
-        await query(
-          `UPDATE branch_refund_requests
-           SET status='approved', approved_by=$1, movement_id=$2, processed_at=NOW()
-           WHERE id=$3`,
-          [approved_by || 'Stock Manager', movId, id]
-        );
-        return res.json({ success: true, movement_id: movId,
-          message: `Refund approved — ${refund.quantity} × ${refund.product_name} returned to ${refund.branch_id} stock` });
+
+        // ── 7. Reverse distributor profit if any (best-effort) ───────────────
+        if (refund.sale_reference) {
+          query(
+            `UPDATE branch_distributor_profit
+             SET profit_amount = GREATEST(0, profit_amount - $1),
+                 status = CASE WHEN profit_amount <= $1 THEN 'reversed' ELSE status END,
+                 updated_at = NOW()
+             WHERE (sale_id = $2 OR sale_receipt = $2)
+               AND status != 'reversed'`,
+            [dpTotal, refund.sale_reference]
+          ).catch(e => console.error('[refundApproval] distributor profit reversal error:', e.message));
+        }
+
+        return res.json({
+          success: true,
+          movement_id: movId,
+          message: `Refund approved — ${qty} × ${product} returned to ${branchId} stock. All sales figures and stock balances have been adjusted.`,
+        });
       }
 
       if (action === 'reject') {
@@ -75,6 +196,7 @@ export default async function handler(req, res) {
 
       return res.status(400).json({ success: false, error: 'action must be approve or reject' });
     } catch (err) {
+      console.error('[stock/refund-requests] PATCH error:', err.message);
       return res.status(500).json({ success: false, error: err.message });
     }
   }
