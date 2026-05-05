@@ -247,10 +247,11 @@ export default async function handler(req, res) {
              )
            ))
       WHERE bat.activity_type = 'prescription_dispensing'
-      -- Only fully paid + fully dispensed prescriptions (payment received / all dispensed confirmed)
-      -- capture-rx.js sets workflow_source='dispense_draft' only when allDispensed AND allPaid.
-      -- dispense.js sets workflow_source='branch_portal' for every dispense click (incl. partial).
-      AND bat.workflow_source = 'dispense_draft'
+      -- Include every confirmed dispense event — partial OR full.
+      -- dispense.js sets workflow_source='branch_portal' with payment_status='paid' each time
+      -- Confirm Dispense is clicked (staff always selects payment method first).
+      -- capture-rx.js sets workflow_source='dispense_draft' as a summary; excluded here to avoid double-counting.
+      AND bat.workflow_source = 'branch_portal'
       AND (
         -- Member prescription: must have NB number
         (

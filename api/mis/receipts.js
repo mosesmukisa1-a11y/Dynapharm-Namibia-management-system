@@ -180,10 +180,11 @@ export default async function handler(req, res) {
     const rxParams = [];
     const rxWhere = [
       `bat.activity_type = 'prescription_dispensing'`,
-      // Only fully paid + fully dispensed prescriptions.
-      // capture-rx.js writes workflow_source='dispense_draft' ONLY when allDispensed AND allPaid.
-      // dispense.js writes workflow_source='branch_portal' for every dispense click (incl. partial).
-      `bat.workflow_source = 'dispense_draft'`,
+      // Include every confirmed dispense event — partial OR full.
+      // dispense.js writes workflow_source='branch_portal' with payment_status='paid' each time
+      // Confirm Dispense is clicked (staff always selects payment method first).
+      // capture-rx.js writes workflow_source='dispense_draft' as a summary; excluded here to avoid double-counting.
+      `bat.workflow_source = 'branch_portal'`,
     ];
 
     if (dateParam) {
