@@ -208,20 +208,14 @@ function buildSelectQuery(searchParams, scopedBranches, enforced) {
 
   const from = searchParams.get('from');
   if (from) {
-    const fromDate = parseDate(from);
-    if (fromDate) {
-      params.push(fromDate);
-      conditions.push(`sale_date >= $${params.length}`);
-    }
+    params.push(from);
+    conditions.push(`sale_date::date >= $${params.length}::date`);
   }
 
   const to = searchParams.get('to');
   if (to) {
-    const toDate = parseDate(to);
-    if (toDate) {
-      params.push(toDate);
-      conditions.push(`sale_date <= $${params.length}`);
-    }
+    params.push(to);
+    conditions.push(`sale_date::date <= $${params.length}::date`);
   }
 
   const search = searchParams.get('search');
