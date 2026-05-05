@@ -105,15 +105,33 @@ export default async function handler(req, res) {
             OR COALESCE((r.data->>'consultation_fee')::numeric, 0) > 0
           )
       `, rpParams),
-      // Campaign sales from inventory movements — per-product rows for detail map
+      // Campaign sales from inventory movements — per-product rows for detail map.
+      // Captures ALL three movement types that a campaign sale generates:
+      //   campaign_sale        — member paid item
+      //   walk_in_non_member_sale — non-member paid item (same saleId reference)
+      //   campaign_free_item   — free item (unit_price = NULL → 0 DP, stock still deducted)
+      // The subquery identifies campaign references via branch_walkin_sales.data->>'sale_type'.
       getMany(
         `SELECT reference, branch_id,
                 MIN(TRIM(product_name)) AS product_name,
-                SUM(ABS(quantity))                        AS total_qty,
+                type,
+                SUM(ABS(quantity))                            AS total_qty,
                 SUM(ABS(quantity) * COALESCE(unit_price, 0)) AS total_dp
          FROM branch_inventory_movements
-         WHERE ${movConds.join(' AND ')} AND type = 'campaign_sale'
-         GROUP BY reference, branch_id, LOWER(TRIM(product_name))`,
+         WHERE ${movConds.join(' AND ')}
+           AND (
+             type IN ('campaign_sale', 'campaign_free_item')
+             OR (
+               type = 'walk_in_non_member_sale'
+               AND reference IN (
+                 SELECT id FROM branch_walkin_sales
+                 WHERE DATE(sale_date) = $1::date
+                   ${normBranchId ? `AND LOWER(REPLACE(branch_id, ' ', '_')) = $2` : ''}
+                   AND data->>'sale_type' = 'campaign_sale'
+               )
+             )
+           )
+         GROUP BY reference, branch_id, LOWER(TRIM(product_name)), type`,
         movParams
       ),
       // Approved refund return movements — deducted from sales totals
@@ -248,17 +266,19 @@ export default async function handler(req, res) {
     const campaignProductMap = {};
     const campaignRefAgg = {};
     for (const c of campaignMovements) {
-      const ref = c.reference;
+      const ref    = c.reference;
+      const isFree = c.type === 'campaign_free_item';
       if (!campaignProductMap[ref]) campaignProductMap[ref] = [];
       campaignProductMap[ref].push({
         product_name: c.product_name,
-        batch_no: c.batch_no,
-        qty: Number(c.total_qty || 0),
+        qty:      Number(c.total_qty || 0),
         dp_value: parseFloat(Number(c.total_dp || 0).toFixed(2)),
+        is_free:  isFree,   // free items have 0 dp_value but stock was still deducted
       });
       if (!campaignRefAgg[ref]) campaignRefAgg[ref] = { reference: ref, branch_id: c.branch_id, total_qty: 0, total_dp: 0 };
       campaignRefAgg[ref].total_qty += Number(c.total_qty || 0);
-      campaignRefAgg[ref].total_dp  += Number(c.total_dp  || 0);
+      // Free items carry 0 DP — don't double-count; unit_price is NULL in DB so total_dp is 0 anyway
+      if (!isFree) campaignRefAgg[ref].total_dp += Number(c.total_dp || 0);
     }
 
     // Set of campaign sale reference IDs (= saleId) that exist in inventory movements.
