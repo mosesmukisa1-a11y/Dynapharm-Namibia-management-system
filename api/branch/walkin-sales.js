@@ -457,7 +457,10 @@ export default async function handler(req, res) {
       // Auto-record distributor profit for non-member sales
       if (record.customer_type !== 'member') {
         const meta = safeJsonParse(record.metadata, {});
-        const referralNb = meta.referralId || record.referral_nb || 'NB005676';
+        // Use referral NB number first — meta.referralId is the distributor's UUID (database id),
+        // NOT their NB number.  Putting it first would store a UUID as distributor_nb, making
+        // profits invisible in the distributor portal and the branch payout tab.
+        const referralNb = record.referral_nb || meta.referralId || 'NB005676';
         const referralName = meta.referralName || 'Dynapharm Namibia';
         const profitAmount = saleItems.reduce((s, i) => {
           const qty = Number(i.quantity || i.qty || 0);

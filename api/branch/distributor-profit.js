@@ -18,20 +18,67 @@ export default async function handler(req, res) {
   if (pathParts[0] === 'referred-sales' && req.method === 'GET') {
     const nb = url.searchParams.get('distributor_nb');
     if (!nb) return res.status(400).json({ error: 'distributor_nb required' });
+    const nbUpper = nb.toUpperCase();
+
+    // Two-part query to ensure complete coverage:
+    //
+    // Part A: query branch_distributor_profit as primary table using distributor_nb.
+    //   This is the canonical path — all new profits are written with the NB number as
+    //   distributor_nb.  LEFT JOIN branch_walkin_sales for item/customer details.
+    //
+    // Part B (UNION): fallback for historical records where a UUID was accidentally stored
+    //   as distributor_nb instead of the NB number.  Finds those sales via bws.referral_nb
+    //   and only includes rows NOT already returned by Part A (avoids duplicates).
+    //   UNION (not UNION ALL) deduplicates automatically on identical column sets.
     const rows = await getMany(
-      `SELECT bws.*,
-              bdp.id          AS profit_id,
-              bdp.profit_amount,
-              bdp.status      AS profit_status,
-              bdp.paid_at,
-              bdp.sale_receipt AS profit_receipt
+      `SELECT
+         COALESCE(bws.id, bdp.sale_id)         AS id,
+         COALESCE(bws.branch_id, bdp.branch_id) AS branch_id,
+         COALESCE(bws.sale_date, bdp.sale_date) AS sale_date,
+         bws.items,
+         bws.customer_name,
+         bws.customer_type,
+         bws.total,
+         bws.sale_number,
+         bws.referral_nb,
+         bdp.id           AS profit_id,
+         bdp.profit_amount,
+         bdp.status        AS profit_status,
+         bdp.paid_at,
+         bdp.sale_receipt  AS profit_receipt
+       FROM branch_distributor_profit bdp
+       LEFT JOIN branch_walkin_sales bws ON bws.id = bdp.sale_id
+       WHERE UPPER(bdp.distributor_nb) = $1
+
+       UNION
+
+       SELECT
+         bws.id,
+         bws.branch_id,
+         bws.sale_date,
+         bws.items,
+         bws.customer_name,
+         bws.customer_type,
+         bws.total,
+         bws.sale_number,
+         bws.referral_nb,
+         bdp.id           AS profit_id,
+         bdp.profit_amount,
+         bdp.status        AS profit_status,
+         bdp.paid_at,
+         bdp.sale_receipt  AS profit_receipt
        FROM branch_walkin_sales bws
        LEFT JOIN branch_distributor_profit bdp ON bdp.sale_id = bws.id
        WHERE UPPER(bws.referral_nb) = $1
          AND (bws.customer_type IS NULL OR bws.customer_type <> 'member')
-       ORDER BY bws.sale_date DESC
+         AND NOT EXISTS (
+           SELECT 1 FROM branch_distributor_profit p
+           WHERE p.sale_id = bws.id AND UPPER(p.distributor_nb) = $1
+         )
+
+       ORDER BY sale_date DESC NULLS LAST
        LIMIT 500`,
-      [nb.toUpperCase()]
+      [nbUpper]
     );
     return res.json({ success: true, sales: rows });
   }
