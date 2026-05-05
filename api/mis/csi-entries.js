@@ -26,6 +26,7 @@ export default async function handler(req, res) {
 
     const params = [];
 
+    // ── Walk-in tab condition ─────────────────────────────────────────────────
     // CSI tracks member/distributor activity:
     //   1. Member's own purchase: customer_type='member', distributor_nb = their own NB
     //   2. Non-member referral sale: referral_nb = the referring member's NB
@@ -60,32 +61,55 @@ export default async function handler(req, res) {
       where.push(`s.sale_date::date <= $${params.length}::date`);
     }
 
-    const whereClause = `WHERE ${where.join(' AND ')}`;
+    const walkinWhereClause = `WHERE ${where.join(' AND ')}`;
 
+    // ── Prescription tab date/branch params (same values, new param indices) ──
+    // We re-use the same $1..$N values from the walkin query by appending more.
+    const rxWhere = [];
+
+    if (branchParam && branchParam !== 'all' && branchParam !== '') {
+      // Re-use param already added (it's the first one if set)
+      const branchIdx = where.findIndex(w => w.includes('branch_id'));
+      if (branchIdx >= 0) {
+        // Find its param index by counting previous params
+        // Easiest: just push a new param for the prescription subquery
+        params.push(branchParam);
+        rxWhere.push(`bat.branch_id = $${params.length}`);
+      }
+    }
+
+    if (start) {
+      params.push(start.toISOString().slice(0, 10));
+      rxWhere.push(`bat.service_date::date >= $${params.length}::date`);
+    }
+
+    if (end) {
+      params.push(end.toISOString().slice(0, 10));
+      rxWhere.push(`bat.service_date::date <= $${params.length}::date`);
+    }
+
+    const rxWhereClause = rxWhere.length > 0 ? `AND ${rxWhere.join(' AND ')}` : '';
+
+    // ── Combined query: walk-in items UNION prescription items ───────────────
     const sql = `
+      -- ── Part 1: Walk-in tab sales (branch_walkin_sales) ──────────────────
       SELECT
         s.branch_id                                                              AS branch_name,
-        -- NB: for member's own purchase use their distributor_nb;
-        --     for referral sale use referral_nb (the referring member's NB)
         CASE
           WHEN s.customer_type = 'member' THEN TRIM(s.distributor_nb)
           ELSE TRIM(s.referral_nb)
         END                                                                      AS nb_number,
-        -- Name: for member purchases the customer IS the member;
-        --       for referral sales look up the referring member's name from distributors
         CASE
           WHEN s.customer_type = 'member' THEN s.customer_name
           ELSE COALESCE(d.distributor_name, TRIM(s.referral_nb))
         END                                                                      AS name,
         s.sale_number                                                            AS receipt_number,
         s.sale_date::date                                                        AS date,
-        -- Product code: from JSONB first, fall back to product_prices
         COALESCE(
           NULLIF(TRIM(item->>'sku'),  ''),
           NULLIF(TRIM(item->>'code'), ''),
           ''
         )                                                                        AS product_code,
-        -- Product description: prefer JSONB, fall back to product_prices description
         COALESCE(
           NULLIF(TRIM(item->>'product_name'), ''),
           NULLIF(TRIM(item->>'name'),         ''),
@@ -93,7 +117,6 @@ export default async function handler(req, res) {
           pp.description,
           'Unknown'
         )                                                                        AS product_description,
-        -- DP: use item dp if non-zero, otherwise look up from product_prices
         ROUND(COALESCE(
           CASE WHEN COALESCE((item->>'dp')::numeric,     0) > 0 THEN (item->>'dp')::numeric     END,
           CASE WHEN COALESCE((item->>'dpPrice')::numeric,0) > 0 THEN (item->>'dpPrice')::numeric END,
@@ -102,19 +125,16 @@ export default async function handler(req, res) {
           pp.dp,
           0
         ), 2)                                                                    AS dp,
-        -- BV
         ROUND(COALESCE(
           CASE WHEN COALESCE((item->>'bv')::numeric, 0) > 0 THEN (item->>'bv')::numeric END,
           pp.bv,
           0
         ), 2)                                                                    AS bv,
-        -- QTY
         COALESCE(
           (item->>'quantity')::integer,
           (item->>'qty')::integer,
           1
         )                                                                        AS qty,
-        -- Total DP
         ROUND(
           COALESCE(
             CASE WHEN COALESCE((item->>'dp')::numeric, 0) > 0 THEN (item->>'dp')::numeric END,
@@ -126,7 +146,6 @@ export default async function handler(req, res) {
           )
           * COALESCE((item->>'quantity')::numeric, (item->>'qty')::numeric, 1),
         2)                                                                       AS total_dp,
-        -- Total BV
         ROUND(
           COALESCE(
             CASE WHEN COALESCE((item->>'bv')::numeric, 0) > 0 THEN (item->>'bv')::numeric END,
@@ -135,8 +154,8 @@ export default async function handler(req, res) {
           )
           * COALESCE((item->>'quantity')::numeric, (item->>'qty')::numeric, 1),
         2)                                                                       AS total_bv,
-        -- Free item flag from campaign sales
-        COALESCE((item->>'is_free')::boolean, false)                             AS is_free
+        COALESCE((item->>'is_free')::boolean, false)                             AS is_free,
+        'walkin'                                                                  AS source
       FROM branch_walkin_sales s
       CROSS JOIN LATERAL jsonb_array_elements(
           CASE
@@ -152,11 +171,9 @@ export default async function handler(req, res) {
             NULLIF(TRIM(item->>'description'),  '')
           )
         ))
-      -- For referral sales, look up the referring member's name by their NB number
       LEFT JOIN distributors d
         ON s.customer_type IS DISTINCT FROM 'member'
        AND TRIM(UPPER(d.distributor_code)) = TRIM(UPPER(s.referral_nb))
-      -- Exclude line items that have been refunded (approved refund for this sale + product)
       WHERE NOT EXISTS (
         SELECT 1 FROM branch_refund_requests rr
         WHERE rr.status = 'approved'
@@ -170,7 +187,83 @@ export default async function handler(req, res) {
           ))
       )
       AND (${where.join(' AND ')})
-      ORDER BY s.sale_date DESC, s.id DESC
+
+      UNION ALL
+
+      -- ── Part 2: Prescription tab dispenses (branch_activity_transactions + branch_inventory_movements) ──
+      SELECT
+        bat.branch_id                                                            AS branch_name,
+        -- NB: prefer explicitly stored nb, fall back to prescription report data JSON
+        CASE
+          WHEN bat.client_type = 'member'
+            OR COALESCE(r.data->>'membership_status', '') = 'member'
+          THEN COALESCE(
+            NULLIF(TRIM(bat.nb_number), ''),
+            NULLIF(TRIM(r.data->>'nb_number'), '')
+          )
+          ELSE COALESCE(
+            NULLIF(TRIM(bat.referral_nb), ''),
+            NULLIF(TRIM(r.data->>'referral_nb'), '')
+          )
+        END                                                                      AS nb_number,
+        CASE
+          WHEN bat.client_type = 'member'
+            OR COALESCE(r.data->>'membership_status', '') = 'member'
+          THEN bat.client_name
+          ELSE COALESCE(
+            d.distributor_name,
+            NULLIF(TRIM(bat.referral_nb), ''),
+            NULLIF(TRIM(r.data->>'referral_nb'), ''),
+            bat.client_name
+          )
+        END                                                                      AS name,
+        'RX-' || bat.form_reference_id                                          AS receipt_number,
+        bat.service_date::date                                                   AS date,
+        ''                                                                       AS product_code,
+        bim.product_name                                                         AS product_description,
+        ROUND(COALESCE(NULLIF(bim.unit_price, 0), pp.dp, 0), 2)                 AS dp,
+        ROUND(COALESCE(pp.bv, 0), 2)                                            AS bv,
+        bim.quantity                                                             AS qty,
+        ROUND(COALESCE(NULLIF(bim.unit_price, 0), pp.dp, 0) * bim.quantity, 2) AS total_dp,
+        ROUND(COALESCE(pp.bv, 0) * bim.quantity, 2)                            AS total_bv,
+        false                                                                    AS is_free,
+        'prescription'                                                            AS source
+      FROM branch_activity_transactions bat
+      JOIN branch_inventory_movements bim
+        ON bim.reference = bat.form_reference_id
+       AND bim.type = 'prescription_dispense'
+       AND bim.branch_id = bat.branch_id
+      LEFT JOIN reports r
+        ON r.id = bat.form_reference_id
+      LEFT JOIN product_prices pp
+        ON LOWER(TRIM(pp.description)) = LOWER(TRIM(bim.product_name))
+      LEFT JOIN distributors d
+        ON bat.client_type IS DISTINCT FROM 'member'
+       AND COALESCE(r.data->>'membership_status', '') IS DISTINCT FROM 'member'
+       AND TRIM(UPPER(d.distributor_code)) = TRIM(UPPER(
+             COALESCE(
+               NULLIF(TRIM(bat.referral_nb), ''),
+               NULLIF(TRIM(r.data->>'referral_nb'), '')
+             )
+           ))
+      WHERE bat.activity_type = 'prescription_dispensing'
+      AND (
+        -- Member prescription: must have NB number
+        (
+          (bat.client_type = 'member' OR COALESCE(r.data->>'membership_status','') = 'member')
+          AND COALESCE(NULLIF(TRIM(bat.nb_number),''), NULLIF(TRIM(r.data->>'nb_number'),'')) IS NOT NULL
+        )
+        OR
+        -- Non-member referral prescription: must have referral NB
+        (
+          bat.client_type IS DISTINCT FROM 'member'
+          AND COALESCE(r.data->>'membership_status','') IS DISTINCT FROM 'member'
+          AND COALESCE(NULLIF(TRIM(bat.referral_nb),''), NULLIF(TRIM(r.data->>'referral_nb'),'')) IS NOT NULL
+        )
+      )
+      ${rxWhereClause}
+
+      ORDER BY date DESC, receipt_number DESC
       LIMIT 5000
     `;
 

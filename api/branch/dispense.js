@@ -21,7 +21,7 @@ export default async function handler(req, res) {
   try {
     if (req.method === 'POST') {
       const body = await parseJsonBody(req);
-      const { reportId, branchId, items, createdBy, customerType, paymentMethod, patientName, consultationFee, consultMode } = body;
+      const { reportId, branchId, items, createdBy, customerType, paymentMethod, patientName, consultationFee, consultMode, nbNumber, referralNb } = body;
 
       if (!reportId || !branchId || !Array.isArray(items) || items.length === 0) {
         return res.status(400).json({ success: false, error: 'reportId, branchId, and items are required' });
@@ -160,6 +160,8 @@ export default async function handler(req, res) {
           branch_name: branchId,
           client_name: patientName || 'Patient',
           client_type: customerType || 'patient',
+          nb_number: customerType === 'member' ? (nbNumber || null) : null,
+          referral_nb: customerType !== 'member' ? (referralNb || null) : null,
           service_date: serviceDate,
           service_time: serviceTime,
           activity_type: 'prescription_dispensing',
@@ -191,6 +193,8 @@ export default async function handler(req, res) {
             branch_name: branchId,
             client_name: patientName || 'Patient',
             client_type: customerType || 'patient',
+            nb_number: customerType === 'member' ? (nbNumber || null) : null,
+            referral_nb: customerType !== 'member' ? (referralNb || null) : null,
             service_date: serviceDate,
             service_time: serviceTime,
             activity_type: 'consultation',

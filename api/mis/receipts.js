@@ -61,6 +61,7 @@ function normalizeReceipt(row) {
     date: saleDateObj ? saleDateObj.toISOString().slice(0, 10) : '',
     timestamp: saleDateObj ? saleDateObj.toISOString() : new Date().toISOString(),
     createdAt: row.created_at,
+    source: row.source || 'walkin',
     items: items.map((item) => ({
       productName: item.productName || item.name || item.product || '',
       productCode: item.productCode || item.sku || '',
@@ -125,56 +126,137 @@ export default async function handler(req, res) {
     const branchParam = searchParams.get('branch');
     const qParam = searchParams.get('q');
 
-    const params = [];
-    const where = [];
+    // ── Walk-in sales query ───────────────────────────────────────────────────
+    const walkinParams = [];
+    const walkinWhere = [];
 
     if (dateParam) {
       const parsed = parseDate(dateParam);
       if (!parsed) {
         return res.status(400).json({ success: false, error: 'Invalid date parameter' });
       }
-      where.push(`sale_date::date = $${params.length + 1}`);
-      params.push(parsed.toISOString().slice(0, 10));
+      walkinWhere.push(`sale_date::date = $${walkinParams.length + 1}`);
+      walkinParams.push(parsed.toISOString().slice(0, 10));
     } else {
       const start = parseDate(startParam);
       const end = parseDate(endParam);
       if (start && end) {
-        where.push(`sale_date BETWEEN $${params.length + 1} AND $${params.length + 2}`);
-        params.push(start.toISOString(), end.toISOString());
+        walkinWhere.push(`sale_date BETWEEN $${walkinParams.length + 1} AND $${walkinParams.length + 2}`);
+        walkinParams.push(start.toISOString(), end.toISOString());
       } else if (start) {
-        where.push(`sale_date >= $${params.length + 1}`);
-        params.push(start.toISOString());
+        walkinWhere.push(`sale_date >= $${walkinParams.length + 1}`);
+        walkinParams.push(start.toISOString());
       } else if (end) {
-        where.push(`sale_date <= $${params.length + 1}`);
-        params.push(end.toISOString());
+        walkinWhere.push(`sale_date <= $${walkinParams.length + 1}`);
+        walkinParams.push(end.toISOString());
       } else {
-        // default: last 7 days
-        where.push(`sale_date >= NOW() - INTERVAL '7 days'`);
+        walkinWhere.push(`sale_date >= NOW() - INTERVAL '7 days'`);
       }
     }
 
     if (branchParam && branchParam !== 'all') {
-      where.push(`branch_id = $${params.length + 1}`);
-      params.push(branchParam);
+      walkinWhere.push(`branch_id = $${walkinParams.length + 1}`);
+      walkinParams.push(branchParam);
     }
 
     if (qParam && qParam.trim()) {
       const like = `%${qParam.trim()}%`;
-      params.push(like);
-      where.push(`(sale_number ILIKE $${params.length} OR customer_name ILIKE $${params.length} OR customer_phone ILIKE $${params.length})`);
+      walkinParams.push(like);
+      walkinWhere.push(`(sale_number ILIKE $${walkinParams.length} OR customer_name ILIKE $${walkinParams.length} OR customer_phone ILIKE $${walkinParams.length})`);
     }
 
-    let queryText = `
-      SELECT *
+    let walkinQuery = `
+      SELECT id, sale_number, branch_id, customer_name, customer_phone, customer_email,
+             customer_type, payment_method, total, subtotal, discount, tax, total_bv,
+             sale_date, created_at, status, items, data, 'walkin' AS source
       FROM branch_walkin_sales
     `;
-    if (where.length > 0) {
-      queryText += ` WHERE ${where.join(' AND ')}`;
+    if (walkinWhere.length > 0) {
+      walkinQuery += ` WHERE ${walkinWhere.join(' AND ')}`;
     }
-    queryText += ` ORDER BY sale_date DESC LIMIT 1000`;
+    walkinQuery += ` ORDER BY sale_date DESC LIMIT 1000`;
 
-    const rows = await getMany(queryText, params);
-    const receipts = rows.map(normalizeReceipt).filter(Boolean);
+    // ── Prescription dispensing query ─────────────────────────────────────────
+    const rxParams = [];
+    const rxWhere = [`bat.activity_type = 'prescription_dispensing'`];
+
+    if (dateParam) {
+      const parsed = parseDate(dateParam);
+      if (parsed) {
+        rxParams.push(parsed.toISOString().slice(0, 10));
+        rxWhere.push(`bat.service_date::date = $${rxParams.length}`);
+      }
+    } else {
+      const start = parseDate(startParam);
+      const end = parseDate(endParam);
+      if (start && end) {
+        rxParams.push(start.toISOString(), end.toISOString());
+        rxWhere.push(`bat.service_date BETWEEN $${rxParams.length - 1} AND $${rxParams.length}`);
+      } else if (start) {
+        rxParams.push(start.toISOString());
+        rxWhere.push(`bat.service_date >= $${rxParams.length}`);
+      } else if (end) {
+        rxParams.push(end.toISOString());
+        rxWhere.push(`bat.service_date <= $${rxParams.length}`);
+      } else {
+        rxWhere.push(`bat.service_date >= NOW() - INTERVAL '7 days'`);
+      }
+    }
+
+    if (branchParam && branchParam !== 'all') {
+      rxParams.push(branchParam);
+      rxWhere.push(`bat.branch_id = $${rxParams.length}`);
+    }
+
+    if (qParam && qParam.trim()) {
+      const like = `%${qParam.trim()}%`;
+      rxParams.push(like);
+      rxWhere.push(`(bat.form_reference_id ILIKE $${rxParams.length} OR bat.client_name ILIKE $${rxParams.length})`);
+    }
+
+    // One row per prescription (deduplicate by form_reference_id — one activity record per dispense event)
+    const rxQuery = `
+      SELECT
+        bat.id                                                   AS id,
+        'RX-' || bat.form_reference_id                          AS sale_number,
+        bat.branch_id                                            AS branch_id,
+        bat.client_name                                          AS customer_name,
+        bat.client_phone                                         AS customer_phone,
+        NULL::text                                               AS customer_email,
+        'prescription'                                           AS customer_type,
+        bat.payment_method                                       AS payment_method,
+        bat.grand_total                                          AS total,
+        bat.product_total_dp                                     AS subtotal,
+        0                                                        AS discount,
+        0                                                        AS tax,
+        0                                                        AS total_bv,
+        bat.service_date                                         AS sale_date,
+        bat.created_at                                           AS created_at,
+        'completed'                                              AS status,
+        '[]'::text                                               AS items,
+        NULL                                                     AS data,
+        'prescription'                                           AS source
+      FROM branch_activity_transactions bat
+      WHERE ${rxWhere.join(' AND ')}
+      ORDER BY bat.service_date DESC
+      LIMIT 1000
+    `;
+
+    const [walkinRows, rxRows] = await Promise.all([
+      getMany(walkinQuery, walkinParams),
+      getMany(rxQuery, rxParams),
+    ]);
+
+    const allRows = [...walkinRows, ...rxRows];
+
+    // Sort combined results by sale_date descending
+    allRows.sort((a, b) => {
+      const da = new Date(a.sale_date || a.created_at || 0);
+      const db = new Date(b.sale_date || b.created_at || 0);
+      return db - da;
+    });
+
+    const receipts = allRows.slice(0, 1000).map(normalizeReceipt).filter(Boolean);
     const totals = summarizeReceipts(receipts);
 
     return res.status(200).json({
@@ -190,5 +272,3 @@ export default async function handler(req, res) {
     });
   }
 }
-
-

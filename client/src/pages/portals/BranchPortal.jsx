@@ -2130,6 +2130,8 @@ function PrescriptionsTab() {
           consultationFee: consultFee,
           capturedBy: user?.full_name || user?.username || '',
           serviceDate: (report.date || report.created_at || '').slice(0, 10),
+          nbNumber: isMember ? (report.nb_number || null) : null,
+          referralNb: !isMember ? (report.referral_nb || null) : null,
         }).catch(e => console.warn('[captureRx] skipped:', e.message));
       }
       setAlert({ type: 'success', message: allPaid ? `Prescription completed & revenue recorded for ${report.id}` : `Draft saved for ${report.id}` });
@@ -2258,6 +2260,8 @@ function PrescriptionsTab() {
         patientName: report.client_name || report.full_name || report.patient_name || 'Patient',
         consultationFee: dispensePreview.consultFee?.total || 0,
         consultMode: getConsultMode(report.id, isMember),
+        nbNumber: isMember ? (report.nb_number || null) : null,
+        referralNb: !isMember ? (report.referral_nb || null) : null,
       });
 
       const pendingNonPkgNames = new Set(pendingItems.filter(i => !i.isComponent && !i.isPackage).map(i => i.name));

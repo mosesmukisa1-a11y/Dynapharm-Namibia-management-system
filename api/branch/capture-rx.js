@@ -43,6 +43,8 @@ export default async function handler(req, res) {
     capturedBy = '',
     serviceDate,
     paymentMethod = 'cash',
+    nbNumber = null,
+    referralNb = null,
   } = req.body || {};
 
   if (!reportId || !branchId) {
@@ -73,24 +75,29 @@ export default async function handler(req, res) {
     const date = serviceDate || now.slice(0, 10);
     const time = now.slice(11, 16);
 
+    const isMember = customerType === 'member';
     const rxId = generateBatId();
     await query(
       `INSERT INTO branch_activity_transactions
          (id, branch_id, branch_name, activity_type, workflow_source, form_reference_id,
           product_total_dp, product_total_cp, total_qty, consultation_fee, grand_total,
           payment_status, payment_method, stock_impact, stock_status, client_type,
+          nb_number, referral_nb,
           prescription_status, consultation_status, reporting_status,
           captured_by, service_date, service_time, created_at, updated_at)
        VALUES
          ($1,$2,$3,'prescription_dispensing','dispense_draft',$4,
           $5,$5,$6,$7,$8,
           'paid',$9,false,'no_change',$10,
+          $11,$12,
           'completed','completed','captured',
-          $11,$12,$13,$14,$14)`,
+          $13,$14,$15,$16,$16)`,
       [
         rxId, branchId, branchName, reportId,
         productTotalDp, totalQty, consultFee, grandTotal,
         paymentMethod, customerType || 'referred',
+        isMember ? (nbNumber || null) : null,
+        !isMember ? (referralNb || null) : null,
         capturedBy, date, time, now,
       ]
     );
@@ -102,18 +109,22 @@ export default async function handler(req, res) {
            (id, branch_id, branch_name, activity_type, workflow_source, form_reference_id,
             consultation_fee, grand_total, payment_status, payment_method,
             stock_impact, stock_status, client_type,
+            nb_number, referral_nb,
             prescription_status, consultation_status, reporting_status,
             captured_by, service_date, service_time, created_at, updated_at)
          VALUES
            ($1,$2,$3,'consultation','dispense_draft',$4,
             $5,$5,'paid',$6,
             false,'no_change',$7,
+            $8,$9,
             'n/a','completed','captured',
-            $8,$9,$10,$11,$11)`,
+            $10,$11,$12,$13,$13)`,
       [
         consultId, branchId, branchName, reportId,
         consultFee, paymentMethod,
         customerType || 'referred',
+        isMember ? (nbNumber || null) : null,
+        !isMember ? (referralNb || null) : null,
         capturedBy, date, time, now,
       ]
       );
