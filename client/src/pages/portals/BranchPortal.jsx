@@ -2438,6 +2438,8 @@ function PrescriptionsTab() {
       consultFeeLabel: consultFee.label,
       consultMode: consultMode || (isMember ? 'inclusive' : 'separate'),
       date: report.created_at || report.date,
+      referralName: !isMember ? (report.referral_name || null) : null,
+      referralNB:   !isMember ? (report.referral_nb   || null) : null,
     }));
   };
 
@@ -2463,6 +2465,8 @@ function PrescriptionsTab() {
       consultFeeLabel: consultFee.label,
       consultMode: consultMode || (membershipStatus === 'member' ? 'inclusive' : 'separate'),
       date: report.created_at || report.date,
+      referralName: membershipStatus !== 'member' ? (report.referral_name || null) : null,
+      referralNB:   membershipStatus !== 'member' ? (report.referral_nb   || null) : null,
     }));
     w.document.close();
   };

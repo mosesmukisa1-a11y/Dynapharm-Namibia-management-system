@@ -292,6 +292,7 @@ export function generateReceiptHTML({
 export function generatePrescriptionQuoteHTML({
   rxId, branch, patientName, membershipStatus, consultantName,
   items, consultFeeTotal, consultFeeLabel, consultMode, date,
+  referralName, referralNB,
 }) {
   const branchInfo = BRANCH_DETAILS.find(b => b.name === branch) || {};
   const branchDisplay = branchInfo.name || branch || '';
@@ -326,6 +327,7 @@ export function generatePrescriptionQuoteHTML({
           <tr><td style="color:#888;">Patient:</td><td style="text-align:right;font-weight:bold;">${patientName || '—'}</td></tr>
           <tr><td style="color:#888;">Type:</td><td style="text-align:right;font-weight:bold;">${isMember ? '🏅 Member (DP Price)' : '👤 Non-Member (CP Price)'}</td></tr>
           ${consultantName ? `<tr><td style="color:#888;">Consultant:</td><td style="text-align:right;">${consultantName}</td></tr>` : ''}
+          ${!isMember && referralName ? `<tr><td style="color:#888;">Referred by:</td><td style="text-align:right;font-weight:bold;color:#e67e22;">${referralName}${referralNB ? ` (${referralNB})` : ''}</td></tr>` : ''}
         </table>
       </div>
       <div style="padding:8px 0;">
@@ -549,6 +551,7 @@ ${consultNote}
 export function generatePrescriptionQuotePDFHTML({
   rxId, branch, patientName, membershipStatus, consultantName,
   items, consultFeeTotal, consultFeeLabel, consultMode, date,
+  referralName, referralNB,
 }) {
   const branchInfo = BRANCH_DETAILS.find(b => b.name === branch) || {};
   const branchDisplay = branchInfo.name || branch || '';
@@ -612,6 +615,7 @@ export function generatePrescriptionQuotePDFHTML({
   <div><div class="field">Date</div><div class="value">${dateStr}</div></div>
   ${consultantName ? `<div><div class="field">Consultant</div><div class="value">${consultantName}</div></div>` : ''}
   <div><div class="field">Branch</div><div class="value">${branchDisplay || '—'}</div></div>
+  ${!isMember && referralName ? `<div style="grid-column:1/-1"><div class="field">Referred by (Distributor)</div><div class="value" style="color:#e67e22;">${referralName}${referralNB ? ` · ${referralNB}` : ''}</div></div>` : ''}
 </div>
 <table>
   <thead><tr>
