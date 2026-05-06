@@ -118,11 +118,11 @@ export default async function handler(req, res) {
           'Unknown'
         )                                                                        AS product_description,
         ROUND(COALESCE(
+          NULLIF(pp.dp, 0),
           CASE WHEN COALESCE((item->>'dp')::numeric,     0) > 0 THEN (item->>'dp')::numeric     END,
           CASE WHEN COALESCE((item->>'dpPrice')::numeric,0) > 0 THEN (item->>'dpPrice')::numeric END,
           CASE WHEN COALESCE((item->>'unit_price')::numeric, 0) > 0 AND s.customer_type = 'member'
                THEN (item->>'unit_price')::numeric END,
-          pp.dp,
           0
         ), 2)                                                                    AS dp,
         ROUND(COALESCE(
@@ -137,11 +137,11 @@ export default async function handler(req, res) {
         )                                                                        AS qty,
         ROUND(
           COALESCE(
+            NULLIF(pp.dp, 0),
             CASE WHEN COALESCE((item->>'dp')::numeric, 0) > 0 THEN (item->>'dp')::numeric END,
             CASE WHEN COALESCE((item->>'dpPrice')::numeric, 0) > 0 THEN (item->>'dpPrice')::numeric END,
             CASE WHEN COALESCE((item->>'unit_price')::numeric, 0) > 0 AND s.customer_type = 'member'
                  THEN (item->>'unit_price')::numeric END,
-            pp.dp,
             0
           )
           * COALESCE((item->>'quantity')::numeric, (item->>'qty')::numeric, 1),
@@ -221,10 +221,10 @@ export default async function handler(req, res) {
         bat.service_date::date                                                   AS date,
         ''                                                                       AS product_code,
         bim.product_name                                                         AS product_description,
-        ROUND(COALESCE(NULLIF(bim.unit_price, 0), pp.dp, 0), 2)                 AS dp,
+        ROUND(COALESCE(NULLIF(pp.dp, 0), NULLIF(bim.unit_price, 0), 0), 2)      AS dp,
         ROUND(COALESCE(pp.bv, 0), 2)                                            AS bv,
         bim.quantity                                                             AS qty,
-        ROUND(COALESCE(NULLIF(bim.unit_price, 0), pp.dp, 0) * bim.quantity, 2) AS total_dp,
+        ROUND(COALESCE(NULLIF(pp.dp, 0), NULLIF(bim.unit_price, 0), 0) * bim.quantity, 2) AS total_dp,
         ROUND(COALESCE(pp.bv, 0) * bim.quantity, 2)                            AS total_bv,
         false                                                                    AS is_free,
         'prescription'                                                            AS source

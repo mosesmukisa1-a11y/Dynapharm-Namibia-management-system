@@ -192,7 +192,7 @@ export async function getLocationMovements(locationType, locationId, start, end)
  * Sales revenue from branch_walkin_sales (completed sales only).
  */
 export async function getBranchSalesRevenue(branchId, start, end) {
-  const [rows, refundRows, rxRows] = await Promise.all([
+  const [rows, refundRows, rxRows, priceListRows] = await Promise.all([
     getMany(
       `SELECT customer_type, payment_method, total, subtotal, items
        FROM branch_walkin_sales
@@ -223,7 +223,16 @@ export async function getBranchSalesRevenue(branchId, start, end) {
          AND service_date <= $3::date`,
       [branchId, start, end]
     ),
+    // GM price list — authoritative DP source
+    getMany(`SELECT description, dp FROM product_prices`),
   ]);
+
+  // Build price-map from GM price list
+  const priceMapBSR = {};
+  for (const p of priceListRows) {
+    if (p.description) priceMapBSR[p.description.toLowerCase().trim()] = Number(p.dp || 0);
+  }
+  const lookupDpBSR = (name) => (name ? (priceMapBSR[name.toLowerCase().trim()] || 0) : 0);
 
   const refundTotal = Number(refundRows[0]?.refund_total || 0);
   let walkinSales = 0, memberSales = 0, nonMemberSales = 0, onlineSales = 0;
@@ -237,7 +246,11 @@ export async function getBranchSalesRevenue(branchId, start, end) {
     if (ct.includes('non') || (!ct.includes('member') && !ct.includes('online'))) {
       let items = [];
       try { items = typeof r.items === 'string' ? JSON.parse(r.items) : (Array.isArray(r.items) ? r.items : []); } catch {}
-      amt = items.reduce((s, i) => s + Number(i.dpPrice || i.dp || i.unit_price || 0) * Number(i.quantity || i.qty || 1), 0);
+      amt = items.reduce((s, i) => {
+        const nm = (i.product_name || i.name || i.description || '').trim();
+        const dp = lookupDpBSR(nm) || Number(i.dpPrice || i.dp || i.unit_price || 0);
+        return s + dp * Number(i.quantity || i.qty || 1);
+      }, 0);
     } else {
       // Member and online sales: total = DP (members pay at DP)
       amt = Number(r.total || r.subtotal || 0);
@@ -370,7 +383,7 @@ export async function getCompanyStockSummary() {
  * All sales across the company (all branches).
  */
 export async function getAllBranchesSalesRevenue(start, end) {
-  const [rows, refundRow, rxRows] = await Promise.all([
+  const [rows, refundRow, rxRows, priceListRows] = await Promise.all([
     getMany(
       `SELECT branch_id, customer_type, payment_method, total, items
        FROM branch_walkin_sales
@@ -400,7 +413,16 @@ export async function getAllBranchesSalesRevenue(start, end) {
          AND service_date <= $2::date`,
       [start, end]
     ),
+    // GM price list — authoritative DP source
+    getMany(`SELECT description, dp FROM product_prices`),
   ]);
+
+  // Build price-map from GM price list
+  const priceMapABSR = {};
+  for (const p of priceListRows) {
+    if (p.description) priceMapABSR[p.description.toLowerCase().trim()] = Number(p.dp || 0);
+  }
+  const lookupDpABSR = (name) => (name ? (priceMapABSR[name.toLowerCase().trim()] || 0) : 0);
 
   const refundTotal = Number(refundRow?.refund_total || 0);
   let walkinSales = 0, memberSales = 0, nonMemberSales = 0, onlineSales = 0;
@@ -413,7 +435,11 @@ export async function getAllBranchesSalesRevenue(start, end) {
     if (ct.includes('non') || (!ct.includes('member') && !ct.includes('online'))) {
       let items = [];
       try { items = typeof r.items === 'string' ? JSON.parse(r.items) : (Array.isArray(r.items) ? r.items : []); } catch {}
-      amt = items.reduce((s, i) => s + Number(i.dpPrice || i.dp || i.unit_price || 0) * Number(i.quantity || i.qty || 1), 0);
+      amt = items.reduce((s, i) => {
+        const nm = (i.product_name || i.name || i.description || '').trim();
+        const dp = lookupDpABSR(nm) || Number(i.dpPrice || i.dp || i.unit_price || 0);
+        return s + dp * Number(i.quantity || i.qty || 1);
+      }, 0);
     } else {
       // Member and online sales: total = DP (members pay at DP)
       amt = Number(r.total || 0);

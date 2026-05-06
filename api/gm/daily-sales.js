@@ -26,7 +26,7 @@ export default async function handler(req, res) {
     targetDate = nbt.toISOString().slice(0, 10);
   }
 
-  const [walkinRows, refundRows, rxRows] = await Promise.all([
+  const [walkinRows, refundRows, rxRows, priceListRows] = await Promise.all([
     // Walk-in sales — fetch items JSON to compute DP for non-members
     getMany(
       `SELECT branch_id, customer_type, payment_method, total, subtotal, items
@@ -53,7 +53,16 @@ export default async function handler(req, res) {
          AND service_date::date = $1::date`,
       [targetDate]
     ),
+    // GM price list — authoritative DP source
+    getMany(`SELECT description, dp FROM product_prices`),
   ]);
+
+  // Build price-map from GM price list — authoritative DP for walk-in item calculations
+  const priceMap = {};
+  for (const p of priceListRows) {
+    if (p.description) priceMap[p.description.toLowerCase().trim()] = Number(p.dp || 0);
+  }
+  const lookupDp = (name) => (name ? (priceMap[name.toLowerCase().trim()] || 0) : 0);
 
   // Build refund deduction map per branch
   const refundMap = new Map(refundRows.map(r => [r.branch_id, Number(r.refund_total || 0)]));
@@ -87,7 +96,11 @@ export default async function handler(req, res) {
     if (ct.includes('non') || (!ct.includes('member') && !ct.includes('online'))) {
       let items = [];
       try { items = typeof r.items === 'string' ? JSON.parse(r.items) : (Array.isArray(r.items) ? r.items : []); } catch {}
-      amt = items.reduce((s, i) => s + Number(i.dpPrice || i.dp || i.unit_price || 0) * Number(i.quantity || i.qty || 1), 0);
+      amt = items.reduce((s, i) => {
+        const nm = (i.product_name || i.name || i.description || '').trim();
+        const dp = lookupDp(nm) || Number(i.dpPrice || i.dp || i.unit_price || 0);
+        return s + dp * Number(i.quantity || i.qty || 1);
+      }, 0);
     } else {
       // Member / online: pays at DP, total = DP
       amt = Number(r.total || r.subtotal || 0);

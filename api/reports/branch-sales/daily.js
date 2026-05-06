@@ -35,7 +35,7 @@ export default async function handler(req, res) {
       ? ` AND LOWER(REPLACE(COALESCE(NULLIF(TRIM(r.branch),''),'townshop'),' ','_')) = $${rpParams.push(normBranchId) && rpParams.length}`
       : '';
 
-    const [txRows, visitRows, rxProductMovements, walkinSalesRows, supplementReports, campaignMovements, refundMovements] = await Promise.all([
+    const [txRows, visitRows, rxProductMovements, walkinSalesRows, supplementReports, campaignMovements, refundMovements, priceListRows] = await Promise.all([
       getMany(
         // Use alias `bat` so the NOT EXISTS self-join can correlate on form_reference_id.
         // Two dispense_draft exclusion rules:
@@ -68,8 +68,9 @@ export default async function handler(req, res) {
         `SELECT reference as form_reference_id,
                 MIN(TRIM(product_name)) AS product_name,
                 SUM(ABS(quantity)) as qty,
-                SUM(ABS(quantity) * COALESCE(unit_price, 0)) as dp_value
+                SUM(ABS(quantity) * COALESCE(NULLIF(pp.dp, 0), NULLIF(unit_price, 0), 0)) as dp_value
          FROM branch_inventory_movements
+         LEFT JOIN product_prices pp ON LOWER(TRIM(pp.description)) = LOWER(TRIM(product_name))
          WHERE ${movConds.join(' AND ')} AND type IN ('prescription_dispense','dispense','field_use')
          GROUP BY reference, LOWER(TRIM(product_name))`,
         movParams
@@ -140,8 +141,12 @@ export default async function handler(req, res) {
                 MIN(TRIM(product_name)) AS product_name,
                 type,
                 SUM(ABS(quantity))                            AS total_qty,
-                SUM(ABS(quantity) * COALESCE(unit_price, 0)) AS total_dp
+                SUM(ABS(quantity) *
+                  CASE WHEN type = 'campaign_free_item' THEN 0
+                       ELSE COALESCE(NULLIF(pp.dp, 0), NULLIF(unit_price, 0), 0)
+                  END)                                        AS total_dp
          FROM branch_inventory_movements
+         LEFT JOIN product_prices pp ON LOWER(TRIM(pp.description)) = LOWER(TRIM(product_name))
          WHERE ${movConds.join(' AND ')}
            AND (
              type IN ('campaign_sale', 'campaign_free_item')
@@ -161,12 +166,22 @@ export default async function handler(req, res) {
       // Approved refund return movements — deducted from sales totals
       getMany(
         `SELECT COUNT(*)::int AS refund_count,
-                COALESCE(SUM(ABS(quantity) * COALESCE(unit_price, 0)), 0)::numeric AS refund_total
+                COALESCE(SUM(ABS(quantity) * COALESCE(NULLIF(pp.dp, 0), NULLIF(unit_price, 0), 0)), 0)::numeric AS refund_total
          FROM branch_inventory_movements
+         LEFT JOIN product_prices pp ON LOWER(TRIM(pp.description)) = LOWER(TRIM(product_name))
          WHERE ${movConds.join(' AND ')} AND type = 'refund_return'`,
         movParams
       ),
+      // GM price list — authoritative DP source for JS-level walk-in processing
+      getMany(`SELECT description, dp FROM product_prices`),
     ]);
+
+    // Build price-map from GM price list — authoritative DP for JS-level walk-in processing
+    const priceMap = {};
+    for (const p of priceListRows) {
+      if (p.description) priceMap[p.description.toLowerCase().trim()] = Number(p.dp || 0);
+    }
+    const lookupDp = (name) => (name ? (priceMap[name.toLowerCase().trim()] || 0) : 0);
 
     // IDs already captured via the old manual-capture flow in branch_activity_transactions
     const alreadyCapturedIds = new Set(
@@ -186,8 +201,11 @@ export default async function handler(req, res) {
           : ct === 'non_member' ? 'non_member_sale'
           : 'walkin_sale';
         const totalQty = items.reduce((acc, i) => acc + Number(i.quantity || i.qty || 1), 0);
-        const dpTotal = items.reduce((acc, i) =>
-          acc + Number(i.dpPrice || i.dp || i.unit_price || 0) * Number(i.quantity || i.qty || 1), 0);
+        const dpTotal = items.reduce((acc, i) => {
+          const nm = (i.product_name || i.name || i.description || '').trim();
+          const dp = lookupDp(nm) || Number(i.dpPrice || i.dp || i.unit_price || 0);
+          return acc + dp * Number(i.quantity || i.qty || 1);
+        }, 0);
         const saleDateStr = s.sale_date instanceof Date
           ? s.sale_date.toISOString().slice(0, 10)
           : String(s.sale_date || '').slice(0, 10);
@@ -283,7 +301,7 @@ export default async function handler(req, res) {
         if (!name) continue;
         const key = name.toUpperCase();
         const qty = Number(item.quantity || item.qty || 0);
-        const dp  = Number(item.dpPrice || item.dp || item.unit_price || 0);
+        const dp  = lookupDp(name) || Number(item.dpPrice || item.dp || item.unit_price || 0);
         if (!walkinProductAgg[key]) walkinProductAgg[key] = { product_name: name, qty: 0, dp_value: 0, unit_dp: dp };
         walkinProductAgg[key].qty      += qty;
         walkinProductAgg[key].dp_value  = parseFloat((walkinProductAgg[key].dp_value + qty * dp).toFixed(2));

@@ -39,7 +39,7 @@ export default async function handler(req, res) {
       ? ` AND LOWER(REPLACE(COALESCE(NULLIF(TRIM(r.branch),''),'townshop'),' ','_')) = $${rpParams.push(normBranchId) && rpParams.length}`
       : '';
 
-    const [txRows, rxProductMovements, walkinSalesRows, supplementReports, campaignMovements, refundMovements] = await Promise.all([
+    const [txRows, rxProductMovements, walkinSalesRows, supplementReports, campaignMovements, refundMovements, priceListRows] = await Promise.all([
       getMany(
         `SELECT * FROM branch_activity_transactions WHERE ${conds.join(' AND ')} ORDER BY created_at ASC`,
         params
@@ -47,8 +47,9 @@ export default async function handler(req, res) {
       getMany(
         `SELECT reference as form_reference_id, product_name, batch_no,
                 SUM(ABS(quantity)) as qty,
-                SUM(ABS(quantity) * COALESCE(unit_price, 0)) as dp_value
+                SUM(ABS(quantity) * COALESCE(NULLIF(pp.dp, 0), NULLIF(unit_price, 0), 0)) as dp_value
          FROM branch_inventory_movements
+         LEFT JOIN product_prices pp ON LOWER(TRIM(pp.description)) = LOWER(TRIM(product_name))
          WHERE ${movConds.join(' AND ')} AND type IN ('prescription_dispense','dispense','field_use')
          GROUP BY reference, product_name, batch_no`,
         movParams
@@ -108,9 +109,10 @@ export default async function handler(req, res) {
       // Campaign sales from inventory movements — per-product rows for detail map
       getMany(
         `SELECT reference, branch_id, product_name, batch_no,
-                SUM(ABS(quantity))                        AS total_qty,
-                SUM(ABS(quantity) * COALESCE(unit_price, 0)) AS total_dp
+                SUM(ABS(quantity))                            AS total_qty,
+                SUM(ABS(quantity) * COALESCE(NULLIF(pp.dp, 0), NULLIF(unit_price, 0), 0)) AS total_dp
          FROM branch_inventory_movements
+         LEFT JOIN product_prices pp ON LOWER(TRIM(pp.description)) = LOWER(TRIM(product_name))
          WHERE ${movConds.join(' AND ')} AND type = 'campaign_sale'
          GROUP BY reference, branch_id, product_name, batch_no`,
         movParams
@@ -118,12 +120,22 @@ export default async function handler(req, res) {
       // Approved refund return movements — deducted from sales totals
       getMany(
         `SELECT COUNT(*)::int AS refund_count,
-                COALESCE(SUM(ABS(quantity) * COALESCE(unit_price, 0)), 0)::numeric AS refund_total
+                COALESCE(SUM(ABS(quantity) * COALESCE(NULLIF(pp.dp, 0), NULLIF(unit_price, 0), 0)), 0)::numeric AS refund_total
          FROM branch_inventory_movements
+         LEFT JOIN product_prices pp ON LOWER(TRIM(pp.description)) = LOWER(TRIM(product_name))
          WHERE ${movConds.join(' AND ')} AND type = 'refund_return'`,
         movParams
       ),
+      // GM price list — authoritative DP source for JS-level walk-in processing
+      getMany(`SELECT description, dp FROM product_prices`),
     ]);
+
+    // Build price-map from GM price list — authoritative DP for JS-level walk-in processing
+    const priceMap = {};
+    for (const p of priceListRows) {
+      if (p.description) priceMap[p.description.toLowerCase().trim()] = Number(p.dp || 0);
+    }
+    const lookupDp = (name) => (name ? (priceMap[name.toLowerCase().trim()] || 0) : 0);
 
     // Group per-product movements by form_reference_id for Rx detail lookup
     const rxProductMap = {};
@@ -152,8 +164,11 @@ export default async function handler(req, res) {
         const ct = (s.customer_type || 'walk_in').toLowerCase();
         const actType = ct === 'member' ? 'member_sale' : ct === 'non_member' ? 'non_member_sale' : 'walkin_sale';
         const totalQty = items.reduce((acc, i) => acc + Number(i.quantity || i.qty || 1), 0);
-        const dpTotal = items.reduce((acc, i) =>
-          acc + Number(i.dpPrice || i.dp || i.unit_price || 0) * Number(i.quantity || i.qty || 1), 0);
+        const dpTotal = items.reduce((acc, i) => {
+          const nm = (i.product_name || i.name || i.description || '').trim();
+          const dp = lookupDp(nm) || Number(i.dpPrice || i.dp || i.unit_price || 0);
+          return acc + dp * Number(i.quantity || i.qty || 1);
+        }, 0);
         const saleDateStr = s.sale_date instanceof Date
           ? s.sale_date.toISOString().slice(0, 10)
           : String(s.sale_date || '').slice(0, 10);
