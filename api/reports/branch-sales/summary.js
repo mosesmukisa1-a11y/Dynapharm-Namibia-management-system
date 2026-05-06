@@ -59,6 +59,23 @@ export default async function handler(req, res) {
              WHERE bws.id = bat.form_reference_id
                AND bws.data->>'sale_type' = 'campaign_sale'
            )
+           -- Exclude prescription_dispensing dispense_draft rows entirely.
+           -- dispense.js (workflow_source='branch_portal') is the authoritative record.
+           -- capture-rx.js (dispense_draft) is an idempotency/summary record only.
+           AND NOT (bat.activity_type = 'prescription_dispensing' AND bat.workflow_source = 'dispense_draft')
+           -- Exclude consultation dispense_draft ONLY when a branch_portal consultation
+           -- record also exists for the same report (prevents double-counting when
+           -- capture-rx ran before dispense.js). Keep dispense_draft consultation rows
+           -- when they are the sole record (consultation-only appointments).
+           AND NOT (
+             bat.activity_type = 'consultation' AND bat.workflow_source = 'dispense_draft'
+             AND EXISTS (
+               SELECT 1 FROM branch_activity_transactions b2
+               WHERE b2.form_reference_id = bat.form_reference_id
+                 AND b2.activity_type = 'consultation'
+                 AND b2.workflow_source != 'dispense_draft'
+             )
+           )
          GROUP BY branch_id
          ORDER BY total_revenue DESC`,
         batParams
@@ -183,6 +200,7 @@ export default async function handler(req, res) {
              SELECT 1 FROM branch_activity_transactions bat
              WHERE bat.form_reference_id = r.id
                AND bat.activity_type = 'prescription_dispensing'
+               AND bat.workflow_source != 'dispense_draft'
            )
        ),
        priced AS (

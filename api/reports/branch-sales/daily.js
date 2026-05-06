@@ -37,7 +37,27 @@ export default async function handler(req, res) {
 
     const [txRows, visitRows, rxProductMovements, walkinSalesRows, supplementReports, campaignMovements, refundMovements] = await Promise.all([
       getMany(
-        `SELECT * FROM branch_activity_transactions WHERE ${conds.join(' AND ')} ORDER BY created_at ASC`,
+        // Use alias `bat` so the NOT EXISTS self-join can correlate on form_reference_id.
+        // Two dispense_draft exclusion rules:
+        //   1. prescription_dispensing dispense_draft — always excluded. dispense.js
+        //      (workflow_source='branch_portal') is the authoritative revenue record.
+        //      capture-rx.js (dispense_draft) is an idempotency/summary record only.
+        //   2. consultation dispense_draft — excluded ONLY when a branch_portal
+        //      consultation BAT also exists for the same report (prevents double-counting
+        //      when save ran before dispense). Kept when it is the sole record, i.e. for
+        //      consultation-only appointments where dispense.js was never called.
+        `SELECT bat.* FROM branch_activity_transactions bat WHERE ${conds.join(' AND ')}
+           AND NOT (bat.activity_type = 'prescription_dispensing' AND bat.workflow_source = 'dispense_draft')
+           AND NOT (
+             bat.activity_type = 'consultation' AND bat.workflow_source = 'dispense_draft'
+             AND EXISTS (
+               SELECT 1 FROM branch_activity_transactions b2
+               WHERE b2.form_reference_id = bat.form_reference_id
+                 AND b2.activity_type = 'consultation'
+                 AND b2.workflow_source != 'dispense_draft'
+             )
+           )
+         ORDER BY bat.created_at ASC`,
         params
       ),
       getMany(
@@ -91,11 +111,15 @@ export default async function handler(req, res) {
           ), 0)                                                                   AS rx_qty,
           EXISTS (
             SELECT 1 FROM branch_activity_transactions bat
-            WHERE bat.form_reference_id = r.id AND bat.activity_type = 'prescription_dispensing'
+            WHERE bat.form_reference_id = r.id
+              AND bat.activity_type = 'prescription_dispensing'
+              AND bat.workflow_source != 'dispense_draft'
           )                                                                       AS rx_in_bat,
           EXISTS (
             SELECT 1 FROM branch_activity_transactions bat
-            WHERE bat.form_reference_id = r.id AND bat.activity_type = 'consultation'
+            WHERE bat.form_reference_id = r.id
+              AND bat.activity_type = 'consultation'
+              AND bat.workflow_source != 'dispense_draft'
           )                                                                       AS consult_in_bat
         FROM reports r
         WHERE COALESCE(NULLIF(LEFT(TRIM(r.data->>'date'),10),''), DATE(r.created_at)::text)::date = $1::date
