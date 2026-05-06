@@ -21,7 +21,7 @@ export default async function handler(req, res) {
   try {
     if (req.method === 'POST') {
       const body = await parseJsonBody(req);
-      const { reportId, branchId, items, createdBy, customerType, paymentMethod, patientName, consultationFee, consultMode, nbNumber, referralNb } = body;
+      const { reportId, branchId, items, createdBy, customerType, paymentMethod, patientName, consultationFee, consultMode, nbNumber, referralNb, dispenseType } = body;
 
       if (!reportId || !branchId || !Array.isArray(items) || items.length === 0) {
         return res.status(400).json({ success: false, error: 'reportId, branchId, and items are required' });
@@ -175,7 +175,12 @@ export default async function handler(req, res) {
           payment_method: pmNorm,
           stock_impact: true,
           stock_status: 'deducted',
-          prescription_status: 'dispensed',
+          // full_dispense = all prescribed medicines dispensed in this or a prior session.
+          // partial_dispense = some medicines still pending after this session.
+          // Falls back to 'dispensed' if caller did not supply dispenseType (older clients).
+          prescription_status: dispenseType === 'full' ? 'full_dispense'
+            : dispenseType === 'partial' ? 'partial_dispense'
+            : 'dispensed',
           consultation_status: 'none',
           reporting_status: 'posted',
           captured_by: createdBy || null,

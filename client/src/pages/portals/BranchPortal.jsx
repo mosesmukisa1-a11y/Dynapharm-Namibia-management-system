@@ -2238,6 +2238,10 @@ function PrescriptionsTab() {
       totalDP: items.reduce((s, i) => s + (i.dp || 0) * i.quantity, 0),
       totalCP: items.reduce((s, i) => s + (i.cp || 0) * i.quantity, 0),
       totalBV: items.reduce((s, i) => s + (i.bv || 0) * i.quantity, 0),
+      // Already-dispensed items (from previous sessions) — used in quote context panel
+      alreadyDispensedDP: items.filter(i => i.dispensed).reduce((s, i) => s + (i.dp || 0) * (i.quantity || 1), 0),
+      alreadyDispensedCP: items.filter(i => i.dispensed).reduce((s, i) => s + (i.cp || 0) * (i.quantity || 1), 0),
+      alreadyDispensedCount: items.filter(i => i.dispensed).length,
       pendingDP: pendingItems.reduce((s, i) => {
         if (i.isPackage && i.alreadyDispensedComps && i.alreadyDispensedComps.size > 0) {
           return s + (i.products || []).reduce((cs, c) => { const cp = getComponentPrice(c.name); return cs + (cp.dp || 0) * Number(c.quantity || 1); }, 0);
@@ -2282,6 +2286,10 @@ function PrescriptionsTab() {
           dispenseItems.push({ product_name: item.name, quantity: item.quantity, unit_price: isMember ? (item.dp || null) : (item.cp || null) });
         }
       }
+      // Determine if this session completes the whole prescription (full) or leaves items pending (partial).
+      const undispensedCountBefore = dispensePreview.items.filter(i => !i.dispensed).length;
+      const rxDispenseType = pendingItems.length >= undispensedCountBefore ? 'full' : 'partial';
+
       await api.branch.dispense({
         reportId: report.id,
         branchId: effectiveBranch,
@@ -2294,6 +2302,7 @@ function PrescriptionsTab() {
         consultMode: getConsultMode(report.id, isMember),
         nbNumber: isMember ? (report.nb_number || null) : null,
         referralNb: !isMember ? (report.referral_nb || null) : null,
+        dispenseType: rxDispenseType,
       });
 
       const pendingNonPkgNames = new Set(pendingItems.filter(i => !i.isComponent && !i.isPackage).map(i => i.name));
@@ -2581,6 +2590,13 @@ function PrescriptionsTab() {
   const dpCheckupFeeAmt = dpModal?.checkupOpt ? dpModal.checkupOpt.fee : 0;
   const dpConsultFeeAmt = dpModal?.consultMode === 'inclusive' ? (dpModal.consultFee?.total || 0) : 0;
   const dpGrandTotal = dpMedSubtotal + dpCheckupFeeAmt + dpConsultFeeAmt;
+  // Dispense-type context for the modal
+  const dpIsFullDispense = dpModal
+    ? (dpModal.items.filter(i => !i.dispensed).length <= dpModal.pendingItems.length)
+    : false;
+  const dpQuoteTotal  = dpModal ? (dpModal.isMember ? dpModal.totalDP : dpModal.totalCP) : 0;
+  const dpAlreadyDone = dpModal ? (dpModal.isMember ? dpModal.alreadyDispensedDP : dpModal.alreadyDispensedCP) : 0;
+  const dpStillAfter  = dpIsFullDispense ? 0 : Math.max(0, dpQuoteTotal - dpAlreadyDone - dpMedSubtotal);
 
   return (
     <div>
@@ -2666,6 +2682,16 @@ function PrescriptionsTab() {
         const checkupTotal = checkupOpt ? checkupOpt.fee : 0;
         const grandTotal = medTotal + checkupTotal + (isInclusive ? consultFee.total : 0);
         const allDispensed = pendingCount === 0 && total > 0;
+        // Quote / Dispensed / Remaining amounts at the patient's effective price
+        const quoteTotalAmt = medicines.reduce((s, m) => {
+          const p = getEffectivePrice(m.name);
+          return s + (isMember ? (p.dp || 0) : (p.cp || 0)) * (m.quantity || 1);
+        }, 0);
+        const dispensedAmt = medicines.filter(m => m.dispensed).reduce((s, m) => {
+          const p = getEffectivePrice(m.name);
+          return s + (isMember ? (p.dp || 0) : (p.cp || 0)) * (m.quantity || 1);
+        }, 0);
+        const remainingAmt = Math.max(0, quoteTotalAmt - dispensedAmt);
         const headerGradient = allDispensed
           ? 'linear-gradient(135deg,#166534,#16a34a)'
           : pendingCount < total
@@ -2707,6 +2733,21 @@ function PrescriptionsTab() {
             </div>
 
             <div style={{ padding: '0 20px 20px' }}>
+
+              {/* ── Quote / Dispensed / Remaining summary ────────────────── */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 14, marginBottom: 4 }}>
+                {[
+                  { label: '📋 QUOTE', sub: 'total prescribed', val: quoteTotalAmt, bg: '#f8fafc', border: '#cbd5e1', tc: '#1e293b' },
+                  { label: '✅ DISPENSED', sub: `${dispensedCount} of ${total} items`, val: dispensedAmt, bg: '#f0fdf4', border: '#86efac', tc: '#166534' },
+                  { label: remainingAmt > 0 ? '⏳ REMAINING' : '✅ COMPLETE', sub: remainingAmt > 0 ? `${pendingCount} item${pendingCount !== 1 ? 's' : ''} pending` : 'fully dispensed', val: remainingAmt, bg: remainingAmt > 0 ? '#fffbeb' : '#f0fdf4', border: remainingAmt > 0 ? '#fde68a' : '#86efac', tc: remainingAmt > 0 ? '#92400e' : '#166534' },
+                ].map(({ label, sub, val, bg, border, tc }) => (
+                  <div key={label} style={{ textAlign: 'center', background: bg, borderRadius: 10, padding: '10px 6px', border: `1.5px solid ${border}` }}>
+                    <div style={{ fontSize: '0.58rem', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.09em', textTransform: 'uppercase', marginBottom: 3 }}>{label}</div>
+                    <div style={{ fontSize: '1rem', fontWeight: 900, color: tc, lineHeight: 1.15 }}>N$ {Math.round(val).toLocaleString('en-ZA')}</div>
+                    <div style={{ fontSize: '0.6rem', color: '#94a3b8', marginTop: 2 }}>{sub}</div>
+                  </div>
+                ))}
+              </div>
 
               {/* ── Medicines table ───────────────────────────────────────── */}
               <div style={{ marginBottom: 16, marginTop: 16 }}>
@@ -2988,15 +3029,23 @@ function PrescriptionsTab() {
           onClick={() => !dispensing && setDispensePreview(null)}>
           <div style={{ background: '#fff', borderRadius: 18, width: '95%', maxWidth: 620, maxHeight: '92vh', overflow: 'auto', boxShadow: '0 24px 80px rgba(0,0,0,0.35)' }}
             onClick={e => e.stopPropagation()}>
-            <div style={{ padding: '22px 26px 18px', background: 'linear-gradient(135deg,#166534,#16a34a)', borderRadius: '18px 18px 0 0', color: '#fff' }}>
+            <div style={{ padding: '22px 26px 18px', background: dpIsFullDispense ? 'linear-gradient(135deg,#166534,#16a34a)' : 'linear-gradient(135deg,#92400e,#d97706)', borderRadius: '18px 18px 0 0', color: '#fff' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div>
-                  <div style={{ fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.14em', color: 'rgba(255,255,255,0.6)', marginBottom: 4 }}>CONFIRM & DISPENSE</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <div style={{ fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.14em', color: 'rgba(255,255,255,0.6)' }}>CONFIRM &amp; DISPENSE</div>
+                    <span style={{ fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.08em', padding: '2px 8px', borderRadius: 20, background: dpIsFullDispense ? 'rgba(74,222,128,0.25)' : 'rgba(255,255,255,0.2)', color: dpIsFullDispense ? '#4ade80' : '#fde68a', border: `1px solid ${dpIsFullDispense ? 'rgba(74,222,128,0.4)' : 'rgba(253,230,138,0.4)'}` }}>
+                      {dpIsFullDispense ? '✅ FULL DISPENSE' : '⏳ PARTIAL DISPENSE'}
+                    </span>
+                  </div>
                   <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800 }}>Prescription {dpModal.report.id}</h3>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.6)' }}>Grand Total</div>
-                  <div style={{ fontSize: '1.6rem', fontWeight: 900, color: '#4ade80', lineHeight: 1.1 }}>N$ {Math.round(dpGrandTotal).toLocaleString("en-ZA")}</div>
+                  <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.6)' }}>Charging Now</div>
+                  <div style={{ fontSize: '1.6rem', fontWeight: 900, color: dpIsFullDispense ? '#4ade80' : '#fde68a', lineHeight: 1.1 }}>N$ {Math.round(dpGrandTotal).toLocaleString("en-ZA")}</div>
+                  {!dpIsFullDispense && dpStillAfter > 0 && (
+                    <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.55)', marginTop: 2 }}>N$ {Math.round(dpStillAfter).toLocaleString("en-ZA")} still remaining</div>
+                  )}
                 </div>
               </div>
             </div>
@@ -3014,7 +3063,27 @@ function PrescriptionsTab() {
                   </div>
                 ))}
               </div>
-              <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>Medicines ({dpModal.pendingItems.length} item{dpModal.pendingItems.length !== 1 ? 's' : ''})</div>
+              {/* ── Prescription Quote Context ─────────────────────────── */}
+              {dpQuoteTotal > 0 && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 18 }}>
+                  {[
+                    { label: '📋 Full Quote', sub: `${dpModal.items.length} prescribed`, val: dpQuoteTotal, bg: '#f8fafc', border: '#cbd5e1', tc: '#1e293b' },
+                    { label: '✅ Prev. Dispensed', sub: `${dpModal.alreadyDispensedCount || 0} item${(dpModal.alreadyDispensedCount || 0) !== 1 ? 's' : ''}`, val: dpAlreadyDone, bg: '#f0fdf4', border: '#86efac', tc: '#166534' },
+                    dpIsFullDispense
+                      ? { label: '✅ COMPLETING', sub: 'all items dispensed', val: dpMedSubtotal, bg: '#f0fdf4', border: '#4ade80', tc: '#166534' }
+                      : { label: '⏳ Still After', sub: 'remains after session', val: dpStillAfter, bg: '#fffbeb', border: '#fde68a', tc: '#92400e' },
+                  ].map(({ label, sub, val, bg, border, tc }) => (
+                    <div key={label} style={{ textAlign: 'center', background: bg, borderRadius: 10, padding: '10px 6px', border: `1.5px solid ${border}` }}>
+                      <div style={{ fontSize: '0.56rem', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 3 }}>{label}</div>
+                      <div style={{ fontSize: '0.95rem', fontWeight: 900, color: tc, lineHeight: 1.15 }}>N$ {Math.round(val).toLocaleString('en-ZA')}</div>
+                      <div style={{ fontSize: '0.58rem', color: '#94a3b8', marginTop: 2 }}>{sub}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>
+                {dpIsFullDispense ? '✅ Dispensing Now — Full Prescription' : `⏳ Dispensing Now (${dpModal.pendingItems.length} of ${dpModal.items.length} item${dpModal.items.length !== 1 ? 's' : ''})`}
+              </div>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', marginBottom: 4 }}>
                 <thead>
                   <tr style={{ background: '#f8fafc' }}>
