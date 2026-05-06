@@ -34,6 +34,8 @@ export default async function handler(req, res) {
                   -- Non-member Rx: branch keeps DP; CP-DP margin goes to distributor
                   WHEN activity_type = 'prescription_dispensing' AND client_type != 'member'
                   THEN COALESCE(product_total_dp, grand_total)
+                  -- Consultation fees are NOT DP product sales — excluded from total_revenue
+                  WHEN activity_type = 'consultation' THEN 0
                   ELSE grand_total END
            ), 0)::numeric                                                   AS total_revenue,
            COUNT(DISTINCT service_date)::int                                AS days_active,
@@ -284,7 +286,8 @@ export default async function handler(req, res) {
       const campTx       = parseInt(camp?.campaign_transactions || 0);
       const rxTotal      = parseFloat(row.rx_total)    + parseFloat(s?.supplement_rx_total    || 0);
       const consultTotal = parseFloat(row.consult_total)+ parseFloat(s?.supplement_consult_total || 0);
-      const suppExtra    = parseFloat(s?.supplement_rx_total || 0) + parseFloat(s?.supplement_consult_total || 0);
+      // suppExtra: only Rx supplement — consultation fees are NOT part of DP sales total
+      const suppExtra    = parseFloat(s?.supplement_rx_total || 0);
       const refundTotal  = parseFloat(ref?.refund_total || 0);
       const wiMemberDp   = parseFloat(wi.member_dp    || 0);
       const wiNonMemberDp= parseFloat(wi.non_member_dp|| 0);
@@ -321,7 +324,8 @@ export default async function handler(req, res) {
       const campTotal = parseFloat(camp?.campaign_total || 0);
       const s         = supplementMap[brId];
       const wiDp      = parseFloat(wi.member_dp || 0) + parseFloat(wi.non_member_dp || 0);
-      const suppExtra = parseFloat(s?.supplement_rx_total || 0) + parseFloat(s?.supplement_consult_total || 0);
+      // suppExtra: only Rx supplement — consultation fees are NOT part of DP sales total
+      const suppExtra = parseFloat(s?.supplement_rx_total || 0);
       const ref       = refundMap[brId?.toLowerCase()];
       const refundTotal = parseFloat(ref?.refund_total || 0);
       merged.push({
@@ -350,7 +354,7 @@ export default async function handler(req, res) {
         merged.push({
           branch_id:       s.branch_id,
           transactions:    s.supplement_rx_count + parseInt(camp?.campaign_transactions || 0),
-          total_revenue:   (parseFloat(s.supplement_rx_total) + parseFloat(s.supplement_consult_total) + campTotal - refundTotal).toFixed(2),
+          total_revenue:   (parseFloat(s.supplement_rx_total) + campTotal - refundTotal).toFixed(2),
           days_active:     1,
           member_total:    '0.00',
           non_member_total: '0.00',

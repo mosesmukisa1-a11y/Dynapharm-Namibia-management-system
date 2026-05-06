@@ -439,8 +439,8 @@ export default async function handler(req, res) {
     const refundTotal = parseFloat(Number(refundMovements[0]?.refund_total || 0).toFixed(2));
     const refundCount = parseInt(refundMovements[0]?.refund_count || 0);
 
+    // Consultation fees are NOT part of DP product sales — kept as a separate line.
     const grandTotal = parseFloat((
-      sumDp(paidRows(consultRows)) +
       sumDp(paidRows(walkinRows)) +
       sumDp(paidRows(memberRows)) +
       sumDp(paidRows(nonMemberRows)) +
@@ -451,7 +451,6 @@ export default async function handler(req, res) {
     ).toFixed(2));
 
     const totalPendingValue = parseFloat((
-      sumDp(pendingRows(consultRows)) +
       sumDp(pendingRows(walkinRows)) +
       sumDp(pendingRows(memberRows)) +
       sumDp(pendingRows(nonMemberRows)) +
