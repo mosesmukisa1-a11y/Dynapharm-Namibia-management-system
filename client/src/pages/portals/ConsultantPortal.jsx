@@ -114,65 +114,144 @@ function calcAge(dob) {
 
 /* Health benefits of each Dynapharm product — used to explain AI recommendations */
 const PRODUCT_HEALTH_BENEFITS = {
-  "SPIRULINA TABLET (100's)":                           "Rich in protein, iron, B-vitamins and antioxidants — boosts energy, strengthens immunity, supports detoxification and overall cellular health.",
-  "DYNA TONIC (780ml)":                                 "Traditional herbal tonic — restores vitality, reduces chronic fatigue, improves blood circulation and replenishes natural energy levels.",
-  "BEE POLLEN CAPSULE (100's)":                         "Complete natural superfood — enhances stamina, supports immune function, reduces inflammation and improves respiratory health.",
-  "GINSENG CAPSULE 9 x 10's":                           "Adaptogenic herb — combats mental and physical fatigue, sharpens concentration, regulates blood sugar and enhances endurance.",
-  "Yeeginako Tabs 90's , 30's":                         "Traditional vitality tablets — combat chronic fatigue, boost stamina and support overall systemic balance.",
-  "DYNA C- 100 TABLET 150's":                           "High-dose Vitamin C — potent antioxidant that strengthens immune defence, promotes collagen synthesis and accelerates wound healing.",
-  "INSTANT COFFEE W/ GINKGO & GINSENG 20's x 21g":     "Ginkgo biloba + Ginseng blend — improves cerebral blood flow, sharpens memory, relieves mental fatigue and supports cardiovascular health.",
-  "NUTMEG OINTMENT (2's x 20g)":                        "Topical analgesic — relieves muscle aches, joint pain and headaches by improving local blood circulation.",
-  "INSTANT GINSENG HONEY GINGER 500g":                  "Ginseng, honey and ginger blend — soothes nausea, warms digestion, boosts immunity and provides sustained natural energy.",
-  "D.I. INSTANT SOYBEAN MIXTURE WITH GINGER 25g x 20'":"Soy protein + ginger — supports hormonal balance, eases digestive discomfort and provides complete plant-based nutrition.",
-  "DI NONI JUICE 1 L":                                  "Morinda citrifolia — powerful immune booster with antioxidant, anti-inflammatory and detoxifying properties supporting liver and digestive health.",
-  "HERBA WARISAN MAHARANI 6 x 10g":                     "Traditional women's formula — regulates hormonal balance, improves sleep quality and supports reproductive and feminine health.",
-  "SEA CUCUMBER JELLY (500ml)":                         "Marine collagen + sea cucumber — promotes joint lubrication, skin elasticity, cartilage repair and reduces inflammatory joint pain.",
-  "DYNA 'S' TABLET 120's":                              "Chondroitin and glucosamine formula — rebuilds cartilage, lubricates joints and reduces chronic joint and knee pain.",
-  "PRO- LSB TABLET 150's":                              "Probiotic formula — restores gut microbiome balance, improves digestion, reduces bloating and strengthens intestinal immunity.",
-  "HIGH FIBER NUTRITION FOOD 30'sx25g":                 "High-fibre meal supplement — promotes healthy bowel movement, lowers cholesterol, stabilises blood sugar and supports weight management.",
-  "GANODERMA TOOTHPASTE (150g)":                        "Ganoderma (Reishi) infused dental care — antibacterial, anti-inflammatory, supports gum health and oral hygiene.",
-  "E-VITA CREAM (50g)":                                 "Vitamin E enriched cream — deeply moisturises, repairs damaged skin, reduces inflammation and protects against free radical damage.",
-  "MILK THISTLE TABLET 120's":                          "Silymarin (milk thistle extract) — protects and regenerates liver cells, supports detoxification and antioxidant defence.",
-  "INSTANT COFFEE W/ GANO, GREEN TEA 20's x 21g":      "Ganoderma + green tea — calming adaptogen blend that reduces stress, promotes restful sleep and provides gentle antioxidant support.",
-  "INSTANT COFFEE MIX W/GANODERMA, COLLAGEN & KACIP":  "Collagen + Kacip Fatimah for women — supports skin elasticity, hormonal balance, bone density and feminine vitality.",
-  "INSTANT COFFEE MIX W/TONGKAT & MACA POWDER(15'sx21g)": "Tongkat Ali + Maca for men — boosts testosterone naturally, enhances physical endurance, libido and muscle strength.",
-  "DYNA SERENOA TABLET 100's":                          "Saw palmetto extract — supports prostate health, reduces frequent urination and promotes healthy male hormonal balance.",
-  "NONI PLUS TEA 30's x 3g":                            "Noni herbal tea — rich in antioxidants, supports blood sugar regulation, immune function and kidney health.",
-  "Healthy Joints Package":                              "Complete joint health bundle — combines cartilage-rebuilding, anti-inflammatory and pain-relief products for comprehensive musculoskeletal support.",
-  "Blood Circulation Pack":                              "Cardiovascular wellness bundle — improves blood flow, reduces clotting risk, supports heart function and peripheral circulation.",
-  "Gastric Package":                                     "Digestive health bundle — relieves gastric discomfort, heals gut lining, restores beneficial bacteria and improves overall digestion.",
-  "Weight Management Pack":                              "Metabolic support bundle — controls appetite, boosts metabolism, provides fibre and nutrients to support healthy, sustainable weight loss.",
-  "Cleansing And Detoxification Package":                "Full-body detox bundle — supports liver, kidney and colon cleansing to eliminate accumulated toxins and restore systemic health.",
-  "Womens Package":                                      "Women's wellness bundle — addresses hormonal balance, bone density, skin health and overall reproductive well-being.",
-  "Mens Health Package":                                 "Men's vitality bundle — supports prostate health, testosterone balance, physical endurance and masculine well-being.",
+
+  /* ── Core Nutritional Supplements ── */
+  "SPIRULINA TABLET (100's)":    "60–70% complete protein with all essential amino acids, plus iron, B12, beta-carotene and phycocyanin — the richest plant source of iron, boosting red blood cell production, immunity, energy and cellular detoxification. Ideal for anaemia, fatigue, immune weakness and nutritional deficiency.",
+  "BEE POLLEN CAPSULE (100's)":  "Nature's most complete food — contains 22 amino acids, 27 vitamins, 28 minerals, digestive enzymes and anti-inflammatory flavonoids. Enhances stamina, stimulates appetite, supports respiratory health, strengthens immunity and provides sustained all-day energy without stimulants.",
+  "DYNA TONIC (780ml)":          "Premium traditional herbal energy tonic formulated to restore vitality, improve blood circulation, relieve chronic cough and respiratory weakness, stimulate appetite and replenish depleted energy. Particularly effective for post-illness recovery, anaemia and seasonal fatigue.",
+  "GINSENG CAPSULE 9 x 10's":    "Panax ginseng with standardised ginsenosides — the premier adaptogen for combating mental and physical fatigue, sharpening concentration and working memory, improving insulin sensitivity (beneficial in diabetes), regulating cortisol and building physical endurance over time.",
+  "YEEGANO CAPSULE 90'S":        "Ganoderma lucidum (Reishi mushroom) capsules — immune-modulating beta-glucans and triterpenoids adapt the body to physical and emotional stress, reduce inflammation, regulate blood pressure and provide deep restorative support for the nervous and immune systems.",
+
+  /* ── Brain, Circulation & Cognitive Health ── */
+  "INSTANT COFFEE W/ GINKGO & GINSENG 20's x 21g": "Ginkgo biloba + Panax ginseng in a convenient coffee format — Ginkgo is the gold standard for cerebral vasodilation, sharpening memory, reducing brain fog, relieving vertigo and tinnitus, improving retinal circulation (blurred vision) and protecting neurons. Ginseng boosts cognitive energy. Ideal for memory loss, dizziness, concentration and early cognitive decline.",
+  "YEEGINKGO TABLETS 90'S":      "Pure Ginkgo biloba extract tablets — for clients who prefer not to consume coffee. Dilates cerebral and peripheral blood vessels, improves oxygen delivery to the brain, relieves vertigo, headaches, tinnitus and visual disturbances. Proven to slow progression of age-related cognitive decline.",
+  "YEEGARLIC CAPSULE 90'S":      "Concentrated garlic (Allium sativum) extract — allicin lowers LDL cholesterol and total cholesterol, reduces platelet aggregation (anti-clotting), lowers blood pressure (ACE inhibitory), fights bacterial and viral infections and supports liver function. A natural cardiovascular protector.",
+
+  /* ── Cardiovascular & Circulation ── */
+  "Blood Circulation Pack":      "Comprehensive cardiovascular bundle — improves blood flow, reduces viscosity, supports arterial elasticity, lowers clotting risk and enhances peripheral circulation. Designed for hypertension, heart disease, cold extremities, varicose veins and post-stroke recovery.",
+
+  /* ── Digestive Health ── */
+  "PRO- LSB TABLET 150's":       "Multi-strain probiotic formula — restores the gut microbiome after antibiotic use or illness, relieves IBS, bloating, constipation and chronic diarrhoea, strengthens the intestinal immune barrier (70% of immunity is gut-based) and improves nutrient absorption. The foundation of gut health.",
+  "HIGH FIBER NUTRITION FOOD 30'sx25g": "Combined soluble and insoluble dietary fibre supplement — soluble fibre binds LDL cholesterol and slows glucose absorption (excellent for diabetes and high cholesterol), while insoluble fibre promotes regular bowel movement, prevents constipation and supports colon health. Also provides satiety for weight management.",
+  "INSTANT GINSENG HONEY GINGER 500g": "Ginger is one of the most clinically proven anti-emetics — relieves nausea, motion sickness, morning sickness and gastric discomfort. Honey soothes the throat and mucosal lining. Ginseng provides immune support. Ideal for digestive complaints, sore throat and cold and flu recovery.",
+  "D.I. INSTANT SOYBEAN MIXTURE WITH GINGER 25g x 20'": "Soy isoflavones (phytoestrogens) naturally mimic oestrogen — reducing menopausal hot flushes, regulating hormonal cycles and protecting bone density. Soy protein lowers LDL cholesterol. Ginger eases digestive discomfort. Excellent for menopause, PMS, hormonal imbalance and cholesterol management.",
+  "Gastric Package":             "Complete digestive healing bundle — targets gastric ulcer, GERD, chronic indigestion and irritable bowel syndrome. Heals and seals the gut lining, restores beneficial bacteria, reduces acid and promotes long-term gastrointestinal wellness.",
+
+  /* ── Immune, Respiratory & Anti-Viral ── */
+  "DI NONI JUICE 1 L":           "Morinda citrifolia juice — contains proxeronine (converts to xeronine, which repairs cell receptors), scopoletin (vasodilatory and anti-inflammatory), anthraquinones (antimicrobial) and damnacanthal (anti-cancer). Documented benefits include immune modulation, blood pressure reduction, blood sugar regulation, liver support, anti-inflammation, kidney health and general disease prevention. One of the most versatile wellness products in the range.",
+  "DYNA C- 100 TABLET 150's":    "High-potency Vitamin C 100mg — essential for collagen synthesis (skin, joints, gums, blood vessels), iron absorption (critical for anaemia), immune cell production (neutrophils and lymphocytes), adrenal function under stress and powerful antioxidant protection against free radical damage. Accelerates wound healing and reduces duration of common colds.",
+
+  /* ── Joint & Musculoskeletal Health ── */
+  "Healthy Joints Package":      "The complete joint rehabilitation bundle — combines glucosamine/chondroitin for cartilage rebuilding, marine collagen for lubrication, anti-inflammatory agents and topical pain relief. Clinically addresses osteoarthritis, rheumatoid arthritis, sports injuries, knee pain and general musculoskeletal degeneration.",
+  "DYNA 'S' TABLET 120's":       "Glucosamine sulphate + chondroitin sulphate — the two most clinically validated compounds for osteoarthritis. Glucosamine stimulates new cartilage synthesis while chondroitin inhibits cartilage-destroying enzymes. Together they rebuild joint cartilage, improve lubrication and reduce chronic knee, hip and spinal joint pain. Requires 8–12 weeks of consistent use.",
+  "SEA CUCUMBER JELLY (500ml)":  "Marine sea cucumber contains Type I collagen, chondroitin sulphate, glucosamine and holothurin (saponin with powerful anti-inflammatory properties). Promotes cartilage repair, joint lubrication, skin elasticity and collagen density. Also supports kidney health (traditional use) and wound healing. Holothurin inhibits cancer cell growth in studies.",
+  "NUTMEG OINTMENT (2's x 20g)": "Topical analgesic containing myristicin and eugenol — applied directly to painful joints, muscles, the lower back or temples. Works as a counter-irritant, increasing local circulation and reducing inflammation on contact. Provides fast relief for arthritis, muscle pain, sports injuries and tension headaches.",
+  "GOAT'S MILK TABLET 150'S":    "Goat's milk is highly bioavailable — easier to digest than cow's milk, rich in calcium, phosphorus, magnesium, vitamin D and complete protein. Supports bone density (osteoporosis prevention), muscle health, electrolyte balance and provides excellent nutrition for those with dairy sensitivities.",
+
+  /* ── Liver & Detoxification ── */
+  "MILK THISTLE TABLET 120's":   "Silymarin (silibinin) from milk thistle — the world's most researched hepatoprotective compound. Protects liver cells from toxin damage, stimulates regeneration of new liver cells, reduces liver enzyme levels (ALT/AST) in hepatitis and fatty liver, supports bile production and provides antioxidant defence. Essential for liver disease, alcohol damage, medication toxicity and general liver health.",
+  "Cleansing And Detoxification Package": "Comprehensive full-body detoxification protocol — targets the liver, kidneys, colon and lymphatic system simultaneously. Eliminates accumulated environmental toxins, heavy metals, pesticide residues and metabolic waste. Restores systemic clarity, energy and immune function.",
+  "DI LIQUID CHLOROPHYLL PLUS GUARANA 500ML": "Liquid chlorophyll (structurally similar to haemoglobin) — oxygenates the blood, alkalises the body, binds and helps eliminate environmental toxins, deodorises from within and provides gentle energy from guarana. Excellent for detox protocols, blood building, digestive health and chronic fatigue.",
+  "INSTANT WHEATGRASS W/ CHLOROPHYLL 20'S X 10G": "Young wheatgrass is one of the most alkaline, nutrient-dense foods — contains chlorophyll, vitamins A/C/E, B-vitamins, iron, calcium, selenium and enzymes. Alkalises the body, supports liver function, boosts red blood cell production, aids detoxification and provides deep cellular nutrition.",
+  "DI LIQUID ALFALFA PLUS GUARANA (500ML)": "Alfalfa (Medicago sativa) — the most mineral-rich plant known, containing bioavailable iron, folic acid, calcium, vitamins K and D, and complete amino acids. Excellent for iron-deficiency anaemia, bone density, alkalising the body and natural energy. Guarana provides sustained mental alertness.",
+
+  /* ── Sleep, Stress & Mental Wellbeing ── */
+  "INSTANT COFFEE W/ GANO, GREEN TEA 20's x 21g": "Ganoderma (Reishi) + green tea L-theanine — the most calming combination in the range. L-theanine promotes alpha brain waves (calm focus without drowsiness), reduces cortisol and anxiety, while Ganoderma modulates the immune system, lowers blood pressure and reduces chronic stress. Ideal for insomnia, anxiety, stress and mood imbalance.",
+  "GREEN TEA CAPSULE 60'S":      "Concentrated EGCG (epigallocatechin gallate) from green tea — the most potent natural antioxidant studied against cancer, cardiovascular disease and inflammation. L-theanine induces calm focus and better sleep. Thermogenic effect supports weight management. Lowers LDL cholesterol and stabilises blood sugar. Ideal for stress, anxiety, weight, cholesterol and cancer prevention.",
+
+  /* ── Women's Health ── */
+  "Womens Package":              "Comprehensive women's wellness bundle — addresses hormonal balance across all life stages (reproductive, perimenopausal, post-menopausal), supports bone density, skin elasticity, reproductive health and energy. Includes products specifically chosen for feminine health needs.",
+  "HERBA WARISAN MAHARANI 6 x 10g": "Dynapharm's premium women's herbal formula — regulates oestrogen and progesterone balance, relieves PMS symptoms (cramps, mood swings, bloating), normalises irregular menstrual cycles, reduces menopausal hot flushes and night sweats, improves sleep quality and supports overall feminine vitality and reproductive wellness.",
+  "INSTANT COFFEE MIX W/GANODERMA, COLLAGEN & KACIP": "Kacip Fatimah (Labisia pumila) — a powerful phytoestrogenic herb that regulates female hormones, enhances feminine vitality, improves vaginal health and supports bone density post-menopause. Combined with Type I/III collagen for skin elasticity and anti-ageing, and Ganoderma for immune support. The premium choice for women's anti-ageing and hormonal wellness.",
+
+  /* ── Men's Health ── */
+  "Mens Health Package":         "Comprehensive men's vitality bundle — addresses testosterone decline, prostate health, physical endurance, libido, muscle maintenance and masculine well-being. A complete programme for men at every life stage.",
+  "INSTANT COFFEE MIX W/TONGKAT & MACA POWDER(15'sx21g)": "Tongkat Ali (Eurycoma longifolia) stimulates LH (luteinising hormone), naturally raising free testosterone levels and improving sperm quality. Maca (Lepidium meyenii) is a proven adaptogen that enhances libido in both men and women, improves physical endurance, reduces stress-related testosterone suppression and supports fertility. The most effective natural male vitality combination.",
+  "TONGKAT ALI CAPSULE 100'S":   "Concentrated Tongkat Ali (Eurycoma longifolia) extract — clinically shown to raise free testosterone by up to 37%, improve sperm motility and count, enhance sexual desire, build muscle mass, reduce cortisol-driven testosterone suppression and combat low energy in men. Stronger single-ingredient option for men with significant testosterone concerns.",
+  "DYNA SERENOA TABLET 100's":   "Saw palmetto (Serenoa repens) 5α-reductase inhibitor — blocks the conversion of testosterone to DHT, the hormone responsible for prostate enlargement (BPH) and male pattern baldness. Clinically proven to reduce urinary frequency, urgency and incomplete bladder emptying associated with BPH. The natural alternative to pharmaceutical prostate medications.",
+
+  /* ── Blood Sugar & Uric Acid ── */
+  "NONI PLUS TEA 30's x 3g":     "Noni herbal tea — rich in antioxidants and anti-inflammatory compounds specifically beneficial for blood sugar regulation (reduces glucose spikes post-meal), uric acid reduction (prevents gout crystallisation), kidney cleansing (mild diuretic), immune support and general anti-inflammatory wellness. Excellent for gout, diabetes and kidney health.",
+
+  /* ── Oral & Skin Health ── */
+  "GANODERMA TOOTHPASTE (150g)": "Reishi (Ganoderma) infused toothpaste — antibacterial polysaccharides reduce oral bacteria, prevent plaque formation, reduce gum inflammation (gingivitis/periodontitis), soothe mouth ulcers and promote overall oral mucosal health. Fluoride-free. Can also be gargled for sore throat relief.",
+  "E-VITA CREAM (50g)":          "Pure Vitamin E (tocopherol) cream — the most effective topical treatment for dry, damaged and inflamed skin. Vitamin E is a fat-soluble antioxidant that deeply repairs the lipid skin barrier, reduces redness in eczema and dermatitis, fades post-inflammatory hyperpigmentation (acne scars), prevents sun damage and promotes new skin cell formation. Suitable for all skin types.",
+
+  /* ── Packages ── */
+  "Weight Management Pack":      "Complete metabolic support programme — combines appetite regulation, fat metabolism enhancement, high-fibre nutrition for glucose stability, thermogenic metabolism boosting and complete plant protein for muscle preservation during weight loss. A structured, sustainable approach to healthy weight management.",
 };
 
-/* keyword map: symptom text fragment → RECOMMENDATION_DATABASE key */
+/* keyword map: symptom text fragment → RECOMMENDATION_DATABASE symptom key
+   Order matters — more specific entries go before broader ones */
 const SYMPTOM_KEYWORD_MAP = [
-  { keys: ['fatigue','tired','exhaustion','lethargy'], rec: 'fatigue' },
-  { keys: ['headache','migraine','head pain'], rec: 'headache' },
-  { keys: ['nausea','vomit','sick to stomach'], rec: 'nausea' },
-  { keys: ['dizzy','dizziness','vertigo','lightheaded'], rec: 'dizziness' },
-  { keys: ['breath','breathing','respiratory','breathless'], rec: 'shortness_breath' },
-  { keys: ['vision','blurred','eye strain','eyesight'], rec: 'blurred_vision' },
-  { keys: ['joint','arthritis','stiff'], rec: 'joint_pain' },
-  { keys: ['cough','wheeze','wheezing'], rec: 'cough' },
-  { keys: ['digest','bloat','constipat','diarrhea','indigestion','heartburn','stomach'], rec: 'digestive_issues' },
-  { keys: ['appetite','hunger'], rec: 'loss_appetite' },
-  { keys: ['fever','temperature','chills'], rec: 'fever' },
-  { keys: ['throat','sore throat','tonsil'], rec: 'sore_throat' },
-  { keys: ['skin','rash','acne','eczema','dermatitis','itch'], rec: 'skin_rash' },
-  { keys: ['chest','palpitat','heart'], rec: 'chest_pain' },
-  { keys: ['back pain','neck','spine','lumbar'], rec: 'lower_back' },
-  { keys: ['weight','obesity','overweight','underweight'], rec: 'weight_changes' },
-  { keys: ['sleep','insomnia','awake','restless'], rec: 'insomnia' },
-  { keys: ['confusion','memory','focus','concentrate','brain fog','cognitive'], rec: 'confusion' },
-  { keys: ['swelling','edema','swollen','puffy'], rec: 'swelling' },
-  { keys: ['menstrual','menopause','fertility','sexual','libido','erectile','hormonal','reproductive'], rec: 'weight_changes' },
-  { keys: ['urinary','frequent urinat','bladder','kidney'], rec: 'foot_edema' },
-  { keys: ['muscle','cramp','spasm'], rec: 'joint_pain' },
-  { keys: ['allerg','immune','infection','cold'], rec: 'fever' },
-  { keys: ['anxiety','stress','depress','mood','mental'], rec: 'insomnia' },
+  /* ── Energy & Fatigue ── */
+  { keys: ['fatigue','tired','exhaustion','lethargy','weak','weakness','no energy','low energy'], rec: 'fatigue' },
+
+  /* ── Neurological ── */
+  { keys: ['headache','migraine','head pain','head ache','tension headache'], rec: 'headache' },
+  { keys: ['dizzy','dizziness','vertigo','lightheaded','giddy','spinning'], rec: 'dizziness' },
+  { keys: ['vision','blurred','eye strain','eyesight','eye fatigue','poor sight'], rec: 'blurred_vision' },
+  { keys: ['memory','brain fog','concentration','focus','cognitive','forgetful','confusion','alzheimer','dementia','mental clarity'], rec: 'confusion' },
+  { keys: ['tinnitus','ringing in ear','ear noise'], rec: 'dizziness' },
+
+  /* ── Digestive & Gut ── */
+  { keys: ['nausea','vomit','sick to stomach','morning sickness','queasy'], rec: 'nausea' },
+  { keys: ['constipat','irregular bowel','bowel movement','no bowel'], rec: 'constipation' },
+  { keys: ['bloat','indigestion','heartburn','gastric','ulcer','ibs','stomach pain','stomach ache','loose stool','diarrhea','stomach upset'], rec: 'digestive_issues' },
+  { keys: ['appetite','hunger','anorexia','not eating'], rec: 'loss_appetite' },
+
+  /* ── Respiratory & Immune ── */
+  { keys: ['cough','wheeze','wheezing','bronchitis','chronic cough'], rec: 'cough' },
+  { keys: ['breath','breathless','asthma','short of breath','difficulty breathing','respiratory'], rec: 'shortness_breath' },
+  { keys: ['sore throat','throat pain','tonsil','pharyngitis'], rec: 'sore_throat' },
+  { keys: ['fever','temperature','chills','flu','cold','infection','allerg','sinusitis','immune'], rec: 'fever' },
+
+  /* ── Musculoskeletal ── */
+  { keys: ['joint pain','arthritis','stiff joint','joint stiffness','knee pain','hip pain'], rec: 'joint_pain' },
+  { keys: ['muscle pain','muscle ache','muscle cramp','cramp','spasm','muscle stiffness'], rec: 'muscle_cramps' },
+  { keys: ['back pain','lower back','neck pain','spine','lumbar','sciatica','herniated'], rec: 'lower_back' },
+  { keys: ['bone','fracture','osteoporosis','brittle bone'], rec: 'muscle_cramps' },
+
+  /* ── Cardiovascular ── */
+  { keys: ['chest pain','palpitat','irregular heart','heart rate','heart pounding'], rec: 'chest_pain' },
+  { keys: ['swelling','edema','swollen leg','puffy legs','puffy feet','water retention'], rec: 'swelling' },
+  { keys: ['foot edema','ankle swelling','leg swelling','swollen feet'], rec: 'foot_edema' },
+  { keys: ['cholesterol','ldl','hdl','triglyceride','high fat'], rec: 'cholesterol' },
+
+  /* ── Skin & Hair ── */
+  { keys: ['skin rash','rash','acne','eczema','dermatitis','hives','itching','psoriasis'], rec: 'skin_rash' },
+  { keys: ['dry skin','dull skin','flaky skin','cracked skin','skin dryness','dehydrated skin'], rec: 'skin_dryness' },
+  { keys: ['hair loss','hair fall','thinning hair','alopecia','brittle hair','hair breakage'], rec: 'hair_loss' },
+
+  /* ── Metabolic ── */
+  { keys: ['weight gain','weight loss','obesity','overweight','underweight','struggling with weight'], rec: 'weight_changes' },
+  { keys: ['gout','uric acid','uric','painful toe','toe swelling'], rec: 'gout_uric' },
+
+  /* ── Sleep & Mental Health ── */
+  { keys: ['insomnia','cannot sleep','trouble sleeping','restless sleep','waking at night','poor sleep'], rec: 'insomnia' },
+  { keys: ['anxiety','panic','anxious','nervous','worry','worrying'], rec: 'anxiety' },
+  { keys: ['stress','stressed','overwhelmed','burnout'], rec: 'anxiety' },
+  { keys: ['depressed','depression','mood swing','sad','hopeless','emotional'], rec: 'anxiety' },
+
+  /* ── Liver, Kidney & Detox ── */
+  { keys: ['liver','hepatitis','fatty liver','jaundice','liver pain'], rec: 'liver_issues' },
+  { keys: ['kidney stone','renal failure','kidney disease','kidney pain'], rec: 'kidney_issues' },
+  { keys: ['frequent urinat','urgent urination','urinary','bladder'], rec: 'kidney_issues' },
+  { keys: ['detox','cleanse','toxin','cleansing','body cleanse'], rec: 'detox' },
+
+  /* ── Oral Health ── */
+  { keys: ['gum disease','gingivitis','oral','mouth ulcer','dental','bad breath','tooth pain'], rec: 'oral_health' },
+
+  /* ── Hormonal & Reproductive ── */
+  { keys: ['menstrual','period pain','pms','irregular period','heavy period','period cramp'], rec: 'menstrual' },
+  { keys: ['menopause','hot flash','hot flush','night sweat','perimenopause','post-menopause'], rec: 'menopause' },
+  { keys: ['hormonal','hormone imbalance','hormones'], rec: 'menstrual' },
+  { keys: ['libido','sexual desire','low sex drive','erectile','impotence'], rec: 'libido' },
+  { keys: ['fertility','infertile','conception','trying to conceive'], rec: 'libido' },
+  { keys: ['prostate','bph','nocturia','frequent night urination in men'], rec: 'prostate' },
+
+  /* ── Blood ── */
+  { keys: ['anaemia','anemia','low blood','pale','iron deficiency','low haemoglobin','low hemoglobin'], rec: 'anaemia' },
 ];
 
 /* map form system IDs → BODY_SYSTEMS_DATABASE keys */
@@ -360,23 +439,35 @@ function generateRecommendations(client) {
 
   /* 5. Lifestyle */
   const sh = client.sleepHours || '';
-  if (sh === '<5' || sh === '5-6' || sh === 'Less than 5' || sh === '5–6') {
+  if (sh === '<5' || sh === '5-6' || sh === 'Less than 5' || sh === '5–6' || sh === 'less5' || sh === '56') {
     RECOMMENDATION_DATABASE.lifestyle.poorSleep.forEach(m => addRec(m, 'Poor sleep quality'));
   }
   if (parseInt(client.stressLevel) >= 7) {
     RECOMMENDATION_DATABASE.lifestyle.highStress.forEach(m => addRec(m, 'High stress level'));
   }
   const ef = client.exerciseFreq || '';
-  if (ef === 'never' || ef === '1-2' || ef === 'None' || ef === '1–2x per week') {
+  if (ef === 'never' || ef === '1-2' || ef === 'None' || ef === '1–2x per week' || ef === 'rarely' || ef === 'sedentary') {
     RECOMMENDATION_DATABASE.lifestyle.lowExercise.forEach(m => addRec(m, 'Low physical activity'));
   }
   const wi = client.waterIntake || '';
-  if (wi === 'less1' || wi === 'Less than 1L/day') {
+  if (wi === 'less1' || wi === 'Less than 1L/day' || wi === 'less2' || wi === '1-2') {
     RECOMMENDATION_DATABASE.lifestyle.poorWater.forEach(m => addRec(m, 'Low water intake'));
   }
-  if (client.age && parseInt(client.age) >= 60) {
-    RECOMMENDATION_DATABASE.age.elderly.forEach(m => addRec(m, 'Age 60+'));
+  /* Low fruit/vegetable intake (diet field) */
+  const diet = (client.diet || client.dietType || '').toLowerCase();
+  if (diet.includes('junk') || diet.includes('fast food') || diet.includes('processed') || diet.includes('poor') || diet.includes('unhealthy')) {
+    RECOMMENDATION_DATABASE.lifestyle.lowFruitVeg.forEach(m => addRec(m, 'Poor diet — low in fruits and vegetables'));
   }
+
+  /* 6. Age-based recommendations */
+  const age = client.age ? parseInt(client.age) : 0;
+  if (age >= 60) {
+    RECOMMENDATION_DATABASE.age.elderly.forEach(m => addRec(m, 'Age 60+ — cognitive and joint protection'));
+  } else if (age >= 40 && age < 60) {
+    RECOMMENDATION_DATABASE.age.middleAge.forEach(m => addRec(m, 'Age 40–59 — preventive wellness support'));
+  }
+
+  /* 7. Fallback if nothing matched */
   if (recommendations.size === 0) {
     RECOMMENDATION_DATABASE.general.forEach(m => addRec(m, 'General wellness'));
   }
