@@ -11,6 +11,8 @@ const BRANCH_ALIAS = {
   'Gobabis': 'gobabis', 'Khomasdal': 'khomasdal', 'Swakopmund': 'swakopmund',
   'Eenhana': 'eenhana', 'Ondangwa': 'ondangwa', 'Rundu': 'rundu',
   'Otjiwarongo': 'otjiwarongo', 'Tsumeb': 'tsumeb', 'Okahao': 'okahao', 'Outapi': 'outapi',
+  'Okongo': 'okongo', 'okongo': 'okongo',
+  'Nkurenkuru': 'nkurenkuru', 'nkurenkuru': 'nkurenkuru',
 };
 function normBranch(val) {
   if (!val) return val;
@@ -204,8 +206,9 @@ export default async function handler(req, res) {
       if (!oldAppointment) return res.status(404).json({ error: 'Appointment not found' });
 
       const putUserRole = req.user ? (req.user.role || '').toLowerCase() : '';
-      const putUserBranch = req.user ? (req.user.branch || '') : '';
-      if (req.user && putUserRole !== 'admin' && putUserBranch && oldAppointment.branch !== putUserBranch) {
+      const putUserBranch = normBranch(req.user ? (req.user.branch || '') : '');
+      const apptBranchNorm = normBranch(oldAppointment.branch || '');
+      if (req.user && putUserRole !== 'admin' && putUserBranch && apptBranchNorm !== putUserBranch) {
         return res.status(403).json({ error: 'Access denied to this appointment' });
       }
 

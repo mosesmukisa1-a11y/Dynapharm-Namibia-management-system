@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../lib/api';
-import { formatCurrency, formatDateTime, formatDate, BRANCHES, BRANCH_DETAILS, WINDHOEK_BRANCHES, DELIVERY_FEE_RULES } from '../../lib/constants';
+import { formatCurrency, formatDateTime, formatDate, BRANCHES, BRANCH_DETAILS, BRANCH_ID_TO_NAME, WINDHOEK_BRANCHES, DELIVERY_FEE_RULES } from '../../lib/constants';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Modal, Table, Alert, Select, Textarea } from '../../components/ui';
 import { Calendar, UserPlus, CreditCard, Search, Users, Truck, Bell, MessageSquare, ClipboardList, Heart, Plus, Package, Eye, Send, Megaphone } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -55,11 +55,14 @@ export default function FrontDeskPortal() {
 function AppointmentsTab() {
   const { user } = useAuth();
   const userBranch = user?.branch || '';
+  // Convert canonical branch ID (e.g. 'okongo') to display name (e.g. 'Okongo')
+  // so the Branch dropdown pre-fills correctly (options use display names as values).
+  const userBranchDisplay = BRANCH_ID_TO_NAME[userBranch] || userBranch;
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [filter, setFilter] = useState('today');
-  const [form, setForm] = useState({ full_name: '', phone: '', date: '', time: '', branch: userBranch, type: 'General' });
+  const [form, setForm] = useState({ full_name: '', phone: '', date: '', time: '', branch: userBranchDisplay, type: 'General' });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -93,7 +96,7 @@ function AppointmentsTab() {
         status: 'pending',
       });
       setShowModal(false);
-      setForm({ full_name: '', phone: '', date: '', time: '', branch: userBranch, type: 'General' });
+      setForm({ full_name: '', phone: '', date: '', time: '', branch: userBranchDisplay, type: 'General' });
       loadAppointments();
     } catch (err) {
       setError(err.message || 'Failed to create appointment');
@@ -145,7 +148,7 @@ function AppointmentsTab() {
         </div>
         <div className="flex gap-2 items-center">
           <Badge variant="primary">{filtered.length} total</Badge>
-          <Button size="sm" onClick={() => { setForm(f => ({ ...f, branch: userBranch || f.branch })); setShowModal(true); }}><Plus size={14} /> New Appointment</Button>
+          <Button size="sm" onClick={() => { setForm(f => ({ ...f, branch: userBranchDisplay || f.branch })); setShowModal(true); }}><Plus size={14} /> New Appointment</Button>
         </div>
       </div>
       <Card>
