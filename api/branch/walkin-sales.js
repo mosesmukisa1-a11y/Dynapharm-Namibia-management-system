@@ -316,29 +316,39 @@ export default async function handler(req, res) {
 
       for (const item of saleItems) {
         const qty = Number(item.quantity || item.qty || 0);
-        const unitPrice = Number(item.unit_price || item.unitPrice || item.dpPrice || item.dp || 0);
+        // Always resolve DP (cost basis) — never CP — for BIM.unit_price and
+        // stock_movements.unit_dp.  Reports already join product_prices.dp, but
+        // writing DP here keeps inventory_balances.stock_value_dp accurate and
+        // matches the dispense.js pattern.
         const itemName = item.product_name || item.name || item.description || '';
+        const itemLivePrice = livePriceMap[itemName.toLowerCase()];
+        // Prefer: (1) live product_prices.dp, (2) frontend dpPrice/dp, (3) unit_price fallback
+        const unitPrice = itemLivePrice
+          ? (Number(itemLivePrice.dp) || Number(item.dpPrice || item.dp || 0))
+          : Number(item.dpPrice || item.dp || item.unit_price || item.unitPrice || 0);
         const pkg = getPackageComponents(itemName);
         if (pkg) {
           for (const comp of pkg.products) {
             const livePrice = livePriceMap[comp.name.toLowerCase()];
+            // Always DP for cost basis (same as dispense.js)
             const dp = livePrice ? Number(livePrice.dp) || comp.dp : comp.dp;
-            const cp = livePrice ? Number(livePrice.cp) || comp.cp : comp.cp;
             deductItems.push({
               name: comp.name,
               qty: Math.round(Number(comp.quantity || 1) * qty),
-              unitPrice: isMemberSale ? dp : cp,
+              unitPrice: dp,
             });
           }
         } else if (Array.isArray(item.components) && item.components.length > 0) {
           for (const comp of item.components) {
-            const compPrice = isMemberSale
-              ? Number(comp.dp || comp.unit_price || 0)
-              : Number(comp.cp || comp.unit_price || comp.dp || 0);
+            const compLive = livePriceMap[(comp.name || comp.product_name || '').toLowerCase()];
+            // Always DP for cost basis
+            const compDp = compLive
+              ? (Number(compLive.dp) || Number(comp.dp || comp.unit_price || 0))
+              : Number(comp.dp || comp.unit_price || 0);
             deductItems.push({
               name: comp.name || comp.product_name || '',
               qty: Math.round(Number(comp.quantity || comp.qty || 1) * qty),
-              unitPrice: compPrice,
+              unitPrice: compDp,
             });
           }
         } else {
@@ -426,7 +436,14 @@ export default async function handler(req, res) {
         : record.customer_type === 'consultation' ? 'consultation'
         : 'non_member_sale'; // default non-tagged walk-in to non_member_sale so it shows in Walk-in column
       const totalQty = saleItems.reduce((s, i) => s + Number(i.quantity || i.qty || 0), 0);
-      const dpSubtotal = saleItems.reduce((s, i) => s + (Number(i.dpPrice || i.dp || 0) * Number(i.quantity || i.qty || 0)), 0);
+      // BAT product_total_dp: use live product_prices.dp as authoritative source.
+      // Falls back to frontend dpPrice/dp for items not in the price list (e.g. checkup fees).
+      const dpSubtotal = saleItems.reduce((s, i) => {
+        const nm = (i.product_name || i.name || i.description || '').toLowerCase();
+        const liveRow = livePriceMap[nm];
+        const dp = liveRow ? (Number(liveRow.dp) || Number(i.dpPrice || i.dp || 0)) : Number(i.dpPrice || i.dp || 0);
+        return s + dp * Number(i.quantity || i.qty || 0);
+      }, 0);
       postActivityRecord({
         id: generateBatId(),
         branch_id: record.branch_id,
