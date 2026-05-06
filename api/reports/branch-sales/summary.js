@@ -45,8 +45,15 @@ export default async function handler(req, res) {
            COALESCE(SUM(CASE WHEN activity_type IN ('non_member_sale','walkin_sale')
                              THEN grand_total
                              ELSE 0 END), 0)::numeric                      AS non_member_cp_total,
+           -- rx_total: DP basis for non-member Rx (matches total_revenue logic).
+           -- Member Rx: grand_total = DP (member pays DP). Non-member Rx: grand_total = CP
+           -- (patient pays CP); use product_total_dp to get the true DP cost basis.
            COALESCE(SUM(CASE WHEN activity_type = 'prescription_dispensing'
-                             THEN grand_total ELSE 0 END), 0)::numeric     AS rx_total,
+                             THEN CASE WHEN client_type != 'member'
+                                       THEN COALESCE(product_total_dp, grand_total)
+                                       ELSE grand_total
+                                  END
+                             ELSE 0 END), 0)::numeric                      AS rx_total,
            -- Non-member Rx: separate CP and DP totals to compute distributor profit margin
            COALESCE(SUM(CASE WHEN activity_type = 'prescription_dispensing' AND client_type != 'member'
                              THEN grand_total ELSE 0 END), 0)::numeric     AS rx_nm_cp_total,
