@@ -31,6 +31,9 @@ export default async function handler(req, res) {
            COALESCE(SUM(
              CASE WHEN activity_type IN ('non_member_sale','walkin_sale')
                   THEN COALESCE(product_total_dp, grand_total)
+                  -- Non-member Rx: branch keeps DP; CP-DP margin goes to distributor
+                  WHEN activity_type = 'prescription_dispensing' AND client_type != 'member'
+                  THEN COALESCE(product_total_dp, grand_total)
                   ELSE grand_total END
            ), 0)::numeric                                                   AS total_revenue,
            COUNT(DISTINCT service_date)::int                                AS days_active,
@@ -44,6 +47,11 @@ export default async function handler(req, res) {
                              ELSE 0 END), 0)::numeric                      AS non_member_cp_total,
            COALESCE(SUM(CASE WHEN activity_type = 'prescription_dispensing'
                              THEN grand_total ELSE 0 END), 0)::numeric     AS rx_total,
+           -- Non-member Rx: separate CP and DP totals to compute distributor profit margin
+           COALESCE(SUM(CASE WHEN activity_type = 'prescription_dispensing' AND client_type != 'member'
+                             THEN grand_total ELSE 0 END), 0)::numeric     AS rx_nm_cp_total,
+           COALESCE(SUM(CASE WHEN activity_type = 'prescription_dispensing' AND client_type != 'member'
+                             THEN COALESCE(product_total_dp, grand_total) ELSE 0 END), 0)::numeric AS rx_nm_dp_total,
            COALESCE(SUM(CASE WHEN activity_type = 'consultation'
                              THEN grand_total ELSE 0 END), 0)::numeric     AS consult_total,
            COALESCE(SUM(CASE WHEN activity_type = 'walkin_sale'
@@ -275,17 +283,24 @@ export default async function handler(req, res) {
       const wiNonMemberDp= parseFloat(wi.non_member_dp|| 0);
       const wiSupplementDp = wiMemberDp + wiNonMemberDp;
       const wiTx         = parseInt(wi.transactions || 0);
+      // Rx non-member distributor profit: CP-DP margin from prescription dispensing
+      const rxNmCpTotal  = parseFloat(row.rx_nm_cp_total || 0);
+      const rxNmDpTotal  = parseFloat(row.rx_nm_dp_total || 0);
+      const rxDistributorProfit = parseFloat(Math.max(0, rxNmCpTotal - rxNmDpTotal).toFixed(2));
 
       return {
         ...row,
-        member_total:      (parseFloat(row.member_total)      + wiMemberDp).toFixed(2),
-        non_member_total:  (parseFloat(row.non_member_total)  + wiNonMemberDp).toFixed(2),
-        rx_total:          rxTotal.toFixed(2),
-        consult_total:     consultTotal.toFixed(2),
-        campaign_total:    campTotal.toFixed(2),
-        refund_deductions: refundTotal.toFixed(2),
-        total_revenue:     (parseFloat(row.total_revenue) + suppExtra + campTotal + wiSupplementDp - refundTotal).toFixed(2),
-        transactions:      row.transactions + (s?.supplement_rx_count || 0) + campTx + wiTx,
+        member_total:         (parseFloat(row.member_total)      + wiMemberDp).toFixed(2),
+        non_member_total:     (parseFloat(row.non_member_total)  + wiNonMemberDp).toFixed(2),
+        rx_total:             rxTotal.toFixed(2),
+        rx_nm_cp_total:       rxNmCpTotal.toFixed(2),
+        rx_nm_dp_total:       rxNmDpTotal.toFixed(2),
+        rx_distributor_profit: rxDistributorProfit.toFixed(2),
+        consult_total:        consultTotal.toFixed(2),
+        campaign_total:       campTotal.toFixed(2),
+        refund_deductions:    refundTotal.toFixed(2),
+        total_revenue:        (parseFloat(row.total_revenue) + suppExtra + campTotal + wiSupplementDp - refundTotal).toFixed(2),
+        transactions:         row.transactions + (s?.supplement_rx_count || 0) + campTx + wiTx,
       };
     });
 

@@ -458,10 +458,19 @@ export default async function handler(req, res) {
 
     const pendingCapture = txRows.filter(r => r.reporting_status === 'pending').length;
 
+    // ── Walk-in non-member profit (CP charged to patient, DP stays with branch) ──
     const nmCpTotal = parseFloat(sum(paidRows(nonMemberRows), 'grand_total').toFixed(2));
     const nmDpTotal = parseFloat(sum(paidRows(nonMemberRows), 'product_total_dp').toFixed(2));
-    const distributorProfit = parseFloat(Math.max(0, nmCpTotal - nmDpTotal).toFixed(2));
+    const nmProfit  = parseFloat(Math.max(0, nmCpTotal - nmDpTotal).toFixed(2));
+    // ── Non-member Rx dispensing: CP-DP margin also belongs to the referring distributor ──
+    // client_type is 'patient' or 'non_member' for referred non-member patients; 'member' for members.
+    const rxNmRows    = paidRows(rxRows).filter(r => r.client_type && r.client_type !== 'member');
+    const rxNmCpTotal = parseFloat(sum(rxNmRows, 'grand_total').toFixed(2));
+    const rxNmDpTotal = parseFloat(sum(rxNmRows, 'product_total_dp').toFixed(2));
+    const rxNmProfit  = parseFloat(Math.max(0, rxNmCpTotal - rxNmDpTotal).toFixed(2));
+    const distributorProfit = parseFloat((nmProfit + rxNmProfit).toFixed(2));
     const campaignDpTotal = parseFloat(sum(paidRows(campaignRows), 'grand_total').toFixed(2));
+    // walkInRxSales = total patient-facing revenue (CP for non-members, DP for members)
     const walkInRxSales = parseFloat((
       sum(paidRows(walkinRows), 'grand_total') +
       sum(paidRows(memberRows), 'grand_total') +
@@ -470,8 +479,21 @@ export default async function handler(req, res) {
       campaignDpTotal
     ).toFixed(2));
     const consultFeeTotal = consultObj.fee_value || 0;
+    // branchSales = what the branch actually keeps after paying distributor margins and fees
     const branchSales = parseFloat((walkInRxSales - distributorProfit - consultFeeTotal - refundTotal).toFixed(2));
-    const branchSummary = { walkin_rx_sales: walkInRxSales, distributor_profit: distributorProfit, consultation_fees: consultFeeTotal, refund_deductions: refundTotal, branch_sales: branchSales, nm_cp_total: nmCpTotal, nm_dp_total: nmDpTotal, campaign_total: campaignDpTotal };
+    const branchSummary = {
+      walkin_rx_sales: walkInRxSales,
+      distributor_profit: distributorProfit,
+      consultation_fees: consultFeeTotal,
+      refund_deductions: refundTotal,
+      branch_sales: branchSales,
+      nm_cp_total: nmCpTotal,
+      nm_dp_total: nmDpTotal,
+      rx_nm_cp_total: rxNmCpTotal,
+      rx_nm_dp_total: rxNmDpTotal,
+      rx_distributor_profit: rxNmProfit,
+      campaign_total: campaignDpTotal,
+    };
 
     let stockSnapshot = null;
     try {

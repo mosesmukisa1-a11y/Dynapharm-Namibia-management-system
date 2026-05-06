@@ -198,6 +198,25 @@ export default async function handler(req, res) {
         console.error('[activityCapture] dispense post error:', e.message);
       }
 
+      // ── Distributor profit: write to branch_distributor_profit for referred non-member Rx ──
+      // The referring distributor earns CP - DP on each dispensed item.
+      // Only written when there is an explicit referral NB number and the patient is not a member.
+      const rxProfitAmount = parseFloat((totalChargeToPatient - totalDispensedDP).toFixed(2));
+      if (customerType !== 'member' && referralNb && rxProfitAmount > 0) {
+        try {
+          const profitId = 'RXPROF-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7).toUpperCase();
+          await query(
+            `INSERT INTO branch_distributor_profit
+               (id, branch_id, distributor_nb, distributor_name, sale_id, sale_receipt, sale_date, profit_amount, status, created_at, updated_at)
+             VALUES ($1, $2, $3, NULL, $4, $5, $6, $7, 'pending', NOW(), NOW())
+             ON CONFLICT (id) DO NOTHING`,
+            [profitId, branchId, referralNb, reportId, reportId, serviceDate, rxProfitAmount]
+          );
+        } catch (e) {
+          console.error('[dispense] distributor profit insert error:', e.message);
+        }
+      }
+
       const feeAmount = Number(consultationFee || 0);
       if (feeAmount > 0) {
         try {
