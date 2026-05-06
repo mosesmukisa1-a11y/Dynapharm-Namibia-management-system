@@ -12,6 +12,7 @@ export function generateReceiptHTML({
   referralName, referralNB, cashier, showBV = true,
   cashback = 0, branchAmount = null, distributorProfit = null,
   consultFeeAmount = 0, consultFeeMode = null,
+  followUpDate = null, followUpNotes = null,
 }) {
   const branchInfo = BRANCH_DETAILS.find(b => b.name === branch) || {};
   const branchDisplay = branchInfo.name || branch || '';
@@ -70,6 +71,7 @@ export function generateReceiptHTML({
           </div>
           ${bvLine}
           ${consultLine}
+          ${followUpDate ? `<div style="margin-top:10px;padding:7px 9px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;font-size:10px;"><div style="font-weight:800;color:#1d4ed8;margin-bottom:2px;">📅 FOLLOW-UP APPOINTMENT</div><div style="color:#1e3a5f;font-weight:700;">${new Date(followUpDate + 'T00:00:00').toLocaleDateString('en-ZA', { day: '2-digit', month: 'long', year: 'numeric' })}</div>${followUpNotes ? `<div style="color:#475569;margin-top:2px;font-size:9px;">${followUpNotes}</div>` : ''}</div>` : ''}
         </div>
         ${_footer(COMPANY_INFO)}
       </div>`;
@@ -133,6 +135,7 @@ export function generateReceiptHTML({
           <span>TOTAL</span><span style="color:#c41e3a;">${formatCurrency(totalAmount)}</span>
         </div>
         ${consultLine2}
+        ${followUpDate ? `<div style="margin-top:10px;padding:7px 9px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;font-size:10px;"><div style="font-weight:800;color:#1d4ed8;margin-bottom:2px;">📅 FOLLOW-UP APPOINTMENT</div><div style="color:#1e3a5f;font-weight:700;">${new Date(followUpDate + 'T00:00:00').toLocaleDateString('en-ZA', { day: '2-digit', month: 'long', year: 'numeric' })}</div>${followUpNotes ? `<div style="color:#475569;margin-top:2px;font-size:9px;">${followUpNotes}</div>` : ''}</div>` : ''}
       </div>
       ${_footer(COMPANY_INFO)}
     </div>`;
@@ -293,6 +296,7 @@ export function generatePrescriptionQuoteHTML({
   rxId, branch, patientName, membershipStatus, consultantName,
   items, consultFeeTotal, consultFeeLabel, consultMode, date,
   referralName, referralNB,
+  followUpDate = null, followUpNotes = null,
 }) {
   const branchInfo = BRANCH_DETAILS.find(b => b.name === branch) || {};
   const branchDisplay = branchInfo.name || branch || '';
@@ -356,6 +360,7 @@ export function generatePrescriptionQuoteHTML({
         </div>
         ${!isInclusive ? `<div style="font-size:10px;color:#888;margin-top:2px;">+ N$${consultFeeTotal} consultation fee billed separately</div>` : ''}
       </div>
+      ${followUpDate ? `<div style="margin-top:12px;padding:7px 9px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;font-size:10px;"><div style="font-weight:800;color:#1d4ed8;margin-bottom:2px;">📅 FOLLOW-UP APPOINTMENT</div><div style="color:#1e3a5f;font-weight:700;">${new Date(followUpDate + 'T00:00:00').toLocaleDateString('en-ZA', { day: '2-digit', month: 'long', year: 'numeric' })}</div>${followUpNotes ? `<div style="color:#475569;margin-top:2px;font-size:9px;">${followUpNotes}</div>` : ''}<div style="font-size:9px;color:#64748b;margin-top:3px;">Please bring this quote on your return visit.</div></div>` : ''}
       <div style="margin-top:16px;border-top:1px dashed #ccc;padding-top:12px;">
         <div style="display:flex;justify-content:space-between;font-size:10px;color:#666;margin-top:20px;">
           <div>Patient Signature: _________________</div>
@@ -552,6 +557,7 @@ export function generatePrescriptionQuotePDFHTML({
   rxId, branch, patientName, membershipStatus, consultantName,
   items, consultFeeTotal, consultFeeLabel, consultMode, date,
   referralName, referralNB,
+  followUpDate = null, followUpNotes = null,
 }) {
   const branchInfo = BRANCH_DETAILS.find(b => b.name === branch) || {};
   const branchDisplay = branchInfo.name || branch || '';
@@ -647,6 +653,7 @@ export function generatePrescriptionQuotePDFHTML({
   <div class="sum-row total"><span>GRAND TOTAL${!isInclusive ? ' (medicines only)' : ''}:</span><span>${formatCurrency(grandTotal)}</span></div>
   ${!isInclusive ? `<div class="sum-row" style="font-size:10px;color:rgba(255,255,255,0.4)"><span>+ N$${consultFeeTotal} consultation fee billed separately</span></div>` : ''}
 </div>
+${followUpDate ? `<div style="background:#eff6ff;border:2px solid #bfdbfe;border-radius:10px;padding:16px 20px;margin-bottom:20px;"><div style="font-weight:800;color:#1d4ed8;font-size:13px;margin-bottom:6px;">📅 Follow-Up Appointment</div><div style="color:#1e3a5f;font-size:16px;font-weight:700;">${new Date(followUpDate + 'T00:00:00').toLocaleDateString('en-ZA', { day: '2-digit', month: 'long', year: 'numeric' })}</div>${followUpNotes ? `<div style="color:#475569;margin-top:6px;font-size:12px;">${followUpNotes}</div>` : ''}<div style="font-size:10px;color:#64748b;margin-top:8px;font-style:italic;">As prescribed by your consultant. Please bring this document on your return visit.</div></div>` : ''}
 <div class="sig">
   <div class="sig-line">Dispensed by: ___________________</div>
   <div class="sig-line">Patient / Guardian Signature</div>

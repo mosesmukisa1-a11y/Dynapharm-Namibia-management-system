@@ -2438,8 +2438,10 @@ function PrescriptionsTab() {
       consultFeeLabel: consultFee.label,
       consultMode: consultMode || (isMember ? 'inclusive' : 'separate'),
       date: report.created_at || report.date,
-      referralName: !isMember ? (report.referral_name || null) : null,
-      referralNB:   !isMember ? (report.referral_nb   || null) : null,
+      referralName:  !isMember ? (report.referral_name || null) : null,
+      referralNB:    !isMember ? (report.referral_nb   || null) : null,
+      followUpDate:  report.follow_up_date  || null,
+      followUpNotes: report.follow_up_notes || null,
     }));
   };
 
@@ -2465,8 +2467,10 @@ function PrescriptionsTab() {
       consultFeeLabel: consultFee.label,
       consultMode: consultMode || (membershipStatus === 'member' ? 'inclusive' : 'separate'),
       date: report.created_at || report.date,
-      referralName: membershipStatus !== 'member' ? (report.referral_name || null) : null,
-      referralNB:   membershipStatus !== 'member' ? (report.referral_nb   || null) : null,
+      referralName:  membershipStatus !== 'member' ? (report.referral_name || null) : null,
+      referralNB:    membershipStatus !== 'member' ? (report.referral_nb   || null) : null,
+      followUpDate:  report.follow_up_date  || null,
+      followUpNotes: report.follow_up_notes || null,
     }));
     w.document.close();
   };
@@ -2553,8 +2557,8 @@ function PrescriptionsTab() {
       customerType: isMember ? 'member' : 'non_member',
       customerName: report.client_name || report.full_name || 'Patient',
       nbNumber: report.nb_number || null,
-      referralName: !isMember ? (report.referral_name || null) : null,
-      referralNB: !isMember ? (report.referral_nb || null) : null,
+      referralName:  !isMember ? (report.referral_name || null) : null,
+      referralNB:    !isMember ? (report.referral_nb   || null) : null,
       cashier: user?.full_name || user?.username || null,
       showBV: true,
       cashback: (!isMember && checkupOpt) ? checkupOpt.cashback : 0,
@@ -2562,6 +2566,8 @@ function PrescriptionsTab() {
       distributorProfit: !isMember ? rxDistProfit : null,
       consultFeeAmount: consultFee.total,
       consultFeeMode: consultMode,
+      followUpDate:  report.follow_up_date  || null,
+      followUpNotes: report.follow_up_notes || null,
     }));
   };
 
