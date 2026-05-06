@@ -55,7 +55,8 @@ export default async function handler(req, res) {
             resolvedItems.push({
               product_name: comp.name,
               quantity: Math.round(Number(comp.quantity || 1) * qty),
-              unit_price: isMember ? dp : cp,
+              unit_price: dp,                      // BIM stock valuation always uses DP (cost basis)
+              charge_unit: isMember ? dp : cp,     // what the patient is actually charged
               bv_unit: bv,
               cif_unit: cif,
               from_package: productName,
@@ -64,14 +65,17 @@ export default async function handler(req, res) {
         } else {
           const livePrice = livePriceMap[productName.toLowerCase()];
           const isMem = customerType === 'member';
-          const passedPrice = Number(item.unit_price || item.dp_price || item.dp || 0);
-          const fallbackPrice = livePrice
-            ? (isMem ? Number(livePrice.dp) || 0 : Number(livePrice.cp) || 0)
-            : 0;
+          // DP = distributor / cost price; CP = consumer / selling price
+          const dpPrice = livePrice ? Number(livePrice.dp) || 0 : 0;
+          const cpPrice = livePrice ? Number(livePrice.cp) || 0 : 0;
+          const passedDP = Number(item.dp || item.dp_price || 0);
           resolvedItems.push({
             product_name: productName,
             quantity: qty,
-            unit_price: passedPrice || fallbackPrice || null,
+            unit_price: dpPrice || passedDP || null,           // BIM: stock valuation at DP
+            charge_unit: isMem                                 // patient charge
+              ? (dpPrice || passedDP || null)
+              : (cpPrice || null),
             bv_unit: livePrice ? Number(livePrice.bv) || 0 : 0,
             cif_unit: livePrice ? Number(livePrice.cif) || 0 : 0,
             from_package: item.from_package || null,
@@ -83,7 +87,8 @@ export default async function handler(req, res) {
         for (const item of resolvedItems) {
           const productName = item.product_name;
           const qty = item.quantity;
-          const unitPrice = item.unit_price;
+          const unitPrice = item.unit_price;   // DP (cost basis) — used in BIM / stock_movements
+          const chargeUnit = item.charge_unit; // CP for non-members, DP for members — patient charge
           const fromPackage = item.from_package;
           if (!productName || qty <= 0) continue;
 
@@ -127,7 +132,7 @@ export default async function handler(req, res) {
               [smId, batch.product_name, batch.batch_no || '', batch.expiry_date || null, take, movType, branchId, reportId, dispenseNote, unitPrice]
             );
 
-            deductions.push({ product_name: batch.product_name, batch_no: batch.batch_no, quantity: take, unit_price: unitPrice, bv_unit: item.bv_unit || 0, from_package: fromPackage });
+            deductions.push({ product_name: batch.product_name, batch_no: batch.batch_no, quantity: take, unit_price: unitPrice, charge_unit: chargeUnit, bv_unit: item.bv_unit || 0, from_package: fromPackage });
             remaining -= take;
           }
 
@@ -146,7 +151,10 @@ export default async function handler(req, res) {
       );
 
       const totalDispensedQty = deductions.reduce((s, d) => s + Number(d.quantity || 0), 0);
-      const totalDispensedValue = deductions.reduce((s, d) => s + (Number(d.quantity || 0) * Number(d.unit_price || 0)), 0);
+      // DP total = stock cost basis (branch_inventory_movements.unit_price is always DP).
+      const totalDispensedDP = parseFloat(deductions.reduce((s, d) => s + (Number(d.quantity || 0) * Number(d.unit_price || 0)), 0).toFixed(2));
+      // Charge total = what the patient actually pays (CP for non-members, DP for members).
+      const totalChargeToPatient = parseFloat(deductions.reduce((s, d) => s + (Number(d.quantity || 0) * Number(d.charge_unit != null ? d.charge_unit : (d.unit_price || 0))), 0).toFixed(2));
       const totalDispensedBV = deductions.reduce((s, d) => s + (Number(d.quantity || 0) * Number(d.bv_unit || 0)), 0);
       const now = new Date();
       const serviceDate = now.toISOString().slice(0, 10);
@@ -167,10 +175,11 @@ export default async function handler(req, res) {
           activity_type: 'prescription_dispensing',
           workflow_source: 'branch_portal',
           form_reference_id: reportId,
-          product_total_dp: totalDispensedValue,
+          product_total_dp: totalDispensedDP,       // DP cost basis (stock valuation)
+          product_total_cp: totalChargeToPatient,   // patient charge (CP for non-members, DP for members)
           total_qty: totalDispensedQty,
           total_bv: totalDispensedBV,
-          grand_total: totalDispensedValue,
+          grand_total: totalChargeToPatient,         // revenue received from patient
           payment_status: 'paid',
           payment_method: pmNorm,
           stock_impact: true,

@@ -2065,6 +2065,8 @@ function PrescriptionsTab() {
   const [dispensePreview, setDispensePreview] = useState(null);
   const [dispensing, setDispensing] = useState(false);
   const [rxDispensePayment, setRxDispensePayment] = useState('cash');
+  const [rxCashTendered, setRxCashTendered] = useState('');
+  const [dispenseSuccess, setDispenseSuccess] = useState(null);
   const [expandedPackages, setExpandedPackages] = useState({});
 
   const CHECKUP_FEE_OPTIONS = {
@@ -2350,12 +2352,26 @@ function PrescriptionsTab() {
         dispensed_by: user?.full_name || user?.username || '',
       });
       setReports(prev => prev.map(r => r.id === report.id ? { ...r, medicines: updatedMeds, dispensing_status: newStatus } : r));
-      setDispensePreview(null);
-      const msg = allDispensedNow
-        ? `All items dispensed and stock deducted for ${report.id}`
-        : `${pendingItems.length} item(s) dispensed. ${updatedMeds.filter(m => !m.dispensed).length} still pending.`;
-      setAlert({ type: 'success', message: msg });
-      setTimeout(() => refreshDispenserData(), 100);
+      // Show sale-complete confirmation overlay inside the modal — keep preview open
+      setDispenseSuccess({
+        reportId: report.id,
+        patientName: report.client_name || report.full_name || report.patient_name || 'Patient',
+        totalCharge: dpGrandTotal,
+        paymentMethod: rxDispensePayment,
+        cashTendered: rxDispensePayment === 'cash' ? Number(rxCashTendered || dpGrandTotal) : null,
+        updatedReport: { ...report, medicines: updatedMeds },
+        consultMode: getConsultMode(report.id, isMember),
+        checkupType: dispensePreview.checkupType,
+        isFullDispense: allDispensedNow,
+        pendingCount: updatedMeds.filter(m => !m.dispensed).length,
+      });
+      // Auto-close the modal after 8 s (staff can close earlier or print receipt first)
+      setTimeout(() => {
+        setDispenseSuccess(null);
+        setDispensePreview(null);
+        setRxCashTendered('');
+        refreshDispenserData();
+      }, 8000);
     } catch (err) {
       setAlert({ type: 'error', message: err.message || 'Failed to dispense — stock may be insufficient' });
     } finally {
@@ -3146,33 +3162,119 @@ function PrescriptionsTab() {
                 </div>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, padding: '12px 14px', background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0' }}>
-                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#374151', whiteSpace: 'nowrap' }}>Payment Method</label>
-                <select value={rxDispensePayment} onChange={e => setRxDispensePayment(e.target.value)}
-                  style={{ flex: 1, padding: '8px 10px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: '0.83rem', background: '#fff' }}>
-                  <option value="cash">💵 Cash</option>
-                  <option value="card">💳 Card</option>
-                  <option value="eft">🏦 EFT</option>
-                  <option value="medical_aid">🏥 Medical Aid</option>
-                </select>
+              <div style={{ padding: '12px 14px', background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0', marginBottom: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: rxDispensePayment === 'cash' ? 10 : 0 }}>
+                  <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#374151', whiteSpace: 'nowrap' }}>Payment Method</label>
+                  <select value={rxDispensePayment} onChange={e => { setRxDispensePayment(e.target.value); setRxCashTendered(''); }}
+                    style={{ flex: 1, padding: '8px 10px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: '0.83rem', background: '#fff' }}>
+                    <option value="cash">💵 Cash</option>
+                    <option value="card">💳 Card</option>
+                    <option value="eft">🏦 EFT</option>
+                    <option value="medical_aid">🏥 Medical Aid</option>
+                  </select>
+                </div>
+                {rxDispensePayment === 'cash' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#374151', whiteSpace: 'nowrap' }}>Amount Received</label>
+                    <div style={{ flex: 1, position: 'relative' }}>
+                      <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontWeight: 700, color: '#64748b', fontSize: '0.83rem' }}>N$</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        placeholder={`${Math.ceil(dpGrandTotal)}.00`}
+                        value={rxCashTendered}
+                        onChange={e => setRxCashTendered(e.target.value)}
+                        style={{ width: '100%', padding: '8px 10px 8px 32px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: '0.83rem', background: '#fff' }}
+                      />
+                    </div>
+                    {rxCashTendered && Number(rxCashTendered) >= dpGrandTotal && (
+                      <div style={{ padding: '6px 12px', background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: 8, whiteSpace: 'nowrap' }}>
+                        <div style={{ fontSize: '0.62rem', color: '#64748b', fontWeight: 700 }}>CHANGE</div>
+                        <div style={{ fontSize: '0.92rem', fontWeight: 900, color: '#16a34a' }}>N$ {(Number(rxCashTendered) - dpGrandTotal).toFixed(2)}</div>
+                      </div>
+                    )}
+                    {rxCashTendered && Number(rxCashTendered) < dpGrandTotal && (
+                      <div style={{ padding: '6px 12px', background: '#fef2f2', border: '1.5px solid #fecaca', borderRadius: 8, whiteSpace: 'nowrap' }}>
+                        <div style={{ fontSize: '0.62rem', color: '#991b1b', fontWeight: 700 }}>SHORT</div>
+                        <div style={{ fontSize: '0.92rem', fontWeight: 900, color: '#dc2626' }}>N$ {(dpGrandTotal - Number(rxCashTendered)).toFixed(2)}</div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-              <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 14px', marginBottom: 18, fontSize: '0.78rem', color: '#991b1b' }}>
-                ⚠️ Clicking "Confirm & Dispense" will deduct stock using FEFO batch logic. This cannot be undone.
-              </div>
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-                <button onClick={() => setDispensePreview(null)} disabled={dispensing}
-                  style={{ padding: '10px 20px', border: '1px solid #d1d5db', borderRadius: 10, background: '#fff', color: '#374151', cursor: dispensing ? 'not-allowed' : 'pointer', fontWeight: 600, fontSize: '0.85rem' }}>
-                  Cancel
-                </button>
-                <button onClick={() => printPrescriptionQuoteThermal(dpModal.report, dpModal.consultMode)}
-                  style={{ padding: '10px 20px', border: '1.5px solid #93c5fd', borderRadius: 10, background: '#eff6ff', color: '#1e40af', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem' }}>
-                  🖨️ Print Preview
-                </button>
-                <button onClick={confirmDispense} disabled={dispensing}
-                  style={{ padding: '10px 24px', border: 'none', borderRadius: 10, background: dispensing ? '#94a3b8' : 'linear-gradient(135deg,#16a34a,#166534)', color: '#fff', cursor: dispensing ? 'not-allowed' : 'pointer', fontWeight: 800, fontSize: '0.88rem', boxShadow: '0 3px 12px rgba(22,163,74,0.35)' }}>
-                  {dispensing ? 'Dispensing...' : '✅ Confirm & Dispense'}
-                </button>
-              </div>
+              {/* ── Sale-Complete overlay (replaces action row after dispense) ── */}
+              {dispenseSuccess ? (
+                <div style={{ background: 'linear-gradient(135deg,#f0fdf4,#dcfce7)', border: '2px solid #16a34a', borderRadius: 14, padding: '20px 18px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '2rem', marginBottom: 4 }}>✅</div>
+                  <div style={{ fontWeight: 900, fontSize: '1.15rem', color: '#14532d', marginBottom: 2 }}>
+                    {dispenseSuccess.isFullDispense ? 'Sale Complete — Fully Dispensed' : 'Sale Complete — Partial Dispense'}
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: '#166534', marginBottom: 14 }}>
+                    {dispenseSuccess.patientName} • {dispenseSuccess.paymentMethod?.toUpperCase()}
+                    {!dispenseSuccess.isFullDispense && ` • ${dispenseSuccess.pendingCount} item(s) still pending`}
+                  </div>
+
+                  {/* Total charged */}
+                  <div style={{ display: 'flex', justifyContent: 'center', gap: 24, marginBottom: dispenseSuccess.cashTendered != null ? 10 : 16 }}>
+                    <div style={{ background: '#fff', border: '1.5px solid #86efac', borderRadius: 10, padding: '10px 22px' }}>
+                      <div style={{ fontSize: '0.62rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1 }}>Total Charged</div>
+                      <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#15803d' }}>N$ {Number(dispenseSuccess.totalCharge || 0).toFixed(2)}</div>
+                    </div>
+                    {dispenseSuccess.cashTendered != null && (
+                      <>
+                        <div style={{ background: '#fff', border: '1.5px solid #93c5fd', borderRadius: 10, padding: '10px 22px' }}>
+                          <div style={{ fontSize: '0.62rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1 }}>Cash Received</div>
+                          <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#1d4ed8' }}>N$ {Number(dispenseSuccess.cashTendered).toFixed(2)}</div>
+                        </div>
+                        <div style={{ background: '#fff', border: '1.5px solid #fcd34d', borderRadius: 10, padding: '10px 22px' }}>
+                          <div style={{ fontSize: '0.62rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1 }}>Change Due</div>
+                          <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#92400e' }}>
+                            N$ {Math.max(0, Number(dispenseSuccess.cashTendered) - Number(dispenseSuccess.totalCharge)).toFixed(2)}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  <div style={{ fontSize: '0.72rem', color: '#15803d', marginBottom: 14 }}>
+                    Stock deducted • Sale posted to reports • Auto-closing in a few seconds…
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+                    <button
+                      onClick={() => printPrescriptionReceipt(dispenseSuccess.updatedReport, dispenseSuccess.consultMode, dispenseSuccess.checkupType)}
+                      style={{ padding: '10px 22px', border: '1.5px solid #16a34a', borderRadius: 10, background: '#16a34a', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>
+                      🖨️ Print Receipt
+                    </button>
+                    <button
+                      onClick={() => { setDispenseSuccess(null); setDispensePreview(null); setRxCashTendered(''); refreshDispenserData(); }}
+                      style={{ padding: '10px 20px', border: '1px solid #d1d5db', borderRadius: 10, background: '#fff', color: '#374151', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem' }}>
+                      Close
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 14px', marginBottom: 18, fontSize: '0.78rem', color: '#991b1b' }}>
+                    ⚠️ Clicking "Confirm &amp; Dispense" will deduct stock using FEFO batch logic. This cannot be undone.
+                  </div>
+                  <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                    <button onClick={() => setDispensePreview(null)} disabled={dispensing}
+                      style={{ padding: '10px 20px', border: '1px solid #d1d5db', borderRadius: 10, background: '#fff', color: '#374151', cursor: dispensing ? 'not-allowed' : 'pointer', fontWeight: 600, fontSize: '0.85rem' }}>
+                      Cancel
+                    </button>
+                    <button onClick={() => printPrescriptionQuoteThermal(dpModal.report, dpModal.consultMode)}
+                      style={{ padding: '10px 20px', border: '1.5px solid #93c5fd', borderRadius: 10, background: '#eff6ff', color: '#1e40af', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem' }}>
+                      🖨️ Print Preview
+                    </button>
+                    <button onClick={confirmDispense} disabled={dispensing}
+                      style={{ padding: '10px 24px', border: 'none', borderRadius: 10, background: dispensing ? '#94a3b8' : 'linear-gradient(135deg,#16a34a,#166534)', color: '#fff', cursor: dispensing ? 'not-allowed' : 'pointer', fontWeight: 800, fontSize: '0.88rem', boxShadow: '0 3px 12px rgba(22,163,74,0.35)' }}>
+                      {dispensing ? 'Dispensing...' : '✅ Confirm & Dispense'}
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
