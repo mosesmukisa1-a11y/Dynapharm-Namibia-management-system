@@ -269,11 +269,16 @@ export default async function handler(req, res) {
     const rxRows = allTxRows.filter(r => r.activity_type === 'prescription_dispensing');
     const campaignRows = allTxRows.filter(r => r.activity_type === 'campaign_sale');
 
-    // For non-member sales, grand_total is the customer selling price (DP + distributor margin).
-    // Use product_total_dp (item-level dp × qty) for those rows so all reports show true DP value.
-    const dpValue = (r) => r.activity_type === 'non_member_sale'
-      ? Number(r.product_total_dp || 0)
-      : Number(r.grand_total || 0);
+    // For a row, return the DP value used in the DP Sales Report:
+    //  • non_member_sale: grand_total = CP, so use product_total_dp (DP cost basis)
+    //  • prescription_dispensing for non-member patients: grand_total = CP (patient charge),
+    //    so also use product_total_dp (DP cost basis) — branch keeps DP, distributor earns CP-DP
+    //  • All other types: grand_total is already at DP / fee amount
+    const dpValue = (r) =>
+      r.activity_type === 'non_member_sale' ||
+      (r.activity_type === 'prescription_dispensing' && r.client_type && r.client_type !== 'member')
+        ? Number(r.product_total_dp || 0)
+        : Number(r.grand_total || 0);
 
     const buildPaymentBreakdown = (rows) => {
       const paymentMethods = {};
