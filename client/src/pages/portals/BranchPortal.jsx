@@ -2067,6 +2067,7 @@ function PrescriptionsTab() {
   const [rxDispensePayment, setRxDispensePayment] = useState('cash');
   const [rxCashTendered, setRxCashTendered] = useState('');
   const [dispenseSuccess, setDispenseSuccess] = useState(null);
+  const [rxItemQtys, setRxItemQtys] = useState({}); // { [pendingItemIndex]: qty } for current session
   const [expandedPackages, setExpandedPackages] = useState({});
 
   const CHECKUP_FEE_OPTIONS = {
@@ -2199,9 +2200,12 @@ function PrescriptionsTab() {
             alreadyDispensed: alreadyDispensedComps.has(comp.name),
           };
         });
-        return { name: m.name, quantity: 1, dp: p.dp, cp: p.cp, bv: p.bv, isPackage: true, dispensed: !!m.dispensed, products: p.products, expandedIndividually: true, components, alreadyDispensedComps };
+        return { name: m.name, quantity: 1, fullQty: 1, alreadyDispensedQty: 0, dp: p.dp, cp: p.cp, bv: p.bv, isPackage: true, dispensed: !!m.dispensed, products: p.products, expandedIndividually: true, components, alreadyDispensedComps };
       }
-      return { name: m.name, quantity: 1, dp: p.dp, cp: p.cp, bv: p.bv, isPackage: !!p.isPackage, dispensed: !!m.dispensed, products: p.products, expandedIndividually: false, alreadyDispensedComps };
+      const fullQty = m.quantity || 1;
+      const alreadyQty = m.dispensed_qty || 0;
+      const remainingQty = Math.max(1, fullQty - alreadyQty);
+      return { name: m.name, quantity: remainingQty, fullQty, alreadyDispensedQty: alreadyQty, dp: p.dp, cp: p.cp, bv: p.bv, isPackage: !!p.isPackage, dispensed: !!m.dispensed, products: p.products, expandedIndividually: false, alreadyDispensedComps };
     });
 
     const pendingItems = [];
@@ -2227,6 +2231,7 @@ function PrescriptionsTab() {
     const currentCheckupType = getCheckupType(report.id);
     const currentCheckupOpt = currentCheckupType ? CHECKUP_FEE_OPTIONS[currentCheckupType] : null;
 
+    setRxItemQtys({});
     setDispensePreview({
       report,
       items,
@@ -2269,7 +2274,11 @@ function PrescriptionsTab() {
     setDispensing(true);
     try {
       const dispenseItems = [];
-      for (const item of pendingItems) {
+      for (let pi = 0; pi < pendingItems.length; pi++) {
+        const item = pendingItems[pi];
+        const selectedQty = (!item.isComponent && !item.isPackage)
+          ? Math.max(1, Math.min(rxItemQtys[pi] || item.quantity, item.quantity))
+          : item.quantity;
         if (item.isComponent) {
           const price = isMember ? item.dp : item.cp;
           dispenseItems.push({ product_name: item.name, quantity: item.quantity, unit_price: price || null, from_package: item.fromPackage || null });
@@ -2285,12 +2294,16 @@ function PrescriptionsTab() {
             dispenseItems.push({ product_name: item.name, quantity: item.quantity || 1, unit_price: isMember ? (item.dp || null) : (item.cp || null) });
           }
         } else {
-          dispenseItems.push({ product_name: item.name, quantity: item.quantity, unit_price: isMember ? (item.dp || null) : (item.cp || null) });
+          dispenseItems.push({ product_name: item.name, quantity: selectedQty, unit_price: isMember ? (item.dp || null) : (item.cp || null) });
         }
       }
       // Determine if this session completes the whole prescription (full) or leaves items pending (partial).
       const undispensedCountBefore = dispensePreview.items.filter(i => !i.dispensed).length;
-      const rxDispenseType = pendingItems.length >= undispensedCountBefore ? 'full' : 'partial';
+      const anyPartialQty = pendingItems.some((item, pi) =>
+        !item.isComponent && !item.isPackage &&
+        Math.max(1, Math.min(rxItemQtys[pi] || item.quantity, item.quantity)) < item.quantity
+      );
+      const rxDispenseType = (!anyPartialQty && pendingItems.length >= undispensedCountBefore) ? 'full' : 'partial';
 
       await api.branch.dispense({
         reportId: report.id,
@@ -2307,7 +2320,14 @@ function PrescriptionsTab() {
         dispenseType: rxDispenseType,
       });
 
-      const pendingNonPkgNames = new Set(pendingItems.filter(i => !i.isComponent && !i.isPackage).map(i => i.name));
+      // Build qty map: medicine name → qty dispensed in this session
+      const pendingQtyMap = {};
+      for (let pi = 0; pi < pendingItems.length; pi++) {
+        const item = pendingItems[pi];
+        if (!item.isComponent && !item.isPackage) {
+          pendingQtyMap[item.name] = Math.max(1, Math.min(rxItemQtys[pi] || item.quantity, item.quantity));
+        }
+      }
       const fullPackageNames = new Set();
       const componentsByPackage = {};
       for (const item of pendingItems) {
@@ -2329,8 +2349,13 @@ function PrescriptionsTab() {
       }
 
       const updatedMeds = getMedicines(report).map((m, medIdx) => {
-        if (pendingNonPkgNames.has(m.name)) return { ...m, dispensed: true };
-        if (fullPackageNames.has(m.name)) return { ...m, dispensed: true };
+        if (pendingQtyMap[m.name] !== undefined) {
+          const dispensedNow = pendingQtyMap[m.name];
+          const newDispensedQty = (m.dispensed_qty || 0) + dispensedNow;
+          const totalQty = m.quantity || 1;
+          return { ...m, dispensed_qty: newDispensedQty, dispensed: newDispensedQty >= totalQty };
+        }
+        if (fullPackageNames.has(m.name)) return { ...m, dispensed: true, dispensed_qty: m.quantity || 1 };
         if (componentsByPackage[m.name]) {
           const p = getEffectivePrice(m.name);
           const allComponents = p.products || [];
@@ -2342,7 +2367,7 @@ function PrescriptionsTab() {
         return m;
       });
       const allDispensedNow = updatedMeds.every(m => m.dispensed);
-      const someDispensed = updatedMeds.some(m => m.dispensed || (Array.isArray(m.dispensed_components) && m.dispensed_components.length > 0));
+      const someDispensed = updatedMeds.some(m => m.dispensed || (m.dispensed_qty || 0) > 0 || (Array.isArray(m.dispensed_components) && m.dispensed_components.length > 0));
       const newStatus = allDispensedNow ? 'dispensed' : (someDispensed ? 'partial' : 'draft');
       await api.reports.update(report.id, {
         ...report,
@@ -2612,13 +2637,26 @@ function PrescriptionsTab() {
   };
 
   const dpModal = dispensePreview;
-  const dpMedSubtotal = dpModal ? (dpModal.isMember ? dpModal.pendingDP : dpModal.pendingCP) : 0;
+  // Dynamic subtotal — reflects per-item qty selections from the stepper
+  const dpMedSubtotal = dpModal
+    ? dpModal.pendingItems.reduce((s, item, i) => {
+        const unitPrice = dpModal.isMember ? (item.dp || 0) : (item.cp || 0);
+        const qty = (!item.isComponent && !item.isPackage)
+          ? Math.max(1, Math.min(rxItemQtys[i] || item.quantity || 1, item.quantity || 1))
+          : (item.quantity || 1);
+        return s + unitPrice * qty;
+      }, 0)
+    : 0;
   const dpCheckupFeeAmt = dpModal?.checkupOpt ? dpModal.checkupOpt.fee : 0;
   const dpConsultFeeAmt = dpModal?.consultMode === 'inclusive' ? (dpModal.consultFee?.total || 0) : 0;
   const dpGrandTotal = dpMedSubtotal + dpCheckupFeeAmt + dpConsultFeeAmt;
-  // Dispense-type context for the modal
+  // Full dispense = all pending items included AND no item has a partial qty selection
   const dpIsFullDispense = dpModal
-    ? (dpModal.items.filter(i => !i.dispensed).length <= dpModal.pendingItems.length)
+    ? (dpModal.items.filter(i => !i.dispensed).length <= dpModal.pendingItems.length &&
+       dpModal.pendingItems.every((item, i) =>
+         item.isComponent || item.isPackage ||
+         Math.max(1, Math.min(rxItemQtys[i] || item.quantity || 1, item.quantity || 1)) >= (item.quantity || 1)
+       ))
     : false;
   const dpQuoteTotal  = dpModal ? (dpModal.isMember ? dpModal.totalDP : dpModal.totalCP) : 0;
   const dpAlreadyDone = dpModal ? (dpModal.isMember ? dpModal.alreadyDispensedDP : dpModal.alreadyDispensedCP) : 0;
@@ -3122,7 +3160,10 @@ function PrescriptionsTab() {
                 <tbody>
                   {dpModal.pendingItems.map((item, i) => {
                     const unitPrice = dpModal.isMember ? (item.dp || 0) : (item.cp || 0);
-                    const lineTotal = unitPrice * (item.quantity || 1);
+                    const dispQty = (!item.isComponent && !item.isPackage)
+                      ? Math.max(1, Math.min(rxItemQtys[i] || item.quantity || 1, item.quantity || 1))
+                      : (item.quantity || 1);
+                    const lineTotal = unitPrice * dispQty;
                     return (
                       <tr key={i} style={{ borderBottom: '1px solid #f1f5f9', background: item.isComponent ? '#f0f6ff' : '#fff' }}>
                         <td style={{ padding: '8px 10px', fontWeight: 600, color: '#1e293b' }}>
@@ -3131,7 +3172,20 @@ function PrescriptionsTab() {
                             <div style={{ fontSize: '0.66rem', color: '#3b82f6', fontWeight: 500, marginTop: 1 }}>from {item.fromPackage}</div>
                           )}
                         </td>
-                        <td style={{ padding: '8px 10px', textAlign: 'center', color: '#64748b' }}>{item.quantity}</td>
+                        <td style={{ padding: '8px 10px', textAlign: 'center', color: '#64748b' }}>
+                          {(!item.isComponent && !item.isPackage && item.quantity > 1) ? (
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                              <button onClick={() => setRxItemQtys(prev => ({ ...prev, [i]: Math.max(1, (prev[i] || item.quantity) - 1) }))}
+                                style={{ width: 22, height: 22, border: '1.5px solid #cbd5e1', borderRadius: 5, background: '#f8fafc', cursor: 'pointer', fontWeight: 800, fontSize: '0.9rem', lineHeight: 1, color: '#374151', padding: 0 }}>−</button>
+                              <span style={{ minWidth: 22, fontWeight: 700, fontSize: '0.88rem', color: '#1e293b', textAlign: 'center' }}>{rxItemQtys[i] || item.quantity}</span>
+                              <button onClick={() => setRxItemQtys(prev => ({ ...prev, [i]: Math.min(item.quantity, (prev[i] || item.quantity) + 1) }))}
+                                style={{ width: 22, height: 22, border: '1.5px solid #cbd5e1', borderRadius: 5, background: '#f8fafc', cursor: 'pointer', fontWeight: 800, fontSize: '0.9rem', lineHeight: 1, color: '#374151', padding: 0 }}>+</button>
+                              {(rxItemQtys[i] || item.quantity) < item.quantity && (
+                                <span style={{ fontSize: '0.6rem', color: '#d97706', fontWeight: 700 }}>/{item.quantity}</span>
+                              )}
+                            </div>
+                          ) : item.quantity}
+                        </td>
                         <td style={{ padding: '8px 10px', textAlign: 'right', color: '#475569' }}>N$ {Math.round(unitPrice).toLocaleString("en-ZA")}</td>
                         <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: '#1e293b' }}>N$ {Math.round(lineTotal).toLocaleString("en-ZA")}</td>
                       </tr>
