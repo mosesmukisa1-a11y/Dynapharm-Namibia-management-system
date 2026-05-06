@@ -2068,6 +2068,7 @@ function PrescriptionsTab() {
   const [rxCashTendered, setRxCashTendered] = useState('');
   const [dispenseSuccess, setDispenseSuccess] = useState(null);
   const [rxItemQtys, setRxItemQtys] = useState({}); // { [pendingItemIndex]: qty } for current session
+  const [rxItemSelected, setRxItemSelected] = useState({}); // { [pendingItemIndex]: boolean } — true = selected for dispense
   const [expandedPackages, setExpandedPackages] = useState({});
 
   const CHECKUP_FEE_OPTIONS = {
@@ -2232,6 +2233,10 @@ function PrescriptionsTab() {
     const currentCheckupOpt = currentCheckupType ? CHECKUP_FEE_OPTIONS[currentCheckupType] : null;
 
     setRxItemQtys({});
+    // Default all pending items to selected
+    const initSel = {};
+    pendingItems.forEach((_, i) => { initSel[i] = true; });
+    setRxItemSelected(initSel);
     setDispensePreview({
       report,
       items,
@@ -2267,14 +2272,21 @@ function PrescriptionsTab() {
   const confirmDispense = async () => {
     if (!dispensePreview) return;
     const { report, pendingItems, isMember, membershipStatus } = dispensePreview;
-    if (pendingItems.length === 0) {
-      setAlert({ type: 'error', message: 'No pending items to dispense' });
+
+    // Only process items the user has checked for this session
+    const selectedIndices = pendingItems
+      .map((_, pi) => pi)
+      .filter(pi => rxItemSelected[pi] !== false);
+
+    if (selectedIndices.length === 0) {
+      setAlert({ type: 'error', message: 'Please select at least one item to dispense' });
       return;
     }
+
     setDispensing(true);
     try {
       const dispenseItems = [];
-      for (let pi = 0; pi < pendingItems.length; pi++) {
+      for (const pi of selectedIndices) {
         const item = pendingItems[pi];
         const selectedQty = (!item.isComponent && !item.isPackage)
           ? Math.max(1, Math.min(rxItemQtys[pi] || item.quantity, item.quantity))
@@ -2297,13 +2309,14 @@ function PrescriptionsTab() {
           dispenseItems.push({ product_name: item.name, quantity: selectedQty, unit_price: isMember ? (item.dp || null) : (item.cp || null) });
         }
       }
-      // Determine if this session completes the whole prescription (full) or leaves items pending (partial).
+      // Full dispense = every pending item was selected AND all selected quantities are at full prescribed qty
       const undispensedCountBefore = dispensePreview.items.filter(i => !i.dispensed).length;
-      const anyPartialQty = pendingItems.some((item, pi) =>
-        !item.isComponent && !item.isPackage &&
-        Math.max(1, Math.min(rxItemQtys[pi] || item.quantity, item.quantity)) < item.quantity
-      );
-      const rxDispenseType = (!anyPartialQty && pendingItems.length >= undispensedCountBefore) ? 'full' : 'partial';
+      const anyPartialQty = selectedIndices.some((pi) => {
+        const item = pendingItems[pi];
+        return !item.isComponent && !item.isPackage &&
+          Math.max(1, Math.min(rxItemQtys[pi] || item.quantity, item.quantity)) < item.quantity;
+      });
+      const rxDispenseType = (!anyPartialQty && selectedIndices.length >= undispensedCountBefore) ? 'full' : 'partial';
 
       await api.branch.dispense({
         reportId: report.id,
@@ -2322,7 +2335,8 @@ function PrescriptionsTab() {
 
       // Build qty map: medicine name → qty dispensed in this session
       const pendingQtyMap = {};
-      for (let pi = 0; pi < pendingItems.length; pi++) {
+      // Only build qty/package maps for items the user selected
+      for (const pi of selectedIndices) {
         const item = pendingItems[pi];
         if (!item.isComponent && !item.isPackage) {
           pendingQtyMap[item.name] = Math.max(1, Math.min(rxItemQtys[pi] || item.quantity, item.quantity));
@@ -2330,7 +2344,8 @@ function PrescriptionsTab() {
       }
       const fullPackageNames = new Set();
       const componentsByPackage = {};
-      for (const item of pendingItems) {
+      for (const pi of selectedIndices) {
+        const item = pendingItems[pi];
         if (item.isComponent && item.fromPackage) {
           if (!componentsByPackage[item.fromPackage]) componentsByPackage[item.fromPackage] = new Set();
           componentsByPackage[item.fromPackage].add(item.name);
@@ -2637,9 +2652,14 @@ function PrescriptionsTab() {
   };
 
   const dpModal = dispensePreview;
-  // Dynamic subtotal — reflects per-item qty selections from the stepper
+  // Count of pending items the user has ticked for this session
+  const dpSelectedCount = dpModal
+    ? dpModal.pendingItems.filter((_, i) => rxItemSelected[i] !== false).length
+    : 0;
+  // Dynamic subtotal — only sums ticked items, reflects qty steppers
   const dpMedSubtotal = dpModal
     ? dpModal.pendingItems.reduce((s, item, i) => {
+        if (rxItemSelected[i] === false) return s; // skip deselected
         const unitPrice = dpModal.isMember ? (item.dp || 0) : (item.cp || 0);
         const qty = (!item.isComponent && !item.isPackage)
           ? Math.max(1, Math.min(rxItemQtys[i] || item.quantity || 1, item.quantity || 1))
@@ -2650,10 +2670,11 @@ function PrescriptionsTab() {
   const dpCheckupFeeAmt = dpModal?.checkupOpt ? dpModal.checkupOpt.fee : 0;
   const dpConsultFeeAmt = dpModal?.consultMode === 'inclusive' ? (dpModal.consultFee?.total || 0) : 0;
   const dpGrandTotal = dpMedSubtotal + dpCheckupFeeAmt + dpConsultFeeAmt;
-  // Full dispense = all pending items included AND no item has a partial qty selection
+  // Full dispense = every pending item is selected AND no selected item has a partial qty
   const dpIsFullDispense = dpModal
-    ? (dpModal.items.filter(i => !i.dispensed).length <= dpModal.pendingItems.length &&
+    ? (dpSelectedCount >= dpModal.items.filter(i => !i.dispensed).length &&
        dpModal.pendingItems.every((item, i) =>
+         rxItemSelected[i] === false ||
          item.isComponent || item.isPackage ||
          Math.max(1, Math.min(rxItemQtys[i] || item.quantity || 1, item.quantity || 1)) >= (item.quantity || 1)
        ))
@@ -3145,12 +3166,32 @@ function PrescriptionsTab() {
                   ))}
                 </div>
               )}
-              <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>
-                {dpIsFullDispense ? '✅ Dispensing Now — Full Prescription' : `⏳ Dispensing Now (${dpModal.pendingItems.length} of ${dpModal.items.length} item${dpModal.items.length !== 1 ? 's' : ''})`}
+              {/* ── Item selection header ─────────────────────────────── */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <div style={{ fontSize: '0.65rem', fontWeight: 700, color: dpSelectedCount === 0 ? '#dc2626' : '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                  {dpSelectedCount === 0
+                    ? '⚠️ No items selected'
+                    : dpIsFullDispense
+                      ? `✅ All ${dpSelectedCount} item${dpSelectedCount !== 1 ? 's' : ''} selected — Full Dispense`
+                      : `⏳ ${dpSelectedCount} of ${dpModal.pendingItems.length} item${dpModal.pendingItems.length !== 1 ? 's' : ''} selected`}
+                </div>
+                <div style={{ display: 'flex', gap: 5 }}>
+                  <button
+                    onClick={() => { const a = {}; dpModal.pendingItems.forEach((_, i) => { a[i] = true; }); setRxItemSelected(a); }}
+                    style={{ fontSize: '0.68rem', fontWeight: 700, padding: '4px 10px', borderRadius: 6, border: '1.5px solid #16a34a', background: '#f0fdf4', color: '#166534', cursor: 'pointer' }}>
+                    ✓ Select All
+                  </button>
+                  <button
+                    onClick={() => { const n = {}; dpModal.pendingItems.forEach((_, i) => { n[i] = false; }); setRxItemSelected(n); }}
+                    style={{ fontSize: '0.68rem', fontWeight: 700, padding: '4px 10px', borderRadius: 6, border: '1.5px solid #cbd5e1', background: '#f8fafc', color: '#64748b', cursor: 'pointer' }}>
+                    ✕ Deselect All
+                  </button>
+                </div>
               </div>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', marginBottom: 4 }}>
                 <thead>
                   <tr style={{ background: '#f8fafc' }}>
+                    <th style={{ textAlign: 'center', padding: '8px 6px', borderBottom: '2px solid #e2e8f0', fontSize: '0.68rem', fontWeight: 700, color: '#475569', width: 32 }}>✓</th>
                     <th style={{ textAlign: 'left', padding: '8px 10px', borderBottom: '2px solid #e2e8f0', fontSize: '0.68rem', fontWeight: 700, color: '#475569' }}>Product</th>
                     <th style={{ textAlign: 'center', padding: '8px 10px', borderBottom: '2px solid #e2e8f0', fontSize: '0.68rem', fontWeight: 700, color: '#475569' }}>Qty</th>
                     <th style={{ textAlign: 'right', padding: '8px 10px', borderBottom: '2px solid #e2e8f0', fontSize: '0.68rem', fontWeight: 700, color: '#475569' }}>Unit Price</th>
@@ -3159,21 +3200,30 @@ function PrescriptionsTab() {
                 </thead>
                 <tbody>
                   {dpModal.pendingItems.map((item, i) => {
+                    const isChecked = rxItemSelected[i] !== false;
                     const unitPrice = dpModal.isMember ? (item.dp || 0) : (item.cp || 0);
                     const dispQty = (!item.isComponent && !item.isPackage)
                       ? Math.max(1, Math.min(rxItemQtys[i] || item.quantity || 1, item.quantity || 1))
                       : (item.quantity || 1);
-                    const lineTotal = unitPrice * dispQty;
+                    const lineTotal = isChecked ? unitPrice * dispQty : 0;
                     return (
-                      <tr key={i} style={{ borderBottom: '1px solid #f1f5f9', background: item.isComponent ? '#f0f6ff' : '#fff' }}>
-                        <td style={{ padding: '8px 10px', fontWeight: 600, color: '#1e293b' }}>
+                      <tr key={i} style={{ borderBottom: '1px solid #f1f5f9', background: !isChecked ? '#f8fafc' : item.isComponent ? '#f0f6ff' : '#fff', opacity: isChecked ? 1 : 0.45, transition: 'opacity .15s' }}>
+                        <td style={{ padding: '8px 6px', textAlign: 'center' }}>
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => setRxItemSelected(prev => ({ ...prev, [i]: !isChecked }))}
+                            style={{ width: 16, height: 16, cursor: 'pointer', accentColor: '#16a34a' }}
+                          />
+                        </td>
+                        <td style={{ padding: '8px 10px', fontWeight: 600, color: isChecked ? '#1e293b' : '#94a3b8' }}>
                           <div>{item.name}{item.isPackage && !item.isComponent ? ' 📦' : ''}</div>
                           {item.isComponent && item.fromPackage && (
                             <div style={{ fontSize: '0.66rem', color: '#3b82f6', fontWeight: 500, marginTop: 1 }}>from {item.fromPackage}</div>
                           )}
                         </td>
                         <td style={{ padding: '8px 10px', textAlign: 'center', color: '#64748b' }}>
-                          {(!item.isComponent && !item.isPackage && item.quantity > 1) ? (
+                          {(isChecked && !item.isComponent && !item.isPackage && item.quantity > 1) ? (
                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                               <button onClick={() => setRxItemQtys(prev => ({ ...prev, [i]: Math.max(1, (prev[i] || item.quantity) - 1) }))}
                                 style={{ width: 22, height: 22, border: '1.5px solid #cbd5e1', borderRadius: 5, background: '#f8fafc', cursor: 'pointer', fontWeight: 800, fontSize: '0.9rem', lineHeight: 1, color: '#374151', padding: 0 }}>−</button>
@@ -3186,8 +3236,12 @@ function PrescriptionsTab() {
                             </div>
                           ) : item.quantity}
                         </td>
-                        <td style={{ padding: '8px 10px', textAlign: 'right', color: '#475569' }}>N$ {Math.round(unitPrice).toLocaleString("en-ZA")}</td>
-                        <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: '#1e293b' }}>N$ {Math.round(lineTotal).toLocaleString("en-ZA")}</td>
+                        <td style={{ padding: '8px 10px', textAlign: 'right', color: '#475569' }}>
+                          {isChecked ? `N$ ${Math.round(unitPrice).toLocaleString("en-ZA")}` : '—'}
+                        </td>
+                        <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: isChecked ? '#1e293b' : '#94a3b8' }}>
+                          {isChecked ? `N$ ${Math.round(lineTotal).toLocaleString("en-ZA")}` : <span style={{ fontSize: '0.72rem', color: '#cbd5e1' }}>skipped</span>}
+                        </td>
                       </tr>
                     );
                   })}
@@ -3321,8 +3375,13 @@ function PrescriptionsTab() {
               ) : (
                 <>
                   <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 14px', marginBottom: 18, fontSize: '0.78rem', color: '#991b1b' }}>
-                    ⚠️ Clicking "Confirm &amp; Dispense" will deduct stock using FEFO batch logic. This cannot be undone.
+                    ⚠️ Only selected items will be deducted from stock (FEFO). This cannot be undone.
                   </div>
+                  {dpSelectedCount === 0 && (
+                    <div style={{ background: '#fef3c7', border: '1.5px solid #fde68a', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: '0.8rem', color: '#92400e', fontWeight: 600 }}>
+                      ☑️ Tick at least one item above to enable dispensing.
+                    </div>
+                  )}
                   <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
                     <button onClick={() => setDispensePreview(null)} disabled={dispensing}
                       style={{ padding: '10px 20px', border: '1px solid #d1d5db', borderRadius: 10, background: '#fff', color: '#374151', cursor: dispensing ? 'not-allowed' : 'pointer', fontWeight: 600, fontSize: '0.85rem' }}>
@@ -3332,9 +3391,9 @@ function PrescriptionsTab() {
                       style={{ padding: '10px 20px', border: '1.5px solid #93c5fd', borderRadius: 10, background: '#eff6ff', color: '#1e40af', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem' }}>
                       🖨️ Print Preview
                     </button>
-                    <button onClick={confirmDispense} disabled={dispensing}
-                      style={{ padding: '10px 24px', border: 'none', borderRadius: 10, background: dispensing ? '#94a3b8' : 'linear-gradient(135deg,#16a34a,#166534)', color: '#fff', cursor: dispensing ? 'not-allowed' : 'pointer', fontWeight: 800, fontSize: '0.88rem', boxShadow: '0 3px 12px rgba(22,163,74,0.35)' }}>
-                      {dispensing ? 'Dispensing...' : '✅ Confirm & Dispense'}
+                    <button onClick={confirmDispense} disabled={dispensing || dpSelectedCount === 0}
+                      style={{ padding: '10px 24px', border: 'none', borderRadius: 10, background: (dispensing || dpSelectedCount === 0) ? '#94a3b8' : 'linear-gradient(135deg,#16a34a,#166534)', color: '#fff', cursor: (dispensing || dpSelectedCount === 0) ? 'not-allowed' : 'pointer', fontWeight: 800, fontSize: '0.88rem', boxShadow: dpSelectedCount > 0 && !dispensing ? '0 3px 12px rgba(22,163,74,0.35)' : 'none' }}>
+                      {dispensing ? 'Dispensing...' : dpSelectedCount === 0 ? 'Select Items First' : `✅ Confirm & Dispense (${dpSelectedCount})`}
                     </button>
                   </div>
                 </>
