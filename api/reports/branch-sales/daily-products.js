@@ -45,8 +45,15 @@ export default async function handler(req, res) {
             ELSE                                      'regular'
           END                                                               AS sale_type,
           SUM(ABS(bim.quantity))                                            AS total_qty,
-          -- Free items have unit_price = NULL → 0; paid items carry real DP value
-          SUM(ABS(bim.quantity) * COALESCE(bim.unit_price, 0))             AS dp_amount,
+          -- Use product_prices.dp (GM price list) as the authoritative DP source.
+          -- bim.unit_price stores CP for non-member walk-in sales, so it cannot be
+          -- used directly. Free items (campaign_free_item) are always 0.
+          SUM(
+            ABS(bim.quantity) *
+            CASE WHEN bim.type = 'campaign_free_item' THEN 0
+                 ELSE COALESCE(NULLIF(pp.dp, 0), NULLIF(bim.unit_price, 0), 0)
+            END
+          )                                                                 AS dp_amount,
           COALESCE(MAX(pp.bv), 0) * SUM(
             CASE WHEN bim.type = 'campaign_free_item' THEN 0 ELSE ABS(bim.quantity) END
           )                                                                 AS bv_total
