@@ -2628,6 +2628,71 @@ server.on('error', (error) => {
     }
     // ───────────────────────────────────────────────────────────────────────
 
+    // ── One-time idempotent data correction: Eenhana May 5 2026 Rx ──────────
+    // The original dispense stored CP in BAT.product_total_dp, BIM.unit_price,
+    // and stock_movements.unit_dp instead of DP. These idempotent UPDATEs
+    // self-correct only if the wrong value is still present. Each table is in
+    // its own try/catch so one failure cannot block the others.
+    try {
+      // 1. BAT: fix product_total_dp (1925 CP → 1576 DP) and product_total_cp (0 → 1925)
+      await query(`
+        UPDATE branch_activity_transactions
+        SET product_total_dp = 1576.00,
+            product_total_cp = 1925.00,
+            updated_at = NOW()
+        WHERE form_reference_id = 'RPT-1777979570868-b7m93z'
+          AND branch_id = 'eenhana'
+          AND activity_type = 'prescription_dispensing'
+          AND product_total_dp = 1925.00
+      `);
+      console.log('[data-correction] BAT fix applied (Eenhana Rx product_total_dp).');
+    } catch (e) { console.warn('[data-correction] BAT fix error:', e.message); }
+
+    try {
+      // 2. BIM: fix unit_price per product (CP → DP) — no updated_at column in this table
+      const bimFixes = [
+        { product: 'HERBA WARISAN MAHARANI 6 x 10g',             cp: 620, dp: 520 },
+        { product: "GINSENG CAPSULE 9 x 10's",                   cp: 655, dp: 546 },
+        { product: 'Nano Home Feminine Wash Kacip Fatimah 60ml', cp: 150, dp: 90  },
+        { product: "YEEGINKGO TABLETS 90's",                     cp: 500, dp: 420 },
+      ];
+      for (const fix of bimFixes) {
+        await query(`
+          UPDATE branch_inventory_movements
+          SET unit_price = $1
+          WHERE branch_id = 'eenhana'
+            AND type = 'prescription_dispense'
+            AND reference = 'RPT-1777979570868-b7m93z'
+            AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))
+            AND unit_price = $3
+        `, [fix.dp, fix.product, fix.cp]);
+      }
+      console.log('[data-correction] BIM fix applied (Eenhana Rx unit_price).');
+    } catch (e) { console.warn('[data-correction] BIM fix error:', e.message); }
+
+    try {
+      // 3. stock_movements: fix unit_dp per product for this prescription
+      const smFixes = [
+        { product: 'HERBA WARISAN MAHARANI 6 x 10g',             cp: 620, dp: 520 },
+        { product: "GINSENG CAPSULE 9 x 10's",                   cp: 655, dp: 546 },
+        { product: 'Nano Home Feminine Wash Kacip Fatimah 60ml', cp: 150, dp: 90  },
+        { product: "YEEGINKGO TABLETS 90's",                     cp: 500, dp: 420 },
+      ];
+      for (const fix of smFixes) {
+        await query(`
+          UPDATE stock_movements
+          SET unit_dp = $1, updated_at = NOW()
+          WHERE reference_id = 'RPT-1777979570868-b7m93z'
+            AND movement_type = 'prescription_dispense'
+            AND source_location = 'eenhana'
+            AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))
+            AND unit_dp = $3
+        `, [fix.dp, fix.product, fix.cp]);
+      }
+      console.log('[data-correction] SM fix applied (Eenhana Rx unit_dp).');
+    } catch (e) { console.warn('[data-correction] SM fix error:', e.message); }
+    // ─────────────────────────────────────────────────────────────────────────
+
     // ── Start automated stock reporting scheduler ────────────────────────────
     try {
       const { startStockScheduler, ensureStockSummaryTable } = await import('./api/services/stockScheduler.js');

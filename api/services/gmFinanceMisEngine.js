@@ -192,7 +192,7 @@ export async function getLocationMovements(locationType, locationId, start, end)
  * Sales revenue from branch_walkin_sales (completed sales only).
  */
 export async function getBranchSalesRevenue(branchId, start, end) {
-  const [rows, refundRows] = await Promise.all([
+  const [rows, refundRows, rxRows] = await Promise.all([
     getMany(
       `SELECT customer_type, payment_method, total, subtotal, items
        FROM branch_walkin_sales
@@ -211,18 +211,39 @@ export async function getBranchSalesRevenue(branchId, start, end) {
          AND processed_at::date <= $3::date`,
       [branchId, start, end]
     ),
+    // Prescription dispensing DP revenue from BAT (authoritative, excludes drafts)
+    getMany(
+      `SELECT grand_total, product_total_dp, client_type
+       FROM branch_activity_transactions
+       WHERE branch_id = $1
+         AND activity_type = 'prescription_dispensing'
+         AND workflow_source != 'dispense_draft'
+         AND payment_status = 'paid'
+         AND service_date >= $2::date
+         AND service_date <= $3::date`,
+      [branchId, start, end]
+    ),
   ]);
 
   const refundTotal = Number(refundRows[0]?.refund_total || 0);
-  let totalSales = 0, memberSales = 0, nonMemberSales = 0, onlineSales = 0;
+  let walkinSales = 0, memberSales = 0, nonMemberSales = 0, onlineSales = 0;
   let cashTotal = 0, swipeTotal = 0, eftTotal = 0;
 
   for (const r of rows) {
-    const amt = Number(r.total || r.subtotal || 0);
-    totalSales += amt;
     const ct = (r.customer_type || '').toLowerCase();
+    let amt;
+    // Non-member walk-in: branch_walkin_sales.total = CP (consumer price).
+    // Parse item-level DP to get the true distributor-price basis.
+    if (ct.includes('non') || (!ct.includes('member') && !ct.includes('online'))) {
+      let items = [];
+      try { items = typeof r.items === 'string' ? JSON.parse(r.items) : (Array.isArray(r.items) ? r.items : []); } catch {}
+      amt = items.reduce((s, i) => s + Number(i.dpPrice || i.dp || i.unit_price || 0) * Number(i.quantity || i.qty || 1), 0);
+    } else {
+      // Member and online sales: total = DP (members pay at DP)
+      amt = Number(r.total || r.subtotal || 0);
+    }
+    walkinSales += amt;
     if (ct.includes('member') && !ct.includes('non')) memberSales += amt;
-    else if (ct.includes('non')) nonMemberSales += amt;
     else if (ct.includes('online')) onlineSales += amt;
     else nonMemberSales += amt;
 
@@ -232,9 +253,19 @@ export async function getBranchSalesRevenue(branchId, start, end) {
     else if (pm === 'eft') eftTotal += amt;
   }
 
+  // Prescription dispensing DP (product_total_dp for non-member, grand_total for member)
+  let prescriptionSales = 0;
+  for (const r of rxRows) {
+    const isNonMember = r.client_type && r.client_type !== 'member';
+    prescriptionSales += isNonMember
+      ? Number(r.product_total_dp || r.grand_total || 0)
+      : Number(r.grand_total || 0);
+  }
+
   // Deduct approved refunds processed in this period
-  totalSales     = Math.max(0, totalSales     - refundTotal);
+  walkinSales    = Math.max(0, walkinSales    - refundTotal);
   nonMemberSales = Math.max(0, nonMemberSales - refundTotal);
+  const totalSales = walkinSales + prescriptionSales;
 
   // Consultation fees per branch from activity transactions
   const consultRow = await getOne(
@@ -249,7 +280,7 @@ export async function getBranchSalesRevenue(branchId, start, end) {
   );
   const consultationFees = Number(consultRow?.total || 0);
 
-  return { totalSales, memberSales, nonMemberSales, onlineSales, cashTotal, swipeTotal, eftTotal, consultationFees };
+  return { totalSales, walkinSales, memberSales, nonMemberSales, onlineSales, prescriptionSales, cashTotal, swipeTotal, eftTotal, consultationFees };
 }
 
 /**
@@ -339,9 +370,9 @@ export async function getCompanyStockSummary() {
  * All sales across the company (all branches).
  */
 export async function getAllBranchesSalesRevenue(start, end) {
-  const [rows, refundRow] = await Promise.all([
+  const [rows, refundRow, rxRows] = await Promise.all([
     getMany(
-      `SELECT branch_id, customer_type, payment_method, total
+      `SELECT branch_id, customer_type, payment_method, total, items
        FROM branch_walkin_sales
        WHERE status = 'completed'
          AND sale_date >= $1::date
@@ -356,16 +387,40 @@ export async function getAllBranchesSalesRevenue(start, end) {
          AND processed_at::date <= $2::date`,
       [start, end]
     ),
+    // Prescription DP from BAT — the authoritative source for DP figures.
+    // Uses product_total_dp for non-member Rx (branch keeps DP; CP-DP margin → distributor).
+    // Uses grand_total for member Rx (members pay DP; grand_total = DP).
+    getMany(
+      `SELECT grand_total, product_total_dp, client_type
+       FROM branch_activity_transactions
+       WHERE activity_type = 'prescription_dispensing'
+         AND workflow_source != 'dispense_draft'
+         AND payment_status = 'paid'
+         AND service_date >= $1::date
+         AND service_date <= $2::date`,
+      [start, end]
+    ),
   ]);
 
   const refundTotal = Number(refundRow?.refund_total || 0);
-  let walkinSales = 0, memberSales = 0, nonMemberSales = 0, onlineSales = 0, prescriptionSales = 0;
+  let walkinSales = 0, memberSales = 0, nonMemberSales = 0, onlineSales = 0;
 
   for (const r of rows) {
-    const amt = Number(r.total || 0);
     const ct = (r.customer_type || '').toLowerCase();
-    if (ct.includes('member') && !ct.includes('non')) memberSales += amt;
-    else if (ct.includes('non')) nonMemberSales += amt;
+    let amt;
+    // Non-member walk-in: branch_walkin_sales.total = CP (consumer price).
+    // Parse item-level DP to get the true distributor-price basis.
+    if (ct.includes('non') || (!ct.includes('member') && !ct.includes('online'))) {
+      let items = [];
+      try { items = typeof r.items === 'string' ? JSON.parse(r.items) : (Array.isArray(r.items) ? r.items : []); } catch {}
+      amt = items.reduce((s, i) => s + Number(i.dpPrice || i.dp || i.unit_price || 0) * Number(i.quantity || i.qty || 1), 0);
+    } else {
+      // Member and online sales: total = DP (members pay at DP)
+      amt = Number(r.total || 0);
+    }
+    const isMember = ct.includes('member') && !ct.includes('non');
+    if (isMember) memberSales += amt;
+    else if (ct.includes('online')) onlineSales += amt;
     else nonMemberSales += amt;
     walkinSales += amt;
   }
@@ -374,17 +429,13 @@ export async function getAllBranchesSalesRevenue(start, end) {
   walkinSales    = Math.max(0, walkinSales    - refundTotal);
   nonMemberSales = Math.max(0, nonMemberSales - refundTotal);
 
-  // Prescription dispense revenue from stock_movements (qty * unit_dp)
-  const dispensed = await getMany(
-    `SELECT quantity, unit_dp FROM stock_movements
-     WHERE status = 'posted'
-       AND movement_type = 'prescription_dispense'
-       AND created_at >= $1::date
-       AND created_at <= ($2 || 'T23:59:59')::timestamp`,
-    [start, end]
-  );
-  for (const d of dispensed) {
-    prescriptionSales += Number(d.quantity || 0) * Number(d.unit_dp || 0);
+  // Prescription DP from BAT (product_total_dp for non-member, grand_total for member)
+  let prescriptionSales = 0;
+  for (const r of rxRows) {
+    const isNonMember = r.client_type && r.client_type !== 'member';
+    prescriptionSales += isNonMember
+      ? Number(r.product_total_dp || r.grand_total || 0)
+      : Number(r.grand_total || 0);
   }
 
   // Consultation fees from activity transactions (recorded during dispensing)
