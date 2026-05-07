@@ -2693,6 +2693,75 @@ server.on('error', (error) => {
     } catch (e) { console.warn('[data-correction] SM fix error:', e.message); }
     // ─────────────────────────────────────────────────────────────────────────
 
+    // ── Retroactive fix: prescription_dispensing BAT rows with grand_total = 0 ─
+    // When dispense.js couldn't match a product name in product_prices AND the
+    // frontend hadn't yet been updated to pass explicit dp/cp fields, both
+    // grand_total and product_total_dp were stored as 0 in BAT and unit_price
+    // as null/0 in BIM. This idempotent correction re-derives DP/CP values from
+    // product_prices by LOWER(TRIM()) name matching and updates all affected rows.
+    try {
+      // Step 1: fix BIM unit_price where it is 0 by joining with product_prices
+      // PostgreSQL UPDATE-FROM: additional tables listed in FROM, connected via WHERE
+      await query(`
+        UPDATE branch_inventory_movements
+        SET unit_price = pp.dp
+        FROM product_prices pp, branch_activity_transactions bat
+        WHERE branch_inventory_movements.reference = bat.form_reference_id
+          AND branch_inventory_movements.type = 'prescription_dispense'
+          AND (branch_inventory_movements.unit_price IS NULL OR branch_inventory_movements.unit_price = 0)
+          AND bat.activity_type = 'prescription_dispensing'
+          AND bat.workflow_source = 'branch_portal'
+          AND (bat.grand_total IS NULL OR bat.grand_total = 0)
+          AND LOWER(TRIM(pp.description)) = LOWER(TRIM(branch_inventory_movements.product_name))
+          AND pp.dp IS NOT NULL AND pp.dp > 0
+      `);
+
+      // Step 2: fix BAT grand_total / product_total_dp by summing corrected BIM rows
+      await query(`
+        UPDATE branch_activity_transactions bat
+        SET product_total_dp = sub.total_dp,
+            product_total_cp = sub.total_cp,
+            grand_total      = CASE WHEN bat.client_type = 'member' THEN sub.total_dp
+                                    ELSE sub.total_cp END,
+            updated_at = NOW()
+        FROM (
+          SELECT
+            bim.reference                                              AS report_id,
+            bim.branch_id,
+            SUM(ABS(bim.quantity) * COALESCE(pp.dp, 0))::numeric      AS total_dp,
+            SUM(ABS(bim.quantity) * COALESCE(pp.cp, 0))::numeric      AS total_cp
+          FROM branch_inventory_movements bim
+          JOIN product_prices pp
+            ON LOWER(TRIM(pp.description)) = LOWER(TRIM(bim.product_name))
+          WHERE bim.type = 'prescription_dispense'
+            AND pp.dp IS NOT NULL AND pp.dp > 0
+          GROUP BY bim.reference, bim.branch_id
+        ) sub
+        WHERE bat.form_reference_id = sub.report_id
+          AND bat.branch_id        = sub.branch_id
+          AND bat.activity_type    = 'prescription_dispensing'
+          AND bat.workflow_source  = 'branch_portal'
+          AND (bat.grand_total IS NULL OR bat.grand_total = 0)
+          AND sub.total_dp > 0
+      `);
+
+      // Step 3: fix stock_movements unit_dp = 0 for prescription_dispense rows
+      await query(`
+        UPDATE stock_movements sm
+        SET unit_dp = pp.dp, updated_at = NOW()
+        FROM product_prices pp
+        WHERE sm.movement_type = 'prescription_dispense'
+          AND LOWER(TRIM(pp.description)) = LOWER(TRIM(sm.product_name))
+          AND (sm.unit_dp IS NULL OR sm.unit_dp = 0)
+          AND pp.dp IS NOT NULL AND pp.dp > 0
+      `);
+
+      console.log('[data-correction] Prescription Rx zero-price rows corrected across all branches.');
+    } catch (rxFixErr) {
+      console.warn('[data-correction] Rx zero-price fix error:', rxFixErr.message);
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     // ── Start automated stock reporting scheduler ────────────────────────────
     try {
       const { startStockScheduler, ensureStockSummaryTable } = await import('./api/services/stockScheduler.js');

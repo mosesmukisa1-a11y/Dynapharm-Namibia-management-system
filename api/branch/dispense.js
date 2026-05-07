@@ -63,19 +63,23 @@ export default async function handler(req, res) {
             });
           }
         } else {
-          const livePrice = livePriceMap[productName.toLowerCase()];
+          // Try exact name, then TRIM-normalised name (handles stray whitespace differences)
+          const livePrice = livePriceMap[productName.toLowerCase()]
+            || livePriceMap[productName.toLowerCase().trim()];
           const isMem = customerType === 'member';
           // DP = distributor / cost price; CP = consumer / selling price
           const dpPrice = livePrice ? Number(livePrice.dp) || 0 : 0;
           const cpPrice = livePrice ? Number(livePrice.cp) || 0 : 0;
+          // Frontend now sends explicit dp/cp fields — use as fallback when live lookup fails
           const passedDP = Number(item.dp || item.dp_price || 0);
+          const passedCP = Number(item.cp || item.cp_price || 0);
           resolvedItems.push({
             product_name: productName,
             quantity: qty,
             unit_price: dpPrice || passedDP || null,           // BIM: stock valuation at DP
             charge_unit: isMem                                 // patient charge
               ? (dpPrice || passedDP || null)
-              : (cpPrice || null),
+              : (cpPrice || passedCP || null),
             bv_unit: livePrice ? Number(livePrice.bv) || 0 : 0,
             cif_unit: livePrice ? Number(livePrice.cif) || 0 : 0,
             from_package: item.from_package || null,

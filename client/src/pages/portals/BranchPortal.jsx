@@ -2291,20 +2291,20 @@ function PrescriptionsTab() {
           : item.quantity;
         if (item.isComponent) {
           const price = isMember ? item.dp : item.cp;
-          dispenseItems.push({ product_name: item.name, quantity: item.quantity, unit_price: price || null, from_package: item.fromPackage || null });
+          dispenseItems.push({ product_name: item.name, quantity: item.quantity, dp: item.dp || null, cp: item.cp || null, unit_price: price || null, from_package: item.fromPackage || null });
         } else if (item.isPackage && item.products) {
           const hasPartialHistory = item.alreadyDispensedComps && item.alreadyDispensedComps.size > 0;
           if (hasPartialHistory) {
             for (const comp of item.products) {
               const cp = getComponentPrice(comp.name);
               const compPrice = isMember ? cp.dp : cp.cp;
-              dispenseItems.push({ product_name: comp.name, quantity: Number(comp.quantity || 1) * (item.quantity || 1), unit_price: compPrice || null, from_package: item.name });
+              dispenseItems.push({ product_name: comp.name, quantity: Number(comp.quantity || 1) * (item.quantity || 1), dp: cp.dp || null, cp: cp.cp || null, unit_price: compPrice || null, from_package: item.name });
             }
           } else {
-            dispenseItems.push({ product_name: item.name, quantity: item.quantity || 1, unit_price: isMember ? (item.dp || null) : (item.cp || null) });
+            dispenseItems.push({ product_name: item.name, quantity: item.quantity || 1, dp: item.dp || null, cp: item.cp || null, unit_price: isMember ? (item.dp || null) : (item.cp || null) });
           }
         } else {
-          dispenseItems.push({ product_name: item.name, quantity: selectedQty, unit_price: isMember ? (item.dp || null) : (item.cp || null) });
+          dispenseItems.push({ product_name: item.name, quantity: selectedQty, dp: item.dp || null, cp: item.cp || null, unit_price: isMember ? (item.dp || null) : (item.cp || null) });
         }
       }
       // Full dispense = every pending item was selected AND all selected quantities are at full prescribed qty
