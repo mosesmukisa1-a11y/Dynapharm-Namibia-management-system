@@ -2,3 +2,9 @@ node_modules/
 
 .vercel
 version.json
+
+# Build output — always rebuilt by the deployment build step (npm run build).
+# Never commit dist/ so deployments are always forced to produce a fresh build
+# from the current source files, preventing stale bundles reaching production.
+dist/
+client/dist/
