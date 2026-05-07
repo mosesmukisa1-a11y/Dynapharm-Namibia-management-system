@@ -3948,6 +3948,7 @@ function BranchStockTab() {
       ...i,
       product_name: i.product_name || i.productName || i.productId || '',
       received_qty: i.quantity,
+      dispatched_qty: Number(i.quantity || 0),
       batch_no: '',
       expiry_date: '',
     }));
@@ -3985,16 +3986,19 @@ function BranchStockTab() {
             const splits = batchMap[pName];
             if (splits && splits.length > 0) {
               for (const split of splits) {
+                const dqty = split.received_qty > 0 ? split.received_qty : Number(orig.quantity || 0);
                 newRows.push({
                   ...orig,
                   product_name: pName,
-                  received_qty: split.received_qty > 0 ? split.received_qty : Number(orig.quantity || 0),
+                  received_qty: dqty,
+                  dispatched_qty: dqty,
                   batch_no: split.batch_no,
                   expiry_date: split.expiry_date ? split.expiry_date.split('T')[0] : '',
                 });
               }
             } else {
-              newRows.push({ ...orig, product_name: pName, received_qty: Number(orig.quantity || 0), batch_no: '', expiry_date: '' });
+              const dqty = Number(orig.quantity || 0);
+              newRows.push({ ...orig, product_name: pName, received_qty: dqty, dispatched_qty: dqty, batch_no: '', expiry_date: '' });
             }
           }
           const hasAllBatches = newRows.every(r => r.batch_no);
@@ -4060,11 +4064,39 @@ function BranchStockTab() {
             createdBy: receiveReceivedBy || user?.full_name || user?.username || null,
           });
       }
+      // Record a short_receipt movement for each item where received_qty ≠ dispatched_qty
+      const discrepancyItems = itemsToReceive.filter(it => {
+        const dqty = Number(it.dispatched_qty ?? it.quantity ?? 0);
+        return dqty > 0 && Number(it.received_qty) !== dqty;
+      });
+      for (const item of discrepancyItems) {
+        const productName = safeLabel(item.product_name) || safeLabel(item.productName) || 'Unknown';
+        const dqty = Number(item.dispatched_qty ?? item.quantity ?? 0);
+        const rqty = Number(item.received_qty);
+        const diff = dqty - rqty;
+        await api.stock.createMovement({
+          product_name: productName,
+          quantity: Math.abs(diff),
+          movement_type: 'short_receipt',
+          source_location: 'Warehouse',
+          destination_location: selectedBranch || user?.branch || 'Branch',
+          destination_location_type: 'branch',
+          batch_no: item.batch_no?.trim() || '',
+          expiry_date: item.expiry_date || null,
+          notes: `Receipt discrepancy for request ${selectedRequest.request_number || selectedRequest.id}: dispatched ${dqty}, received ${rqty} (${diff > 0 ? 'short' : 'over'} by ${Math.abs(diff)}). Delivery note: ${receiveDeliveryNote || 'N/A'}`,
+          reference_id: selectedRequest.id,
+          created_by: receiveReceivedBy || user?.full_name || user?.username || null,
+        });
+      }
+
       await api.stock.updateRequest(selectedRequest.id, { status: 'received' });
       setShowReceiveForm(false);
       setSelectedRequest(null);
       setReceiveFormMsg(null);
-      setAlert({ type: 'success', message: 'Stock received and recorded successfully' });
+      const discMsg = discrepancyItems.length > 0
+        ? ` Discrepancy noted for ${discrepancyItems.length} item(s) — recorded for Finance/GM review.`
+        : '';
+      setAlert({ type: 'success', message: `Stock received and recorded successfully.${discMsg}` });
       setSubTab('inventory');
       setTimeout(() => loadData(), 100);
     } catch (err) {
@@ -6055,19 +6087,56 @@ function BranchStockTab() {
               )}
               <div style={{ marginBottom: 16 }}>
                 {sectionLabel('Items to Receive')}
+                {(() => {
+                  const mismatches = receiveItems.filter(it => {
+                    const dqty = Number(it.dispatched_qty ?? it.quantity ?? 0);
+                    return dqty > 0 && Number(it.received_qty) !== dqty;
+                  });
+                  if (mismatches.length === 0) return null;
+                  return (
+                    <div style={{ padding: '10px 14px', borderRadius: 8, marginBottom: 10, fontSize: '0.8rem', fontWeight: 600, background: '#fefce8', color: '#854d0e', border: '1px solid #fde68a', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                      <span style={{ fontSize: '1rem', lineHeight: 1.2 }}>⚠️</span>
+                      <div>
+                        <div>Quantity mismatch on {mismatches.length} item{mismatches.length > 1 ? 's' : ''}:</div>
+                        <ul style={{ margin: '4px 0 0 14px', padding: 0, fontWeight: 500 }}>
+                          {mismatches.map((it, idx) => {
+                            const dqty = Number(it.dispatched_qty ?? it.quantity ?? 0);
+                            const rqty = Number(it.received_qty);
+                            const diff = dqty - rqty;
+                            return (
+                              <li key={idx}>{it.product_name}: dispatched {dqty}, received {rqty} ({diff > 0 ? `short by ${diff}` : `over by ${Math.abs(diff)}`})</li>
+                            );
+                          })}
+                        </ul>
+                        <div style={{ marginTop: 4, fontSize: '0.73rem', color: '#92400e' }}>You can still submit — the discrepancy will be recorded for Finance/GM review.</div>
+                      </div>
+                    </div>
+                  );
+                })()}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {receiveItems.map((item, i) => (
-                    <div key={i} style={{ padding: '10px 14px', background: '#f9f5f5', borderRadius: 10, border: '1px solid #f0e8ea' }}>
+                  {receiveItems.map((item, i) => {
+                    const dqty = Number(item.dispatched_qty ?? item.quantity ?? 0);
+                    const rqty = Number(item.received_qty);
+                    const hasMismatch = dqty > 0 && rqty !== dqty;
+                    return (
+                    <div key={i} style={{ padding: '10px 14px', background: hasMismatch ? '#fffbeb' : '#f9f5f5', borderRadius: 10, border: hasMismatch ? '1.5px solid #fde68a' : '1px solid #f0e8ea' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
                         <div style={{ flex: 1 }}>
                           <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.88rem' }}>{item.product_name}</div>
-                          <div style={{ fontSize: '0.74rem', color: '#64748b', marginTop: 1 }}>Requested: {item.quantity}</div>
+                          <div style={{ fontSize: '0.74rem', color: '#64748b', marginTop: 1 }}>
+                            Dispatched: <strong>{dqty > 0 ? dqty : item.quantity}</strong>
+                            {hasMismatch && (
+                              <span style={{ marginLeft: 8, color: '#b45309', fontWeight: 700 }}>
+                                ⚠️ {rqty < dqty ? `Short by ${dqty - rqty}` : `Over by ${rqty - dqty}`}
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
                           <label style={{ fontSize: '0.68rem', color: '#c41e3a', fontWeight: 700 }}>Qty Received</label>
                           <input type="number" min="0" value={item.received_qty}
                             onChange={e => setReceiveItems(prev => prev.map((r, j) => j===i ? {...r, received_qty: e.target.value} : r))}
-                            style={{ width: 70, padding: '5px 8px', border: '1.5px solid #fecaca', borderRadius: 7, fontSize: '0.87rem', textAlign: 'center', outline: 'none' }} />
+                            style={{ width: 70, padding: '5px 8px', border: hasMismatch ? '1.5px solid #f59e0b' : '1.5px solid #fecaca', borderRadius: 7, fontSize: '0.87rem', textAlign: 'center', outline: 'none', background: hasMismatch ? '#fffbeb' : '#fff' }} />
                         </div>
                       </div>
                       <div style={{ display: 'flex', gap: 8 }}>
@@ -6085,7 +6154,8 @@ function BranchStockTab() {
                         </div>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
