@@ -227,6 +227,7 @@ export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
     });
     return [...groupMap.values()];
   })();
+
   const isAmended = t.gmAction === 'amend_approve' || t.gm_action === 'amend_approve' || meta.amended;
   const gmAction = t.gmAction || t.gm_action || null;
   const gmComment = t.gmComment || t.gm_comment || null;
@@ -379,37 +380,106 @@ export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
           <tbody>
             {items.length === 0 ? (
               <tr><td colSpan={10} style={{ textAlign: 'center', padding: 20, color: '#9ca3af', fontStyle: 'italic' }}>No items in this dispatch note</td></tr>
-            ) : items.map((item, i) => {
-              const qtyPrep = Number(item.quantity || 0);
-              const qtyAppr = item.quantityApproved ?? item.quantity_approved;
-              const qtyRecv = item.quantityReceived ?? item.quantity_received;
-              const expiryDate = item.expiryDate || item.expiry_date;
-              const isExpiringSoon = expiryDate && new Date(expiryDate) < new Date(Date.now() + 90 * 86400000);
-              const variance = qtyRecv != null ? Number(qtyRecv) - (qtyAppr != null ? Number(qtyAppr) : qtyPrep) : null;
+            ) : hasBatchSplits ? (
+              batchGroups.flatMap((g, gi) => {
+                const isMultiBatch = g.batches.length > 1;
+                const rowBg = gi % 2 === 0 ? 'white' : '#f9fafb';
+                const approvedColor = g.totalApproved != null && g.totalApproved !== g.totalQty ? '#d97706' : '#333';
+                const receivedColor = g.totalReceived != null
+                  ? (g.totalReceived !== (g.totalApproved ?? g.totalQty) ? '#dc2626' : '#16a34a')
+                  : '#9ca3af';
+                const singleBatch = g.batches[0] || {};
+                const singleExpiry = singleBatch.expiryDate;
+                const singleExpiringSoon = singleExpiry && new Date(singleExpiry) < new Date(Date.now() + 90 * 86400000);
 
-              return (
-                <tr key={i} style={{ background: i % 2 === 0 ? 'white' : '#f9fafb' }}>
-                  <TD>{i + 1}</TD>
-                  <TD style={{ fontWeight: 600 }}>{item.productName || item.product_name || item.productId || '—'}</TD>
-                  <TD style={{ fontFamily: 'monospace', fontSize: 10 }}>{item.productCode || item.product_code || item.sku || '—'}</TD>
-                  <TD style={{ fontFamily: 'monospace', fontWeight: 600 }}>{item.batchNo || item.batch_no || '—'}</TD>
-                  <TD style={{ color: isExpiringSoon ? '#dc2626' : expiryDate ? '#333' : '#9ca3af', fontWeight: isExpiringSoon ? 700 : 400 }}>
-                    {expiryDate ? fmtDate(expiryDate) : (item.batchNo || item.batch_no ? 'N/A' : '—')}
-                  </TD>
-                  <TD>{item.unit || 'units'}</TD>
-                  <TD align="right" style={{ fontWeight: 700 }}>{qtyPrep}</TD>
-                  <TD align="right" style={{ fontWeight: 700, color: qtyAppr != null && Number(qtyAppr) !== qtyPrep ? '#d97706' : '#333' }}>
-                    {qtyAppr != null ? Number(qtyAppr) : '—'}
-                  </TD>
-                  <TD align="right" style={{ fontWeight: 700, color: qtyRecv != null ? (variance !== 0 ? '#dc2626' : '#16a34a') : '#9ca3af' }}>
-                    {qtyRecv != null ? Number(qtyRecv) : '—'}
-                  </TD>
-                  <TD style={{ fontSize: 10, color: '#64748b', maxWidth: 120 }}>
-                    {item.discrepancyNote || item.discrepancy_note || item.lineNote || item.line_note || '—'}
-                  </TD>
-                </tr>
-              );
-            })}
+                const productRow = (
+                  <tr key={`g-${gi}`} style={{ background: rowBg }}>
+                    <TD style={{ fontWeight: 700 }}>{gi + 1}</TD>
+                    <TD style={{ fontWeight: 700 }}>{g.displayName}</TD>
+                    <TD style={{ fontFamily: 'monospace', fontSize: 10 }}>{g.productCode || '—'}</TD>
+                    {isMultiBatch ? (
+                      <td colSpan={2} style={{ padding: '6px 8px', borderBottom: '1px solid #e5e7eb', fontSize: 10, color: '#2563eb', fontWeight: 700 }}>
+                        {g.batches.length} batch splits — see below
+                      </td>
+                    ) : (
+                      <>
+                        <TD style={{ fontFamily: 'monospace', fontWeight: 700 }}>{singleBatch.batchNo || '—'}</TD>
+                        <TD style={{ color: singleExpiringSoon ? '#dc2626' : singleExpiry ? '#333' : '#9ca3af', fontWeight: singleExpiringSoon ? 700 : 400 }}>
+                          {singleExpiry ? fmtDate(singleExpiry) : (singleBatch.batchNo ? 'N/A' : '—')}
+                        </TD>
+                      </>
+                    )}
+                    <TD>{g.unit}</TD>
+                    <TD align="right" style={{ fontWeight: 800 }}>{g.totalQty}</TD>
+                    <TD align="right" style={{ fontWeight: 700, color: approvedColor }}>
+                      {g.totalApproved != null ? g.totalApproved : '—'}
+                    </TD>
+                    <TD align="right" style={{ fontWeight: 700, color: receivedColor }}>
+                      {g.totalReceived != null ? g.totalReceived : '—'}
+                    </TD>
+                    <TD style={{ fontSize: 10, color: '#64748b', maxWidth: 120 }}>{g.remarks || '—'}</TD>
+                  </tr>
+                );
+
+                if (!isMultiBatch) return [productRow];
+
+                const subRows = g.batches.map((b, bi) => {
+                  const expiringSoon = b.expiryDate && new Date(b.expiryDate) < new Date(Date.now() + 90 * 86400000);
+                  return (
+                    <tr key={`g-${gi}-b-${bi}`} style={{ background: '#eff6ff', borderLeft: '3px solid #93c5fd' }}>
+                      <td style={{ padding: '4px 8px', borderBottom: '1px solid #dbeafe', fontSize: 10, color: '#9ca3af' }}></td>
+                      <td style={{ padding: '4px 8px', borderBottom: '1px solid #dbeafe', fontSize: 10, color: '#475569', fontStyle: 'italic', paddingLeft: 20 }}>
+                        ↳ Split {bi + 1}/{g.batches.length}
+                      </td>
+                      <td style={{ padding: '4px 8px', borderBottom: '1px solid #dbeafe' }}></td>
+                      <td style={{ padding: '4px 8px', borderBottom: '1px solid #dbeafe', fontFamily: 'monospace', fontWeight: 700, fontSize: 11 }}>{b.batchNo || '—'}</td>
+                      <td style={{ padding: '4px 8px', borderBottom: '1px solid #dbeafe', fontSize: 11, color: expiringSoon ? '#dc2626' : b.expiryDate ? '#333' : '#9ca3af', fontWeight: expiringSoon ? 700 : 400 }}>
+                        {b.expiryDate ? fmtDate(b.expiryDate) : 'N/A'}
+                      </td>
+                      <td style={{ padding: '4px 8px', borderBottom: '1px solid #dbeafe', fontSize: 10, color: '#9ca3af' }}>{g.unit}</td>
+                      <td style={{ padding: '4px 8px', borderBottom: '1px solid #dbeafe', textAlign: 'right', fontWeight: 700, fontSize: 11 }}>{b.qty}</td>
+                      <td style={{ padding: '4px 8px', borderBottom: '1px solid #dbeafe' }}></td>
+                      <td style={{ padding: '4px 8px', borderBottom: '1px solid #dbeafe' }}></td>
+                      <td style={{ padding: '4px 8px', borderBottom: '1px solid #dbeafe' }}></td>
+                    </tr>
+                  );
+                });
+
+                return [productRow, ...subRows];
+              })
+            ) : (
+              items.map((item, i) => {
+                const qtyPrep = Number(item.quantity || 0);
+                const qtyAppr = item.quantityApproved ?? item.quantity_approved;
+                const qtyRecv = item.quantityReceived ?? item.quantity_received;
+                const expiryDate = item.expiryDate || item.expiry_date;
+                const isExpiringSoon = expiryDate && new Date(expiryDate) < new Date(Date.now() + 90 * 86400000);
+                const variance = qtyRecv != null ? Number(qtyRecv) - (qtyAppr != null ? Number(qtyAppr) : qtyPrep) : null;
+
+                return (
+                  <tr key={i} style={{ background: i % 2 === 0 ? 'white' : '#f9fafb' }}>
+                    <TD>{i + 1}</TD>
+                    <TD style={{ fontWeight: 600 }}>{item.productName || item.product_name || item.productId || '—'}</TD>
+                    <TD style={{ fontFamily: 'monospace', fontSize: 10 }}>{item.productCode || item.product_code || item.sku || '—'}</TD>
+                    <TD style={{ fontFamily: 'monospace', fontWeight: 600 }}>{item.batchNo || item.batch_no || '—'}</TD>
+                    <TD style={{ color: isExpiringSoon ? '#dc2626' : expiryDate ? '#333' : '#9ca3af', fontWeight: isExpiringSoon ? 700 : 400 }}>
+                      {expiryDate ? fmtDate(expiryDate) : (item.batchNo || item.batch_no ? 'N/A' : '—')}
+                    </TD>
+                    <TD>{item.unit || 'units'}</TD>
+                    <TD align="right" style={{ fontWeight: 700 }}>{qtyPrep}</TD>
+                    <TD align="right" style={{ fontWeight: 700, color: qtyAppr != null && Number(qtyAppr) !== qtyPrep ? '#d97706' : '#333' }}>
+                      {qtyAppr != null ? Number(qtyAppr) : '—'}
+                    </TD>
+                    <TD align="right" style={{ fontWeight: 700, color: qtyRecv != null ? (variance !== 0 ? '#dc2626' : '#16a34a') : '#9ca3af' }}>
+                      {qtyRecv != null ? Number(qtyRecv) : '—'}
+                    </TD>
+                    <TD style={{ fontSize: 10, color: '#64748b', maxWidth: 120 }}>
+                      {item.discrepancyNote || item.discrepancy_note || item.lineNote || item.line_note || '—'}
+                    </TD>
+                  </tr>
+                );
+              })
+            )}
           </tbody>
           {items.length > 0 && (
             <tfoot>
