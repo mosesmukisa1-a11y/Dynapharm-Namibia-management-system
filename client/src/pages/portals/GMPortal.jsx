@@ -726,17 +726,24 @@ function ApprovalsTab() {
       const gmName = user?.full_name || user?.username || 'GM';
       const originalItems = amendModal.items || [];
       const amendmentLog = amendItems.map((ai, i) => {
-        const orig = originalItems[i];
+        const orig = originalItems.find(o =>
+          o.productName === ai.productName && o.batchNo === ai.batchNo
+        ) || originalItems[i];
         if (orig && Number(ai.quantityApproved) !== Number(orig.quantity)) {
-          return { product: ai.productName, originalQty: orig.quantity, approvedQty: ai.quantityApproved, removed: Number(ai.quantityApproved) === 0 };
+          return {
+            product: ai.productName,
+            batchNo: ai.batchNo || null,
+            originalQty: orig.quantity,
+            approvedQty: ai.quantityApproved,
+            removed: Number(ai.quantityApproved) === 0,
+          };
         }
         return null;
       }).filter(Boolean);
 
       const updatedItems = amendItems.filter(it => Number(it.quantityApproved) > 0).map(it => ({
         ...it,
-        quantity: it.quantity,
-        quantityApproved: Number(it.quantityApproved),
+        quantity: Number(it.quantityApproved),
       }));
 
       await api.stock.updateTransfer(amendModal.id, {
@@ -2109,8 +2116,13 @@ function ApprovalsTab() {
             </div>
             <div style={{ padding: 24 }}>
               <p style={{ fontSize: 13, color: '#666', marginBottom: 16 }}>
-                Adjust quantities or remove items. Items with quantity 0 will be removed. Remaining stock will return to warehouse.
+                Each row is an individual batch split. Adjust the approved quantity per batch, or click <strong>✕ Remove</strong> to exclude a specific batch entirely. Removed batches and reduced quantities return to the warehouse.
               </p>
+              {amendItems.some(it => Number(it.quantityApproved) === 0) && (
+                <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '8px 12px', marginBottom: 12, fontSize: 12, color: '#dc2626' }}>
+                  ⚠️ {amendItems.filter(it => Number(it.quantityApproved) === 0).length} batch row{amendItems.filter(it => Number(it.quantityApproved) === 0).length > 1 ? 's' : ''} will be removed on save.
+                </div>
+              )}
               <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 20 }}>
                 <thead>
                   <tr>
@@ -2119,25 +2131,51 @@ function ApprovalsTab() {
                     <th style={{ textAlign: 'left', padding: '8px 10px', borderBottom: '2px solid #e5e7eb', fontSize: 12, color: '#6b7280' }}>Expiry</th>
                     <th style={{ textAlign: 'center', padding: '8px 10px', borderBottom: '2px solid #e5e7eb', fontSize: 12, color: '#6b7280' }}>Original Qty</th>
                     <th style={{ textAlign: 'center', padding: '8px 10px', borderBottom: '2px solid #e5e7eb', fontSize: 12, color: '#6b7280' }}>Approved Qty</th>
+                    <th style={{ textAlign: 'center', padding: '8px 10px', borderBottom: '2px solid #e5e7eb', fontSize: 12, color: '#6b7280' }}>Remove</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {amendItems.map((it, i) => (
-                    <tr key={i} style={{ background: i % 2 === 0 ? 'white' : '#f9fafb' }}>
-                      <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', fontSize: 13, fontWeight: 500 }}>{it.productName || it.productId}</td>
-                      <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', fontSize: 13 }}>{it.batchNo || '—'}</td>
-                      <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', fontSize: 13, color: it.expiryDate ? 'inherit' : '#9ca3af' }}>{it.expiryDate ? fmtDate(it.expiryDate) : (it.batchNo ? 'N/A' : '—')}</td>
-                      <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', fontSize: 13, textAlign: 'center', color: '#9ca3af' }}>{it.quantity}</td>
-                      <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', textAlign: 'center' }}>
-                        <input type="number" min="0" max={it.quantity} value={it.quantityApproved}
-                          onChange={e => {
-                            const val = Math.max(0, Math.min(Number(e.target.value) || 0, it.quantity));
-                            setAmendItems(prev => prev.map((p, j) => j === i ? { ...p, quantityApproved: val } : p));
-                          }}
-                          style={{ width: 70, padding: '4px 8px', border: '1px solid #d1d5db', borderRadius: 6, textAlign: 'center', fontSize: 13, fontWeight: 600 }} />
-                      </td>
-                    </tr>
-                  ))}
+                  {amendItems.map((it, i) => {
+                    const isRemoved = Number(it.quantityApproved) === 0;
+                    const isExpiringSoon = it.expiryDate && new Date(it.expiryDate) < new Date(Date.now() + 90 * 86400000);
+                    const rowBg = isRemoved ? '#fef2f2' : i % 2 === 0 ? 'white' : '#f9fafb';
+                    return (
+                      <tr key={i} style={{ background: rowBg, opacity: isRemoved ? 0.6 : 1 }}>
+                        <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', fontSize: 13, fontWeight: 500, textDecoration: isRemoved ? 'line-through' : 'none', color: isRemoved ? '#9ca3af' : 'inherit' }}>{it.productName || it.productId}</td>
+                        <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', fontSize: 12, fontFamily: 'monospace', color: isRemoved ? '#9ca3af' : '#4b5563' }}>{it.batchNo || '—'}</td>
+                        <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', fontSize: 13, color: isRemoved ? '#9ca3af' : isExpiringSoon ? '#dc2626' : it.expiryDate ? '#374151' : '#9ca3af', fontWeight: isExpiringSoon && !isRemoved ? 600 : 'normal' }}>
+                          {it.expiryDate ? fmtDate(it.expiryDate) : (it.batchNo ? 'N/A' : '—')}
+                          {isExpiringSoon && !isRemoved && <span style={{ marginLeft: 4, fontSize: 10, background: '#fee2e2', color: '#dc2626', borderRadius: 3, padding: '1px 4px' }}>soon</span>}
+                        </td>
+                        <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', fontSize: 13, textAlign: 'center', color: '#9ca3af' }}>{it.quantity}</td>
+                        <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', textAlign: 'center' }}>
+                          {isRemoved ? (
+                            <span style={{ fontSize: 12, color: '#dc2626', fontWeight: 600 }}>Removed</span>
+                          ) : (
+                            <input type="number" min="1" max={it.quantity} value={it.quantityApproved}
+                              onChange={e => {
+                                const val = Math.max(0, Math.min(Number(e.target.value) || 0, it.quantity));
+                                setAmendItems(prev => prev.map((p, j) => j === i ? { ...p, quantityApproved: val } : p));
+                              }}
+                              style={{ width: 70, padding: '4px 8px', border: '1px solid #d1d5db', borderRadius: 6, textAlign: 'center', fontSize: 13, fontWeight: 600 }} />
+                          )}
+                        </td>
+                        <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', textAlign: 'center' }}>
+                          {isRemoved ? (
+                            <button onClick={() => setAmendItems(prev => prev.map((p, j) => j === i ? { ...p, quantityApproved: p.quantity } : p))}
+                              style={{ fontSize: 11, padding: '3px 8px', background: '#f0fdf4', color: '#16a34a', border: '1px solid #86efac', borderRadius: 5, cursor: 'pointer', fontWeight: 600 }}>
+                              Restore
+                            </button>
+                          ) : (
+                            <button onClick={() => setAmendItems(prev => prev.map((p, j) => j === i ? { ...p, quantityApproved: 0 } : p))}
+                              style={{ fontSize: 11, padding: '3px 8px', background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: 5, cursor: 'pointer', fontWeight: 600 }}>
+                              ✕ Remove
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
               <div style={{ marginBottom: 16 }}>
