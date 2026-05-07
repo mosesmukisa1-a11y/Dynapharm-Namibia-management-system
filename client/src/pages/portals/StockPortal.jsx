@@ -4383,6 +4383,7 @@ function BranchRequestsPanel() {
     const otherWarehouses = WAREHOUSE_SOURCES.filter(w => w.value !== dispatchWH);
     if (otherWarehouses.length === 0) return;
 
+    let cancelled = false;
     setAltFefoLoading(true);
     const result = {};
     Promise.all(
@@ -4401,9 +4402,10 @@ function BranchRequestsPanel() {
         }));
         result[wh.value] = whResult;
       })
-    ).then(() => setAltFefoMap(result))
+    ).then(() => { if (!cancelled) setAltFefoMap(result); })
      .catch(() => {})
-     .finally(() => setAltFefoLoading(false));
+     .finally(() => { if (!cancelled) setAltFefoLoading(false); });
+    return () => { cancelled = true; };
   }, [fefoLoading, fefoMap, dispatchWH, dispatchReq]);
 
   const visibleRequests = requests.filter(r => {
@@ -4524,6 +4526,7 @@ function BranchRequestsPanel() {
       setAlert({ type: 'success', msg: `✅ ${items.length} item(s) dispatched from ${whLabel} to ${fmtLocation(branchId)}. Branch can now receive the delivery.` });
       setDispatchReq(null);
       setFefoMap({});
+      setAltFefoMap({});
       setModalAlert(null);
       setTimeout(() => load(), 150);
     } catch (err) {
@@ -4845,7 +4848,7 @@ function BranchRequestsPanel() {
                 style={{ flex: 1, background: dispatchHasShortfall ? '#94a3b8' : '#c41e3a', color: '#fff', border: 'none', borderRadius: 9, padding: '11px 0', fontWeight: 800, fontSize: '0.88rem', cursor: (dispatching || fefoLoading || dispatchHasShortfall) ? 'not-allowed' : 'pointer', opacity: (dispatching || fefoLoading) ? 0.7 : 1 }}>
                 {dispatching ? 'Dispatching…' : fefoLoading ? 'Resolving batches…' : dispatchHasShortfall ? '🚫 Insufficient Stock' : '🚚 Confirm Dispatch'}
               </button>
-              <button onClick={() => { setDispatchReq(null); setModalAlert(null); setFefoMap({}); }} disabled={dispatching}
+              <button onClick={() => { setDispatchReq(null); setModalAlert(null); setFefoMap({}); setAltFefoMap({}); }} disabled={dispatching}
                 style={{ background: '#f1f5f9', color: '#64748b', border: 'none', borderRadius: 9, padding: '11px 18px', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}>
                 Cancel
               </button>
