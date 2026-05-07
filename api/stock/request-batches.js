@@ -50,6 +50,78 @@ function isBranchAllowed(branch, allowedBranches) {
   });
 }
 
+/**
+ * For any row that has a batch_no but no expiry_date, look up the expiry from
+ * stock_batches (primary) then supplier_imports (fallback).
+ * Returns a map: batch_no → expiry_date string (YYYY-MM-DD).
+ */
+async function resolveExpiryDates(rows) {
+  const missing = [...new Set(
+    rows.filter(r => r.batch_no && !r.expiry_date).map(r => r.batch_no)
+  )];
+  if (missing.length === 0) return {};
+
+  const map = {};
+  try {
+    // Primary: stock_batches (the FEFO ledger)
+    const batchRows = await getMany(
+      `SELECT batch_no, expiry_date
+       FROM stock_batches
+       WHERE batch_no = ANY($1::text[])
+         AND expiry_date IS NOT NULL
+       ORDER BY created_at DESC`,
+      [missing]
+    );
+    for (const r of batchRows) {
+      if (r.batch_no && r.expiry_date && !map[r.batch_no]) {
+        map[r.batch_no] = r.expiry_date instanceof Date
+          ? r.expiry_date.toISOString().slice(0, 10)
+          : String(r.expiry_date).slice(0, 10);
+      }
+    }
+
+    // Fallback: supplier_imports (user-entered batch data)
+    const stillMissing = missing.filter(bn => !map[bn]);
+    if (stillMissing.length > 0) {
+      const siRows = await getMany(
+        `SELECT batch_no, expiry_date
+         FROM supplier_imports
+         WHERE batch_no = ANY($1::text[])
+           AND expiry_date IS NOT NULL
+         ORDER BY created_at DESC`,
+        [stillMissing]
+      );
+      for (const r of siRows) {
+        if (r.batch_no && r.expiry_date && !map[r.batch_no]) {
+          map[r.batch_no] = r.expiry_date instanceof Date
+            ? r.expiry_date.toISOString().slice(0, 10)
+            : String(r.expiry_date).slice(0, 10);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[request-batches] expiry-date fallback lookup failed:', e.message);
+  }
+  return map;
+}
+
+function normaliseMovement(r, refId, expiryMap = {}) {
+  const expiryRaw = r.expiry_date
+    ? (r.expiry_date instanceof Date ? r.expiry_date.toISOString().slice(0, 10) : String(r.expiry_date).slice(0, 10))
+    : null;
+  const expiry = expiryRaw || (r.batch_no ? (expiryMap[r.batch_no] || null) : null);
+  return {
+    id: r.id || null,
+    product_name: r.product_name || '',
+    batch_no: r.batch_no || null,
+    expiry_date: expiry,
+    quantity: Number(r.quantity || 0),
+    source_location: r.source_location || '',
+    destination_location: r.destination_location || '',
+    reference_id: r.reference_id || refId || null,
+  };
+}
+
 export default async function handler(req, res) {
   applyAuthCors(req, res);
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -70,8 +142,6 @@ export default async function handler(req, res) {
     const isPrivileged = PRIVILEGED_ROLES.has(role);
 
     // ── Resolve effective request_id and transfer destination ─────────────────
-    // When transferId is given, fetch both request_id and to_branch in one query
-    // so that branch-scope auth can use whichever is available.
     let effectiveRequestId = requestId;
     let transferToBranch = null;
 
@@ -91,43 +161,25 @@ export default async function handler(req, res) {
     // ── Branch-scope authorization ────────────────────────────────────────────
     if (!isPrivileged && branchScope.enforced) {
       if (effectiveRequestId) {
-        // Primary auth path: validate via the stock request's requesting_branch
         const stockReq = await getOne(
           `SELECT requesting_branch FROM stock_requests WHERE id = $1 LIMIT 1`,
           [effectiveRequestId]
         );
         if (!stockReq) {
-          // Unknown request — return empty rather than 404 to avoid enumeration
           return res.status(200).json({ success: true, movements: [] });
         }
         if (!isBranchAllowed(stockReq.requesting_branch, branchScope.branches)) {
           return res.status(403).json({ error: 'Access denied: request does not belong to your branch' });
         }
       } else if (transferId) {
-        // transfer_id path with no linked request_id: validate via to_branch
         if (!transferToBranch) {
-          // Transfer not found, or has no destination — deny to prevent IDOR
           return res.status(403).json({ error: 'Access denied: transfer not found or has no destination branch' });
         }
         if (!isBranchAllowed(transferToBranch, branchScope.branches)) {
           return res.status(403).json({ error: 'Access denied: transfer does not belong to your branch' });
         }
       }
-      // (If neither, the 400 guard above already rejected the request.)
     }
-
-    const normaliseMovement = (r, refId) => ({
-      id: r.id || null,
-      product_name: r.product_name || '',
-      batch_no: r.batch_no || null,
-      expiry_date: r.expiry_date
-        ? (r.expiry_date instanceof Date ? r.expiry_date.toISOString().slice(0, 10) : String(r.expiry_date).slice(0, 10))
-        : null,
-      quantity: Number(r.quantity || 0),
-      source_location: r.source_location || '',
-      destination_location: r.destination_location || '',
-      reference_id: r.reference_id || refId || null,
-    });
 
     // ── Primary: warehouse_dispatch movements by effective request_id ─────────
     if (effectiveRequestId) {
@@ -143,16 +195,15 @@ export default async function handler(req, res) {
       );
 
       if (rows.length > 0) {
+        const expiryMap = await resolveExpiryDates(rows);
         return res.status(200).json({
           success: true,
-          movements: rows.map(r => normaliseMovement(r, effectiveRequestId)),
+          movements: rows.map(r => normaliseMovement(r, effectiveRequestId, expiryMap)),
         });
       }
     }
 
     // ── Secondary: warehouse_dispatch movements by transfer_id directly ───────
-    // Handles the edge case where a movement was recorded with the transfer_id
-    // as the reference_id instead of the stock request id.
     if (transferId && transferId !== effectiveRequestId) {
       const rows2 = await getMany(
         `SELECT
@@ -166,15 +217,15 @@ export default async function handler(req, res) {
       );
 
       if (rows2.length > 0) {
+        const expiryMap = await resolveExpiryDates(rows2);
         return res.status(200).json({
           success: true,
-          movements: rows2.map(r => normaliseMovement(r, transferId)),
+          movements: rows2.map(r => normaliseMovement(r, transferId, expiryMap)),
         });
       }
     }
 
     // ── Fallback A: transfer items linked to this request (GM-approval flow) ──
-    // Batches are pre-resolved at dispatch time and stored on stock_transfer_items.
     if (effectiveRequestId) {
       const transferRows = await getMany(
         `SELECT
@@ -190,10 +241,11 @@ export default async function handler(req, res) {
       );
 
       if (transferRows.length > 0) {
+        const expiryMap = await resolveExpiryDates(transferRows);
         return res.status(200).json({
           success: true,
           movements: transferRows.map(r => normaliseMovement(
-            { ...r, id: null, reference_id: effectiveRequestId }, effectiveRequestId
+            { ...r, id: null, reference_id: effectiveRequestId }, effectiveRequestId, expiryMap
           )),
         });
       }
@@ -214,10 +266,11 @@ export default async function handler(req, res) {
       );
 
       if (itemRows.length > 0) {
+        const expiryMap = await resolveExpiryDates(itemRows);
         return res.status(200).json({
           success: true,
           movements: itemRows.map(r => normaliseMovement(
-            { ...r, id: null, reference_id: transferId }, transferId
+            { ...r, id: null, reference_id: transferId }, transferId, expiryMap
           )),
         });
       }
