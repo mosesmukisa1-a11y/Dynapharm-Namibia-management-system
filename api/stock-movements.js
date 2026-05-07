@@ -134,6 +134,7 @@ export default async function handler(req, res) {
           if (movementType) { bimParams.push(movementType); bimWhere.push(`type = $${bimParams.length}`); }
           if (dateFrom) { bimParams.push(dateFrom); bimWhere.push(`created_at >= $${bimParams.length}::timestamp`); }
           if (dateTo) { bimParams.push(dateTo + 'T23:59:59'); bimWhere.push(`created_at <= $${bimParams.length}::timestamp`); }
+          if (referenceIdFilter) { bimParams.push(referenceIdFilter); bimWhere.push(`reference = $${bimParams.length}`); }
           bimParams.push(safeLimit);
 
           const bimRows = await getMany(

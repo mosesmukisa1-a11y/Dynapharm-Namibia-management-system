@@ -4037,8 +4037,9 @@ function BranchStockTab() {
     setReceiveFormMsg(null);
     try {
       const itemsToReceive = receiveItems.filter(item => Number(item.received_qty) > 0);
+      const safeLabel = (v) => (v && v !== 'undefined' && v !== 'null') ? v : null;
       for (const item of itemsToReceive) {
-        const label = item.product_name || item.productName || item.productId || 'this item';
+        const label = safeLabel(item.product_name) || safeLabel(item.productName) || safeLabel(item.productId) || 'this item';
         if (!item.batch_no || !item.batch_no.trim()) {
           setReceiveFormMsg({ type: 'error', text: `Batch number is required for "${label}"` });
           setSubmitting(false);
@@ -4051,7 +4052,7 @@ function BranchStockTab() {
         }
       }
       for (const item of itemsToReceive) {
-          const productName = item.product_name || item.productName || item.productId || 'Unknown';
+          const productName = safeLabel(item.product_name) || safeLabel(item.productName) || safeLabel(item.productId) || 'Unknown';
           const batchNo = item.batch_no?.trim() || '';
           const expiryDate = item.expiry_date || null;
           const qty = Number(item.received_qty);
