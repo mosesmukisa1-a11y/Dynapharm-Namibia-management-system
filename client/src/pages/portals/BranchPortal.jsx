@@ -4035,35 +4035,22 @@ function BranchStockTab() {
           return;
         }
       }
-      for (const item of itemsToReceive) {
-          const productName = safeLabel(item.product_name) || safeLabel(item.productName) || safeLabel(item.productId) || 'Unknown';
-          const batchNo = item.batch_no?.trim() || '';
-          const expiryDate = item.expiry_date || null;
-          const qty = Number(item.received_qty);
-          await api.stock.createMovement({
-            product_name: productName,
-            quantity: qty,
-            movement_type: 'received',
-            source_location: 'Warehouse',
-            destination_location: selectedBranch || user?.branch || 'Branch',
-            destination_location_type: 'branch',
-            batch_no: batchNo,
-            expiry_date: expiryDate,
-            notes: `Received from request ${selectedRequest.request_number || selectedRequest.id}. Delivery note: ${receiveDeliveryNote || 'N/A'}. Batch: ${batchNo || 'N/A'}, Expiry: ${expiryDate || 'N/A'}`,
-            reference_id: selectedRequest.id,
-            created_by: receiveReceivedBy || user?.full_name || user?.username || null,
-          });
-          await api.branch.receiveInventory({
-            action: 'receive',
-            branchId: selectedBranch || user?.branch || 'Branch',
-            productName,
-            batchNo,
-            expiryDate,
-            quantity: qty,
-            notes: `Received from request ${selectedRequest.request_number || selectedRequest.id}. Delivery note: ${receiveDeliveryNote || 'N/A'}`,
-            createdBy: receiveReceivedBy || user?.full_name || user?.username || null,
-          });
-      }
+      // Single atomic call — locks the request row, inserts all movements and
+      // inventory records, and flips status to 'received' in one transaction.
+      await api.stock.receiveRequest({
+        requestId: selectedRequest.id,
+        branchId: selectedBranch || user?.branch || 'Branch',
+        items: itemsToReceive.map(item => ({
+          productName: safeLabel(item.product_name) || safeLabel(item.productName) || safeLabel(item.productId) || 'Unknown',
+          batchNo: item.batch_no?.trim() || '',
+          expiryDate: item.expiry_date || null,
+          quantity: Number(item.received_qty),
+        })),
+        warehouseSource: 'Warehouse',
+        deliveryNote: receiveDeliveryNote || null,
+        receivedBy: receiveReceivedBy || user?.full_name || user?.username || null,
+      });
+
       // Record a short_receipt movement for ALL items where received_qty ≠ dispatched_qty,
       // including items with received_qty=0 (whole shipment missing for that product).
       // This runs as best-effort — a logging failure must not block the receipt itself.
@@ -4097,7 +4084,6 @@ function BranchStockTab() {
         }
       }
 
-      await api.stock.updateRequest(selectedRequest.id, { status: 'received' });
       setShowReceiveForm(false);
       setSelectedRequest(null);
       setReceiveFormMsg(null);
