@@ -198,7 +198,7 @@ function UsersTab() {
   const [message, setMessage] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [section, setSection] = useState('staff');
-  const [editForm, setEditForm] = useState({ role: '', is_active: true, branch: '', additional_roles: [] });
+  const [editForm, setEditForm] = useState({ role: '', is_active: true, branch: '', additional_roles: [], consultant_branches: [] });
 
   const STAFF_ROLES = ['admin', 'branch_manager', 'frontdesk', 'consultant', 'dispenser', 'hr_manager', 'finance', 'gm', 'director', 'mis', 'stock', 'warehouse', 'training', 'trainer', 'cleaner', 'security_guard', 'support_staff'];
   const ALL_ROLES = [...STAFF_ROLES, 'distributor'];
@@ -219,7 +219,8 @@ function UsersTab() {
     const branch = user.role === 'distributor'
       ? (user.distributor_branch || user.branch || '')
       : (user.branch || '');
-    setEditForm({ role: user.role || '', is_active: user.is_active !== false, branch, additional_roles: additionalRoles });
+    const consultantBranches = Array.isArray(user.branches) ? user.branches : [];
+    setEditForm({ role: user.role || '', is_active: user.is_active !== false, branch, additional_roles: additionalRoles, consultant_branches: consultantBranches });
   };
 
   const toggleAdditionalRole = (role) => {
@@ -237,6 +238,7 @@ function UsersTab() {
         branch: editForm.branch,
         isActive: editForm.is_active,
         additional_roles: editForm.additional_roles,
+        branches: editForm.consultant_branches,
       });
       setMessage('User updated successfully!');
       setEditUser(null);
@@ -390,6 +392,40 @@ function UsersTab() {
               </select>
             </div>
           </div>
+
+          {(editForm.role === 'consultant' || editUser?.role === 'consultant') && (
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700">
+                Assigned Branches
+                <span className="ml-2 text-xs text-gray-400 font-normal">All branches this consultant can service</span>
+              </label>
+              <div className="grid grid-cols-2 gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200 max-h-52 overflow-y-auto">
+                {BRANCH_DETAILS.map(b => {
+                  const checked = (editForm.consultant_branches || []).includes(b.id);
+                  return (
+                    <label key={b.id} className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors text-xs ${checked ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-gray-100 text-gray-600'}`}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => {
+                          const current = editForm.consultant_branches || [];
+                          const next = current.includes(b.id) ? current.filter(x => x !== b.id) : [...current, b.id];
+                          setEditForm({ ...editForm, consultant_branches: next });
+                        }}
+                        className="w-3.5 h-3.5 accent-primary cursor-pointer"
+                      />
+                      {b.name}
+                    </label>
+                  );
+                })}
+              </div>
+              {(editForm.consultant_branches || []).length > 0 && (
+                <p className="text-xs text-primary">
+                  Assigned to {(editForm.consultant_branches || []).length} branch{(editForm.consultant_branches || []).length !== 1 ? 'es' : ''}
+                </p>
+              )}
+            </div>
+          )}
 
           {editUser?.role !== 'distributor' && (
             <div className="space-y-2">

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, Component } from 'react';
 import { api } from '../../lib/api';
-import { formatDateTime, formatDate, BRANCHES, COMPANY_INFO, getBranchId } from '../../lib/constants';
+import { formatDateTime, formatDate, BRANCHES, BRANCH_DETAILS, COMPANY_INFO, getBranchId } from '../../lib/constants';
 import { PACKAGE_DATABASE, BODY_SYSTEMS_DATABASE, RECOMMENDATION_DATABASE, findProductPrice, getLiveProductList, setLivePrices } from '../../lib/pricing';
 import { Button, Input, Badge, LoadingSpinner, Modal, Alert, Textarea } from '../../components/ui';
 import { FileText, Plus, Trash2 } from 'lucide-react';
@@ -654,14 +654,25 @@ function CheckupsSection() {
   const [reportRequired, setReportRequired] = useState(true);
   const [editPrescLoadingId, setEditPrescLoadingId] = useState(null);
   const [editPrescReport, setEditPrescReport] = useState(null);
+  const [branchViewFilter, setBranchViewFilter] = useState('');
+  const [showBooking, setShowBooking] = useState(false);
+  const [bookingForm, setBookingForm] = useState({ full_name: '', phone: '', date: '', time: '', branch: '', notes: '' });
+  const [bookingSubmitting, setBookingSubmitting] = useState(false);
+  const [bookingError, setBookingError] = useState('');
 
   const consultantBranch = user?.branch || '';
+  // All branches this consultant is assigned to (primary + multi-branch array)
+  const consultantAllBranches = (() => {
+    const extra = Array.isArray(user?.branches) ? user.branches : [];
+    const all = [...new Set([...(consultantBranch ? [consultantBranch] : []), ...extra])];
+    return all;
+  })();
 
   const loadCheckups = useCallback(() => {
     setLoading(true);
-    const branchParam = consultantBranch ? `&branch=${encodeURIComponent(consultantBranch)}` : '';
     const todayStr = new Date().toISOString().slice(0, 10);
-    api.appointments.list(`type=Check${branchParam}`)
+    // No branch param — backend now handles multi-branch filtering via user.branches
+    api.appointments.list('type=Check')
       .then(async data => {
         const apts = Array.isArray(data) ? data : data.appointments || [];
         const toMark = apts.filter(a => {
@@ -672,7 +683,7 @@ function CheckupsSection() {
           await Promise.all(toMark.map(a =>
             api.appointments.update(a.id, { status: 'no_show' }).catch(() => {})
           ));
-          const refreshed = await api.appointments.list(`type=Check${branchParam}`);
+          const refreshed = await api.appointments.list('type=Check');
           setAppointments(Array.isArray(refreshed) ? refreshed : refreshed.appointments || []);
         } else {
           setAppointments(apts);
@@ -680,7 +691,35 @@ function CheckupsSection() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [consultantBranch]);
+  }, []);
+
+  const handleBookAppointment = async (e) => {
+    e.preventDefault();
+    if (!bookingForm.full_name || !bookingForm.phone || !bookingForm.date || !bookingForm.time || !bookingForm.branch) {
+      setBookingError('Full name, phone, date, time and branch are required.');
+      return;
+    }
+    setBookingSubmitting(true);
+    setBookingError('');
+    try {
+      await api.appointments.create({
+        full_name: bookingForm.full_name,
+        phone: bookingForm.phone,
+        date: bookingForm.date,
+        time: bookingForm.time,
+        branch: bookingForm.branch,
+        type: 'Check',
+        status: 'pending',
+        notes: bookingForm.notes,
+      });
+      setShowBooking(false);
+      setBookingForm({ full_name: '', phone: '', date: '', time: '', branch: '', notes: '' });
+      loadCheckups();
+    } catch (err) {
+      setBookingError(err.message || 'Failed to book appointment. Please try again.');
+    }
+    setBookingSubmitting(false);
+  };
 
   useEffect(() => { loadCheckups(); }, [loadCheckups]);
 
@@ -1155,14 +1194,33 @@ ${consultantNotes ? `
     } catch { return {}; }
   };
 
+  // Apply branch view filter on top of the status filter + name search
+  const branchDisplayFiltered = branchViewFilter
+    ? filtered.filter(a => {
+        const aBranch = (a.branch || '').toLowerCase();
+        return aBranch.includes(branchViewFilter.toLowerCase());
+      })
+    : filtered;
+
   return (
     <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '24px', boxShadow: '0 1px 8px rgba(0,0,0,0.04)' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBottom: '20px' }}>
         <div>
           <h3 style={{ margin: 0, fontSize: '1.15rem', color: '#1e293b' }}>Checkup Forms</h3>
-          <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '0.85rem' }}>Forms submitted by clients to your branch</p>
+          <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '0.85rem' }}>
+            {consultantAllBranches.length > 1
+              ? `Showing clients across ${consultantAllBranches.length} assigned branches`
+              : 'Forms submitted by clients to your branch'}
+          </p>
         </div>
-        <button onClick={loadCheckups} style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '8px 16px', fontSize: '0.85rem', cursor: 'pointer' }}>Refresh</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            onClick={() => { setShowBooking(true); setBookingError(''); setBookingForm({ full_name: '', phone: '', date: new Date().toISOString().slice(0,10), time: '', branch: consultantBranch || '', notes: '' }); }}
+            style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', color: '#fff', border: 'none', borderRadius: '8px', padding: '8px 16px', fontSize: '0.85rem', cursor: 'pointer', fontWeight: 600 }}>
+            + Book Check-up
+          </button>
+          <button onClick={loadCheckups} style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '8px 16px', fontSize: '0.85rem', cursor: 'pointer' }}>Refresh</button>
+        </div>
       </div>
       <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
         <button
@@ -1178,38 +1236,49 @@ ${consultantNotes ? `
           style={{ padding: '8px 20px', borderRadius: '20px', fontSize: '0.85rem', fontWeight: 600, border: filter === 'no_show' ? 'none' : '1px solid #fed7aa', cursor: 'pointer', background: filter === 'no_show' ? '#f97316' : '#fff7ed', color: filter === 'no_show' ? '#fff' : '#c2410c', transition: 'all 0.2s' }}
         >No Show ({noShows.length})</button>
       </div>
-      <div style={{ position: 'relative', marginBottom: '18px' }}>
-        <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.95rem', color: '#94a3b8', pointerEvents: 'none' }}>🔍</span>
-        <input
-          type="text"
-          placeholder="Search by client name…"
-          value={searchQuery}
-          onChange={e => setSearchQuery(e.target.value)}
-          style={{ width: '100%', boxSizing: 'border-box', padding: '9px 36px 9px 36px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: '0.88rem', color: '#1e293b', outline: 'none', background: '#f8fafc', transition: 'border-color .15s' }}
-          onFocus={e => e.target.style.borderColor = '#c41e3a'}
-          onBlur={e => e.target.style.borderColor = '#e2e8f0'}
-        />
-        {searchQuery && (
-          <button onClick={() => setSearchQuery('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '1rem', color: '#94a3b8', lineHeight: 1, padding: 2 }}>✕</button>
-        )}
+      <div style={{ display: 'flex', gap: 10, marginBottom: '14px', flexWrap: 'wrap' }}>
+        <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
+          <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.95rem', color: '#94a3b8', pointerEvents: 'none' }}>🔍</span>
+          <input
+            type="text"
+            placeholder="Search by client name…"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            style={{ width: '100%', boxSizing: 'border-box', padding: '9px 36px 9px 36px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: '0.88rem', color: '#1e293b', outline: 'none', background: '#f8fafc', transition: 'border-color .15s' }}
+            onFocus={e => e.target.style.borderColor = '#c41e3a'}
+            onBlur={e => e.target.style.borderColor = '#e2e8f0'}
+          />
+          {searchQuery && (
+            <button onClick={() => setSearchQuery('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '1rem', color: '#94a3b8', lineHeight: 1, padding: 2 }}>✕</button>
+          )}
+        </div>
+        <select
+          value={branchViewFilter}
+          onChange={e => setBranchViewFilter(e.target.value)}
+          style={{ padding: '9px 14px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: '0.88rem', color: branchViewFilter ? '#1e293b' : '#94a3b8', background: '#f8fafc', cursor: 'pointer', minWidth: 160 }}>
+          <option value="">All Branches</option>
+          {BRANCH_DETAILS.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+        </select>
       </div>
 
       {loading ? (
         <div style={{ textAlign: 'center', padding: '20px', color: '#6b7280' }}>Loading checkup forms...</div>
-      ) : filtered.length === 0 ? (
+      ) : branchDisplayFiltered.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '30px', color: '#6b7280' }}>
           <p style={{ fontSize: '1.1rem' }}>
             {searchQuery.trim()
               ? `No ${filter === 'completed' ? 'completed' : filter === 'no_show' ? 'no-show' : 'upcoming'} clients match "${searchQuery.trim()}".`
-              : filter === 'completed' ? 'No completed forms yet.' : 'No upcoming checkup forms for your branch.'}
+              : branchViewFilter
+                ? `No ${filter} clients at ${branchViewFilter}.`
+                : filter === 'completed' ? 'No completed forms yet.' : 'No upcoming checkup forms for your assigned branches.'}
           </p>
-          {searchQuery.trim() && (
-            <button onClick={() => setSearchQuery('')} style={{ marginTop: 8, padding: '6px 16px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#64748b', cursor: 'pointer', fontSize: '0.85rem' }}>Clear search</button>
+          {(searchQuery.trim() || branchViewFilter) && (
+            <button onClick={() => { setSearchQuery(''); setBranchViewFilter(''); }} style={{ marginTop: 8, padding: '6px 16px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#64748b', cursor: 'pointer', fontSize: '0.85rem' }}>Clear filters</button>
           )}
         </div>
       ) : (
         <div>
-          {filtered.map(apt => {
+          {branchDisplayFiltered.map(apt => {
             const data = parseData(apt);
             const statusColor = getStatusColor(apt.status);
             const statusLabel = apt.status || 'pending';
@@ -1636,6 +1705,58 @@ ${consultantNotes ? `
           </div>
         );
       })()}
+
+      {/* ── Book Check-up Appointment Modal ─────────────────────── */}
+      {showBooking && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: '#fff', borderRadius: 16, padding: 28, width: '100%', maxWidth: 500, boxShadow: '0 8px 40px rgba(0,0,0,0.22)', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', color: '#1e293b' }}>Book Health Check-up</h3>
+              <button onClick={() => setShowBooking(false)} style={{ background: 'none', border: 'none', fontSize: '1.3rem', cursor: 'pointer', color: '#94a3b8', lineHeight: 1 }}>✕</button>
+            </div>
+            {bookingError && (
+              <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: '0.84rem', color: '#991b1b' }}>{bookingError}</div>
+            )}
+            <form onSubmit={handleBookAppointment}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>Full Name *</label>
+                  <input value={bookingForm.full_name} onChange={e => setBookingForm(f => ({ ...f, full_name: e.target.value }))} placeholder="Client full name" required style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', borderRadius: 8, border: '1.5px solid #e2e8f0', fontSize: '0.88rem' }} />
+                </div>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>Phone *</label>
+                  <input value={bookingForm.phone} onChange={e => setBookingForm(f => ({ ...f, phone: e.target.value }))} placeholder="e.g. 0812345678" type="tel" required style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', borderRadius: 8, border: '1.5px solid #e2e8f0', fontSize: '0.88rem' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>Date *</label>
+                  <input type="date" value={bookingForm.date} onChange={e => setBookingForm(f => ({ ...f, date: e.target.value }))} required style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', borderRadius: 8, border: '1.5px solid #e2e8f0', fontSize: '0.88rem' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>Time *</label>
+                  <input type="time" value={bookingForm.time} onChange={e => setBookingForm(f => ({ ...f, time: e.target.value }))} required style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', borderRadius: 8, border: '1.5px solid #e2e8f0', fontSize: '0.88rem' }} />
+                </div>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>Branch *</label>
+                  <select value={bookingForm.branch} onChange={e => setBookingForm(f => ({ ...f, branch: e.target.value }))} required style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', borderRadius: 8, border: '1.5px solid #e2e8f0', fontSize: '0.88rem', background: '#fff' }}>
+                    <option value="">Select branch…</option>
+                    {BRANCH_DETAILS.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+                  </select>
+                </div>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>Notes (optional)</label>
+                  <textarea value={bookingForm.notes} onChange={e => setBookingForm(f => ({ ...f, notes: e.target.value }))} placeholder="Any additional notes…" rows={3} style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', borderRadius: 8, border: '1.5px solid #e2e8f0', fontSize: '0.88rem', resize: 'vertical' }} />
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
+                <button type="button" onClick={() => setShowBooking(false)} style={{ padding: '10px 20px', border: '1px solid #d1d5db', borderRadius: 10, background: '#fff', color: '#374151', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem' }}>Cancel</button>
+                <button type="submit" disabled={bookingSubmitting} style={{ padding: '10px 24px', border: 'none', borderRadius: 10, background: bookingSubmitting ? '#94a3b8' : 'linear-gradient(135deg,#c41e3a,#8b0000)', color: '#fff', cursor: bookingSubmitting ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.88rem' }}>
+                  {bookingSubmitting ? 'Booking…' : '✓ Confirm Booking'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

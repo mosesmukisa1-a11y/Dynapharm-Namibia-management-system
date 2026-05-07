@@ -30,6 +30,17 @@ function getBranchAliases(canonical) {
   return [...aliases];
 }
 
+// Returns all branch aliases across a user's primary branch + multi-branch array
+function getUserAllBranchAliases(primaryBranch, extraBranches) {
+  const allAliases = new Set();
+  if (primaryBranch) getBranchAliases(primaryBranch).forEach(a => allAliases.add(a));
+  for (const b of (extraBranches || [])) {
+    const norm = normBranch(b);
+    if (norm) getBranchAliases(norm).forEach(a => allAliases.add(a));
+  }
+  return [...allAliases];
+}
+
 export default async function handler(req, res) {
   applyAuthCors(req, res);
 
@@ -55,15 +66,16 @@ export default async function handler(req, res) {
 
       const userRole = req.user ? (req.user.role || '').toLowerCase() : '';
       const userBranch = normBranch(req.user ? (req.user.branch || '') : '');
+      const userExtraBranches = Array.isArray(req.user?.branches) ? req.user.branches : [];
       const FULL_ACCESS = new Set(['admin', 'gm', 'director', 'stock']);
       // Distributors querying their own checkups (via client_reference) or their referred
       // appointments (via referral_nb) skip branch restriction so they see cross-branch data
       const isDistributorSelfQuery = userRole === 'distributor' && (clientRef || referralNb);
 
       if (req.user && !FULL_ACCESS.has(userRole) && !isDistributorSelfQuery && !branch) {
-        if (userBranch) {
-          // Restrict to user's own branch — match all stored name variants
-          const aliases = getBranchAliases(userBranch);
+        if (userBranch || userExtraBranches.length > 0) {
+          // Restrict to all branches this user is assigned to (primary + multi-branch array)
+          const aliases = getUserAllBranchAliases(userBranch, userExtraBranches);
           conditions.push('branch = ANY($' + (params.length + 1) + '::text[])');
           params.push(aliases);
         } else {
@@ -78,11 +90,11 @@ export default async function handler(req, res) {
         params.push(id);
       }
       if (branch) {
-        if (req.user && !FULL_ACCESS.has(userRole) && userBranch) {
-          // Allow only if the requested branch is an alias of the user's own branch
-          const userAliases = getBranchAliases(userBranch);
+        if (req.user && !FULL_ACCESS.has(userRole) && (userBranch || userExtraBranches.length > 0)) {
+          // Allow only if the requested branch is within any of the user's assigned branches
+          const allUserAliases = getUserAllBranchAliases(userBranch, userExtraBranches);
           const requestedAliases = getBranchAliases(normBranch(branch));
-          const overlaps = userAliases.some(a => requestedAliases.includes(a));
+          const overlaps = allUserAliases.some(a => requestedAliases.includes(a));
           if (!overlaps) {
             return res.status(403).json({ error: 'Access denied to this branch' });
           }
@@ -207,8 +219,12 @@ export default async function handler(req, res) {
 
       const putUserRole = req.user ? (req.user.role || '').toLowerCase() : '';
       const putUserBranch = normBranch(req.user ? (req.user.branch || '') : '');
+      const putUserExtraBranches = Array.isArray(req.user?.branches) ? req.user.branches : [];
       const apptBranchNorm = normBranch(oldAppointment.branch || '');
-      if (req.user && putUserRole !== 'admin' && putUserBranch && apptBranchNorm !== putUserBranch) {
+      const allPutUserAliases = getUserAllBranchAliases(putUserBranch, putUserExtraBranches);
+      const apptAliases = getBranchAliases(apptBranchNorm);
+      const putHasAccess = allPutUserAliases.some(a => apptAliases.includes(a));
+      if (req.user && putUserRole !== 'admin' && (putUserBranch || putUserExtraBranches.length > 0) && !putHasAccess) {
         return res.status(403).json({ error: 'Access denied to this appointment' });
       }
 
