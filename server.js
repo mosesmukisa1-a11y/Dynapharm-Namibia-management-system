@@ -2113,6 +2113,10 @@ server.on('error', (error) => {
         created_at       TIMESTAMPTZ   DEFAULT NOW(),
         processed_at     TIMESTAMPTZ
       )`,
+      // charge_unit: what the patient is actually charged per unit (CP for non-members, DP for members)
+      // Stored alongside unit_price (always DP / cost basis) so the correction script and reports
+      // can distinguish company cost from patient revenue without re-joining product_prices.
+      `ALTER TABLE branch_inventory_movements ADD COLUMN IF NOT EXISTS charge_unit NUMERIC(14,4)`,
     ];
     let schemaSynced = 0;
     for (const sql of schemaSyncs) {

@@ -2233,8 +2233,9 @@ function PrescriptionsTab() {
     const currentCheckupOpt = currentCheckupType ? CHECKUP_FEE_OPTIONS[currentCheckupType] : null;
 
     setRxItemQtys({});
-    // Start with nothing selected — user explicitly ticks what they want to dispense
-    setRxItemSelected({});
+    // Pre-select all pending (undispensed) items so the dispenser can confirm immediately.
+    // Individual items can be deselected before confirming if needed.
+    setRxItemSelected(Object.fromEntries(pendingItems.map((_, i) => [i, true])));
     setDispensePreview({
       report,
       items,
@@ -2711,7 +2712,7 @@ function PrescriptionsTab() {
           <div className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl" style={{ background: 'rgba(255,255,255,0.12)' }}>💊</div>
           <div>
             <h3 className="text-xl font-bold m-0">Prescription Dispensing</h3>
-            <p className="text-sm m-0" style={{ color: 'rgba(255,255,255,0.6)' }}>{user?.branch ? `${getBranchDisplayName(user.branch)} Branch` : 'Branch'} · Dispense, track and quote</p>
+            <p className="text-sm m-0" style={{ color: 'rgba(255,255,255,0.6)' }}>{effectiveBranch ? `${getBranchDisplayName(effectiveBranch)} Branch` : 'Branch'} · Dispense, track and quote</p>
           </div>
         </div>
         <button onClick={refreshDispenserData} className="flex items-center gap-2 text-sm font-semibold px-4 py-2.5 rounded-xl cursor-pointer" style={{ background: 'rgba(255,255,255,0.12)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)' }}>↻ Refresh</button>

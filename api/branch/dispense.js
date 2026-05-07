@@ -121,9 +121,9 @@ export default async function handler(req, res) {
             const ts = Date.now();
             const bimId = 'BIM-' + ts + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
             await client.query(
-              `INSERT INTO branch_inventory_movements (id, branch_id, type, product_name, batch_no, quantity, unit_price, reference, notes, created_by, created_at)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())`,
-              [bimId, branchId, movType, batch.product_name, batch.batch_no || '', take, unitPrice, reportId, dispenseNote, createdBy || '']
+              `INSERT INTO branch_inventory_movements (id, branch_id, type, product_name, batch_no, quantity, unit_price, charge_unit, reference, notes, created_by, created_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())`,
+              [bimId, branchId, movType, batch.product_name, batch.batch_no || '', take, unitPrice, chargeUnit, reportId, dispenseNote, createdBy || '']
             );
 
             const smId = 'MOV-' + ts + '-' + Math.random().toString(36).slice(2, 6);
