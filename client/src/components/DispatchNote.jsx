@@ -199,11 +199,15 @@ export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
     const groupMap = new Map();
     items.forEach(item => {
       const name = (item.productName || item.product_name || '').trim();
-      const key = name.toLowerCase();
+      const code = (item.productCode || item.product_code || item.sku || '').trim();
+      const id   = String(item.productId || item.product_id || '').trim();
+      // Prefer a stable identifier (code or id) over display name to avoid
+      // merging different products that happen to share the same name
+      const key = code || id || name.toLowerCase();
       if (!groupMap.has(key)) {
         groupMap.set(key, {
           displayName: name || '—',
-          productCode: item.productCode || item.product_code || item.sku || '',
+          productCode: code,
           unit: item.unit || 'units',
           totalQty: 0,
           totalApproved: null,
