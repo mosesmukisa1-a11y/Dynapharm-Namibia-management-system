@@ -256,6 +256,18 @@ export default async function handler(req, res) {
             return res.status(403).json({ success: false, error: 'Access denied: cannot post movement for this branch' });
           }
         }
+
+        // Idempotency guard: prevent duplicate inventory credit for the same request
+        if (movType === 'received' && referenceId) {
+          const dupCheck = await query(
+            `SELECT COUNT(*) AS cnt FROM stock_movements WHERE reference_id = $1 AND movement_type = 'received'`,
+            [referenceId]
+          );
+          if (Number(dupCheck.rows[0]?.cnt || 0) > 0) {
+            return res.status(409).json({ success: false, error: 'This stock request has already been received. Duplicate receipt prevented to protect inventory accuracy.' });
+          }
+        }
+
         // For pending write-offs: insert record only (no stock deduction — GM must approve first)
         // warehouse_dispatch is a warehouse-level outbound — no branch mirror needed here
         const needsBranchMirror = branchId && ['write_off', 'sale', 'field_use', 'return'].includes(movType) && movStatus !== 'pending_approval';

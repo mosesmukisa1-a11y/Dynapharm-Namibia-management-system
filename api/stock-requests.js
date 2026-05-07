@@ -423,6 +423,14 @@ export default async function handler(req, res) {
         }
       }
 
+      // Idempotency guard: reject transition to 'received' if already received
+      if (body.status === 'received') {
+        const current = await getOne('SELECT status FROM stock_requests WHERE id = $1', [body.id]);
+        if (current?.status === 'received') {
+          return res.status(409).json({ error: 'This stock request has already been received.' });
+        }
+      }
+
       const updatePayload = { ...body };
       delete updatePayload.items;
       delete updatePayload.itemsArray;

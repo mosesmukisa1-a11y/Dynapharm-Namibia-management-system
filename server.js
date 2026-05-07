@@ -793,6 +793,13 @@ app.put('/api/stock-requests/:id', async (req, res) => {
     const id = req.params.id;
     const { status, notes } = req.body || {};
     if (!status) return res.status(400).json({ error: 'status is required' });
+    // Idempotency guard: reject attempts to transition an already-received request
+    if (status === 'received') {
+      const current = await getOne('SELECT status FROM stock_requests WHERE id=$1', [id]);
+      if (current?.status === 'received') {
+        return res.status(409).json({ error: 'This stock request has already been received.' });
+      }
+    }
     const actorName = req.user?.name || req.user?.sub || 'gm';
     await query(
       `UPDATE stock_requests SET status=$1, notes=COALESCE($2, notes), approved_by=$3, approved_at=NOW(), updated_at=NOW(), last_status_change=NOW() WHERE id=$4`,
