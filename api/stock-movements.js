@@ -282,6 +282,66 @@ export default async function handler(req, res) {
         const disposalStatus = movType === 'write_off' && movStatus === 'posted' ? 'pending_disposal' : null;
 
         await withTransaction(async (client) => {
+          // ── Availability guard for warehouse_dispatch ─────────────────────────
+          // Check that the source warehouse can cover the requested quantity at the
+          // moment of insertion. This closes the race window between the frontend
+          // FEFO batch lookup (done when the modal opens) and the user clicking
+          // Confirm — another concurrent dispatch may have consumed stock in between.
+          // The FOR UPDATE lock on stock_batches / warehouse_inventory prevents two
+          // simultaneous dispatches from both passing the check against the same rows.
+          if (movType === 'warehouse_dispatch' && srcLoc && productName && qty > 0) {
+            const batchParams = batchNo
+              ? [srcLoc, productName, batchNo]
+              : [srcLoc, productName];
+            const batchFilter = batchNo
+              ? `AND LOWER(TRIM(COALESCE(batch_no, ''))) = LOWER(TRIM($3))`
+              : '';
+            const batchAvail = await client.query(
+              `SELECT COALESCE(SUM(remaining_quantity), 0)::numeric AS total
+               FROM stock_batches
+               WHERE (LOWER(TRIM(location)) = LOWER(TRIM($1)) OR LOWER(TRIM(warehouse_id)) = LOWER(TRIM($1)))
+                 AND LOWER(TRIM(description)) = LOWER(TRIM($2))
+                 AND remaining_quantity > 0
+                 AND status != 'expired'
+                 ${batchFilter}
+               FOR UPDATE`,
+              batchParams
+            );
+            const batchTotal = Number(batchAvail.rows[0]?.total ?? 0);
+
+            const invParams = batchNo
+              ? [srcLoc, productName, batchNo]
+              : [srcLoc, productName];
+            const invFilter = batchNo
+              ? `AND LOWER(TRIM(COALESCE(batch_no, ''))) = LOWER(TRIM($3))`
+              : '';
+            const invAvail = await client.query(
+              `SELECT COALESCE(SUM(quantity), 0)::numeric AS total
+               FROM warehouse_inventory
+               WHERE LOWER(TRIM(warehouse_id)) = LOWER(TRIM($1))
+                 AND (LOWER(TRIM(product_name)) = LOWER(TRIM($2)) OR product_name ILIKE $2)
+                 AND quantity > 0
+                 ${invFilter}
+               FOR UPDATE`,
+              invParams
+            );
+            const invTotal = Number(invAvail.rows[0]?.total ?? 0);
+
+            const available = Math.max(batchTotal, invTotal);
+            if (available < qty) {
+              const shortfall = qty - available;
+              const batchNote = batchNo ? ` (batch ${batchNo})` : '';
+              const shortfallErr = new Error(
+                `Insufficient stock in ${srcLoc} for "${productName}"${batchNote}: ` +
+                `${available} unit${available !== 1 ? 's' : ''} available, ${qty} requested ` +
+                `(${shortfall} unit${shortfall !== 1 ? 's' : ''} short). ` +
+                `Select a different warehouse or update stock levels first.`
+              );
+              shortfallErr.statusCode = 422;
+              throw shortfallErr;
+            }
+          }
+
           await client.query(
             `INSERT INTO stock_movements
                (id, product_name, batch_no, expiry_date, quantity, movement_type,
@@ -694,6 +754,8 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (error) {
     console.error('Stock movements API error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    const status = error.statusCode || 500;
+    const message = status < 500 ? error.message : 'Internal server error';
+    return res.status(status).json({ success: false, error: message });
   }
 }
