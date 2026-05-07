@@ -20,16 +20,36 @@ const PRIVILEGED_ROLES = new Set(['admin', 'super_admin', 'gm', 'director', 'sto
  *   at dispatch time and stored on the transfer items)
  *
  * transfer_id support:
- *   When transfer_id is supplied instead of request_id, the handler first looks up
- *   the linked request_id from stock_transfers, then falls back to querying
- *   stock_movements with reference_id = transfer_id, and finally reads
- *   stock_transfer_items directly for the given transfer_id.
+ *   When transfer_id is supplied, the handler resolves the linked request_id and
+ *   to_branch from stock_transfers in a single query. Branch-scope authorization
+ *   then uses request.requesting_branch (if available) or transfer.to_branch
+ *   (when no request is linked) to validate access.
  *
  * Authorization:
  *   - Privileged roles can read any request's batch data.
- *   - Branch-scoped users can only read data for requests whose requesting_branch
- *     matches their allowed branch(es).
+ *   - Branch-scoped users:
+ *     - request_id path: requesting_branch of the stock_request must match
+ *     - transfer_id path (linked request): same check via effectiveRequestId
+ *     - transfer_id path (no linked request): to_branch of the stock_transfer
+ *       must match; if transfer not found → 403
  */
+
+/** Normalize a branch string to a stable key for comparison. */
+function branchKey(b) {
+  return (b || '').toLowerCase().replace(/\s+/g, '_');
+}
+
+/** True when the branch string matches any of the user's allowed branches. */
+function isBranchAllowed(branch, allowedBranches) {
+  const k = branchKey(branch);
+  const kAlt = k.endsWith('_branch') ? k : k + '_branch';
+  const kStripped = k.replace(/_branch$/, '');
+  return allowedBranches.some(b => {
+    const bn = branchKey(b);
+    return bn === k || bn === kAlt || bn === kStripped;
+  });
+}
+
 export default async function handler(req, res) {
   applyAuthCors(req, res);
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -47,37 +67,53 @@ export default async function handler(req, res) {
   try {
     const role = (req.user.role || '').toLowerCase();
     const branchScope = getBranchScope(req.user);
+    const isPrivileged = PRIVILEGED_ROLES.has(role);
 
-    // ── Resolve effective request_id ──────────────────────────────────────────
-    // If only transfer_id is provided, try to find the linked stock request.
+    // ── Resolve effective request_id and transfer destination ─────────────────
+    // When transferId is given, fetch both request_id and to_branch in one query
+    // so that branch-scope auth can use whichever is available.
     let effectiveRequestId = requestId;
-    if (!effectiveRequestId && transferId) {
+    let transferToBranch = null;
+
+    if (transferId) {
       const transferRow = await getOne(
-        `SELECT request_id FROM stock_transfers WHERE id = $1 LIMIT 1`,
+        `SELECT request_id, to_branch FROM stock_transfers WHERE id = $1 LIMIT 1`,
         [transferId]
       );
-      effectiveRequestId = transferRow?.request_id || null;
+      if (transferRow) {
+        if (!effectiveRequestId && transferRow.request_id) {
+          effectiveRequestId = transferRow.request_id;
+        }
+        transferToBranch = transferRow.to_branch || null;
+      }
     }
 
     // ── Branch-scope authorization ────────────────────────────────────────────
-    if (!PRIVILEGED_ROLES.has(role) && branchScope.enforced && effectiveRequestId) {
-      const stockReq = await getOne(
-        `SELECT requesting_branch FROM stock_requests WHERE id = $1 LIMIT 1`,
-        [effectiveRequestId]
-      );
-      if (!stockReq) {
-        return res.status(200).json({ success: true, movements: [] });
+    if (!isPrivileged && branchScope.enforced) {
+      if (effectiveRequestId) {
+        // Primary auth path: validate via the stock request's requesting_branch
+        const stockReq = await getOne(
+          `SELECT requesting_branch FROM stock_requests WHERE id = $1 LIMIT 1`,
+          [effectiveRequestId]
+        );
+        if (!stockReq) {
+          // Unknown request — return empty rather than 404 to avoid enumeration
+          return res.status(200).json({ success: true, movements: [] });
+        }
+        if (!isBranchAllowed(stockReq.requesting_branch, branchScope.branches)) {
+          return res.status(403).json({ error: 'Access denied: request does not belong to your branch' });
+        }
+      } else if (transferId) {
+        // transfer_id path with no linked request_id: validate via to_branch
+        if (!transferToBranch) {
+          // Transfer not found, or has no destination — deny to prevent IDOR
+          return res.status(403).json({ error: 'Access denied: transfer not found or has no destination branch' });
+        }
+        if (!isBranchAllowed(transferToBranch, branchScope.branches)) {
+          return res.status(403).json({ error: 'Access denied: transfer does not belong to your branch' });
+        }
       }
-      const reqBranch = (stockReq.requesting_branch || '').toLowerCase().replace(/\s+/g, '_');
-      const reqBranchAlt = reqBranch.endsWith('_branch') ? reqBranch : reqBranch + '_branch';
-      const reqBranchStripped = reqBranch.replace(/_branch$/, '');
-      const allowed = branchScope.branches.some(b => {
-        const bn = b.toLowerCase().replace(/\s+/g, '_');
-        return bn === reqBranch || bn === reqBranchAlt || bn === reqBranchStripped;
-      });
-      if (!allowed) {
-        return res.status(403).json({ error: 'Access denied: request does not belong to your branch' });
-      }
+      // (If neither, the 400 guard above already rejected the request.)
     }
 
     const normaliseMovement = (r, refId) => ({
@@ -115,7 +151,8 @@ export default async function handler(req, res) {
     }
 
     // ── Secondary: warehouse_dispatch movements by transfer_id directly ───────
-    // Handles the case where the movement was recorded with transfer_id as reference.
+    // Handles the edge case where a movement was recorded with the transfer_id
+    // as the reference_id instead of the stock request id.
     if (transferId && transferId !== effectiveRequestId) {
       const rows2 = await getMany(
         `SELECT
@@ -155,7 +192,9 @@ export default async function handler(req, res) {
       if (transferRows.length > 0) {
         return res.status(200).json({
           success: true,
-          movements: transferRows.map(r => normaliseMovement({ ...r, id: null, reference_id: effectiveRequestId }, effectiveRequestId)),
+          movements: transferRows.map(r => normaliseMovement(
+            { ...r, id: null, reference_id: effectiveRequestId }, effectiveRequestId
+          )),
         });
       }
     }
@@ -177,7 +216,9 @@ export default async function handler(req, res) {
       if (itemRows.length > 0) {
         return res.status(200).json({
           success: true,
-          movements: itemRows.map(r => normaliseMovement({ ...r, id: null, reference_id: transferId }, transferId)),
+          movements: itemRows.map(r => normaliseMovement(
+            { ...r, id: null, reference_id: transferId }, transferId
+          )),
         });
       }
     }
