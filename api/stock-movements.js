@@ -72,6 +72,7 @@ export default async function handler(req, res) {
       const statusFilter = url.searchParams.get('status');
       const dateFrom = url.searchParams.get('date_from');
       const dateTo = url.searchParams.get('date_to');
+      const referenceIdFilter = url.searchParams.get('reference_id');
       const limit = parseInt(url.searchParams.get('limit') || '100', 10);
       const safeLimit = Number.isNaN(limit) ? 100 : Math.min(limit, 2000);
 
@@ -173,6 +174,7 @@ export default async function handler(req, res) {
           if (statusFilter) { bmParams.push(statusFilter); bmWhere.push(`status = $${bmParams.length}`); }
           if (dateFrom) { bmParams.push(dateFrom); bmWhere.push(`created_at >= $${bmParams.length}::timestamp`); }
           if (dateTo) { bmParams.push(dateTo + 'T23:59:59'); bmWhere.push(`created_at <= $${bmParams.length}::timestamp`); }
+          if (referenceIdFilter) { bmParams.push(referenceIdFilter); bmWhere.push(`reference_id = $${bmParams.length}`); }
           let bmQuery = 'SELECT * FROM stock_movements';
           if (bmWhere.length > 0) bmQuery += ' WHERE ' + bmWhere.join(' AND ');
           bmParams.push(safeLimit);

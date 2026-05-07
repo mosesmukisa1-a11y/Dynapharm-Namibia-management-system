@@ -193,6 +193,8 @@ export const api = {
     reportsExpiry: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/stock/reports/expiry${qs ? '?' + qs : ''}`); },
     reportsLowStock: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/stock/reports/low-stock${qs ? '?' + qs : ''}`); },
     reportsCompany: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/stock/reports/company${qs ? '?' + qs : ''}`); },
+    fefoBatches: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/stock/fefo-batches${qs ? '?' + qs : ''}`); },
+    requestBatches: (requestId) => api.get(`/stock/request-batches?request_id=${encodeURIComponent(requestId)}`),
   },
 
   branch: {

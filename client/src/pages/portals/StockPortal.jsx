@@ -4318,6 +4318,8 @@ function BranchRequestsPanel() {
   const [denying, setDenying]             = useState(false);
   const [alert, setAlert]                 = useState(null);
   const [statusFilter, setStatusFilter]   = useState('approved');
+  const [fefoMap, setFefoMap]             = useState({});
+  const [fefoLoading, setFefoLoading]     = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -4327,7 +4329,38 @@ function BranchRequestsPanel() {
       .finally(() => setLoading(false));
   }, []);
 
+  const lookupFefoBatches = useCallback(async (req, warehouse) => {
+    if (!req || !warehouse) return;
+    const items = Array.isArray(req.items) ? req.items : [];
+    if (items.length === 0) return;
+    setFefoLoading(true);
+    setFefoMap({});
+    try {
+      const results = {};
+      await Promise.all(items.map(async (item) => {
+        const productName = item.productName || item.product_name || item.productId || '';
+        const qty = Number(item.quantity || 0);
+        if (!productName || qty <= 0) return;
+        try {
+          const resp = await api.stock.fefoBatches({ product: productName, location: warehouse, qty });
+          results[productName] = { batches: resp.batches || [], shortfall: resp.shortfall || 0 };
+        } catch {
+          results[productName] = { batches: [], shortfall: qty };
+        }
+      }));
+      setFefoMap(results);
+    } finally {
+      setFefoLoading(false);
+    }
+  }, []);
+
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (dispatchReq && dispatchWH) {
+      lookupFefoBatches(dispatchReq, dispatchWH);
+    }
+  }, [dispatchReq, dispatchWH, lookupFefoBatches]);
 
   const visibleRequests = requests.filter(r => {
     if (statusFilter === 'approved') return r.status === 'approved';
@@ -4339,15 +4372,88 @@ function BranchRequestsPanel() {
   const approvedCount = requests.filter(r => r.status === 'approved').length;
   const pendingCount  = requests.filter(r => !r.status || r.status === 'pending').length;
 
+  const dispatchHasShortfall = (() => {
+    if (!dispatchReq) return false;
+    const items = Array.isArray(dispatchReq.items) ? dispatchReq.items : [];
+    return items.some(it => {
+      const n = it.productName || it.product_name || '';
+      const fefoResult = fefoMap[n];
+      return fefoResult && fefoResult.shortfall > 0;
+    });
+  })();
+
   const handleDispatch = async () => {
     if (!dispatchReq) return;
-    setDispatching(true);
     setModalAlert(null);
+
+    const items = Array.isArray(dispatchReq.items) ? dispatchReq.items : [];
+    const whLabel = WAREHOUSE_SOURCES.find(w => w.value === dispatchWH)?.label || dispatchWH;
+
+    // Guard: FEFO lookup must be complete for all items before dispatch is allowed.
+    // This closes the race window between modal open and async FEFO resolution.
+    const allFefoLoaded = items.every(it => {
+      const n = it.productName || it.product_name || '';
+      return !n || (n in fefoMap);
+    });
+    if (fefoLoading || !allFefoLoaded) {
+      setModalAlert({ type: 'error', msg: 'Batch resolution is still loading. Please wait a moment and try again.' });
+      return;
+    }
+
+    // Block dispatch if any item has a quantity shortfall in the selected warehouse.
+    // Items with no batch records at all will have shortfall = requested qty (full shortfall).
+    if (dispatchHasShortfall) {
+      const shortfallItems = items
+        .filter(it => {
+          const n = it.productName || it.product_name || '';
+          return fefoMap[n]?.shortfall > 0;
+        })
+        .map(it => {
+          const n = it.productName || it.product_name || '';
+          return `${n} (${fefoMap[n].shortfall} units short)`;
+        });
+      setModalAlert({ type: 'error', msg: `❌ Cannot dispatch — insufficient stock in ${whLabel}: ${shortfallItems.join(', ')}. Select a different warehouse or update stock levels first.` });
+      return;
+    }
+
+    setDispatching(true);
     try {
-      const items = Array.isArray(dispatchReq.items) ? dispatchReq.items : [];
       const branchId = (dispatchReq.requestingBranch || dispatchReq.requesting_branch || '').toLowerCase().replace(/\s+/g, '_');
       const actor = user?.full_name || user?.fullName || user?.username || 'Stock Manager';
-      const whLabel = WAREHOUSE_SOURCES.find(w => w.value === dispatchWH)?.label || dispatchWH;
+      const reqLabel = dispatchReq.requestNumber || dispatchReq.request_number || dispatchReq.id;
+
+      // Build all movement records first so a partial failure doesn't leave the
+      // request in a dispatched state without movement records.
+      const movementPromises = [];
+      for (const item of items) {
+        const productName = item.productName || item.product_name || '';
+        if (!productName || Number(item.quantity || 0) <= 0) continue;
+        const fefoResult = fefoMap[productName];
+        // Only create movements for batches with allocated_qty > 0.
+        // dispatchHasShortfall guard above ensures every item has batches.
+        for (const batch of (fefoResult?.batches || [])) {
+          if (!batch.allocated_qty || batch.allocated_qty <= 0) continue;
+          movementPromises.push(
+            api.stock.createMovement({
+              movement_type: 'warehouse_dispatch',
+              product_name: productName,
+              quantity: batch.allocated_qty,
+              source_location: dispatchWH,
+              source_location_type: 'warehouse',
+              destination_location: branchId,
+              destination_location_type: 'branch',
+              reference_id: dispatchReq.id,
+              batch_no: batch.batch_no || null,
+              expiry_date: batch.expiry_date || null,
+              notes: `Dispatched from ${whLabel} to ${fmtLocation(branchId)} — request ${reqLabel}. Batch: ${batch.batch_no || 'N/A'}`,
+              created_by: actor,
+            })
+          );
+        }
+      }
+
+      // Create all movements, then mark the request dispatched atomically.
+      await Promise.all(movementPromises);
 
       await api.stock.updateRequest(dispatchReq.id, {
         status: 'dispatched',
@@ -4357,29 +4463,9 @@ function BranchRequestsPanel() {
         notes: `Dispatched from ${whLabel} by ${actor}`,
       });
 
-      // Record an outbound warehouse_dispatch movement for every item so
-      // warehouse inventory_balances are reduced and a full audit trail exists.
-      const dispatchedAt = new Date().toISOString();
-      for (const item of items) {
-        const productName = item.productName || item.product_name || '';
-        const qty = Number(item.quantity || 0);
-        if (!productName || qty <= 0) continue;
-        await api.stock.createMovement({
-          movement_type: 'warehouse_dispatch',
-          product_name: productName,
-          quantity: qty,
-          source_location: dispatchWH,
-          source_location_type: 'warehouse',
-          destination_location: branchId,
-          destination_location_type: 'branch',
-          reference_id: dispatchReq.id,
-          notes: `Dispatched from ${whLabel} to ${fmtLocation(branchId)} — request ${dispatchReq.requestNumber || dispatchReq.request_number || dispatchReq.id}`,
-          created_by: actor,
-        }).catch(err => console.warn('[dispatch] movement record failed:', err.message));
-      }
-
       setAlert({ type: 'success', msg: `✅ ${items.length} item(s) dispatched from ${whLabel} to ${fmtLocation(branchId)}. Branch can now receive the delivery.` });
       setDispatchReq(null);
+      setFefoMap({});
       setModalAlert(null);
       setTimeout(() => load(), 150);
     } catch (err) {
@@ -4553,24 +4639,10 @@ function BranchRequestsPanel() {
       {/* Dispatch Modal */}
       {dispatchReq && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div style={{ background: '#fff', borderRadius: 16, padding: 28, width: '100%', maxWidth: 480, boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}>
+          <div style={{ background: '#fff', borderRadius: 16, padding: 28, width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}>
             <div style={{ fontWeight: 800, fontSize: '1.05rem', color: '#1e293b', marginBottom: 4 }}>🚚 Dispatch Request</div>
             <div style={{ fontSize: '0.83rem', color: '#64748b', marginBottom: 18 }}>
               Dispatching stock to <strong>{fmtLocation(dispatchReq.requestingBranch || dispatchReq.requesting_branch)}</strong>
-            </div>
-
-            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 14px', marginBottom: 18 }}>
-              <div style={{ fontSize: '0.73rem', fontWeight: 700, color: '#64748b', marginBottom: 6, textTransform: 'uppercase' }}>Items to dispatch</div>
-              {(Array.isArray(dispatchReq.items) ? dispatchReq.items : []).map((it, i) => (
-                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem', padding: '3px 0', borderBottom: i < dispatchReq.items.length - 1 ? '1px solid #f0f0f0' : 'none' }}>
-                  {(() => {
-                    const n = it.productName || it.productId || it.product_name;
-                    const bad = !n || n === 'Item' || n === 'UNKNOWN';
-                    return <span style={{ fontWeight: bad ? 400 : 600, fontStyle: bad ? 'italic' : 'normal', color: bad ? '#94a3b8' : '#1e293b' }}>{bad ? '⚠ Name not recorded' : n}</span>;
-                  })()}
-                  <span style={{ fontWeight: 800, color: '#c41e3a' }}>× {it.quantity}</span>
-                </div>
-              ))}
             </div>
 
             <div style={{ marginBottom: 18 }}>
@@ -4581,8 +4653,58 @@ function BranchRequestsPanel() {
               </select>
             </div>
 
+            {/* FEFO Batch Resolution Panel */}
+            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 14px', marginBottom: 18 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <span style={{ fontSize: '0.73rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Items & FEFO Batch Assignment</span>
+                {fefoLoading && <span style={{ fontSize: '0.72rem', color: '#1d6fa4', fontWeight: 600 }}>⏳ Resolving batches…</span>}
+              </div>
+              {(Array.isArray(dispatchReq.items) ? dispatchReq.items : []).map((it, i) => {
+                const items = dispatchReq.items;
+                const n = it.productName || it.productId || it.product_name;
+                const bad = !n || n === 'Item' || n === 'UNKNOWN';
+                const fefoResult = fefoMap[n];
+                const hasBatches = fefoResult?.batches?.length > 0;
+                const hasShortfall = fefoResult?.shortfall > 0;
+                return (
+                  <div key={i} style={{ marginBottom: i < items.length - 1 ? 10 : 0, paddingBottom: i < items.length - 1 ? 10 : 0, borderBottom: i < items.length - 1 ? '1px solid #e2e8f0' : 'none' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: hasBatches ? 5 : 0 }}>
+                      <span style={{ fontWeight: bad ? 400 : 600, fontStyle: bad ? 'italic' : 'normal', color: bad ? '#94a3b8' : '#1e293b', fontSize: '0.85rem' }}>
+                        {bad ? '⚠ Name not recorded' : n}
+                      </span>
+                      <span style={{ fontWeight: 800, color: '#c41e3a', fontSize: '0.85rem' }}>× {it.quantity}</span>
+                    </div>
+                    {!fefoLoading && fefoResult && hasBatches && (
+                      <div style={{ paddingLeft: 10, borderLeft: '3px solid #1d6fa4' }}>
+                        {fefoResult.batches.map((b, bi) => (
+                          <div key={bi} style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: '0.77rem', color: '#374151', marginTop: 3 }}>
+                            <span style={{ fontFamily: 'monospace', background: '#e0f2fe', padding: '1px 6px', borderRadius: 4, fontWeight: 700, color: '#0c4a6e' }}>{b.batch_no || '—'}</span>
+                            <span style={{ color: '#64748b' }}>Exp: {b.expiry_date ? new Date(b.expiry_date).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</span>
+                            <span style={{ fontWeight: 700, color: '#166534', marginLeft: 'auto' }}>qty: {b.allocated_qty}</span>
+                          </div>
+                        ))}
+                        {hasShortfall && (
+                          <div style={{ marginTop: 4, fontSize: '0.74rem', color: '#b45309', fontWeight: 700 }}>
+                            ⚠️ Stock shortfall: {fefoResult.shortfall} units unavailable in {WAREHOUSE_SOURCES.find(w => w.value === dispatchWH)?.label || dispatchWH}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {!fefoLoading && fefoResult && !hasBatches && (
+                      <div style={{ paddingLeft: 10, fontSize: '0.75rem', color: '#b45309', fontWeight: 600, marginTop: 3 }}>
+                        ⚠️ No batch records found in {WAREHOUSE_SOURCES.find(w => w.value === dispatchWH)?.label || dispatchWH} — dispatch will proceed without batch info
+                      </div>
+                    )}
+                    {!fefoLoading && !fefoResult && !fefoLoading && (
+                      <div style={{ paddingLeft: 10, fontSize: '0.75rem', color: '#94a3b8', marginTop: 2 }}>Loading batch info…</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
             <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8, padding: '8px 12px', marginBottom: 18, fontSize: '0.78rem', color: '#9a3412' }}>
-              ⚠️ This will mark the request as dispatched. The branch will be notified to receive the delivery.
+              ✅ FEFO batch numbers and expiry dates will be recorded automatically. The branch receipt form will be pre-filled with these details. Dispatch is blocked if any item has insufficient warehouse stock.
             </div>
 
             {modalAlert && (
@@ -4591,12 +4713,17 @@ function BranchRequestsPanel() {
               </div>
             )}
 
+            {dispatchHasShortfall && !fefoLoading && (
+              <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '8px 12px', marginBottom: 14, fontSize: '0.8rem', fontWeight: 700, color: '#991b1b' }}>
+                🚫 Dispatch blocked — one or more items cannot be fully filled from the selected warehouse. Select a different warehouse or resolve the stock shortfall first.
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={handleDispatch} disabled={dispatching}
-                style={{ flex: 1, background: '#c41e3a', color: '#fff', border: 'none', borderRadius: 9, padding: '11px 0', fontWeight: 800, fontSize: '0.88rem', cursor: dispatching ? 'not-allowed' : 'pointer', opacity: dispatching ? 0.7 : 1 }}>
-                {dispatching ? 'Dispatching…' : '🚚 Confirm Dispatch'}
+              <button onClick={handleDispatch} disabled={dispatching || fefoLoading || dispatchHasShortfall}
+                style={{ flex: 1, background: dispatchHasShortfall ? '#94a3b8' : '#c41e3a', color: '#fff', border: 'none', borderRadius: 9, padding: '11px 0', fontWeight: 800, fontSize: '0.88rem', cursor: (dispatching || fefoLoading || dispatchHasShortfall) ? 'not-allowed' : 'pointer', opacity: (dispatching || fefoLoading) ? 0.7 : 1 }}>
+                {dispatching ? 'Dispatching…' : fefoLoading ? 'Resolving batches…' : dispatchHasShortfall ? '🚫 Insufficient Stock' : '🚚 Confirm Dispatch'}
               </button>
-              <button onClick={() => { setDispatchReq(null); setModalAlert(null); }} disabled={dispatching}
+              <button onClick={() => { setDispatchReq(null); setModalAlert(null); setFefoMap({}); }} disabled={dispatching}
                 style={{ background: '#f1f5f9', color: '#64748b', border: 'none', borderRadius: 9, padding: '11px 18px', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}>
                 Cancel
               </button>

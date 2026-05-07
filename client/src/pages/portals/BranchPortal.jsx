@@ -3816,6 +3816,7 @@ function BranchStockTab() {
   const [receiveItems, setReceiveItems] = useState([]);
   const [receiveDeliveryNote, setReceiveDeliveryNote] = useState('');
   const [receiveReceivedBy, setReceiveReceivedBy] = useState('');
+  const [receiveBatchPrefillStatus, setReceiveBatchPrefillStatus] = useState(null);
   const [receiveTransferModal, setReceiveTransferModal] = useState(null);
   const [receiveSignature, setReceiveSignature] = useState('');
   const [receiveNotes, setReceiveNotes] = useState('');
@@ -3961,14 +3962,73 @@ function BranchStockTab() {
     } finally { setSubmitting(false); }
   };
 
-  const openReceiveForm = (req) => {
+  const openReceiveForm = async (req) => {
     const items = (() => { try { return typeof req.items === 'string' ? JSON.parse(req.items) : (req.items || []); } catch { return []; } })();
+    const baseItems = items.map(i => ({
+      ...i,
+      product_name: i.product_name || i.productName || i.productId || '',
+      received_qty: i.quantity,
+      batch_no: '',
+      expiry_date: '',
+    }));
+
+    // Show the modal immediately with base items so the user isn't waiting on a blank screen.
     setSelectedRequest(req);
-    setReceiveItems(items.map(i => ({ ...i, received_qty: i.quantity })));
     setReceiveDeliveryNote('');
     setReceiveReceivedBy(user?.full_name || user?.username || '');
     setReceiveFormMsg(null);
+    setReceiveBatchPrefillStatus('loading');
+    setReceiveItems(baseItems);
     setShowReceiveForm(true);
+
+    try {
+      // Use the dedicated request-batches endpoint which queries stock_movements directly,
+      // bypassing branch-scoping so branch staff can read warehouse_dispatch batch data.
+      const batchResp = await api.stock.requestBatches(req.id);
+      const movements = batchResp?.movements || [];
+      if (movements.length > 0) {
+        const batchMap = {};
+        for (const m of movements) {
+          const pName = m.product_name || '';
+          if (!pName) continue;
+          if (!batchMap[pName]) batchMap[pName] = [];
+          batchMap[pName].push({
+            batch_no: m.batch_no || '',
+            expiry_date: m.expiry_date || '',
+            received_qty: Number(m.quantity || 0),
+          });
+        }
+        if (Object.keys(batchMap).length > 0) {
+          const newRows = [];
+          for (const orig of items) {
+            const pName = orig.product_name || orig.productName || orig.productId || '';
+            const splits = batchMap[pName];
+            if (splits && splits.length > 0) {
+              for (const split of splits) {
+                newRows.push({
+                  ...orig,
+                  product_name: pName,
+                  received_qty: split.received_qty > 0 ? split.received_qty : Number(orig.quantity || 0),
+                  batch_no: split.batch_no,
+                  expiry_date: split.expiry_date ? split.expiry_date.split('T')[0] : '',
+                });
+              }
+            } else {
+              newRows.push({ ...orig, product_name: pName, received_qty: Number(orig.quantity || 0), batch_no: '', expiry_date: '' });
+            }
+          }
+          const hasAllBatches = newRows.every(r => r.batch_no);
+          setReceiveItems(newRows);
+          setReceiveBatchPrefillStatus(hasAllBatches ? 'full' : 'partial');
+        } else {
+          setReceiveBatchPrefillStatus('none');
+        }
+      } else {
+        setReceiveBatchPrefillStatus('none');
+      }
+    } catch {
+      setReceiveBatchPrefillStatus('error');
+    }
   };
 
   const handleReceiveStock = async () => {
@@ -3978,13 +4038,14 @@ function BranchStockTab() {
     try {
       const itemsToReceive = receiveItems.filter(item => Number(item.received_qty) > 0);
       for (const item of itemsToReceive) {
+        const label = item.product_name || item.productName || item.productId || 'this item';
         if (!item.batch_no || !item.batch_no.trim()) {
-          setReceiveFormMsg({ type: 'error', text: `Batch number is required for "${item.product_name}"` });
+          setReceiveFormMsg({ type: 'error', text: `Batch number is required for "${label}"` });
           setSubmitting(false);
           return;
         }
         if (!item.expiry_date) {
-          setReceiveFormMsg({ type: 'error', text: `Expiry date is required for "${item.product_name}"` });
+          setReceiveFormMsg({ type: 'error', text: `Expiry date is required for "${label}"` });
           setSubmitting(false);
           return;
         }
@@ -5991,6 +6052,26 @@ function BranchStockTab() {
               <button onClick={() => setShowReceiveForm(false)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 34, height: 34, borderRadius: '50%', cursor: 'pointer', fontSize: '1.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
             </div>
             <div style={{ padding: '20px', maxHeight: '70vh', overflowY: 'auto' }}>
+              {receiveBatchPrefillStatus === 'loading' && (
+                <div style={{ padding: '8px 14px', borderRadius: 8, marginBottom: 12, fontSize: '0.8rem', fontWeight: 600, background: '#f0f9ff', color: '#0369a1', border: '1px solid #bae6fd', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  ⏳ Loading batch information from dispatch record…
+                </div>
+              )}
+              {receiveBatchPrefillStatus === 'full' && (
+                <div style={{ padding: '8px 14px', borderRadius: 8, marginBottom: 12, fontSize: '0.8rem', fontWeight: 600, background: '#dcfce7', color: '#166534', border: '1px solid #bbf7d0', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  ✅ Batch numbers and expiry dates have been pre-filled from the dispatch record.
+                </div>
+              )}
+              {receiveBatchPrefillStatus === 'partial' && (
+                <div style={{ padding: '8px 14px', borderRadius: 8, marginBottom: 12, fontSize: '0.8rem', fontWeight: 600, background: '#fef9c3', color: '#854d0e', border: '1px solid #fde68a', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  ⚠️ Some batch details were pre-filled. Please review and complete any missing fields before confirming.
+                </div>
+              )}
+              {(receiveBatchPrefillStatus === 'none' || receiveBatchPrefillStatus === 'error') && (
+                <div style={{ padding: '8px 14px', borderRadius: 8, marginBottom: 12, fontSize: '0.8rem', fontWeight: 600, background: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  ⚠️ Batch information could not be pre-loaded from the dispatch record. Please enter Batch No and Expiry Date manually for each item.
+                </div>
+              )}
               <div style={{ marginBottom: 16 }}>
                 {sectionLabel('Items to Receive')}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
