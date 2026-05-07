@@ -287,17 +287,24 @@ export default async function handler(req, res) {
           // moment of insertion. This closes the race window between the frontend
           // FEFO batch lookup (done when the modal opens) and the user clicking
           // Confirm — another concurrent dispatch may have consumed stock in between.
-          // The FOR UPDATE lock on stock_batches / warehouse_inventory prevents two
-          // simultaneous dispatches from both passing the check against the same rows.
+          //
+          // Implementation notes:
+          //   • FOR UPDATE is applied to row-level queries, not aggregates — PostgreSQL
+          //     forbids FOR UPDATE on aggregate-only selects.  Rows are locked individually
+          //     and summed in JS instead.
+          //   • stock_batches is the FEFO-authoritative source (fefoDeductStockBatches
+          //     deducts from this table).  warehouse_inventory is checked as a fallback
+          //     only when stock_batches has no matching rows, preventing double-counting.
           if (movType === 'warehouse_dispatch' && srcLoc && productName && qty > 0) {
+            // ── Primary: lock FEFO batch rows and sum in JS ───────────────────
             const batchParams = batchNo
               ? [srcLoc, productName, batchNo]
               : [srcLoc, productName];
             const batchFilter = batchNo
               ? `AND LOWER(TRIM(COALESCE(batch_no, ''))) = LOWER(TRIM($3))`
               : '';
-            const batchAvail = await client.query(
-              `SELECT COALESCE(SUM(remaining_quantity), 0)::numeric AS total
+            const batchRows = await client.query(
+              `SELECT id, remaining_quantity
                FROM stock_batches
                WHERE (LOWER(TRIM(location)) = LOWER(TRIM($1)) OR LOWER(TRIM(warehouse_id)) = LOWER(TRIM($1)))
                  AND LOWER(TRIM(description)) = LOWER(TRIM($2))
@@ -307,27 +314,34 @@ export default async function handler(req, res) {
                FOR UPDATE`,
               batchParams
             );
-            const batchTotal = Number(batchAvail.rows[0]?.total ?? 0);
-
-            const invParams = batchNo
-              ? [srcLoc, productName, batchNo]
-              : [srcLoc, productName];
-            const invFilter = batchNo
-              ? `AND LOWER(TRIM(COALESCE(batch_no, ''))) = LOWER(TRIM($3))`
-              : '';
-            const invAvail = await client.query(
-              `SELECT COALESCE(SUM(quantity), 0)::numeric AS total
-               FROM warehouse_inventory
-               WHERE LOWER(TRIM(warehouse_id)) = LOWER(TRIM($1))
-                 AND (LOWER(TRIM(product_name)) = LOWER(TRIM($2)) OR product_name ILIKE $2)
-                 AND quantity > 0
-                 ${invFilter}
-               FOR UPDATE`,
-              invParams
+            const batchTotal = batchRows.rows.reduce(
+              (sum, r) => sum + Number(r.remaining_quantity ?? 0), 0
             );
-            const invTotal = Number(invAvail.rows[0]?.total ?? 0);
 
-            const available = Math.max(batchTotal, invTotal);
+            // ── Fallback: warehouse_inventory (only when no FEFO batches exist) ─
+            let available = batchTotal;
+            if (batchTotal === 0) {
+              const invParams = batchNo
+                ? [srcLoc, productName, batchNo]
+                : [srcLoc, productName];
+              const invFilter = batchNo
+                ? `AND LOWER(TRIM(COALESCE(batch_no, ''))) = LOWER(TRIM($3))`
+                : '';
+              const invRows = await client.query(
+                `SELECT id, quantity
+                 FROM warehouse_inventory
+                 WHERE LOWER(TRIM(warehouse_id)) = LOWER(TRIM($1))
+                   AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))
+                   AND quantity > 0
+                   ${invFilter}
+                 FOR UPDATE`,
+                invParams
+              );
+              available = invRows.rows.reduce(
+                (sum, r) => sum + Number(r.quantity ?? 0), 0
+              );
+            }
+
             if (available < qty) {
               const shortfall = qty - available;
               const batchNote = batchNo ? ` (batch ${batchNo})` : '';
