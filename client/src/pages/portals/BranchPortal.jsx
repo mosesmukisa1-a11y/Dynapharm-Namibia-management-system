@@ -2652,9 +2652,32 @@ function PrescriptionsTab() {
   };
 
   const dpModal = dispensePreview;
-  // Count of pending items the user has ticked for this session
+  // Count selected prescription medicines (components of the same package count as 1, not N)
   const dpSelectedCount = dpModal
-    ? dpModal.pendingItems.filter((_, i) => rxItemSelected[i] !== false).length
+    ? (() => {
+        const seenPkgs = new Set();
+        return dpModal.pendingItems.reduce((n, item, i) => {
+          if (rxItemSelected[i] === false) return n;
+          if (item.isComponent && item.fromPackage) {
+            if (seenPkgs.has(item.fromPackage)) return n;
+            seenPkgs.add(item.fromPackage);
+          }
+          return n + 1;
+        }, 0);
+      })()
+    : 0;
+  // Total distinct prescription medicines in the modal (for "X of Y" display)
+  const dpTotalMedicineCount = dpModal
+    ? (() => {
+        const seenPkgs = new Set();
+        return dpModal.pendingItems.reduce((n, item) => {
+          if (item.isComponent && item.fromPackage) {
+            if (seenPkgs.has(item.fromPackage)) return n;
+            seenPkgs.add(item.fromPackage);
+          }
+          return n + 1;
+        }, 0);
+      })()
     : 0;
   // Dynamic subtotal — only sums ticked items, reflects qty steppers
   const dpMedSubtotal = dpModal
@@ -3173,7 +3196,7 @@ function PrescriptionsTab() {
                     ? '⚠️ No items selected'
                     : dpIsFullDispense
                       ? `✅ All ${dpSelectedCount} item${dpSelectedCount !== 1 ? 's' : ''} selected — Full Dispense`
-                      : `⏳ ${dpSelectedCount} of ${dpModal.pendingItems.length} item${dpModal.pendingItems.length !== 1 ? 's' : ''} selected`}
+                      : `⏳ ${dpSelectedCount} of ${dpTotalMedicineCount} item${dpTotalMedicineCount !== 1 ? 's' : ''} selected`}
                 </div>
                 <div style={{ display: 'flex', gap: 5 }}>
                   <button
