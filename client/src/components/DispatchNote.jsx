@@ -189,6 +189,44 @@ export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
   const t = transfer;
   const meta = t.metadata || {};
   const items = Array.isArray(t.items) ? t.items : [];
+
+  // Detect FEFO batch-split mode: any item carries a batchNo
+  const hasBatchSplits = items.some(it => it.batchNo || it.batch_no);
+
+  // Group batch-split items by product so we can render sub-rows
+  const batchGroups = (() => {
+    if (!hasBatchSplits) return [];
+    const groupMap = new Map();
+    items.forEach(item => {
+      const name = (item.productName || item.product_name || '').trim();
+      const key = name.toLowerCase();
+      if (!groupMap.has(key)) {
+        groupMap.set(key, {
+          displayName: name || '—',
+          productCode: item.productCode || item.product_code || item.sku || '',
+          unit: item.unit || 'units',
+          totalQty: 0,
+          totalApproved: null,
+          totalReceived: null,
+          batches: [],
+          remarks: item.discrepancyNote || item.discrepancy_note || item.lineNote || item.line_note || '',
+        });
+      }
+      const g = groupMap.get(key);
+      const qtyPrep = Number(item.quantity || 0);
+      const qtyAppr = item.quantityApproved ?? item.quantity_approved;
+      const qtyRecv = item.quantityReceived ?? item.quantity_received;
+      g.totalQty += qtyPrep;
+      if (qtyAppr != null) g.totalApproved = (g.totalApproved || 0) + Number(qtyAppr);
+      if (qtyRecv != null) g.totalReceived = (g.totalReceived || 0) + Number(qtyRecv);
+      g.batches.push({
+        batchNo: item.batchNo || item.batch_no || '',
+        expiryDate: item.expiryDate || item.expiry_date || null,
+        qty: qtyPrep,
+      });
+    });
+    return [...groupMap.values()];
+  })();
   const isAmended = t.gmAction === 'amend_approve' || t.gm_action === 'amend_approve' || meta.amended;
   const gmAction = t.gmAction || t.gm_action || null;
   const gmComment = t.gmComment || t.gm_comment || null;
