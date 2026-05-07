@@ -2337,6 +2337,18 @@ server.on('error', (error) => {
     } catch (e) {
       console.warn('[distributor_statements init]', e.message);
     }
+    // ── System-wide admin settings (key/value store) ──────────────────────
+    try {
+      await query(`
+        CREATE TABLE IF NOT EXISTS system_settings (
+          key VARCHAR(120) PRIMARY KEY,
+          value TEXT NOT NULL DEFAULT '',
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+    } catch (e) {
+      console.warn('[system_settings init]', e.message);
+    }
     // ────────────────────────────────────────────────────────────────────────
     // ── Normalize appointment branch display names → branch IDs (idempotent) ──
     try {

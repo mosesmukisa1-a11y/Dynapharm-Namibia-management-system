@@ -363,6 +363,8 @@ export const api = {
     dataMode: () => api.get('/system/data-mode'),
     disableSampleData: () => api.post('/admin/system/disable-sample-data', {}),
     purgeSampleData: () => api.post('/admin/system/purge-sample-data', { confirm: true }),
+    getSettings: (key) => api.get(`/admin/system-settings${key ? '?key=' + encodeURIComponent(key) : ''}`),
+    putSetting: (key, value) => api.put('/admin/system-settings', { key, value }),
   },
 
   sales: {

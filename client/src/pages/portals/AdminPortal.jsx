@@ -946,6 +946,9 @@ function SystemTab() {
   const [health, setHealth] = useState(null);
   const [stats, setStats] = useState({ users: 0, orders: 0, products: 0 });
   const [loading, setLoading] = useState(true);
+  const [shortfallMode, setShortfallMode] = useState('block');
+  const [shortfallSaving, setShortfallSaving] = useState(false);
+  const [shortfallMsg, setShortfallMsg] = useState(null);
 
   useEffect(() => {
     Promise.all([
@@ -953,11 +956,28 @@ function SystemTab() {
       api.users.list().then(d => (Array.isArray(d) ? d : d.users || []).length).catch(() => 0),
       api.orders.list().then(d => (Array.isArray(d) ? d : d.orders || []).length).catch(() => 0),
       api.products.list().then(d => (Array.isArray(d) ? d : d.products || []).length).catch(() => 0),
-    ]).then(([h, users, orders, products]) => {
+      api.system.getSettings('dispatch_shortfall_mode').catch(() => null),
+    ]).then(([h, users, orders, products, setting]) => {
       setHealth(h);
       setStats({ users, orders, products });
+      if (setting?.value) setShortfallMode(setting.value);
     }).finally(() => setLoading(false));
   }, []);
+
+  const saveShortfallMode = async (newMode) => {
+    setShortfallSaving(true);
+    setShortfallMsg(null);
+    try {
+      await api.system.putSetting('dispatch_shortfall_mode', newMode);
+      setShortfallMode(newMode);
+      setShortfallMsg({ type: 'success', text: 'Setting saved successfully.' });
+    } catch (err) {
+      setShortfallMsg({ type: 'error', text: err.message || 'Failed to save setting.' });
+    } finally {
+      setShortfallSaving(false);
+      setTimeout(() => setShortfallMsg(null), 4000);
+    }
+  };
 
   if (loading) return <LoadingSpinner />;
 
@@ -984,6 +1004,52 @@ function SystemTab() {
           ) : (
             <p className="text-sm text-gray-500">Unable to fetch system health data.</p>
           )}
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader><h3 className="font-bold text-gray-800">Stock Dispatch Settings</h3></CardHeader>
+        <CardBody>
+          <div className="space-y-3">
+            <div>
+              <p className="text-sm font-semibold text-gray-700 mb-1">Warehouse Shortfall Behaviour</p>
+              <p className="text-xs text-gray-500 mb-3">
+                Controls what happens in the dispatch modal when the selected warehouse cannot fully cover a branch request.
+              </p>
+              <div className="flex flex-col gap-2">
+                <label className="flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer"
+                  style={{ borderColor: shortfallMode === 'block' ? '#c41e3a' : '#e2e8f0', background: shortfallMode === 'block' ? '#fff5f5' : '#f8fafc' }}>
+                  <input type="radio" name="shortfallMode" value="block"
+                    checked={shortfallMode === 'block'}
+                    onChange={() => saveShortfallMode('block')}
+                    disabled={shortfallSaving}
+                    className="mt-0.5" />
+                  <div>
+                    <p className="text-sm font-bold text-gray-800">🚫 Hard Block <span className="text-xs font-normal text-gray-500">(default)</span></p>
+                    <p className="text-xs text-gray-500 mt-0.5">Dispatch is completely prevented when any item has a shortfall. The stock manager must resolve the shortage or choose a different warehouse before proceeding.</p>
+                  </div>
+                </label>
+                <label className="flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer"
+                  style={{ borderColor: shortfallMode === 'warn' ? '#d97706' : '#e2e8f0', background: shortfallMode === 'warn' ? '#fffbeb' : '#f8fafc' }}>
+                  <input type="radio" name="shortfallMode" value="warn"
+                    checked={shortfallMode === 'warn'}
+                    onChange={() => saveShortfallMode('warn')}
+                    disabled={shortfallSaving}
+                    className="mt-0.5" />
+                  <div>
+                    <p className="text-sm font-bold text-gray-800">⚠️ Warn Only</p>
+                    <p className="text-xs text-gray-500 mt-0.5">A prominent warning is shown but the stock manager can still proceed by ticking an acknowledgement checkbox. Use this when partial dispatch is acceptable.</p>
+                  </div>
+                </label>
+              </div>
+              {shortfallSaving && <p className="text-xs text-blue-600 mt-2">Saving…</p>}
+              {shortfallMsg && (
+                <p className={`text-xs mt-2 font-semibold ${shortfallMsg.type === 'success' ? 'text-green-600' : 'text-red-600'}`}>
+                  {shortfallMsg.type === 'success' ? '✅' : '❌'} {shortfallMsg.text}
+                </p>
+              )}
+            </div>
+          </div>
         </CardBody>
       </Card>
 

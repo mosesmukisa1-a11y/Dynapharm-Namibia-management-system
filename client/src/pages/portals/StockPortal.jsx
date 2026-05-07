@@ -4307,21 +4307,23 @@ const WAREHOUSE_SOURCES = [
 
 function BranchRequestsPanel() {
   const { user } = useAuth();
-  const [requests, setRequests]           = useState([]);
-  const [loading, setLoading]             = useState(true);
-  const [dispatchReq, setDispatchReq]     = useState(null);
-  const [dispatchWH, setDispatchWH]       = useState('windhoek_warehouse');
-  const [dispatching, setDispatching]     = useState(false);
-  const [modalAlert, setModalAlert]       = useState(null);
-  const [denyReq, setDenyReq]             = useState(null);
-  const [denyReason, setDenyReason]       = useState('');
-  const [denying, setDenying]             = useState(false);
-  const [alert, setAlert]                 = useState(null);
-  const [statusFilter, setStatusFilter]   = useState('approved');
-  const [fefoMap, setFefoMap]             = useState({});
-  const [fefoLoading, setFefoLoading]     = useState(false);
-  const [altFefoMap, setAltFefoMap]       = useState({});
-  const [altFefoLoading, setAltFefoLoading] = useState(false);
+  const [requests, setRequests]                   = useState([]);
+  const [loading, setLoading]                     = useState(true);
+  const [dispatchReq, setDispatchReq]             = useState(null);
+  const [dispatchWH, setDispatchWH]               = useState('windhoek_warehouse');
+  const [dispatching, setDispatching]             = useState(false);
+  const [modalAlert, setModalAlert]               = useState(null);
+  const [denyReq, setDenyReq]                     = useState(null);
+  const [denyReason, setDenyReason]               = useState('');
+  const [denying, setDenying]                     = useState(false);
+  const [alert, setAlert]                         = useState(null);
+  const [statusFilter, setStatusFilter]           = useState('approved');
+  const [fefoMap, setFefoMap]                     = useState({});
+  const [fefoLoading, setFefoLoading]             = useState(false);
+  const [altFefoMap, setAltFefoMap]               = useState({});
+  const [altFefoLoading, setAltFefoLoading]       = useState(false);
+  const [shortfallMode, setShortfallMode]         = useState('block');
+  const [shortfallAcknowledged, setShortfallAcknowledged] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -4329,6 +4331,12 @@ function BranchRequestsPanel() {
       .then(d => setRequests(Array.isArray(d) ? d : d.requests || []))
       .catch(() => {})
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    api.system.getSettings('dispatch_shortfall_mode')
+      .then(d => { if (d?.value) setShortfallMode(d.value); })
+      .catch(() => {});
   }, []);
 
   const lookupFefoBatches = useCallback(async (req, warehouse) => {
@@ -4360,6 +4368,7 @@ function BranchRequestsPanel() {
 
   useEffect(() => {
     if (dispatchReq && dispatchWH) {
+      setShortfallAcknowledged(false);
       lookupFefoBatches(dispatchReq, dispatchWH);
     }
   }, [dispatchReq, dispatchWH, lookupFefoBatches]);
@@ -4460,20 +4469,25 @@ function BranchRequestsPanel() {
       return;
     }
 
-    // Block dispatch if any item has a quantity shortfall in the selected warehouse.
-    // Items with no batch records at all will have shortfall = requested qty (full shortfall).
+    // Block or warn dispatch if any item has a quantity shortfall in the selected warehouse.
     if (dispatchHasShortfall) {
-      const shortfallItems = items
-        .filter(it => {
-          const n = it.productName || it.product_name || it.productId || '';
-          return fefoMap[n]?.shortfall > 0;
-        })
-        .map(it => {
-          const n = it.productName || it.product_name || it.productId || '';
-          return `${n} (${fefoMap[n].shortfall} units short)`;
-        });
-      setModalAlert({ type: 'error', msg: `❌ Cannot dispatch — insufficient stock in ${whLabel}: ${shortfallItems.join(', ')}. Select a different warehouse or update stock levels first.` });
-      return;
+      if (shortfallMode === 'block') {
+        const shortfallItems = items
+          .filter(it => {
+            const n = it.productName || it.product_name || it.productId || '';
+            return fefoMap[n]?.shortfall > 0;
+          })
+          .map(it => {
+            const n = it.productName || it.product_name || it.productId || '';
+            return `${n} (${fefoMap[n].shortfall} units short)`;
+          });
+        setModalAlert({ type: 'error', msg: `❌ Cannot dispatch — insufficient stock in ${whLabel}: ${shortfallItems.join(', ')}. Select a different warehouse or update stock levels first.` });
+        return;
+      }
+      if (!shortfallAcknowledged) {
+        setModalAlert({ type: 'error', msg: '⚠️ Please tick the shortfall acknowledgement checkbox before dispatching.' });
+        return;
+      }
     }
 
     setDispatching(true);
@@ -4765,7 +4779,7 @@ function BranchRequestsPanel() {
             </div>
 
             <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8, padding: '8px 12px', marginBottom: 18, fontSize: '0.78rem', color: '#9a3412' }}>
-              ✅ FEFO batch numbers and expiry dates will be recorded automatically. The branch receipt form will be pre-filled with these details. Dispatch is blocked if any item has insufficient warehouse stock.
+              ✅ FEFO batch numbers and expiry dates will be recorded automatically. The branch receipt form will be pre-filled with these details. {shortfallMode === 'block' ? 'Dispatch is blocked if any item has insufficient warehouse stock.' : 'A warning is shown if any item has insufficient stock — acknowledgement required to proceed.'}
             </div>
 
             {modalAlert && (
@@ -4774,81 +4788,100 @@ function BranchRequestsPanel() {
               </div>
             )}
 
-            {dispatchHasShortfall && !fefoLoading && (
-              <div style={{ background: '#fef2f2', border: '2px solid #f87171', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <span style={{ fontSize: '1.1rem' }}>🚫</span>
-                  <span style={{ fontWeight: 800, fontSize: '0.88rem', color: '#991b1b' }}>
-                    Insufficient Stock — Dispatch Blocked
-                  </span>
-                </div>
-                <div style={{ fontSize: '0.8rem', color: '#7f1d1d', marginBottom: 8 }}>
-                  The following products cannot be fully filled from <strong>{WAREHOUSE_SOURCES.find(w => w.value === dispatchWH)?.label || dispatchWH}</strong>:
-                </div>
-                <ul style={{ margin: 0, padding: '0 0 0 18px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  {shortfallSummary.map((s, i) => (
-                    <li key={i} style={{ fontSize: '0.82rem', fontWeight: 700, color: '#991b1b' }}>
-                      {s.name} — <span style={{ color: '#b91c1c' }}>{s.shortfall} unit{s.shortfall !== 1 ? 's' : ''} short</span>
-                    </li>
-                  ))}
-                </ul>
-
-                {/* Alternative warehouse availability */}
-                <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px dashed #fca5a5' }}>
-                  <div style={{ fontSize: '0.77rem', fontWeight: 700, color: '#7f1d1d', marginBottom: 6 }}>
-                    📦 Stock availability in other warehouses:
+            {dispatchHasShortfall && !fefoLoading && (() => {
+              const isWarn = shortfallMode === 'warn';
+              return (
+                <div style={{ background: isWarn ? '#fffbeb' : '#fef2f2', border: `2px solid ${isWarn ? '#fbbf24' : '#f87171'}`, borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    <span style={{ fontSize: '1.1rem' }}>{isWarn ? '⚠️' : '🚫'}</span>
+                    <span style={{ fontWeight: 800, fontSize: '0.88rem', color: isWarn ? '#92400e' : '#991b1b' }}>
+                      {isWarn ? 'Stock Shortfall Warning' : 'Insufficient Stock — Dispatch Blocked'}
+                    </span>
                   </div>
-                  {altFefoLoading ? (
-                    <div style={{ fontSize: '0.75rem', color: '#9a3412', fontStyle: 'italic' }}>⏳ Checking other warehouses…</div>
+                  <div style={{ fontSize: '0.8rem', color: isWarn ? '#78350f' : '#7f1d1d', marginBottom: 8 }}>
+                    The following products cannot be fully filled from <strong>{WAREHOUSE_SOURCES.find(w => w.value === dispatchWH)?.label || dispatchWH}</strong>:
+                  </div>
+                  <ul style={{ margin: 0, padding: '0 0 0 18px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {shortfallSummary.map((s, i) => (
+                      <li key={i} style={{ fontSize: '0.82rem', fontWeight: 700, color: isWarn ? '#92400e' : '#991b1b' }}>
+                        {s.name} — <span style={{ color: isWarn ? '#b45309' : '#b91c1c' }}>{s.shortfall} unit{s.shortfall !== 1 ? 's' : ''} short</span>
+                      </li>
+                    ))}
+                  </ul>
+                  {isWarn ? (
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 10, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={shortfallAcknowledged} onChange={e => setShortfallAcknowledged(e.target.checked)}
+                        style={{ marginTop: 2, accentColor: '#d97706', flexShrink: 0 }} />
+                      <span style={{ fontSize: '0.78rem', color: '#92400e', fontWeight: 600 }}>
+                        I acknowledge the shortfall and confirm that a partial dispatch is acceptable for this order.
+                      </span>
+                    </label>
                   ) : (
-                    WAREHOUSE_SOURCES.filter(w => w.value !== dispatchWH).map(wh => {
-                      const whData = altFefoMap[wh.value] || {};
-                      const allCanFill = shortfallSummary.length > 0 && shortfallSummary.every(s => whData[s.name]?.canFill);
-                      const anyAvailable = shortfallSummary.some(s => (whData[s.name]?.available || 0) > 0);
-                      return (
-                        <div key={wh.value} style={{ marginBottom: 6, background: allCanFill ? '#f0fdf4' : anyAvailable ? '#fffbeb' : '#fafafa', border: `1px solid ${allCanFill ? '#86efac' : anyAvailable ? '#fcd34d' : '#e2e8f0'}`, borderRadius: 8, padding: '8px 10px' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: shortfallSummary.length > 1 ? 5 : 0 }}>
-                            <button
-                              onClick={() => { setDispatchWH(wh.value); setAltFefoMap({}); }}
-                              style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 800, fontSize: '0.82rem', color: allCanFill ? '#166534' : anyAvailable ? '#92400e' : '#374151', textDecoration: 'underline', padding: 0 }}>
-                              {wh.label}
-                            </button>
-                            {allCanFill ? (
-                              <span style={{ fontSize: '0.72rem', background: '#bbf7d0', color: '#166534', borderRadius: 99, padding: '1px 8px', fontWeight: 700 }}>✅ Can fill order</span>
-                            ) : anyAvailable ? (
-                              <span style={{ fontSize: '0.72rem', background: '#fef3c7', color: '#92400e', borderRadius: 99, padding: '1px 8px', fontWeight: 700 }}>⚠️ Partial stock</span>
-                            ) : (
-                              <span style={{ fontSize: '0.72rem', background: '#fee2e2', color: '#991b1b', borderRadius: 99, padding: '1px 8px', fontWeight: 700 }}>❌ No stock</span>
-                            )}
-                          </div>
-                          {shortfallSummary.map(s => {
-                            const info = whData[s.name];
+                    <div style={{ marginTop: 8, fontSize: '0.77rem', color: '#9a3412', fontWeight: 600 }}>
+                      Select a different source warehouse or resolve the stock shortfall before dispatching.
+                    </div>
+                  )}
+                  {!isWarn && (
+                    <>
+                      {/* Alternative warehouse availability (block mode) */}
+                      <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px dashed #fca5a5' }}>
+                        <div style={{ fontSize: '0.77rem', fontWeight: 700, color: '#7f1d1d', marginBottom: 6 }}>
+                          📦 Stock availability in other warehouses:
+                        </div>
+                        {altFefoLoading ? (
+                          <div style={{ fontSize: '0.75rem', color: '#9a3412', fontStyle: 'italic' }}>⏳ Checking other warehouses…</div>
+                        ) : (
+                          WAREHOUSE_SOURCES.filter(w => w.value !== dispatchWH).map(wh => {
+                            const whData = altFefoMap[wh.value] || {};
+                            const allCanFill = shortfallSummary.length > 0 && shortfallSummary.every(s => whData[s.name]?.canFill);
+                            const anyAvailable = shortfallSummary.some(s => (whData[s.name]?.available || 0) > 0);
                             return (
-                              <div key={s.name} style={{ fontSize: '0.74rem', color: '#475569', display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 2 }}>
-                                <span style={{ fontWeight: 600 }}>{s.name}</span>
-                                <span style={{ color: info?.canFill ? '#166534' : info?.available > 0 ? '#92400e' : '#991b1b', fontWeight: 700 }}>
-                                  {info ? `${info.available} avail${info.shortfall > 0 ? ` (${info.shortfall} short)` : ''}` : '—'}
-                                </span>
+                              <div key={wh.value} style={{ marginBottom: 6, background: allCanFill ? '#f0fdf4' : anyAvailable ? '#fffbeb' : '#fafafa', border: `1px solid ${allCanFill ? '#86efac' : anyAvailable ? '#fcd34d' : '#e2e8f0'}`, borderRadius: 8, padding: '8px 10px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: shortfallSummary.length > 1 ? 5 : 0 }}>
+                                  <button
+                                    onClick={() => { setDispatchWH(wh.value); setAltFefoMap({}); }}
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 800, fontSize: '0.82rem', color: allCanFill ? '#166534' : anyAvailable ? '#92400e' : '#374151', textDecoration: 'underline', padding: 0 }}>
+                                    {wh.label}
+                                  </button>
+                                  {allCanFill ? (
+                                    <span style={{ fontSize: '0.72rem', background: '#bbf7d0', color: '#166534', borderRadius: 99, padding: '1px 8px', fontWeight: 700 }}>✅ Can fill order</span>
+                                  ) : anyAvailable ? (
+                                    <span style={{ fontSize: '0.72rem', background: '#fef3c7', color: '#92400e', borderRadius: 99, padding: '1px 8px', fontWeight: 700 }}>⚠️ Partial stock</span>
+                                  ) : (
+                                    <span style={{ fontSize: '0.72rem', background: '#fee2e2', color: '#991b1b', borderRadius: 99, padding: '1px 8px', fontWeight: 700 }}>❌ No stock</span>
+                                  )}
+                                </div>
+                                {shortfallSummary.map(s => {
+                                  const info = whData[s.name];
+                                  return (
+                                    <div key={s.name} style={{ fontSize: '0.74rem', color: '#475569', display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 2 }}>
+                                      <span style={{ fontWeight: 600 }}>{s.name}</span>
+                                      <span style={{ color: info?.canFill ? '#166534' : info?.available > 0 ? '#92400e' : '#991b1b', fontWeight: 700 }}>
+                                        {info ? `${info.available} avail${info.shortfall > 0 ? ` (${info.shortfall} short)` : ''}` : '—'}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
                               </div>
                             );
-                          })}
-                        </div>
-                      );
-                    })
+                          })
+                        )}
+                      </div>
+                      <div style={{ marginTop: 8, fontSize: '0.77rem', color: '#9a3412', fontWeight: 600 }}>
+                        Click a warehouse above to switch source, or resolve the shortfall before dispatching.
+                      </div>
+                    </>
                   )}
                 </div>
-
-                <div style={{ marginTop: 8, fontSize: '0.77rem', color: '#9a3412', fontWeight: 600 }}>
-                  Click a warehouse above to switch source, or resolve the shortfall before dispatching.
-                </div>
-              </div>
-            )}
+              );
+            })()}
             <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={handleDispatch} disabled={dispatching || fefoLoading || dispatchHasShortfall}
-                style={{ flex: 1, background: dispatchHasShortfall ? '#94a3b8' : '#c41e3a', color: '#fff', border: 'none', borderRadius: 9, padding: '11px 0', fontWeight: 800, fontSize: '0.88rem', cursor: (dispatching || fefoLoading || dispatchHasShortfall) ? 'not-allowed' : 'pointer', opacity: (dispatching || fefoLoading) ? 0.7 : 1 }}>
-                {dispatching ? 'Dispatching…' : fefoLoading ? 'Resolving batches…' : dispatchHasShortfall ? '🚫 Insufficient Stock' : '🚚 Confirm Dispatch'}
+              <button onClick={handleDispatch}
+                disabled={dispatching || fefoLoading || (dispatchHasShortfall && shortfallMode === 'block')}
+                style={{ flex: 1, background: (dispatchHasShortfall && shortfallMode === 'block') ? '#94a3b8' : '#c41e3a', color: '#fff', border: 'none', borderRadius: 9, padding: '11px 0', fontWeight: 800, fontSize: '0.88rem', cursor: (dispatching || fefoLoading || (dispatchHasShortfall && shortfallMode === 'block')) ? 'not-allowed' : 'pointer', opacity: (dispatching || fefoLoading) ? 0.7 : 1 }}>
+                {dispatching ? 'Dispatching…' : fefoLoading ? 'Resolving batches…' : (dispatchHasShortfall && shortfallMode === 'block') ? '🚫 Insufficient Stock' : '🚚 Confirm Dispatch'}
               </button>
-              <button onClick={() => { setDispatchReq(null); setModalAlert(null); setFefoMap({}); setAltFefoMap({}); }} disabled={dispatching}
+              <button onClick={() => { setDispatchReq(null); setModalAlert(null); setFefoMap({}); setAltFefoMap({}); setShortfallAcknowledged(false); }} disabled={dispatching}
                 style={{ background: '#f1f5f9', color: '#64748b', border: 'none', borderRadius: 9, padding: '11px 18px', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}>
                 Cancel
               </button>
@@ -6055,6 +6088,8 @@ function OrdersTab({ branch }) {
   const [fefoMap, setFefoMap] = useState({});
   const [fefoLoading, setFefoLoading] = useState(false);
   const [fefoModalAlert, setFefoModalAlert] = useState(null);
+  const [shortfallMode, setShortfallMode] = useState('block');
+  const [shortfallAcknowledged, setShortfallAcknowledged] = useState(false);
 
   // Sales Preview state
   const [showSalesPreview, setShowSalesPreview] = useState(false);
@@ -6147,11 +6182,18 @@ function OrdersTab({ branch }) {
   useEffect(() => {
     if (dispatchRequest && dispatchWH) {
       setFefoModalAlert(null);
+      setShortfallAcknowledged(false);
       lookupFefoBatches(dispatchRequest, dispatchWH);
     } else {
       setFefoMap({});
     }
   }, [dispatchRequest, dispatchWH, lookupFefoBatches]);
+
+  useEffect(() => {
+    api.system.getSettings('dispatch_shortfall_mode')
+      .then(d => { if (d?.value) setShortfallMode(d.value); })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (branch && branch !== 'all') setRequestBranch(fmtLocation(branch));
@@ -6204,17 +6246,23 @@ function OrdersTab({ branch }) {
       return;
     }
     if (dispatchHasShortfall) {
-      const shortfallItems = items
-        .filter(it => {
-          const n = it.productName || it.product_name || it.productId || '';
-          return fefoMap[n]?.shortfall > 0;
-        })
-        .map(it => {
-          const n = it.productName || it.product_name || it.productId || '';
-          return `${n} (${fefoMap[n].shortfall} units short)`;
-        });
-      setFefoModalAlert({ type: 'error', msg: `❌ Cannot dispatch — insufficient stock in ${whLabel}: ${shortfallItems.join(', ')}. Select a different warehouse or update stock levels first.` });
-      return;
+      if (shortfallMode === 'block') {
+        const shortfallItems = items
+          .filter(it => {
+            const n = it.productName || it.product_name || it.productId || '';
+            return fefoMap[n]?.shortfall > 0;
+          })
+          .map(it => {
+            const n = it.productName || it.product_name || it.productId || '';
+            return `${n} (${fefoMap[n].shortfall} units short)`;
+          });
+        setFefoModalAlert({ type: 'error', msg: `❌ Cannot dispatch — insufficient stock in ${whLabel}: ${shortfallItems.join(', ')}. Select a different warehouse or update stock levels first.` });
+        return;
+      }
+      if (!shortfallAcknowledged) {
+        setFefoModalAlert({ type: 'error', msg: '⚠️ Please tick the shortfall acknowledgement checkbox before dispatching.' });
+        return;
+      }
     }
 
     setSubmitting(true);
@@ -6546,22 +6594,37 @@ function OrdersTab({ branch }) {
                 <br /><br />⚠️ <strong>GM Approval Required:</strong> This transfer goes to the General Manager for approval before the branch can receive it. Route: <strong>{whLabel}</strong> → <strong>{dispatchRequest.requestingBranch || dispatchRequest.requesting_branch}</strong>
               </div>
 
-              {dispatchHasShortfall && !fefoLoading && (
-                <div style={{ background: '#fef2f2', border: '2px solid #f87171', borderRadius: 10, padding: '12px 14px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                    <span style={{ fontSize: '1.1rem' }}>🚫</span>
-                    <span style={{ fontWeight: 800, fontSize: '0.88rem', color: '#991b1b' }}>Insufficient Stock — Dispatch Blocked</span>
+              {dispatchHasShortfall && !fefoLoading && (() => {
+                const isWarn = shortfallMode === 'warn';
+                return (
+                  <div style={{ background: isWarn ? '#fffbeb' : '#fef2f2', border: `2px solid ${isWarn ? '#fbbf24' : '#f87171'}`, borderRadius: 10, padding: '12px 14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                      <span style={{ fontSize: '1.1rem' }}>{isWarn ? '⚠️' : '🚫'}</span>
+                      <span style={{ fontWeight: 800, fontSize: '0.88rem', color: isWarn ? '#92400e' : '#991b1b' }}>
+                        {isWarn ? 'Stock Shortfall Warning' : 'Insufficient Stock — Dispatch Blocked'}
+                      </span>
+                    </div>
+                    <ul style={{ margin: 0, padding: '0 0 0 18px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {shortfallSummary.map((s, i) => (
+                        <li key={i} style={{ fontSize: '0.82rem', fontWeight: 700, color: isWarn ? '#92400e' : '#991b1b' }}>
+                          {s.name} — <span style={{ color: isWarn ? '#b45309' : '#b91c1c' }}>{s.shortfall} unit{s.shortfall !== 1 ? 's' : ''} short</span>
+                        </li>
+                      ))}
+                    </ul>
+                    {isWarn ? (
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 10, cursor: 'pointer' }}>
+                        <input type="checkbox" checked={shortfallAcknowledged} onChange={e => setShortfallAcknowledged(e.target.checked)}
+                          style={{ marginTop: 2, accentColor: '#d97706', flexShrink: 0 }} />
+                        <span style={{ fontSize: '0.78rem', color: '#92400e', fontWeight: 600 }}>
+                          I acknowledge the shortfall and confirm that a partial dispatch is acceptable for this order.
+                        </span>
+                      </label>
+                    ) : (
+                      <div style={{ marginTop: 8, fontSize: '0.77rem', color: '#9a3412', fontWeight: 600 }}>Select a different source warehouse or resolve the stock shortfall before dispatching.</div>
+                    )}
                   </div>
-                  <ul style={{ margin: 0, padding: '0 0 0 18px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    {shortfallSummary.map((s, i) => (
-                      <li key={i} style={{ fontSize: '0.82rem', fontWeight: 700, color: '#991b1b' }}>
-                        {s.name} — <span style={{ color: '#b91c1c' }}>{s.shortfall} unit{s.shortfall !== 1 ? 's' : ''} short</span>
-                      </li>
-                    ))}
-                  </ul>
-                  <div style={{ marginTop: 8, fontSize: '0.77rem', color: '#9a3412', fontWeight: 600 }}>Select a different source warehouse or resolve the stock shortfall before dispatching.</div>
-                </div>
-              )}
+                );
+              })()}
 
               {fefoModalAlert && (
                 <div style={{ background: fefoModalAlert.type === 'error' ? '#fef2f2' : '#f0fdf4', border: `1px solid ${fefoModalAlert.type === 'error' ? '#fca5a5' : '#86efac'}`, borderRadius: 8, padding: '8px 12px', fontSize: '0.83rem', fontWeight: 600, color: fefoModalAlert.type === 'error' ? '#991b1b' : '#166534' }}>
@@ -6572,11 +6635,11 @@ function OrdersTab({ branch }) {
               <div className="flex gap-3 pt-2">
                 <Button
                   onClick={handleDispatchAsTransfer}
-                  disabled={submitting || fefoLoading || dispatchHasShortfall}
+                  disabled={submitting || fefoLoading || (dispatchHasShortfall && shortfallMode === 'block')}
                 >
-                  {submitting ? 'Submitting...' : fefoLoading ? '⏳ Resolving batches...' : dispatchHasShortfall ? '🚫 Insufficient Stock' : '📤 Submit for GM Approval'}
+                  {submitting ? 'Submitting...' : fefoLoading ? '⏳ Resolving batches...' : (dispatchHasShortfall && shortfallMode === 'block') ? '🚫 Insufficient Stock' : '📤 Submit for GM Approval'}
                 </Button>
-                <Button variant="secondary" onClick={() => { setDispatchRequest(null); setFefoMap({}); setFefoModalAlert(null); }}>Cancel</Button>
+                <Button variant="secondary" onClick={() => { setDispatchRequest(null); setFefoMap({}); setFefoModalAlert(null); setShortfallAcknowledged(false); }}>Cancel</Button>
               </div>
             </div>
           );
