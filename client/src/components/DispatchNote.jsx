@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState, useEffect } from 'react';
 
 function generateBarcodeSVG(value) {
   const CODE128_START_B = 104;
@@ -184,20 +184,93 @@ const PRINT_CSS = `
 
 export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
   const printRef = useRef(null);
+
+  // ── Movement-level batch enrichment ──────────────────────────────────────────
+  // When the transfer's items don't carry batch_no / expiry_date (e.g. older
+  // transfers created before FEFO tracking), we fetch the actual warehouse_dispatch
+  // stock movements via /api/stock/request-batches and overlay that data so the
+  // printed dispatch note always shows correct batch and expiry information.
+  const [movementItems, setMovementItems] = useState(null);
+  const [fetchingBatches, setFetchingBatches] = useState(false);
+
+  useEffect(() => {
+    if (!transfer) return;
+    const rawItems = Array.isArray(transfer.items) ? transfer.items : [];
+    const alreadyHasBatch = rawItems.some(it => it.batchNo || it.batch_no);
+    if (alreadyHasBatch) { setMovementItems(null); return; }
+
+    const requestId  = transfer.requestId  || transfer.request_id  || null;
+    const transferId = transfer.id || null;
+    if (!requestId && !transferId) return;
+
+    const qs = requestId
+      ? `request_id=${encodeURIComponent(requestId)}`
+      : `transfer_id=${encodeURIComponent(transferId)}`;
+
+    let cancelled = false;
+    setFetchingBatches(true);
+    fetch(`/api/stock/request-batches?${qs}`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(data => {
+        if (cancelled) return;
+        const movements = data?.movements || [];
+        if (movements.length === 0 || !movements.some(m => m.batch_no)) {
+          setMovementItems(null);
+          return;
+        }
+        const origByName = new Map();
+        rawItems.forEach(it => {
+          const nm = (it.productName || it.product_name || '').toLowerCase().trim();
+          if (nm && !origByName.has(nm)) origByName.set(nm, it);
+        });
+        const seenProducts = new Set();
+        const enriched = movements.map(m => {
+          const nm = (m.product_name || '').toLowerCase().trim();
+          const orig = origByName.get(nm) || {};
+          const isFirst = !seenProducts.has(nm);
+          seenProducts.add(nm);
+          return {
+            productName: m.product_name,
+            product_name: m.product_name,
+            productId: orig.productId || orig.product_id || null,
+            productCode: orig.productCode || orig.product_code || null,
+            batchNo: m.batch_no || null,
+            batch_no: m.batch_no || null,
+            expiryDate: m.expiry_date || null,
+            expiry_date: m.expiry_date || null,
+            quantity: Number(m.quantity || 0),
+            quantityApproved: isFirst ? (orig.quantityApproved ?? orig.quantity_approved ?? null) : null,
+            quantity_approved: isFirst ? (orig.quantityApproved ?? orig.quantity_approved ?? null) : null,
+            quantityReceived: isFirst ? (orig.quantityReceived ?? orig.quantity_received ?? null) : null,
+            quantity_received: isFirst ? (orig.quantityReceived ?? orig.quantity_received ?? null) : null,
+            unit: orig.unit || 'units',
+            discrepancyNote: orig.discrepancyNote || orig.discrepancy_note || null,
+          };
+        });
+        setMovementItems(enriched);
+      })
+      .catch(() => { if (!cancelled) setMovementItems(null); })
+      .finally(() => { if (!cancelled) setFetchingBatches(false); });
+    return () => { cancelled = true; };
+  }, [transfer?.id, transfer?.requestId, transfer?.request_id]);
+
   if (!transfer) return null;
 
   const t = transfer;
   const meta = t.metadata || {};
   const items = Array.isArray(t.items) ? t.items : [];
+  // effectiveItems: movement-enriched rows (with batch data) when available;
+  // falls back to the transfer's own items otherwise.
+  const effectiveItems = movementItems ?? items;
 
   // Detect FEFO batch-split mode: any item carries a batchNo
-  const hasBatchSplits = items.some(it => it.batchNo || it.batch_no);
+  const hasBatchSplits = effectiveItems.some(it => it.batchNo || it.batch_no);
 
   // Group batch-split items by product so we can render sub-rows
   const batchGroups = (() => {
     if (!hasBatchSplits) return [];
     const groupMap = new Map();
-    items.forEach(item => {
+    effectiveItems.forEach(item => {
       const name = (item.productName || item.product_name || '').trim();
       const code = (item.productCode || item.product_code || item.sku || '').trim();
       const id   = String(item.productId || item.product_id || '').trim();
@@ -272,9 +345,9 @@ export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
   const hasReceipt = receiptStatus || t.status === 'delivered' || t.status === 'received' || t.status === 'partially_received';
   const hasGMAction = !!gmAction;
 
-  const totalPrepared = items.reduce((s, it) => s + Number(it.quantity || 0), 0);
-  const totalApproved = items.reduce((s, it) => s + Number(it.quantityApproved ?? it.quantity_approved ?? it.quantity ?? 0), 0);
-  const totalReceived = items.reduce((s, it) => s + Number(it.quantityReceived ?? it.quantity_received ?? 0), 0);
+  const totalPrepared = effectiveItems.reduce((s, it) => s + Number(it.quantity || 0), 0);
+  const totalApproved = effectiveItems.reduce((s, it) => s + Number(it.quantityApproved ?? it.quantity_approved ?? it.quantity ?? 0), 0);
+  const totalReceived = effectiveItems.reduce((s, it) => s + Number(it.quantityReceived ?? it.quantity_received ?? 0), 0);
 
   const handlePrint = () => {
     const content = printRef.current;
@@ -365,7 +438,19 @@ export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
 
       {/* === C. DISPATCH ITEM TABLE === */}
       <div style={{ marginBottom: 16 }}>
-        <div style={sectionTitle}>Dispatch Items</div>
+        <div style={sectionTitle}>
+          Dispatch Items
+          {fetchingBatches && (
+            <span style={{ fontSize: 10, color: '#6b7280', fontStyle: 'italic', fontWeight: 400, marginLeft: 8 }}>
+              Loading batch details…
+            </span>
+          )}
+          {movementItems && (
+            <span style={{ fontSize: 10, color: '#2563eb', fontWeight: 600, marginLeft: 8 }}>
+              ✓ Batch details loaded from stock movements
+            </span>
+          )}
+        </div>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
           <thead>
             <tr>
@@ -382,7 +467,7 @@ export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
             </tr>
           </thead>
           <tbody>
-            {items.length === 0 ? (
+            {effectiveItems.length === 0 ? (
               <tr><td colSpan={10} style={{ textAlign: 'center', padding: 20, color: '#9ca3af', fontStyle: 'italic' }}>No items in this dispatch note</td></tr>
             ) : hasBatchSplits ? (
               batchGroups.flatMap((g, gi) => {
@@ -452,7 +537,7 @@ export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
                 return [productRow, ...subRows];
               })
             ) : (
-              items.map((item, i) => {
+              effectiveItems.map((item, i) => {
                 const qtyPrep = Number(item.quantity || 0);
                 const qtyAppr = item.quantityApproved ?? item.quantity_approved;
                 const qtyRecv = item.quantityReceived ?? item.quantity_received;
@@ -485,7 +570,7 @@ export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
               })
             )}
           </tbody>
-          {items.length > 0 && (
+          {effectiveItems.length > 0 && (
             <tfoot>
               <tr style={{ fontWeight: 800, fontSize: 12 }}>
                 <td colSpan={6} style={{ padding: '7px 8px', borderTop: '2px solid #c41e3a' }}>TOTALS</td>

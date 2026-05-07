@@ -195,6 +195,7 @@ export const api = {
     reportsCompany: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/stock/reports/company${qs ? '?' + qs : ''}`); },
     fefoBatches: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/stock/fefo-batches${qs ? '?' + qs : ''}`); },
     requestBatches: (requestId) => api.get(`/stock/request-batches?request_id=${encodeURIComponent(requestId)}`),
+    transferBatches: (transferId) => api.get(`/stock/request-batches?transfer_id=${encodeURIComponent(transferId)}`),
   },
 
   branch: {
