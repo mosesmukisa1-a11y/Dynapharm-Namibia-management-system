@@ -656,7 +656,7 @@ function CheckupsSection() {
   const [editPrescReport, setEditPrescReport] = useState(null);
   const [branchViewFilter, setBranchViewFilter] = useState('');
   const [showBooking, setShowBooking] = useState(false);
-  const [bookingForm, setBookingForm] = useState({ full_name: '', phone: '', date: '', time: '', branch: '', notes: '' });
+  const [bookingForm, setBookingForm] = useState({ full_name: '', phone: '', dob: '', height: '', weight: '', date: '', time: '', branch: '', notes: '' });
   const [bookingSubmitting, setBookingSubmitting] = useState(false);
   const [bookingError, setBookingError] = useState('');
 
@@ -711,9 +711,14 @@ function CheckupsSection() {
         type: 'Check',
         status: 'pending',
         notes: bookingForm.notes,
+        data: {
+          dob: bookingForm.dob || null,
+          height: bookingForm.height || null,
+          weight: bookingForm.weight || null,
+        },
       });
       setShowBooking(false);
-      setBookingForm({ full_name: '', phone: '', date: '', time: '', branch: '', notes: '' });
+      setBookingForm({ full_name: '', phone: '', dob: '', height: '', weight: '', date: '', time: '', branch: '', notes: '' });
       loadCheckups();
     } catch (err) {
       setBookingError(err.message || 'Failed to book appointment. Please try again.');
@@ -1726,6 +1731,18 @@ ${consultantNotes ? `
                 <div style={{ gridColumn: '1 / -1' }}>
                   <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>Phone *</label>
                   <input value={bookingForm.phone} onChange={e => setBookingForm(f => ({ ...f, phone: e.target.value }))} placeholder="e.g. 0812345678" type="tel" required style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', borderRadius: 8, border: '1.5px solid #e2e8f0', fontSize: '0.88rem' }} />
+                </div>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>Date of Birth</label>
+                  <input type="text" value={bookingForm.dob} onChange={e => setBookingForm(f => ({ ...f, dob: e.target.value }))} placeholder="DD/MM/YYYY" style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', borderRadius: 8, border: '1.5px solid #e2e8f0', fontSize: '0.88rem' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>Height (cm)</label>
+                  <input type="text" value={bookingForm.height} onChange={e => setBookingForm(f => ({ ...f, height: e.target.value }))} placeholder="e.g. 170" style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', borderRadius: 8, border: '1.5px solid #e2e8f0', fontSize: '0.88rem' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>Weight (kg)</label>
+                  <input type="text" value={bookingForm.weight} onChange={e => setBookingForm(f => ({ ...f, weight: e.target.value }))} placeholder="e.g. 65" style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', borderRadius: 8, border: '1.5px solid #e2e8f0', fontSize: '0.88rem' }} />
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>Date *</label>
