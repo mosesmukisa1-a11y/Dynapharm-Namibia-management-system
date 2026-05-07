@@ -41,7 +41,22 @@ export default async function handler(req, res) {
 
     const [txRows, rxProductMovements, walkinSalesRows, supplementReports, campaignMovements, refundMovements, priceListRows] = await Promise.all([
       getMany(
-        `SELECT * FROM branch_activity_transactions WHERE ${conds.join(' AND ')} ORDER BY created_at ASC`,
+        // Mirror daily.js dispense_draft exclusion rules:
+        //  1. prescription_dispensing dispense_draft always excluded — dispense.js is authoritative.
+        //  2. consultation dispense_draft excluded only when a real branch_portal consultation
+        //     BAT also exists for the same report (prevents double-counting).
+        `SELECT bat.* FROM branch_activity_transactions bat WHERE ${conds.join(' AND ')}
+           AND NOT (bat.activity_type = 'prescription_dispensing' AND bat.workflow_source = 'dispense_draft')
+           AND NOT (
+             bat.activity_type = 'consultation' AND bat.workflow_source = 'dispense_draft'
+             AND EXISTS (
+               SELECT 1 FROM branch_activity_transactions b2
+               WHERE b2.form_reference_id = bat.form_reference_id
+                 AND b2.activity_type = 'consultation'
+                 AND b2.workflow_source != 'dispense_draft'
+             )
+           )
+         ORDER BY bat.created_at ASC`,
         params
       ),
       getMany(

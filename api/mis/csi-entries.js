@@ -191,9 +191,10 @@ export default async function handler(req, res) {
       UNION ALL
 
       -- ── Part 2: Prescription tab dispenses (branch_activity_transactions + branch_inventory_movements) ──
+      -- BIM rows are pre-aggregated by (reference, branch_id, product_name) so that a single
+      -- product dispensed from multiple batches produces exactly ONE CSI row, not N rows.
       SELECT
         bat.branch_id                                                            AS branch_name,
-        -- NB: prefer explicitly stored nb, fall back to prescription report data JSON
         CASE
           WHEN bat.client_type = 'member'
             OR COALESCE(r.data->>'membership_status', '') = 'member'
@@ -220,23 +221,34 @@ export default async function handler(req, res) {
         'RX-' || bat.form_reference_id                                          AS receipt_number,
         bat.service_date::date                                                   AS date,
         ''                                                                       AS product_code,
-        bim.product_name                                                         AS product_description,
-        ROUND(COALESCE(NULLIF(pp.dp, 0), NULLIF(bim.unit_price, 0), 0), 2)      AS dp,
+        bim_agg.product_name                                                     AS product_description,
+        ROUND(COALESCE(NULLIF(pp.dp, 0), NULLIF(bim_agg.avg_unit_price, 0), 0), 2) AS dp,
         ROUND(COALESCE(pp.bv, 0), 2)                                            AS bv,
-        bim.quantity                                                             AS qty,
-        ROUND(COALESCE(NULLIF(pp.dp, 0), NULLIF(bim.unit_price, 0), 0) * bim.quantity, 2) AS total_dp,
-        ROUND(COALESCE(pp.bv, 0) * bim.quantity, 2)                            AS total_bv,
+        bim_agg.total_qty                                                        AS qty,
+        ROUND(COALESCE(NULLIF(pp.dp, 0), NULLIF(bim_agg.avg_unit_price, 0), 0) * bim_agg.total_qty, 2) AS total_dp,
+        ROUND(COALESCE(pp.bv, 0) * bim_agg.total_qty, 2)                       AS total_bv,
         false                                                                    AS is_free,
         'prescription'                                                            AS source
       FROM branch_activity_transactions bat
-      JOIN branch_inventory_movements bim
-        ON bim.reference = bat.form_reference_id
-       AND bim.type = 'prescription_dispense'
-       AND bim.branch_id = bat.branch_id
+      -- Aggregate multi-batch BIM rows into one row per (reference, branch, product)
+      JOIN (
+        SELECT
+          reference,
+          branch_id,
+          MIN(TRIM(product_name))            AS product_name,
+          LOWER(TRIM(MIN(product_name)))     AS product_key,
+          SUM(ABS(quantity))                 AS total_qty,
+          AVG(COALESCE(unit_price, 0))       AS avg_unit_price
+        FROM branch_inventory_movements
+        WHERE type = 'prescription_dispense'
+        GROUP BY reference, branch_id, LOWER(TRIM(product_name))
+      ) bim_agg
+        ON bim_agg.reference = bat.form_reference_id
+       AND bim_agg.branch_id = bat.branch_id
       LEFT JOIN reports r
         ON r.id = bat.form_reference_id
       LEFT JOIN product_prices pp
-        ON LOWER(TRIM(pp.description)) = LOWER(TRIM(bim.product_name))
+        ON LOWER(TRIM(pp.description)) = bim_agg.product_key
       LEFT JOIN distributors d
         ON bat.client_type IS DISTINCT FROM 'member'
        AND COALESCE(r.data->>'membership_status', '') IS DISTINCT FROM 'member'
@@ -247,19 +259,13 @@ export default async function handler(req, res) {
              )
            ))
       WHERE bat.activity_type = 'prescription_dispensing'
-      -- Include every confirmed dispense event — partial OR full.
-      -- dispense.js sets workflow_source='branch_portal' with payment_status='paid' each time
-      -- Confirm Dispense is clicked (staff always selects payment method first).
-      -- capture-rx.js sets workflow_source='dispense_draft' as a summary; excluded here to avoid double-counting.
       AND bat.workflow_source = 'branch_portal'
       AND (
-        -- Member prescription: must have NB number
         (
           (bat.client_type = 'member' OR COALESCE(r.data->>'membership_status','') = 'member')
           AND COALESCE(NULLIF(TRIM(bat.nb_number),''), NULLIF(TRIM(r.data->>'nb_number'),'')) IS NOT NULL
         )
         OR
-        -- Non-member referral prescription: must have referral NB
         (
           bat.client_type IS DISTINCT FROM 'member'
           AND COALESCE(r.data->>'membership_status','') IS DISTINCT FROM 'member'

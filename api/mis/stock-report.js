@@ -24,7 +24,7 @@ export default async function handler(req, res) {
         bib.product_name,
         SUM(bib.quantity) AS closing_qty,
         SUM(
-          COALESCE(NULLIF(bib.unit_price, 0), pp.cp, 0) * bib.quantity
+          COALESCE(NULLIF(bib.unit_price, 0), pp.dp, 0) * bib.quantity
         ) AS closing_value,
         COUNT(*) FILTER (WHERE bib.expiry_date IS NOT NULL AND bib.expiry_date < NOW()) AS expired_batches,
         COUNT(*) FILTER (WHERE bib.expiry_date IS NOT NULL AND bib.expiry_date < NOW() + INTERVAL '30 days' AND bib.expiry_date >= NOW()) AS expiring_soon,
@@ -114,13 +114,19 @@ export default async function handler(req, res) {
       const qty = Number(row.total_qty || 0);
       const prod = branches[b].products[row.product_name];
       const type = row.type || '';
-      if (type === 'receive' || type === 'received') { prod.received += qty; branches[b].totals.received += qty; }
-      else if (type === 'return') { prod.returns += qty; branches[b].totals.returns += qty; }
+      if (type === 'receive' || type === 'received' || type === 'branch_receipt') { prod.received += qty; branches[b].totals.received += qty; }
+      else if (type === 'return' || type === 'return_in') { prod.returns += qty; branches[b].totals.returns += qty; }
       else if (type === 'transfer_in') { prod.transfers_in += qty; branches[b].totals.transfers_in += qty; }
       else if (type === 'transfer_out') { prod.transfers_out += qty; branches[b].totals.transfers_out += qty; }
-      else if (type === 'write_off') { prod.write_offs += qty; branches[b].totals.write_offs += qty; }
-      else if (type === 'adjustment' || type === 'adjust') { prod.adjustments += qty; branches[b].totals.adjustments += qty; }
-      else if (type === 'sale' || type === 'sold') { prod.sales += qty; branches[b].totals.sales += qty; }
+      else if (type === 'write_off' || type === 'field_use') { prod.write_offs += qty; branches[b].totals.write_offs += qty; }
+      else if (type === 'adjustment' || type === 'adjust' || type === 'positive_adjustment') { prod.adjustments += qty; branches[b].totals.adjustments += qty; }
+      else if (
+        type === 'sale' || type === 'sold' ||
+        type === 'walk_in_member_sale' || type === 'walk_in_non_member_sale' ||
+        type === 'walkin_sale' || type === 'walkin_member_sale' || type === 'walkin_non_member_sale' ||
+        type === 'prescription_dispense' || type === 'dispense' ||
+        type === 'campaign_sale' || type === 'online_order_fulfilment'
+      ) { prod.sales += qty; branches[b].totals.sales += qty; }
     }
 
     // Index sales
@@ -143,7 +149,7 @@ export default async function handler(req, res) {
       const outflows = br.totals.sales + br.totals.transfers_out + br.totals.write_offs + br.totals.expired;
       const returns_ = br.totals.returns;
       const promotions = br.totals.adjustments;
-      const opening = br.totals.closing - issued + outflows - returns_ + promotions;
+      const opening = br.totals.closing - issued + outflows - returns_;
 
       return {
         branch: br.branch,
