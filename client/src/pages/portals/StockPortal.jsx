@@ -4376,10 +4376,24 @@ function BranchRequestsPanel() {
     if (!dispatchReq) return false;
     const items = Array.isArray(dispatchReq.items) ? dispatchReq.items : [];
     return items.some(it => {
-      const n = it.productName || it.product_name || '';
+      const n = it.productName || it.product_name || it.productId || '';
       const fefoResult = fefoMap[n];
       return fefoResult && fefoResult.shortfall > 0;
     });
+  })();
+
+  const shortfallSummary = (() => {
+    if (!dispatchReq) return [];
+    const items = Array.isArray(dispatchReq.items) ? dispatchReq.items : [];
+    return items
+      .filter(it => {
+        const n = it.productName || it.product_name || it.productId || '';
+        return fefoMap[n]?.shortfall > 0;
+      })
+      .map(it => {
+        const n = it.productName || it.product_name || it.productId || '';
+        return { name: n, shortfall: fefoMap[n].shortfall };
+      });
   })();
 
   const handleDispatch = async () => {
@@ -4405,11 +4419,11 @@ function BranchRequestsPanel() {
     if (dispatchHasShortfall) {
       const shortfallItems = items
         .filter(it => {
-          const n = it.productName || it.product_name || '';
+          const n = it.productName || it.product_name || it.productId || '';
           return fefoMap[n]?.shortfall > 0;
         })
         .map(it => {
-          const n = it.productName || it.product_name || '';
+          const n = it.productName || it.product_name || it.productId || '';
           return `${n} (${fefoMap[n].shortfall} units short)`;
         });
       setModalAlert({ type: 'error', msg: `❌ Cannot dispatch — insufficient stock in ${whLabel}: ${shortfallItems.join(', ')}. Select a different warehouse or update stock levels first.` });
@@ -4714,8 +4728,26 @@ function BranchRequestsPanel() {
             )}
 
             {dispatchHasShortfall && !fefoLoading && (
-              <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '8px 12px', marginBottom: 14, fontSize: '0.8rem', fontWeight: 700, color: '#991b1b' }}>
-                🚫 Dispatch blocked — one or more items cannot be fully filled from the selected warehouse. Select a different warehouse or resolve the stock shortfall first.
+              <div style={{ background: '#fef2f2', border: '2px solid #f87171', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <span style={{ fontSize: '1.1rem' }}>🚫</span>
+                  <span style={{ fontWeight: 800, fontSize: '0.88rem', color: '#991b1b' }}>
+                    Insufficient Stock — Dispatch Blocked
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.8rem', color: '#7f1d1d', marginBottom: 8 }}>
+                  The following products cannot be fully filled from <strong>{WAREHOUSE_SOURCES.find(w => w.value === dispatchWH)?.label || dispatchWH}</strong>:
+                </div>
+                <ul style={{ margin: 0, padding: '0 0 0 18px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {shortfallSummary.map((s, i) => (
+                    <li key={i} style={{ fontSize: '0.82rem', fontWeight: 700, color: '#991b1b' }}>
+                      {s.name} — <span style={{ color: '#b91c1c' }}>{s.shortfall} unit{s.shortfall !== 1 ? 's' : ''} short</span>
+                    </li>
+                  ))}
+                </ul>
+                <div style={{ marginTop: 8, fontSize: '0.77rem', color: '#9a3412', fontWeight: 600 }}>
+                  Select a different source warehouse or resolve the stock shortfall before dispatching.
+                </div>
               </div>
             )}
             <div style={{ display: 'flex', gap: 10 }}>
