@@ -726,13 +726,15 @@ function ApprovalsTab() {
       const gmName = user?.full_name || user?.username || 'GM';
       const originalItems = amendModal.items || [];
       const amendmentLog = amendItems.map((ai, i) => {
-        const orig = originalItems.find(o =>
-          o.productName === ai.productName && o.batchNo === ai.batchNo
-        ) || originalItems[i];
+        // Prefer stable id-based match, then productName+batchNo, then index fallback
+        const orig = (ai.id ? originalItems.find(o => o.id === ai.id) : null)
+          || originalItems.find(o => o.productName === ai.productName && o.batchNo === ai.batchNo && o.id !== undefined ? !amendItems.slice(0, i).some(prev => prev.id === o.id) : true)
+          || originalItems[i];
         if (orig && Number(ai.quantityApproved) !== Number(orig.quantity)) {
           return {
             product: ai.productName,
             batchNo: ai.batchNo || null,
+            itemId: ai.id || null,
             originalQty: orig.quantity,
             approvedQty: ai.quantityApproved,
             removed: Number(ai.quantityApproved) === 0,
