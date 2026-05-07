@@ -257,13 +257,17 @@ export default async function handler(req, res) {
           }
         }
 
-        // Idempotency guard: prevent duplicate inventory credit for the same request
+        // Idempotency guard: check the stock request's own status rather than counting
+        // existing movements. Counting movements would block every item after the first
+        // in a multi-item receipt (all items share the same reference_id). Checking the
+        // request status correctly allows all items in a legitimate first submission while
+        // blocking any subsequent full re-submission once the request is marked received.
         if (movType === 'received' && referenceId) {
-          const dupCheck = await query(
-            `SELECT COUNT(*) AS cnt FROM stock_movements WHERE reference_id = $1 AND movement_type = 'received'`,
+          const reqRow = await query(
+            `SELECT status FROM stock_requests WHERE id = $1`,
             [referenceId]
           );
-          if (Number(dupCheck.rows[0]?.cnt || 0) > 0) {
+          if (reqRow.rows[0]?.status === 'received') {
             return res.status(409).json({ success: false, error: 'This stock request has already been received. Duplicate receipt prevented to protect inventory accuracy.' });
           }
         }
