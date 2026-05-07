@@ -203,9 +203,11 @@ export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
     const transferId = transfer.id || null;
     if (!requestId && !transferId) return;
 
-    const qs = requestId
-      ? `request_id=${encodeURIComponent(requestId)}`
-      : `transfer_id=${encodeURIComponent(transferId)}`;
+    // Prefer transfer_id when present (more specific — backend resolves the linked
+    // request_id from the transfer anyway, avoiding any cross-transfer data bleed).
+    const qs = transferId
+      ? `transfer_id=${encodeURIComponent(transferId)}`
+      : `request_id=${encodeURIComponent(requestId)}`;
 
     let cancelled = false;
     setFetchingBatches(true);
@@ -441,12 +443,12 @@ export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
         <div style={sectionTitle}>
           Dispatch Items
           {fetchingBatches && (
-            <span style={{ fontSize: 10, color: '#6b7280', fontStyle: 'italic', fontWeight: 400, marginLeft: 8 }}>
+            <span className="no-print" style={{ fontSize: 10, color: '#6b7280', fontStyle: 'italic', fontWeight: 400, marginLeft: 8 }}>
               Loading batch details…
             </span>
           )}
           {movementItems && (
-            <span style={{ fontSize: 10, color: '#2563eb', fontWeight: 600, marginLeft: 8 }}>
+            <span className="no-print" style={{ fontSize: 10, color: '#2563eb', fontWeight: 600, marginLeft: 8 }}>
               ✓ Batch details loaded from stock movements
             </span>
           )}
