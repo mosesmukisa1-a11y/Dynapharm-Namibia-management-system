@@ -374,16 +374,13 @@ export default async function handler(req, res) {
     const rxRows = allTxRows.filter(r => r.activity_type === 'prescription_dispensing');
     const campaignRows = allTxRows.filter(r => r.activity_type === 'campaign_sale');
 
-    // For a row, return the DP value used in the DP Sales Report:
-    //  • non_member_sale: grand_total = CP, so use product_total_dp (DP cost basis)
-    //  • prescription_dispensing for non-member patients: grand_total = CP (patient charge),
-    //    so also use product_total_dp (DP cost basis) — branch keeps DP, distributor earns CP-DP
-    //  • All other types: grand_total is already at DP / fee amount
-    const dpValue = (r) =>
-      r.activity_type === 'non_member_sale' ||
-      (r.activity_type === 'prescription_dispensing' && r.client_type && r.client_type !== 'member')
-        ? Number(r.product_total_dp || 0)
-        : Number(r.grand_total || 0);
+    // For a row, return the DP value used in the DP Sales Report.
+    // product_total_dp is the authoritative company revenue figure (DP from price list)
+    // for ALL sale types. grand_total is kept only as a fallback for rows that have no
+    // product cost (e.g. consultation fees, online orders) where grand_total = fee charged.
+    // CP (consumer price) is the patient/customer-facing amount and must NOT appear in
+    // company revenue reports — it is only relevant for distributor profit calculations.
+    const dpValue = (r) => Number(r.product_total_dp || r.grand_total || 0);
 
     const buildPaymentBreakdown = (rows) => {
       const paymentMethods = {};
@@ -491,17 +488,21 @@ export default async function handler(req, res) {
     const rxNmProfit  = parseFloat(Math.max(0, rxNmCpTotal - rxNmDpTotal).toFixed(2));
     const distributorProfit = parseFloat((nmProfit + rxNmProfit).toFixed(2));
     const campaignDpTotal = parseFloat(sum(paidRows(campaignRows), 'grand_total').toFixed(2));
-    // walkInRxSales = total patient-facing revenue (CP for non-members, DP for members)
+    // walkInRxSales = total company revenue at DP prices (authoritative from price list)
+    // CP (consumer price) is NOT included here — it is only tracked for distributor profit.
     const walkInRxSales = parseFloat((
-      sum(paidRows(walkinRows), 'grand_total') +
-      sum(paidRows(memberRows), 'grand_total') +
-      nmCpTotal +
-      sum(paidRows(rxRows), 'grand_total') +
+      sumDp(paidRows(walkinRows)) +
+      sumDp(paidRows(memberRows)) +
+      sumDp(paidRows(nonMemberRows)) +
+      sumDp(paidRows(onlineRows)) +
+      sumDp(paidRows(rxRows)) +
       campaignDpTotal
     ).toFixed(2));
     const consultFeeTotal = consultObj.fee_value || 0;
-    // branchSales = what the branch actually keeps after paying distributor margins and fees
-    const branchSales = parseFloat((walkInRxSales - distributorProfit - consultFeeTotal - refundTotal).toFixed(2));
+    // branchSales = DP total minus consultation fees and refunds.
+    // No distributor profit subtraction — walkInRxSales is already at DP (company money basis).
+    // distributorProfit (CP-DP margin) is kept as a separate informational field only.
+    const branchSales = parseFloat((walkInRxSales - consultFeeTotal - refundTotal).toFixed(2));
     const branchSummary = {
       walkin_rx_sales: walkInRxSales,
       distributor_profit: distributorProfit,

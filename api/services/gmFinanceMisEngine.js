@@ -266,13 +266,11 @@ export async function getBranchSalesRevenue(branchId, start, end) {
     else if (pm === 'eft') eftTotal += amt;
   }
 
-  // Prescription dispensing DP (product_total_dp for non-member, grand_total for member)
+  // Prescription dispensing DP — always use product_total_dp (DP from price list = company money).
+  // grand_total for non-member Rx = CP (patient charge), excluded from company revenue.
   let prescriptionSales = 0;
   for (const r of rxRows) {
-    const isNonMember = r.client_type && r.client_type !== 'member';
-    prescriptionSales += isNonMember
-      ? Number(r.product_total_dp || r.grand_total || 0)
-      : Number(r.grand_total || 0);
+    prescriptionSales += Number(r.product_total_dp || r.grand_total || 0);
   }
 
   // Deduct approved refunds processed in this period
@@ -455,13 +453,11 @@ export async function getAllBranchesSalesRevenue(start, end) {
   walkinSales    = Math.max(0, walkinSales    - refundTotal);
   nonMemberSales = Math.max(0, nonMemberSales - refundTotal);
 
-  // Prescription DP from BAT (product_total_dp for non-member, grand_total for member)
+  // Prescription DP from BAT — always use product_total_dp (DP from price list = company money).
+  // grand_total for non-member Rx = CP (patient charge), excluded from company revenue.
   let prescriptionSales = 0;
   for (const r of rxRows) {
-    const isNonMember = r.client_type && r.client_type !== 'member';
-    prescriptionSales += isNonMember
-      ? Number(r.product_total_dp || r.grand_total || 0)
-      : Number(r.grand_total || 0);
+    prescriptionSales += Number(r.product_total_dp || r.grand_total || 0);
   }
 
   // Consultation fees from activity transactions (recorded during dispensing)

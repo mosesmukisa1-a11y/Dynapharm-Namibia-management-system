@@ -115,13 +115,12 @@ export default async function handler(req, res) {
     else if (pm.includes('card') || pm === 'eft' || pm === 'swipe' || pm === 'transfer') b.cardEftDp += amt;
   }
 
-  // Aggregate prescription DP per branch
+  // Aggregate prescription DP per branch.
+  // Always use product_total_dp (DP from price list = company money basis).
+  // grand_total for Rx = CP (patient charge) for non-members — excluded from company revenue.
   for (const r of rxRows) {
     const b = ensureBranch(r.branch_id);
-    const isNonMember = r.client_type && r.client_type !== 'member';
-    b.rxDp += isNonMember
-      ? Number(r.product_total_dp || r.grand_total || 0)
-      : Number(r.grand_total || 0);
+    b.rxDp += Number(r.product_total_dp || r.grand_total || 0);
   }
 
   // Apply refund deductions and compute per-branch totals
