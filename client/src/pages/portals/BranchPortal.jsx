@@ -2233,10 +2233,8 @@ function PrescriptionsTab() {
     const currentCheckupOpt = currentCheckupType ? CHECKUP_FEE_OPTIONS[currentCheckupType] : null;
 
     setRxItemQtys({});
-    // Default all pending items to selected
-    const initSel = {};
-    pendingItems.forEach((_, i) => { initSel[i] = true; });
-    setRxItemSelected(initSel);
+    // Start with nothing selected — user explicitly ticks what they want to dispense
+    setRxItemSelected({});
     setDispensePreview({
       report,
       items,
@@ -2276,7 +2274,7 @@ function PrescriptionsTab() {
     // Only process items the user has checked for this session
     const selectedIndices = pendingItems
       .map((_, pi) => pi)
-      .filter(pi => rxItemSelected[pi] !== false);
+      .filter(pi => rxItemSelected[pi] === true);
 
     if (selectedIndices.length === 0) {
       setAlert({ type: 'error', message: 'Please select at least one item to dispense' });
@@ -2657,7 +2655,7 @@ function PrescriptionsTab() {
     ? (() => {
         const seenPkgs = new Set();
         return dpModal.pendingItems.reduce((n, item, i) => {
-          if (rxItemSelected[i] === false) return n;
+          if (rxItemSelected[i] !== true) return n;   // only explicitly ticked items
           if (item.isComponent && item.fromPackage) {
             if (seenPkgs.has(item.fromPackage)) return n;
             seenPkgs.add(item.fromPackage);
@@ -2682,7 +2680,7 @@ function PrescriptionsTab() {
   // Dynamic subtotal — only sums ticked items, reflects qty steppers
   const dpMedSubtotal = dpModal
     ? dpModal.pendingItems.reduce((s, item, i) => {
-        if (rxItemSelected[i] === false) return s; // skip deselected
+        if (rxItemSelected[i] !== true) return s; // skip unselected
         const unitPrice = dpModal.isMember ? (item.dp || 0) : (item.cp || 0);
         const qty = (!item.isComponent && !item.isPackage)
           ? Math.max(1, Math.min(rxItemQtys[i] || item.quantity || 1, item.quantity || 1))
@@ -2697,7 +2695,7 @@ function PrescriptionsTab() {
   const dpIsFullDispense = dpModal
     ? (dpSelectedCount >= dpModal.items.filter(i => !i.dispensed).length &&
        dpModal.pendingItems.every((item, i) =>
-         rxItemSelected[i] === false ||
+         rxItemSelected[i] !== true ||
          item.isComponent || item.isPackage ||
          Math.max(1, Math.min(rxItemQtys[i] || item.quantity || 1, item.quantity || 1)) >= (item.quantity || 1)
        ))
@@ -3223,7 +3221,7 @@ function PrescriptionsTab() {
                 </thead>
                 <tbody>
                   {dpModal.pendingItems.map((item, i) => {
-                    const isChecked = rxItemSelected[i] !== false;
+                    const isChecked = rxItemSelected[i] === true;
                     const unitPrice = dpModal.isMember ? (item.dp || 0) : (item.cp || 0);
                     const dispQty = (!item.isComponent && !item.isPackage)
                       ? Math.max(1, Math.min(rxItemQtys[i] || item.quantity || 1, item.quantity || 1))
