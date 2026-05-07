@@ -633,6 +633,7 @@ function CheckupsSection() {
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('upcoming');
+  const [searchQuery, setSearchQuery] = useState('');
   const [showReport, setShowReport] = useState(false);
   const [selectedCheckup, setSelectedCheckup] = useState(null);
   const [showDetail, setShowDetail] = useState(false);
@@ -1143,7 +1144,10 @@ ${consultantNotes ? `
   });
   const completed = appointments.filter(a => (a.status || '').toLowerCase() === 'completed');
   const noShows = appointments.filter(a => (a.status || '').toLowerCase() === 'no_show');
-  const filtered = filter === 'completed' ? completed : filter === 'no_show' ? noShows : upcoming;
+  const baseFiltered = filter === 'completed' ? completed : filter === 'no_show' ? noShows : upcoming;
+  const filtered = searchQuery.trim()
+    ? baseFiltered.filter(a => (a.full_name || '').toLowerCase().includes(searchQuery.trim().toLowerCase()))
+    : baseFiltered;
 
   const parseData = (apt) => {
     try {
@@ -1160,7 +1164,7 @@ ${consultantNotes ? `
         </div>
         <button onClick={loadCheckups} style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '8px 16px', fontSize: '0.85rem', cursor: 'pointer' }}>Refresh</button>
       </div>
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '18px', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
         <button
           onClick={() => setFilter('upcoming')}
           style={{ padding: '8px 20px', borderRadius: '20px', fontSize: '0.85rem', fontWeight: 600, border: 'none', cursor: 'pointer', background: filter === 'upcoming' ? '#c41e3a' : '#f1f5f9', color: filter === 'upcoming' ? '#fff' : '#64748b', transition: 'all 0.2s' }}
@@ -1174,12 +1178,34 @@ ${consultantNotes ? `
           style={{ padding: '8px 20px', borderRadius: '20px', fontSize: '0.85rem', fontWeight: 600, border: filter === 'no_show' ? 'none' : '1px solid #fed7aa', cursor: 'pointer', background: filter === 'no_show' ? '#f97316' : '#fff7ed', color: filter === 'no_show' ? '#fff' : '#c2410c', transition: 'all 0.2s' }}
         >No Show ({noShows.length})</button>
       </div>
+      <div style={{ position: 'relative', marginBottom: '18px' }}>
+        <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.95rem', color: '#94a3b8', pointerEvents: 'none' }}>🔍</span>
+        <input
+          type="text"
+          placeholder="Search by client name…"
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          style={{ width: '100%', boxSizing: 'border-box', padding: '9px 36px 9px 36px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: '0.88rem', color: '#1e293b', outline: 'none', background: '#f8fafc', transition: 'border-color .15s' }}
+          onFocus={e => e.target.style.borderColor = '#c41e3a'}
+          onBlur={e => e.target.style.borderColor = '#e2e8f0'}
+        />
+        {searchQuery && (
+          <button onClick={() => setSearchQuery('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '1rem', color: '#94a3b8', lineHeight: 1, padding: 2 }}>✕</button>
+        )}
+      </div>
 
       {loading ? (
         <div style={{ textAlign: 'center', padding: '20px', color: '#6b7280' }}>Loading checkup forms...</div>
       ) : filtered.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '30px', color: '#6b7280' }}>
-          <p style={{ fontSize: '1.1rem' }}>{filter === 'completed' ? 'No completed forms yet.' : 'No upcoming checkup forms for your branch.'}</p>
+          <p style={{ fontSize: '1.1rem' }}>
+            {searchQuery.trim()
+              ? `No ${filter === 'completed' ? 'completed' : filter === 'no_show' ? 'no-show' : 'upcoming'} clients match "${searchQuery.trim()}".`
+              : filter === 'completed' ? 'No completed forms yet.' : 'No upcoming checkup forms for your branch.'}
+          </p>
+          {searchQuery.trim() && (
+            <button onClick={() => setSearchQuery('')} style={{ marginTop: 8, padding: '6px 16px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#64748b', cursor: 'pointer', fontSize: '0.85rem' }}>Clear search</button>
+          )}
         </div>
       ) : (
         <div>
