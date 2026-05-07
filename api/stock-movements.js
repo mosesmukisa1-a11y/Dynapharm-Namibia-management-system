@@ -231,7 +231,7 @@ export default async function handler(req, res) {
       const notes = body.notes || null;
       const createdBy = body.createdBy || body.created_by || null;
 
-      if (['write_off', 'sale', 'return', 'field_use', 'received', 'warehouse_dispatch'].includes(movType)) {
+      if (['write_off', 'sale', 'return', 'field_use', 'received', 'warehouse_dispatch', 'short_receipt'].includes(movType)) {
         const id = `MOV-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
         const referenceId = body.reference_id || body.referenceId || null;
         const batchNo = body.batch_no || body.batchNo || null;
@@ -250,8 +250,8 @@ export default async function handler(req, res) {
             return res.status(403).json({ success: false, error: 'Access denied: cannot post warehouse dispatch movements' });
           }
           // For outbound movements (write_off, sale, field_use, return): check source branch
-          // For inbound movements (received): check destination branch
-          const primaryBranchLoc = movType === 'received' ? (destLoc || srcLoc) : (srcLoc || destLoc);
+          // For inbound movements (received, short_receipt): check destination branch
+          const primaryBranchLoc = (movType === 'received' || movType === 'short_receipt') ? (destLoc || srcLoc) : (srcLoc || destLoc);
           if (!primaryBranchLoc || !branchScope.branches.includes(primaryBranchLoc)) {
             return res.status(403).json({ success: false, error: 'Access denied: cannot post movement for this branch' });
           }

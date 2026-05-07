@@ -4064,37 +4064,45 @@ function BranchStockTab() {
             createdBy: receiveReceivedBy || user?.full_name || user?.username || null,
           });
       }
-      // Record a short_receipt movement for each item where received_qty ≠ dispatched_qty
-      const discrepancyItems = itemsToReceive.filter(it => {
+      // Record a short_receipt movement for ALL items where received_qty ≠ dispatched_qty,
+      // including items with received_qty=0 (whole shipment missing for that product).
+      // This runs as best-effort — a logging failure must not block the receipt itself.
+      const allDiscrepancyItems = receiveItems.filter(it => {
         const dqty = Number(it.dispatched_qty ?? it.quantity ?? 0);
         return dqty > 0 && Number(it.received_qty) !== dqty;
       });
-      for (const item of discrepancyItems) {
-        const productName = safeLabel(item.product_name) || safeLabel(item.productName) || 'Unknown';
-        const dqty = Number(item.dispatched_qty ?? item.quantity ?? 0);
-        const rqty = Number(item.received_qty);
-        const diff = dqty - rqty;
-        await api.stock.createMovement({
-          product_name: productName,
-          quantity: Math.abs(diff),
-          movement_type: 'short_receipt',
-          source_location: 'Warehouse',
-          destination_location: selectedBranch || user?.branch || 'Branch',
-          destination_location_type: 'branch',
-          batch_no: item.batch_no?.trim() || '',
-          expiry_date: item.expiry_date || null,
-          notes: `Receipt discrepancy for request ${selectedRequest.request_number || selectedRequest.id}: dispatched ${dqty}, received ${rqty} (${diff > 0 ? 'short' : 'over'} by ${Math.abs(diff)}). Delivery note: ${receiveDeliveryNote || 'N/A'}`,
-          reference_id: selectedRequest.id,
-          created_by: receiveReceivedBy || user?.full_name || user?.username || null,
-        });
+      let discrepancyRecorded = 0;
+      for (const item of allDiscrepancyItems) {
+        try {
+          const productName = safeLabel(item.product_name) || safeLabel(item.productName) || 'Unknown';
+          const dqty = Number(item.dispatched_qty ?? item.quantity ?? 0);
+          const rqty = Number(item.received_qty);
+          const diff = dqty - rqty;
+          await api.stock.createMovement({
+            product_name: productName,
+            quantity: Math.abs(diff),
+            movement_type: 'short_receipt',
+            source_location: 'Warehouse',
+            destination_location: selectedBranch || user?.branch || 'Branch',
+            destination_location_type: 'branch',
+            batch_no: item.batch_no?.trim() || '',
+            expiry_date: item.expiry_date || null,
+            notes: `Receipt discrepancy for request ${selectedRequest.request_number || selectedRequest.id}: dispatched ${dqty}, received ${rqty} (${diff > 0 ? 'short' : 'over'} by ${Math.abs(diff)}). Delivery note: ${receiveDeliveryNote || 'N/A'}`,
+            reference_id: selectedRequest.id,
+            created_by: receiveReceivedBy || user?.full_name || user?.username || null,
+          });
+          discrepancyRecorded++;
+        } catch (discErr) {
+          console.warn('[receiveStock] discrepancy log failed (non-blocking):', discErr.message);
+        }
       }
 
       await api.stock.updateRequest(selectedRequest.id, { status: 'received' });
       setShowReceiveForm(false);
       setSelectedRequest(null);
       setReceiveFormMsg(null);
-      const discMsg = discrepancyItems.length > 0
-        ? ` Discrepancy noted for ${discrepancyItems.length} item(s) — recorded for Finance/GM review.`
+      const discMsg = allDiscrepancyItems.length > 0
+        ? ` Discrepancy noted for ${discrepancyRecorded} item(s) — recorded for Finance/GM review.`
         : '';
       setAlert({ type: 'success', message: `Stock received and recorded successfully.${discMsg}` });
       setSubTab('inventory');
