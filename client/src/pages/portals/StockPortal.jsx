@@ -4320,6 +4320,8 @@ function BranchRequestsPanel() {
   const [statusFilter, setStatusFilter]   = useState('approved');
   const [fefoMap, setFefoMap]             = useState({});
   const [fefoLoading, setFefoLoading]     = useState(false);
+  const [altFefoMap, setAltFefoMap]       = useState({});
+  const [altFefoLoading, setAltFefoLoading] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -4361,6 +4363,48 @@ function BranchRequestsPanel() {
       lookupFefoBatches(dispatchReq, dispatchWH);
     }
   }, [dispatchReq, dispatchWH, lookupFefoBatches]);
+
+  // When a shortfall exists, probe all other warehouses for the affected products
+  // so the stock manager can see where stock is available without switching manually.
+  useEffect(() => {
+    if (fefoLoading || !dispatchReq) {
+      setAltFefoMap({});
+      return;
+    }
+    const items = Array.isArray(dispatchReq.items) ? dispatchReq.items : [];
+    const shortfallItems = items.filter(it => {
+      const n = it.productName || it.product_name || it.productId || '';
+      return fefoMap[n]?.shortfall > 0;
+    });
+    if (shortfallItems.length === 0) {
+      setAltFefoMap({});
+      return;
+    }
+    const otherWarehouses = WAREHOUSE_SOURCES.filter(w => w.value !== dispatchWH);
+    if (otherWarehouses.length === 0) return;
+
+    setAltFefoLoading(true);
+    const result = {};
+    Promise.all(
+      otherWarehouses.map(async (wh) => {
+        const whResult = {};
+        await Promise.all(shortfallItems.map(async (it) => {
+          const n = it.productName || it.product_name || it.productId || '';
+          const qty = Number(it.quantity || 0);
+          try {
+            const resp = await api.stock.fefoBatches({ product: n, location: wh.value, qty });
+            const available = (resp.batches || []).reduce((s, b) => s + Number(b.allocated_qty || 0), 0);
+            whResult[n] = { available, shortfall: resp.shortfall || 0, canFill: (resp.shortfall || 0) === 0 };
+          } catch {
+            whResult[n] = { available: 0, shortfall: qty, canFill: false };
+          }
+        }));
+        result[wh.value] = whResult;
+      })
+    ).then(() => setAltFefoMap(result))
+     .catch(() => {})
+     .finally(() => setAltFefoLoading(false));
+  }, [fefoLoading, fefoMap, dispatchWH, dispatchReq]);
 
   const visibleRequests = requests.filter(r => {
     if (statusFilter === 'approved') return r.status === 'approved';
@@ -4745,8 +4789,54 @@ function BranchRequestsPanel() {
                     </li>
                   ))}
                 </ul>
+
+                {/* Alternative warehouse availability */}
+                <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px dashed #fca5a5' }}>
+                  <div style={{ fontSize: '0.77rem', fontWeight: 700, color: '#7f1d1d', marginBottom: 6 }}>
+                    📦 Stock availability in other warehouses:
+                  </div>
+                  {altFefoLoading ? (
+                    <div style={{ fontSize: '0.75rem', color: '#9a3412', fontStyle: 'italic' }}>⏳ Checking other warehouses…</div>
+                  ) : (
+                    WAREHOUSE_SOURCES.filter(w => w.value !== dispatchWH).map(wh => {
+                      const whData = altFefoMap[wh.value] || {};
+                      const allCanFill = shortfallSummary.length > 0 && shortfallSummary.every(s => whData[s.name]?.canFill);
+                      const anyAvailable = shortfallSummary.some(s => (whData[s.name]?.available || 0) > 0);
+                      return (
+                        <div key={wh.value} style={{ marginBottom: 6, background: allCanFill ? '#f0fdf4' : anyAvailable ? '#fffbeb' : '#fafafa', border: `1px solid ${allCanFill ? '#86efac' : anyAvailable ? '#fcd34d' : '#e2e8f0'}`, borderRadius: 8, padding: '8px 10px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: shortfallSummary.length > 1 ? 5 : 0 }}>
+                            <button
+                              onClick={() => { setDispatchWH(wh.value); setAltFefoMap({}); }}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 800, fontSize: '0.82rem', color: allCanFill ? '#166534' : anyAvailable ? '#92400e' : '#374151', textDecoration: 'underline', padding: 0 }}>
+                              {wh.label}
+                            </button>
+                            {allCanFill ? (
+                              <span style={{ fontSize: '0.72rem', background: '#bbf7d0', color: '#166534', borderRadius: 99, padding: '1px 8px', fontWeight: 700 }}>✅ Can fill order</span>
+                            ) : anyAvailable ? (
+                              <span style={{ fontSize: '0.72rem', background: '#fef3c7', color: '#92400e', borderRadius: 99, padding: '1px 8px', fontWeight: 700 }}>⚠️ Partial stock</span>
+                            ) : (
+                              <span style={{ fontSize: '0.72rem', background: '#fee2e2', color: '#991b1b', borderRadius: 99, padding: '1px 8px', fontWeight: 700 }}>❌ No stock</span>
+                            )}
+                          </div>
+                          {shortfallSummary.map(s => {
+                            const info = whData[s.name];
+                            return (
+                              <div key={s.name} style={{ fontSize: '0.74rem', color: '#475569', display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 2 }}>
+                                <span style={{ fontWeight: 600 }}>{s.name}</span>
+                                <span style={{ color: info?.canFill ? '#166534' : info?.available > 0 ? '#92400e' : '#991b1b', fontWeight: 700 }}>
+                                  {info ? `${info.available} avail${info.shortfall > 0 ? ` (${info.shortfall} short)` : ''}` : '—'}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
                 <div style={{ marginTop: 8, fontSize: '0.77rem', color: '#9a3412', fontWeight: 600 }}>
-                  Select a different source warehouse or resolve the stock shortfall before dispatching.
+                  Click a warehouse above to switch source, or resolve the shortfall before dispatching.
                 </div>
               </div>
             )}
