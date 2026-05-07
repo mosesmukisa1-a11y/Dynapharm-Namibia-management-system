@@ -2860,30 +2860,32 @@ function PrescriptionsTab() {
               <div style={{ marginBottom: 16, marginTop: 16 }}>
                 <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 8 }}>Prescribed Medicines</div>
                 <div style={{ borderRadius: 10, overflow: 'hidden', border: '1px solid #e2e8f0' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr auto auto', gap: 0, background: '#f8fafc', padding: '7px 12px', borderBottom: '2px solid #e2e8f0' }}>
-                    <div />
+                  <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr auto', gap: 0, background: '#f8fafc', padding: '7px 12px', borderBottom: '2px solid #e2e8f0' }}>
+                    <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b' }}>✓</div>
                     <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b' }}>Medicine</div>
-                    <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textAlign: 'right', paddingRight: 8 }}>{isMember ? 'DP' : 'CP'}</div>
-                    <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textAlign: 'right' }}>Status</div>
+                    <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textAlign: 'right' }}>{isMember ? 'DP' : 'CP'}</div>
                   </div>
                   {medicines.map((med, i) => {
                     const price = getEffectivePrice(med.name);
                     const unitPrice = isMember ? price.dp : price.cp;
                     const pkgExpanded = price.isPackage && isPackageExpanded(report.id, i);
-                    const compState = pkgExpanded ? getExpandedComponentState(report.id, i) : {};
                     return (
                       <div key={i} style={{ borderBottom: i < medicines.length - 1 ? '1px solid #f1f5f9' : 'none', background: med.dispensed ? '#f0fdf4' : '#fff' }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr auto auto', gap: 0, padding: '10px 12px', alignItems: 'start' }}>
-                          <div style={{ paddingTop: 2 }}>
-                            {!pkgExpanded && (
-                              <input type="checkbox" checked={!!med.dispensed} onChange={() => toggleDispense(report.id, i)}
-                                style={{ width: 16, height: 16, accentColor: '#16a34a', cursor: 'pointer' }} />
-                            )}
+                        <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr auto', gap: 0, padding: '10px 12px', alignItems: 'start' }}>
+                          {/* Read-only status indicator — dispensing happens via the Dispense Now button */}
+                          <div style={{ paddingTop: 3 }}>
+                            {med.dispensed
+                              ? <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 18, borderRadius: '50%', background: '#16a34a' }}>
+                                  <span style={{ color: '#fff', fontSize: '0.7rem', fontWeight: 900, lineHeight: 1 }}>✓</span>
+                                </span>
+                              : <span style={{ display: 'inline-block', width: 18, height: 18, borderRadius: '50%', border: '2px solid #d97706', background: '#fffbeb' }} />
+                            }
                           </div>
                           <div style={{ minWidth: 0 }}>
                             <div style={{ fontWeight: 600, fontSize: '0.85rem', color: med.dispensed ? '#16a34a' : '#1e293b', textDecoration: med.dispensed ? 'line-through' : 'none', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                               {med.name}
                               {price.isPackage && <span style={{ fontSize: '0.65rem', padding: '1px 6px', borderRadius: 4, background: '#dbeafe', color: '#1e40af', fontWeight: 700 }}>PKG</span>}
+                              {!med.dispensed && <span style={{ fontSize: '0.63rem', padding: '1px 6px', borderRadius: 4, background: '#fef3c7', color: '#92400e', fontWeight: 700 }}>Pending</span>}
                             </div>
                             {isMember && price.bv > 0 && <div style={{ fontSize: '0.7rem', color: '#f59e0b', fontWeight: 600, marginTop: 2 }}>{price.bv} BV</div>}
                             {price.isPackage && price.products && !pkgExpanded && (
@@ -2907,48 +2909,11 @@ function PrescriptionsTab() {
                                 </button>
                               </div>
                             )}
-                            {price.isPackage && pkgExpanded && price.products && (
-                              <div style={{ marginTop: 6, borderRadius: 8, overflow: 'hidden', border: '1.5px solid #3b82f6', background: '#f0f6ff' }}>
-                                <div style={{ padding: '5px 8px', background: '#dbeafe', fontSize: '0.68rem', fontWeight: 700, color: '#1e40af' }}>
-                                  📦 Individual from {med.name}
-                                </div>
-                                {price.products.map((pp, pi) => {
-                                  const compP = getComponentPrice(pp.name);
-                                  const alreadyDispensed = Array.isArray(med.dispensed_components) && med.dispensed_components.includes(pp.name);
-                                  const compSelected = !!compState[pi];
-                                  return (
-                                    <div key={pi} style={{ padding: '7px 8px', borderTop: '1px solid #bfdbfe', background: alreadyDispensed ? '#ecfdf5' : compSelected ? '#f0fdf4' : '#fff', display: 'flex', alignItems: 'center', gap: 7 }}>
-                                      <input type="checkbox" checked={alreadyDispensed || compSelected} disabled={alreadyDispensed} onChange={() => !alreadyDispensed && toggleComponentDispense(report.id, i, pi)}
-                                        style={{ width: 14, height: 14, accentColor: '#16a34a', cursor: alreadyDispensed ? 'not-allowed' : 'pointer', flexShrink: 0, opacity: alreadyDispensed ? 0.6 : 1 }} />
-                                      <div style={{ flex: 1, minWidth: 0 }}>
-                                        <div style={{ fontSize: '0.78rem', fontWeight: 600, color: alreadyDispensed ? '#16a34a' : '#1e293b', textDecoration: alreadyDispensed ? 'line-through' : 'none' }}>
-                                          {pp.name} <span style={{ color: '#94a3b8', fontWeight: 400 }}>×{pp.quantity}</span>
-                                        </div>
-                                      </div>
-                                      <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#16a34a' }}>
-                                        {isMember ? `N$${compP.dp}` : `N$${compP.cp}`}
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            )}
                             {med.dispensed && (
-                              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 5, cursor: 'pointer' }}>
-                                <input type="checkbox" checked={!!med.paid} onChange={() => togglePayment(report.id, i)}
-                                  style={{ width: 13, height: 13, accentColor: '#2563eb' }} />
-                                <span style={{ fontSize: '0.72rem', fontWeight: 600, color: med.paid ? '#2563eb' : '#94a3b8' }}>
-                                  {med.paid ? '💰 Paid' : 'Mark paid'}
-                                </span>
-                              </label>
+                              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#16a34a', marginTop: 3 }}>✓ Dispensed</div>
                             )}
                           </div>
-                          <div style={{ textAlign: 'right', fontWeight: 700, fontSize: '0.85rem', color: '#1e293b', paddingRight: 8, paddingTop: 1, whiteSpace: 'nowrap' }}>N$ {unitPrice}</div>
-                          <div style={{ textAlign: 'right', paddingTop: 1 }}>
-                            {med.dispensed
-                              ? <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#16a34a', background: '#dcfce7', padding: '2px 6px', borderRadius: 4 }}>✓ Done</span>
-                              : <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#94a3b8', background: '#f1f5f9', padding: '2px 6px', borderRadius: 4 }}>Pending</span>}
-                          </div>
+                          <div style={{ textAlign: 'right', fontWeight: 700, fontSize: '0.85rem', color: med.dispensed ? '#16a34a' : '#1e293b', paddingTop: 1, whiteSpace: 'nowrap' }}>N$ {unitPrice}</div>
                         </div>
                       </div>
                     );
