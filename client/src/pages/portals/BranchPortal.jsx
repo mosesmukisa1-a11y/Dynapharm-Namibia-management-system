@@ -2956,6 +2956,20 @@ function PrescriptionsTab() {
                 </div>
               </div>
 
+              {/* ── Quick Dispense CTA — visible immediately after medicines list ── */}
+              {pendingCount > 0 && (
+                <div style={{ margin: '0 0 18px', padding: '12px 16px', borderRadius: 12, background: 'linear-gradient(135deg,#166534,#16a34a)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, boxShadow: '0 4px 16px rgba(22,163,74,0.3)' }}>
+                  <div>
+                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'rgba(255,255,255,0.75)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Ready to dispense</div>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#fff', marginTop: 2 }}>{pendingCount} item{pendingCount !== 1 ? 's' : ''} pending · all pre-selected in the dispense window</div>
+                  </div>
+                  <button onClick={() => openDispensePreview(report)}
+                    style={{ flexShrink: 0, padding: '10px 22px', border: '2px solid rgba(255,255,255,0.4)', borderRadius: 10, background: 'rgba(255,255,255,0.15)', color: '#fff', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 800, whiteSpace: 'nowrap' }}>
+                    ✅ Dispense Now
+                  </button>
+                </div>
+              )}
+
               {/* ── Fee Controls ─────────────────────────────────────────── */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
 
