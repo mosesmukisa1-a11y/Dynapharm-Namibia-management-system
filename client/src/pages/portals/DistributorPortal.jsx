@@ -2890,8 +2890,8 @@ function CheckupTab() {
     finally { setSubmitting(false); }
   };
 
-  const appUrl = typeof window !== 'undefined' ? `${window.location.origin}/checkup` : '/checkup';
-  const waMsg = booked ? encodeURIComponent(`Hi! I've booked you for a Full Body Health Check Up at Dynapharm ${booked.branch || form.branch}.\n\nPlease complete your health form here:\n${appUrl}\n\nYour appointment reference: ${booked.id}\n\nSee you soon! 💊`) : '';
+  const appUrl = typeof window !== 'undefined' ? `${window.location.origin}` : '/';
+  const waMsg = booked ? encodeURIComponent(`Hi ${booked.full_name}! I've booked you for a Full Body Health Check Up at Dynapharm ${booked.branch || form.branch}.\n\nVisit our website to learn about Dynapharm and complete your health form:\n${appUrl}\n\nYour appointment reference: ${booked.id}\n\nSee you soon! 💊`) : '';
 
   if (booked) {
     return (
