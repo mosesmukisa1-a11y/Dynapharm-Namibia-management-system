@@ -34,8 +34,8 @@ export default function App() {
     <>
       <OfflineBanner />
       <Routes>
-      <Route element={<Layout />}>
         <Route path="/" element={<Landing />} />
+      <Route element={<Layout />}>
         <Route path="/shop" element={<Shop />} />
         <Route path="/checkup" element={<HealthCheckup />} />
         <Route path="/ref/:nbCode" element={<DistributorRefPage />} />
