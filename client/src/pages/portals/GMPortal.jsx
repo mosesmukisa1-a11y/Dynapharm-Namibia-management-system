@@ -614,6 +614,7 @@ function ApprovalsTab() {
   const [amendItems, setAmendItems] = useState([]);
   const [amendComment, setAmendComment] = useState('');
   const [amendShortfallWarning, setAmendShortfallWarning] = useState(false);
+  const [amendShortfallAcknowledged, setAmendShortfallAcknowledged] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [rentReviewModal, setRentReviewModal] = useState(null);
   const [rentReviewNote, setRentReviewNote] = useState('');
@@ -765,6 +766,7 @@ function ApprovalsTab() {
       setAmendItems([]);
       setAmendComment('');
       setAmendShortfallWarning(false);
+      setAmendShortfallAcknowledged(false);
     } catch (err) {
       setMessage('Error: ' + err.message);
     } finally {
@@ -801,6 +803,8 @@ function ApprovalsTab() {
     }));
     setAmendItems(items);
     setAmendComment('');
+    setAmendShortfallWarning(false);
+    setAmendShortfallAcknowledged(false);
     setAmendModal(t);
   };
 
@@ -2160,18 +2164,19 @@ function ApprovalsTab() {
                               onChange={e => {
                                 const val = Math.max(0, Math.min(Number(e.target.value) || 0, it.quantity));
                                 setAmendItems(prev => prev.map((p, j) => j === i ? { ...p, quantityApproved: val } : p));
+                                setAmendShortfallAcknowledged(false);
                               }}
                               style={{ width: 70, padding: '4px 8px', border: '1px solid #d1d5db', borderRadius: 6, textAlign: 'center', fontSize: 13, fontWeight: 600 }} />
                           )}
                         </td>
                         <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', textAlign: 'center' }}>
                           {isRemoved ? (
-                            <button onClick={() => setAmendItems(prev => prev.map((p, j) => j === i ? { ...p, quantityApproved: p.quantity } : p))}
+                            <button onClick={() => { setAmendItems(prev => prev.map((p, j) => j === i ? { ...p, quantityApproved: p.quantity } : p)); setAmendShortfallAcknowledged(false); }}
                               style={{ fontSize: 11, padding: '3px 8px', background: '#f0fdf4', color: '#16a34a', border: '1px solid #86efac', borderRadius: 5, cursor: 'pointer', fontWeight: 600 }}>
                               Restore
                             </button>
                           ) : (
-                            <button onClick={() => setAmendItems(prev => prev.map((p, j) => j === i ? { ...p, quantityApproved: 0 } : p))}
+                            <button onClick={() => { setAmendItems(prev => prev.map((p, j) => j === i ? { ...p, quantityApproved: 0 } : p)); setAmendShortfallAcknowledged(false); }}
                               style={{ fontSize: 11, padding: '3px 8px', background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: 5, cursor: 'pointer', fontWeight: 600 }}>
                               ✕ Remove
                             </button>
@@ -2220,7 +2225,12 @@ function ApprovalsTab() {
                             style={{ padding: '7px 14px', background: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: 6, cursor: processing ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 600, color: '#374151', opacity: processing ? 0.5 : 1 }}>
                             ← Go Back
                           </button>
-                          <button onClick={() => { setAmendShortfallWarning(false); handleAmendApprove(); }} disabled={processing}
+                          <button onClick={() => {
+                              const shortfallNote = `Shortfall acknowledged: approved ${totalApproved} of ${totalOriginal} units (${pct}%)`;
+                              setAmendComment(prev => prev ? `${prev}\n${shortfallNote}` : shortfallNote);
+                              setAmendShortfallAcknowledged(true);
+                              setAmendShortfallWarning(false);
+                            }} disabled={processing}
                             style={{ padding: '7px 14px', background: '#dc2626', color: 'white', border: 'none', borderRadius: 6, cursor: processing ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 700, opacity: processing ? 0.65 : 1 }}>
                             {processing ? 'Processing...' : 'Proceed Anyway'}
                           </button>
@@ -2231,11 +2241,15 @@ function ApprovalsTab() {
                 );
               })()}
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <button onClick={() => { setAmendModal(null); setAmendItems([]); setAmendComment(''); setAmendShortfallWarning(false); }} disabled={processing}
+                <button onClick={() => { setAmendModal(null); setAmendItems([]); setAmendComment(''); setAmendShortfallWarning(false); setAmendShortfallAcknowledged(false); }} disabled={processing}
                   style={{ padding: '8px 16px', background: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: 6, cursor: processing ? 'not-allowed' : 'pointer', fontSize: 13, opacity: processing ? 0.5 : 1 }}>
                   Cancel
                 </button>
                 <button onClick={() => {
+                    if (amendShortfallAcknowledged) {
+                      handleAmendApprove();
+                      return;
+                    }
                     const totalOriginal = amendItems.reduce((s, it) => s + Number(it.quantity), 0);
                     const totalApproved = amendItems.filter(it => Number(it.quantityApproved) > 0).reduce((s, it) => s + Number(it.quantityApproved), 0);
                     if (totalOriginal > 0 && totalApproved < totalOriginal * 0.5) {
