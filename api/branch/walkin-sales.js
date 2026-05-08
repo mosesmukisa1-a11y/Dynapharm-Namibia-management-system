@@ -283,6 +283,13 @@ function buildRxQuery(searchParams, scopedBranches, enforced) {
     conditions.push(`(LOWER(client_name) LIKE $${params.length} OR LOWER(id) LIKE $${params.length} OR LOWER(COALESCE(form_reference_id,'')) LIKE $${params.length})`);
   }
 
+  const distributorNb = searchParams.get('distributor_nb') || searchParams.get('referral_nb');
+  if (distributorNb) {
+    const nbUpper = distributorNb.toUpperCase();
+    params.push(nbUpper);
+    conditions.push(`(UPPER(referral_nb) = $${params.length} OR UPPER(nb_number) = $${params.length})`);
+  }
+
   const hasDateFilter = searchParams.get('from') || searchParams.get('to');
   const limitParam = parseInt(searchParams.get('limit') || '0', 10);
   const effectiveLimit = limitParam > 0 ? limitParam : hasDateFilter ? 5000 : 250;
@@ -319,6 +326,7 @@ function normalizeRxRow(row) {
     customerType: isMember ? 'member' : 'non_member',
     customer_type: isMember ? 'member' : 'non_member',
     nb_number: row.nb_number || null,
+    distributor_nb: row.nb_number || null,
     referral_nb: row.referral_nb || null,
     paymentMethod: row.payment_method || 'cash',
     payment_method: row.payment_method || 'cash',

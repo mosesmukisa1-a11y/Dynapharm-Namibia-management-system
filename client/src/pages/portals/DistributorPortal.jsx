@@ -2496,8 +2496,15 @@ function CommunicationsTab() {
     Promise.all([
       // All branch sales linked to this NB (member + referral)
       api.branch.walkinSalesByDistributor(nb).then(d => Array.isArray(d) ? d : d.sales || []).catch(() => []),
-      // Full body checkups booked under their NB as client_reference
-      api.get(`/appointments?client_reference=${encodeURIComponent(nb)}`).then(d => Array.isArray(d) ? d : d.appointments || []).catch(() => []),
+      // Full body checkups booked under their NB (portal-booked via client_reference AND
+      // self-booked by referred clients via data->>'referral_nb'); merge and deduplicate.
+      Promise.all([
+        api.get(`/appointments?client_reference=${encodeURIComponent(nb)}`).then(d => Array.isArray(d) ? d : d.appointments || []).catch(() => []),
+        api.get(`/appointments?referral_nb=${encodeURIComponent(nb)}`).then(d => Array.isArray(d) ? d : d.appointments || []).catch(() => []),
+      ]).then(([byClientRef, byReferralNb]) => {
+        const seen = new Set(byClientRef.map(a => a.id));
+        return [...byClientRef, ...byReferralNb.filter(a => !seen.has(a.id))];
+      }).catch(() => []),
       // Online shop orders placed as this distributor
       api.orders.list({ distributor_code: nb }).then(d => Array.isArray(d) ? d : d.orders || []).catch(() => []),
       // Notifications/messages sent to this distributor (e.g. approval confirmation)
