@@ -1199,6 +1199,9 @@ ${consultantNotes ? `
     } catch { return {}; }
   };
 
+  // Unique branch names from loaded appointments — used to populate branch filter
+  const appointmentBranches = [...new Set(appointments.map(a => a.branch).filter(Boolean))].sort();
+
   // Apply branch view filter on top of the status filter + name search
   const branchDisplayFiltered = branchViewFilter
     ? filtered.filter(a => {
@@ -1260,9 +1263,9 @@ ${consultantNotes ? `
         <select
           value={branchViewFilter}
           onChange={e => setBranchViewFilter(e.target.value)}
-          style={{ padding: '9px 14px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: '0.88rem', color: branchViewFilter ? '#1e293b' : '#94a3b8', background: '#f8fafc', cursor: 'pointer', minWidth: 160 }}>
-          <option value="">All Branches</option>
-          {BRANCH_DETAILS.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+          style={{ padding: '9px 14px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: '0.88rem', color: branchViewFilter ? '#1e293b' : '#94a3b8', background: branchViewFilter ? '#fff0f3' : '#f8fafc', cursor: 'pointer', minWidth: 160, borderColor: branchViewFilter ? '#c41e3a' : '#e2e8f0' }}>
+          <option value="">All Branches ({appointmentBranches.length})</option>
+          {appointmentBranches.map(b => <option key={b} value={b}>{b}</option>)}
         </select>
       </div>
 
@@ -1291,6 +1294,24 @@ ${consultantNotes ? `
             const dateStr = apt.date ? new Date(apt.date).toLocaleDateString('en-GB') : '';
             const timeStr = apt.time ? apt.time.slice(0, 5) : '';
 
+            // Extract "booked by" info from notes or data
+            const bookedBy = (() => {
+              if (apt.notes) {
+                const m = apt.notes.match(/[Bb]ooked by distributor\s+(\S+)(?:\s*\(([^)]+)\))?/);
+                if (m) return m[2] ? `${m[2]} (${m[1]})` : m[1];
+                const m2 = apt.notes.match(/[Bb]ooked by ([^.—\n]+)/);
+                if (m2) return m2[1].trim();
+              }
+              if (data.booking_source === 'distributor_portal') {
+                const name = data.referral_name || '';
+                const nb = data.referral_nb || apt.client_reference || '';
+                return name ? `${name}${nb ? ` (${nb})` : ''}` : nb || 'Distributor Portal';
+              }
+              if (data.booking_source === 'front_desk') return 'Front Desk';
+              if (apt.client_reference) return apt.client_reference;
+              return null;
+            })();
+
             return (
               <div key={apt.id} style={{ background: 'white', border: '1px solid #e5e7eb', borderLeft: `4px solid ${statusColor}`, borderRadius: '10px', padding: '16px', marginBottom: '10px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
@@ -1299,6 +1320,15 @@ ${consultantNotes ? `
                     <div style={{ fontSize: '0.85rem', color: '#6b7280' }}>
                       {apt.phone || ''}{apt.email ? ` • ${apt.email}` : ''}
                     </div>
+                    {bookedBy && (
+                      <div style={{ fontSize: '0.82rem', color: '#7c3aed', marginTop: '4px', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <span style={{ background: '#ede9fe', color: '#7c3aed', borderRadius: 99, padding: '1px 8px', fontWeight: 700, fontSize: '0.75rem', letterSpacing: '0.02em' }}>BOOKED BY</span>
+                        <span>{bookedBy}</span>
+                      </div>
+                    )}
+                    {apt.branch && consultantAllBranches.length > 1 && (
+                      <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '2px' }}>📍 {apt.branch}</div>
+                    )}
                     {data.concern && <div style={{ fontSize: '0.85rem', color: '#374151', marginTop: '4px' }}><strong>Concern:</strong> {data.concern}</div>}
                     {data.distributorName && <div style={{ fontSize: '0.85rem', color: '#374151' }}><strong>Referred by:</strong> {data.distributorName} ({data.distributorNB || ''})</div>}
                     {data.conditions && data.conditions !== 'None' && <div style={{ fontSize: '0.85rem', color: '#374151' }}><strong>Conditions:</strong> {data.conditions}</div>}
