@@ -845,7 +845,7 @@ export default async function handler(req, res) {
         updatePayload.metadata = JSON.stringify(updatePayload.metadata);
       }
 
-      const oldTransfer = await getOne('SELECT status, from_warehouse, to_branch, gm_action, gm_approved_by FROM stock_transfers WHERE id = $1', [id]);
+      const oldTransfer = await getOne('SELECT status, from_warehouse, to_branch, gm_action, gm_approved_by, prepared_by_id, created_by FROM stock_transfers WHERE id = $1', [id]);
       const previousStatus = oldTransfer?.status;
 
       // Hard gate: block ANY stock-advancing status transition without a prior or current GM approval.
@@ -889,6 +889,70 @@ export default async function handler(req, res) {
       }
 
       const transfer = await update('stock_transfers', id, updatePayload, 'id');
+
+      // Notify the preparing user when GM amends a transfer
+      if ((body.gmAction === 'amend_approve' || body.gm_action === 'amend_approve') && body.amendmentLog && Array.isArray(body.amendmentLog) && body.amendmentLog.length > 0) {
+        try {
+          const gmName = updatePayload.amended_by_gm || currentUser?.fullName || currentUser?.username || 'GM';
+          const logSummary = body.amendmentLog.map(entry => {
+            if (typeof entry === 'string') return entry;
+            const product = entry.product || entry.productName || entry.product_name || '';
+            const from = entry.from !== undefined ? entry.from : (entry.original !== undefined ? entry.original : null);
+            const to = entry.to !== undefined ? entry.to : (entry.approved !== undefined ? entry.approved : null);
+            if (product && from !== null && to !== null) return `${product}: ${from} → ${to}`;
+            return entry.detail || entry.note || JSON.stringify(entry);
+          }).join('; ');
+
+          // Primary: look up the specific user who prepared the dispatch via prepared_by_id
+          let preparerUser = null;
+          if (oldTransfer?.prepared_by_id) {
+            preparerUser = await getOne(
+              `SELECT id, username, full_name, role FROM users WHERE id = $1 AND is_active = TRUE`,
+              [oldTransfer.prepared_by_id]
+            );
+          }
+          // Fallback: match by full_name / created_by against stock managers at the source warehouse
+          if (!preparerUser && oldTransfer?.created_by) {
+            const sourceWarehouse = transfer.from_warehouse || transfer.from_location || oldTransfer?.from_warehouse || null;
+            if (sourceWarehouse) {
+              preparerUser = await getOne(
+                `SELECT id, username, full_name, role FROM users
+                 WHERE is_active = TRUE
+                   AND LOWER(role) = 'stock_manager'
+                   AND LOWER(full_name) = LOWER($1)
+                   AND (REPLACE(LOWER(branch), ' ', '_') = REPLACE(LOWER($2), ' ', '_')
+                     OR EXISTS (
+                       SELECT 1 FROM jsonb_array_elements_text(COALESCE(branches, '[]'::jsonb)) AS b
+                       WHERE REPLACE(LOWER(b), ' ', '_') = REPLACE(LOWER($2), ' ', '_')
+                     ))
+                 LIMIT 1`,
+                [oldTransfer.created_by, sourceWarehouse]
+              );
+            }
+          }
+
+          if (preparerUser) {
+            const recipientId = (preparerUser.username || String(preparerUser.id)).toLowerCase().trim();
+            await insert('notifications', {
+              id: `NOTIF-AMD-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+              recipient_type: 'staff',
+              recipient_id: recipientId,
+              title: 'Transfer Amended by GM — Repack Required',
+              message: `Transfer #${id} was amended by ${gmName} during approval. Please repack the shipment accordingly. Changes: ${logSummary}`,
+              type: 'warning',
+              reference_id: String(id),
+              metadata: JSON.stringify({
+                transfer_id: id,
+                amended_by: gmName,
+                source_warehouse: transfer.from_warehouse || transfer.from_location || oldTransfer?.from_warehouse || null,
+                amendment_log: body.amendmentLog,
+              }),
+            });
+          }
+        } catch (notifErr) {
+          console.error('Failed to create stock manager amendment notification:', notifErr);
+        }
+      }
 
       if (body.items !== undefined || body.itemsArray !== undefined) {
         const normalizedItems = parseItems(body.items || body.itemsArray, true);

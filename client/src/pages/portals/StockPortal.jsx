@@ -4205,8 +4205,33 @@ function WarehouseTab({ name }) {
           if (t.status === 'delivered' || t.status === 'received') {
             events.push({ time: t.updatedAt || t.updated_at, action: 'Delivered', detail: 'Transfer completed', color: '#16a34a' });
           }
+          const isAmendedTransfer = meta.amended || t.amendedByGm || t.amended_by_gm;
+          const amendmentLog = meta.amendment_log ? (Array.isArray(meta.amendment_log) ? meta.amendment_log : [meta.amendment_log]) : [];
           return (
             <div className="p-6 space-y-5">
+              {isAmendedTransfer && (
+                <div style={{ background: '#fffbeb', border: '2px solid #f59e0b', borderRadius: 10, padding: '12px 16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: amendmentLog.length > 0 ? 8 : 0 }}>
+                    <span style={{ fontSize: '1.1rem' }}>⚠️</span>
+                    <span style={{ fontWeight: 800, color: '#92400e', fontSize: '0.92rem' }}>Amended by GM — Repack Required</span>
+                    {(t.amendedByGm || t.amended_by_gm) && (
+                      <span style={{ fontSize: '0.78rem', color: '#b45309', marginLeft: 'auto' }}>by {t.amendedByGm || t.amended_by_gm}{(t.amendedAt || t.amended_at) ? ` on ${formatDate(t.amendedAt || t.amended_at)}` : ''}</span>
+                    )}
+                  </div>
+                  {amendmentLog.length > 0 && (
+                    <ul style={{ margin: 0, padding: '0 0 0 20px', fontSize: '0.82rem', color: '#78350f' }}>
+                      {amendmentLog.map((entry, i) => {
+                        if (typeof entry === 'string') return <li key={i}>{entry}</li>;
+                        const product = entry.product || entry.productName || entry.product_name || '';
+                        const from = entry.from !== undefined ? entry.from : (entry.original !== undefined ? entry.original : null);
+                        const to = entry.to !== undefined ? entry.to : (entry.approved !== undefined ? entry.approved : null);
+                        if (product && from !== null && to !== null) return <li key={i}><strong>{product}</strong>: {from} → {to}</li>;
+                        return <li key={i}>{entry.detail || entry.note || JSON.stringify(entry)}</li>;
+                      })}
+                    </ul>
+                  )}
+                </div>
+              )}
               <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 16px' }}>
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div><span className="text-gray-500">Transfer ID:</span> <span className="font-mono font-bold">#{t.id}</span></div>
