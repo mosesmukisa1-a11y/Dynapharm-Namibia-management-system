@@ -4349,6 +4349,7 @@ function BranchRequestsPanel() {
   const [altFefoLoading, setAltFefoLoading]       = useState(false);
   const [shortfallMode, setShortfallMode]         = useState('block');
   const [shortfallAcknowledged, setShortfallAcknowledged] = useState(false);
+  const [adjustedQtys, setAdjustedQtys]           = useState({});
 
   const load = useCallback(() => {
     setLoading(true);
@@ -4458,7 +4459,8 @@ function BranchRequestsPanel() {
     return items.some(it => {
       const n = it.productName || it.product_name || it.productId || '';
       const fefoResult = fefoMap[n];
-      return fefoResult && fefoResult.shortfall > 0;
+      if (!fefoResult || fefoResult.shortfall <= 0) return false;
+      return !(n in adjustedQtys);
     });
   })();
 
@@ -4475,6 +4477,19 @@ function BranchRequestsPanel() {
         return { name: n, shortfall: fefoMap[n].shortfall };
       });
   })();
+
+  const handleAutoAdjust = () => {
+    const newAdj = {};
+    for (const it of (Array.isArray(dispatchReq?.items) ? dispatchReq.items : [])) {
+      const n = it.productName || it.product_name || it.productId || '';
+      const fefoResult = fefoMap[n];
+      if (!fefoResult || fefoResult.shortfall <= 0) continue;
+      const original = Number(it.quantity || 0);
+      const dispatched = Math.max(0, original - fefoResult.shortfall);
+      newAdj[n] = { original, dispatched };
+    }
+    setAdjustedQtys(newAdj);
+  };
 
   const handleDispatch = async () => {
     if (!dispatchReq) return;
@@ -4544,7 +4559,7 @@ function BranchRequestsPanel() {
               reference_id: dispatchReq.id,
               batch_no: batch.batch_no || null,
               expiry_date: batch.expiry_date || null,
-              notes: `Dispatched from ${whLabel} to ${fmtLocation(branchId)} — request ${reqLabel}. Batch: ${batch.batch_no || 'N/A'}`,
+              notes: `Dispatched from ${whLabel} to ${fmtLocation(branchId)} — request ${reqLabel}. Batch: ${batch.batch_no || 'N/A'}${adjustedQtys[productName] ? ` [AUTO-ADJUSTED: originally ${adjustedQtys[productName].original}, dispatched ${adjustedQtys[productName].dispatched}]` : ''}`,
               created_by: actor,
             })
           );
@@ -4566,6 +4581,7 @@ function BranchRequestsPanel() {
       setDispatchReq(null);
       setFefoMap({});
       setAltFefoMap({});
+      setAdjustedQtys({});
       setModalAlert(null);
       setTimeout(() => load(), 150);
     } catch (err) {
@@ -4846,6 +4862,22 @@ function BranchRequestsPanel() {
                       Select a different source warehouse or resolve the stock shortfall before dispatching.
                     </div>
                   )}
+                  {!isWarn && Object.keys(adjustedQtys).length === 0 && (
+                    <button onClick={handleAutoAdjust}
+                      style={{ marginTop: 10, padding: '7px 16px', background: '#d97706', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', width: '100%' }}>
+                      ⚡ Auto-Adjust Quantities to Available Stock
+                    </button>
+                  )}
+                  {!isWarn && Object.keys(adjustedQtys).length > 0 && (
+                    <div style={{ marginTop: 10, background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: '8px 12px', fontSize: '0.78rem', color: '#166534' }}>
+                      <div style={{ fontWeight: 700, marginBottom: 4 }}>✅ Quantities auto-adjusted — dispatch unblocked:</div>
+                      <ul style={{ margin: 0, padding: '0 0 0 16px' }}>
+                        {Object.entries(adjustedQtys).map(([name, { original, dispatched }]) => (
+                          <li key={name}><strong>{name}</strong>: {original} → {dispatched} units{dispatched === 0 ? ' (removed from dispatch)' : ''}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                   {!isWarn && (
                     <>
                       {/* Alternative warehouse availability (block mode) */}
@@ -4906,7 +4938,7 @@ function BranchRequestsPanel() {
                 style={{ flex: 1, background: (dispatchHasShortfall && shortfallMode === 'block') ? '#94a3b8' : '#c41e3a', color: '#fff', border: 'none', borderRadius: 9, padding: '11px 0', fontWeight: 800, fontSize: '0.88rem', cursor: (dispatching || fefoLoading || (dispatchHasShortfall && shortfallMode === 'block')) ? 'not-allowed' : 'pointer', opacity: (dispatching || fefoLoading) ? 0.7 : 1 }}>
                 {dispatching ? 'Dispatching…' : fefoLoading ? 'Resolving batches…' : (dispatchHasShortfall && shortfallMode === 'block') ? '🚫 Insufficient Stock' : '🚚 Confirm Dispatch'}
               </button>
-              <button onClick={() => { setDispatchReq(null); setModalAlert(null); setFefoMap({}); setAltFefoMap({}); setShortfallAcknowledged(false); }} disabled={dispatching}
+              <button onClick={() => { setDispatchReq(null); setModalAlert(null); setFefoMap({}); setAltFefoMap({}); setAdjustedQtys({}); setShortfallAcknowledged(false); }} disabled={dispatching}
                 style={{ background: '#f1f5f9', color: '#64748b', border: 'none', borderRadius: 9, padding: '11px 18px', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}>
                 Cancel
               </button>
@@ -6115,6 +6147,7 @@ function OrdersTab({ branch }) {
   const [fefoModalAlert, setFefoModalAlert] = useState(null);
   const [shortfallMode, setShortfallMode] = useState('block');
   const [shortfallAcknowledged, setShortfallAcknowledged] = useState(false);
+  const [adjustedQtys, setAdjustedQtys] = useState({});
 
   // Sales Preview state
   const [showSalesPreview, setShowSalesPreview] = useState(false);
@@ -6244,7 +6277,8 @@ function OrdersTab({ branch }) {
     const items = Array.isArray(dispatchRequest.items) ? dispatchRequest.items : [];
     return items.some(it => {
       const n = it.productName || it.product_name || it.productId || '';
-      return fefoMap[n]?.shortfall > 0;
+      if (!fefoMap[n] || fefoMap[n].shortfall <= 0) return false;
+      return !(n in adjustedQtys);
     });
   })();
 
@@ -6254,6 +6288,17 @@ function OrdersTab({ branch }) {
       .filter(([, v]) => v?.shortfall > 0)
       .map(([name, v]) => ({ name, shortfall: v.shortfall }));
   })();
+
+  const handleAutoAdjust = () => {
+    const newAdj = {};
+    for (const [productName, fefoResult] of Object.entries(fefoMap)) {
+      if (!fefoResult || fefoResult.shortfall <= 0) continue;
+      const original = fefoResult.totalQty || 0;
+      const dispatched = Math.max(0, original - fefoResult.shortfall);
+      newAdj[productName] = { original, dispatched };
+    }
+    setAdjustedQtys(newAdj);
+  };
 
   const handleDispatchAsTransfer = async () => {
     if (!dispatchRequest) return;
@@ -6307,6 +6352,7 @@ function OrdersTab({ branch }) {
         seenProducts.add(productName);
         const fefoResult = fefoMap[productName];
         if (fefoResult && fefoResult.batches && fefoResult.batches.length > 0) {
+          const adjInfo = adjustedQtys[productName] || null;
           for (const batch of fefoResult.batches) {
             if (!batch.allocated_qty || batch.allocated_qty <= 0) continue;
             transferItems.push({
@@ -6316,6 +6362,7 @@ function OrdersTab({ branch }) {
               batchNo: batch.batch_no || null,
               expiryDate: batch.expiry_date || null,
               unit: item.unit || 'units',
+              ...(adjInfo ? { autoAdjusted: true, originalQty: adjInfo.original } : {}),
             });
           }
         } else {
@@ -6324,24 +6371,28 @@ function OrdersTab({ branch }) {
             const n = it.productName || it.product_name || it.productId || '';
             return n === productName ? s + Number(it.quantity || 0) : s;
           }, 0);
+          const adjInfo = adjustedQtys[productName] || null;
           transferItems.push({
             productName,
             productId: productName,
             quantity: totalQty,
             unit: item.unit || 'units',
+            ...(adjInfo ? { autoAdjusted: true, originalQty: adjInfo.original } : {}),
           });
         }
       }
 
+      const autoAdjustedProducts = Object.keys(adjustedQtys).length > 0 ? adjustedQtys : undefined;
       await api.stock.createTransfer({
         from_location: dispatchWH,
         to_location: branchName.toLowerCase().replace(/\s+/g, '_'),
         status: 'pending_approval',
         requestId: dispatchRequest.id,
         requestNumber: reqLabel,
-        notes: `Fulfilling request ${reqLabel}`,
+        notes: `Fulfilling request ${reqLabel}${autoAdjustedProducts ? ' [quantities auto-adjusted to available stock]' : ''}`,
         created_by: actor,
         items: transferItems,
+        autoAdjustedProducts,
       });
 
       await api.stock.updateRequest(dispatchRequest.id, {
@@ -6353,6 +6404,7 @@ function OrdersTab({ branch }) {
       });
       setDispatchRequest(null);
       setFefoMap({});
+      setAdjustedQtys({});
       setAlert({ type: 'success', msg: `Transfer submitted for GM approval: ${whLabel} → ${branchName}. FEFO batches pre-resolved — branch receive form will be pre-filled once GM approves.` });
       setTimeout(() => loadRequests(), 100);
     } catch (err) {
@@ -6647,6 +6699,22 @@ function OrdersTab({ branch }) {
                     ) : (
                       <div style={{ marginTop: 8, fontSize: '0.77rem', color: '#9a3412', fontWeight: 600 }}>Select a different source warehouse or resolve the stock shortfall before dispatching.</div>
                     )}
+                    {!isWarn && Object.keys(adjustedQtys).length === 0 && (
+                      <button onClick={handleAutoAdjust}
+                        style={{ marginTop: 10, padding: '7px 16px', background: '#d97706', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', width: '100%' }}>
+                        ⚡ Auto-Adjust Quantities to Available Stock
+                      </button>
+                    )}
+                    {!isWarn && Object.keys(adjustedQtys).length > 0 && (
+                      <div style={{ marginTop: 10, background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: '8px 12px', fontSize: '0.78rem', color: '#166534' }}>
+                        <div style={{ fontWeight: 700, marginBottom: 4 }}>✅ Quantities auto-adjusted — dispatch unblocked:</div>
+                        <ul style={{ margin: 0, padding: '0 0 0 16px' }}>
+                          {Object.entries(adjustedQtys).map(([name, { original, dispatched }]) => (
+                            <li key={name}><strong>{name}</strong>: {original} → {dispatched} units{dispatched === 0 ? ' (removed from dispatch)' : ''}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
                 );
               })()}
@@ -6664,7 +6732,7 @@ function OrdersTab({ branch }) {
                 >
                   {submitting ? 'Submitting...' : fefoLoading ? '⏳ Resolving batches...' : (dispatchHasShortfall && shortfallMode === 'block') ? '🚫 Insufficient Stock' : '📤 Submit for GM Approval'}
                 </Button>
-                <Button variant="secondary" onClick={() => { setDispatchRequest(null); setFefoMap({}); setFefoModalAlert(null); setShortfallAcknowledged(false); }}>Cancel</Button>
+                <Button variant="secondary" onClick={() => { setDispatchRequest(null); setFefoMap({}); setFefoModalAlert(null); setAdjustedQtys({}); setShortfallAcknowledged(false); }}>Cancel</Button>
               </div>
             </div>
           );

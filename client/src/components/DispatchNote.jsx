@@ -280,6 +280,7 @@ export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
       // merging different products that happen to share the same name
       const key = code || id || name.toLowerCase();
       if (!groupMap.has(key)) {
+        const adjInfo = autoAdjustedProducts[name] || autoAdjustedProducts[key] || null;
         groupMap.set(key, {
           displayName: name || '—',
           productCode: code,
@@ -289,6 +290,8 @@ export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
           totalReceived: null,
           batches: [],
           remarks: item.discrepancyNote || item.discrepancy_note || item.lineNote || item.line_note || '',
+          autoAdjusted: !!(item.autoAdjusted || item.auto_adjusted || adjInfo),
+          originalQty: item.originalQty ?? item.original_qty ?? adjInfo?.original ?? null,
         });
       }
       const g = groupMap.get(key);
@@ -319,6 +322,7 @@ export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
   const branchNote = t.branchReceiptNote || t.branch_receipt_note || null;
   const hasDiscrepancy = t.discrepancyFlag || t.discrepancy_flag || false;
   const dispatchNotes = t.dispatchNotes || t.dispatch_notes || null;
+  const autoAdjustedProducts = t.autoAdjustedProducts || t.auto_adjusted_products || {};
   const createdBy = t.createdBy || t.created_by || null;
   const dispatchedBy = t.dispatchedBy || t.dispatched_by || null;
   const receivedBy = t.receivedBy || t.received_by || signatureName || null;
@@ -484,7 +488,7 @@ export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
                 const singleExpiringSoon = singleExpiry && new Date(singleExpiry) < new Date(Date.now() + 90 * 86400000);
 
                 const productRow = (
-                  <tr key={`g-${gi}`} style={{ background: rowBg }}>
+                  <tr key={`g-${gi}`} style={{ background: g.autoAdjusted ? '#fffbeb' : rowBg }}>
                     <TD style={{ fontWeight: 700 }}>{gi + 1}</TD>
                     <TD style={{ fontWeight: 700 }}>{g.displayName}</TD>
                     <TD style={{ fontFamily: 'monospace', fontSize: 10 }}>{g.productCode || '—'}</TD>
@@ -508,7 +512,10 @@ export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
                     <TD align="right" style={{ fontWeight: 700, color: receivedColor }}>
                       {g.totalReceived != null ? g.totalReceived : '—'}
                     </TD>
-                    <TD style={{ fontSize: 10, color: '#64748b', maxWidth: 120 }}>{g.remarks || '—'}</TD>
+                    <TD style={{ fontSize: 10, maxWidth: 120 }}>
+                      {g.autoAdjusted && <span style={{ color: '#d97706', fontWeight: 700, display: 'block' }}>⚠️ Adjusted{g.originalQty != null ? ` (orig: ${g.originalQty})` : ''}</span>}
+                      <span style={{ color: '#64748b' }}>{g.remarks || (g.autoAdjusted ? '' : '—')}</span>
+                    </TD>
                   </tr>
                 );
 
@@ -546,9 +553,12 @@ export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
                 const expiryDate = item.expiryDate || item.expiry_date;
                 const isExpiringSoon = expiryDate && new Date(expiryDate) < new Date(Date.now() + 90 * 86400000);
                 const variance = qtyRecv != null ? Number(qtyRecv) - (qtyAppr != null ? Number(qtyAppr) : qtyPrep) : null;
+                const itemName = item.productName || item.product_name || '';
+                const isAdj = !!(item.autoAdjusted || item.auto_adjusted || autoAdjustedProducts[itemName]);
+                const adjOrigQty = item.originalQty ?? item.original_qty ?? autoAdjustedProducts[itemName]?.original ?? null;
 
                 return (
-                  <tr key={i} style={{ background: i % 2 === 0 ? 'white' : '#f9fafb' }}>
+                  <tr key={i} style={{ background: isAdj ? '#fffbeb' : (i % 2 === 0 ? 'white' : '#f9fafb') }}>
                     <TD>{i + 1}</TD>
                     <TD style={{ fontWeight: 600 }}>{item.productName || item.product_name || item.productId || '—'}</TD>
                     <TD style={{ fontFamily: 'monospace', fontSize: 10 }}>{item.productCode || item.product_code || item.sku || '—'}</TD>
@@ -564,8 +574,9 @@ export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
                     <TD align="right" style={{ fontWeight: 700, color: qtyRecv != null ? (variance !== 0 ? '#dc2626' : '#16a34a') : '#9ca3af' }}>
                       {qtyRecv != null ? Number(qtyRecv) : '—'}
                     </TD>
-                    <TD style={{ fontSize: 10, color: '#64748b', maxWidth: 120 }}>
-                      {item.discrepancyNote || item.discrepancy_note || item.lineNote || item.line_note || '—'}
+                    <TD style={{ fontSize: 10, maxWidth: 120 }}>
+                      {isAdj && <span style={{ color: '#d97706', fontWeight: 700, display: 'block' }}>⚠️ Adjusted{adjOrigQty != null ? ` (orig: ${adjOrigQty})` : ''}</span>}
+                      <span style={{ color: '#64748b' }}>{item.discrepancyNote || item.discrepancy_note || item.lineNote || item.line_note || (isAdj ? '' : '—')}</span>
                     </TD>
                   </tr>
                 );
