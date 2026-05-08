@@ -373,7 +373,47 @@ export default async function handler(req, res) {
       ]);
 
       const walkinSales = rows.map(normalizeSaleRow).filter(Boolean);
-      const rxSales = rxRows.map(normalizeRxRow).filter(Boolean);
+      const rawRxSales = rxRows.map(normalizeRxRow).filter(Boolean);
+
+      // Populate dispensed products from branch_inventory_movements for Rx entries
+      // so the refund flow can show product items to select
+      let rxSales = rawRxSales;
+      if (rawRxSales.length > 0) {
+        const refs = rawRxSales.map(s => s.reportId).filter(Boolean);
+        if (refs.length > 0) {
+          const dispRows = await getMany(
+            `SELECT product_name, batch_no, SUM(ABS(quantity)) AS quantity, MAX(ABS(unit_price)) AS unit_price, reference
+             FROM branch_inventory_movements
+             WHERE type = 'prescription_dispense' AND reference = ANY($1::text[])
+             GROUP BY product_name, batch_no, reference`,
+            [refs]
+          ).catch(() => []);
+
+          // Build a map: reportId → [products]
+          const prodMap = {};
+          for (const d of dispRows) {
+            const key = d.reference;
+            if (!prodMap[key]) prodMap[key] = [];
+            prodMap[key].push({
+              product_name: d.product_name,
+              name: d.product_name,
+              description: d.product_name,
+              batch_no: d.batch_no || null,
+              batchNo: d.batch_no || null,
+              quantity: Number(d.quantity || 0),
+              qty: Number(d.quantity || 0),
+              unit_price: Number(d.unit_price || 0),
+              dpPrice: Number(d.unit_price || 0),
+              dp: Number(d.unit_price || 0),
+            });
+          }
+
+          rxSales = rawRxSales.map(s => ({
+            ...s,
+            products: prodMap[s.reportId] || [],
+          }));
+        }
+      }
 
       // Merge and sort descending by timestamp so the list shows a unified chronological view
       const allSales = [...walkinSales, ...rxSales].sort((a, b) => {
