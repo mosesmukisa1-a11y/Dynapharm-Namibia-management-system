@@ -2180,6 +2180,20 @@ function ApprovalsTab() {
                   })}
                 </tbody>
               </table>
+              {(() => {
+                const totalOriginal = amendItems.reduce((s, it) => s + Number(it.quantity), 0);
+                const activeBatches = amendItems.filter(it => Number(it.quantityApproved) > 0);
+                const removedCount = amendItems.length - activeBatches.length;
+                const totalApproved = activeBatches.reduce((s, it) => s + Number(it.quantityApproved), 0);
+                return (
+                  <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: '#92400e', fontWeight: 600 }}>
+                    Approving <strong>{totalApproved}</strong> of <strong>{totalOriginal}</strong> total units across <strong>{activeBatches.length}</strong> batch{activeBatches.length !== 1 ? 'es' : ''}{' '}
+                    <span style={{ color: removedCount > 0 ? '#dc2626' : '#a16207', fontWeight: removedCount > 0 ? 700 : 600 }}>
+                      ({removedCount} removed)
+                    </span>
+                  </div>
+                );
+              })()}
               <div style={{ marginBottom: 16 }}>
                 <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Amendment Comment / Reason</label>
                 <textarea value={amendComment} onChange={e => setAmendComment(e.target.value)}
