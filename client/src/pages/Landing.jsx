@@ -492,10 +492,18 @@ export default function Landing() {
                     const CatIcon = meta.icon;
                     const firstImg = p.images?.[0];
                     const imgSrc = firstImg
-                      ? (firstImg.image_data
-                          ? `data:image/${firstImg.image_type || 'jpeg'};base64,${firstImg.image_data}`
-                          : firstImg.image_url || null)
+                      ? (firstImg.image_data || firstImg.image_url || null)
                       : null;
+                    const CAT_DESC = {
+                      'Beverages': 'A premium wellness drink crafted for daily vitality and energy.',
+                      'Health Supplements': 'Supports your immune system, energy, and overall well-being.',
+                      'Personal Care': 'Gentle daily care products for healthy skin and body.',
+                      'Agriculture': 'Effective plant nutrition and agricultural health solution.',
+                      'Food & Nutrition': 'High-quality food supplement for balanced daily nutrition.',
+                      'Equipment': 'Wellness equipment designed for better health outcomes.',
+                      'General': 'A quality Dynapharm product for your wellness journey.',
+                    };
+                    const desc = p.description || CAT_DESC[cat] || CAT_DESC['General'];
                     return (
                       <div key={p.id || i}
                         onClick={() => navigate('/shop')}
@@ -517,36 +525,41 @@ export default function Landing() {
                               onMouseOver={e => { e.target.style.transform = 'scale(1.06)'; }}
                               onMouseOut={e => { e.target.style.transform = 'scale(1)'; }}
                             />
-                            {/* Category pill overlay */}
-                            <div style={{ position: 'absolute', top: 10, left: 10, display: 'flex', alignItems: 'center', gap: 5, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)', borderRadius: 99, padding: '4px 10px' }}>
+                            {/* Category pill — bottom left */}
+                            <div style={{ position: 'absolute', bottom: 10, left: 10, display: 'flex', alignItems: 'center', gap: 5, background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(8px)', borderRadius: 99, padding: '4px 10px' }}>
                               <CatIcon size={11} style={{ color: meta.color }} />
                               <span style={{ fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#fff' }}>{cat}</span>
                             </div>
+                            {/* Cart icon — top right */}
+                            <div style={{ position: 'absolute', top: 10, right: 10, width: 30, height: 30, borderRadius: '50%', background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <ShoppingCart size={14} style={{ color: '#fff' }} />
+                            </div>
                           </div>
                         ) : (
-                          <div style={{ height: 140, background: meta.grad, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden', flexShrink: 0 }}>
+                          <div style={{ height: 150, background: meta.grad, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden', flexShrink: 0 }}>
                             <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.12)' }} />
                             <div style={{ position: 'absolute', top: -18, right: -18, width: 90, height: 90, borderRadius: '50%', background: 'rgba(255,255,255,0.06)' }} />
                             <div style={{ position: 'absolute', bottom: -10, left: -10, width: 60, height: 60, borderRadius: '50%', background: 'rgba(255,255,255,0.04)' }} />
-                            <CatIcon size={42} style={{ color: 'rgba(255,255,255,0.88)', position: 'relative', zIndex: 1 }} />
-                            {/* Category pill overlay */}
-                            <div style={{ position: 'absolute', top: 10, left: 10, display: 'flex', alignItems: 'center', gap: 5, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(6px)', borderRadius: 99, padding: '4px 10px' }}>
+                            <CatIcon size={44} style={{ color: 'rgba(255,255,255,0.88)', position: 'relative', zIndex: 1 }} />
+                            {/* Category pill — bottom left */}
+                            <div style={{ position: 'absolute', bottom: 10, left: 10, display: 'flex', alignItems: 'center', gap: 5, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(6px)', borderRadius: 99, padding: '4px 10px' }}>
                               <span style={{ fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'rgba(255,255,255,0.9)' }}>{cat}</span>
+                            </div>
+                            {/* Cart icon — top right */}
+                            <div style={{ position: 'absolute', top: 10, right: 10, width: 30, height: 30, borderRadius: '50%', background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <ShoppingCart size={14} style={{ color: 'rgba(255,255,255,0.85)' }} />
                             </div>
                           </div>
                         )}
 
                         {/* Card body */}
-                        <div style={{ padding: '14px 16px 18px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                          <p style={{ fontWeight: 700, color: '#fff', fontSize: '0.84rem', lineHeight: 1.45, marginBottom: 12, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                        <div style={{ padding: '14px 16px 18px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+                          <p style={{ fontWeight: 700, color: '#fff', fontSize: '0.84rem', lineHeight: 1.45, marginBottom: 8, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                             {p.name}
                           </p>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 'auto' }}>
-                            <span style={{ fontSize: '0.92rem', fontWeight: 900, color: '#fca5a5' }}>
-                              N$ {parseFloat(p.cp || p.dp || 0).toFixed(2)}
-                            </span>
-                            <span style={{ fontSize: '0.67rem', color: 'rgba(255,255,255,0.28)', fontWeight: 600 }}>Consumer Price</span>
-                          </div>
+                          <p style={{ fontSize: '0.74rem', color: 'rgba(255,255,255,0.45)', lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', margin: 0 }}>
+                            {desc}
+                          </p>
                         </div>
                       </div>
                     );
