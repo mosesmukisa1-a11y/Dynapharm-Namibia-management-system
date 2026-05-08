@@ -613,6 +613,7 @@ function ApprovalsTab() {
   const [amendModal, setAmendModal] = useState(null);
   const [amendItems, setAmendItems] = useState([]);
   const [amendComment, setAmendComment] = useState('');
+  const [amendShortfallWarning, setAmendShortfallWarning] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [rentReviewModal, setRentReviewModal] = useState(null);
   const [rentReviewNote, setRentReviewNote] = useState('');
@@ -763,6 +764,7 @@ function ApprovalsTab() {
       setAmendModal(null);
       setAmendItems([]);
       setAmendComment('');
+      setAmendShortfallWarning(false);
     } catch (err) {
       setMessage('Error: ' + err.message);
     } finally {
@@ -2200,12 +2202,48 @@ function ApprovalsTab() {
                   placeholder="Explain what was changed and why..."
                   style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 13, minHeight: 80, resize: 'vertical' }} />
               </div>
+              {amendShortfallWarning && (() => {
+                const totalOriginal = amendItems.reduce((s, it) => s + Number(it.quantity), 0);
+                const totalApproved = amendItems.filter(it => Number(it.quantityApproved) > 0).reduce((s, it) => s + Number(it.quantityApproved), 0);
+                const pct = totalOriginal > 0 ? Math.round((totalApproved / totalOriginal) * 100) : 0;
+                return (
+                  <div style={{ background: '#fef2f2', border: '2px solid #f87171', borderRadius: 10, padding: '16px 18px', marginBottom: 16 }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                      <span style={{ fontSize: 22, flexShrink: 0 }}>⚠️</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 700, fontSize: 14, color: '#991b1b', marginBottom: 4 }}>Significant Shortfall — Are you sure?</div>
+                        <div style={{ fontSize: 13, color: '#7f1d1d', marginBottom: 12 }}>
+                          You are approving only <strong>{totalApproved}</strong> of <strong>{totalOriginal}</strong> units (<strong>{pct}%</strong> of the original request). This is below 50% of what was requested.
+                        </div>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <button onClick={() => setAmendShortfallWarning(false)} disabled={processing}
+                            style={{ padding: '7px 14px', background: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: 6, cursor: processing ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 600, color: '#374151', opacity: processing ? 0.5 : 1 }}>
+                            ← Go Back
+                          </button>
+                          <button onClick={() => { setAmendShortfallWarning(false); handleAmendApprove(); }} disabled={processing}
+                            style={{ padding: '7px 14px', background: '#dc2626', color: 'white', border: 'none', borderRadius: 6, cursor: processing ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 700, opacity: processing ? 0.65 : 1 }}>
+                            {processing ? 'Processing...' : 'Proceed Anyway'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <button onClick={() => { setAmendModal(null); setAmendItems([]); setAmendComment(''); }} disabled={processing}
+                <button onClick={() => { setAmendModal(null); setAmendItems([]); setAmendComment(''); setAmendShortfallWarning(false); }} disabled={processing}
                   style={{ padding: '8px 16px', background: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: 6, cursor: processing ? 'not-allowed' : 'pointer', fontSize: 13, opacity: processing ? 0.5 : 1 }}>
                   Cancel
                 </button>
-                <button onClick={handleAmendApprove} disabled={processing}
+                <button onClick={() => {
+                    const totalOriginal = amendItems.reduce((s, it) => s + Number(it.quantity), 0);
+                    const totalApproved = amendItems.filter(it => Number(it.quantityApproved) > 0).reduce((s, it) => s + Number(it.quantityApproved), 0);
+                    if (totalOriginal > 0 && totalApproved < totalOriginal * 0.5) {
+                      setAmendShortfallWarning(true);
+                    } else {
+                      handleAmendApprove();
+                    }
+                  }} disabled={processing}
                   style={{ padding: '8px 20px', background: '#f59e0b', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 600, opacity: processing ? 0.6 : 1 }}>
                   {processing ? 'Processing...' : '✏️ Amend & Approve'}
                 </button>
