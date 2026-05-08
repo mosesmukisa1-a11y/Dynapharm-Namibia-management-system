@@ -63,6 +63,14 @@ export default async function handler(req, res) {
 
     if (req.method === 'POST') {
       const body = await parseJsonBody(req);
+
+      // Require at least one distributor
+      const hasDistributors = Array.isArray(body.distributors) && body.distributors.length > 0;
+      const hasDistributorName = body.distributor_name && body.distributor_name.trim();
+      if (!hasDistributors && !hasDistributorName) {
+        return res.status(400).json({ success: false, error: "Distributor name is required. Please select at least one distributor before submitting." });
+      }
+
       const id = body.id || `FP-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
       await query(
         `INSERT INTO field_program_requests

@@ -9174,6 +9174,7 @@ function FieldProgramTab() {
   const [dpPricesMap, setDpPricesMap] = useState({});
   const [reconcileNotes, setReconcileNotes] = useState('');
   const [reconciling, setReconciling] = useState(false);
+  const [formError, setFormError] = useState('');
 
   useEffect(() => {
     Promise.all([
@@ -9257,7 +9258,12 @@ function FieldProgramTab() {
 
   const handleSubmit = async (e) => {
     e?.preventDefault?.();
-    if (selectedDistributors.length === 0 || !agreeTerms) return;
+    if (selectedDistributors.length === 0) {
+      setFormError('Please select at least one distributor before submitting.');
+      return;
+    }
+    setFormError('');
+    if (!agreeTerms) return;
     const validProducts = productRows.filter(r => r.product.trim() && r.quantity);
     if (validProducts.length === 0) return;
     setSubmitting(true);
@@ -9629,7 +9635,7 @@ function FieldProgramTab() {
             <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
               {/* ── MULTIPLE DISTRIBUTORS ── */}
-              <div style={{ background: '#fffbeb', border: '2px solid #fcd34d', borderRadius: 12, padding: 16 }}>
+              <div style={{ background: selectedDistributors.length === 0 && formError ? '#fff5f5' : '#fffbeb', border: `2px solid ${selectedDistributors.length === 0 && formError ? '#f87171' : '#fcd34d'}`, borderRadius: 12, padding: 16 }}>
                 <div style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '.12em', color: '#92400e', textTransform: 'uppercase', marginBottom: 10 }}>
                   Distributors *
                   <span style={{ fontWeight: 400, fontSize: '0.75rem', textTransform: 'none', color: '#b45309', marginLeft: 6 }}>— add one or more members participating in the field program</span>
@@ -9785,12 +9791,19 @@ function FieldProgramTab() {
             </div>
 
             {/* Footer */}
-            <div style={{ padding: '14px 24px', borderTop: '1px solid #f0e8ea', display: 'flex', gap: 10, justifyContent: 'flex-end', background: '#fff', flexShrink: 0 }}>
-              <button onClick={() => setShowForm(false)} style={{ padding: '10px 20px', border: '1.5px solid #e8d5d8', borderRadius: 11, background: '#fff', cursor: 'pointer', color: '#64748b', fontWeight: 600, fontSize: '0.87rem' }}>Cancel</button>
-              <button onClick={handleSubmit} disabled={submitting || !agreeTerms || selectedDistributors.length === 0 || productRows.filter(r => r.product.trim() && r.quantity).length === 0}
-                style={{ padding: '11px 32px', border: 'none', borderRadius: 11, background: 'linear-gradient(135deg,#c41e3a,#8b0000)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontSize: '0.92rem', opacity: (submitting || !agreeTerms || selectedDistributors.length === 0) ? 0.55 : 1, boxShadow: '0 4px 14px rgba(196,30,58,0.3)' }}>
-                {submitting ? '⏳ Submitting…' : '✅ Submit Request'}
-              </button>
+            <div style={{ padding: '14px 24px', borderTop: '1px solid #f0e8ea', background: '#fff', flexShrink: 0 }}>
+              {formError && (
+                <div style={{ marginBottom: 10, padding: '9px 14px', background: '#fff5f5', border: '1.5px solid #f87171', borderRadius: 9, fontSize: '0.83rem', color: '#b91c1c', fontWeight: 600 }}>
+                  ⚠️ {formError}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                <button onClick={() => { setShowForm(false); setFormError(''); }} style={{ padding: '10px 20px', border: '1.5px solid #e8d5d8', borderRadius: 11, background: '#fff', cursor: 'pointer', color: '#64748b', fontWeight: 600, fontSize: '0.87rem' }}>Cancel</button>
+                <button onClick={handleSubmit} disabled={submitting || !agreeTerms || productRows.filter(r => r.product.trim() && r.quantity).length === 0}
+                  style={{ padding: '11px 32px', border: 'none', borderRadius: 11, background: 'linear-gradient(135deg,#c41e3a,#8b0000)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontSize: '0.92rem', opacity: (submitting || !agreeTerms || selectedDistributors.length === 0) ? 0.55 : 1, boxShadow: '0 4px 14px rgba(196,30,58,0.3)' }}>
+                  {submitting ? '⏳ Submitting…' : '✅ Submit Request'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
