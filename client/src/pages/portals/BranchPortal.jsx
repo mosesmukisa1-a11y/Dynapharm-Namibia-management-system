@@ -1560,25 +1560,36 @@ function WalkInSalesTab() {
                 branchAmount: sBranchAmt,
                 distributorProfit: !sIsM && sBranchAmt != null ? sTotalAmt - sBranchAmt : null,
               };
+              const isRx = s.saleType === 'prescription';
               return (
                 <div key={i} className="flex items-center justify-between px-5 py-3.5 text-sm hover:bg-gray-50 transition-colors gap-3 flex-wrap">
                   <div className="flex items-center gap-3 min-w-0 flex-1">
                     <span className="font-mono font-semibold text-gray-700 text-xs">{saleParams.receiptNumber}</span>
-                    <span className="px-2 py-0.5 rounded-full text-xs font-medium shrink-0" style={{ background: sIsM ? '#dbeafe' : '#fef3c7', color: sIsM ? '#1e40af' : '#92400e' }}>
-                      {sIsM ? '🏅 Member' : '👤 Walk-in'}
-                    </span>
+                    {isRx ? (
+                      <span className="px-2 py-0.5 rounded-full text-xs font-medium shrink-0" style={{ background: '#f0fdf4', color: '#15803d', border: '1px solid #86efac' }}>
+                        💊 Rx
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-full text-xs font-medium shrink-0" style={{ background: sIsM ? '#dbeafe' : '#fef3c7', color: sIsM ? '#1e40af' : '#92400e' }}>
+                        {sIsM ? '🏅 Member' : '👤 Walk-in'}
+                      </span>
+                    )}
                     <span className="text-gray-500 truncate">{saleParams.customerName || '—'}</span>
                     {saleParams.nbNumber && <span className="text-xs text-gray-400 shrink-0">{saleParams.nbNumber}</span>}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="font-bold text-gray-800">{formatCurrency(saleParams.totalAmount)}</span>
                     <span className="text-xs text-gray-400 hidden sm:inline">{formatDate(s.created_at || s.timestamp)}</span>
-                    <button onClick={(e) => { e.stopPropagation(); printReceipt(generateReceiptHTML({ ...saleParams, showBV: true, cashback: 0 })); }}
-                      title="Print 80mm thermal receipt"
-                      className="px-2.5 py-1 text-xs rounded border cursor-pointer" style={{ color: '#374151', borderColor: '#e2e8f0', background: '#fff' }}>🖨️ Thermal</button>
-                    <button onClick={(e) => { e.stopPropagation(); printSalesPDF({ ...saleParams, showBV: sIsM, cashback: 0 }); }}
-                      title="Open A4 PDF invoice"
-                      className="px-2.5 py-1 text-xs rounded border cursor-pointer" style={{ color: '#fff', borderColor: '#c41e3a', background: '#c41e3a', fontWeight: 600 }}>📄 PDF</button>
+                    {isRx ? null : (
+                      <>
+                        <button onClick={(e) => { e.stopPropagation(); printReceipt(generateReceiptHTML({ ...saleParams, showBV: true, cashback: 0 })); }}
+                          title="Print 80mm thermal receipt"
+                          className="px-2.5 py-1 text-xs rounded border cursor-pointer" style={{ color: '#374151', borderColor: '#e2e8f0', background: '#fff' }}>🖨️ Thermal</button>
+                        <button onClick={(e) => { e.stopPropagation(); printSalesPDF({ ...saleParams, showBV: sIsM, cashback: 0 }); }}
+                          title="Open A4 PDF invoice"
+                          className="px-2.5 py-1 text-xs rounded border cursor-pointer" style={{ color: '#fff', borderColor: '#c41e3a', background: '#c41e3a', fontWeight: 600 }}>📄 PDF</button>
+                      </>
+                    )}
                   </div>
                 </div>
               );

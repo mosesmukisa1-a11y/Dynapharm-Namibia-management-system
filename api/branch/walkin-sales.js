@@ -245,6 +245,96 @@ function buildSelectQuery(searchParams, scopedBranches, enforced) {
   return { queryText, params };
 }
 
+/**
+ * Build a SELECT query against branch_activity_transactions for
+ * prescription_dispensing entries, honouring the same branch/date/search
+ * filters as the regular walkin-sales query.
+ */
+function buildRxQuery(searchParams, scopedBranches, enforced) {
+  const conditions = ["activity_type = 'prescription_dispensing'"];
+  const params = [];
+
+  if (enforced) {
+    params.push(scopedBranches);
+    conditions.push(`branch_id = ANY($${params.length})`);
+  } else {
+    const branch = searchParams.get('branch') || searchParams.get('branch_id');
+    if (branch) {
+      params.push(branch);
+      conditions.push(`branch_id = $${params.length}`);
+    }
+  }
+
+  const from = searchParams.get('from');
+  if (from) {
+    params.push(from);
+    conditions.push(`service_date::date >= $${params.length}::date`);
+  }
+
+  const to = searchParams.get('to');
+  if (to) {
+    params.push(to);
+    conditions.push(`service_date::date <= $${params.length}::date`);
+  }
+
+  const search = searchParams.get('search');
+  if (search) {
+    params.push(`%${search.toLowerCase()}%`);
+    conditions.push(`(LOWER(client_name) LIKE $${params.length} OR LOWER(id) LIKE $${params.length} OR LOWER(COALESCE(form_reference_id,'')) LIKE $${params.length})`);
+  }
+
+  const hasDateFilter = searchParams.get('from') || searchParams.get('to');
+  const limitParam = parseInt(searchParams.get('limit') || '0', 10);
+  const effectiveLimit = limitParam > 0 ? limitParam : hasDateFilter ? 5000 : 250;
+
+  params.push(effectiveLimit);
+  const queryText = `SELECT * FROM branch_activity_transactions WHERE ${conditions.join(' AND ')} ORDER BY service_date DESC, created_at DESC LIMIT $${params.length}`;
+
+  return { queryText, params };
+}
+
+/** Normalize a BAT prescription_dispensing row into the same shape as normalizeSaleRow. */
+function normalizeRxRow(row) {
+  if (!row) return null;
+  const clientType = row.client_type || 'patient';
+  const isMember = clientType === 'member';
+  const serviceDate = row.service_date instanceof Date
+    ? row.service_date.toISOString()
+    : (row.service_date ? new Date(row.service_date).toISOString() : null);
+  const createdAt = row.created_at instanceof Date
+    ? row.created_at.toISOString()
+    : row.created_at || null;
+  const total = Number(row.grand_total || 0);
+
+  return {
+    id: row.id,
+    saleNumber: row.form_reference_id || row.id,
+    saleType: 'prescription',
+    timestamp: serviceDate || createdAt,
+    branch: row.branch_id,
+    branchId: row.branch_id,
+    branch_id: row.branch_id,
+    customerName: row.client_name || 'Patient',
+    customer_name: row.client_name || 'Patient',
+    customerType: isMember ? 'member' : 'non_member',
+    customer_type: isMember ? 'member' : 'non_member',
+    nb_number: row.nb_number || null,
+    referral_nb: row.referral_nb || null,
+    paymentMethod: row.payment_method || 'cash',
+    payment_method: row.payment_method || 'cash',
+    subtotal: Number(row.product_total_cp || total),
+    total,
+    totalAmount: total,
+    totalBV: 0,
+    products: [],
+    reportId: row.form_reference_id || null,
+    status: 'completed',
+    soldBy: row.captured_by || null,
+    created_at: createdAt,
+    updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at || null,
+  };
+}
+
 export default async function handler(req, res) {
   applyAuthCors(req, res);
 
@@ -275,10 +365,26 @@ export default async function handler(req, res) {
       }
 
       const { queryText, params } = buildSelectQuery(searchParams, branchScope.branches, branchScope.enforced);
-      const rows = await getMany(queryText, params);
+      const { queryText: rxQueryText, params: rxParams } = buildRxQuery(searchParams, branchScope.branches, branchScope.enforced);
+
+      const [rows, rxRows] = await Promise.all([
+        getMany(queryText, params),
+        getMany(rxQueryText, rxParams).catch(() => []),
+      ]);
+
+      const walkinSales = rows.map(normalizeSaleRow).filter(Boolean);
+      const rxSales = rxRows.map(normalizeRxRow).filter(Boolean);
+
+      // Merge and sort descending by timestamp so the list shows a unified chronological view
+      const allSales = [...walkinSales, ...rxSales].sort((a, b) => {
+        const ta = new Date(a.timestamp || a.created_at || 0).getTime();
+        const tb = new Date(b.timestamp || b.created_at || 0).getTime();
+        return tb - ta;
+      });
+
       return res.status(200).json({
         success: true,
-        sales: rows.map(normalizeSaleRow).filter(Boolean),
+        sales: allSales,
       });
     }
 
