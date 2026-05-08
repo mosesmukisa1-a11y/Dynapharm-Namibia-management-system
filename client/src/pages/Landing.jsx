@@ -7,6 +7,7 @@ import {
   Heart, Leaf, Globe, Users, ShieldCheck, Award,
   ChevronRight, LogIn, ShoppingCart, Stethoscope,
   MapPin, Phone, UserCircle, ArrowRight, Zap, Building2,
+  Coffee, Sparkles, Wrench, Apple, Package, Star,
 } from 'lucide-react';
 import { BRANCH_DETAILS, COMPANY_INFO } from '../lib/constants';
 
@@ -55,6 +56,16 @@ function StatItem({ icon: Icon, value, label, animate, border }) {
   );
 }
 
+const CAT_META = {
+  'Beverages':          { icon: Coffee,    color: '#f59e0b', grad: 'linear-gradient(135deg,#78350f,#b45309)' },
+  'Health Supplements': { icon: Heart,     color: '#60a5fa', grad: 'linear-gradient(135deg,#1e3a5f,#1d4ed8)' },
+  'Personal Care':      { icon: Sparkles,  color: '#f472b6', grad: 'linear-gradient(135deg,#4a0a2a,#be185d)' },
+  'Agriculture':        { icon: Leaf,      color: '#4ade80', grad: 'linear-gradient(135deg,#14532d,#15803d)' },
+  'Food & Nutrition':   { icon: Apple,     color: '#fb923c', grad: 'linear-gradient(135deg,#431407,#c2410c)' },
+  'Equipment':          { icon: Wrench,    color: '#94a3b8', grad: 'linear-gradient(135deg,#1e293b,#475569)' },
+  'General':            { icon: Package,   color: '#c084fc', grad: 'linear-gradient(135deg,#2e1065,#7c3aed)' },
+};
+
 const HERO_FALLBACK = [
   'linear-gradient(135deg,#12020a 0%,#5a0f1e 55%,#8b1726 100%)',
   'linear-gradient(135deg,#08101e 0%,#1e3a5f 55%,#2a527a 100%)',
@@ -72,6 +83,8 @@ export default function Landing() {
   const [statsOn, setStatsOn] = useState(false);
   const statsRef = useRef(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [products, setProducts] = useState([]);
+  const [activeCategory, setActiveCategory] = useState('all');
 
   useEffect(() => {
     fetch('/api/media?upload_type=training', { credentials: 'include' })
@@ -101,6 +114,13 @@ export default function Landing() {
     const obs = new IntersectionObserver(([e]) => { if (e.isIntersecting) setStatsOn(true); }, { threshold: 0.25 });
     obs.observe(el);
     return () => obs.disconnect();
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/products', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : [])
+      .then(data => { if (Array.isArray(data)) setProducts(data); })
+      .catch(() => {});
   }, []);
 
   const scrollTo = (id) => {
@@ -135,8 +155,8 @@ export default function Landing() {
             {[
               { label: 'Home', action: () => window.scrollTo({ top: 0, behavior: 'smooth' }) },
               { label: 'About', action: () => scrollTo('about') },
+              { label: 'Products', action: () => scrollTo('products') },
               { label: 'Our Outlets', action: () => scrollTo('outlets') },
-              { label: 'Shop', action: () => navigate('/shop') },
               { label: 'Health Check-Up', action: () => navigate('/checkup') },
             ].map(l => (
               <button key={l.label} onClick={l.action} style={{
@@ -390,6 +410,145 @@ export default function Landing() {
           </div>
         </div>
       </section>
+
+      {/* ── PRODUCTS ── */}
+      {(() => {
+        const allCats = ['all', ...Object.keys(
+          products.reduce((a, p) => { a[p.category || 'General'] = true; return a; }, {})
+        )];
+        const catCounts = products.reduce((a, p) => {
+          const c = p.category || 'General'; a[c] = (a[c] || 0) + 1; return a;
+        }, {});
+        const filtered = (activeCategory === 'all' ? products : products.filter(p => (p.category || 'General') === activeCategory)).slice(0, 12);
+        return (
+          <section id="products" style={{ background: '#0d0d10', padding: '20px 24px 100px' }}>
+            <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+
+              {/* Heading */}
+              <div style={{ textAlign: 'center', marginBottom: 48 }}>
+                <div style={{ display: 'inline-block', background: 'rgba(196,30,58,0.14)', color: '#fca5a5', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.16em', textTransform: 'uppercase', padding: '5px 16px', borderRadius: 99, marginBottom: 18, border: '1px solid rgba(252,165,165,0.2)' }}>
+                  Dynapharm Product Range
+                </div>
+                <h2 style={{ fontSize: 'clamp(1.9rem,3.2vw,2.8rem)', fontWeight: 900, color: '#fff', lineHeight: 1.12, letterSpacing: '-0.02em', marginBottom: 14 }}>
+                  Our Products
+                </h2>
+                <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.93rem', maxWidth: 480, margin: '0 auto' }}>
+                  Over 90 premium natural products — crafted from nature's finest ingredients for health, vitality and wellness.
+                </p>
+
+                {/* Stats pills */}
+                <div style={{ display: 'flex', justifyContent: 'center', gap: 12, marginTop: 22, flexWrap: 'wrap' }}>
+                  {[
+                    { label: `${products.length}+ PRODUCTS`, icon: Package },
+                    { label: `${allCats.length - 1} CATEGORIES`, icon: Star },
+                  ].map(({ label, icon: Icon }) => (
+                    <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 99, padding: '7px 18px', fontSize: '0.78rem', fontWeight: 700, color: 'rgba(255,255,255,0.8)', letterSpacing: '0.08em' }}>
+                      <Icon size={14} style={{ color: '#fca5a5' }} /> {label}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Category filter pills */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, justifyContent: 'center', marginBottom: 40 }}>
+                {allCats.map(cat => {
+                  const meta = cat !== 'all' ? (CAT_META[cat] || CAT_META['General']) : null;
+                  const isActive = activeCategory === cat;
+                  return (
+                    <button key={cat} onClick={() => setActiveCategory(cat)} style={{
+                      display: 'flex', alignItems: 'center', gap: 7,
+                      padding: '9px 20px', borderRadius: 99, border: 'none', cursor: 'pointer',
+                      fontWeight: 700, fontSize: '0.82rem', transition: 'all 0.2s',
+                      background: isActive
+                        ? (meta ? meta.grad : '#c41e3a')
+                        : 'rgba(255,255,255,0.07)',
+                      color: isActive ? '#fff' : 'rgba(255,255,255,0.6)',
+                      boxShadow: isActive ? '0 4px 16px rgba(0,0,0,0.3)' : 'none',
+                      transform: isActive ? 'translateY(-1px)' : 'none',
+                    }}
+                    onMouseOver={e => { if (!isActive) { e.currentTarget.style.background = 'rgba(255,255,255,0.12)'; e.currentTarget.style.color = '#fff'; } }}
+                    onMouseOut={e => { if (!isActive) { e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; e.currentTarget.style.color = 'rgba(255,255,255,0.6)'; } }}
+                    >
+                      {meta && <meta.icon size={14} style={{ color: isActive ? '#fff' : meta.color }} />}
+                      {cat === 'all' ? 'All Products' : cat}
+                      <span style={{ fontSize: '0.72rem', opacity: 0.75, fontWeight: 600 }}>
+                        ({cat === 'all' ? products.length : (catCounts[cat] || 0)})
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Product grid */}
+              {products.length === 0 ? (
+                <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.3)', padding: '60px 0', fontSize: '0.9rem' }}>
+                  Loading products…
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))', gap: 16 }}>
+                  {filtered.map((p, i) => {
+                    const cat = p.category || 'General';
+                    const meta = CAT_META[cat] || CAT_META['General'];
+                    const CatIcon = meta.icon;
+                    return (
+                      <div key={p.id || i}
+                        onClick={() => navigate('/shop')}
+                        style={{
+                          borderRadius: 16, overflow: 'hidden', cursor: 'pointer',
+                          background: '#18151a', border: '1px solid rgba(255,255,255,0.07)',
+                          transition: 'all 0.25s',
+                        }}
+                        onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 12px 40px rgba(0,0,0,0.4)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.14)'; }}
+                        onMouseOut={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)'; }}
+                      >
+                        {/* Coloured banner */}
+                        <div style={{ height: 80, background: meta.grad, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden' }}>
+                          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.15)' }} />
+                          <div style={{ position: 'absolute', top: -14, right: -14, width: 70, height: 70, borderRadius: '50%', background: 'rgba(255,255,255,0.07)' }} />
+                          <CatIcon size={34} style={{ color: 'rgba(255,255,255,0.9)', position: 'relative', zIndex: 1 }} />
+                        </div>
+                        {/* Card body */}
+                        <div style={{ padding: '14px 16px 16px' }}>
+                          <div style={{ display: 'inline-block', fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: meta.color, background: `${meta.color}18`, borderRadius: 4, padding: '2px 7px', marginBottom: 8 }}>
+                            {cat}
+                          </div>
+                          <p style={{ fontWeight: 700, color: '#fff', fontSize: '0.83rem', lineHeight: 1.45, marginBottom: 10, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                            {p.name}
+                          </p>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <span style={{ fontSize: '0.85rem', fontWeight: 900, color: '#fca5a5' }}>
+                              N$ {parseFloat(p.cp || p.dp || 0).toFixed(2)}
+                            </span>
+                            <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.3)', fontWeight: 600 }}>Consumer Price</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* View All */}
+              <div style={{ textAlign: 'center', marginTop: 44 }}>
+                <button onClick={() => navigate('/shop')} style={{
+                  padding: '14px 40px', background: '#c41e3a', color: '#fff', border: 'none',
+                  borderRadius: 99, fontWeight: 700, fontSize: '0.95rem', cursor: 'pointer',
+                  display: 'inline-flex', alignItems: 'center', gap: 8, transition: 'all 0.25s',
+                  boxShadow: '0 6px 24px rgba(196,30,58,0.4)',
+                }}
+                onMouseOver={e => { e.currentTarget.style.background = '#a01830'; e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 10px 32px rgba(196,30,58,0.5)'; }}
+                onMouseOut={e => { e.currentTarget.style.background = '#c41e3a'; e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 6px 24px rgba(196,30,58,0.4)'; }}
+                >
+                  View All Products <ChevronRight size={17} />
+                </button>
+                <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.78rem', marginTop: 12 }}>
+                  Showing {filtered.length} of {activeCategory === 'all' ? products.length : (catCounts[activeCategory] || 0)} products
+                </p>
+              </div>
+            </div>
+          </section>
+        );
+      })()}
 
       {/* ── WAVE TO LIGHT ── */}
       <div style={{ background: '#0d0d10', lineHeight: 0 }}>
