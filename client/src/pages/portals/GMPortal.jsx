@@ -615,6 +615,7 @@ function ApprovalsTab() {
   const [amendComment, setAmendComment] = useState('');
   const [amendShortfallWarning, setAmendShortfallWarning] = useState(false);
   const [amendShortfallAcknowledged, setAmendShortfallAcknowledged] = useState(false);
+  const [amendCommentBeforeWarning, setAmendCommentBeforeWarning] = useState('');
   const [processing, setProcessing] = useState(false);
   const [rentReviewModal, setRentReviewModal] = useState(null);
   const [rentReviewNote, setRentReviewNote] = useState('');
@@ -2221,13 +2222,11 @@ function ApprovalsTab() {
                           You are approving only <strong>{totalApproved}</strong> of <strong>{totalOriginal}</strong> units (<strong>{pct}%</strong> of the original request). This is below 50% of what was requested.
                         </div>
                         <div style={{ display: 'flex', gap: 8 }}>
-                          <button onClick={() => setAmendShortfallWarning(false)} disabled={processing}
+                          <button onClick={() => { setAmendShortfallWarning(false); setAmendComment(amendCommentBeforeWarning); }} disabled={processing}
                             style={{ padding: '7px 14px', background: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: 6, cursor: processing ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 600, color: '#374151', opacity: processing ? 0.5 : 1 }}>
                             ← Go Back
                           </button>
                           <button onClick={() => {
-                              const shortfallNote = `Shortfall acknowledged: approved ${totalApproved} of ${totalOriginal} units (${pct}%)`;
-                              setAmendComment(prev => prev ? `${prev}\n${shortfallNote}` : shortfallNote);
                               setAmendShortfallAcknowledged(true);
                               setAmendShortfallWarning(false);
                             }} disabled={processing}
@@ -2241,7 +2240,7 @@ function ApprovalsTab() {
                 );
               })()}
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <button onClick={() => { setAmendModal(null); setAmendItems([]); setAmendComment(''); setAmendShortfallWarning(false); setAmendShortfallAcknowledged(false); }} disabled={processing}
+                <button onClick={() => { setAmendModal(null); setAmendItems([]); setAmendComment(''); setAmendShortfallWarning(false); setAmendShortfallAcknowledged(false); setAmendCommentBeforeWarning(''); }} disabled={processing}
                   style={{ padding: '8px 16px', background: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: 6, cursor: processing ? 'not-allowed' : 'pointer', fontSize: 13, opacity: processing ? 0.5 : 1 }}>
                   Cancel
                 </button>
@@ -2253,6 +2252,11 @@ function ApprovalsTab() {
                     const totalOriginal = amendItems.reduce((s, it) => s + Number(it.quantity), 0);
                     const totalApproved = amendItems.filter(it => Number(it.quantityApproved) > 0).reduce((s, it) => s + Number(it.quantityApproved), 0);
                     if (totalOriginal > 0 && totalApproved < totalOriginal * 0.5) {
+                      const pct = Math.round((totalApproved / totalOriginal) * 100);
+                      const shortfallNote = `Shortfall acknowledged: approved ${totalApproved} of ${totalOriginal} units (${pct}%)`;
+                      const baseComment = amendShortfallWarning ? amendCommentBeforeWarning : amendComment;
+                      setAmendCommentBeforeWarning(baseComment);
+                      setAmendComment(baseComment ? `${baseComment}\n${shortfallNote}` : shortfallNote);
                       setAmendShortfallWarning(true);
                     } else {
                       handleAmendApprove();
