@@ -490,36 +490,62 @@ export default function Landing() {
                     const cat = p.category || 'General';
                     const meta = CAT_META[cat] || CAT_META['General'];
                     const CatIcon = meta.icon;
+                    const firstImg = p.images?.[0];
+                    const imgSrc = firstImg
+                      ? (firstImg.image_data
+                          ? `data:image/${firstImg.image_type || 'jpeg'};base64,${firstImg.image_data}`
+                          : firstImg.image_url || null)
+                      : null;
                     return (
                       <div key={p.id || i}
                         onClick={() => navigate('/shop')}
                         style={{
-                          borderRadius: 16, overflow: 'hidden', cursor: 'pointer',
+                          borderRadius: 18, overflow: 'hidden', cursor: 'pointer',
                           background: '#18151a', border: '1px solid rgba(255,255,255,0.07)',
-                          transition: 'all 0.25s',
+                          transition: 'all 0.3s', display: 'flex', flexDirection: 'column',
                         }}
-                        onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 12px 40px rgba(0,0,0,0.4)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.14)'; }}
+                        onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-6px)'; e.currentTarget.style.boxShadow = '0 16px 48px rgba(0,0,0,0.5)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.18)'; }}
                         onMouseOut={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)'; }}
                       >
-                        {/* Coloured banner */}
-                        <div style={{ height: 80, background: meta.grad, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden' }}>
-                          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.15)' }} />
-                          <div style={{ position: 'absolute', top: -14, right: -14, width: 70, height: 70, borderRadius: '50%', background: 'rgba(255,255,255,0.07)' }} />
-                          <CatIcon size={34} style={{ color: 'rgba(255,255,255,0.9)', position: 'relative', zIndex: 1 }} />
-                        </div>
-                        {/* Card body */}
-                        <div style={{ padding: '14px 16px 16px' }}>
-                          <div style={{ display: 'inline-block', fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: meta.color, background: `${meta.color}18`, borderRadius: 4, padding: '2px 7px', marginBottom: 8 }}>
-                            {cat}
+                        {/* Photo or gradient banner */}
+                        {imgSrc ? (
+                          <div style={{ height: 180, overflow: 'hidden', position: 'relative', background: meta.grad, flexShrink: 0 }}>
+                            <img
+                              src={imgSrc}
+                              alt={p.name}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transition: 'transform 0.5s ease' }}
+                              onMouseOver={e => { e.target.style.transform = 'scale(1.06)'; }}
+                              onMouseOut={e => { e.target.style.transform = 'scale(1)'; }}
+                            />
+                            {/* Category pill overlay */}
+                            <div style={{ position: 'absolute', top: 10, left: 10, display: 'flex', alignItems: 'center', gap: 5, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)', borderRadius: 99, padding: '4px 10px' }}>
+                              <CatIcon size={11} style={{ color: meta.color }} />
+                              <span style={{ fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#fff' }}>{cat}</span>
+                            </div>
                           </div>
-                          <p style={{ fontWeight: 700, color: '#fff', fontSize: '0.83rem', lineHeight: 1.45, marginBottom: 10, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                        ) : (
+                          <div style={{ height: 140, background: meta.grad, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden', flexShrink: 0 }}>
+                            <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.12)' }} />
+                            <div style={{ position: 'absolute', top: -18, right: -18, width: 90, height: 90, borderRadius: '50%', background: 'rgba(255,255,255,0.06)' }} />
+                            <div style={{ position: 'absolute', bottom: -10, left: -10, width: 60, height: 60, borderRadius: '50%', background: 'rgba(255,255,255,0.04)' }} />
+                            <CatIcon size={42} style={{ color: 'rgba(255,255,255,0.88)', position: 'relative', zIndex: 1 }} />
+                            {/* Category pill overlay */}
+                            <div style={{ position: 'absolute', top: 10, left: 10, display: 'flex', alignItems: 'center', gap: 5, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(6px)', borderRadius: 99, padding: '4px 10px' }}>
+                              <span style={{ fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'rgba(255,255,255,0.9)' }}>{cat}</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Card body */}
+                        <div style={{ padding: '14px 16px 18px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                          <p style={{ fontWeight: 700, color: '#fff', fontSize: '0.84rem', lineHeight: 1.45, marginBottom: 12, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                             {p.name}
                           </p>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <span style={{ fontSize: '0.85rem', fontWeight: 900, color: '#fca5a5' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 'auto' }}>
+                            <span style={{ fontSize: '0.92rem', fontWeight: 900, color: '#fca5a5' }}>
                               N$ {parseFloat(p.cp || p.dp || 0).toFixed(2)}
                             </span>
-                            <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.3)', fontWeight: 600 }}>Consumer Price</span>
+                            <span style={{ fontSize: '0.67rem', color: 'rgba(255,255,255,0.28)', fontWeight: 600 }}>Consumer Price</span>
                           </div>
                         </div>
                       </div>
