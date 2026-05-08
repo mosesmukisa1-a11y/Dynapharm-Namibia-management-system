@@ -67,7 +67,7 @@ export default async function handler(req, res) {
   try {
     // First attempt: dispatchNoteId is a stock_transfers.id directly
     resolvedTransfer = await getOne(
-      `SELECT id, from_warehouse, gm_approved_by, gm_approved_by_id, gm_approved_at, gm_action
+      `SELECT id, from_warehouse, status, gm_approved_by, gm_approved_by_id, gm_approved_at, gm_action
        FROM stock_transfers WHERE id = $1 LIMIT 1`,
       [dispatchNoteId]
     );
@@ -80,7 +80,7 @@ export default async function handler(req, res) {
       );
       if (dnRow?.transfer_id) {
         resolvedTransfer = await getOne(
-          `SELECT id, from_warehouse, gm_approved_by, gm_approved_by_id, gm_approved_at, gm_action
+          `SELECT id, from_warehouse, status, gm_approved_by, gm_approved_by_id, gm_approved_at, gm_action
            FROM stock_transfers WHERE id = $1 LIMIT 1`,
           [dnRow.transfer_id]
         );
@@ -113,6 +113,18 @@ export default async function handler(req, res) {
     return res.status(403).json({
       success: false,
       error: 'Receipt cannot be confirmed: this dispatch has not been approved by a General Manager. GM approval must be recorded before stock can be received.',
+    });
+  }
+
+  // Idempotency guard: if the transfer is already in a terminal receipt status, block to prevent
+  // double-counting in branch_inventory_batches.  The branch portal (handleReceiveTransfer) sets
+  // status → 'delivered'/'partially_received'; this endpoint sets it → 'received'.  If either
+  // path has already run, deny the second attempt instead of adding stock twice.
+  const ALREADY_RECEIVED_STATUSES = new Set(['received', 'delivered', 'partially_received', 'completed']);
+  if (resolvedTransfer.status && ALREADY_RECEIVED_STATUSES.has(resolvedTransfer.status)) {
+    return res.status(409).json({
+      success: false,
+      error: `This dispatch has already been received (status: ${resolvedTransfer.status}). Duplicate receipt blocked to protect inventory accuracy.`,
     });
   }
 

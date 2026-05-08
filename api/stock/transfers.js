@@ -1,7 +1,7 @@
 import { applyAuthCors } from '../_lib/auth.js';
 import { query, getMany, getOne, insert, update, remove, publishRealtimeEvent, withTransaction } from '../db.js';
 import { recomputeLocationBalances } from '../services/stockEngine.js';
-import { branchSearchTerms } from '../_lib/branchUtils.js';
+import { branchSearchTerms, normalizeBranchSlug } from '../_lib/branchUtils.js';
 
 async function fefoDeductStockBatches(client, locationFilter, productName, totalQty) {
   const batches = await client.query(
@@ -1065,8 +1065,19 @@ export default async function handler(req, res) {
             }
           }
 
-          if ((transfer.status === 'delivered' || transfer.status === 'partially_received') && previousStatus !== 'delivered' && previousStatus !== 'partially_received') {
-            const branchId = transfer.to_branch || null;
+          // Guard: only write branch inventory on the FIRST receipt event.
+          // Covers both the BranchPortal path (delivered/partially_received) and the
+          // confirm-receipt.js barcode path (received).  If any prior receipt status is
+          // already set, skip to prevent double-counting in branch_inventory_batches.
+          const PRIOR_RECEIPT_STATUSES = new Set(['received', 'delivered', 'partially_received', 'completed']);
+          const isFirstReceipt = !PRIOR_RECEIPT_STATUSES.has(previousStatus || '');
+          if (
+            (transfer.status === 'delivered' || transfer.status === 'partially_received') &&
+            isFirstReceipt
+          ) {
+            // Normalize branch ID: transfer.to_branch can be a display name (e.g. "Oshakati Branch")
+            // but branch_inventory_batches / inventory_balances use the canonical slug.
+            const branchId = normalizeBranchSlug(transfer.to_branch) || transfer.to_branch || null;
             for (const item of transferItems) {
               const qtyReceived = Number(item.quantity_received ?? item.quantity ?? 0);
               if (qtyReceived <= 0) continue;
@@ -1084,6 +1095,8 @@ export default async function handler(req, res) {
                   [batchId, branchId, productName, batchNo, expiryDate, qtyReceived]
                 );
               } else {
+                // No batch_no/expiry_date — ON CONFLICT won't fire for NULLs; use a safe
+                // SELECT-for-update then update-or-insert within the same transaction.
                 const existingBranch = await client.query(
                   `SELECT id FROM branch_inventory_batches
                    WHERE branch_id = $1 AND product_name = $2
@@ -1119,7 +1132,9 @@ export default async function handler(req, res) {
               await client.query(
                 `INSERT INTO stock_movements (id, product_name, batch_no, expiry_date, quantity, movement_type, source_location, source_location_type, destination_location, destination_location_type, reference_id, notes, created_by, status, created_at, updated_at)
                  VALUES ($1, $2, $3, $4, $5, 'transfer_in', $6, $7, $8, 'branch', $9, $10, $11, 'posted', NOW(), NOW())`,
-                [movId, productName, batchNo, expiryDate, qtyReceived, transfer.from_warehouse || 'warehouse', srcLocType, branchId || 'branch', id,
+                [movId, productName, batchNo, expiryDate, qtyReceived,
+                 transfer.from_warehouse || 'warehouse', srcLocType,
+                 branchId || 'branch', id,
                  `Branch received from warehouse — transfer ${id}`, actorName]
               );
             }
@@ -1136,7 +1151,8 @@ export default async function handler(req, res) {
             );
           }
           if (['delivered', 'partially_received', 'received'].includes(transfer.status) && dstBranch) {
-            recomputeLocationBalances('branch', dstBranch).catch(e =>
+            const normalizedDstBranch = normalizeBranchSlug(dstBranch) || dstBranch;
+            recomputeLocationBalances('branch', normalizedDstBranch).catch(e =>
               console.error('[stockEngine] transfer receipt recompute error:', e.message)
             );
           }
