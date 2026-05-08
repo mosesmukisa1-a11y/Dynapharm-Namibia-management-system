@@ -1182,14 +1182,22 @@ ${consultantNotes ? `
     return '#3b82f6';
   };
 
-  const upcoming = appointments.filter(a => {
+  // Unique branch names from loaded appointments — used to populate branch filter
+  const appointmentBranches = [...new Set(appointments.map(a => a.branch).filter(Boolean))].sort();
+
+  // Apply branch filter first so tab counts reflect the selected branch
+  const branchFiltered = branchViewFilter
+    ? appointments.filter(a => (a.branch || '').toLowerCase().includes(branchViewFilter.toLowerCase()))
+    : appointments;
+
+  const upcoming = branchFiltered.filter(a => {
     const s = (a.status || '').toLowerCase();
     return !['completed', 'cancelled', 'no_show'].includes(s);
   });
-  const completed = appointments.filter(a => (a.status || '').toLowerCase() === 'completed');
-  const noShows = appointments.filter(a => (a.status || '').toLowerCase() === 'no_show');
+  const completed = branchFiltered.filter(a => (a.status || '').toLowerCase() === 'completed');
+  const noShows = branchFiltered.filter(a => (a.status || '').toLowerCase() === 'no_show');
   const baseFiltered = filter === 'completed' ? completed : filter === 'no_show' ? noShows : upcoming;
-  const filtered = searchQuery.trim()
+  const branchDisplayFiltered = searchQuery.trim()
     ? baseFiltered.filter(a => (a.full_name || '').toLowerCase().includes(searchQuery.trim().toLowerCase()))
     : baseFiltered;
 
@@ -1198,17 +1206,6 @@ ${consultantNotes ? `
       return typeof apt.data === 'string' ? JSON.parse(apt.data) : (apt.data || {});
     } catch { return {}; }
   };
-
-  // Unique branch names from loaded appointments — used to populate branch filter
-  const appointmentBranches = [...new Set(appointments.map(a => a.branch).filter(Boolean))].sort();
-
-  // Apply branch view filter on top of the status filter + name search
-  const branchDisplayFiltered = branchViewFilter
-    ? filtered.filter(a => {
-        const aBranch = (a.branch || '').toLowerCase();
-        return aBranch.includes(branchViewFilter.toLowerCase());
-      })
-    : filtered;
 
   return (
     <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '24px', boxShadow: '0 1px 8px rgba(0,0,0,0.04)' }}>
