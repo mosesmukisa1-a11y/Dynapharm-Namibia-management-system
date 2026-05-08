@@ -2291,6 +2291,9 @@ function MyProfitTab() {
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px 10px', marginBottom: 3 }}>
                             <span style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.85rem' }}>{sale.customer_name || 'Walk-in Client'}</span>
+                            {sale.sale_type === 'prescription' && (
+                              <span style={{ fontSize: '0.67rem', padding: '1px 7px', borderRadius: 5, background: '#f0fdf4', color: '#15803d', fontWeight: 700, border: '1px solid #bbf7d0' }}>💊 Prescription</span>
+                            )}
                             <span style={{ fontSize: '0.72rem', color: '#64748b' }}>{fmtDate(sale.sale_date)}</span>
                           </div>
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px 10px' }}>

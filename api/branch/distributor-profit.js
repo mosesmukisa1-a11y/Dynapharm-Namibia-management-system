@@ -20,34 +20,70 @@ export default async function handler(req, res) {
     if (!nb) return res.status(400).json({ error: 'distributor_nb required' });
     const nbUpper = nb.toUpperCase();
 
-    // Two-part query to ensure complete coverage:
+    // Four-part UNION for complete coverage.  All arms share the same 15 columns.
     //
-    // Part A: query branch_distributor_profit as primary table using distributor_nb.
-    //   This is the canonical path — all new profits are written with the NB number as
-    //   distributor_nb.  LEFT JOIN branch_walkin_sales for item/customer details.
+    // Part A — BDP entries whose sale_id points to branch_walkin_sales (walk-in profits).
+    //   Uses LEFT JOIN so orphaned BDP rows (sale deleted) still appear.
+    //   Excludes prescription BDP entries (those go to Part B).
     //
-    // Part B (UNION): fallback for historical records where a UUID was accidentally stored
-    //   as distributor_nb instead of the NB number.  Finds those sales via bws.referral_nb
-    //   and only includes rows NOT already returned by Part A (avoids duplicates).
-    //   UNION (not UNION ALL) deduplicates automatically on identical column sets.
+    // Part B — BDP entries whose sale_id is a prescription report (RPT-…).
+    //   JOINs branch_activity_transactions on form_reference_id to get customer/total data.
+    //   Previously these showed as ghost rows with NULL customer name and total.
+    //
+    // Part C — branch_walkin_sales rows with referral_nb = NB that have no BDP entry.
+    //   Fallback for historical records / missed profit writes.
+    //
+    // Part D — branch_activity_transactions prescription rows with referral_nb = NB
+    //   that have no BDP entry (profit write failed edge case).
+    //   profit_amount derived from product_total_cp − product_total_dp.
     const rows = await getMany(
       `SELECT
-         COALESCE(bws.id, bdp.sale_id)         AS id,
-         COALESCE(bws.branch_id, bdp.branch_id) AS branch_id,
-         COALESCE(bws.sale_date, bdp.sale_date) AS sale_date,
+         COALESCE(bws.id, bdp.sale_id)          AS id,
+         COALESCE(bws.branch_id, bdp.branch_id)  AS branch_id,
+         COALESCE(bws.sale_date, bdp.sale_date)  AS sale_date,
          bws.items,
          bws.customer_name,
          bws.customer_type,
          bws.total,
          bws.sale_number,
          bws.referral_nb,
-         bdp.id           AS profit_id,
+         bdp.id            AS profit_id,
          bdp.profit_amount,
-         bdp.status        AS profit_status,
+         bdp.status         AS profit_status,
          bdp.paid_at,
-         bdp.sale_receipt  AS profit_receipt
+         bdp.sale_receipt   AS profit_receipt,
+         NULL::text         AS sale_type
        FROM branch_distributor_profit bdp
        LEFT JOIN branch_walkin_sales bws ON bws.id = bdp.sale_id
+       WHERE UPPER(bdp.distributor_nb) = $1
+         AND NOT EXISTS (
+           SELECT 1 FROM branch_activity_transactions bat
+           WHERE bat.form_reference_id = bdp.sale_id
+             AND bat.activity_type = 'prescription_dispensing'
+         )
+
+       UNION
+
+       SELECT
+         bdp.sale_id                                   AS id,
+         COALESCE(bat.branch_id, bdp.branch_id)        AS branch_id,
+         COALESCE(bat.service_date, bdp.sale_date)     AS sale_date,
+         NULL::text                                    AS items,
+         bat.client_name                               AS customer_name,
+         bat.client_type                               AS customer_type,
+         bat.grand_total                               AS total,
+         bat.form_reference_id                         AS sale_number,
+         bat.referral_nb,
+         bdp.id                                        AS profit_id,
+         bdp.profit_amount,
+         bdp.status                                    AS profit_status,
+         bdp.paid_at,
+         bdp.sale_receipt                              AS profit_receipt,
+         'prescription'::text                          AS sale_type
+       FROM branch_distributor_profit bdp
+       JOIN branch_activity_transactions bat
+         ON bat.form_reference_id = bdp.sale_id
+        AND bat.activity_type = 'prescription_dispensing'
        WHERE UPPER(bdp.distributor_nb) = $1
 
        UNION
@@ -62,18 +98,50 @@ export default async function handler(req, res) {
          bws.total,
          bws.sale_number,
          bws.referral_nb,
-         bdp.id           AS profit_id,
-         bdp.profit_amount,
-         bdp.status        AS profit_status,
-         bdp.paid_at,
-         bdp.sale_receipt  AS profit_receipt
+         NULL::text        AS profit_id,
+         NULL::numeric     AS profit_amount,
+         NULL::text        AS profit_status,
+         NULL::timestamptz AS paid_at,
+         NULL::text        AS profit_receipt,
+         NULL::text        AS sale_type
        FROM branch_walkin_sales bws
-       LEFT JOIN branch_distributor_profit bdp ON bdp.sale_id = bws.id
        WHERE UPPER(bws.referral_nb) = $1
          AND (bws.customer_type IS NULL OR bws.customer_type <> 'member')
          AND NOT EXISTS (
            SELECT 1 FROM branch_distributor_profit p
            WHERE p.sale_id = bws.id AND UPPER(p.distributor_nb) = $1
+         )
+
+       UNION
+
+       SELECT
+         bat.id,
+         bat.branch_id,
+         bat.service_date                                               AS sale_date,
+         NULL::text                                                     AS items,
+         bat.client_name                                                AS customer_name,
+         bat.client_type                                                AS customer_type,
+         bat.grand_total                                                AS total,
+         bat.form_reference_id                                          AS sale_number,
+         bat.referral_nb,
+         NULL::text                                                     AS profit_id,
+         CASE
+           WHEN bat.product_total_cp IS NOT NULL
+            AND bat.product_total_dp IS NOT NULL
+           THEN GREATEST(0, bat.product_total_cp - bat.product_total_dp)
+           ELSE NULL
+         END                                                            AS profit_amount,
+         NULL::text                                                     AS profit_status,
+         NULL::timestamptz                                              AS paid_at,
+         NULL::text                                                     AS profit_receipt,
+         'prescription'::text                                           AS sale_type
+       FROM branch_activity_transactions bat
+       WHERE bat.activity_type = 'prescription_dispensing'
+         AND UPPER(bat.referral_nb) = $1
+         AND NOT EXISTS (
+           SELECT 1 FROM branch_distributor_profit p
+           WHERE p.sale_id = bat.form_reference_id
+             AND UPPER(p.distributor_nb) = $1
          )
 
        ORDER BY sale_date DESC NULLS LAST
