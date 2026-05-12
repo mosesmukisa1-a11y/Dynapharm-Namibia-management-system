@@ -722,11 +722,12 @@ function ApprovalsTab() {
     }
   };
 
-  const handleAmendApprove = async () => {
+  const handleAmendApprove = async (commentOverride) => {
     if (!amendModal) return;
     setProcessing(true);
     try {
       const gmName = user?.full_name || user?.username || 'GM';
+      const effectiveComment = commentOverride !== undefined ? commentOverride : amendComment;
       const originalItems = amendModal.items || [];
       const amendmentLog = amendItems.map((ai, i) => {
         // Prefer stable id-based match, then productName+batchNo, then index fallback
@@ -755,8 +756,8 @@ function ApprovalsTab() {
         status: 'approved',
         approved_by: gmName,
         gmAction: 'amend_approve',
-        gmComment: amendComment || 'Amended and approved',
-        notes: amendComment || 'Amended and approved by GM',
+        gmComment: effectiveComment || 'Amended and approved',
+        notes: effectiveComment || 'Amended and approved by GM',
         items: updatedItems,
         amendmentLog,
       });
@@ -2259,7 +2260,13 @@ function ApprovalsTab() {
                       setAmendComment(baseComment ? `${baseComment}\n${shortfallNote}` : shortfallNote);
                       setAmendShortfallWarning(true);
                     } else {
-                      handleAmendApprove();
+                      if (amendShortfallWarning) {
+                        setAmendComment(amendCommentBeforeWarning);
+                        setAmendShortfallWarning(false);
+                        handleAmendApprove(amendCommentBeforeWarning);
+                      } else {
+                        handleAmendApprove();
+                      }
                     }
                   }} disabled={processing}
                   style={{ padding: '8px 20px', background: '#f59e0b', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 600, opacity: processing ? 0.6 : 1 }}>
