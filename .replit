@@ -52,8 +52,8 @@ outputType = "console"
 
 [deployment]
 deploymentTarget = "autoscale"
-run = ["node", "start.js"]
-build = ["npm", "run", "build"]
+run = ["node", "server.js"]
+build = ["npx", "vite", "build"]
 
 [postMerge]
 path = "scripts/post-merge.sh"
