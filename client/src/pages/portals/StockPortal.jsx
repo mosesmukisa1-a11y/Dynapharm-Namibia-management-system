@@ -1511,7 +1511,7 @@ export default function StockPortal() {
   const [globalBranch, setGlobalBranch] = useState(user?.branch || 'all');
 
   const tabs = [
-    { id: 'aiDashboard', label: 'AI Command', icon: '🧠' },
+    { id: 'aiDashboard', label: 'Command Center', icon: '🧠' },
     { id: 'overview', label: 'Overview', icon: '📊' },
     { id: 'branchStock', label: 'Branch Stock', icon: '🏪' },
     { id: 'stockReports', label: 'Stock Reports', icon: '📋' },
@@ -1524,7 +1524,7 @@ export default function StockPortal() {
     { id: 'orders', label: 'Orders', icon: '🧾' },
     { id: 'valuation', label: 'Valuation', icon: '💎' },
     { id: 'barcode', label: 'Barcode', icon: '🏷️' },
-    { id: 'reorder', label: 'AI Reorder', icon: '🤖' },
+    { id: 'reorder', label: 'Reorder', icon: '🤖' },
     { id: 'batch', label: 'Batch', icon: '🔢' },
     { id: 'writeOffs', label: 'Write-Offs', icon: '❌' },
     { id: 'realtime', label: 'Realtime', icon: '⚡' },
@@ -1552,9 +1552,9 @@ export default function StockPortal() {
       <div className="mb-4 flex flex-wrap gap-4 items-start justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-            <Brain size={24} className="text-primary" /> AI Stock Management System
+            <Brain size={24} className="text-primary" /> Stock Management System
           </h1>
-          <p className="text-sm text-gray-500">Intelligent inventory control · Branch-connected · Real-time AI insights</p>
+          <p className="text-sm text-gray-500">Intelligent inventory control · Branch-connected · Real-time insights</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <MapPin size={16} className="text-primary shrink-0" />
@@ -1704,7 +1704,7 @@ function AICommandCenter({ branch }) {
           <div>
             <div className="flex items-center gap-2 mb-1">
               <Brain size={20} />
-              <h2 style={{ fontWeight: 900, fontSize: '1.15rem', margin: 0 }}>🧠 AI Stock Command Center</h2>
+              <h2 style={{ fontWeight: 900, fontSize: '1.15rem', margin: 0 }}>🧠 Stock Command Center</h2>
             </div>
             <p style={{ fontSize: '0.82rem', opacity: 0.8, margin: 0 }}>
               Real-time intelligence · Predictive reorder alerts · Branch health monitoring
@@ -1735,7 +1735,7 @@ function AICommandCenter({ branch }) {
       {/* ── AI Insights Panel ──────────────────────── */}
       <div>
         <h3 style={{ fontWeight: 800, fontSize: '0.95rem', color: '#1e293b', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Cpu size={16} className="text-primary" /> AI Insights
+          <Cpu size={16} className="text-primary" /> Stock Insights
         </h3>
         <div className="space-y-2">
           {insights.map((ins, i) => (
@@ -1808,10 +1808,10 @@ function AICommandCenter({ branch }) {
         <Card>
           <CardHeader>
             <div className="flex justify-between items-center flex-wrap gap-2">
-              <h3 className="font-bold text-gray-800 flex items-center gap-2"><Target size={16} className="text-primary" /> AI Reorder Recommendations</h3>
+              <h3 className="font-bold text-gray-800 flex items-center gap-2"><Target size={16} className="text-primary" /> Reorder Recommendations</h3>
               <Button size="sm" variant="secondary" onClick={() => {
                 const rows = reorderRecs.map(r => `<tr><td>${r.product_name}</td><td>${fmtLocation(r.location)}</td><td>${r.priority.label}</td><td>${r.qty}</td><td>${r.dailyRate}/day</td><td>${r.daysOfStock === 999 ? '—' : r.daysOfStock + ' days'}</td><td>${r.suggestedOrder}</td></tr>`).join('');
-                printDocument('AI Reorder Recommendations', `<table><thead><tr><th>Product</th><th>Location</th><th>Priority</th><th>Current Qty</th><th>Daily Rate</th><th>Days Left</th><th>Suggested Order</th></tr></thead><tbody>${rows}</tbody></table>`);
+                printDocument('Reorder Recommendations', `<table><thead><tr><th>Product</th><th>Location</th><th>Priority</th><th>Current Qty</th><th>Daily Rate</th><th>Days Left</th><th>Suggested Order</th></tr></thead><tbody>${rows}</tbody></table>`);
               }}><Printer size={14} /> Print</Button>
             </div>
           </CardHeader>
@@ -7686,7 +7686,7 @@ function SmartReorderTab({ branch }) {
         daily_rate: orderModal.dailyRate > 0 ? orderModal.dailyRate : null,
         priority_label: orderModal.priority.label,
         location: orderModal.location,
-        notes: orderNote || `AI Reorder — ${orderModal.priority.label}. Days remaining: ${orderModal.daysOfStock === 999 ? 'N/A' : orderModal.daysOfStock + 'd'}. Daily rate: ${orderModal.dailyRate > 0 ? orderModal.dailyRate.toFixed(2) + '/day' : 'not calculated'}.`,
+        notes: orderNote || `Reorder — ${orderModal.priority.label}. Days remaining: ${orderModal.daysOfStock === 999 ? 'N/A' : orderModal.daysOfStock + 'd'}. Daily rate: ${orderModal.dailyRate > 0 ? orderModal.dailyRate.toFixed(2) + '/day' : 'not calculated'}.`,
         requested_by: user?.id || user?.username,
         requested_by_name: user?.full_name || user?.name || user?.username,
       });
@@ -7718,7 +7718,7 @@ function SmartReorderTab({ branch }) {
       <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', borderRadius: 14, padding: '14px 20px', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
         <div>
           <h3 style={{ fontWeight: 900, fontSize: '1.05rem', margin: 0 }}>
-            🤖 AI Supplier Reorder Intelligence
+            🤖 Supplier Reorder Intelligence
           </h3>
           <p style={{ fontSize: '0.78rem', opacity: 0.85, margin: '3px 0 0' }}>
             Flags products with &lt;6 months stock based on actual daily sales velocity · Generates supplier purchase orders automatically
@@ -7728,7 +7728,7 @@ function SmartReorderTab({ branch }) {
         <div className="flex gap-2 flex-wrap">
           <button onClick={() => setViewMode(viewMode === 'ai' ? 'classic' : 'ai')}
             style={{ padding: '6px 14px', background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 99, fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer' }}>
-            {viewMode === 'ai' ? '📊 Classic View' : '🤖 AI View'}
+            {viewMode === 'ai' ? '📊 Classic View' : '📈 Smart View'}
           </button>
           <button onClick={() => { setShowPOs(s => !s); }}
             style={{ padding: '6px 14px', background: showPOs ? '#fff' : 'rgba(255,255,255,0.15)', color: showPOs ? '#c41e3a' : '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 99, fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer' }}>
@@ -7852,7 +7852,7 @@ function SmartReorderTab({ branch }) {
                 const rows = aiFiltered.map(r =>
                   `<tr><td>${r.product_name}</td><td>${fmtLocation(r.location)}</td><td>${r.priority.label}</td><td>${r.qty}</td><td>${r.dailyRate > 0 ? r.dailyRate.toFixed(2) + '/day' : '—'}</td><td>${r.daysOfStock === 999 ? '—' : r.daysOfStock + ' days'}</td><td>${r.suggestedOrder || '—'}</td></tr>`
                 ).join('');
-                printDocument('AI Reorder Report — 6-Month Horizon', `<table><thead><tr><th>Product</th><th>Location</th><th>Priority</th><th>Current Qty</th><th>Daily Rate</th><th>Days Left</th><th>Suggested Order</th></tr></thead><tbody>${rows}</tbody></table>`);
+                printDocument('Reorder Report — 6-Month Horizon', `<table><thead><tr><th>Product</th><th>Location</th><th>Priority</th><th>Current Qty</th><th>Daily Rate</th><th>Days Left</th><th>Suggested Order</th></tr></thead><tbody>${rows}</tbody></table>`);
               }}><Printer size={14} /> Print</Button>
             </div>
           </CardHeader>
@@ -7945,7 +7945,7 @@ function SmartReorderTab({ branch }) {
       <Modal open={!!orderModal} onClose={() => { setOrderModal(null); setOrderAlert(null); }} title={`📦 Supplier Purchase Order — ${orderModal?.product_name}`} size="md">
         <div className="p-6 space-y-4">
           <div style={{ background: 'linear-gradient(135deg,#fff0f3,#fef2f2)', border: '1.5px solid #fecaca', borderRadius: 10, padding: '12px 16px' }}>
-            <div className="text-xs text-red-600 font-bold uppercase tracking-wide mb-2">AI Analysis</div>
+            <div className="text-xs text-red-600 font-bold uppercase tracking-wide mb-2">Order Analysis</div>
             <div className="grid grid-cols-2 gap-2 text-sm">
               <div><span className="text-gray-500">Current Stock:</span> <strong>{orderModal?.qty?.toLocaleString()} units</strong></div>
               <div><span className="text-gray-500">Daily Rate:</span> <strong>{orderModal?.dailyRate > 0 ? `${Number(orderModal.dailyRate).toFixed(2)}/day` : 'Not available'}</strong></div>

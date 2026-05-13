@@ -1524,7 +1524,7 @@ ${consultantNotes ? `
 
                 {currentRecommendations && (
                   <div style={{ background: '#e8f5e9', borderLeft: '5px solid #27ae60', borderRadius: '8px', padding: '15px', marginBottom: '20px' }}>
-                    <h3 style={{ color: '#27ae60', margin: '0 0 4px', fontSize: '1rem' }}>🎯 AI-Powered Product Recommendations</h3>
+                    <h3 style={{ color: '#27ae60', margin: '0 0 4px', fontSize: '1rem' }}>🎯 Product Recommendations</h3>
                     <p style={{ marginBottom: '12px', color: '#555', fontSize: '0.85rem' }}>
                       Matched to this client's reported symptoms, medical history, lifestyle and gender. Each product's Dynapharm health benefit is shown below.
                     </p>
