@@ -2833,10 +2833,186 @@ function ReportsSection() {
   );
 }
 
+function FollowUpReportModal({ parentReport, onClose, onSaved }) {
+  const { user } = useAuth();
+  const [diagnosis, setDiagnosis] = useState('');
+  const [meds, setMeds] = useState(new Set());
+  const [medSearch, setMedSearch] = useState('');
+  const [nextFollowUpDate, setNextFollowUpDate] = useState('');
+  const [nextFollowUpNotes, setNextFollowUpNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const toggleMed = (name) => setMeds(prev => {
+    const next = new Set(prev);
+    if (next.has(name)) next.delete(name); else next.add(name);
+    return next;
+  });
+
+  const allProducts = getLiveProductList();
+  const seenPkg = new Set();
+  const packages = allProducts.filter(p => p.is_package && !seenPkg.has(p.description) && seenPkg.add(p.description));
+  const pkgNames = new Set(packages.map(p => p.description));
+  const seenProd = new Set();
+  const products = allProducts.filter(p => !p.is_package && !pkgNames.has(p.description) && !seenProd.has(p.description) && seenProd.add(p.description));
+  const q = (medSearch || '').toLowerCase();
+  const visPkgs = q ? packages.filter(p => p.description.toLowerCase().includes(q)) : packages;
+  const visProds = q ? products.filter(p => p.description.toLowerCase().includes(q)) : products;
+
+  const handleSave = async () => {
+    if (!diagnosis.trim()) { setError('Please enter a diagnosis / consultant notes.'); return; }
+    setSaving(true); setError('');
+    try {
+      const medicines = Array.from(meds).map(name => ({ name, dispensed: false }));
+      const prescriptions = medicines.map(m => ({ product: m.name, quantity: 1 }));
+      await api.reports.create({
+        client_name: parentReport.client_name || '',
+        appointment_id: parentReport.appointment_id || null,
+        diagnosis,
+        recommendations: diagnosis,
+        prescriptions,
+        medicines,
+        follow_up_date: nextFollowUpDate || null,
+        follow_up_notes: nextFollowUpNotes || null,
+        symptoms: [],
+        consultant: user?.full_name || user?.username || 'Consultant',
+        membership_status: parentReport.membership_status || 'referred',
+        consultation_fee: parentReport.consultation_fee || 150,
+        consultant_credit: 150,
+        referral_credit: 0,
+        report_required: true,
+        branch: parentReport.branch || user?.branch || '',
+        parent_report_id: parentReport.id,
+      });
+      if (onSaved) onSaved();
+      onClose();
+    } catch (err) {
+      setError(err.message || 'Failed to save report');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 1000001, overflowY: 'auto', padding: '20px', boxSizing: 'border-box' }}>
+      <div style={{ maxWidth: '900px', margin: '20px auto', background: 'white', borderRadius: '14px', boxShadow: '0 12px 48px rgba(0,0,0,0.35)', overflow: 'hidden' }}>
+
+        {/* Header */}
+        <div style={{ background: 'linear-gradient(135deg,#1d4ed8,#1e40af)', padding: '18px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h3 style={{ margin: 0, color: '#fff', fontSize: '1.1rem', fontWeight: 700 }}>📝 Follow-up Report</h3>
+            <p style={{ margin: '3px 0 0', color: 'rgba(255,255,255,0.8)', fontSize: '0.83rem' }}>Patient: {parentReport.client_name || 'Unknown'} · Original follow-up: {formatDate(parentReport.follow_up_date)}</p>
+          </div>
+          <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', fontSize: '1.6rem', cursor: 'pointer', borderRadius: '6px', padding: '1px 10px', lineHeight: 1 }}>×</button>
+        </div>
+
+        <div style={{ padding: '24px' }}>
+          {error && <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', color: '#b91c1c', padding: '10px 14px', borderRadius: '8px', marginBottom: '16px', fontSize: '0.9rem' }}>{error}</div>}
+
+          {/* Previous report reference */}
+          {parentReport.diagnosis && (
+            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px 16px', marginBottom: '18px' }}>
+              <p style={{ margin: '0 0 4px', fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Previous Diagnosis (for reference)</p>
+              <p style={{ margin: 0, fontSize: '0.88rem', color: '#374151' }}>{parentReport.diagnosis}</p>
+            </div>
+          )}
+
+          {/* New Diagnosis / Notes */}
+          <div style={{ marginBottom: '18px' }}>
+            <label style={{ display: 'block', fontWeight: 700, marginBottom: '6px', color: '#1e293b', fontSize: '0.9rem' }}>Consultant Notes &amp; Diagnosis *</label>
+            <textarea value={diagnosis} onChange={e => setDiagnosis(e.target.value)} rows={4}
+              style={{ width: '100%', padding: '10px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '0.9rem', resize: 'vertical', boxSizing: 'border-box' }}
+              placeholder="Enter new diagnosis, progress notes, treatment updates..." />
+          </div>
+
+          {/* Medicine picker */}
+          <div style={{ border: '1px solid #e0e0e0', borderRadius: '10px', padding: '16px', marginBottom: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+              <h4 style={{ margin: 0, color: '#1e293b', fontSize: '0.95rem' }}>Prescribed Products</h4>
+              <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>{meds.size} selected</span>
+            </div>
+            <input type="text" placeholder="Search products…" value={medSearch} onChange={e => setMedSearch(e.target.value)}
+              style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '0.9rem', marginBottom: '10px', boxSizing: 'border-box' }} />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(270px, 1fr))', gap: '7px', maxHeight: '300px', overflowY: 'auto', marginBottom: '12px' }}>
+              {visPkgs.map((pkg, idx) => {
+                const isChecked = meds.has(pkg.description);
+                return (
+                  <div key={`fpkg-${idx}`} onClick={() => toggleMed(pkg.description)}
+                    style={{ background: isChecked ? '#dcfce7' : '#e8f5e9', borderLeft: `4px solid ${isChecked ? '#16a34a' : '#27ae60'}`, padding: '9px 10px', borderRadius: '6px', display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={isChecked} readOnly style={{ marginTop: '3px', cursor: 'pointer' }} onClick={e => e.stopPropagation()} />
+                    <label style={{ cursor: 'pointer', flex: 1, fontSize: '0.87rem' }}>
+                      <span style={{ fontWeight: 700, color: '#166534' }}>📦 {pkg.description}</span>
+                      <br /><small style={{ color: '#555' }}>Bundle · DP: N${pkg.dp}</small>
+                    </label>
+                  </div>
+                );
+              })}
+              {visProds.map((product, idx) => {
+                const isChecked = meds.has(product.description);
+                return (
+                  <div key={`fprod-${idx}`} onClick={() => toggleMed(product.description)}
+                    style={{ padding: '8px 10px', borderRadius: '6px', display: 'flex', alignItems: 'flex-start', gap: '8px', border: `1px solid ${isChecked ? '#86efac' : '#f0f0f0'}`, background: isChecked ? '#f0fdf4' : 'white', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={isChecked} readOnly style={{ marginTop: '3px', cursor: 'pointer' }} onClick={e => e.stopPropagation()} />
+                    <label style={{ cursor: 'pointer', flex: 1, fontSize: '0.87rem' }}>
+                      <span style={{ fontWeight: isChecked ? 600 : 400, color: isChecked ? '#166534' : '#1e293b' }}>{product.description}</span>
+                      <br /><small style={{ color: '#666' }}>DP: N${product.dp} · BV: {product.bv}</small>
+                    </label>
+                  </div>
+                );
+              })}
+              {visPkgs.length + visProds.length === 0 && (
+                <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '30px', color: '#9ca3af', fontSize: '0.9rem' }}>No products match "{medSearch}"</div>
+              )}
+            </div>
+            {meds.size > 0 && (
+              <div style={{ background: '#f0fdf4', padding: '12px', borderRadius: '8px', border: '1px solid #86efac' }}>
+                <h4 style={{ margin: '0 0 8px', color: '#166534', fontSize: '0.88rem' }}>✅ Prescribed ({meds.size}):</h4>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {Array.from(meds).map((med, i) => (
+                    <span key={i} style={{ background: '#dcfce7', border: '1px solid #86efac', color: '#166534', padding: '3px 10px', borderRadius: '20px', fontSize: '0.82rem', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                      {med}
+                      <button onClick={() => toggleMed(med)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#16a34a', fontWeight: 700, fontSize: '1rem', padding: 0, lineHeight: 1 }}>×</button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Next follow-up */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '24px' }}>
+            <div>
+              <label style={{ display: 'block', fontWeight: 700, marginBottom: '6px', color: '#1e293b', fontSize: '0.9rem' }}>Next Follow-up Date <span style={{ fontWeight: 400, color: '#94a3b8' }}>(optional)</span></label>
+              <input type="date" value={nextFollowUpDate} onChange={e => setNextFollowUpDate(e.target.value)}
+                style={{ width: '100%', padding: '9px 12px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '0.9rem', boxSizing: 'border-box' }} />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontWeight: 700, marginBottom: '6px', color: '#1e293b', fontSize: '0.9rem' }}>Next Follow-up Notes <span style={{ fontWeight: 400, color: '#94a3b8' }}>(optional)</span></label>
+              <input value={nextFollowUpNotes} onChange={e => setNextFollowUpNotes(e.target.value)}
+                placeholder="e.g. Review progress, adjust dosage..."
+                style={{ width: '100%', padding: '9px 12px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '0.9rem', boxSizing: 'border-box' }} />
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+            <button onClick={onClose} style={{ padding: '10px 22px', background: '#6b7280', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem' }}>Cancel</button>
+            <button onClick={handleSave} disabled={saving}
+              style={{ padding: '10px 26px', background: saving ? '#1e40af' : '#1d4ed8', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem', opacity: saving ? 0.7 : 1 }}>
+              {saving ? '⏳ Saving...' : '💾 Save Follow-up Report'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function FollowupsSection() {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dateFilter, setDateFilter] = useState('');
+  const [reportingFor, setReportingFor] = useState(null);
 
   const loadFollowups = useCallback(() => {
     setLoading(true);
@@ -2851,16 +3027,17 @@ function FollowupsSection() {
 
   useEffect(() => { loadFollowups(); }, [loadFollowups]);
 
-  const handleAction = async (id, action) => {
-    if (action === 'complete') {
-      setReports(prev => prev.filter(r => r.id !== id));
-    }
-  };
-
   const filtered = dateFilter ? reports.filter(r => (r.follow_up_date || '').slice(0, 10) === dateFilter) : reports;
 
   return (
     <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '24px', boxShadow: '0 1px 8px rgba(0,0,0,0.04)' }}>
+      {reportingFor && (
+        <FollowUpReportModal
+          parentReport={reportingFor}
+          onClose={() => setReportingFor(null)}
+          onSaved={() => { setReportingFor(null); loadFollowups(); }}
+        />
+      )}
       <h3 style={{ margin: '0 0 16px', fontSize: '1.15rem', color: '#1e293b' }}>Upcoming Follow-ups</h3>
       <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '18px' }}>
         <input type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)} style={{ padding: '10px 14px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '0.9rem' }} />
@@ -2879,17 +3056,28 @@ function FollowupsSection() {
             const isOverdue = r.follow_up_date < today;
             const isDueToday = (r.follow_up_date || '').slice(0, 10) === today;
             return (
-              <div key={r.id} className="follow-up-card" style={{ border: `1px solid ${isOverdue ? '#fecaca' : isDueToday ? '#fde68a' : '#e5e7eb'}`, borderLeft: `4px solid ${isOverdue ? '#dc2626' : isDueToday ? '#f59e0b' : '#3b82f6'}`, borderRadius: '10px', padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '10px', background: isOverdue ? '#fef2f2' : isDueToday ? '#fffbeb' : '#fff' }}>
-                <div className="follow-up-details">
-                  <h4 style={{ margin: 0, fontWeight: 600, color: '#1e293b', fontSize: '0.95rem' }}>{r.client_name || 'Patient'}</h4>
-                  <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: isOverdue ? '#dc2626' : '#64748b' }}>
-                    {isOverdue ? '⚠️ Overdue: ' : isDueToday ? '📍 Due Today: ' : '📅 Due: '}{formatDate(r.follow_up_date)}
-                  </p>
-                  {r.diagnosis && <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: '#94a3b8' }}>{r.diagnosis}</p>}
-                </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button onClick={() => handleAction(r.id, 'complete')} style={{ padding: '6px 14px', fontSize: '0.85rem', background: '#22c55e', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>✅ Complete</button>
-                  <button style={{ padding: '6px 14px', fontSize: '0.85rem', background: '#f1f5f9', color: '#374151', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer' }}>🔄 Reschedule</button>
+              <div key={r.id} className="follow-up-card" style={{ border: `1px solid ${isOverdue ? '#fecaca' : isDueToday ? '#fde68a' : '#e5e7eb'}`, borderLeft: `4px solid ${isOverdue ? '#dc2626' : isDueToday ? '#f59e0b' : '#3b82f6'}`, borderRadius: '10px', padding: '14px 18px', marginBottom: '10px', background: isOverdue ? '#fef2f2' : isDueToday ? '#fffbeb' : '#fff' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+                  <div className="follow-up-details">
+                    <h4 style={{ margin: 0, fontWeight: 600, color: '#1e293b', fontSize: '0.95rem' }}>{r.client_name || 'Patient'}</h4>
+                    <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: isOverdue ? '#dc2626' : '#64748b' }}>
+                      {isOverdue ? '⚠️ Overdue: ' : isDueToday ? '📍 Due Today: ' : '📅 Due: '}{formatDate(r.follow_up_date)}
+                    </p>
+                    {r.follow_up_notes && <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: '#64748b', fontStyle: 'italic' }}>{r.follow_up_notes}</p>}
+                    {r.diagnosis && <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: '#94a3b8' }}>Previous: {r.diagnosis.length > 80 ? r.diagnosis.slice(0, 80) + '…' : r.diagnosis}</p>}
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', flexShrink: 0, flexWrap: 'wrap' }}>
+                    <button
+                      onClick={() => setReportingFor(r)}
+                      style={{ padding: '7px 16px', fontSize: '0.85rem', background: '#1d4ed8', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}>
+                      📝 Write Report
+                    </button>
+                    <button
+                      onClick={() => setReports(prev => prev.filter(x => x.id !== r.id))}
+                      style={{ padding: '7px 14px', fontSize: '0.85rem', background: '#22c55e', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
+                      ✅ Done
+                    </button>
+                  </div>
                 </div>
               </div>
             );
