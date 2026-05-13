@@ -354,7 +354,9 @@ export default async function handler(req, res) {
       } else {
         // Single insert
         const items = parseItemsInput(body.items || body.itemsArray);
-        const singleBranch = body.requesting_branch || body.requestingBranch || body.branch || 'stock_manager';
+        const rawBranch = body.requesting_branch || body.requestingBranch || body.branch || 'stock_manager';
+        // Normalize to canonical slug so all data lands under the same key regardless of input variant
+        const singleBranch = normalizeBranchSlug(rawBranch) || rawBranch;
         if (branchScope.enforced) {
           const allowedTerms = new Set(branchSearchTermsForMany(branchScope.branches));
           const requestTerms = branchSearchTerms(singleBranch);
@@ -415,9 +417,10 @@ export default async function handler(req, res) {
       if (branchScope.enforced) {
         const existing = await getOne('SELECT requesting_branch FROM stock_requests WHERE id = $1', [body.id]);
         if (existing) {
-          const existingBranch = (existing.requesting_branch || '').replace(/_/g, ' ').toLowerCase();
-          const allowed = branchScope.branches.map(b => b.replace(/_/g, ' ').toLowerCase());
-          if (!allowed.includes(existingBranch)) {
+          const existingTerms = new Set(branchSearchTerms(existing.requesting_branch || ''));
+          const allowedTerms = new Set(branchSearchTermsForMany(branchScope.branches));
+          const isAllowed = [...existingTerms].some(t => allowedTerms.has(t));
+          if (!isAllowed) {
             return res.status(403).json({ error: 'Access denied' });
           }
         }
@@ -461,9 +464,10 @@ export default async function handler(req, res) {
       if (branchScope.enforced && id) {
         const existing = await getOne('SELECT requesting_branch FROM stock_requests WHERE id = $1', [id]);
         if (existing) {
-          const existingBranch = (existing.requesting_branch || '').replace(/_/g, ' ').toLowerCase();
-          const allowed = branchScope.branches.map(b => b.replace(/_/g, ' ').toLowerCase());
-          if (!allowed.includes(existingBranch)) {
+          const existingTerms = new Set(branchSearchTerms(existing.requesting_branch || ''));
+          const allowedTerms = new Set(branchSearchTermsForMany(branchScope.branches));
+          const isAllowed = [...existingTerms].some(t => allowedTerms.has(t));
+          if (!isAllowed) {
             return res.status(403).json({ error: 'Access denied' });
           }
         }

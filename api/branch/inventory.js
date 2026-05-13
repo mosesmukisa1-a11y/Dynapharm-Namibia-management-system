@@ -1,6 +1,7 @@
 import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
 import { query, getMany, getOne, withTransaction } from '../db.js';
 import { recomputeLocationBalances } from '../services/stockEngine.js';
+import { normalizeBranchSlug } from '../_lib/branchUtils.js';
 
 function parseNumber(value, fallback = 0) {
   if (value === null || value === undefined || value === '') return fallback;
@@ -723,10 +724,20 @@ export default async function handler(req, res) {
 
   try {
     if (req.method === 'GET') {
-      const requestedBranch = searchParams.get('branch') || searchParams.get('branch_id');
+      const rawRequestedBranch = searchParams.get('branch') || searchParams.get('branch_id');
+      // Normalize to canonical slug so 'katima', 'Katima Mulilo', etc. all resolve correctly.
+      const requestedBranch = rawRequestedBranch
+        ? (normalizeBranchSlug(rawRequestedBranch) || rawRequestedBranch)
+        : null;
+      // Normalize the scope branches for comparison (handles users whose DB branch value is
+      // a non-canonical alias like 'katima' instead of 'katima_mulilo').
+      const normalizedScopeBranches = branchScope.enforced
+        ? branchScope.branches.map(b => normalizeBranchSlug(b) || b)
+        : null;
+
       if (branchScope.enforced && !requestedBranch) {
         const inventory = [];
-        for (const b of branchScope.branches) {
+        for (const b of (normalizedScopeBranches || [])) {
           const inv = await getInventoryByBranch(b, true);
           inventory.push(...inv);
         }
@@ -736,7 +747,7 @@ export default async function handler(req, res) {
         const allRows = await getMany('SELECT * FROM branch_inventory_batches ORDER BY product_name ASC, expiry_date ASC NULLS LAST LIMIT 500');
         return res.status(200).json({ success: true, inventory: allRows.map(normalizeInventoryRow).filter(Boolean) });
       }
-      if (branchScope.enforced && !branchScope.branches.includes(requestedBranch)) {
+      if (branchScope.enforced && !normalizedScopeBranches.includes(requestedBranch)) {
         return res.status(403).json({ success: false, error: 'Access denied: cannot view inventory for this branch' });
       }
       const includeMovements = searchParams.get('includeMovements') === '1' || searchParams.get('include_movements') === '1';
@@ -755,25 +766,32 @@ export default async function handler(req, res) {
     if (req.method === 'POST') {
       const body = await parseJsonBody(req);
       const action = (body.action || 'receive').toLowerCase();
-      const targetBranchId = body.branchId || body.fromBranchId;
-      const destBranchId = body.toBranchId || null;
+      const rawTargetBranchId = body.branchId || body.fromBranchId;
+      const rawDestBranchId = body.toBranchId || null;
+      // Normalize to canonical slugs so non-canonical values ('katima', 'Katima Mulilo', etc.) are handled.
+      const targetBranchId = rawTargetBranchId ? (normalizeBranchSlug(rawTargetBranchId) || rawTargetBranchId) : null;
+      const destBranchId = rawDestBranchId ? (normalizeBranchSlug(rawDestBranchId) || rawDestBranchId) : null;
+      const normalizedPostScopeBranches = branchScope.enforced
+        ? branchScope.branches.map(b => normalizeBranchSlug(b) || b)
+        : null;
 
       if (branchScope.enforced) {
         if (!targetBranchId) {
           return res.status(400).json({ success: false, error: 'branchId is required' });
         }
-        if (!branchScope.branches.includes(targetBranchId)) {
+        if (!normalizedPostScopeBranches.includes(targetBranchId)) {
           return res.status(403).json({ success: false, error: 'Access denied: cannot modify inventory for this branch' });
         }
-        if (destBranchId && !branchScope.branches.includes(destBranchId)) {
+        if (destBranchId && !normalizedPostScopeBranches.includes(destBranchId)) {
           return res.status(403).json({ success: false, error: 'Access denied: cannot transfer inventory to this branch' });
         }
       }
 
       let result;
       switch (action) {
+        // Pass a normalized body so all handler functions receive canonical branch slugs.
         case 'receive':
-          result = await handleReceive(body, currentUser);
+          result = await handleReceive({ ...body, branchId: targetBranchId, fromBranchId: targetBranchId }, currentUser);
           // Refresh inventory_balances cache for the branch after receiving stock
           if (targetBranchId) {
             recomputeLocationBalances('branch', targetBranchId).catch(e =>
@@ -782,10 +800,10 @@ export default async function handler(req, res) {
           }
           break;
         case 'transfer':
-          result = await handleTransfer(body, currentUser);
+          result = await handleTransfer({ ...body, fromBranchId: targetBranchId, toBranchId: destBranchId }, currentUser);
           break;
         case 'adjust':
-          result = await handleAdjustment(body, currentUser);
+          result = await handleAdjustment({ ...body, branchId: targetBranchId }, currentUser);
           break;
         default:
           return res.status(400).json({ success: false, error: `Unknown action: ${action}` });

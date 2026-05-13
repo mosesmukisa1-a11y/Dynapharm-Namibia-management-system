@@ -1,6 +1,7 @@
 import { applyAuthCors } from '../_lib/auth.js';
 import { withTransaction } from '../db.js';
 import { recomputeLocationBalances } from '../services/stockEngine.js';
+import { normalizeBranchSlug } from '../_lib/branchUtils.js';
 
 function generateId(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
@@ -40,12 +41,16 @@ export default async function handler(req, res) {
 
     const {
       requestId,
-      branchId,
+      branchId: rawBranchId,
       items = [],
       warehouseSource = 'Warehouse',
       deliveryNote = null,
       receivedBy = null,
     } = body;
+
+    // Normalize to canonical slug (e.g. 'katima' → 'katima_mulilo', 'Katima Mulilo' → 'katima_mulilo')
+    // so branch_inventory_batches and stock_movements always use the canonical branch key.
+    const branchId = normalizeBranchSlug(rawBranchId) || rawBranchId;
 
     if (!requestId) return res.status(400).json({ success: false, error: 'requestId is required' });
     if (!branchId) return res.status(400).json({ success: false, error: 'branchId is required' });
