@@ -1,0 +1,28 @@
+User-agent: *
+
+# Allow public-facing pages
+Allow: /
+Allow: /shop
+Allow: /checkup
+Allow: /ref/
+
+# Block all staff & distributor portals (login required)
+Disallow: /distributor
+Disallow: /frontdesk
+Disallow: /consultant
+Disallow: /branch
+Disallow: /hr
+Disallow: /finance
+Disallow: /gm
+Disallow: /director
+Disallow: /mis
+Disallow: /stock
+Disallow: /admin
+Disallow: /training
+Disallow: /support-staff
+
+# Block API and uploads
+Disallow: /api/
+Disallow: /uploads/
+
+Sitemap: https://dynapharmnamibia.net/sitemap.xml
