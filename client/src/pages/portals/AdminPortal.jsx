@@ -621,6 +621,9 @@ function DistributorsTab() {
   const [uploadResult, setUploadResult] = useState(null);
   const fileInputRef = useRef(null);
   const [form, setForm] = useState({ distributor_code: '', distributor_name: '', branch: '', mobile_no: '', email: '' });
+  const [editDist, setEditDist] = useState(null);
+  const [editForm, setEditDistForm] = useState({});
+  const [editSaving, setEditSaving] = useState(false);
 
   const loadDistributors = (searchTerm) => {
     setLoading(true);
@@ -710,6 +713,34 @@ function DistributorsTab() {
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const openEdit = (dist) => {
+    setEditDist(dist);
+    setEditDistForm({
+      distributor_name: dist.distributor_name || dist.full_name || dist.name || '',
+      distributor_code: dist.distributor_code || dist.nb_number || '',
+      branch: dist.branch || dist.location || '',
+      mobile_no: dist.mobile_no || '',
+      email: dist.email || '',
+      position: dist.position || dist.position_code || '',
+      status: dist.status || 'active',
+    });
+  };
+
+  const handleEditSave = async () => {
+    if (!editDist) return;
+    setEditSaving(true);
+    try {
+      await api.put('/distributors', { id: editDist.id, ...editForm });
+      setMessage('Distributor updated successfully!');
+      setEditDist(null);
+      loadDistributors(search);
+    } catch (err) {
+      setMessage('Error: ' + err.message);
+    } finally {
+      setEditSaving(false);
     }
   };
 
@@ -836,11 +867,57 @@ function DistributorsTab() {
             { header: 'Phone', render: r => r.mobile_no || '-' },
             { header: 'Joined', render: r => r.date_joined || '-' },
             { header: 'Status', render: r => <Badge variant={r.status === 'active' ? 'success' : 'warning'}>{r.status || 'active'}</Badge> },
+            { header: '', render: r => (
+              <Button size="sm" variant="secondary" onClick={() => openEdit(r)}>
+                <Edit size={13} /> Edit
+              </Button>
+            )},
           ]}
           data={filtered}
           emptyMessage="No distributors found"
         />
       </Card>
+
+      {editDist && (
+        <Modal isOpen onClose={() => setEditDist(null)} title={`Edit Distributor — ${editDist.distributor_name || editDist.full_name || ''}`}>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <Input label="NB / DZ Code" value={editForm.distributor_code} onChange={e => setEditDistForm(f => ({ ...f, distributor_code: e.target.value }))} />
+              <Input label="Full Name *" value={editForm.distributor_name} onChange={e => setEditDistForm(f => ({ ...f, distributor_name: e.target.value }))} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Input label="Phone" value={editForm.mobile_no} onChange={e => setEditDistForm(f => ({ ...f, mobile_no: e.target.value }))} placeholder="+264 81..." />
+              <Input label="Email" type="email" value={editForm.email} onChange={e => setEditDistForm(f => ({ ...f, email: e.target.value }))} />
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <Input label="Position" value={editForm.position} onChange={e => setEditDistForm(f => ({ ...f, position: e.target.value }))} placeholder="e.g. SUPERVISOR" />
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-700">Branch</label>
+                <select value={editForm.branch} onChange={e => setEditDistForm(f => ({ ...f, branch: e.target.value }))}
+                  className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
+                  <option value="">Select Branch</option>
+                  {BRANCH_DETAILS.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-700">Status</label>
+                <select value={editForm.status} onChange={e => setEditDistForm(f => ({ ...f, status: e.target.value }))}
+                  className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                  <option value="suspended">Suspended</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex gap-3 justify-end pt-2">
+              <Button variant="secondary" onClick={() => setEditDist(null)}>Cancel</Button>
+              <Button onClick={handleEditSave} disabled={editSaving}>
+                {editSaving ? 'Saving...' : 'Save Changes'}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
