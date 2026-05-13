@@ -2893,6 +2893,183 @@ function FollowUpReportModal({ parentReport, onClose, onSaved }) {
     }
   };
 
+  const buildPrintData = () => ({
+    client_name: parentReport.client_name || '',
+    branch: parentReport.branch || user?.branch || '',
+    consultant: user?.full_name || user?.username || 'Consultant',
+    membership_status: parentReport.membership_status || 'referred',
+    consultation_fee: parentReport.consultation_fee || 150,
+    nb_number: parentReport.nb_number || null,
+    referral_name: parentReport.referral_name || null,
+    referral_nb: parentReport.referral_nb || null,
+    diagnosis,
+    prescriptions: Array.from(meds).map(name => ({ product: name, quantity: 1 })),
+    follow_up_date: nextFollowUpDate || null,
+    follow_up_notes: nextFollowUpNotes || null,
+    created_at: new Date().toISOString(),
+    id: null,
+    report_required: true,
+    prev_diagnosis: parentReport.diagnosis || null,
+    prev_follow_up_date: parentReport.follow_up_date || null,
+  });
+
+  const printFollowUpReport = (overrideId) => {
+    const r = buildPrintData();
+    if (overrideId) r.id = overrideId;
+    const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const logo = window.location.origin + '/assets/dynapharm-logo.png';
+    const fmtDate = d => d ? new Date(d).toLocaleDateString('en-NA', { day:'2-digit', month:'long', year:'numeric' }) : '';
+    const fmtDateTime = d => d ? new Date(d).toLocaleString('en-NA', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
+    const isMem = (r.membership_status || '') === 'member';
+    const rxHtml = r.prescriptions.length > 0
+      ? r.prescriptions.map(p => `<span class="med">${esc(p.product)} ×${p.quantity || 1}</span>`).join('')
+      : '<p style="color:#7f8c8d;font-style:italic;margin:0">No products prescribed.</p>';
+
+    const w = window.open('', '_blank', 'width=920,height=780');
+    if (!w) return;
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Follow-up Report — ${esc(r.client_name)}</title>
+<style>
+  *{box-sizing:border-box;}
+  body{font-family:Arial,sans-serif;padding:22px;color:#222;font-size:12px;line-height:1.45;}
+  .header{display:flex;align-items:center;gap:14px;border-bottom:3px solid #1d4ed8;padding-bottom:10px;margin-bottom:14px;}
+  .logo{height:54px;background:#fff;border-radius:8px;padding:3px;}
+  .company{font-size:1.2rem;font-weight:900;color:#1d4ed8;}
+  .subtitle{font-size:0.82rem;color:#555;margin-top:2px;}
+  .report-title{font-size:0.95rem;font-weight:800;color:#1e3a8a;letter-spacing:1px;margin-top:3px;}
+  .followup-badge{display:inline-block;background:#dbeafe;color:#1e40af;border:2px solid #93c5fd;border-radius:20px;padding:3px 14px;font-size:0.8rem;font-weight:800;margin-top:4px;letter-spacing:0.5px;}
+  h3{color:#1d4ed8;border-bottom:2px solid #bfdbfe;padding-bottom:4px;margin:12px 0 8px;font-size:0.88rem;text-transform:uppercase;letter-spacing:0.5px;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:4px 20px;}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px 14px;}
+  .field{font-size:0.82rem;padding:2px 0;border-bottom:1px dotted #eee;}
+  .section{margin:8px 0;padding:8px 12px;border:1px solid #e5e7eb;border-radius:7px;background:#fafafa;page-break-inside:avoid;}
+  .prev-section{margin:8px 0;padding:8px 12px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;page-break-inside:avoid;}
+  .med{padding:4px 10px;background:#e8f5e9;border-radius:4px;display:inline-block;margin:3px 3px 3px 0;font-size:0.85rem;color:#166534;font-weight:700;border:1px solid #bbf7d0;}
+  .sig-row{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:6px;}
+  .sig-box{border-top:2px solid #333;padding-top:5px;}
+  .sig-label{font-size:0.76rem;color:#666;}
+  .sig-name{font-weight:700;font-size:0.9rem;color:#1e293b;margin-top:3px;}
+  .footer{margin-top:18px;border-top:2px solid #1d4ed8;padding-top:8px;font-size:0.72rem;color:#888;display:flex;justify-content:space-between;}
+  .confidential{background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;padding:3px 10px;border-radius:20px;font-size:0.72rem;font-weight:700;}
+  .print-btn{position:fixed;top:12px;right:12px;background:#1d4ed8;color:#fff;border:none;padding:8px 18px;border-radius:8px;font-weight:700;cursor:pointer;font-size:0.9rem;}
+  @media print{.print-btn{display:none;} body{padding:10px;} @page{size:A4;margin:10mm;}}
+</style></head><body>
+<button class="print-btn" onclick="window.print()">🖨️ Print</button>
+
+<div class="header">
+  <img class="logo" src="${logo}" onerror="this.style.display='none'" />
+  <div>
+    <div class="company">DYNAPHARM INTERNATIONAL NAMIBIA</div>
+    <div class="subtitle">Health &amp; Wellness Division</div>
+    <div class="report-title">FOLLOW-UP CONSULTATION REPORT</div>
+    <div class="followup-badge">🔄 FOLLOW-UP VISIT</div>
+  </div>
+  <div style="margin-left:auto;text-align:right;font-size:0.78rem;color:#64748b;line-height:1.7;">
+    ${r.id ? `<div><b>Report ID:</b> ${esc(r.id)}</div>` : ''}
+    <div><b>Date:</b> ${fmtDateTime(r.created_at)}</div>
+    <div><b>Branch:</b> ${esc(r.branch || 'N/A')}</div>
+    <div><b>Consultant:</b> ${esc(r.consultant)}</div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Patient Information</h3>
+  <div class="grid3">
+    <div class="field"><b>Full Name:</b> ${esc(r.client_name || 'N/A')}</div>
+    <div class="field"><b>Membership:</b> ${isMem ? '✓ Member' : 'Non-Member / Referred'}</div>
+    <div class="field"><b>Consultation Fee:</b> N$ ${esc(r.consultation_fee || 'N/A')}</div>
+    ${r.nb_number ? `<div class="field"><b>NB Number:</b> ${esc(r.nb_number)}</div>` : ''}
+    ${!isMem && r.referral_name ? `<div class="field"><b>Referral Name:</b> ${esc(r.referral_name)}</div>` : ''}
+    ${!isMem && r.referral_nb ? `<div class="field"><b>Referral NB:</b> ${esc(r.referral_nb)}</div>` : ''}
+  </div>
+</div>
+
+${r.prev_diagnosis || r.prev_follow_up_date ? `
+<div class="prev-section">
+  <h3 style="color:#64748b;border-color:#e2e8f0;">Previous Visit Reference</h3>
+  <div class="grid2">
+    ${r.prev_follow_up_date ? `<div class="field"><b>Scheduled Follow-up Date:</b> ${fmtDate(r.prev_follow_up_date)}</div>` : ''}
+    ${r.prev_diagnosis ? `<div class="field" style="grid-column:1/-1"><b>Previous Diagnosis:</b> ${esc(r.prev_diagnosis)}</div>` : ''}
+  </div>
+</div>` : ''}
+
+<div class="section">
+  <h3>Consultant Notes &amp; Diagnosis</h3>
+  <p style="margin:0;white-space:pre-wrap;font-size:0.85rem;color:#1e293b">${esc(r.diagnosis || 'No notes recorded.')}</p>
+</div>
+
+<div class="section">
+  <h3>Prescribed Products</h3>
+  ${rxHtml}
+</div>
+
+${r.follow_up_date ? `
+<div class="section">
+  <h3>Next Follow-up</h3>
+  <div class="grid2">
+    <div class="field"><b>Next Follow-up Date:</b> ${fmtDate(r.follow_up_date)}</div>
+    ${r.follow_up_notes ? `<div class="field"><b>Notes:</b> ${esc(r.follow_up_notes)}</div>` : ''}
+  </div>
+</div>` : ''}
+
+<div class="section" style="margin-top:16px;">
+  <div class="sig-row">
+    <div class="sig-box">
+      <div class="sig-label">Consultant Signature</div>
+      <div class="sig-name">${esc(r.consultant)}</div>
+    </div>
+    <div class="sig-box">
+      <div class="sig-label">Patient / Guardian Signature</div>
+      <div class="sig-name">&nbsp;</div>
+    </div>
+  </div>
+</div>
+
+<div class="footer">
+  <span class="confidential">🔒 CONFIDENTIAL</span>
+  <span>This report is confidential and intended solely for the named patient.</span>
+  <span>Dynapharm International Namibia — Printed ${new Date().toLocaleDateString('en-NA',{day:'2-digit',month:'long',year:'numeric'})}</span>
+</div>
+</body></html>`);
+    w.document.close();
+    setTimeout(() => { try { w.focus(); } catch {} }, 400);
+  };
+
+  const handleSaveAndPrint = async () => {
+    if (!diagnosis.trim()) { setError('Please enter a diagnosis / consultant notes.'); return; }
+    setSaving(true); setError('');
+    try {
+      const medicines = Array.from(meds).map(name => ({ name, dispensed: false }));
+      const prescriptions = medicines.map(m => ({ product: m.name, quantity: 1 }));
+      const created = await api.reports.create({
+        client_name: parentReport.client_name || '',
+        appointment_id: parentReport.appointment_id || null,
+        diagnosis,
+        recommendations: diagnosis,
+        prescriptions,
+        medicines,
+        follow_up_date: nextFollowUpDate || null,
+        follow_up_notes: nextFollowUpNotes || null,
+        symptoms: [],
+        consultant: user?.full_name || user?.username || 'Consultant',
+        membership_status: parentReport.membership_status || 'referred',
+        consultation_fee: parentReport.consultation_fee || 150,
+        consultant_credit: 150,
+        referral_credit: 0,
+        report_required: true,
+        branch: parentReport.branch || user?.branch || '',
+        parent_report_id: parentReport.id,
+      });
+      const savedId = created?.id || created?.report?.id || null;
+      printFollowUpReport(savedId);
+      if (onSaved) onSaved();
+      onClose();
+    } catch (err) {
+      setError(err.message || 'Failed to save report');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div onClick={e => { if (e.target === e.currentTarget) onClose(); }}
       style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 1000001, overflowY: 'auto', padding: '20px', boxSizing: 'border-box' }}>
@@ -2995,12 +3172,22 @@ function FollowUpReportModal({ parentReport, onClose, onSaved }) {
             </div>
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-            <button onClick={onClose} style={{ padding: '10px 22px', background: '#6b7280', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem' }}>Cancel</button>
-            <button onClick={handleSave} disabled={saving}
-              style={{ padding: '10px 26px', background: saving ? '#1e40af' : '#1d4ed8', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem', opacity: saving ? 0.7 : 1 }}>
-              {saving ? '⏳ Saving...' : '💾 Save Follow-up Report'}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <button onClick={printFollowUpReport}
+              style={{ padding: '10px 22px', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem' }}>
+              🖨️ Print / PDF
             </button>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button onClick={onClose} style={{ padding: '10px 22px', background: '#6b7280', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem' }}>Cancel</button>
+              <button onClick={handleSaveAndPrint} disabled={saving}
+                style={{ padding: '10px 22px', background: saving ? '#065f46' : '#059669', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem', opacity: saving ? 0.7 : 1 }}>
+                {saving ? '⏳ Saving...' : '💾 Save & Print'}
+              </button>
+              <button onClick={handleSave} disabled={saving}
+                style={{ padding: '10px 26px', background: saving ? '#1e40af' : '#1d4ed8', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem', opacity: saving ? 0.7 : 1 }}>
+                {saving ? '⏳ Saving...' : '💾 Save Only'}
+              </button>
+            </div>
           </div>
         </div>
       </div>
