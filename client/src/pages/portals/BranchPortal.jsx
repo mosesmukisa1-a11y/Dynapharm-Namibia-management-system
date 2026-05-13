@@ -11,7 +11,7 @@ import { formatCurrency, formatDateTime, formatDate, BRANCHES, COMPANY_INFO, BRA
 import { enrichProductsWithPricing, calculateCartTotals, generateReceiptNumber, PACKAGE_DATABASE, findProductPrice, calculatePrescriptionTotals, getConsultationFee, getPackagesForPOS, setLivePrices, getLiveProductList } from '../../lib/pricing';
 import { generateReceiptHTML, printReceipt, generateSalesPDFHTML, printSalesPDF, generatePrescriptionQuoteHTML, generatePrescriptionQuotePDFHTML } from '../../lib/receipt';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
-import { ShoppingCart, FileText, Package, Landmark, CreditCard, ClipboardList, Gift, MessageSquare, Users, UserPlus, Map, Printer, AlertTriangle, Search, ArrowRightLeft, Trash2, RotateCcw, Heart, CheckCircle, Calendar, Megaphone, Clock, XCircle, Plus } from 'lucide-react';
+import { ShoppingCart, FileText, Package, Landmark, CreditCard, ClipboardList, Gift, MessageSquare, Users, UserPlus, Map, Printer, AlertTriangle, Search, ArrowRightLeft, Trash2, RotateCcw, Heart, CheckCircle, Calendar, Megaphone, Clock, XCircle, Plus, Upload, List } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { MembershipAgreementForm } from '../../components/MembershipAgreementForm';
 import StaffMessagesTab from '../../components/StaffMessagesTab';
@@ -447,6 +447,7 @@ export default function BranchPortal() {
     { id: 'communication', label: unreadComms > 0 ? `Communication (${unreadComms})` : 'Communication', icon: '💬' },
     { id: 'staff', label: 'Staff', icon: '👤' },
     { id: 'messages', label: 'My Messages', icon: '📨' },
+    { id: 'addDistributor', label: 'Add Distributor', icon: '➕' },
     { id: 'registration', label: 'Distributor Registration', icon: '📝' },
     { id: 'outsideReg', label: 'Outside Registrations', icon: '📋' },
     { id: 'fieldProgram', label: 'Field Program', icon: '🚐' },
@@ -537,6 +538,7 @@ export default function BranchPortal() {
           {activeTab === 'communication' && <CommunicationTab />}
           {activeTab === 'staff' && <StaffTab />}
           {activeTab === 'messages' && <StaffMessagesTab />}
+          {activeTab === 'addDistributor' && <AddDistributorTab />}
           {activeTab === 'registration' && <DistributorRegTab />}
           {activeTab === 'outsideReg' && <OutsideRegistrationsTab />}
           {activeTab === 'fieldProgram' && <FieldProgramTab />}
@@ -9068,6 +9070,233 @@ function OutsideRegistrationsTab() {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+function AddDistributorTab() {
+  const { user } = useAuth();
+  const effectiveBranch = useContext(PortalBranchContext) || user?.branch || '';
+  const [distributors, setDistributors] = useState([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState('');
+  const [search, setSearch] = useState('');
+  const [showForm, setShowForm] = useState(false);
+  const [showUpload, setShowUpload] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState(null);
+  const fileInputRef = useRef(null);
+  const [form, setForm] = useState({ distributor_code: '', distributor_name: '', branch: effectiveBranch, mobile_no: '', email: '' });
+
+  useEffect(() => {
+    setForm(f => ({ ...f, branch: effectiveBranch }));
+  }, [effectiveBranch]);
+
+  const loadDistributors = (searchTerm) => {
+    setLoading(true);
+    const endpoint = searchTerm
+      ? `/distributors?search=${encodeURIComponent(searchTerm)}&limit=100`
+      : '/distributors?limit=100';
+    api.get(endpoint)
+      .then(d => {
+        const list = Array.isArray(d) ? d : d.distributors || [];
+        setDistributors(list);
+        if (d.total_count) setTotalCount(d.total_count);
+        else if (!searchTerm) setTotalCount(list.length);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { loadDistributors(''); }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => loadDistributors(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.distributor_code || !form.distributor_name) {
+      setMessage('Error: NB Number and Name are required');
+      return;
+    }
+    try {
+      await api.distributors.create(form);
+      setMessage('Distributor added successfully!');
+      setForm({ distributor_code: '', distributor_name: '', branch: effectiveBranch, mobile_no: '', email: '' });
+      setShowForm(false);
+      loadDistributors(search);
+    } catch (err) {
+      setMessage('Error: ' + err.message);
+    }
+  };
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (!['csv', 'xlsx', 'xls'].includes(ext)) {
+      setMessage('Error: Please upload a CSV or Excel file (.csv, .xlsx, .xls)');
+      return;
+    }
+    setUploading(true);
+    setUploadResult(null);
+    setMessage('');
+    try {
+      const XLSX = await import('xlsx');
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data, { type: 'array' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet);
+      if (rows.length === 0) { setMessage('Error: No data rows found in the file'); setUploading(false); return; }
+      setMessage(`Processing ${rows.length} rows...`);
+      const BATCH = 500;
+      let totalInserted = 0, totalUpdated = 0, totalSkipped = 0, totalErrors = 0;
+      for (let i = 0; i < rows.length; i += BATCH) {
+        const chunk = rows.slice(i, i + BATCH);
+        setMessage(`Importing batch ${Math.floor(i/BATCH)+1}/${Math.ceil(rows.length/BATCH)} (${i+1}-${Math.min(i+BATCH, rows.length)} of ${rows.length})...`);
+        const result = await api.post('/distributor-import', { distributors: chunk });
+        if (result.summary) {
+          totalInserted += result.summary.inserted;
+          totalUpdated += result.summary.updated;
+          totalSkipped += result.summary.skipped;
+          totalErrors += result.summary.errors;
+        }
+      }
+      setUploadResult({ inserted: totalInserted, updated: totalUpdated, skipped: totalSkipped, errors: totalErrors, total: rows.length });
+      setMessage(`Import complete: ${totalInserted} new, ${totalUpdated} updated, ${totalSkipped} unchanged`);
+      loadDistributors(search);
+    } catch (err) {
+      setMessage('Error: ' + (err.message || 'Upload failed'));
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  if (loading) return <LoadingSpinner />;
+
+  return (
+    <div>
+      {message && <Alert type={message.startsWith('Error') ? 'error' : 'success'} className="mb-4">{message}</Alert>}
+
+      <div className="flex items-center gap-3 mb-4">
+        <div className="relative flex-1">
+          <List size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by NB/DZ number or name..."
+            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20" />
+        </div>
+        <Badge variant="info">{totalCount > distributors.length ? `${distributors.length} of ${totalCount}` : distributors.length} distributors</Badge>
+        <Button size="sm" variant="secondary" onClick={() => { setShowUpload(!showUpload); setShowForm(false); }}>
+          {showUpload ? 'Cancel Upload' : <><Upload size={14} /> Import CSV/Excel</>}
+        </Button>
+        <Button size="sm" onClick={() => { setShowForm(!showForm); setShowUpload(false); }}>
+          {showForm ? 'Cancel' : <><Plus size={14} /> Add Distributor</>}
+        </Button>
+      </div>
+
+      {showUpload && (
+        <Card className="mb-4">
+          <CardBody>
+            <div className="space-y-4">
+              <div>
+                <h4 className="font-bold text-gray-800 mb-1">Bulk Import Distributors</h4>
+                <p className="text-xs text-gray-500 mb-3">
+                  Upload a CSV or Excel file with distributor data. The system will automatically detect columns
+                  (DRN/NB/DZ Number, NAME, POSITION, DATE_CREATE, SPONSOR_CODE, MOBILE_TELE, etc.).
+                  All code formats from the master list are accepted (NB, DZ, and others). Existing distributors will be skipped unless their position has changed.
+                </p>
+              </div>
+              <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-primary/50 transition-colors">
+                <Upload size={32} className="text-gray-400 mx-auto mb-2" />
+                <p className="text-sm text-gray-600 mb-3">Select a CSV or Excel file to upload</p>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv,.xlsx,.xls"
+                  onChange={handleFileUpload}
+                  disabled={uploading}
+                  className="block mx-auto text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 file:cursor-pointer cursor-pointer"
+                />
+              </div>
+              {uploading && (
+                <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
+                  <LoadingSpinner />
+                  <span className="text-sm text-blue-700">Importing... Please wait.</span>
+                </div>
+              )}
+              {uploadResult && (
+                <div className="grid grid-cols-4 gap-3">
+                  <div className="bg-green-50 rounded-lg p-3 text-center">
+                    <p className="text-lg font-bold text-green-600">{uploadResult.inserted}</p>
+                    <p className="text-xs text-green-500">New</p>
+                  </div>
+                  <div className="bg-blue-50 rounded-lg p-3 text-center">
+                    <p className="text-lg font-bold text-blue-600">{uploadResult.updated}</p>
+                    <p className="text-xs text-blue-500">Updated</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-3 text-center">
+                    <p className="text-lg font-bold text-gray-600">{uploadResult.skipped}</p>
+                    <p className="text-xs text-gray-500">Unchanged</p>
+                  </div>
+                  <div className="bg-red-50 rounded-lg p-3 text-center">
+                    <p className="text-lg font-bold text-red-600">{uploadResult.errors}</p>
+                    <p className="text-xs text-red-500">Errors</p>
+                  </div>
+                </div>
+              )}
+              <div className="text-xs text-gray-400">
+                <p className="font-semibold mb-1">Expected columns (auto-detected):</p>
+                <p>DRN (NB Number), NAME, POSITION, DATE_CREATE, SPONSOR_CODE, MOBILE_TELE, SEX, CITY/ADDR1, STATUS, EMAIL</p>
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+      )}
+
+      {showForm && (
+        <Card className="mb-4">
+          <CardBody>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <Input label="NB / DZ Number / Code *" value={form.distributor_code} onChange={e => setForm({ ...form, distributor_code: e.target.value })} placeholder="e.g. NB005676 or DZ001234" />
+                <Input label="Distributor Name *" value={form.distributor_name} onChange={e => setForm({ ...form, distributor_name: e.target.value })} placeholder="Full name" />
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium text-gray-700">Branch</label>
+                  <select value={form.branch} onChange={e => setForm({ ...form, branch: e.target.value })}
+                    className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
+                    <option value="">Select Branch</option>
+                    {BRANCH_DETAILS.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </select>
+                </div>
+                <Input label="Phone" value={form.mobile_no} onChange={e => setForm({ ...form, mobile_no: e.target.value })} placeholder="+264 81..." />
+                <Input label="Email" type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="email@example.com" />
+              </div>
+              <Button type="submit">Add Distributor</Button>
+            </form>
+          </CardBody>
+        </Card>
+      )}
+
+      <Card>
+        <Table
+          columns={[
+            { header: 'NB Number', render: r => r.distributor_code || r.nb_number || r.id || '-' },
+            { header: 'Name', render: r => r.distributor_name || r.full_name || r.name || '-' },
+            { header: 'Position', render: r => r.position || r.position_code || '-' },
+            { header: 'Branch', render: r => getBranchDisplayName(r.branch || r.location) || r.branch || r.location || '-' },
+            { header: 'Phone', render: r => r.mobile_no || '-' },
+            { header: 'Joined', render: r => r.date_joined || '-' },
+            { header: 'Status', render: r => <Badge variant={r.status === 'active' ? 'success' : 'warning'}>{r.status || 'active'}</Badge> },
+          ]}
+          data={distributors}
+          emptyMessage="No distributors found"
+        />
+      </Card>
     </div>
   );
 }
