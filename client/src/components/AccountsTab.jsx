@@ -79,16 +79,32 @@ export default function AccountsTab({ role = 'finance' }) {
       api.finance.remittances().catch(() => []),
       api.hr.salaryLedger.list().catch(() => ({ employees: [] })),
       api.finance.rent.list().catch(() => ({ rents: [] })),
-    ]).then(([pl, sv, pc, expenses, remittances, salaryData, rentData]) => {
-      const expList = Array.isArray(expenses) ? expenses : expenses?.expenses || [];
-      const periodExpenses = expList.filter(e => {
-        const d = e.date || e.created_at || '';
+      api.get('/dept-expenses?limit=1000').catch(() => ({ expenses: [] })),
+    ]).then(([pl, sv, pc, expenses, remittances, salaryData, rentData, deptExpData]) => {
+      // Branch expenses
+      const branchExpList = Array.isArray(expenses) ? expenses : expenses?.expenses || [];
+      const periodBranchExp = branchExpList.filter(e => {
+        const d = (e.date || e.created_at || '').slice(0, 10);
         return d >= startDate && d <= endDate && e.status !== 'rejected';
       });
+
+      // Dept expenses (finance manager entries)
+      const deptExpList = Array.isArray(deptExpData) ? deptExpData : deptExpData?.expenses || [];
+      const periodDeptExp = deptExpList.filter(e => {
+        const d = (e.date || e.created_at || '').slice(0, 10);
+        return d >= startDate && d <= endDate && e.status !== 'rejected';
+      });
+
+      // Merge both into one list for category breakdown
+      const periodExpenses = [...periodBranchExp, ...periodDeptExp];
       const totalMiscExpenses = periodExpenses.reduce((s, e) => s + Number(e.amount || 0), 0);
       const expByCategory = {};
-      periodExpenses.forEach(e => {
-        const cat = e.category || 'Other';
+      periodBranchExp.forEach(e => {
+        const cat = e.category || 'Branch Expenses';
+        expByCategory[cat] = (expByCategory[cat] || 0) + Number(e.amount || 0);
+      });
+      periodDeptExp.forEach(e => {
+        const cat = e.category || e.department || 'Dept Expenses';
         expByCategory[cat] = (expByCategory[cat] || 0) + Number(e.amount || 0);
       });
 
