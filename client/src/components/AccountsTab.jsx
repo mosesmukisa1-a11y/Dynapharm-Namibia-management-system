@@ -77,24 +77,42 @@ export default function AccountsTab({ role = 'finance' }) {
       api.finance.pettyCash.accounts().catch(() => ({ accounts: [] })),
       api.get(`/branch/expenses?limit=2000`).catch(() => []),
       api.finance.remittances().catch(() => []),
-    ]).then(([pl, sv, pc, expenses, remittances]) => {
+      api.hr.salaryLedger.list().catch(() => ({ employees: [] })),
+      api.finance.rent.list().catch(() => ({ rents: [] })),
+    ]).then(([pl, sv, pc, expenses, remittances, salaryData, rentData]) => {
       const expList = Array.isArray(expenses) ? expenses : expenses?.expenses || [];
       const periodExpenses = expList.filter(e => {
         const d = e.date || e.created_at || '';
         return d >= startDate && d <= endDate && e.status !== 'rejected';
       });
-      const totalExpenses = periodExpenses.reduce((s, e) => s + Number(e.amount || 0), 0);
+      const totalMiscExpenses = periodExpenses.reduce((s, e) => s + Number(e.amount || 0), 0);
       const expByCategory = {};
       periodExpenses.forEach(e => {
         const cat = e.category || 'Other';
         expByCategory[cat] = (expByCategory[cat] || 0) + Number(e.amount || 0);
       });
 
+      // Calculate period months for recurring costs
+      const msPerMonth = 30.44 * 24 * 3600 * 1000;
+      const periodMs = new Date(endDate).getTime() - new Date(startDate).getTime();
+      const periodMonths = Math.max(1, Math.round(periodMs / msPerMonth));
+
+      // Salaries — monthly total × months in period
+      const salaryList = Array.isArray(salaryData) ? salaryData : salaryData?.employees || [];
+      const monthlyPayroll = salaryList.reduce((s, e) => s + Number(e.total_salary || e.basic_salary || 0), 0);
+      const totalSalaries = monthlyPayroll * periodMonths;
+
+      // Rent — monthly total × months in period
+      const rentList = Array.isArray(rentData) ? rentData : rentData?.rents || rentData?.rent_payments || [];
+      const monthlyRent = rentList.reduce((s, r) => s + Number(r.total_payable || r.rent_amount || 0), 0);
+      const totalRent = monthlyRent * periodMonths;
+
       const revenue = Number(pl.totalRevenueDP || 0);
       const cogs = Number(pl.cifCost || 0);
       const grossProfit = Number(pl.grossProfit || revenue - cogs);
       const bonusPayout = Number(pl.bonusPayout || 0);
-      const opExpenses = totalExpenses + bonusPayout;
+      const totalExpenses = totalMiscExpenses;
+      const opExpenses = totalMiscExpenses + bonusPayout + totalSalaries + totalRent;
       const ebit = grossProfit - opExpenses;
       const sscEmployer = ebit > 0 ? Math.min(ebit * SSC_RATE, SSC_MONTHLY_CAP * 12 * 10) : 0;
       const taxableIncome = Math.max(0, ebit - sscEmployer);
@@ -121,7 +139,8 @@ export default function AccountsTab({ role = 'finance' }) {
       setData({
         period: { start: startDate, end: endDate },
         revenue, cogs, grossProfit, opExpenses, ebit, citProvision, netProfit, sscEmployer,
-        bonusPayout, totalExpenses,
+        bonusPayout, totalExpenses, totalSalaries, totalRent,
+        monthlyPayroll, monthlyRent, periodMonths,
         expByCategory,
         stockValueDP, pcBalance, depositsReceived,
         totalCurrentAssets, totalLiabilities, equity,
@@ -131,6 +150,8 @@ export default function AccountsTab({ role = 'finance' }) {
         netMargin: revenue ? netProfit / revenue * 100 : 0,
         expList: periodExpenses,
         pendingRemittances,
+        salaryCount: salaryList.length,
+        rentCount: rentList.filter(r => Number(r.total_payable || r.rent_amount || 0) > 0).length,
       });
     }).catch(err => setError(err.message))
       .finally(() => setLoading(false));
@@ -166,7 +187,12 @@ export default function AccountsTab({ role = 'finance' }) {
   ];
 
   const expChartData = data
-    ? Object.entries(data.expByCategory).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([cat, val]) => ({ name: cat, amount: val }))
+    ? [
+        ...(data.totalSalaries > 0 ? [{ name: 'Staff Salaries', amount: data.totalSalaries }] : []),
+        ...(data.totalRent > 0 ? [{ name: 'Rent & Lease', amount: data.totalRent }] : []),
+        ...(data.bonusPayout > 0 ? [{ name: 'Distributor Bonuses', amount: data.bonusPayout }] : []),
+        ...Object.entries(data.expByCategory).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([cat, val]) => ({ name: cat, amount: val })),
+      ].filter(d => d.amount > 0)
     : [];
 
   const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
@@ -251,10 +277,19 @@ export default function AccountsTab({ role = 'finance' }) {
                   </Section>
 
                   <Section title="Operating Expenses" icon={<Building2 size={12} className="text-red-500" />}>
+                    {data.totalSalaries > 0 && (
+                      <PRow label={`Staff Salaries & Benefits (${data.salaryCount} employees × ${data.periodMonths}mo)`} value={data.totalSalaries} indent negative />
+                    )}
+                    {data.totalRent > 0 && (
+                      <PRow label={`Branch Rent & Lease (${data.rentCount} locations × ${data.periodMonths}mo)`} value={data.totalRent} indent negative />
+                    )}
+                    {data.bonusPayout > 0 && <PRow label="Distributor Bonus Payouts" value={data.bonusPayout} indent negative />}
                     {Object.entries(data.expByCategory).sort((a, b) => b[1] - a[1]).map(([cat, val]) => (
                       <PRow key={cat} label={cat} value={val} indent negative />
                     ))}
-                    {data.bonusPayout > 0 && <PRow label="Bonus Payouts" value={data.bonusPayout} indent negative />}
+                    {data.opExpenses === 0 && (
+                      <p className="text-xs text-gray-400 pl-4 py-1">No operating expenses recorded for this period.</p>
+                    )}
                     <PRow label="Total Operating Expenses" value={data.opExpenses} bold negative border />
                   </Section>
 
