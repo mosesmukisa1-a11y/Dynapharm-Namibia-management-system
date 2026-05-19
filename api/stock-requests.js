@@ -443,6 +443,14 @@ export default async function handler(req, res) {
         updatePayload.last_status_change = new Date().toISOString();
       }
 
+      // Set rejected_at timestamp when status transitions to rejected
+      if (body.status === 'rejected' && !updatePayload.rejected_at) {
+        updatePayload.rejected_at = new Date().toISOString();
+        if (!updatePayload.rejected_by) {
+          updatePayload.rejected_by = req.user?.full_name || req.user?.username || null;
+        }
+      }
+
       const request = await update('stock_requests', body.id, updatePayload, 'id');
 
       if (body.items !== undefined || body.itemsArray !== undefined) {

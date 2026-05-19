@@ -808,10 +808,22 @@ export default async function handler(req, res) {
         delete updatePayload.receiptStatus;
       }
 
+      // Set rejected_at timestamp when status transitions to rejected
+      if ((updatePayload.status || body.status) === 'rejected' && !updatePayload.rejected_at) {
+        updatePayload.rejected_at = new Date().toISOString();
+        if (!updatePayload.rejected_by && !updatePayload.rejectedBy) {
+          updatePayload.rejected_by = currentUser?.fullName || currentUser?.username || null;
+        }
+      }
+      // Normalise camelCase → snake_case for reject fields
+      if (updatePayload.rejectedBy !== undefined) {
+        updatePayload.rejected_by = updatePayload.rejectedBy ?? updatePayload.rejected_by ?? null;
+        delete updatePayload.rejectedBy;
+      }
+
       const metaExtras = {};
       if (updatePayload.approved_by) { metaExtras.approved_by = updatePayload.approved_by; delete updatePayload.approved_by; }
       if (updatePayload.approvedBy) { metaExtras.approved_by = updatePayload.approvedBy; delete updatePayload.approvedBy; }
-      if (updatePayload.rejected_by) { metaExtras.rejected_by = updatePayload.rejected_by; delete updatePayload.rejected_by; }
 
       const gmActionProvided = body.gmAction || body.gm_action || updatePayload.gm_action;
       const isGmApprovalAction = gmActionProvided === 'approve' || gmActionProvided === 'amend_approve';
