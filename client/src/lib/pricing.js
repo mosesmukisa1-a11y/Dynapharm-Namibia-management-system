@@ -3,32 +3,54 @@
  *
  * Single source of truth for product prices is the GM Price List (product_prices table).
  * Every portal calls setLivePrices(data) on load via GET /api/prices.
- * getLiveProductList() returns [] until prices are loaded — never falls back to
- * hardcoded data, ensuring all figures always match the live database.
+ * When the device is offline the latest prices are served from localStorage so
+ * the branch POS works without a network connection.
  */
+
+const PRICE_CACHE_KEY = 'dynapharm_prices_v1';
 
 let _livePrices = null;
 
+function _mapPrice(p) {
+  return {
+    id:          p.id,
+    description: p.description,
+    dp:          Number(p.dp)  || 0,
+    cp:          Number(p.cp)  || 0,
+    cif:         Number(p.cif) || 0,
+    bv:          Number(p.bv)  || 0,
+    is_package:  !!p.is_package,
+  };
+}
+
 export function setLivePrices(prices) {
   if (Array.isArray(prices) && prices.length > 0) {
-    _livePrices = prices.map(p => ({
-      id:          p.id,
-      description: p.description,
-      dp:          Number(p.dp)  || 0,
-      cp:          Number(p.cp)  || 0,
-      cif:         Number(p.cif) || 0,
-      bv:          Number(p.bv)  || 0,
-      is_package:  !!p.is_package,
-    }));
+    _livePrices = prices.map(_mapPrice);
+    // Persist to localStorage so the POS is usable offline after a previous online session
+    try {
+      localStorage.setItem(PRICE_CACHE_KEY, JSON.stringify(_livePrices));
+    } catch (_) {}
   }
 }
 
 export function getLiveProductList() {
-  return _livePrices || [];
+  if (_livePrices && _livePrices.length > 0) return _livePrices;
+  // Offline fallback: restore the last known price list from localStorage
+  try {
+    const cached = localStorage.getItem(PRICE_CACHE_KEY);
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        _livePrices = parsed;
+        return _livePrices;
+      }
+    }
+  } catch (_) {}
+  return [];
 }
 
 export function pricesLoaded() {
-  return _livePrices !== null && _livePrices.length > 0;
+  return getLiveProductList().length > 0;
 }
 
 export function findProductPrice(productName) {
