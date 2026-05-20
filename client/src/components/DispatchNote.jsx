@@ -25,29 +25,43 @@ function generateBarcodeSVG(value) {
     '11110100010','10111011110','10111101110','11101011110','11110101110',
     '11010000100','11010010000','11010011100','1100011101011'
   ];
+  // Strip non-printable / out-of-range chars; cap at 20 to keep physical size scannable
+  const safe = String(value).replace(/[^\x20-\x7E]/g, '').slice(0, 20);
   const charToVal = (c) => c.charCodeAt(0) - 32;
   let checksum = CODE128_START_B;
   let binary = patterns[CODE128_START_B];
-  for (let i = 0; i < value.length; i++) {
-    const val = charToVal(value[i]);
+  for (let i = 0; i < safe.length; i++) {
+    const val = charToVal(safe[i]);
+    if (val < 0 || val > 95 || !patterns[val]) continue;
     checksum += val * (i + 1);
     binary += patterns[val];
   }
   binary += patterns[checksum % 103];
   binary += patterns[CODE128_STOP];
-  const barWidth = 2;
-  const height = 60;
-  let x = 0;
+
+  // 1 SVG unit per module — never use CSS to scale down, which destroys bar ratios.
+  // Quiet zones of 10 modules on each side are required for scanner recognition.
+  const barWidth = 1;
+  const barHeight = 56;
+  const quietZone = 10;
+  const textHeight = 16;
+  const totalHeight = barHeight + textHeight;
+
+  let x = quietZone;
   let bars = '';
   for (let i = 0; i < binary.length; i++) {
     if (binary[i] === '1') {
-      bars += `<rect x="${x}" y="0" width="${barWidth}" height="${height}" fill="black"/>`;
+      bars += `<rect x="${x}" y="0" width="${barWidth}" height="${barHeight}" fill="black"/>`;
     }
     x += barWidth;
   }
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${x}" height="${height + 18}" viewBox="0 0 ${x} ${height + 18}">
+  const totalWidth = x + quietZone;
+
+  const label = safe.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalWidth} ${totalHeight}" width="${totalWidth}" height="${totalHeight}" style="display:block;background:white;">
+    <rect x="0" y="0" width="${totalWidth}" height="${totalHeight}" fill="white"/>
     ${bars}
-    <text x="${x/2}" y="${height + 14}" text-anchor="middle" font-family="monospace" font-size="12" font-weight="bold">${value}</text>
+    <text x="${totalWidth / 2}" y="${barHeight + 12}" text-anchor="middle" font-family="monospace" font-size="10" font-weight="bold" fill="black">${label}</text>
   </svg>`;
 }
 
@@ -137,7 +151,7 @@ const PRINT_CSS = `
   .header-bar { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
   .header-bar .ref-block { text-align: right; }
   .barcode-block { text-align: center; margin: 8px 0 4px 0; }
-  .barcode-block svg { max-width: 280px; }
+  .barcode-block svg { display: block; }
   .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
   .info-box { padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 6px; background: #fafafa; }
   .info-box.full { grid-column: 1 / -1; }

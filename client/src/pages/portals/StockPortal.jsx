@@ -7187,8 +7187,9 @@ function ValuationTab({ branch }) {
 // range are silently stripped so the SVG is always valid.
 function code128SVG(value) {
   if (!value) return '';
-  // Strip characters outside Code128-B printable range (space=32 … ~=126)
-  const safe = String(value).replace(/[^\x20-\x7E]/g, '');
+  // Strip chars outside Code128-B printable range; cap at 20 chars so the
+  // physical barcode stays compact and scannable when printed.
+  const safe = String(value).replace(/[^\x20-\x7E]/g, '').slice(0, 20);
   if (!safe) return '';
   const CODE128_START_B = 104, CODE128_STOP = 106;
   const P = [
@@ -7207,27 +7208,30 @@ function code128SVG(value) {
   let chk = CODE128_START_B, bits = P[CODE128_START_B];
   for (let i = 0; i < safe.length; i++) {
     const v = cv(safe[i]);
-    if (v < 0 || v > 95 || !P[v]) continue; // skip unmapped chars defensively
+    if (v < 0 || v > 95 || !P[v]) continue;
     chk += v * (i + 1);
     bits += P[v];
   }
   bits += P[chk % 103] + P[CODE128_STOP];
-  const bw = 2, bh = 56;
-  let x = 0, rects = '';
+
+  // 1 SVG unit per module — no CSS max-width, which destroys bar ratios on print.
+  // Quiet zones of 10 modules on each side are required for scanner recognition.
+  const bw = 1, bh = 48, qz = 10;
+  let x = qz, rects = '';
   for (let i = 0; i < bits.length; i++) {
     if (bits[i] === '1') rects += `<rect x="${x}" y="0" width="${bw}" height="${bh}" fill="black"/>`;
     x += bw;
   }
-  // Escape the human-readable text to prevent SVG injection
+  const tw = x + qz, th = bh + 14;
   const label = safe.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${x}" height="${bh + 16}" viewBox="0 0 ${x} ${bh + 16}" style="max-width:240px">${rects}<text x="${x/2}" y="${bh + 12}" text-anchor="middle" font-family="monospace" font-size="11" font-weight="bold">${label}</text></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${tw} ${th}" width="${tw}" height="${th}" style="display:block;background:white;"><rect x="0" y="0" width="${tw}" height="${th}" fill="white"/>${rects}<text x="${tw/2}" y="${bh+11}" text-anchor="middle" font-family="monospace" font-size="9" font-weight="bold" fill="black">${label}</text></svg>`;
 }
 
 function BarcodeLabelDisplay({ code, name, batch, expiry, location, qty, dp }) {
-  const svg = code ? code128SVG(code.slice(0, 30)) : null;
+  const svg = code ? code128SVG(code) : null;
   const fmtExp = d => { try { return d ? new Date(d).toLocaleDateString('en-ZA',{month:'short',year:'numeric'}) : null; } catch { return d; } };
   return (
-    <div style={{ border: '1.5px solid #d1d5db', borderRadius: 8, padding: '10px 12px', textAlign: 'center', background: '#fff', width: 200, flexShrink: 0 }}>
+    <div style={{ border: '1.5px solid #d1d5db', borderRadius: 8, padding: '10px 12px', textAlign: 'center', background: '#fff', width: 240, flexShrink: 0 }}>
       <div style={{ fontSize: 8, fontWeight: 800, color: '#c41e3a', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 }}>DYNAPHARM NAMIBIA</div>
       <div style={{ fontSize: 10, fontWeight: 700, color: '#1a1a1a', lineHeight: 1.3, marginBottom: 6, minHeight: 28, overflow: 'hidden' }}>{name}</div>
       {batch && <div style={{ fontSize: 9, color: '#6b7280', marginBottom: 1 }}>Batch: <strong style={{ color: '#374151' }}>{batch}</strong></div>}
@@ -7330,14 +7334,15 @@ function BarcodeTab() {
     const rem  = Number(b.remaining_quantity ?? b.remainingQuantity ?? b.quantity ?? 0);
     const dp   = getDP(name) || Number(b.unit_price || b.dpc_unit_value || 0);
     const code = b.barcode || '';
-    const svg  = code ? code128SVG(code.slice(0, 30)) : '';
+    const svg  = code ? code128SVG(code) : '';
     const labelCss = `
-      .lbl { border: 1.5px solid #d1d5db; border-radius: 8px; padding: 10px 14px; width: 200px; text-align: center; display: inline-block; margin: 4px; vertical-align: top; background: #fff; }
+      .lbl { border: 1.5px solid #d1d5db; border-radius: 8px; padding: 10px 14px; width: 240px; text-align: center; display: inline-block; margin: 4px; vertical-align: top; background: #fff; }
       .lbl-brand { font-size: 8px; font-weight: 800; color: #c41e3a; text-transform: uppercase; letter-spacing: 1px; }
       .lbl-name  { font-size: 10px; font-weight: 700; color: #1a1a1a; margin: 5px 0; min-height: 28px; line-height: 1.3; }
       .lbl-meta  { font-size: 9px; color: #6b7280; margin: 1px 0; }
       .lbl-meta strong { color: #374151; }
-      .lbl-barcode { margin: 5px auto 2px; display: flex; justify-content: center; }
+      .lbl-barcode { margin: 5px auto 2px; display: flex; justify-content: center; overflow: visible; }
+      .lbl-barcode svg { display: block; }
       .lbl-code  { font-family: monospace; font-size: 10px; font-weight: 700; letter-spacing: 1px; color: #374151; }
       .lbl-price { font-size: 11px; font-weight: 800; color: #c41e3a; margin-top: 3px; }
       .lbl-qty   { font-size: 9px; color: #6b7280; margin-top: 2px; }
