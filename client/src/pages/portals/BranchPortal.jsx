@@ -8004,6 +8004,8 @@ function PendingMembershipsSection({ branch }) {
 
 function OnlineOrdersTab() {
   const { user } = useAuth();
+  const portalBranch = useContext(PortalBranchContext);
+  const effectiveBranch = portalBranch || user?.branch || '';
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(null);
@@ -8017,16 +8019,16 @@ function OnlineOrdersTab() {
     try {
       const d = await api.orders.list();
       const all = Array.isArray(d) ? d : d.orders || [];
-      const branchOrders = user?.branch
-        ? all.filter(o => (o.branch_id || o.branch || '').toLowerCase() === user.branch.toLowerCase()
-            || (o.branch_name || '').toLowerCase().includes(user.branch.toLowerCase()))
+      const branchOrders = effectiveBranch
+        ? all.filter(o => (o.branch_id || o.branch || '').toLowerCase() === effectiveBranch.toLowerCase()
+            || (o.branch_name || '').toLowerCase().includes(effectiveBranch.toLowerCase()))
         : all;
       setOrders(branchOrders);
     } catch {}
     setLoading(false);
   };
 
-  useEffect(() => { loadOrders(); }, []);
+  useEffect(() => { loadOrders(); }, [effectiveBranch]);
 
   const updateStatus = async (id, status) => {
     setUpdating(id);
@@ -8075,12 +8077,12 @@ function OnlineOrdersTab() {
 
   return (
     <div>
-      <PendingMembershipsSection branch={user?.branch} />
+      <PendingMembershipsSection branch={effectiveBranch} />
 
       <div className="rounded-xl p-5 mb-5" style={{ background: 'linear-gradient(135deg, #1e3a5f, #2980b9)' }}>
         <div className="flex justify-between items-center flex-wrap gap-2">
           <div>
-            <h3 className="text-white text-lg font-bold m-0">🛍️ Online Orders{user?.branch ? ` — ${getBranchDisplayName(user.branch)}` : ''}</h3>
+            <h3 className="text-white text-lg font-bold m-0">🛍️ Online Orders{effectiveBranch ? ` — ${getBranchDisplayName(effectiveBranch)}` : ''}</h3>
             <p className="text-white/75 text-sm mt-1 m-0">Full order details, product breakdown, and payment processing.</p>
           </div>
           <button onClick={loadOrders} className="px-4 py-2.5 rounded-lg text-white text-sm font-semibold cursor-pointer border-none" style={{ background: 'linear-gradient(135deg, #27ae60, #1e8449)' }}>🔄 Refresh</button>
