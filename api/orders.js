@@ -1,6 +1,7 @@
 import { applyAuthCors, getBranchScope } from './_lib/auth.js';
-import { getMany, getOne, insert, update, query } from './db.js';
-import { publishRealtimeEvent } from './db.js';
+import { getMany, getOne, insert, update, query, withTransaction, publishRealtimeEvent } from './db.js';
+import { postActivityRecord, generateBatId } from './_lib/activityCapture.js';
+import { recomputeLocationBalances } from './services/stockEngine.js';
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
@@ -98,7 +99,6 @@ export default async function handler(req, res) {
         distributor_code,
       } = req.body;
 
-      // Validation — customer_name and items are truly required; delivery_method and subtotal have defaults
       if (!customer_name) {
         return res.status(400).json({ error: 'customer_name is required' });
       }
@@ -115,13 +115,11 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'delivery_address or town_id is required for delivery orders' });
       }
 
-      // Calculate delivery fee
       let deliveryFee = 0;
       let deliveryFeePercentage = 0;
       let distanceKm = null;
 
       if (effectiveDeliveryMethod === 'delivery' && town_id) {
-        // Get delivery distance from database
         try {
           let distance;
           if (branch_id) {
@@ -130,28 +128,25 @@ export default async function handler(req, res) {
               [branch_id, town_id]
             );
           }
-          
+
           if (!distance) {
-            // Find nearest branch to the town
             distance = await getOne(
               'SELECT * FROM delivery_distances WHERE town_id = $1 ORDER BY distance_km ASC LIMIT 1',
               [town_id]
             );
           }
-          
+
           if (distance) {
             distanceKm = parseFloat(distance.distance_km);
             deliveryFeePercentage = parseFloat(distance.delivery_fee_percentage);
-            // Auto-calculate fee percentage based on distance if not set
             if (!deliveryFeePercentage || deliveryFeePercentage === 0) {
               deliveryFeePercentage = distanceKm >= 50 ? 20.00 : 15.00;
             }
           } else {
-            // Default: assume far distance (20%)
             deliveryFeePercentage = 20.00;
             distanceKm = null;
           }
-          
+
           deliveryFee = (parseFloat(effectiveSubtotal) * deliveryFeePercentage) / 100;
         } catch (error) {
           console.error('Error calculating delivery fee:', error);
@@ -162,11 +157,9 @@ export default async function handler(req, res) {
 
       const totalAmount = parseFloat(effectiveSubtotal) + deliveryFee;
 
-      // Generate order number
       const orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
       const orderId = `order_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-      // Create order
       const order = await insert('online_orders', {
         id: orderId,
         order_number: orderNumber,
@@ -191,7 +184,6 @@ export default async function handler(req, res) {
         items: JSON.stringify(items),
       });
 
-      // Publish realtime event (use 'orders' as resource name for WebSocket compatibility)
       await publishRealtimeEvent('orders', 'created', order);
 
       return res.status(201).json(order);
@@ -203,11 +195,13 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Order ID is required' });
       }
 
-      if (branchScope.enforced) {
-        const existing = await getOne('SELECT branch_id FROM online_orders WHERE id = $1', [id]);
-        if (existing && !branchScope.branches.includes(existing.branch_id || null)) {
-          return res.status(403).json({ error: 'Access denied' });
-        }
+      const existing = await getOne('SELECT * FROM online_orders WHERE id = $1', [id]);
+      if (!existing) {
+        return res.status(404).json({ error: 'Order not found' });
+      }
+
+      if (branchScope.enforced && !branchScope.branches.includes(existing.branch_id || null)) {
+        return res.status(403).json({ error: 'Access denied' });
       }
 
       const {
@@ -229,12 +223,158 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'No fields to update' });
       }
 
+      // ─── Fulfillment trigger ───────────────────────────────────────────────
+      // Fire when transitioning to 'delivered' and payment is paid (either
+      // arriving in this request or already on the row) and not yet deducted.
+      const newStatus = status || existing.status;
+      const newPaymentStatus = payment_status || existing.payment_status;
+      const shouldFulfil =
+        newStatus === 'delivered' &&
+        newPaymentStatus === 'paid' &&
+        !existing.stock_deducted &&
+        existing.branch_id;
+
+      if (shouldFulfil) {
+        const branchId = existing.branch_id;
+        const orderItems = Array.isArray(existing.items)
+          ? existing.items
+          : (typeof existing.items === 'string' ? JSON.parse(existing.items) : []);
+
+        const customerType = existing.customer_type === 'member' ? 'member' : 'non_member';
+        const movType = customerType === 'member' ? 'walk_in_member_sale' : 'walk_in_non_member_sale';
+
+        const livePriceRows = await getMany(`SELECT description, dp, cp FROM product_prices`);
+        const livePriceMap = {};
+        for (const row of livePriceRows) {
+          if (row.description) livePriceMap[row.description.toLowerCase()] = row;
+        }
+
+        const deductItems = orderItems.map(item => {
+          const name = item.product_name || item.name || item.description || '';
+          const qty = Number(item.quantity || 1);
+          const liveRow = livePriceMap[name.toLowerCase()];
+          const unitPrice = liveRow
+            ? (Number(liveRow.dp) || Number(item.unit_price || 0))
+            : Number(item.unit_price || 0);
+          return { name, qty, unitPrice };
+        }).filter(i => i.name && i.qty > 0);
+
+        let stockDeductionOk = false;
+        try {
+          await withTransaction(async (client) => {
+            for (const item of deductItems) {
+              let remaining = item.qty;
+              const batches = (await client.query(
+                `SELECT id, product_name, batch_no, expiry_date, quantity
+                 FROM branch_inventory_batches
+                 WHERE branch_id = $1
+                   AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))
+                   AND quantity > 0
+                 ORDER BY expiry_date ASC NULLS LAST
+                 FOR UPDATE`,
+                [branchId, item.name]
+              )).rows;
+
+              for (const batch of batches) {
+                if (remaining <= 0) break;
+                const take = Math.min(remaining, Number(batch.quantity));
+                await client.query(
+                  `UPDATE branch_inventory_batches SET quantity = quantity - $1, updated_at = NOW() WHERE id = $2`,
+                  [take, batch.id]
+                );
+                const ts = Date.now();
+                const bimId = `BIM-${ts}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+                await client.query(
+                  `INSERT INTO branch_inventory_movements
+                     (id, branch_id, type, product_name, batch_no, quantity, unit_price, reference, notes, created_by, created_at)
+                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())`,
+                  [bimId, branchId, movType, batch.product_name, batch.batch_no || '', take,
+                   item.unitPrice || null, existing.id,
+                   `Online order ${existing.order_number || existing.id}`,
+                   req.user?.username || '']
+                );
+                const smId = `MOV-${ts}-${Math.random().toString(36).slice(2, 6)}`;
+                await client.query(
+                  `INSERT INTO stock_movements
+                     (id, product_name, batch_no, expiry_date, quantity, movement_type,
+                      source_location, source_location_type, destination_location, destination_location_type,
+                      reference_id, notes, status, unit_dp, movement_date, created_at, updated_at)
+                   VALUES ($1,$2,$3,$4,$5,$6,$7,'branch','customer',NULL,$8,$9,'posted',$10,NOW(),NOW(),NOW())`,
+                  [smId, batch.product_name, batch.batch_no || '', batch.expiry_date || null,
+                   take, movType, branchId, existing.id,
+                   `Online order ${existing.order_number || existing.id}`, item.unitPrice || null]
+                );
+                remaining -= take;
+              }
+
+              if (remaining > 0) {
+                console.warn(`[orders] Low stock for "${item.name}" on order ${existing.id}: short by ${remaining}`);
+              }
+            }
+
+            await client.query(
+              `UPDATE online_orders SET stock_deducted = TRUE, fulfilled_at = NOW(), updated_at = NOW() WHERE id = $1`,
+              [id]
+            );
+          });
+
+          stockDeductionOk = true;
+          updates.stock_deducted = true;
+          updates.fulfilled_at = new Date().toISOString();
+
+          recomputeLocationBalances('branch', branchId).catch(e =>
+            console.error('[orders] recomputeLocationBalances error:', e.message)
+          );
+
+          const totalQty = deductItems.reduce((s, i) => s + i.qty, 0);
+          const dpSubtotal = deductItems.reduce((s, i) => {
+            const liveRow = livePriceMap[i.name.toLowerCase()];
+            const dp = liveRow ? (Number(liveRow.dp) || i.unitPrice) : i.unitPrice;
+            return s + dp * i.qty;
+          }, 0);
+          const cpTotal = Number(existing.subtotal || existing.total_amount || 0);
+
+          postActivityRecord({
+            id: generateBatId(),
+            branch_id: branchId,
+            branch_name: branchId,
+            client_name: existing.customer_name || 'Online Customer',
+            client_phone: existing.customer_phone || null,
+            client_type: customerType,
+            nb_number: existing.distributor_code || null,
+            service_date: new Date().toISOString().slice(0, 10),
+            service_time: new Date().toTimeString().slice(0, 8),
+            activity_type: 'online_order_sale',
+            workflow_source: 'online_order',
+            form_reference_id: existing.id,
+            product_total_dp: dpSubtotal || cpTotal,
+            product_total_cp: cpTotal,
+            total_qty: totalQty,
+            grand_total: Number(existing.total_amount || existing.subtotal || 0),
+            payment_status: 'paid',
+            payment_method: payment_method || existing.payment_method || 'cash',
+            stock_impact: true,
+            stock_status: 'deducted',
+            prescription_status: 'none',
+            consultation_status: 'none',
+            reporting_status: 'posted',
+            captured_by: req.user?.username || null,
+          }).catch(e => console.error('[orders] BAT post error:', e.message));
+
+        } catch (fulfilErr) {
+          console.error('[orders] fulfillment error:', fulfilErr.message);
+          return res.status(409).json({
+            error: `Order fulfillment failed: ${fulfilErr.message}`,
+          });
+        }
+      }
+      // ─────────────────────────────────────────────────────────────────────
+
       const order = await update('online_orders', id, updates);
       if (!order) {
         return res.status(404).json({ error: 'Order not found' });
       }
 
-      // Publish realtime event (use 'orders' as resource name for WebSocket compatibility)
       await publishRealtimeEvent('orders', 'updated', order);
 
       return res.json(order);
@@ -273,4 +413,3 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Internal server error' });
   }
 }
-

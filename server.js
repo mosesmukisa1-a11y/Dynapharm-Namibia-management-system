@@ -2078,6 +2078,8 @@ server.on('error', (error) => {
       `ALTER TABLE stock_requests ADD COLUMN IF NOT EXISTS dispatch_warehouse VARCHAR(100)`,
       `ALTER TABLE stock_requests ADD COLUMN IF NOT EXISTS dispatched_by VARCHAR(255)`,
       `ALTER TABLE stock_requests ADD COLUMN IF NOT EXISTS dispatched_at TIMESTAMPTZ`,
+      `ALTER TABLE online_orders ADD COLUMN IF NOT EXISTS stock_deducted BOOLEAN DEFAULT FALSE`,
+      `ALTER TABLE online_orders ADD COLUMN IF NOT EXISTS fulfilled_at TIMESTAMPTZ`,
       `ALTER TABLE stock_requests ADD COLUMN IF NOT EXISTS rejection_reason TEXT`,
       `ALTER TABLE stock_requests ADD COLUMN IF NOT EXISTS rejected_by VARCHAR(255)`,
       `ALTER TABLE stock_requests ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMPTZ`,
