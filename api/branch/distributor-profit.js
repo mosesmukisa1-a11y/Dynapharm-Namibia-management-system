@@ -203,7 +203,7 @@ export default async function handler(req, res) {
               bws.sale_number   AS sale_number_ref
        FROM branch_distributor_profit bdp
        LEFT JOIN branch_walkin_sales bws ON bws.id = bdp.sale_id
-       LEFT JOIN distributors d ON d.distributor_nb = bdp.distributor_nb
+       LEFT JOIN distributors d ON d.distributor_code = bdp.distributor_nb
        ${where} ORDER BY bdp.sale_date DESC LIMIT 1000`,
       params
     );

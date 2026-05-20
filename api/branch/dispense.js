@@ -210,7 +210,7 @@ export default async function handler(req, res) {
         try {
           const profitId = 'RXPROF-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7).toUpperCase();
           const distRow = await query(
-            `SELECT distributor_name FROM distributors WHERE distributor_nb = $1 LIMIT 1`,
+            `SELECT distributor_name FROM distributors WHERE distributor_code = $1 LIMIT 1`,
             [referralNb]
           ).then(r => (r.rows || [])[0]).catch(() => null);
           const distName = distRow?.distributor_name || null;
