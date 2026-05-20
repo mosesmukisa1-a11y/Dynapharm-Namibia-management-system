@@ -195,6 +195,7 @@ export default async function handler(req, res) {
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const rows = await getMany(
       `SELECT bdp.*,
+              COALESCE(bdp.distributor_name, d.distributor_name) AS distributor_name,
               bws.items        AS sale_items,
               bws.customer_name AS sale_customer,
               bws.customer_type AS sale_customer_type,
@@ -202,6 +203,7 @@ export default async function handler(req, res) {
               bws.sale_number   AS sale_number_ref
        FROM branch_distributor_profit bdp
        LEFT JOIN branch_walkin_sales bws ON bws.id = bdp.sale_id
+       LEFT JOIN distributors d ON d.distributor_nb = bdp.distributor_nb
        ${where} ORDER BY bdp.sale_date DESC LIMIT 1000`,
       params
     );

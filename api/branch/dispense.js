@@ -209,12 +209,17 @@ export default async function handler(req, res) {
       if (customerType !== 'member' && referralNb && rxProfitAmount > 0) {
         try {
           const profitId = 'RXPROF-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7).toUpperCase();
+          const distRow = await query(
+            `SELECT distributor_name FROM distributors WHERE distributor_nb = $1 LIMIT 1`,
+            [referralNb]
+          ).then(r => (r.rows || [])[0]).catch(() => null);
+          const distName = distRow?.distributor_name || null;
           await query(
             `INSERT INTO branch_distributor_profit
                (id, branch_id, distributor_nb, distributor_name, sale_id, sale_receipt, sale_date, profit_amount, status, created_at, updated_at)
-             VALUES ($1, $2, $3, NULL, $4, $5, $6, $7, 'pending', NOW(), NOW())
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', NOW(), NOW())
              ON CONFLICT (id) DO NOTHING`,
-            [profitId, branchId, referralNb, reportId, reportId, serviceDate, rxProfitAmount]
+            [profitId, branchId, referralNb, distName, reportId, reportId, serviceDate, rxProfitAmount]
           );
         } catch (e) {
           console.error('[dispense] distributor profit insert error:', e.message);
