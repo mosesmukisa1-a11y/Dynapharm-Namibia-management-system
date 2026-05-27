@@ -9260,48 +9260,151 @@ function BranchStockTab({ branch }) {
     const win = window.open('', '_blank');
     if (!win) return;
     const now2 = new Date();
-    const rows = movs.map((m, i) => {
-      const isOut = CATEGORY_MAP.sold.includes(m.movement_type) || CATEGORY_MAP.written_off.includes(m.movement_type) || CATEGORY_MAP.transferred_out.includes(m.movement_type) || CATEGORY_MAP.dispensed.includes(m.movement_type);
-      const dpUnit = getDPCPrice(m.product_name || '');
+    const printDate = now2.toLocaleDateString('en-NA', { day:'2-digit', month:'long', year:'numeric' });
+
+    // ── Group by product ────────────────────────────────────────────────────
+    const COMBO_TYPES = ['campaign_sale'];
+    const prodMap = {};
+    for (const m of movs) {
+      const key = (m.product_name || 'Unknown').trim();
+      if (!prodMap[key]) prodMap[key] = { sep: 0, combo: 0, dpUnit: getDPCPrice(key) };
       const qty = Math.abs(Number(m.quantity || 0));
-      const dpVal = dpUnit > 0 ? `N$ ${(qty * dpUnit).toFixed(2)}` : '-';
-      const typeLabel = TYPE_LABEL_MAP[m.movement_type] || (m.movement_type || '-').replace(/_/g, ' ');
-      const qtyStr = `${isOut ? '-' : '+'}${qty}`;
-      const qtyColor = isOut ? '#c41e3a' : '#166534';
-      return `<tr style="background:${i%2===0?'#fff':'#fdf8f8'}">
-        <td style="white-space:nowrap;color:#6b7280;font-size:10px">${m.created_at ? new Date(m.created_at).toLocaleString('en-ZA',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '-'}</td>
-        <td style="font-weight:700">${m._branch || fmtBranch(m.branch_id || m.source_location || '') || '-'}</td>
-        <td style="font-weight:600;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.product_name || '-'}</td>
-        <td style="font-family:monospace;font-size:10px;color:#6b7280">${m.batch_no || '-'}</td>
-        <td style="font-size:10px;color:#6b7280;white-space:nowrap">${m.expiry_date ? new Date(m.expiry_date).toLocaleDateString('en-ZA',{day:'2-digit',month:'short',year:'numeric'}) : '-'}</td>
-        <td><span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;background:${isOut?'#fef2f2':'#dcfce7'};color:${isOut?'#c41e3a':'#166534'}">${typeLabel}</span></td>
-        <td style="text-align:right;font-weight:800;color:${qtyColor}">${qtyStr}</td>
-        <td style="text-align:right;color:#374151;font-weight:600">${dpVal}</td>
-        <td style="font-size:10px;color:#6b7280">${m.source_location ? fmtBranch(m.source_location) : '-'}</td>
-        <td style="font-size:10px;color:#6b7280">${m.destination_location ? fmtBranch(m.destination_location) : '-'}</td>
-        <td style="font-family:monospace;font-size:10px;color:#6b7280">${m.reference_id || '-'}</td>
-        <td style="font-size:10px;color:#6b7280">${m.created_by || '-'}</td>
+      if (COMBO_TYPES.includes(m.movement_type)) prodMap[key].combo += qty;
+      else prodMap[key].sep += qty;
+    }
+    const sorted = Object.entries(prodMap)
+      .map(([name, { sep, combo, dpUnit }]) => ({ name, sep, combo, total: sep + combo, dpUnit }))
+      .sort((a, b) => b.total - a.total);
+
+    const grandSep   = sorted.reduce((s, r) => s + r.sep, 0);
+    const grandCombo = sorted.reduce((s, r) => s + r.combo, 0);
+    const grandVal   = sorted.reduce((s, r) => s + (r.dpUnit > 0 ? r.sep * r.dpUnit : 0), 0);
+
+    // ── Date range from data ───────────────────────────────────────────────
+    const dates = movs.map(m => m.created_at).filter(Boolean).map(d => new Date(d));
+    const minDate = dates.length ? new Date(Math.min(...dates)) : null;
+    const maxDate = dates.length ? new Date(Math.max(...dates)) : null;
+    const fmtD = d => d ? d.toLocaleDateString('en-NA', { day:'2-digit', month:'long', year:'numeric' }) : '-';
+
+    // ── Rows ───────────────────────────────────────────────────────────────
+    const rows = sorted.map((r, i) => {
+      const val = r.dpUnit > 0 ? `N$ ${(r.sep * r.dpUnit).toLocaleString('en-NA', { minimumFractionDigits:2, maximumFractionDigits:2 })}` : '-';
+      return `<tr style="background:${i%2===0?'#fff':'#f7f7f7'}">
+        <td style="color:#555;font-size:9.5px;white-space:nowrap;padding:4px 6px">${String(i+1).padStart(2,'0')}</td>
+        <td style="padding:4px 6px;font-size:10px">${r.name}</td>
+        <td style="text-align:center;padding:4px 6px;font-weight:700;font-size:10px">${r.sep || ''}</td>
+        <td style="text-align:center;padding:4px 6px;color:#555;font-size:10px">${r.combo || 0}</td>
+        <td style="text-align:right;padding:4px 6px;font-weight:600;font-size:10px">${val}</td>
       </tr>`;
     }).join('');
-    const totalQty = movs.reduce((s,m) => s + Math.abs(Number(m.quantity||0)), 0);
-    const totalDPV = movs.reduce((s,m) => { const u=getDPCPrice(m.product_name||''); return s+(u>0?Math.abs(Number(m.quantity||0))*u:0); }, 0);
-    win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Activity Ledger — ${titleSuffix}</title>
-    <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;padding:24px}.header{display:flex;justify-content:space-between;border-bottom:3px solid #c41e3a;padding-bottom:10px;margin-bottom:16px}.company{color:#c41e3a;font-weight:900;font-size:15px}.summary{display:flex;gap:20px;margin-bottom:14px;padding:10px 14px;background:#fdf7f8;border:1.5px solid #fecaca;border-radius:8px}.summary-item{text-align:center}.summary-val{font-size:16px;font-weight:900;color:#c41e3a}.summary-label{font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;margin-top:2px}table{width:100%;border-collapse:collapse}th{background:#c41e3a;color:#fff;font-weight:700;padding:6px 7px;text-align:left;font-size:10px;white-space:nowrap}td{padding:5px 7px;border-bottom:1px solid #f1f5f9;font-size:11px}tr:nth-child(even) td{background:#fdf8f8}.print-btn{position:fixed;top:12px;right:12px;background:#c41e3a;color:#fff;border:none;padding:8px 18px;border-radius:8px;font-weight:700;cursor:pointer;font-size:11px}@media print{.print-btn{display:none}}</style></head><body>
+
+    // ── Dynapharm logo SVG (inline approximation) ──────────────────────────
+    const logoSVG = `<svg width="56" height="64" viewBox="0 0 56 70" xmlns="http://www.w3.org/2000/svg">
+      <polygon points="28,2 54,28 28,68 2,28" fill="none" stroke="#1a1a1a" stroke-width="1.8"/>
+      <rect x="13" y="22" width="4" height="26" rx="1" fill="#1a1a1a"/>
+      <rect x="19" y="15" width="4" height="40" rx="1" fill="#1a1a1a"/>
+      <rect x="25" y="10" width="4" height="50" rx="1" fill="#1a1a1a"/>
+      <rect x="31" y="15" width="4" height="40" rx="1" fill="#1a1a1a"/>
+      <rect x="37" y="22" width="4" height="26" rx="1" fill="#1a1a1a"/>
+    </svg>`;
+
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Items ${titleSuffix} — ${branchLabel}</title>
+    <style>
+      *{margin:0;padding:0;box-sizing:border-box}
+      body{font-family:Arial,sans-serif;font-size:11px;color:#111;padding:28px 32px;background:#fff}
+      .page-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px}
+      .brand{display:flex;align-items:center;gap:12px}
+      .brand-name{line-height:1}
+      .brand-title{font-size:22px;font-weight:900;letter-spacing:1px;color:#111}
+      .brand-sub{display:inline-block;border:1.5px solid #111;padding:1px 8px;font-size:9px;font-weight:700;letter-spacing:2px;margin-top:3px}
+      .doc-title-box{border:1.5px solid #111;padding:6px 16px;text-align:center;min-width:160px}
+      .doc-title-label{font-size:14px;font-weight:900;letter-spacing:1px}
+      .doc-title-date{display:flex;justify-content:space-between;margin-top:5px;font-size:10px;border-top:1px solid #999;padding-top:4px}
+      .section{margin-bottom:10px}
+      .section-title{font-size:9.5px;font-weight:900;letter-spacing:.5px;border-bottom:1px solid #111;padding-bottom:2px;margin-bottom:5px;text-transform:uppercase}
+      .section-row{font-size:9.5px;color:#111;line-height:1.8}
+      .divider{border:none;border-top:1.5px solid #111;margin:12px 0}
+      table{width:100%;border-collapse:collapse;margin-top:4px}
+      thead tr{background:#111;color:#fff}
+      th{padding:5px 6px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;text-align:left;white-space:nowrap}
+      th.r{text-align:center} th.rr{text-align:right}
+      td{padding:4px 6px;font-size:10px;border-bottom:1px solid #e0e0e0}
+      tr:last-child td{border-bottom:none}
+      .tfoot-row td{background:#111;color:#fff;font-weight:700;padding:5px 6px;font-size:10px;border:none}
+      .tfoot-row td.r{text-align:center}
+      .tfoot-row td.rr{text-align:right}
+      .page-footer{display:flex;justify-content:space-between;margin-top:16px;font-size:9px;color:#555;border-top:1px solid #ccc;padding-top:6px}
+      .print-btn{position:fixed;top:14px;right:14px;background:#111;color:#fff;border:none;padding:7px 16px;border-radius:6px;font-weight:700;cursor:pointer;font-size:11px;z-index:99}
+      @media print{.print-btn{display:none}body{padding:12px 16px}}
+    </style></head><body>
     <button class="print-btn" onclick="window.print()">🖨️ Print</button>
-    <div class="header">
-      <div><div class="company">DYNAPHARM INTERNATIONAL NAMIBIA</div>
-        <div style="font-size:14px;font-weight:800;color:#8b0000;margin-top:4px">Activity Ledger — ${titleSuffix}</div>
-        <div style="color:#64748b;font-size:10px;margin-top:3px">Branch: ${branchLabel} · Period: ${periodLabel} · ${movs.length} records</div>
+
+    <!-- Page header -->
+    <div class="page-header">
+      <div class="brand">
+        ${logoSVG}
+        <div class="brand-name">
+          <div class="brand-title">DYNAPHARM</div>
+          <div class="brand-sub">NAMIBIA</div>
+        </div>
       </div>
-      <div style="text-align:right;color:#64748b;font-size:10px;line-height:1.8">Date: ${now2.toLocaleDateString('en-NA',{day:'2-digit',month:'long',year:'numeric'})}<br>Generated by: Stock Management</div>
+      <div class="doc-title-box">
+        <div class="doc-title-label">ITEMS ${titleSuffix.toUpperCase()}</div>
+        <div class="doc-title-date">
+          <span>DATE</span>
+          <span>${printDate}</span>
+        </div>
+      </div>
     </div>
-    <div class="summary">
-      <div class="summary-item"><div class="summary-val">${movs.length}</div><div class="summary-label">Records</div></div>
-      <div class="summary-item"><div class="summary-val">${totalQty.toLocaleString()}</div><div class="summary-label">Total Units</div></div>
-      <div class="summary-item"><div class="summary-val">N$ ${totalDPV.toFixed(2)}</div><div class="summary-label">DP Value</div></div>
+
+    <hr class="divider"/>
+
+    <!-- Business details -->
+    <div class="section">
+      <div class="section-title">Business Details</div>
+      <div class="section-row">DYNAPHARM INTERNATIONAL NAMIBIA</div>
+      <div class="section-row">${branchLabel.toUpperCase()} SHOP</div>
     </div>
-    <table><thead><tr><th>Date</th><th>Branch</th><th>Product</th><th>Batch</th><th>Expiry</th><th>Activity</th><th>Qty</th><th>DP Value</th><th>From</th><th>To</th><th>Reference</th><th>Staff</th></tr></thead>
-    <tbody>${rows || '<tr><td colspan="12" style="text-align:center;padding:20px;color:#94a3b8">No movements found</td></tr>'}</tbody></table>
+
+    <!-- Report filters -->
+    <div class="section">
+      <div class="section-title">Report Filters</div>
+      <div class="section-row">STARTING: ${fmtD(minDate)}</div>
+      <div class="section-row">ENDING: ${fmtD(maxDate)}</div>
+      <div class="section-row">SORT BY: Quantity ${titleSuffix}</div>
+    </div>
+
+    <hr class="divider"/>
+
+    <!-- Product table -->
+    <table>
+      <thead>
+        <tr>
+          <th style="width:38px">#</th>
+          <th>Description</th>
+          <th class="r" style="width:90px">${titleSuffix.toUpperCase()} SEPARATELY</th>
+          <th class="r" style="width:80px">${titleSuffix.toUpperCase()} IN COMBO</th>
+          <th class="rr" style="width:110px">VALUE ${titleSuffix.toUpperCase()} SEP.</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows || `<tr><td colspan="5" style="text-align:center;padding:20px;color:#999">No data</td></tr>`}
+      </tbody>
+      <tfoot>
+        <tr class="tfoot-row">
+          <td colspan="2">TOTALS — ${sorted.length} product${sorted.length!==1?'s':''}</td>
+          <td class="r">${grandSep.toLocaleString()}</td>
+          <td class="r">${grandCombo.toLocaleString()}</td>
+          <td class="rr">${grandVal > 0 ? `N$ ${grandVal.toLocaleString('en-NA',{minimumFractionDigits:2,maximumFractionDigits:2})}` : '-'}</td>
+        </tr>
+      </tfoot>
+    </table>
+
+    <!-- Footer -->
+    <div class="page-footer">
+      <span>PAGE 1</span>
+      <span>Proudly powered by Dynapharm Stock Management System</span>
+    </div>
     </body></html>`);
     win.document.close();
   };
