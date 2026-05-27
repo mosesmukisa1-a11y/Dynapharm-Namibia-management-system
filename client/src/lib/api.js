@@ -202,6 +202,7 @@ export const api = {
   branch: {
     cashSessions: (params = '') => api.get(`/branch/cash-sessions${params ? '?' + params : ''}`),
     createCashSession: (data) => api.post('/branch/cash-sessions', data),
+    nextReceiptNumber: (branch_id) => api.post('/branch/receipt-number', { branch_id }),
     walkinSales: (params = '') => api.get(`/branch/walkin-sales${params ? '?' + params : ''}`),
     walkinSalesByDistributor: (nb) => api.get(`/branch/walkin-sales?distributor_nb=${encodeURIComponent(nb)}&limit=500`),
     distributorProfit: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/branch/distributor-profit${qs ? '?' + qs : ''}`); },

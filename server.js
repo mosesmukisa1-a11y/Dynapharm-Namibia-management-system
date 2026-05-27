@@ -2376,6 +2376,19 @@ server.on('error', (error) => {
     } catch (e) {
       console.warn('[system_settings init]', e.message);
     }
+    // ── Receipt number counters (guaranteed unique sequential per branch/year) ──
+    try {
+      await query(`
+        CREATE TABLE IF NOT EXISTS receipt_counters (
+          branch_id VARCHAR(50) NOT NULL,
+          year      SMALLINT    NOT NULL,
+          last_seq  INTEGER     NOT NULL DEFAULT 0,
+          PRIMARY KEY (branch_id, year)
+        )
+      `);
+    } catch (e) {
+      console.warn('[receipt_counters init]', e.message);
+    }
     // ────────────────────────────────────────────────────────────────────────
     // ── Normalize appointment branch display names → branch IDs (idempotent) ──
     try {

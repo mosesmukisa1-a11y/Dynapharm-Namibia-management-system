@@ -1344,7 +1344,17 @@ function WalkInSalesTab() {
     setSubmitting(true);
     setError('');
     try {
-      const receiptNumber = generateReceiptNumber();
+      let receiptNumber;
+      if (navigator.onLine && effectiveBranch) {
+        try {
+          const r = await api.branch.nextReceiptNumber(effectiveBranch);
+          receiptNumber = r.receipt_number || generateReceiptNumber();
+        } catch {
+          receiptNumber = generateReceiptNumber();
+        }
+      } else {
+        receiptNumber = generateReceiptNumber();
+      }
       const referral = isMember ? selectedReg : (selectedReferral || DEFAULT_REFERRAL);
       const custName = isMember ? (selectedReg?.name || '') : newName;
       const custPhone = isMember ? (selectedReg?.phone || '') : newPhone;
