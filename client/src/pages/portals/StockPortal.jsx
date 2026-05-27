@@ -9263,10 +9263,12 @@ function BranchStockTab({ branch }) {
     const PRESCRIPTION_TYPES = ['prescription_dispense','dispense'];
     const CAMPAIGN_TYPES     = ['campaign_sale'];
 
+    // Use uppercase key for case-insensitive dedup; track display name separately
     const prodMap = {};
     for (const m of movs) {
-      const key = (m.product_name || 'Unknown').trim();
-      if (!prodMap[key]) prodMap[key] = { walkin: 0, pkg: 0, rx: 0, camp: 0, dpUnit: getDPCPrice(key) };
+      const displayName = (m.product_name || 'Unknown').trim();
+      const key = displayName.toUpperCase();
+      if (!prodMap[key]) prodMap[key] = { displayName, walkin: 0, pkg: 0, rx: 0, camp: 0, dpUnit: getDPCPrice(displayName) };
       const qty = Math.abs(Number(m.quantity || 0));
       const t   = m.movement_type || '';
       if      (WALKIN_TYPES.includes(t))       prodMap[key].walkin += qty;
@@ -9276,8 +9278,8 @@ function BranchStockTab({ branch }) {
       else                                      prodMap[key].walkin += qty;
     }
     const sorted = Object.entries(prodMap)
-      .map(([name, { walkin, pkg, rx, camp, dpUnit }]) => ({
-        name, walkin, pkg, rx, camp,
+      .map(([, { displayName, walkin, pkg, rx, camp, dpUnit }]) => ({
+        name: displayName, walkin, pkg, rx, camp,
         total: walkin + pkg + rx + camp,
         dpUnit
       }))
@@ -9640,16 +9642,30 @@ function BranchStockTab({ branch }) {
                     ✕ Clear
                   </button>
                 )}
-                {/* PDF — current branch/filter */}
-                <button onClick={() => printMovementsReport(finalMovs, catLabel, branchLabel)}
-                  style={{ padding: '6px 14px', background: '#c41e3a', border: 'none', borderRadius: 8, fontSize: '0.82rem', fontWeight: 800, color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                {/* PDF — current branch (all categories, respects product search) */}
+                <button onClick={() => {
+                  const pdfMovs = movProductSearch
+                    ? allMovs.filter(m => (m.product_name || '').toLowerCase().includes(movProductSearch.toLowerCase()))
+                    : allMovs;
+                  printMovementsReport(pdfMovs, 'Sales & Activity', branchLabel);
+                }} style={{ padding: '6px 14px', background: '#c41e3a', border: 'none', borderRadius: 8, fontSize: '0.82rem', fontWeight: 800, color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                   📄 PDF — {branchLabel}
                 </button>
-                {/* PDF — all branches combined */}
+                {/* PDF — all branches combined (deduplicated) */}
                 <button onClick={() => {
-                  const allMovs2 = allBranchSummaries.flatMap(b => (b.movements || []).map(m => ({ ...m, _branch: b.name })));
-                  const filtered2 = movCategoryFilter === 'all' ? allMovs2 : applyMovCategory(allMovs2, movCategoryFilter);
-                  printMovementsReport(filtered2, catLabel, 'All Branches');
+                  const seen = new Set();
+                  const allMovs2 = allBranchSummaries.flatMap(b =>
+                    (b.movements || []).map(m => ({ ...m, _branch: b.name }))
+                  ).filter(m => {
+                    const k = `${m.reference_id || ''}|${m.product_name || ''}|${m.movement_type || ''}|${m.created_at || ''}|${m.quantity || ''}`;
+                    if (seen.has(k)) return false;
+                    seen.add(k);
+                    return true;
+                  });
+                  const pdfMovs2 = movProductSearch
+                    ? allMovs2.filter(m => (m.product_name || '').toLowerCase().includes(movProductSearch.toLowerCase()))
+                    : allMovs2;
+                  printMovementsReport(pdfMovs2, 'Sales & Activity', 'All Branches');
                 }} style={{ padding: '6px 14px', background: '#1e3a5f', border: 'none', borderRadius: 8, fontSize: '0.82rem', fontWeight: 800, color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                   📄 PDF — All Branches
                 </button>
