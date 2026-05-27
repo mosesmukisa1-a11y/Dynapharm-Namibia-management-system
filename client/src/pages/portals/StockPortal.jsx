@@ -9257,16 +9257,11 @@ function BranchStockTab({ branch }) {
   const TYPE_LABEL_MAP = { transfer_in:'Received', received:'Received', receive:'Received', branch_receipt:'Received', transfer_out:'Transfer Out', sale:'Sale', walk_in_member_sale:'Member Sale', walk_in_non_member_sale:'Non-member Sale', walkin_sale:'Walk-in Sale', campaign_sale:'Campaign Sale', prescription_dispense:'Rx Dispense', dispense:'Dispense', write_off:'Write-off', return:'Return', refund_return:'Refund Return', return_in:'Return In' };
 
   const printMovementsReport = (movs, titleSuffix, branchLabel) => {
-    const win = window.open('', '_blank');
-    if (!win) return;
-    const now2 = new Date();
-    const printDate = now2.toLocaleDateString('en-NA', { day:'2-digit', month:'long', year:'numeric' });
-
     // ── Group by product, split into 4 sale categories ─────────────────────
-    const WALKIN_TYPES      = ['sale','walk_in_member_sale','walk_in_non_member_sale','walkin_sale','member_sale','non_member_sale'];
-    const PACKAGE_TYPES     = ['combo_sale','package_sale','bundle_sale'];
-    const PRESCRIPTION_TYPES= ['prescription_dispense','dispense'];
-    const CAMPAIGN_TYPES    = ['campaign_sale'];
+    const WALKIN_TYPES       = ['sale','walk_in_member_sale','walk_in_non_member_sale','walkin_sale','member_sale','non_member_sale'];
+    const PACKAGE_TYPES      = ['combo_sale','package_sale','bundle_sale'];
+    const PRESCRIPTION_TYPES = ['prescription_dispense','dispense'];
+    const CAMPAIGN_TYPES     = ['campaign_sale'];
 
     const prodMap = {};
     for (const m of movs) {
@@ -9278,7 +9273,7 @@ function BranchStockTab({ branch }) {
       else if (PACKAGE_TYPES.includes(t))      prodMap[key].pkg    += qty;
       else if (PRESCRIPTION_TYPES.includes(t)) prodMap[key].rx     += qty;
       else if (CAMPAIGN_TYPES.includes(t))     prodMap[key].camp   += qty;
-      else                                      prodMap[key].walkin += qty; // fallback to walk-in
+      else                                      prodMap[key].walkin += qty;
     }
     const sorted = Object.entries(prodMap)
       .map(([name, { walkin, pkg, rx, camp, dpUnit }]) => ({
@@ -9296,142 +9291,75 @@ function BranchStockTab({ branch }) {
     const grandVal    = sorted.reduce((s, r) => s + (r.dpUnit > 0 ? r.total * r.dpUnit : 0), 0);
 
     // ── Date range from data ───────────────────────────────────────────────
-    const dates = movs.map(m => m.created_at).filter(Boolean).map(d => new Date(d));
+    const dates   = movs.map(m => m.created_at).filter(Boolean).map(d => new Date(d));
     const minDate = dates.length ? new Date(Math.min(...dates)) : null;
     const maxDate = dates.length ? new Date(Math.max(...dates)) : null;
-    const fmtD = d => d ? d.toLocaleDateString('en-NA', { day:'2-digit', month:'long', year:'numeric' }) : '-';
+    const fmtD    = d => d ? d.toLocaleDateString('en-NA', { day:'2-digit', month:'long', year:'numeric' }) : '-';
 
     // ── Rows ───────────────────────────────────────────────────────────────
     const fmtN = n => n > 0 ? n.toLocaleString() : '';
     const rows = sorted.map((r, i) => {
-      const val = r.dpUnit > 0 ? `N$ ${(r.total * r.dpUnit).toLocaleString('en-NA', { minimumFractionDigits:2, maximumFractionDigits:2 })}` : '-';
-      return `<tr style="background:${i%2===0?'#fff':'#f5f5f5'}">
-        <td style="color:#555;font-size:9px;white-space:nowrap;padding:4px 5px">${String(i+1).padStart(2,'0')}</td>
-        <td style="padding:4px 5px;font-size:9.5px">${r.name}</td>
-        <td style="text-align:center;padding:4px 5px;font-size:9.5px;font-weight:700">${fmtN(r.walkin)}</td>
-        <td style="text-align:center;padding:4px 5px;font-size:9.5px;color:#444">${fmtN(r.pkg)}</td>
-        <td style="text-align:center;padding:4px 5px;font-size:9.5px;color:#444">${fmtN(r.rx)}</td>
-        <td style="text-align:center;padding:4px 5px;font-size:9.5px;color:#444">${fmtN(r.camp)}</td>
-        <td style="text-align:center;padding:4px 5px;font-size:9.5px;font-weight:800">${r.total.toLocaleString()}</td>
-        <td style="text-align:right;padding:4px 5px;font-size:9.5px;font-weight:600">${val}</td>
+      const val = r.dpUnit > 0
+        ? `N$ ${(r.total * r.dpUnit).toLocaleString('en-NA', { minimumFractionDigits:2, maximumFractionDigits:2 })}`
+        : '-';
+      return `<tr>
+        <td style="color:#777;font-size:10px">${String(i+1).padStart(2,'0')}</td>
+        <td>${r.name}</td>
+        <td style="text-align:center;font-weight:700">${fmtN(r.walkin)}</td>
+        <td style="text-align:center">${fmtN(r.pkg)}</td>
+        <td style="text-align:center">${fmtN(r.rx)}</td>
+        <td style="text-align:center">${fmtN(r.camp)}</td>
+        <td style="text-align:center;font-weight:800">${r.total.toLocaleString()}</td>
+        <td style="text-align:right;font-weight:600">${val}</td>
       </tr>`;
     }).join('');
 
-    // ── Dynapharm logo SVG (inline approximation) ──────────────────────────
-    const logoSVG = `<svg width="56" height="64" viewBox="0 0 56 70" xmlns="http://www.w3.org/2000/svg">
-      <polygon points="28,2 54,28 28,68 2,28" fill="none" stroke="#1a1a1a" stroke-width="1.8"/>
-      <rect x="13" y="22" width="4" height="26" rx="1" fill="#1a1a1a"/>
-      <rect x="19" y="15" width="4" height="40" rx="1" fill="#1a1a1a"/>
-      <rect x="25" y="10" width="4" height="50" rx="1" fill="#1a1a1a"/>
-      <rect x="31" y="15" width="4" height="40" rx="1" fill="#1a1a1a"/>
-      <rect x="37" y="22" width="4" height="26" rx="1" fill="#1a1a1a"/>
-    </svg>`;
-
-    win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Items ${titleSuffix} — ${branchLabel}</title>
-    <style>
-      *{margin:0;padding:0;box-sizing:border-box}
-      body{font-family:Arial,sans-serif;font-size:11px;color:#111;padding:28px 32px;background:#fff}
-      .page-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px}
-      .brand{display:flex;align-items:center;gap:12px}
-      .brand-name{line-height:1}
-      .brand-title{font-size:22px;font-weight:900;letter-spacing:1px;color:#111}
-      .brand-sub{display:inline-block;border:1.5px solid #111;padding:1px 8px;font-size:9px;font-weight:700;letter-spacing:2px;margin-top:3px}
-      .doc-title-box{border:1.5px solid #111;padding:6px 16px;text-align:center;min-width:160px}
-      .doc-title-label{font-size:14px;font-weight:900;letter-spacing:1px}
-      .doc-title-date{display:flex;justify-content:space-between;margin-top:5px;font-size:10px;border-top:1px solid #999;padding-top:4px}
-      .section{margin-bottom:10px}
-      .section-title{font-size:9.5px;font-weight:900;letter-spacing:.5px;border-bottom:1px solid #111;padding-bottom:2px;margin-bottom:5px;text-transform:uppercase}
-      .section-row{font-size:9.5px;color:#111;line-height:1.8}
-      .divider{border:none;border-top:1.5px solid #111;margin:12px 0}
-      table{width:100%;border-collapse:collapse;margin-top:4px}
-      thead tr{background:#111;color:#fff}
-      th{padding:5px 6px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;text-align:left;white-space:nowrap}
-      th.r{text-align:center} th.rr{text-align:right}
-      td{padding:4px 6px;font-size:10px;border-bottom:1px solid #e0e0e0}
-      tr:last-child td{border-bottom:none}
-      .tfoot-row td{background:#111;color:#fff;font-weight:700;padding:5px 6px;font-size:10px;border:none}
-      .tfoot-row td.r{text-align:center}
-      .tfoot-row td.rr{text-align:right}
-      .page-footer{display:flex;justify-content:space-between;margin-top:16px;font-size:9px;color:#555;border-top:1px solid #ccc;padding-top:6px}
-      .print-btn{position:fixed;top:14px;right:14px;background:#111;color:#fff;border:none;padding:7px 16px;border-radius:6px;font-weight:700;cursor:pointer;font-size:11px;z-index:99}
-      @media print{.print-btn{display:none}body{padding:12px 16px}}
-    </style></head><body>
-    <button class="print-btn" onclick="window.print()">🖨️ Print</button>
-
-    <!-- Page header -->
-    <div class="page-header">
-      <div class="brand">
-        ${logoSVG}
-        <div class="brand-name">
-          <div class="brand-title">DYNAPHARM</div>
-          <div class="brand-sub">NAMIBIA</div>
+    // ── Body HTML passed to the system-standard printDocument() ───────────
+    const bodyHtml = `
+      <div style="display:flex;gap:40px;margin-bottom:10px">
+        <div>
+          <div style="font-size:9px;font-weight:800;color:#8b0000;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #ddd;padding-bottom:3px;margin-bottom:5px">Business Details</div>
+          <div style="font-size:10px;line-height:1.8">DYNAPHARM INTERNATIONAL NAMIBIA<br>${branchLabel.toUpperCase()} SHOP</div>
+        </div>
+        <div>
+          <div style="font-size:9px;font-weight:800;color:#8b0000;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #ddd;padding-bottom:3px;margin-bottom:5px">Report Filters</div>
+          <div style="font-size:10px;line-height:1.8">
+            STARTING: ${fmtD(minDate)}<br>
+            ENDING: ${fmtD(maxDate)}<br>
+            SORT BY: Quantity · ${sorted.length} product${sorted.length!==1?'s':''}
+          </div>
         </div>
       </div>
-      <div class="doc-title-box">
-        <div class="doc-title-label">ITEMS ${titleSuffix.toUpperCase()}</div>
-        <div class="doc-title-date">
-          <span>DATE</span>
-          <span>${printDate}</span>
-        </div>
-      </div>
-    </div>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:30px">#</th>
+            <th>Description</th>
+            <th style="text-align:center;width:72px">Walk-in Sales</th>
+            <th style="text-align:center;width:72px">Packages / Combos</th>
+            <th style="text-align:center;width:72px">By Prescription</th>
+            <th style="text-align:center;width:66px">Campaigns</th>
+            <th style="text-align:center;width:56px">Total</th>
+            <th style="text-align:right;width:104px">DP Value</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows || `<tr><td colspan="8" style="text-align:center;padding:20px;color:#aaa">No records found</td></tr>`}
+        </tbody>
+        <tfoot>
+          <tr style="background:#8b0000;color:#fff;font-weight:800">
+            <td colspan="2" style="padding:6px 8px">TOTALS</td>
+            <td style="text-align:center;padding:6px 8px">${grandWalkin > 0 ? grandWalkin.toLocaleString() : ''}</td>
+            <td style="text-align:center;padding:6px 8px">${grandPkg    > 0 ? grandPkg.toLocaleString()    : ''}</td>
+            <td style="text-align:center;padding:6px 8px">${grandRx     > 0 ? grandRx.toLocaleString()     : ''}</td>
+            <td style="text-align:center;padding:6px 8px">${grandCamp   > 0 ? grandCamp.toLocaleString()   : ''}</td>
+            <td style="text-align:center;padding:6px 8px">${grandTotal.toLocaleString()}</td>
+            <td style="text-align:right;padding:6px 8px">${grandVal > 0 ? `N$ ${grandVal.toLocaleString('en-NA',{minimumFractionDigits:2,maximumFractionDigits:2})}` : '-'}</td>
+          </tr>
+        </tfoot>
+      </table>`;
 
-    <hr class="divider"/>
-
-    <!-- Business details -->
-    <div class="section">
-      <div class="section-title">Business Details</div>
-      <div class="section-row">DYNAPHARM INTERNATIONAL NAMIBIA</div>
-      <div class="section-row">${branchLabel.toUpperCase()} SHOP</div>
-    </div>
-
-    <!-- Report filters -->
-    <div class="section">
-      <div class="section-title">Report Filters</div>
-      <div class="section-row">STARTING: ${fmtD(minDate)}</div>
-      <div class="section-row">ENDING: ${fmtD(maxDate)}</div>
-      <div class="section-row">SORT BY: Quantity ${titleSuffix}</div>
-    </div>
-
-    <hr class="divider"/>
-
-    <!-- Product table -->
-    <table>
-      <thead>
-        <tr>
-          <th style="width:30px">#</th>
-          <th>Description</th>
-          <th class="r" style="width:72px">WALK-IN SALES</th>
-          <th class="r" style="width:72px">PACKAGES/ COMBOS</th>
-          <th class="r" style="width:72px">BY PRESCRIPTION</th>
-          <th class="r" style="width:66px">CAMPAIGNS</th>
-          <th class="r" style="width:56px">TOTAL</th>
-          <th class="rr" style="width:100px">DP VALUE</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${rows || `<tr><td colspan="8" style="text-align:center;padding:20px;color:#999">No data</td></tr>`}
-      </tbody>
-      <tfoot>
-        <tr class="tfoot-row">
-          <td colspan="2">TOTALS — ${sorted.length} product${sorted.length!==1?'s':''}</td>
-          <td class="r">${grandWalkin > 0 ? grandWalkin.toLocaleString() : ''}</td>
-          <td class="r">${grandPkg    > 0 ? grandPkg.toLocaleString()    : ''}</td>
-          <td class="r">${grandRx     > 0 ? grandRx.toLocaleString()     : ''}</td>
-          <td class="r">${grandCamp   > 0 ? grandCamp.toLocaleString()   : ''}</td>
-          <td class="r">${grandTotal.toLocaleString()}</td>
-          <td class="rr">${grandVal > 0 ? `N$ ${grandVal.toLocaleString('en-NA',{minimumFractionDigits:2,maximumFractionDigits:2})}` : '-'}</td>
-        </tr>
-      </tfoot>
-    </table>
-
-    <!-- Footer -->
-    <div class="page-footer">
-      <span>PAGE 1</span>
-      <span>Proudly powered by Dynapharm Stock Management System</span>
-    </div>
-    </body></html>`);
-    win.document.close();
+    printDocument(`Stock Activity Report — ${titleSuffix} — ${branchLabel}`, bodyHtml);
   };
 
   if (drillBranch) {
