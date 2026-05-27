@@ -9262,23 +9262,38 @@ function BranchStockTab({ branch }) {
     const now2 = new Date();
     const printDate = now2.toLocaleDateString('en-NA', { day:'2-digit', month:'long', year:'numeric' });
 
-    // ── Group by product ────────────────────────────────────────────────────
-    const COMBO_TYPES = ['campaign_sale'];
+    // ── Group by product, split into 4 sale categories ─────────────────────
+    const WALKIN_TYPES      = ['sale','walk_in_member_sale','walk_in_non_member_sale','walkin_sale','member_sale','non_member_sale'];
+    const PACKAGE_TYPES     = ['combo_sale','package_sale','bundle_sale'];
+    const PRESCRIPTION_TYPES= ['prescription_dispense','dispense'];
+    const CAMPAIGN_TYPES    = ['campaign_sale'];
+
     const prodMap = {};
     for (const m of movs) {
       const key = (m.product_name || 'Unknown').trim();
-      if (!prodMap[key]) prodMap[key] = { sep: 0, combo: 0, dpUnit: getDPCPrice(key) };
+      if (!prodMap[key]) prodMap[key] = { walkin: 0, pkg: 0, rx: 0, camp: 0, dpUnit: getDPCPrice(key) };
       const qty = Math.abs(Number(m.quantity || 0));
-      if (COMBO_TYPES.includes(m.movement_type)) prodMap[key].combo += qty;
-      else prodMap[key].sep += qty;
+      const t   = m.movement_type || '';
+      if      (WALKIN_TYPES.includes(t))       prodMap[key].walkin += qty;
+      else if (PACKAGE_TYPES.includes(t))      prodMap[key].pkg    += qty;
+      else if (PRESCRIPTION_TYPES.includes(t)) prodMap[key].rx     += qty;
+      else if (CAMPAIGN_TYPES.includes(t))     prodMap[key].camp   += qty;
+      else                                      prodMap[key].walkin += qty; // fallback to walk-in
     }
     const sorted = Object.entries(prodMap)
-      .map(([name, { sep, combo, dpUnit }]) => ({ name, sep, combo, total: sep + combo, dpUnit }))
+      .map(([name, { walkin, pkg, rx, camp, dpUnit }]) => ({
+        name, walkin, pkg, rx, camp,
+        total: walkin + pkg + rx + camp,
+        dpUnit
+      }))
       .sort((a, b) => b.total - a.total);
 
-    const grandSep   = sorted.reduce((s, r) => s + r.sep, 0);
-    const grandCombo = sorted.reduce((s, r) => s + r.combo, 0);
-    const grandVal   = sorted.reduce((s, r) => s + (r.dpUnit > 0 ? r.sep * r.dpUnit : 0), 0);
+    const grandWalkin = sorted.reduce((s, r) => s + r.walkin, 0);
+    const grandPkg    = sorted.reduce((s, r) => s + r.pkg,    0);
+    const grandRx     = sorted.reduce((s, r) => s + r.rx,     0);
+    const grandCamp   = sorted.reduce((s, r) => s + r.camp,   0);
+    const grandTotal  = sorted.reduce((s, r) => s + r.total,  0);
+    const grandVal    = sorted.reduce((s, r) => s + (r.dpUnit > 0 ? r.total * r.dpUnit : 0), 0);
 
     // ── Date range from data ───────────────────────────────────────────────
     const dates = movs.map(m => m.created_at).filter(Boolean).map(d => new Date(d));
@@ -9287,14 +9302,18 @@ function BranchStockTab({ branch }) {
     const fmtD = d => d ? d.toLocaleDateString('en-NA', { day:'2-digit', month:'long', year:'numeric' }) : '-';
 
     // ── Rows ───────────────────────────────────────────────────────────────
+    const fmtN = n => n > 0 ? n.toLocaleString() : '';
     const rows = sorted.map((r, i) => {
-      const val = r.dpUnit > 0 ? `N$ ${(r.sep * r.dpUnit).toLocaleString('en-NA', { minimumFractionDigits:2, maximumFractionDigits:2 })}` : '-';
-      return `<tr style="background:${i%2===0?'#fff':'#f7f7f7'}">
-        <td style="color:#555;font-size:9.5px;white-space:nowrap;padding:4px 6px">${String(i+1).padStart(2,'0')}</td>
-        <td style="padding:4px 6px;font-size:10px">${r.name}</td>
-        <td style="text-align:center;padding:4px 6px;font-weight:700;font-size:10px">${r.sep || ''}</td>
-        <td style="text-align:center;padding:4px 6px;color:#555;font-size:10px">${r.combo || 0}</td>
-        <td style="text-align:right;padding:4px 6px;font-weight:600;font-size:10px">${val}</td>
+      const val = r.dpUnit > 0 ? `N$ ${(r.total * r.dpUnit).toLocaleString('en-NA', { minimumFractionDigits:2, maximumFractionDigits:2 })}` : '-';
+      return `<tr style="background:${i%2===0?'#fff':'#f5f5f5'}">
+        <td style="color:#555;font-size:9px;white-space:nowrap;padding:4px 5px">${String(i+1).padStart(2,'0')}</td>
+        <td style="padding:4px 5px;font-size:9.5px">${r.name}</td>
+        <td style="text-align:center;padding:4px 5px;font-size:9.5px;font-weight:700">${fmtN(r.walkin)}</td>
+        <td style="text-align:center;padding:4px 5px;font-size:9.5px;color:#444">${fmtN(r.pkg)}</td>
+        <td style="text-align:center;padding:4px 5px;font-size:9.5px;color:#444">${fmtN(r.rx)}</td>
+        <td style="text-align:center;padding:4px 5px;font-size:9.5px;color:#444">${fmtN(r.camp)}</td>
+        <td style="text-align:center;padding:4px 5px;font-size:9.5px;font-weight:800">${r.total.toLocaleString()}</td>
+        <td style="text-align:right;padding:4px 5px;font-size:9.5px;font-weight:600">${val}</td>
       </tr>`;
     }).join('');
 
@@ -9380,21 +9399,27 @@ function BranchStockTab({ branch }) {
     <table>
       <thead>
         <tr>
-          <th style="width:38px">#</th>
+          <th style="width:30px">#</th>
           <th>Description</th>
-          <th class="r" style="width:90px">${titleSuffix.toUpperCase()} SEPARATELY</th>
-          <th class="r" style="width:80px">${titleSuffix.toUpperCase()} IN COMBO</th>
-          <th class="rr" style="width:110px">VALUE ${titleSuffix.toUpperCase()} SEP.</th>
+          <th class="r" style="width:72px">WALK-IN SALES</th>
+          <th class="r" style="width:72px">PACKAGES/ COMBOS</th>
+          <th class="r" style="width:72px">BY PRESCRIPTION</th>
+          <th class="r" style="width:66px">CAMPAIGNS</th>
+          <th class="r" style="width:56px">TOTAL</th>
+          <th class="rr" style="width:100px">DP VALUE</th>
         </tr>
       </thead>
       <tbody>
-        ${rows || `<tr><td colspan="5" style="text-align:center;padding:20px;color:#999">No data</td></tr>`}
+        ${rows || `<tr><td colspan="8" style="text-align:center;padding:20px;color:#999">No data</td></tr>`}
       </tbody>
       <tfoot>
         <tr class="tfoot-row">
           <td colspan="2">TOTALS — ${sorted.length} product${sorted.length!==1?'s':''}</td>
-          <td class="r">${grandSep.toLocaleString()}</td>
-          <td class="r">${grandCombo.toLocaleString()}</td>
+          <td class="r">${grandWalkin > 0 ? grandWalkin.toLocaleString() : ''}</td>
+          <td class="r">${grandPkg    > 0 ? grandPkg.toLocaleString()    : ''}</td>
+          <td class="r">${grandRx     > 0 ? grandRx.toLocaleString()     : ''}</td>
+          <td class="r">${grandCamp   > 0 ? grandCamp.toLocaleString()   : ''}</td>
+          <td class="r">${grandTotal.toLocaleString()}</td>
           <td class="rr">${grandVal > 0 ? `N$ ${grandVal.toLocaleString('en-NA',{minimumFractionDigits:2,maximumFractionDigits:2})}` : '-'}</td>
         </tr>
       </tfoot>
@@ -9687,10 +9712,18 @@ function BranchStockTab({ branch }) {
                     ✕ Clear
                   </button>
                 )}
-                {/* PDF print */}
+                {/* PDF — current branch/filter */}
                 <button onClick={() => printMovementsReport(finalMovs, catLabel, branchLabel)}
                   style={{ padding: '6px 14px', background: '#c41e3a', border: 'none', borderRadius: 8, fontSize: '0.82rem', fontWeight: 800, color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                  📄 PDF
+                  📄 PDF — {branchLabel}
+                </button>
+                {/* PDF — all branches combined */}
+                <button onClick={() => {
+                  const allMovs2 = allBranchSummaries.flatMap(b => (b.movements || []).map(m => ({ ...m, _branch: b.name })));
+                  const filtered2 = movCategoryFilter === 'all' ? allMovs2 : applyMovCategory(allMovs2, movCategoryFilter);
+                  printMovementsReport(filtered2, catLabel, 'All Branches');
+                }} style={{ padding: '6px 14px', background: '#1e3a5f', border: 'none', borderRadius: 8, fontSize: '0.82rem', fontWeight: 800, color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                  📄 PDF — All Branches
                 </button>
               </div>
             </div>
