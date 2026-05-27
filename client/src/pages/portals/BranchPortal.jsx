@@ -820,8 +820,30 @@ function RefundRequestsTab() {
         reason:        reason.trim(),
         requested_by:  user?.full_name || user?.username || 'Branch Staff',
       });
-      setAlert({ type: 'success', msg: '✅ Refund request submitted — awaiting Stock Manager approval.' });
-      resetNewRefund();
+      setAlert({ type: 'success', msg: `✅ Refund request for "${productName}" submitted — awaiting Stock Manager approval.` });
+
+      // Remove only the refunded product from the receipt's product list.
+      // Keep the form open and the receipts loaded so the user can refund
+      // additional products from the same receipt without reloading.
+      const refundedProduct = selectedProduct;
+      setReceipts(prev => prev.map(r => {
+        if (r.id !== selectedReceipt.id) return r;
+        const updatedProducts = (r.products || []).filter(p => p !== refundedProduct);
+        return { ...r, products: updatedProducts };
+      }));
+
+      // Update the selected receipt's product list; deselect if nothing left to refund
+      const remainingProducts = (selectedReceipt.products || []).filter(p => p !== refundedProduct);
+      if (remainingProducts.length === 0) {
+        setSelectedReceipt(null);
+      } else {
+        setSelectedReceipt({ ...selectedReceipt, products: remainingProducts });
+      }
+
+      // Clear the per-product fields so the user can pick the next product
+      setSelectedProduct(null);
+      setRefundQty('');
+      setReason('');
       loadRequests();
     } catch (err) {
       setAlert({ type: 'error', msg: err.message });
