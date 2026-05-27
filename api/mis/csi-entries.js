@@ -125,11 +125,16 @@ export default async function handler(req, res) {
                THEN (item->>'unit_price')::numeric END,
           0
         ), 2)                                                                    AS dp,
-        ROUND(COALESCE(
-          CASE WHEN COALESCE((item->>'bv')::numeric, 0) > 0 THEN (item->>'bv')::numeric END,
-          pp.bv,
-          0
-        ), 2)                                                                    AS bv,
+        ROUND(
+          CASE
+            WHEN COALESCE(pp.bv, 0) > 0
+              THEN pp.bv
+            WHEN COALESCE((item->>'bv')::numeric, 0) > 0
+              THEN (item->>'bv')::numeric
+                   / GREATEST(COALESCE((item->>'quantity')::numeric, (item->>'qty')::numeric, 1), 1)
+            ELSE 0
+          END,
+        2)                                                                       AS bv,
         COALESCE(
           (item->>'quantity')::integer,
           (item->>'qty')::integer,
@@ -147,12 +152,13 @@ export default async function handler(req, res) {
           * COALESCE((item->>'quantity')::numeric, (item->>'qty')::numeric, 1),
         2)                                                                       AS total_dp,
         ROUND(
-          COALESCE(
-            CASE WHEN COALESCE((item->>'bv')::numeric, 0) > 0 THEN (item->>'bv')::numeric END,
-            pp.bv,
-            0
-          )
-          * COALESCE((item->>'quantity')::numeric, (item->>'qty')::numeric, 1),
+          CASE
+            WHEN COALESCE(pp.bv, 0) > 0
+              THEN pp.bv * COALESCE((item->>'quantity')::numeric, (item->>'qty')::numeric, 1)
+            WHEN COALESCE((item->>'bv')::numeric, 0) > 0
+              THEN (item->>'bv')::numeric
+            ELSE 0
+          END,
         2)                                                                       AS total_bv,
         COALESCE((item->>'is_free')::boolean, false)                             AS is_free,
         'walkin'                                                                  AS source

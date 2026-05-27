@@ -1355,7 +1355,7 @@ function WalkInSalesTab() {
         quantity: item.qty,
         unit_price: item.unitPrice,
         line_total: item.lineTotal,
-        bv: item.lineBV,
+        bv: item.bv || 0,
         lineProfit: !isMember ? ((item.cp || 0) - (item.dp || 0)) * item.qty : null,
         dpPrice: isMember ? (item.memberPrice != null ? item.memberPrice : item.dp || 0) : (item.dp || 0),
         cpPrice: item.cp || 0,
