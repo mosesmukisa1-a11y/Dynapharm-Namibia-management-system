@@ -9104,6 +9104,8 @@ function BranchStockTab({ branch }) {
   const [period, setPeriod] = useState(getDefaultPeriod);
   const [drillBranch, setDrillBranch] = useState(null);
   const [movTypeFilter, setMovTypeFilter] = useState('all');
+  const [movCategoryFilter, setMovCategoryFilter] = useState('all');
+  const [movProductSearch, setMovProductSearch] = useState('');
 
   const loadData = useCallback(() => {
     setLoading(true);
@@ -9235,6 +9237,75 @@ function BranchStockTab({ branch }) {
     win.document.close();
   };
 
+  // ── Activity category → raw movement_type mapping ─────────────────────────
+  const CATEGORY_MAP = {
+    sold:           ['sale','walk_in_member_sale','walk_in_non_member_sale','walkin_sale','walk_in_sale','campaign_sale','member_sale','non_member_sale'],
+    dispensed:      ['prescription_dispense','dispense'],
+    received:       ['received','receive','transfer_in','branch_receipt','return_in'],
+    returned:       ['return','refund_return'],
+    written_off:    ['write_off'],
+    transferred_out:['transfer_out'],
+  };
+  const CATEGORY_LABELS = { all:'All Activities', sold:'Sold', dispensed:'Rx Dispensed', received:'Received / Issued', returned:'Returned', written_off:'Written Off', transferred_out:'Transferred Out' };
+
+  const applyMovCategory = (movs, cat) => {
+    if (cat === 'all') return movs;
+    const types = CATEGORY_MAP[cat] || [];
+    return movs.filter(m => types.some(t => (m.movement_type || '').toLowerCase() === t));
+  };
+
+  const TYPE_LABEL_MAP = { transfer_in:'Received', received:'Received', receive:'Received', branch_receipt:'Received', transfer_out:'Transfer Out', sale:'Sale', walk_in_member_sale:'Member Sale', walk_in_non_member_sale:'Non-member Sale', walkin_sale:'Walk-in Sale', campaign_sale:'Campaign Sale', prescription_dispense:'Rx Dispense', dispense:'Dispense', write_off:'Write-off', return:'Return', refund_return:'Refund Return', return_in:'Return In' };
+
+  const printMovementsReport = (movs, titleSuffix, branchLabel) => {
+    const win = window.open('', '_blank');
+    if (!win) return;
+    const now2 = new Date();
+    const rows = movs.map((m, i) => {
+      const isOut = CATEGORY_MAP.sold.includes(m.movement_type) || CATEGORY_MAP.written_off.includes(m.movement_type) || CATEGORY_MAP.transferred_out.includes(m.movement_type) || CATEGORY_MAP.dispensed.includes(m.movement_type);
+      const dpUnit = getDPCPrice(m.product_name || '');
+      const qty = Math.abs(Number(m.quantity || 0));
+      const dpVal = dpUnit > 0 ? `N$ ${(qty * dpUnit).toFixed(2)}` : '-';
+      const typeLabel = TYPE_LABEL_MAP[m.movement_type] || (m.movement_type || '-').replace(/_/g, ' ');
+      const qtyStr = `${isOut ? '-' : '+'}${qty}`;
+      const qtyColor = isOut ? '#c41e3a' : '#166534';
+      return `<tr style="background:${i%2===0?'#fff':'#fdf8f8'}">
+        <td style="white-space:nowrap;color:#6b7280;font-size:10px">${m.created_at ? new Date(m.created_at).toLocaleString('en-ZA',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '-'}</td>
+        <td style="font-weight:700">${m._branch || fmtBranch(m.branch_id || m.source_location || '') || '-'}</td>
+        <td style="font-weight:600;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.product_name || '-'}</td>
+        <td style="font-family:monospace;font-size:10px;color:#6b7280">${m.batch_no || '-'}</td>
+        <td style="font-size:10px;color:#6b7280;white-space:nowrap">${m.expiry_date ? new Date(m.expiry_date).toLocaleDateString('en-ZA',{day:'2-digit',month:'short',year:'numeric'}) : '-'}</td>
+        <td><span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;background:${isOut?'#fef2f2':'#dcfce7'};color:${isOut?'#c41e3a':'#166534'}">${typeLabel}</span></td>
+        <td style="text-align:right;font-weight:800;color:${qtyColor}">${qtyStr}</td>
+        <td style="text-align:right;color:#374151;font-weight:600">${dpVal}</td>
+        <td style="font-size:10px;color:#6b7280">${m.source_location ? fmtBranch(m.source_location) : '-'}</td>
+        <td style="font-size:10px;color:#6b7280">${m.destination_location ? fmtBranch(m.destination_location) : '-'}</td>
+        <td style="font-family:monospace;font-size:10px;color:#6b7280">${m.reference_id || '-'}</td>
+        <td style="font-size:10px;color:#6b7280">${m.created_by || '-'}</td>
+      </tr>`;
+    }).join('');
+    const totalQty = movs.reduce((s,m) => s + Math.abs(Number(m.quantity||0)), 0);
+    const totalDPV = movs.reduce((s,m) => { const u=getDPCPrice(m.product_name||''); return s+(u>0?Math.abs(Number(m.quantity||0))*u:0); }, 0);
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Activity Ledger — ${titleSuffix}</title>
+    <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;padding:24px}.header{display:flex;justify-content:space-between;border-bottom:3px solid #c41e3a;padding-bottom:10px;margin-bottom:16px}.company{color:#c41e3a;font-weight:900;font-size:15px}.summary{display:flex;gap:20px;margin-bottom:14px;padding:10px 14px;background:#fdf7f8;border:1.5px solid #fecaca;border-radius:8px}.summary-item{text-align:center}.summary-val{font-size:16px;font-weight:900;color:#c41e3a}.summary-label{font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;margin-top:2px}table{width:100%;border-collapse:collapse}th{background:#c41e3a;color:#fff;font-weight:700;padding:6px 7px;text-align:left;font-size:10px;white-space:nowrap}td{padding:5px 7px;border-bottom:1px solid #f1f5f9;font-size:11px}tr:nth-child(even) td{background:#fdf8f8}.print-btn{position:fixed;top:12px;right:12px;background:#c41e3a;color:#fff;border:none;padding:8px 18px;border-radius:8px;font-weight:700;cursor:pointer;font-size:11px}@media print{.print-btn{display:none}}</style></head><body>
+    <button class="print-btn" onclick="window.print()">🖨️ Print</button>
+    <div class="header">
+      <div><div class="company">DYNAPHARM INTERNATIONAL NAMIBIA</div>
+        <div style="font-size:14px;font-weight:800;color:#8b0000;margin-top:4px">Activity Ledger — ${titleSuffix}</div>
+        <div style="color:#64748b;font-size:10px;margin-top:3px">Branch: ${branchLabel} · Period: ${periodLabel} · ${movs.length} records</div>
+      </div>
+      <div style="text-align:right;color:#64748b;font-size:10px;line-height:1.8">Date: ${now2.toLocaleDateString('en-NA',{day:'2-digit',month:'long',year:'numeric'})}<br>Generated by: Stock Management</div>
+    </div>
+    <div class="summary">
+      <div class="summary-item"><div class="summary-val">${movs.length}</div><div class="summary-label">Records</div></div>
+      <div class="summary-item"><div class="summary-val">${totalQty.toLocaleString()}</div><div class="summary-label">Total Units</div></div>
+      <div class="summary-item"><div class="summary-val">N$ ${totalDPV.toFixed(2)}</div><div class="summary-label">DP Value</div></div>
+    </div>
+    <table><thead><tr><th>Date</th><th>Branch</th><th>Product</th><th>Batch</th><th>Expiry</th><th>Activity</th><th>Qty</th><th>DP Value</th><th>From</th><th>To</th><th>Reference</th><th>Staff</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="12" style="text-align:center;padding:20px;color:#94a3b8">No movements found</td></tr>'}</tbody></table>
+    </body></html>`);
+    win.document.close();
+  };
+
   if (drillBranch) {
     const br = allBranchSummaries.find(b => b.key === drillBranch);
     if (!br) { setDrillBranch(null); return null; }
@@ -9310,10 +9381,16 @@ function BranchStockTab({ branch }) {
         <div style={{ background: '#fff', border: '1.5px solid #f0e8ea', borderRadius: 14, overflow: 'hidden' }}>
           <div style={{ padding: '12px 16px', borderBottom: '2px solid #fecaca', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
             <h4 style={{ fontWeight: 800, color: '#1e293b', fontSize: '0.9rem', margin: 0 }}>Movement Ledger — {br.name} ({filteredMovements.length})</h4>
-            <select value={movTypeFilter} onChange={e => setMovTypeFilter(e.target.value)} style={{ padding: '5px 10px', border: '1.5px solid #e8d5d8', borderRadius: 8, fontSize: '0.82rem', outline: 'none' }}>
-              <option value="all">All Types</option>
-              {movTypes.map(t => <option key={t} value={t}>{(t || '').replace(/_/g, ' ')}</option>)}
-            </select>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <select value={movTypeFilter} onChange={e => setMovTypeFilter(e.target.value)} style={{ padding: '5px 10px', border: '1.5px solid #e8d5d8', borderRadius: 8, fontSize: '0.82rem', outline: 'none' }}>
+                <option value="all">All Types</option>
+                {movTypes.map(t => <option key={t} value={t}>{(t || '').replace(/_/g, ' ')}</option>)}
+              </select>
+              <button onClick={() => printMovementsReport(filteredMovements.map(m => ({ ...m, _branch: br.name })), (movTypeFilter === 'all' ? 'All Activities' : movTypeFilter.replace(/_/g,' ')), br.name)}
+                style={{ padding: '5px 14px', background: '#c41e3a', border: 'none', borderRadius: 8, fontSize: '0.82rem', fontWeight: 800, color: '#fff', cursor: 'pointer' }}>
+                📄 PDF
+              </button>
+            </div>
           </div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.76rem' }}>
@@ -9473,39 +9550,93 @@ function BranchStockTab({ branch }) {
         </div>
       )}
 
-      {viewMode === 'movements' && (
-        <div style={{ background: '#fff', border: '1.5px solid #f0e8ea', borderRadius: 14, overflow: 'hidden' }}>
-          <div style={{ padding: '12px 16px', borderBottom: '2px solid #fecaca', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-            <h4 style={{ fontWeight: 800, color: '#1e293b', fontSize: '0.9rem', margin: 0 }}>All Branch Movements</h4>
-            <input value={productSearch} onChange={e => setProductSearch(e.target.value)} placeholder="Search product..." style={{ padding: '6px 12px', border: '1.5px solid #e8d5d8', borderRadius: 8, fontSize: '0.82rem', outline: 'none', width: 200 }} />
-          </div>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.76rem' }}>
-              <thead>
-                <tr style={{ background: '#c41e3a' }}>
-                  {['Date', 'Branch', 'Product', 'Batch', 'Expiry', 'Type', 'Qty', 'DP Value', 'From', 'To', 'Ref', 'Staff'].map(h => (
-                    <th key={h} style={{ padding: '7px 8px', color: '#fff', fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {(() => {
-                  const allMovs = displayBranches.flatMap(br => (br.movements || []).map(m => ({ ...m, _branch: br.name })));
-                  const filtMovs = productSearch ? allMovs.filter(m => (m.product_name || '').toLowerCase().includes(productSearch.toLowerCase())) : allMovs;
-                  if (filtMovs.length === 0) return <tr><td colSpan={12} style={{ padding: 24, textAlign: 'center', color: '#94a3b8' }}>No movements found</td></tr>;
-                  return filtMovs.slice(0, 200).map((m, i) => {
-                    const isOut = ['sale', 'transfer_out', 'write_off', 'dispense', 'prescription_dispense', 'field_use'].some(t => (m.movement_type || '').includes(t));
+      {viewMode === 'movements' && (() => {
+        const allMovs = displayBranches.flatMap(br => (br.movements || []).map(m => ({ ...m, _branch: br.name })));
+        const catFiltered = applyMovCategory(allMovs, movCategoryFilter);
+        const finalMovs = movProductSearch
+          ? catFiltered.filter(m => (m.product_name || '').toLowerCase().includes(movProductSearch.toLowerCase()))
+          : catFiltered;
+        const branchLabel = selectedBranch === 'all' ? 'All Branches' : (BRANCH_DETAILS.find(b => b.id === selectedBranch)?.name || selectedBranch);
+        const catLabel = CATEGORY_LABELS[movCategoryFilter] || 'All Activities';
+
+        return (
+          <div style={{ background: '#fff', border: '1.5px solid #f0e8ea', borderRadius: 14, overflow: 'hidden' }}>
+            {/* ── Filter bar ── */}
+            <div style={{ padding: '12px 16px', borderBottom: '2px solid #fecaca', display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+              <h4 style={{ fontWeight: 800, color: '#1e293b', fontSize: '0.9rem', margin: 0, flexShrink: 0 }}>
+                Activity Ledger
+                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', marginLeft: 8 }}>({finalMovs.length} records)</span>
+              </h4>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginLeft: 'auto', alignItems: 'center' }}>
+                {/* Activity category filter */}
+                <select value={movCategoryFilter} onChange={e => setMovCategoryFilter(e.target.value)}
+                  style={{ padding: '6px 10px', border: '1.5px solid #e8d5d8', borderRadius: 8, fontSize: '0.82rem', outline: 'none', color: '#374151', fontWeight: 600 }}>
+                  {Object.entries(CATEGORY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+                {/* Product search */}
+                <input value={movProductSearch} onChange={e => setMovProductSearch(e.target.value)}
+                  placeholder="Search product…"
+                  style={{ padding: '6px 12px', border: '1.5px solid #e8d5d8', borderRadius: 8, fontSize: '0.82rem', outline: 'none', width: 180 }} />
+                {/* Clear filters */}
+                {(movCategoryFilter !== 'all' || movProductSearch) && (
+                  <button onClick={() => { setMovCategoryFilter('all'); setMovProductSearch(''); }}
+                    style={{ padding: '6px 12px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: '0.78rem', fontWeight: 600, color: '#64748b', cursor: 'pointer' }}>
+                    ✕ Clear
+                  </button>
+                )}
+                {/* PDF print */}
+                <button onClick={() => printMovementsReport(finalMovs, catLabel, branchLabel)}
+                  style={{ padding: '6px 14px', background: '#c41e3a', border: 'none', borderRadius: 8, fontSize: '0.82rem', fontWeight: 800, color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                  📄 PDF
+                </button>
+              </div>
+            </div>
+
+            {/* ── Category summary pills ── */}
+            <div style={{ padding: '8px 16px', borderBottom: '1px solid #fef2f2', display: 'flex', gap: 8, flexWrap: 'wrap', background: '#fdf7f8' }}>
+              {Object.entries(CATEGORY_LABELS).filter(([k]) => k !== 'all').map(([k, v]) => {
+                const cnt = applyMovCategory(allMovs, k).length;
+                const active = movCategoryFilter === k;
+                return (
+                  <button key={k} onClick={() => setMovCategoryFilter(movCategoryFilter === k ? 'all' : k)}
+                    style={{ padding: '4px 12px', borderRadius: 20, fontSize: '0.73rem', fontWeight: 700, border: `1px solid ${active ? '#c41e3a' : '#e8d5d8'}`, cursor: 'pointer', background: active ? '#c41e3a' : '#fff', color: active ? '#fff' : '#64748b' }}>
+                    {v} <span style={{ opacity: 0.75 }}>({cnt})</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* ── Movements table ── */}
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.76rem' }}>
+                <thead>
+                  <tr style={{ background: '#c41e3a' }}>
+                    {['Date', 'Branch', 'Product', 'Batch', 'Expiry', 'Activity', 'Qty', 'DP Value', 'From', 'To', 'Reference', 'Staff'].map(h => (
+                      <th key={h} style={{ padding: '7px 8px', color: '#fff', fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {finalMovs.length === 0 && (
+                    <tr><td colSpan={12} style={{ padding: 28, textAlign: 'center', color: '#94a3b8' }}>
+                      No {catLabel === 'All Activities' ? '' : catLabel.toLowerCase() + ' '}movements found
+                    </td></tr>
+                  )}
+                  {finalMovs.slice(0, 500).map((m, i) => {
+                    const isOut = CATEGORY_MAP.sold.includes(m.movement_type) || CATEGORY_MAP.written_off.includes(m.movement_type) || CATEGORY_MAP.transferred_out.includes(m.movement_type) || CATEGORY_MAP.dispensed.includes(m.movement_type);
                     const dpUnit = getDPCPrice(m.product_name || '');
                     const qty = Math.abs(Number(m.quantity || 0));
-                    const tMap = { transfer_in: 'Received', received: 'Received', receive: 'Received', transfer_out: 'Transfer Out', sale: 'Sale', walk_in_member_sale: 'Member Sale', walk_in_non_member_sale: 'Non-member Sale', prescription_dispense: 'Rx Dispense', dispense: 'Dispense', write_off: 'Write-off', return: 'Return', reserved: 'Reserved' };
+                    const typeLabel = TYPE_LABEL_MAP[m.movement_type] || (m.movement_type || '-').replace(/_/g, ' ');
                     return (
                       <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#fdf8f8', borderBottom: '1px solid #f5f0f0' }}>
                         <td style={{ padding: '6px 8px', whiteSpace: 'nowrap', color: '#6b7280', fontSize: '0.72rem' }}>{m.created_at ? formatDateTime(m.created_at) : '-'}</td>
                         <td style={{ padding: '6px 8px', fontWeight: 700, color: '#1e293b', fontSize: '0.74rem' }}>{m._branch}</td>
-                        <td style={{ padding: '6px 8px', fontWeight: 600, color: '#1e293b', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.product_name || '-'}</td>
+                        <td style={{ padding: '6px 8px', fontWeight: 600, color: '#1e293b', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.product_name || ''}>{m.product_name || '-'}</td>
                         <td style={{ padding: '6px 8px', fontFamily: 'monospace', color: '#6b7280', fontSize: '0.72rem' }}>{m.batch_no || '-'}</td>
                         <td style={{ padding: '6px 8px', color: '#6b7280', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{m.expiry_date ? formatDate(m.expiry_date) : '-'}</td>
-                        <td style={{ padding: '6px 8px' }}><span style={{ display: 'inline-block', padding: '2px 7px', borderRadius: 10, fontSize: '0.68rem', fontWeight: 700, background: isOut ? '#fef2f2' : '#dcfce7', color: isOut ? '#c41e3a' : '#166534' }}>{tMap[m.movement_type] || (m.movement_type || '-').replace(/_/g, ' ')}</span></td>
+                        <td style={{ padding: '6px 8px' }}>
+                          <span style={{ display: 'inline-block', padding: '2px 7px', borderRadius: 10, fontSize: '0.68rem', fontWeight: 700, background: isOut ? '#fef2f2' : '#dcfce7', color: isOut ? '#c41e3a' : '#166534' }}>{typeLabel}</span>
+                        </td>
                         <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: isOut ? '#c41e3a' : '#166534' }}>{isOut ? '-' : '+'}{qty}</td>
                         <td style={{ padding: '6px 8px', textAlign: 'right', color: '#374151', fontWeight: 600 }}>{dpUnit > 0 ? `N$ ${(qty * dpUnit).toFixed(2)}` : '-'}</td>
                         <td style={{ padding: '6px 8px', color: '#6b7280', fontSize: '0.72rem' }}>{m.source_location ? fmtBranch(m.source_location) : '-'}</td>
@@ -9514,13 +9645,18 @@ function BranchStockTab({ branch }) {
                         <td style={{ padding: '6px 8px', color: '#6b7280', fontSize: '0.72rem' }}>{m.created_by || '-'}</td>
                       </tr>
                     );
-                  });
-                })()}
-              </tbody>
-            </table>
+                  })}
+                  {finalMovs.length > 500 && (
+                    <tr><td colSpan={12} style={{ padding: '8px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '0.75rem', background: '#fdf7f8' }}>
+                      Showing 500 of {finalMovs.length} records. Use the period filter above or narrow the activity filter to see more.
+                    </td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {viewMode === 'products' && (
         <Card>
