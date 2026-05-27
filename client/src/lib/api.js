@@ -250,6 +250,7 @@ export const api = {
     branchStockFormula: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/reports/branch-sales/stock-formula${qs ? '?' + qs : ''}`); },
     branchSalesSummary: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/reports/branch-sales/summary${qs ? '?' + qs : ''}`); },
     branchDailyProducts: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/reports/branch-sales/daily-products${qs ? '?' + qs : ''}`); },
+    branchProductRange: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/reports/branch-sales/product-range${qs ? '?' + qs : ''}`); },
   },
 
   admin: {

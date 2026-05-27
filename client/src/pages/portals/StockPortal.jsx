@@ -9256,6 +9256,73 @@ function BranchStockTab({ branch }) {
 
   const TYPE_LABEL_MAP = { transfer_in:'Received', received:'Received', receive:'Received', branch_receipt:'Received', transfer_out:'Transfer Out', sale:'Sale', walk_in_member_sale:'Member Sale', walk_in_non_member_sale:'Non-member Sale', walkin_sale:'Walk-in Sale', campaign_sale:'Campaign Sale', prescription_dispense:'Rx Dispense', dispense:'Dispense', write_off:'Write-off', return:'Return', refund_return:'Refund Return', return_in:'Return In' };
 
+  // ── Sales Summary PDF (correct source: branch_inventory_movements via product-range API) ──
+  const printSalesSummaryReport = (products, branchLabel, dateFrom, dateTo) => {
+    const fmtD = d => d ? new Date(d).toLocaleDateString('en-NA', { day:'2-digit', month:'long', year:'numeric' }) : '-';
+    const fmtN = n => n > 0 ? Number(n).toLocaleString() : '';
+    const fmtV = v => v > 0 ? `N$ ${Number(v).toLocaleString('en-NA', { minimumFractionDigits:2, maximumFractionDigits:2 })}` : '-';
+
+    const grandWalkin = products.reduce((s, p) => s + (p.walkin       || 0), 0);
+    const grandRx     = products.reduce((s, p) => s + (p.prescription || 0), 0);
+    const grandCamp   = products.reduce((s, p) => s + (p.campaigns    || 0), 0);
+    const grandTotal  = products.reduce((s, p) => s + (p.total        || 0), 0);
+    const grandVal    = products.reduce((s, p) => s + (p.dp_value     || 0), 0);
+
+    const rows = products.map((p, i) => `<tr>
+      <td style="color:#777;font-size:10px">${String(i+1).padStart(2,'0')}</td>
+      <td>${p.product_name || '-'}</td>
+      <td style="text-align:center;font-weight:700">${fmtN(p.walkin)}</td>
+      <td style="text-align:center">${fmtN(p.prescription)}</td>
+      <td style="text-align:center">${fmtN(p.campaigns)}</td>
+      <td style="text-align:center;font-weight:800">${Number(p.total || 0).toLocaleString()}</td>
+      <td style="text-align:right;font-weight:600">${fmtV(p.dp_value)}</td>
+    </tr>`).join('');
+
+    const bodyHtml = `
+      <div style="display:flex;gap:40px;margin-bottom:10px">
+        <div>
+          <div style="font-size:9px;font-weight:800;color:#8b0000;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #ddd;padding-bottom:3px;margin-bottom:5px">Business Details</div>
+          <div style="font-size:10px;line-height:1.8">DYNAPHARM INTERNATIONAL NAMIBIA<br>${branchLabel.toUpperCase()} SHOP</div>
+        </div>
+        <div>
+          <div style="font-size:9px;font-weight:800;color:#8b0000;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #ddd;padding-bottom:3px;margin-bottom:5px">Report Filters</div>
+          <div style="font-size:10px;line-height:1.8">
+            STARTING: ${fmtD(dateFrom)}<br>
+            ENDING: ${fmtD(dateTo)}<br>
+            SORT BY: Quantity · ${products.length} product${products.length !== 1 ? 's' : ''}
+          </div>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:30px">#</th>
+            <th>Description</th>
+            <th style="text-align:center;width:80px">Walk-in Sales</th>
+            <th style="text-align:center;width:80px">By Prescription</th>
+            <th style="text-align:center;width:70px">Campaigns</th>
+            <th style="text-align:center;width:60px">Total</th>
+            <th style="text-align:right;width:104px">DP Value</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows || `<tr><td colspan="7" style="text-align:center;padding:20px;color:#aaa">No sales recorded for this period</td></tr>`}
+        </tbody>
+        <tfoot>
+          <tr style="background:#8b0000;color:#fff;font-weight:800">
+            <td colspan="2" style="padding:6px 8px">TOTALS — ${products.length} product${products.length !== 1 ? 's' : ''}</td>
+            <td style="text-align:center;padding:6px 8px">${grandWalkin > 0 ? grandWalkin.toLocaleString() : ''}</td>
+            <td style="text-align:center;padding:6px 8px">${grandRx     > 0 ? grandRx.toLocaleString()     : ''}</td>
+            <td style="text-align:center;padding:6px 8px">${grandCamp   > 0 ? grandCamp.toLocaleString()   : ''}</td>
+            <td style="text-align:center;padding:6px 8px">${grandTotal.toLocaleString()}</td>
+            <td style="text-align:right;padding:6px 8px">${fmtV(grandVal)}</td>
+          </tr>
+        </tfoot>
+      </table>`;
+
+    printDocument(`Branch Sales Report — ${branchLabel} — ${fmtD(dateFrom)} to ${fmtD(dateTo)}`, bodyHtml);
+  };
+
   const printMovementsReport = (movs, titleSuffix, branchLabel) => {
     // ── Group by product, split into 4 sale categories ─────────────────────
     const WALKIN_TYPES       = ['sale','walk_in_member_sale','walk_in_non_member_sale','walkin_sale','member_sale','non_member_sale'];
@@ -9642,30 +9709,28 @@ function BranchStockTab({ branch }) {
                     ✕ Clear
                   </button>
                 )}
-                {/* PDF — current branch (all categories, respects product search) */}
-                <button onClick={() => {
-                  const pdfMovs = movProductSearch
-                    ? allMovs.filter(m => (m.product_name || '').toLowerCase().includes(movProductSearch.toLowerCase()))
-                    : allMovs;
-                  printMovementsReport(pdfMovs, 'Sales & Activity', branchLabel);
+                {/* PDF — current branch (fetches from branch_inventory_movements) */}
+                <button onClick={async () => {
+                  try {
+                    const params = { date_from: period.from || '', date_to: period.to || '' };
+                    if (selectedBranch !== 'all') params.branch_id = selectedBranch;
+                    const d = await api.reports.branchProductRange(params);
+                    let prods = d.products || [];
+                    if (movProductSearch) prods = prods.filter(p => (p.product_name || '').toLowerCase().includes(movProductSearch.toLowerCase()));
+                    printSalesSummaryReport(prods, branchLabel, d.date_from, d.date_to);
+                  } catch (e) { alert('Failed to load sales data: ' + e.message); }
                 }} style={{ padding: '6px 14px', background: '#c41e3a', border: 'none', borderRadius: 8, fontSize: '0.82rem', fontWeight: 800, color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                   📄 PDF — {branchLabel}
                 </button>
-                {/* PDF — all branches combined (deduplicated) */}
-                <button onClick={() => {
-                  const seen = new Set();
-                  const allMovs2 = allBranchSummaries.flatMap(b =>
-                    (b.movements || []).map(m => ({ ...m, _branch: b.name }))
-                  ).filter(m => {
-                    const k = `${m.reference_id || ''}|${m.product_name || ''}|${m.movement_type || ''}|${m.created_at || ''}|${m.quantity || ''}`;
-                    if (seen.has(k)) return false;
-                    seen.add(k);
-                    return true;
-                  });
-                  const pdfMovs2 = movProductSearch
-                    ? allMovs2.filter(m => (m.product_name || '').toLowerCase().includes(movProductSearch.toLowerCase()))
-                    : allMovs2;
-                  printMovementsReport(pdfMovs2, 'Sales & Activity', 'All Branches');
+                {/* PDF — all branches combined */}
+                <button onClick={async () => {
+                  try {
+                    const params = { date_from: period.from || '', date_to: period.to || '', branch_id: 'all' };
+                    const d = await api.reports.branchProductRange(params);
+                    let prods = d.products || [];
+                    if (movProductSearch) prods = prods.filter(p => (p.product_name || '').toLowerCase().includes(movProductSearch.toLowerCase()));
+                    printSalesSummaryReport(prods, 'All Branches', d.date_from, d.date_to);
+                  } catch (e) { alert('Failed to load sales data: ' + e.message); }
                 }} style={{ padding: '6px 14px', background: '#1e3a5f', border: 'none', borderRadius: 8, fontSize: '0.82rem', fontWeight: 800, color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                   📄 PDF — All Branches
                 </button>
