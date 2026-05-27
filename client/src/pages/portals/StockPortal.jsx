@@ -9606,6 +9606,47 @@ function BranchStockTab({ branch }) {
               })}
             </div>
 
+            {/* ── Product summary ── */}
+            {finalMovs.length > 0 && (() => {
+              const prodMap = {};
+              for (const m of finalMovs) {
+                const key = (m.product_name || 'Unknown').trim();
+                if (!prodMap[key]) prodMap[key] = { qty: 0, dpVal: 0 };
+                const qty = Math.abs(Number(m.quantity || 0));
+                const dpUnit = getDPCPrice(m.product_name || '');
+                prodMap[key].qty  += qty;
+                prodMap[key].dpVal += dpUnit > 0 ? qty * dpUnit : 0;
+              }
+              const sorted = Object.entries(prodMap).sort((a, b) => b[1].qty - a[1].qty);
+              const grandQty = sorted.reduce((s, [, v]) => s + v.qty, 0);
+              const grandDp  = sorted.reduce((s, [, v]) => s + v.dpVal, 0);
+              return (
+                <div style={{ padding: '10px 16px 12px', borderBottom: '2px solid #fecaca', background: '#fafafa' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <span style={{ fontWeight: 800, fontSize: '0.8rem', color: '#1e293b' }}>
+                      Product Summary
+                      <span style={{ fontWeight: 500, color: '#64748b', marginLeft: 6 }}>({sorted.length} product{sorted.length !== 1 ? 's' : ''})</span>
+                    </span>
+                    <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                      Total units: <strong style={{ color: '#1e293b' }}>{grandQty}</strong>
+                      {grandDp > 0 && <> &nbsp;·&nbsp; DP Value: <strong style={{ color: '#c41e3a' }}>N$ {grandDp.toFixed(2)}</strong></>}
+                    </span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 6 }}>
+                    {sorted.map(([name, { qty, dpVal }], i) => (
+                      <div key={i} style={{ background: '#fff', border: '1px solid #f0e8ea', borderRadius: 8, padding: '6px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: '0.73rem', fontWeight: 600, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }} title={name}>{name}</span>
+                        <div style={{ display: 'flex', gap: 6, flexShrink: 0, alignItems: 'center' }}>
+                          <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#fff', background: '#c41e3a', borderRadius: 10, padding: '1px 8px', minWidth: 28, textAlign: 'center' }}>{qty}</span>
+                          {dpVal > 0 && <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 600 }}>N$ {dpVal.toFixed(0)}</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* ── Movements table ── */}
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.76rem' }}>
