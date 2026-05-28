@@ -839,6 +839,87 @@ function printCompanySummaryDoc(summary, branches, period) {
   win.document.close();
 }
 
+function printMISSalesBreakdown(products, branchLabel, dateFrom, dateTo) {
+  const win = window.open('', '_blank');
+  if (!win) return;
+  const fmtD = d => d ? new Date(d).toLocaleDateString('en-NA', { day:'2-digit', month:'long', year:'numeric' }) : '-';
+  const fmtN = n => n > 0 ? Number(n).toLocaleString() : '';
+  const fmtV = v => v > 0 ? `N$ ${Number(v).toLocaleString('en-NA', { minimumFractionDigits:2, maximumFractionDigits:2 })}` : '-';
+  const grandWalkin = products.reduce((s, p) => s + (p.walkin       || 0), 0);
+  const grandRx     = products.reduce((s, p) => s + (p.prescription || 0), 0);
+  const grandCamp   = products.reduce((s, p) => s + (p.campaigns    || 0), 0);
+  const grandTotal  = products.reduce((s, p) => s + (p.total        || 0), 0);
+  const grandVal    = products.reduce((s, p) => s + (p.dp_value     || 0), 0);
+  const rows = products.map((p, i) => `<tr>
+    <td style="color:#777;font-size:10px">${String(i+1).padStart(2,'0')}</td>
+    <td style="font-weight:700">${p.product_name || '-'}</td>
+    <td style="text-align:center;font-weight:700">${fmtN(p.walkin)}</td>
+    <td style="text-align:center">${fmtN(p.prescription)}</td>
+    <td style="text-align:center">${fmtN(p.campaigns)}</td>
+    <td style="text-align:center;font-weight:900">${Number(p.total || 0).toLocaleString()}</td>
+    <td style="text-align:right;font-weight:700">${fmtV(p.dp_value)}</td>
+  </tr>`).join('');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <title>Sales Breakdown — ${branchLabel}</title>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Segoe UI',Arial,sans-serif; font-size:11px; color:#1e293b; background:#fff; padding:20px; }
+    .header { display:flex; justify-content:space-between; align-items:center; border-bottom:3px solid #8b0000; padding-bottom:12px; margin-bottom:16px; }
+    .header-left h1 { font-size:1.2rem; font-weight:900; color:#8b0000; }
+    .header-left p { font-size:0.78rem; color:#64748b; margin-top:2px; }
+    .header-right { text-align:right; font-size:0.78rem; color:#64748b; }
+    table { width:100%; border-collapse:collapse; margin-top:12px; }
+    thead th { background:#8b0000; color:#fff; padding:7px 8px; text-align:left; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; }
+    tbody tr:nth-child(even) { background:#fdf4f5; }
+    tbody td { padding:6px 8px; border-bottom:1px solid #f1f5f9; font-size:11px; }
+    tfoot td { background:#8b0000; color:#fff; font-weight:800; padding:7px 8px; font-size:11px; }
+    .info { display:flex; gap:40px; margin-bottom:8px; }
+    .info-block .lbl { font-size:9px; font-weight:800; color:#8b0000; text-transform:uppercase; letter-spacing:.05em; border-bottom:1px solid #ddd; padding-bottom:3px; margin-bottom:5px; }
+    .info-block div { font-size:10px; line-height:1.8; }
+    @media print { @page { size:A4 landscape; margin:10mm; } }
+  </style></head><body>
+  <div class="header">
+    <div class="header-left">
+      <h1>DYNAPHARM INTERNATIONAL NAMIBIA</h1>
+      <p>Branch Sales Breakdown — ${branchLabel.toUpperCase()}</p>
+    </div>
+    <div class="header-right">
+      <strong>MIS REPORT</strong><br>
+      ${fmtD(dateFrom)} to ${fmtD(dateTo)}<br>
+      Printed: ${new Date().toLocaleString('en-NA')}
+    </div>
+  </div>
+  <div class="info">
+    <div class="info-block"><div class="lbl">Period</div><div>From: ${fmtD(dateFrom)}<br>To: ${fmtD(dateTo)}</div></div>
+    <div class="info-block"><div class="lbl">Branch</div><div>${branchLabel}</div></div>
+    <div class="info-block"><div class="lbl">Products</div><div>${products.length} products</div></div>
+    <div class="info-block"><div class="lbl">Data Source</div><div>branch_inventory_movements<br>(same as Branch Daily Report)</div></div>
+  </div>
+  <table>
+    <thead><tr>
+      <th style="width:30px">#</th>
+      <th>Description</th>
+      <th style="text-align:center;width:80px">Walk-in Sales</th>
+      <th style="text-align:center;width:80px">By Prescription</th>
+      <th style="text-align:center;width:70px">Campaigns</th>
+      <th style="text-align:center;width:60px">Total</th>
+      <th style="text-align:right;width:110px">DP Value</th>
+    </tr></thead>
+    <tbody>${rows || `<tr><td colspan="7" style="text-align:center;padding:20px;color:#aaa">No sales for this period</td></tr>`}</tbody>
+    <tfoot><tr>
+      <td colspan="2">TOTALS — ${products.length} product${products.length !== 1 ? 's' : ''}</td>
+      <td style="text-align:center">${grandWalkin > 0 ? grandWalkin.toLocaleString() : ''}</td>
+      <td style="text-align:center">${grandRx     > 0 ? grandRx.toLocaleString()     : ''}</td>
+      <td style="text-align:center">${grandCamp   > 0 ? grandCamp.toLocaleString()   : ''}</td>
+      <td style="text-align:center">${grandTotal.toLocaleString()}</td>
+      <td style="text-align:right">${fmtV(grandVal)}</td>
+    </tr></tfoot>
+  </table>
+  </body></html>`);
+  win.document.close();
+  setTimeout(() => { win.focus(); win.print(); }, 400);
+}
+
 const branchName = (id) => BRANCH_ID_TO_NAME[id] || (id ? id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '-');
 
 function MISStockTab() {
@@ -847,22 +928,26 @@ function MISStockTab() {
   const todayStr = today.toISOString().slice(0, 10);
 
   const [reportData, setReportData] = useState(null);
+  const [salesData, setSalesData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeView, setActiveView] = useState('summary');
   const [selectedBranch, setSelectedBranch] = useState('all');
   const [productSearch, setProductSearch] = useState('');
-  const [stockFilter, setStockFilter] = useState('all');
   const [startDate, setStartDate] = useState(firstOfMonth);
   const [endDate, setEndDate] = useState(todayStr);
 
   const loadData = useCallback(() => {
     setLoading(true);
-    const params = `start=${startDate}&end=${endDate}`;
-    api.mis.stockReport(params)
-      .then(report => setReportData(report))
-      .catch(() => setReportData(null))
-      .finally(() => setLoading(false));
-  }, [startDate, endDate]);
+    const stockParams = `start=${startDate}&end=${endDate}`;
+    const salesParams = { date_from: startDate, date_to: endDate, branch_id: selectedBranch };
+    Promise.all([
+      api.mis.stockReport(stockParams).catch(() => null),
+      api.reports.branchProductRange(salesParams).catch(() => null),
+    ]).then(([report, sales]) => {
+      setReportData(report);
+      setSalesData(sales);
+    }).finally(() => setLoading(false));
+  }, [startDate, endDate, selectedBranch]);
 
   const { connected: wsConnected } = useStockRealtime({ onUpdate: loadData });
 
@@ -878,36 +963,24 @@ function MISStockTab() {
 
   const displayBranches = selectedBranch === 'all' ? branches : branches.filter(b => b.branch === selectedBranch);
 
-  const allProducts = displayBranches.flatMap(b =>
-    (b.products || []).map(p => ({ ...p, branch: b.branch, branchName: branchName(b.branch) }))
+  const allSalesProducts = (salesData?.products || []);
+  const filteredProducts = allSalesProducts.filter(p =>
+    !productSearch || (p.product_name || '').toLowerCase().includes(productSearch.toLowerCase())
   );
-  const filteredProducts = allProducts.filter(p => {
-    const matchSearch = !productSearch || (p.product_name || '').toLowerCase().includes(productSearch.toLowerCase());
-    const qty = Number(p.closing_qty || 0);
-    const matchStock = stockFilter === 'all' ? true
-      : stockFilter === 'critical' ? qty === 0
-      : stockFilter === 'low' ? qty > 0 && qty < 5
-      : stockFilter === 'warning' ? qty >= 5 && qty < 15
-      : true;
-    return matchSearch && matchStock;
-  });
 
   const exportProductCSV = () => {
     if (!filteredProducts.length) return;
-    const headers = ['Branch', 'Product', 'Received', 'Returns', 'Sales', 'Write-offs', 'Closing Qty', 'Stock Value', 'Status'];
-    const rows = filteredProducts.map(r => {
-      const qty = Number(r.closing_qty || 0);
-      const status = qty === 0 ? 'Out of Stock' : qty < 5 ? 'Critical' : qty < 15 ? 'Low Stock' : 'OK';
-      return [
-        branchName(r.branch), r.product_name || '',
-        r.received || 0, r.returns || 0, r.sales || 0, r.write_offs || 0,
-        qty, Number(r.closing_value || 0).toFixed(2), status,
-      ].map(v => `"${String(v).replace(/"/g, '""')}"`);
-    });
+    const branchLabel = selectedBranch === 'all' ? 'All Branches' : branchName(selectedBranch);
+    const headers = ['Branch', 'Product', 'Walk-in Sales', 'By Prescription', 'Campaigns', 'Total Sold', 'DP Value (N$)'];
+    const rows = filteredProducts.map(r => [
+      branchLabel, r.product_name || '',
+      r.walkin || 0, r.prescription || 0, r.campaigns || 0,
+      r.total || 0, Number(r.dp_value || 0).toFixed(2),
+    ].map(v => `"${String(v).replace(/"/g, '""')}"`));
     const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    a.download = `stock-breakdown-${startDate}-to-${endDate}.csv`;
+    a.download = `sales-breakdown-${startDate}-to-${endDate}.csv`;
     a.click();
     URL.revokeObjectURL(a.href);
   };
@@ -1039,34 +1112,51 @@ function MISStockTab() {
             </div>
           )}
 
-          {/* Product breakdown view */}
+          {/* Product breakdown view — source: branch_inventory_movements via product-range API */}
           {activeView === 'products' && (
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between flex-wrap gap-2">
-                  <h3 className="font-bold text-gray-800">
-                    Product Breakdown — {selectedBranch === 'all' ? `All Branches` : branchName(selectedBranch)}
-                    <span className="text-sm font-normal text-gray-400 ml-2">({filteredProducts.length} lines)</span>
-                  </h3>
+                  <div>
+                    <h3 className="font-bold text-gray-800">
+                      Sales Breakdown — {selectedBranch === 'all' ? 'All Branches' : branchName(selectedBranch)}
+                      <span className="text-sm font-normal text-gray-400 ml-2">({filteredProducts.length} products)</span>
+                    </h3>
+                    <p className="text-xs text-gray-400 mt-0.5">Source: branch sales records · {startDate} → {endDate}</p>
+                  </div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    {[
-                      { id: 'all', label: 'All' },
-                      { id: 'critical', label: '🔴 Out of Stock' },
-                      { id: 'low', label: '🟠 Critical (<5)' },
-                      { id: 'warning', label: '🟡 Low (<15)' },
-                    ].map(f => (
-                      <button key={f.id} onClick={() => setStockFilter(f.id)}
-                        className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${stockFilter === f.id ? 'bg-primary text-white border-primary' : 'bg-white text-gray-600 border-gray-300 hover:border-primary'}`}>
-                        {f.label}
-                      </button>
-                    ))}
                     <Button size="sm" variant="secondary" onClick={exportProductCSV}>
                       <Download size={13} /> Export CSV
                     </Button>
-                    <button onClick={() => printStockReportDoc(displayBranches, 'Per-Branch Product Report', period)} style={{ background: '#c41e3a', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: 8, fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer' }}>🖨️ Print</button>
+                    <button onClick={() => {
+                      const branchLabel = selectedBranch === 'all' ? 'All Branches' : branchName(selectedBranch);
+                      printMISSalesBreakdown(filteredProducts, branchLabel, startDate, endDate);
+                    }} style={{ background: '#c41e3a', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: 8, fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer' }}>🖨️ Print PDF</button>
                   </div>
                 </div>
               </CardHeader>
+
+              {/* Totals banner */}
+              {salesData?.totals && (
+                <div style={{ display: 'flex', gap: 12, padding: '10px 16px', background: '#fdf4f5', borderBottom: '1px solid #f0e8ea', flexWrap: 'wrap' }}>
+                  {[
+                    { label: 'Walk-in', value: salesData.totals.walkin,       color: '#1e3a5f' },
+                    { label: 'Prescription', value: salesData.totals.prescription, color: '#166534' },
+                    { label: 'Campaigns', value: salesData.totals.campaigns,   color: '#92400e' },
+                    { label: 'Total Sold', value: salesData.totals.total,      color: '#8b0000' },
+                  ].map(s => (
+                    <div key={s.label} style={{ textAlign: 'center', minWidth: 90 }}>
+                      <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.06em' }}>{s.label}</div>
+                      <div style={{ fontSize: '1.2rem', fontWeight: 900, color: s.color }}>{Number(s.value || 0).toLocaleString()}</div>
+                    </div>
+                  ))}
+                  <div style={{ textAlign: 'center', minWidth: 130, marginLeft: 'auto' }}>
+                    <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.06em' }}>DP Value</div>
+                    <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#c41e3a' }}>N$ {Number(salesData.totals.dp_value || 0).toLocaleString('en-NA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                  </div>
+                </div>
+              )}
+
               <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9' }}>
                 <input type="text" value={productSearch} onChange={e => setProductSearch(e.target.value)}
                   placeholder="Search products…"
@@ -1074,29 +1164,16 @@ function MISStockTab() {
               </div>
               <Table
                 columns={[
-                  { header: 'Product', render: r => <span style={{ fontWeight: 600 }}>{r.product_name || '-'}</span> },
-                  { header: 'Branch', render: r => <Badge variant="info">{r.branchName || branchName(r.branch)}</Badge> },
-                  { header: 'Received', render: r => <span style={{ color: '#166534', fontWeight: 700 }}>{Number(r.received || 0)}</span> },
-                  { header: 'Returns', render: r => Number(r.returns || 0) || '-' },
-                  { header: 'Sales', render: r => <span style={{ color: '#c41e3a', fontWeight: 700 }}>{Number(r.sales || 0) || '-'}</span> },
-                  { header: 'Write-offs', render: r => Number(r.write_offs || 0) || '-' },
-                  { header: 'Closing Qty', render: r => {
-                    const q = Number(r.closing_qty || 0);
-                    const color = q === 0 ? '#c41e3a' : q < 5 ? '#d97706' : q < 15 ? '#f59e0b' : '#166534';
-                    const label = q === 0 ? ' ⚠ Out' : q < 5 ? ' ⚠' : '';
-                    return <span style={{ fontWeight: 800, color }}>{q}{label}</span>;
-                  }},
-                  { header: 'Stock Value', render: r => <span style={{ fontWeight: 600, color: '#1e3a5f' }}>N$ {Number(r.closing_value || 0).toFixed(2)}</span> },
-                  { header: 'Status', render: r => {
-                    const q = Number(r.closing_qty || 0);
-                    if (q === 0) return <Badge variant="danger">Out of Stock</Badge>;
-                    if (q < 5)  return <Badge variant="warning">Critical</Badge>;
-                    if (q < 15) return <Badge variant="warning">Low Stock</Badge>;
-                    return <Badge variant="success">OK</Badge>;
-                  }},
+                  { header: '#', render: (r, i) => <span style={{ color: '#94a3b8', fontSize: '0.78rem' }}>{String(i + 1).padStart(2, '0')}</span> },
+                  { header: 'Product', render: r => <span style={{ fontWeight: 700 }}>{r.product_name || '-'}</span> },
+                  { header: 'Walk-in Sales', render: r => r.walkin > 0 ? <span style={{ fontWeight: 700, color: '#1e3a5f' }}>{Number(r.walkin).toLocaleString()}</span> : <span style={{ color: '#cbd5e1' }}>—</span> },
+                  { header: 'By Prescription', render: r => r.prescription > 0 ? <span style={{ fontWeight: 600, color: '#166534' }}>{Number(r.prescription).toLocaleString()}</span> : <span style={{ color: '#cbd5e1' }}>—</span> },
+                  { header: 'Campaigns', render: r => r.campaigns > 0 ? <span style={{ fontWeight: 600, color: '#92400e' }}>{Number(r.campaigns).toLocaleString()}</span> : <span style={{ color: '#cbd5e1' }}>—</span> },
+                  { header: 'Total Sold', render: r => <span style={{ fontWeight: 900, color: '#8b0000' }}>{Number(r.total || 0).toLocaleString()}</span> },
+                  { header: 'DP Value', render: r => r.dp_value > 0 ? <span style={{ fontWeight: 700, color: '#c41e3a' }}>N$ {Number(r.dp_value).toLocaleString('en-NA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span> : <span style={{ color: '#cbd5e1' }}>—</span> },
                 ]}
                 data={filteredProducts}
-                emptyMessage="No products found"
+                emptyMessage="No sales recorded for this period"
               />
             </Card>
           )}
