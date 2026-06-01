@@ -457,6 +457,7 @@ export default function BranchPortal() {
     { id: 'checkup', label: 'Check Up Booking', icon: '🩺' },
     { id: 'campaigns', label: 'Campaigns', icon: '📢' },
     { id: 'training', label: 'Training', icon: '🎓' },
+    { id: 'productSales', label: 'Product Sales', icon: '📊' },
     { id: 'priceList', label: 'Price List', icon: '💲' },
   ];
 
@@ -548,6 +549,7 @@ export default function BranchPortal() {
           {activeTab === 'checkup' && <CheckUpBookingTab />}
           {activeTab === 'campaigns' && <BranchCampaignsTab />}
           {activeTab === 'training' && <BranchTrainingTab />}
+          {activeTab === 'productSales' && <BranchProductSalesTab />}
           {activeTab === 'priceList' && <BranchPriceListTab />}
         </div>
       </div>
@@ -624,6 +626,278 @@ function printPriceListDoc(products) {
   </div>
   </body></html>`);
   win.document.close();
+}
+
+function BranchProductSalesTab() {
+  const portalBranch = useContext(PortalBranchContext);
+  const { user } = useAuth();
+  const branchId    = portalBranch || user?.branch || '';
+  const branchLabel = getBranchDisplayName(branchId) || (branchId ? branchId.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()) : 'Branch');
+
+  const today        = new Date().toISOString().slice(0,10);
+  const firstOfMonth = today.slice(0,8)+'01';
+
+  const [startDate, setStartDate] = useState(firstOfMonth);
+  const [endDate,   setEndDate]   = useState(today);
+  const [data,      setData]      = useState(null);
+  const [loading,   setLoading]   = useState(false);
+  const [error,     setError]     = useState('');
+  const [search,    setSearch]    = useState('');
+
+  const loadData = async () => {
+    if (!branchId) { setError('No branch assigned to your account.'); return; }
+    setLoading(true); setError('');
+    try {
+      const res = await api.reports.branchProductRange({ branch_id: branchId, date_from: startDate, date_to: endDate });
+      setData(res);
+    } catch(e) { setError(e.message||'Failed to load report'); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { loadData(); }, [branchId, startDate, endDate]);
+
+  const products = (data?.products||[]).filter(p => !search||(p.product_name||'').toLowerCase().includes(search.toLowerCase()));
+  const totals   = data?.totals||{};
+  const hasRef   = (totals.refunded||0)>0;
+  const netDp    = Math.max(0,(totals.dp_value||0)-(totals.refund_dp||0));
+
+  const fmtMoney = v => v>0 ? `N$ ${Number(v).toLocaleString('en-NA',{minimumFractionDigits:2,maximumFractionDigits:2})}` : '-';
+  const fmtDate  = d => d ? new Date(d).toLocaleDateString('en-NA',{day:'2-digit',month:'long',year:'numeric'}) : '-';
+  const fmtNum   = n => n>0 ? Number(n).toLocaleString() : '';
+
+  const exportCSV = () => {
+    if (!products.length) return;
+    const headers = ['Product','Walk-in','Prescription','Campaigns','Total Sold','Refunded','Net Sold','DP Value (N$)','Refund Deduction (N$)'];
+    const rows = products.map(p=>[
+      p.product_name||'', p.walkin||0, p.prescription||0, p.campaigns||0,
+      p.total||0, p.refunded||0, p.net??(p.total||0),
+      Number(p.dp_value||0).toFixed(2), Number(p.refund_dp||0).toFixed(2),
+    ].map(v=>`"${String(v).replace(/"/g,'""')}"`));
+    const csv = [headers.join(','),...rows.map(r=>r.join(','))].join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+    a.download = `product-sales-${branchId}-${startDate}-to-${endDate}.csv`;
+    a.click();
+  };
+
+  const printReport = () => {
+    if (!products.length) return;
+    const win = window.open('','_blank');
+    if (!win) return;
+    const gW   = products.reduce((s,p)=>s+(p.walkin||0),0);
+    const gRx  = products.reduce((s,p)=>s+(p.prescription||0),0);
+    const gC   = products.reduce((s,p)=>s+(p.campaigns||0),0);
+    const gT   = products.reduce((s,p)=>s+(p.total||0),0);
+    const gV   = products.reduce((s,p)=>s+(p.dp_value||0),0);
+    const gRef = products.reduce((s,p)=>s+(p.refunded||0),0);
+    const gNet = products.reduce((s,p)=>s+(p.net??(p.total||0)),0);
+    const gRdp = products.reduce((s,p)=>s+(p.refund_dp||0),0);
+    const sRef = gRef>0;
+    const netV = Math.max(0,gV-gRdp);
+    const cols = sRef?9:7;
+    const bodyRows = products.map((p,i)=>`<tr>
+      <td style="color:#777;font-size:10px">${String(i+1).padStart(2,'0')}</td>
+      <td style="font-weight:700">${p.product_name||'-'}</td>
+      <td style="text-align:center;font-weight:700">${fmtNum(p.walkin)}</td>
+      <td style="text-align:center">${fmtNum(p.prescription)}</td>
+      <td style="text-align:center">${fmtNum(p.campaigns)}</td>
+      <td style="text-align:center;font-weight:900">${Number(p.total||0).toLocaleString()}</td>
+      ${sRef?`<td style="text-align:center;color:#c41e3a;font-weight:700">${(p.refunded||0)>0?'−'+Number(p.refunded).toLocaleString():''}</td><td style="text-align:center;font-weight:900;color:#166534">${Number(p.net??(p.total||0)).toLocaleString()}</td>`:''}
+      <td style="text-align:right;font-weight:700">${fmtMoney(p.dp_value)}</td>
+    </tr>`).join('');
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Product Sales — ${branchLabel}</title>
+    <style>
+      *{margin:0;padding:0;box-sizing:border-box}
+      body{font-family:'Segoe UI',Arial,sans-serif;font-size:11px;color:#1e293b;background:#fff;padding:20px}
+      .hdr{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #8b0000;padding-bottom:12px;margin-bottom:16px}
+      .hdr h1{font-size:1.2rem;font-weight:900;color:#8b0000}
+      .hdr-r{text-align:right;font-size:0.78rem;color:#64748b}
+      table{width:100%;border-collapse:collapse;margin-top:12px}
+      thead th{background:#8b0000;color:#fff;padding:7px 8px;text-align:left;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em}
+      thead th.ref{background:#7f1d1d}
+      tbody tr:nth-child(even){background:#fdf4f5}
+      tbody td{padding:6px 8px;border-bottom:1px solid #f1f5f9;font-size:11px}
+      tfoot td{background:#8b0000;color:#fff;font-weight:800;padding:7px 8px;font-size:11px}
+      .info{display:flex;gap:40px;margin-bottom:8px}
+      .info .lbl{font-size:9px;font-weight:800;color:#8b0000;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #ddd;padding-bottom:3px;margin-bottom:5px}
+      .info div{font-size:10px;line-height:1.8}
+      @media print{@page{size:A4 landscape;margin:10mm}}
+    </style></head><body>
+    <div class="hdr">
+      <div><h1>DYNAPHARM INTERNATIONAL NAMIBIA</h1><p style="font-size:.78rem;color:#64748b;margin-top:2px">Branch Product Sales — ${branchLabel.toUpperCase()}</p></div>
+      <div class="hdr-r"><strong>BRANCH REPORT</strong><br>${fmtDate(startDate)} to ${fmtDate(endDate)}<br>Printed: ${new Date().toLocaleString('en-NA')}</div>
+    </div>
+    <div class="info">
+      <div><div class="lbl">Period</div><div>From: ${fmtDate(startDate)}<br>To: ${fmtDate(endDate)}</div></div>
+      <div><div class="lbl">Branch</div><div>${branchLabel}</div></div>
+      <div><div class="lbl">Summary</div><div>${products.length} products · ${gT.toLocaleString()} sold${sRef?` · ${gRef.toLocaleString()} refunded · ${gNet.toLocaleString()} net`:''}</div></div>
+    </div>
+    <table>
+      <thead><tr>
+        <th style="width:30px">#</th><th>Description</th>
+        <th style="text-align:center;width:75px">Walk-in</th>
+        <th style="text-align:center;width:75px">Prescription</th>
+        <th style="text-align:center;width:65px">Campaigns</th>
+        <th style="text-align:center;width:55px">Total</th>
+        ${sRef?`<th class="ref" style="text-align:center;width:65px">Refunded</th><th class="ref" style="text-align:center;width:60px">Net Sold</th>`:''}
+        <th style="text-align:right;width:110px">DP Value</th>
+      </tr></thead>
+      <tbody>${bodyRows||`<tr><td colspan="${cols}" style="text-align:center;padding:20px;color:#aaa">No sales for this period</td></tr>`}</tbody>
+      <tfoot><tr>
+        <td colspan="2">TOTALS — ${products.length} product${products.length!==1?'s':''}</td>
+        <td style="text-align:center">${gW>0?gW.toLocaleString():''}</td>
+        <td style="text-align:center">${gRx>0?gRx.toLocaleString():''}</td>
+        <td style="text-align:center">${gC>0?gC.toLocaleString():''}</td>
+        <td style="text-align:center">${gT.toLocaleString()}</td>
+        ${sRef?`<td style="text-align:center">−${gRef.toLocaleString()}</td><td style="text-align:center">${gNet.toLocaleString()}</td>`:''}
+        <td style="text-align:right">${fmtMoney(gV)}${sRef&&gRdp>0?`<br><small style="font-weight:400;opacity:.85">−${fmtMoney(gRdp)} refunded</small><br><strong>Net: ${fmtMoney(netV)}</strong>`:''}</td>
+      </tr></tfoot>
+    </table>
+    </body></html>`);
+    win.document.close();
+    setTimeout(()=>{win.focus();win.print();},400);
+  };
+
+  if (!branchId) return (
+    <div style={{padding:40,textAlign:'center',color:'#64748b',fontSize:'0.9rem'}}>No branch assigned to your account. Contact your administrator.</div>
+  );
+
+  return (
+    <div>
+      {/* Controls */}
+      <div style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'flex-end',marginBottom:16}}>
+        <div style={{background:'linear-gradient(135deg,#8b0000,#c41e3a)',borderRadius:12,padding:'9px 16px',color:'#fff',flexShrink:0}}>
+          <div style={{fontSize:'0.6rem',fontWeight:800,opacity:.7,textTransform:'uppercase',letterSpacing:'.08em'}}>Branch</div>
+          <div style={{fontSize:'0.95rem',fontWeight:900}}>{branchLabel}</div>
+        </div>
+        <label style={{display:'flex',flexDirection:'column',gap:3}}>
+          <span style={{fontSize:'0.67rem',fontWeight:700,color:'#64748b',textTransform:'uppercase',letterSpacing:'.05em'}}>From</span>
+          <input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)}
+            style={{padding:'6px 10px',border:'1.5px solid #e8d5d8',borderRadius:8,fontSize:'0.85rem',outline:'none'}}/>
+        </label>
+        <label style={{display:'flex',flexDirection:'column',gap:3}}>
+          <span style={{fontSize:'0.67rem',fontWeight:700,color:'#64748b',textTransform:'uppercase',letterSpacing:'.05em'}}>To</span>
+          <input type="date" value={endDate} onChange={e=>setEndDate(e.target.value)}
+            style={{padding:'6px 10px',border:'1.5px solid #e8d5d8',borderRadius:8,fontSize:'0.85rem',outline:'none'}}/>
+        </label>
+        <div style={{marginLeft:'auto',display:'flex',gap:8}}>
+          <button onClick={exportCSV} disabled={!products.length}
+            style={{padding:'7px 14px',background:'#166534',border:'none',borderRadius:8,color:'#fff',fontSize:'0.82rem',fontWeight:700,cursor:products.length?'pointer':'not-allowed',opacity:products.length?1:0.45}}>
+            ⬇ CSV
+          </button>
+          <button onClick={printReport} disabled={!products.length}
+            style={{padding:'7px 14px',background:'#c41e3a',border:'none',borderRadius:8,color:'#fff',fontSize:'0.82rem',fontWeight:700,cursor:products.length?'pointer':'not-allowed',opacity:products.length?1:0.45}}>
+            🖨 Print PDF
+          </button>
+        </div>
+      </div>
+
+      {error && <div style={{padding:'10px 14px',background:'#fef2f2',border:'1.5px solid #fca5a5',borderRadius:10,color:'#c41e3a',marginBottom:12}}>{error}</div>}
+      {loading && <div style={{textAlign:'center',padding:40,color:'#64748b'}}>Loading…</div>}
+
+      {!loading && data && (
+        <div style={{background:'#fff',border:'1.5px solid #f0e8ea',borderRadius:14,overflow:'hidden'}}>
+          {/* Totals banner */}
+          <div style={{display:'flex',gap:12,padding:'10px 16px',background:'#fdf4f5',borderBottom:'1px solid #f0e8ea',flexWrap:'wrap',alignItems:'center'}}>
+            {[
+              {label:'Walk-in',    value:totals.walkin,       color:'#1e3a5f'},
+              {label:'Prescription',value:totals.prescription,color:'#166534'},
+              {label:'Campaigns',  value:totals.campaigns,    color:'#92400e'},
+              {label:'Total Sold', value:totals.total,        color:'#8b0000'},
+            ].map(s=>(
+              <div key={s.label} style={{textAlign:'center',minWidth:78}}>
+                <div style={{fontSize:'0.61rem',fontWeight:800,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'.06em'}}>{s.label}</div>
+                <div style={{fontSize:'1.15rem',fontWeight:900,color:s.color}}>{Number(s.value||0).toLocaleString()}</div>
+              </div>
+            ))}
+            {hasRef && <>
+              <div style={{width:1,height:38,background:'#f0e8ea',margin:'0 4px'}}/>
+              <div style={{textAlign:'center',minWidth:78}}>
+                <div style={{fontSize:'0.61rem',fontWeight:800,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'.06em'}}>Refunded</div>
+                <div style={{fontSize:'1.15rem',fontWeight:900,color:'#dc2626'}}>−{Number(totals.refunded||0).toLocaleString()}</div>
+              </div>
+              <div style={{textAlign:'center',minWidth:78}}>
+                <div style={{fontSize:'0.61rem',fontWeight:800,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'.06em'}}>Net Sold</div>
+                <div style={{fontSize:'1.15rem',fontWeight:900,color:'#15803d'}}>{Number(totals.net||0).toLocaleString()}</div>
+              </div>
+            </>}
+            <div style={{textAlign:'right',marginLeft:'auto'}}>
+              <div style={{fontSize:'0.61rem',fontWeight:800,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'.06em'}}>DP Value</div>
+              <div style={{fontSize:'1.05rem',fontWeight:900,color:'#c41e3a'}}>N$ {Number(totals.dp_value||0).toLocaleString('en-NA',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+              {hasRef&&(totals.refund_dp||0)>0&&<>
+                <div style={{fontSize:'0.74rem',fontWeight:700,color:'#dc2626'}}>−N$ {Number(totals.refund_dp||0).toLocaleString('en-NA',{minimumFractionDigits:2,maximumFractionDigits:2})} refunded</div>
+                <div style={{fontSize:'0.84rem',fontWeight:900,color:'#15803d'}}>Net: N$ {netDp.toLocaleString('en-NA',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+              </>}
+            </div>
+          </div>
+
+          {/* Search */}
+          <div style={{padding:'10px 16px',borderBottom:'1px solid #f1f5f9'}}>
+            <input type="text" value={search} onChange={e=>setSearch(e.target.value)}
+              placeholder="Search products…"
+              style={{width:'100%',padding:'7px 12px',border:'1.5px solid #e8d5d8',borderRadius:9,fontSize:'0.87rem',outline:'none',boxSizing:'border-box'}}/>
+          </div>
+
+          {/* Table */}
+          <div style={{overflowX:'auto'}}>
+            <table style={{width:'100%',borderCollapse:'collapse'}}>
+              <thead>
+                <tr style={{background:'#8b0000',color:'#fff',fontSize:'0.71rem',fontWeight:800,textTransform:'uppercase',letterSpacing:'.05em'}}>
+                  <th style={{padding:'7px 8px',width:34,textAlign:'center'}}>#</th>
+                  <th style={{padding:'7px 8px',textAlign:'left'}}>Product</th>
+                  <th style={{padding:'7px 8px',textAlign:'center',width:68}}>Walk-in</th>
+                  <th style={{padding:'7px 8px',textAlign:'center',width:78}}>Prescription</th>
+                  <th style={{padding:'7px 8px',textAlign:'center',width:68}}>Campaigns</th>
+                  <th style={{padding:'7px 8px',textAlign:'center',width:58}}>Total</th>
+                  {hasRef&&<>
+                    <th style={{padding:'7px 8px',textAlign:'center',width:68,background:'#7f1d1d'}}>Refunded</th>
+                    <th style={{padding:'7px 8px',textAlign:'center',width:63,background:'#7f1d1d'}}>Net Sold</th>
+                  </>}
+                  <th style={{padding:'7px 8px',textAlign:'right',width:120}}>DP Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {products.length===0?(
+                  <tr><td colSpan={hasRef?9:7} style={{textAlign:'center',padding:30,color:'#94a3b8',fontSize:'0.9rem'}}>No sales recorded for this period</td></tr>
+                ):products.map((p,i)=>(
+                  <tr key={p.product_name+i} style={{background:i%2===0?'#fff':'#fdf4f5'}}>
+                    <td style={{padding:'5px 8px',textAlign:'center',color:'#94a3b8',fontSize:'0.74rem',fontWeight:600}}>{String(i+1).padStart(2,'0')}</td>
+                    <td style={{padding:'5px 8px',fontWeight:700,fontSize:'0.84rem'}}>{p.product_name||'-'}</td>
+                    <td style={{padding:'5px 8px',textAlign:'center',fontWeight:700,color:(p.walkin||0)>0?'#1e3a5f':'#cbd5e1'}}>{(p.walkin||0)>0?Number(p.walkin).toLocaleString():'—'}</td>
+                    <td style={{padding:'5px 8px',textAlign:'center',fontWeight:600,color:(p.prescription||0)>0?'#166534':'#cbd5e1'}}>{(p.prescription||0)>0?Number(p.prescription).toLocaleString():'—'}</td>
+                    <td style={{padding:'5px 8px',textAlign:'center',fontWeight:600,color:(p.campaigns||0)>0?'#92400e':'#cbd5e1'}}>{(p.campaigns||0)>0?Number(p.campaigns).toLocaleString():'—'}</td>
+                    <td style={{padding:'5px 8px',textAlign:'center',fontWeight:900,color:'#8b0000'}}>{Number(p.total||0).toLocaleString()}</td>
+                    {hasRef&&<>
+                      <td style={{padding:'5px 8px',textAlign:'center',fontWeight:800,color:'#dc2626'}}>{(p.refunded||0)>0?`−${Number(p.refunded).toLocaleString()}`:'—'}</td>
+                      <td style={{padding:'5px 8px',textAlign:'center',fontWeight:900,color:(p.refunded||0)>0?'#15803d':'#8b0000'}}>{Number(p.net??(p.total||0)).toLocaleString()}</td>
+                    </>}
+                    <td style={{padding:'5px 8px',textAlign:'right',fontWeight:700,color:'#c41e3a'}}>{(p.dp_value||0)>0?`N$ ${Number(p.dp_value).toLocaleString('en-NA',{minimumFractionDigits:2,maximumFractionDigits:2})}`:'—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr style={{background:'#8b0000',color:'#fff',fontWeight:800,fontSize:'0.82rem'}}>
+                  <td colSpan={2} style={{padding:'7px 8px'}}>TOTALS — {products.length} product{products.length!==1?'s':''}</td>
+                  <td style={{padding:'7px 8px',textAlign:'center'}}>{(totals.walkin||0)>0?Number(totals.walkin).toLocaleString():''}</td>
+                  <td style={{padding:'7px 8px',textAlign:'center'}}>{(totals.prescription||0)>0?Number(totals.prescription).toLocaleString():''}</td>
+                  <td style={{padding:'7px 8px',textAlign:'center'}}>{(totals.campaigns||0)>0?Number(totals.campaigns).toLocaleString():''}</td>
+                  <td style={{padding:'7px 8px',textAlign:'center'}}>{Number(totals.total||0).toLocaleString()}</td>
+                  {hasRef&&<>
+                    <td style={{padding:'7px 8px',textAlign:'center'}}>−{Number(totals.refunded||0).toLocaleString()}</td>
+                    <td style={{padding:'7px 8px',textAlign:'center'}}>{Number(totals.net||0).toLocaleString()}</td>
+                  </>}
+                  <td style={{padding:'7px 8px',textAlign:'right'}}>
+                    N$ {Number(totals.dp_value||0).toLocaleString('en-NA',{minimumFractionDigits:2,maximumFractionDigits:2})}
+                    {hasRef&&(totals.refund_dp||0)>0&&<><br/><span style={{fontWeight:400,opacity:.85,fontSize:'0.74rem'}}>−N$ {Number(totals.refund_dp||0).toLocaleString('en-NA',{minimumFractionDigits:2,maximumFractionDigits:2})} refunded</span><br/><strong>Net: N$ {netDp.toLocaleString('en-NA',{minimumFractionDigits:2,maximumFractionDigits:2})}</strong></>}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function BranchPriceListTab() {

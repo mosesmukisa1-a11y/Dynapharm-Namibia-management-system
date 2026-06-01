@@ -9327,7 +9327,7 @@ function BranchStockTab({ branch }) {
             <td style="text-align:center;padding:6px 8px">${grandCamp   > 0 ? grandCamp.toLocaleString()   : ''}</td>
             <td style="text-align:center;padding:6px 8px">${grandTotal.toLocaleString()}</td>
             ${hasRefunds ? `<td style="text-align:center;padding:6px 8px">−${grandRefunded.toLocaleString()}</td><td style="text-align:center;padding:6px 8px">${grandNet.toLocaleString()}</td>` : ''}
-            <td style="text-align:right;padding:6px 8px">${fmtV(grandVal)}${hasRefunds&&grandRefundDp>0?`<br><small style="font-weight:400;opacity:.8">−${fmtV(grandRefundDp)}</small>`:''}</td>
+            <td style="text-align:right;padding:6px 8px">${fmtV(grandVal)}${hasRefunds&&grandRefundDp>0?`<br><small style="font-weight:400;opacity:.85">−${fmtV(grandRefundDp)}</small><br><strong style="font-size:11.5px">Net: ${fmtV(Math.max(0,grandVal-grandRefundDp))}</strong>`:''}</td>
           </tr>
         </tfoot>
       </table>`;

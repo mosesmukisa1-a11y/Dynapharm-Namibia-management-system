@@ -921,7 +921,7 @@ function printMISSalesBreakdown(products, branchLabel, dateFrom, dateTo) {
       <td style="text-align:center">${grandCamp   > 0 ? grandCamp.toLocaleString()   : ''}</td>
       <td style="text-align:center">${grandTotal.toLocaleString()}</td>
       ${hasRefunds ? `<td style="text-align:center">−${grandRefunded.toLocaleString()}</td><td style="text-align:center">${grandNet.toLocaleString()}</td>` : ''}
-      <td style="text-align:right">${fmtV(grandVal)}${hasRefunds&&grandRefundDp>0?`<br><small style="font-weight:400;opacity:.8">−${fmtV(grandRefundDp)} refunded</small>`:''}</td>
+      <td style="text-align:right">${fmtV(grandVal)}${hasRefunds&&grandRefundDp>0?`<br><small style="font-weight:400;opacity:.85">−${fmtV(grandRefundDp)} refunded</small><br><strong style="font-size:11.5px">Net: ${fmtV(Math.max(0,grandVal-grandRefundDp))}</strong>`:''}</td>
     </tr></tfoot>
   </table>
   </body></html>`);
