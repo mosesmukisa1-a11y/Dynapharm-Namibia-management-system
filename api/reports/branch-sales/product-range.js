@@ -89,13 +89,32 @@ export default async function handler(req, res) {
             WHEN bim.type IN ('prescription_dispense','dispense','field_use') THEN 'prescription'
             ELSE 'regular'
           END
+      ),
+      -- Approved refund returns within the same period (recognised on approval date)
+      refund_agg AS (
+        SELECT
+          LOWER(TRIM(bim.product_name))                                          AS pkey,
+          SUM(ABS(bim.quantity))                                                 AS refund_qty,
+          SUM(ABS(bim.quantity) * COALESCE(NULLIF(pp.dp, 0), NULLIF(bim.unit_price, 0), 0)) AS refund_dp
+        FROM branch_inventory_movements bim
+        LEFT JOIN product_prices pp ON LOWER(TRIM(pp.description)) = LOWER(TRIM(bim.product_name))
+        WHERE bim.created_at >= $1::date
+          AND bim.created_at  < ($2::date + INTERVAL '1 day')
+          ${movBranchClause}
+          AND bim.type = 'refund_return'
+        GROUP BY LOWER(TRIM(bim.product_name))
       )
-      SELECT product_name, sale_type, total_qty, dp_amount
-      FROM agg
-      ORDER BY dp_amount DESC
+      SELECT a.product_name, a.sale_type, a.total_qty, a.dp_amount,
+             COALESCE(r.refund_qty, 0) AS refund_qty,
+             COALESCE(r.refund_dp,  0) AS refund_dp
+      FROM agg a
+      LEFT JOIN refund_agg r ON r.pkey = LOWER(TRIM(a.product_name))
+      ORDER BY a.dp_amount DESC
     `, movParams);
 
     // Collapse into one row per product with columns per sale_type
+    // refund_qty / refund_dp come from the refund_agg CTE — same value on every
+    // row for a given product (because the LEFT JOIN duplicates them per sale_type).
     const prodMap = {};
     for (const r of rows) {
       const key = (r.product_name || 'Unknown').toUpperCase();
@@ -104,6 +123,8 @@ export default async function handler(req, res) {
           product_name: r.product_name || 'Unknown',
           walkin: 0, prescription: 0, campaigns: 0, free: 0,
           dp_value: 0,
+          refunded: Number(r.refund_qty || 0),
+          refund_dp: parseFloat(Number(r.refund_dp || 0).toFixed(2)),
         };
       }
       const qty = Number(r.total_qty  || 0);
@@ -117,6 +138,7 @@ export default async function handler(req, res) {
     const products = Object.values(prodMap).map(p => ({
       ...p,
       total: p.walkin + p.prescription + p.campaigns,
+      net:   Math.max(0, p.walkin + p.prescription + p.campaigns - p.refunded),
     })).sort((a, b) => b.total - a.total);
 
     const totals = {
@@ -124,7 +146,10 @@ export default async function handler(req, res) {
       prescription: products.reduce((s, p) => s + p.prescription, 0),
       campaigns:    products.reduce((s, p) => s + p.campaigns,    0),
       total:        products.reduce((s, p) => s + p.total,        0),
-      dp_value:     parseFloat(products.reduce((s, p) => s + p.dp_value, 0).toFixed(2)),
+      refunded:     products.reduce((s, p) => s + p.refunded,     0),
+      net:          products.reduce((s, p) => s + p.net,          0),
+      dp_value:     parseFloat(products.reduce((s, p) => s + p.dp_value,  0).toFixed(2)),
+      refund_dp:    parseFloat(products.reduce((s, p) => s + p.refund_dp, 0).toFixed(2)),
     };
 
     res.json({

@@ -850,6 +850,11 @@ function printMISSalesBreakdown(products, branchLabel, dateFrom, dateTo) {
   const grandCamp   = products.reduce((s, p) => s + (p.campaigns    || 0), 0);
   const grandTotal  = products.reduce((s, p) => s + (p.total        || 0), 0);
   const grandVal    = products.reduce((s, p) => s + (p.dp_value     || 0), 0);
+  const grandRefunded = products.reduce((s, p) => s + (p.refunded || 0), 0);
+  const grandNet      = products.reduce((s, p) => s + (p.net ?? (p.total || 0)), 0);
+  const grandRefundDp = products.reduce((s, p) => s + (p.refund_dp || 0), 0);
+  const hasRefunds    = grandRefunded > 0;
+  const colspan       = hasRefunds ? 9 : 7;
   const rows = products.map((p, i) => `<tr>
     <td style="color:#777;font-size:10px">${String(i+1).padStart(2,'0')}</td>
     <td style="font-weight:700">${p.product_name || '-'}</td>
@@ -857,6 +862,8 @@ function printMISSalesBreakdown(products, branchLabel, dateFrom, dateTo) {
     <td style="text-align:center">${fmtN(p.prescription)}</td>
     <td style="text-align:center">${fmtN(p.campaigns)}</td>
     <td style="text-align:center;font-weight:900">${Number(p.total || 0).toLocaleString()}</td>
+    ${hasRefunds ? `<td style="text-align:center;color:#c41e3a;font-weight:700">${(p.refunded||0)>0?'−'+Number(p.refunded).toLocaleString():''}</td>
+    <td style="text-align:center;font-weight:900;color:#166534">${Number(p.net??(p.total||0)).toLocaleString()}</td>` : ''}
     <td style="text-align:right;font-weight:700">${fmtV(p.dp_value)}</td>
   </tr>`).join('');
   win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
@@ -870,6 +877,7 @@ function printMISSalesBreakdown(products, branchLabel, dateFrom, dateTo) {
     .header-right { text-align:right; font-size:0.78rem; color:#64748b; }
     table { width:100%; border-collapse:collapse; margin-top:12px; }
     thead th { background:#8b0000; color:#fff; padding:7px 8px; text-align:left; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; }
+    thead th.refund { background:#7f1d1d; }
     tbody tr:nth-child(even) { background:#fdf4f5; }
     tbody td { padding:6px 8px; border-bottom:1px solid #f1f5f9; font-size:11px; }
     tfoot td { background:#8b0000; color:#fff; font-weight:800; padding:7px 8px; font-size:11px; }
@@ -892,27 +900,28 @@ function printMISSalesBreakdown(products, branchLabel, dateFrom, dateTo) {
   <div class="info">
     <div class="info-block"><div class="lbl">Period</div><div>From: ${fmtD(dateFrom)}<br>To: ${fmtD(dateTo)}</div></div>
     <div class="info-block"><div class="lbl">Branch</div><div>${branchLabel}</div></div>
-    <div class="info-block"><div class="lbl">Products</div><div>${products.length} products</div></div>
-    <div class="info-block"><div class="lbl">Data Source</div><div>branch_inventory_movements<br>(same as Branch Daily Report)</div></div>
+    <div class="info-block"><div class="lbl">Summary</div><div>${products.length} products · ${grandTotal.toLocaleString()} sold${hasRefunds?` · ${grandRefunded.toLocaleString()} refunded · ${grandNet.toLocaleString()} net`:''}</div></div>
   </div>
   <table>
     <thead><tr>
       <th style="width:30px">#</th>
       <th>Description</th>
-      <th style="text-align:center;width:80px">Walk-in Sales</th>
-      <th style="text-align:center;width:80px">By Prescription</th>
-      <th style="text-align:center;width:70px">Campaigns</th>
-      <th style="text-align:center;width:60px">Total</th>
+      <th style="text-align:center;width:75px">Walk-in</th>
+      <th style="text-align:center;width:75px">Prescription</th>
+      <th style="text-align:center;width:65px">Campaigns</th>
+      <th style="text-align:center;width:55px">Total</th>
+      ${hasRefunds ? `<th class="refund" style="text-align:center;width:65px">Refunded</th><th class="refund" style="text-align:center;width:60px">Net Sold</th>` : ''}
       <th style="text-align:right;width:110px">DP Value</th>
     </tr></thead>
-    <tbody>${rows || `<tr><td colspan="7" style="text-align:center;padding:20px;color:#aaa">No sales for this period</td></tr>`}</tbody>
+    <tbody>${rows || `<tr><td colspan="${colspan}" style="text-align:center;padding:20px;color:#aaa">No sales for this period</td></tr>`}</tbody>
     <tfoot><tr>
       <td colspan="2">TOTALS — ${products.length} product${products.length !== 1 ? 's' : ''}</td>
       <td style="text-align:center">${grandWalkin > 0 ? grandWalkin.toLocaleString() : ''}</td>
       <td style="text-align:center">${grandRx     > 0 ? grandRx.toLocaleString()     : ''}</td>
       <td style="text-align:center">${grandCamp   > 0 ? grandCamp.toLocaleString()   : ''}</td>
       <td style="text-align:center">${grandTotal.toLocaleString()}</td>
-      <td style="text-align:right">${fmtV(grandVal)}</td>
+      ${hasRefunds ? `<td style="text-align:center">−${grandRefunded.toLocaleString()}</td><td style="text-align:center">${grandNet.toLocaleString()}</td>` : ''}
+      <td style="text-align:right">${fmtV(grandVal)}${hasRefunds&&grandRefundDp>0?`<br><small style="font-weight:400;opacity:.8">−${fmtV(grandRefundDp)} refunded</small>`:''}</td>
     </tr></tfoot>
   </table>
   </body></html>`);
@@ -971,11 +980,12 @@ function MISStockTab() {
   const exportProductCSV = () => {
     if (!filteredProducts.length) return;
     const branchLabel = selectedBranch === 'all' ? 'All Branches' : branchName(selectedBranch);
-    const headers = ['Branch', 'Product', 'Walk-in Sales', 'By Prescription', 'Campaigns', 'Total Sold', 'DP Value (N$)'];
+    const headers = ['Branch', 'Product', 'Walk-in Sales', 'By Prescription', 'Campaigns', 'Total Sold', 'Refunded', 'Net Sold', 'DP Value (N$)', 'Refund Deduction (N$)'];
     const rows = filteredProducts.map(r => [
       branchLabel, r.product_name || '',
       r.walkin || 0, r.prescription || 0, r.campaigns || 0,
-      r.total || 0, Number(r.dp_value || 0).toFixed(2),
+      r.total || 0, r.refunded || 0, r.net || (r.total || 0),
+      Number(r.dp_value || 0).toFixed(2), Number(r.refund_dp || 0).toFixed(2),
     ].map(v => `"${String(v).replace(/"/g, '""')}"`));
     const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
     const a = document.createElement('a');
@@ -1138,21 +1148,37 @@ function MISStockTab() {
 
               {/* Totals banner */}
               {salesData?.totals && (
-                <div style={{ display: 'flex', gap: 12, padding: '10px 16px', background: '#fdf4f5', borderBottom: '1px solid #f0e8ea', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: 12, padding: '10px 16px', background: '#fdf4f5', borderBottom: '1px solid #f0e8ea', flexWrap: 'wrap', alignItems: 'center' }}>
                   {[
                     { label: 'Walk-in', value: salesData.totals.walkin,       color: '#1e3a5f' },
                     { label: 'Prescription', value: salesData.totals.prescription, color: '#166534' },
                     { label: 'Campaigns', value: salesData.totals.campaigns,   color: '#92400e' },
                     { label: 'Total Sold', value: salesData.totals.total,      color: '#8b0000' },
                   ].map(s => (
-                    <div key={s.label} style={{ textAlign: 'center', minWidth: 90 }}>
-                      <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.06em' }}>{s.label}</div>
+                    <div key={s.label} style={{ textAlign: 'center', minWidth: 80 }}>
+                      <div style={{ fontSize: '0.63rem', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.06em' }}>{s.label}</div>
                       <div style={{ fontSize: '1.2rem', fontWeight: 900, color: s.color }}>{Number(s.value || 0).toLocaleString()}</div>
                     </div>
                   ))}
-                  <div style={{ textAlign: 'center', minWidth: 130, marginLeft: 'auto' }}>
-                    <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.06em' }}>DP Value</div>
+                  {(salesData.totals.refunded || 0) > 0 && (
+                    <>
+                      <div style={{ width: 1, height: 40, background: '#f0e8ea', margin: '0 4px' }} />
+                      <div style={{ textAlign: 'center', minWidth: 80 }}>
+                        <div style={{ fontSize: '0.63rem', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.06em' }}>Refunded</div>
+                        <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#dc2626' }}>−{Number(salesData.totals.refunded || 0).toLocaleString()}</div>
+                      </div>
+                      <div style={{ textAlign: 'center', minWidth: 80 }}>
+                        <div style={{ fontSize: '0.63rem', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.06em' }}>Net Sold</div>
+                        <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#15803d' }}>{Number(salesData.totals.net || 0).toLocaleString()}</div>
+                      </div>
+                    </>
+                  )}
+                  <div style={{ textAlign: 'right', marginLeft: 'auto' }}>
+                    <div style={{ fontSize: '0.63rem', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.06em' }}>DP Value</div>
                     <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#c41e3a' }}>N$ {Number(salesData.totals.dp_value || 0).toLocaleString('en-NA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                    {(salesData.totals.refund_dp || 0) > 0 && (
+                      <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#dc2626' }}>−N$ {Number(salesData.totals.refund_dp || 0).toLocaleString('en-NA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} refunded</div>
+                    )}
                   </div>
                 </div>
               )}
@@ -1166,10 +1192,18 @@ function MISStockTab() {
                 columns={[
                   { header: '#', render: (r, i) => <span style={{ color: '#94a3b8', fontSize: '0.78rem' }}>{String(i + 1).padStart(2, '0')}</span> },
                   { header: 'Product', render: r => <span style={{ fontWeight: 700 }}>{r.product_name || '-'}</span> },
-                  { header: 'Walk-in Sales', render: r => r.walkin > 0 ? <span style={{ fontWeight: 700, color: '#1e3a5f' }}>{Number(r.walkin).toLocaleString()}</span> : <span style={{ color: '#cbd5e1' }}>—</span> },
-                  { header: 'By Prescription', render: r => r.prescription > 0 ? <span style={{ fontWeight: 600, color: '#166534' }}>{Number(r.prescription).toLocaleString()}</span> : <span style={{ color: '#cbd5e1' }}>—</span> },
+                  { header: 'Walk-in', render: r => r.walkin > 0 ? <span style={{ fontWeight: 700, color: '#1e3a5f' }}>{Number(r.walkin).toLocaleString()}</span> : <span style={{ color: '#cbd5e1' }}>—</span> },
+                  { header: 'Prescription', render: r => r.prescription > 0 ? <span style={{ fontWeight: 600, color: '#166534' }}>{Number(r.prescription).toLocaleString()}</span> : <span style={{ color: '#cbd5e1' }}>—</span> },
                   { header: 'Campaigns', render: r => r.campaigns > 0 ? <span style={{ fontWeight: 600, color: '#92400e' }}>{Number(r.campaigns).toLocaleString()}</span> : <span style={{ color: '#cbd5e1' }}>—</span> },
-                  { header: 'Total Sold', render: r => <span style={{ fontWeight: 900, color: '#8b0000' }}>{Number(r.total || 0).toLocaleString()}</span> },
+                  { header: 'Total', render: r => <span style={{ fontWeight: 900, color: '#8b0000' }}>{Number(r.total || 0).toLocaleString()}</span> },
+                  { header: 'Refunded', render: r => r.refunded > 0
+                      ? <span style={{ fontWeight: 800, color: '#dc2626' }}>−{Number(r.refunded).toLocaleString()}</span>
+                      : <span style={{ color: '#cbd5e1' }}>—</span> },
+                  { header: 'Net Sold', render: r => {
+                      const net = r.net ?? (r.total || 0);
+                      const hasRefund = (r.refunded || 0) > 0;
+                      return <span style={{ fontWeight: 900, color: hasRefund ? '#15803d' : '#8b0000' }}>{Number(net).toLocaleString()}</span>;
+                  }},
                   { header: 'DP Value', render: r => r.dp_value > 0 ? <span style={{ fontWeight: 700, color: '#c41e3a' }}>N$ {Number(r.dp_value).toLocaleString('en-NA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span> : <span style={{ color: '#cbd5e1' }}>—</span> },
                 ]}
                 data={filteredProducts}

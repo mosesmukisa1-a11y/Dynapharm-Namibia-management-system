@@ -9262,11 +9262,15 @@ function BranchStockTab({ branch }) {
     const fmtN = n => n > 0 ? Number(n).toLocaleString() : '';
     const fmtV = v => v > 0 ? `N$ ${Number(v).toLocaleString('en-NA', { minimumFractionDigits:2, maximumFractionDigits:2 })}` : '-';
 
-    const grandWalkin = products.reduce((s, p) => s + (p.walkin       || 0), 0);
-    const grandRx     = products.reduce((s, p) => s + (p.prescription || 0), 0);
-    const grandCamp   = products.reduce((s, p) => s + (p.campaigns    || 0), 0);
-    const grandTotal  = products.reduce((s, p) => s + (p.total        || 0), 0);
-    const grandVal    = products.reduce((s, p) => s + (p.dp_value     || 0), 0);
+    const grandWalkin   = products.reduce((s, p) => s + (p.walkin       || 0), 0);
+    const grandRx       = products.reduce((s, p) => s + (p.prescription || 0), 0);
+    const grandCamp     = products.reduce((s, p) => s + (p.campaigns    || 0), 0);
+    const grandTotal    = products.reduce((s, p) => s + (p.total        || 0), 0);
+    const grandVal      = products.reduce((s, p) => s + (p.dp_value     || 0), 0);
+    const grandRefunded = products.reduce((s, p) => s + (p.refunded     || 0), 0);
+    const grandNet      = products.reduce((s, p) => s + (p.net ?? (p.total || 0)), 0);
+    const grandRefundDp = products.reduce((s, p) => s + (p.refund_dp    || 0), 0);
+    const hasRefunds    = grandRefunded > 0;
 
     const rows = products.map((p, i) => `<tr>
       <td style="color:#777;font-size:10px">${String(i+1).padStart(2,'0')}</td>
@@ -9275,8 +9279,14 @@ function BranchStockTab({ branch }) {
       <td style="text-align:center">${fmtN(p.prescription)}</td>
       <td style="text-align:center">${fmtN(p.campaigns)}</td>
       <td style="text-align:center;font-weight:800">${Number(p.total || 0).toLocaleString()}</td>
+      ${hasRefunds ? `<td style="text-align:center;color:#c41e3a;font-weight:700">${(p.refunded||0)>0?'−'+Number(p.refunded).toLocaleString():''}</td><td style="text-align:center;font-weight:900;color:#166534">${Number(p.net??(p.total||0)).toLocaleString()}</td>` : ''}
       <td style="text-align:right;font-weight:600">${fmtV(p.dp_value)}</td>
     </tr>`).join('');
+
+    const refundedCols = hasRefunds
+      ? `<th style="text-align:center;width:70px;background:#7f1d1d">Refunded</th><th style="text-align:center;width:65px;background:#7f1d1d">Net Sold</th>`
+      : '';
+    const totalCols = hasRefunds ? 9 : 7;
 
     const bodyHtml = `
       <div style="display:flex;gap:40px;margin-bottom:10px">
@@ -9289,7 +9299,7 @@ function BranchStockTab({ branch }) {
           <div style="font-size:10px;line-height:1.8">
             STARTING: ${fmtD(dateFrom)}<br>
             ENDING: ${fmtD(dateTo)}<br>
-            SORT BY: Quantity · ${products.length} product${products.length !== 1 ? 's' : ''}
+            ${products.length} product${products.length !== 1 ? 's' : ''} · ${grandTotal.toLocaleString()} sold${hasRefunds ? ` · ${grandRefunded.toLocaleString()} refunded · ${grandNet.toLocaleString()} net` : ''}
           </div>
         </div>
       </div>
@@ -9298,15 +9308,16 @@ function BranchStockTab({ branch }) {
           <tr>
             <th style="width:30px">#</th>
             <th>Description</th>
-            <th style="text-align:center;width:80px">Walk-in Sales</th>
-            <th style="text-align:center;width:80px">By Prescription</th>
-            <th style="text-align:center;width:70px">Campaigns</th>
-            <th style="text-align:center;width:60px">Total</th>
+            <th style="text-align:center;width:78px">Walk-in Sales</th>
+            <th style="text-align:center;width:78px">By Prescription</th>
+            <th style="text-align:center;width:68px">Campaigns</th>
+            <th style="text-align:center;width:58px">Total</th>
+            ${refundedCols}
             <th style="text-align:right;width:104px">DP Value</th>
           </tr>
         </thead>
         <tbody>
-          ${rows || `<tr><td colspan="7" style="text-align:center;padding:20px;color:#aaa">No sales recorded for this period</td></tr>`}
+          ${rows || `<tr><td colspan="${totalCols}" style="text-align:center;padding:20px;color:#aaa">No sales recorded for this period</td></tr>`}
         </tbody>
         <tfoot>
           <tr style="background:#8b0000;color:#fff;font-weight:800">
@@ -9315,7 +9326,8 @@ function BranchStockTab({ branch }) {
             <td style="text-align:center;padding:6px 8px">${grandRx     > 0 ? grandRx.toLocaleString()     : ''}</td>
             <td style="text-align:center;padding:6px 8px">${grandCamp   > 0 ? grandCamp.toLocaleString()   : ''}</td>
             <td style="text-align:center;padding:6px 8px">${grandTotal.toLocaleString()}</td>
-            <td style="text-align:right;padding:6px 8px">${fmtV(grandVal)}</td>
+            ${hasRefunds ? `<td style="text-align:center;padding:6px 8px">−${grandRefunded.toLocaleString()}</td><td style="text-align:center;padding:6px 8px">${grandNet.toLocaleString()}</td>` : ''}
+            <td style="text-align:right;padding:6px 8px">${fmtV(grandVal)}${hasRefunds&&grandRefundDp>0?`<br><small style="font-weight:400;opacity:.8">−${fmtV(grandRefundDp)}</small>`:''}</td>
           </tr>
         </tfoot>
       </table>`;
