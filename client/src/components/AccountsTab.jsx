@@ -75,68 +75,44 @@ export default function AccountsTab({ role = 'finance' }) {
       api.get(`/director/profit-loss?${qs}`).catch(() => ({})),
       api.finance.stockValue({ asOfDate: endDate }).catch(() => ({})),
       api.finance.pettyCash.accounts().catch(() => ({ accounts: [] })),
-      api.get(`/branch/expenses?limit=2000`).catch(() => []),
       api.finance.remittances().catch(() => []),
-      api.hr.salaryLedger.list().catch(() => ({ employees: [] })),
-      api.finance.rent.list().catch(() => ({ rents: [] })),
-      api.get('/dept-expenses?limit=1000').catch(() => ({ expenses: [] })),
-    ]).then(([pl, sv, pc, expenses, remittances, salaryData, rentData, deptExpData]) => {
-      // Branch expenses
-      const branchExpList = Array.isArray(expenses) ? expenses : expenses?.expenses || [];
-      const periodBranchExp = branchExpList.filter(e => {
-        const d = (e.date || e.created_at || '').slice(0, 10);
-        return d >= startDate && d <= endDate && e.status !== 'rejected';
-      });
-
-      // Dept expenses (finance manager entries)
-      const deptExpList = Array.isArray(deptExpData) ? deptExpData : deptExpData?.expenses || [];
-      const periodDeptExp = deptExpList.filter(e => {
-        const d = (e.date || e.created_at || '').slice(0, 10);
-        return d >= startDate && d <= endDate && e.status !== 'rejected';
-      });
-
-      // Merge both into one list for category breakdown
-      const periodExpenses = [...periodBranchExp, ...periodDeptExp];
-      const totalMiscExpenses = periodExpenses.reduce((s, e) => s + Number(e.amount || 0), 0);
-      const expByCategory = {};
-      periodBranchExp.forEach(e => {
-        const cat = e.category || 'Branch Expenses';
-        expByCategory[cat] = (expByCategory[cat] || 0) + Number(e.amount || 0);
-      });
-      periodDeptExp.forEach(e => {
-        const cat = e.category || e.department || 'Dept Expenses';
-        expByCategory[cat] = (expByCategory[cat] || 0) + Number(e.amount || 0);
-      });
-
-      // Calculate period months for recurring costs
+      api.get(`/finance/income-statement?${qs}`).catch(() => ({})),
+    ]).then(([pl, sv, pc, remittances, incSt]) => {
+      // Calculate period months for recurring fixed costs (salary, rent)
       const msPerMonth = 30.44 * 24 * 3600 * 1000;
       const periodMs = new Date(endDate).getTime() - new Date(startDate).getTime();
       const periodMonths = Math.max(1, Math.round(periodMs / msPerMonth));
 
-      // Salaries — monthly total × months in period
-      const salaryList = Array.isArray(salaryData) ? salaryData : salaryData?.employees || [];
-      const monthlyPayroll = salaryList.reduce((s, e) => s + Number(e.total_salary || e.basic_salary || 0), 0);
-      const totalSalaries = monthlyPayroll * periodMonths;
+      // ── Salary (from dedicated income-statement endpoint) ──
+      const monthlyPayroll = Number(incSt?.salary?.monthly_total || 0);
+      const totalSalaries  = monthlyPayroll * periodMonths;
+      const salaryCount    = Number(incSt?.salary?.count || 0);
 
-      // Rent — monthly total × months in period
-      const rentList = Array.isArray(rentData) ? rentData : rentData?.rents || rentData?.rent_payments || [];
-      const monthlyRent = rentList.reduce((s, r) => s + Number(r.total_payable || r.rent_amount || 0), 0);
-      const totalRent = monthlyRent * periodMonths;
+      // ── Rent (from dedicated income-statement endpoint) ──
+      const monthlyRent = Number(incSt?.rent?.monthly_total || 0);
+      const totalRent   = monthlyRent * periodMonths;
+      const rentCount   = Number(incSt?.rent?.count || 0);
 
-      const revenue = Number(pl.totalRevenueDP || 0);
-      const cogs = Number(pl.cifCost || 0);
-      const grossProfit = Number(pl.grossProfit || revenue - cogs);
-      const bonusPayout = Number(pl.bonusPayout || 0);
+      // ── Misc period expenses: branch + dept + petty cash ──
+      const totalMiscExpenses = Number(incSt?.misc_expenses?.total || 0);
+      const expByCategory     = incSt?.misc_expenses?.by_category || {};
+
+      // ── Bonus payouts ──
+      const bonusPayout = Number(incSt?.bonus_payout || pl.bonusPayout || 0);
+
+      const revenue     = Number(pl.totalRevenueDP || 0);
+      const cogs        = Number(pl.cifCost || 0);
+      const grossProfit = Number(pl.grossProfit ?? (revenue - cogs));
       const totalExpenses = totalMiscExpenses;
-      const opExpenses = totalMiscExpenses + bonusPayout + totalSalaries + totalRent;
-      const ebit = grossProfit - opExpenses;
-      const sscEmployer = ebit > 0 ? Math.min(ebit * SSC_RATE, SSC_MONTHLY_CAP * 12 * 10) : 0;
+      const opExpenses    = totalMiscExpenses + bonusPayout + totalSalaries + totalRent;
+      const ebit          = grossProfit - opExpenses;
+      const sscEmployer   = ebit > 0 ? Math.min(ebit * SSC_RATE, SSC_MONTHLY_CAP * 12 * 10) : 0;
       const taxableIncome = Math.max(0, ebit - sscEmployer);
-      const citProvision = taxableIncome * CIT_RATE;
-      const netProfit = ebit - citProvision;
+      const citProvision  = taxableIncome * CIT_RATE;
+      const netProfit     = ebit - citProvision;
 
-      const stockValueDP = Number(sv?.companyValueDP || sv?.stockValue?.companyValueDP || 0);
-      const pcBalance = (pc?.accounts || []).reduce((s, a) => s + Number(a.balance || 0), 0);
+      const stockValueDP    = Number(sv?.companyValueDP || sv?.stockValue?.companyValueDP || 0);
+      const pcBalance       = (pc?.accounts || []).reduce((s, a) => s + Number(a.balance || 0), 0);
       const depositsReceived = Number(pl.depositsReceived || 0);
       const remList = Array.isArray(remittances) ? remittances : remittances?.remittances || [];
       const pendingRemittances = remList
@@ -144,13 +120,12 @@ export default function AccountsTab({ role = 'finance' }) {
         .reduce((s, r) => s + Number(r.amount || 0), 0);
 
       const totalCurrentAssets = stockValueDP + pcBalance + depositsReceived;
-      const vatOnRevenue = revenue * VAT_RATE / (1 + VAT_RATE);
+      const vatOnRevenue   = revenue * VAT_RATE / (1 + VAT_RATE);
       const vatOnPurchases = cogs * VAT_RATE / (1 + VAT_RATE);
-      const vatPayable = Math.max(0, vatOnRevenue - vatOnPurchases);
-      const importDuty = cogs * IMPORT_DUTY_RATE;
-
+      const vatPayable     = Math.max(0, vatOnRevenue - vatOnPurchases);
+      const importDuty     = cogs * IMPORT_DUTY_RATE;
       const totalLiabilities = citProvision + vatPayable + pendingRemittances;
-      const equity = totalCurrentAssets - totalLiabilities;
+      const equity           = totalCurrentAssets - totalLiabilities;
 
       setData({
         period: { start: startDate, end: endDate },
@@ -163,11 +138,11 @@ export default function AccountsTab({ role = 'finance' }) {
         vatOnRevenue, vatOnPurchases, vatPayable,
         importDuty, taxableIncome,
         grossMargin: revenue ? grossProfit / revenue * 100 : 0,
-        netMargin: revenue ? netProfit / revenue * 100 : 0,
-        expList: periodExpenses,
+        netMargin:   revenue ? netProfit   / revenue * 100 : 0,
+        expList: [],
         pendingRemittances,
-        salaryCount: salaryList.length,
-        rentCount: rentList.filter(r => Number(r.total_payable || r.rent_amount || 0) > 0).length,
+        salaryCount,
+        rentCount,
       });
     }).catch(err => setError(err.message))
       .finally(() => setLoading(false));

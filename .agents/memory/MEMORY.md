@@ -1,0 +1,1 @@
+- [Income Statement expense sources](income-statement-sources.md) — salary/rent must come from dedicated backend endpoint, not scattered frontend API calls.
