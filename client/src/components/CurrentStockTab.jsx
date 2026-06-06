@@ -10,10 +10,9 @@ import { Card, CardBody, CardHeader, LoadingSpinner, Alert } from './ui';
 import { Package, TrendingUp, MapPin, ChevronDown, ChevronRight, Search, Download } from 'lucide-react';
 
 const LOC_COLORS = {
-  branch:       { bg: 'bg-blue-100',   text: 'text-blue-700',   dot: 'bg-blue-500',   label: 'Branch' },
-  warehouse:    { bg: 'bg-purple-100',  text: 'text-purple-700', dot: 'bg-purple-500',  label: 'Warehouse' },
-  country_stock:{ bg: 'bg-amber-100',   text: 'text-amber-700',  dot: 'bg-amber-500',   label: 'Country Stock' },
-  field:        { bg: 'bg-green-100',   text: 'text-green-700',  dot: 'bg-green-500',   label: 'Field' },
+  branch:    { bg: 'bg-blue-100',   text: 'text-blue-700',   dot: 'bg-blue-500',   label: 'Branch' },
+  warehouse: { bg: 'bg-purple-100', text: 'text-purple-700', dot: 'bg-purple-500', label: 'Warehouse' },
+  field:     { bg: 'bg-green-100',  text: 'text-green-700',  dot: 'bg-green-500',  label: 'Field' },
 };
 
 function fmt(v) { return formatCurrency(Number(v) || 0); }
@@ -98,7 +97,7 @@ export default function CurrentStockTab() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-base font-bold text-gray-800">Current Stock — Countrywide</h2>
-              <p className="text-xs text-gray-400 mt-0.5">Live snapshot from all branches, warehouses, country stock &amp; field</p>
+              <p className="text-xs text-gray-400 mt-0.5">Live snapshot from all branches, warehouses &amp; field (country stock excluded — transit only)</p>
             </div>
             <div className="flex items-center gap-2">
               <button onClick={load}
