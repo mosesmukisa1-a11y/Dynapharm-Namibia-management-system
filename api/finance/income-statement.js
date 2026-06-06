@@ -106,13 +106,14 @@ export default async function handler(req, res) {
     const bonusPayout = Number(bonusRow?.total || 0);
 
     // ── 7. Payment Vouchers (Head Office expenses entered by Finance) ──
-    // Exclude supplier_remittance (that is procurement/COGS, not an operating expense).
+    // Exclude:
+    //   supplier_remittance — procurement/COGS, not an operating expense
+    //   rent               — already captured in branch_rent_payments (would double-count)
     const VOUCHER_LABEL_MAP = {
       cash_request:         'HQ Cash Request Payout',
       salary:               'HQ Salary / Wage Payment',
       bonus:                'HQ Bonus Payout',
       expense_reimbursement:'HQ Expense Reimbursement',
-      rent:                 'HQ Rent / Lease Payment',
       ad_hoc:               'HQ Ad-Hoc Payment',
     };
     const voucherRows = await getMany(
@@ -121,7 +122,7 @@ export default async function handler(req, res) {
        WHERE status IN ('paid', 'authorised')
          AND payment_date >= $1::date
          AND payment_date <= $2::date
-         AND payment_type != 'supplier_remittance'
+         AND payment_type NOT IN ('supplier_remittance', 'rent')
        GROUP BY payment_type
        ORDER BY total DESC`,
       [startDate, endDate]
