@@ -19,6 +19,7 @@ export const INWARD_TYPES = new Set([
 // Movement types that DECREASE stock from the source location
 export const OUTWARD_TYPES = new Set([
   'warehouse_dispatch',
+  'branch_receipt',      // warehouse→branch transfer: outflow from the source warehouse
   'transfer_out',
   'reserved',
   'walkin_sale',

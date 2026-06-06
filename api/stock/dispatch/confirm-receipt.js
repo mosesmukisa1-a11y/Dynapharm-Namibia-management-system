@@ -264,10 +264,16 @@ export default async function handler(req, res) {
     return res.status(500).json({ success: false, error: 'Failed to record receipt: ' + err.message });
   }
 
-  // Recompute branch inventory_balances (non-critical, fire-and-forget)
+  // Recompute both the branch (inflow) and source warehouse (outflow).
+  // Both run fire-and-forget — transaction is already committed at this point.
   recomputeLocationBalances('branch', branchId).catch(e =>
-    console.error('[stockEngine] confirm-receipt recompute error:', e.message)
+    console.error('[stockEngine] confirm-receipt branch recompute error:', e.message)
   );
+  if (sourceLocation) {
+    recomputeLocationBalances('warehouse', sourceLocation).catch(e =>
+      console.error('[stockEngine] confirm-receipt warehouse recompute error:', e.message)
+    );
+  }
 
   return res.status(200).json({
     success: true,
