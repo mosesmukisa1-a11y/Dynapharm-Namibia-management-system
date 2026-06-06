@@ -22,7 +22,6 @@ export default async function handler(req, res) {
       success: true,
       period: { start, end },
       revenue: {
-        consultationFees: sales.consultationFees,
         walkinSales: sales.walkinSales,
         memberSales: sales.memberSales,
         nonMemberSales: sales.nonMemberSales,

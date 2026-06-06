@@ -28,7 +28,6 @@ export default async function handler(req, res) {
         branchName: b.locationName,
         salesRevenue: sales.totalSales,
         salesUnits: movements.salesUnits,
-        consultationFees: sales.consultationFees || 0,
         stockValueDP: stock.stockValueDP,
         writeOffValueDP: movements.writeOffValueDP,
         cashTotal: sales.cashTotal,
