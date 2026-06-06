@@ -1,4 +1,4 @@
-import { getMany } from '../../db.js';
+import { getMany, query } from '../../db.js';
 
 export async function getWarehouseBatches(warehouseKey) {
   return getMany(
@@ -10,11 +10,14 @@ export async function getWarehouseBatches(warehouseKey) {
             sb.notes,
             COALESCE(
               wim.notes,
-              (SELECT st.from_warehouse
-               FROM stock_transfers st
-               WHERE st.to_branch = $1
-                 AND st.items::text ILIKE '%' || sb.batch_no || '%'
-               ORDER BY st.created_at DESC LIMIT 1)
+              CASE WHEN sb.batch_no IS NOT NULL THEN (
+                SELECT st.from_warehouse
+                FROM stock_transfers st
+                JOIN stock_transfer_items sti ON sti.transfer_id = st.id
+                WHERE st.to_branch = $1
+                  AND LOWER(COALESCE(sti.batch_no, '')) = LOWER(sb.batch_no)
+                ORDER BY st.created_at DESC LIMIT 1
+              ) END
             ) AS dispatch_source
      FROM stock_batches sb
      LEFT JOIN warehouse_inventory_movements wim
@@ -28,22 +31,52 @@ export async function getWarehouseBatches(warehouseKey) {
 }
 
 export async function getWarehouseTransfers(warehouseKey, direction = 'all') {
+  let transferRows;
   if (direction === 'incoming') {
-    return getMany(
+    transferRows = await getMany(
       `SELECT * FROM stock_transfers WHERE to_branch = $1 AND status != 'cancelled' ORDER BY created_at DESC LIMIT 200`,
       [warehouseKey]
     ).catch(() => []);
-  }
-  if (direction === 'outbound') {
-    return getMany(
+  } else if (direction === 'outbound') {
+    transferRows = await getMany(
       `SELECT * FROM stock_transfers WHERE from_warehouse = $1 AND status != 'cancelled' ORDER BY created_at DESC LIMIT 200`,
       [warehouseKey]
     ).catch(() => []);
+  } else {
+    transferRows = await getMany(
+      `SELECT * FROM stock_transfers WHERE (from_warehouse = $1 OR to_branch = $1) AND status != 'cancelled' ORDER BY created_at DESC LIMIT 200`,
+      [warehouseKey]
+    ).catch(() => []);
   }
-  return getMany(
-    `SELECT * FROM stock_transfers WHERE (from_warehouse = $1 OR to_branch = $1) AND status != 'cancelled' ORDER BY created_at DESC LIMIT 200`,
-    [warehouseKey]
-  ).catch(() => []);
+
+  if (transferRows.length === 0) return [];
+
+  const ids = transferRows.map(t => t.id);
+  let itemMap = {};
+  try {
+    const itemRows = await getMany(
+      `SELECT transfer_id, product_name, batch_no, expiry_date, quantity, quantity_received
+       FROM stock_transfer_items WHERE transfer_id = ANY($1::text[]) ORDER BY created_at ASC`,
+      [ids]
+    );
+    for (const row of itemRows) {
+      if (!itemMap[row.transfer_id]) itemMap[row.transfer_id] = [];
+      itemMap[row.transfer_id].push({
+        productName: row.product_name,
+        batchNo:     row.batch_no || null,
+        expiryDate:  row.expiry_date
+          ? (row.expiry_date instanceof Date ? row.expiry_date.toISOString().split('T')[0] : row.expiry_date)
+          : null,
+        quantity:         Number(row.quantity || 0),
+        quantityReceived: row.quantity_received != null ? Number(row.quantity_received) : null,
+      });
+    }
+  } catch (_) {}
+
+  return transferRows.map(t => ({
+    ...t,
+    items: itemMap[t.id] || [],
+  }));
 }
 
 export async function getWarehouseMovements(warehouseKey) {
@@ -92,7 +125,7 @@ export function buildWarehouseSummary(warehouseName, batches, inbound, outbound)
     totalUnits,
     cifValue: parseFloat(cifValue.toFixed(2)),
     dpcValue: parseFloat(dpcValue.toFixed(2)),
-    pendingInbound: inbound.filter(t => ['pending', 'in_transit', 'dispatched'].includes(t.status)).length,
+    pendingInbound: inbound.filter(t => ['pending', 'in_transit', 'dispatched', 'approved'].includes(t.status)).length,
     pendingOutbound: outbound.filter(t => ['pending', 'dispatched'].includes(t.status)).length,
   };
 }
