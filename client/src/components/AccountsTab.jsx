@@ -10,7 +10,8 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
 } from 'recharts';
-import { FileText, TrendingUp, Scale, Receipt, Building2, Download } from 'lucide-react';
+import { FileText, TrendingUp, Scale, Receipt, Building2, Download, FileDown } from 'lucide-react';
+import { downloadStatementPdf, downloadAllStatementsPdf } from '../lib/accountsPdf';
 
 function localDateStr(d) {
   const y = d.getFullYear();
@@ -166,10 +167,6 @@ export default function AccountsTab({ role = 'finance' }) {
     }
   };
 
-  const handlePrint = () => {
-    window.print();
-  };
-
   const statTabs = [
     { id: 'pl', label: 'Income Statement', icon: '📈' },
     { id: 'balance', label: 'Financial Position', icon: '⚖️' },
@@ -219,9 +216,9 @@ export default function AccountsTab({ role = 'finance' }) {
               {loading ? 'Loading…' : 'Generate Statements'}
             </Button>
             {data && (
-              <button onClick={handlePrint}
-                className="flex items-center gap-1 px-3 py-1.5 rounded text-xs font-semibold border border-gray-200 text-gray-600 hover:bg-gray-50">
-                <Download size={13} /> Print / Export
+              <button onClick={() => downloadAllStatementsPdf(data)}
+                className="flex items-center gap-1 px-3 py-1.5 rounded text-xs font-semibold border border-primary text-primary bg-primary/5 hover:bg-primary/10">
+                <FileDown size={13} /> Download All (PDF)
               </button>
             )}
           </div>
@@ -234,13 +231,19 @@ export default function AccountsTab({ role = 'finance' }) {
       {data && (
         <>
           {/* Statement Tabs */}
-          <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
+          <div className="flex items-center gap-1 border-b border-gray-200 overflow-x-auto">
             {statTabs.map(t => (
               <button key={t.id} onClick={() => setActiveStatement(t.id)}
                 className={`px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition ${activeStatement === t.id ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
                 {t.icon} {t.label}
               </button>
             ))}
+            <div className="ml-auto pl-2 pb-1 flex-shrink-0">
+              <button onClick={() => downloadStatementPdf(activeStatement, data)}
+                className="flex items-center gap-1 px-3 py-1.5 rounded text-xs font-semibold bg-gray-100 text-gray-600 hover:bg-gray-200 border border-gray-200">
+                <Download size={12} /> Download This Report
+              </button>
+            </div>
           </div>
 
           {/* ── Income Statement (P&L) ── */}
