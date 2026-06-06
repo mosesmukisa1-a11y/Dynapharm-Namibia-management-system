@@ -21,7 +21,11 @@ export const OUTWARD_TYPES = new Set([
   'warehouse_dispatch',
   'branch_receipt',      // warehouse→branch transfer: outflow from the source warehouse
   'transfer_out',
-  'reserved',
+  // NOTE: 'reserved' is intentionally NOT here. It is a soft-reservation marker posted
+  // at GM approval to signal intent; the physical stock deduction happens via
+  // fefoDeductStockBatches() at that same moment.  Including 'reserved' in OUTWARD_TYPES
+  // would double-deduct inventory_balances (once via 'reserved', again via 'transfer_out'
+  // posted at dispatch). The timing gap between approval and dispatch is acceptable.
   'walkin_sale',
   'walkin_member_sale',
   'walkin_non_member_sale',

@@ -1029,12 +1029,19 @@ export default async function handler(req, res) {
 
           if (transfer.status === 'approved' && previousStatus !== 'approved' && previousStatus !== 'dispatched') {
             const sourceWarehouse = transfer.from_warehouse || null;
-            if (sourceWarehouse) {
+            // Country→Warehouse dispatches: receive-stock.js handles ALL physical stock
+            // movements (FIFO deduction + stock_batches creation + stock_movements) when
+            // the warehouse accepts.  Deducting here would cause a double deduction.
+            // Only apply the approval reservation for warehouse→branch transfers.
+            const isCountryToWarehouse = sourceWarehouse === 'country_stock';
+            if (sourceWarehouse && !isCountryToWarehouse) {
               for (const item of transferItems) {
                 const qtyToReserve = Number(item.quantity_approved ?? item.quantity ?? 0);
                 if (qtyToReserve <= 0) continue;
                 const productName = item.product_name || item.product_id || 'Unknown';
 
+                // Physically reserve from source warehouse stock_batches so the stock
+                // cannot be over-sold while this transfer is in-flight.
                 await fefoDeductStockBatches(client, sourceWarehouse, productName, qtyToReserve);
                 await fefoDeductWarehouseInventory(client, sourceWarehouse, productName, qtyToReserve);
 
