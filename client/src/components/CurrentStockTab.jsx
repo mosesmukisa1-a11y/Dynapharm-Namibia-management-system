@@ -12,6 +12,7 @@ import { Package, TrendingUp, MapPin, ChevronDown, ChevronRight, Search, Downloa
 const LOC_COLORS = {
   branch:    { bg: 'bg-blue-100',   text: 'text-blue-700',   dot: 'bg-blue-500',   label: 'Branch' },
   warehouse: { bg: 'bg-purple-100', text: 'text-purple-700', dot: 'bg-purple-500', label: 'Warehouse' },
+  field:     { bg: 'bg-green-100',  text: 'text-green-700',  dot: 'bg-green-500',  label: 'Field' },
 };
 
 function fmt(v) { return formatCurrency(Number(v) || 0); }
@@ -96,7 +97,7 @@ export default function CurrentStockTab() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-base font-bold text-gray-800">Current Stock — Countrywide</h2>
-              <p className="text-xs text-gray-400 mt-0.5">Branches and warehouses only — matches Financial Position inventory value</p>
+              <p className="text-xs text-gray-400 mt-0.5">Branches, warehouses &amp; field stock — priced from GM price list where stored value is absent</p>
             </div>
             <div className="flex items-center gap-2">
               <button onClick={load}
