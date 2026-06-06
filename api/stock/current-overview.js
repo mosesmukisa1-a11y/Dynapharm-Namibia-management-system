@@ -2,18 +2,19 @@
  * GET /api/stock/current-overview
  * Countrywide stock snapshot — GM Portal "Current Stock" tab.
  *
- * Sources:
- *   • inventory_balances  location_type IN ('branch','warehouse')
- *     – uses stock_value_dp / stock_value_cif; falls back to
- *       closing_qty × unit price from product_prices where stored
- *       value is zero (same prices visible in GM Price List).
- *   • field_stock         active field officer balances, priced via
- *       product_prices; origin_location shown as source branch.
+ * Authoritative sources by location type:
  *
- * Excluded intentionally:
- *   • country_stock  — transit / distribution staging only
- *   • stock_batches  — would double-count warehouse rows already in
- *                      inventory_balances
+ *   Warehouses → stock_batches.remaining_quantity
+ *     Same table the Stock Portal warehouse views use. Decremented
+ *     transactionally on every dispatch — physically accurate.
+ *     Excludes country_stock (transit/staging only).
+ *
+ *   Branches   → inventory_balances WHERE location_type = 'branch'
+ *     Derived from posted stock_movements. Falls back to product_prices
+ *     unit prices where stored stock_value_* is zero.
+ *
+ *   Field      → field_stock balances, priced via product_prices.
+ *     origin_location shown as source branch.
  */
 import { applyAuthCors } from '../_lib/auth.js';
 import { getMany } from '../db.js';
@@ -32,21 +33,39 @@ export default async function handler(req, res) {
   if (!ALLOWED.has(req.user.role)) return res.status(403).json({ success: false, error: 'Access denied' });
 
   try {
-    const [invRows, fieldRows, priceRows] = await Promise.all([
-      // Branches + warehouses — authoritative held stock
+    const [branchRows, warehouseRows, fieldRows, priceRows] = await Promise.all([
+
+      // ── Branches: inventory_balances (movement-derived cache) ──
       getMany(
-        `SELECT location_type, location_id, product_name,
+        `SELECT location_id, product_name,
                 SUM(closing_qty)                                          AS qty,
                 SUM(stock_value_dp)                                       AS val_dp,
                 SUM(COALESCE(stock_value_cif, closing_qty * unit_cif, 0)) AS val_cif,
                 MAX(unit_dp)                                              AS unit_dp,
                 MAX(unit_cif)                                             AS unit_cif
          FROM inventory_balances
-         WHERE location_type IN ('branch', 'warehouse')
+         WHERE location_type = 'branch'
            AND closing_qty > 0
-         GROUP BY location_type, location_id, product_name`
+         GROUP BY location_id, product_name`
       ),
-      // Field officer balances — grouped by product + source branch
+
+      // ── Warehouses: stock_batches.remaining_quantity (physical, authoritative) ──
+      // Excludes country_stock (transit only). Same source as Stock Portal.
+      getMany(
+        `SELECT location, description AS product_name,
+                SUM(remaining_quantity)                              AS qty,
+                SUM(remaining_quantity * COALESCE(cif_unit_cost, 0)) AS val_cif,
+                SUM(remaining_quantity * COALESCE(dpc_unit_value, 0)) AS val_dp,
+                MAX(cif_unit_cost)                                   AS unit_cif,
+                MAX(dpc_unit_value)                                  AS unit_dp
+         FROM stock_batches
+         WHERE location NOT IN ('country_stock')
+           AND remaining_quantity > 0
+           AND status != 'expired'
+         GROUP BY location, description`
+      ),
+
+      // ── Field stock: priced via GM price list ──
       getMany(
         `SELECT product_name,
                 officer_name,
@@ -56,7 +75,8 @@ export default async function handler(req, res) {
          WHERE balance > 0
          GROUP BY product_name, officer_name, origin_location, team_name`
       ),
-      // GM price list — DP and CIF for every product
+
+      // ── Price lookup for fallback / field stock pricing ──
       getMany(`SELECT description, cif, dp FROM product_prices`),
     ]);
 
@@ -93,31 +113,35 @@ export default async function handler(req, res) {
       });
     }
 
-    // ── Inventory balances (branches + warehouses) ──
-    // Use stored stock_value_dp; fall back to unit prices from product_prices
-    // for rows where the stored value is zero (e.g. items imported without
-    // a DP price recorded at the time).
-    for (const r of invRows) {
+    // ── Branch rows ──
+    for (const r of branchRows) {
       const qty    = Number(r.qty     || 0);
       const unitDP  = Number(r.unit_dp  || 0) || lookupDp(r.product_name);
       const unitCIF = Number(r.unit_cif || 0) || lookupCif(r.product_name);
       const valDP  = Number(r.val_dp  || 0) || qty * unitDP;
       const valCIF = Number(r.val_cif || 0) || qty * unitCIF;
-      const type   = r.location_type === 'warehouse' ? 'warehouse' : 'branch';
-      upsert(r.product_name, type, locLabel(r.location_id), qty, valCIF, valDP);
+      upsert(r.product_name, 'branch', locLabel(r.location_id), qty, valCIF, valDP);
     }
 
-    // ── Field stock — priced via GM price list ──
-    // Location label shows officer name + source branch for full traceability.
+    // ── Warehouse rows (from stock_batches) ──
+    for (const r of warehouseRows) {
+      const qty    = Number(r.qty     || 0);
+      const valDP  = Number(r.val_dp  || 0) || qty * lookupDp(r.product_name);
+      const valCIF = Number(r.val_cif || 0) || qty * lookupCif(r.product_name);
+      upsert(r.product_name, 'warehouse', locLabel(r.location), qty, valCIF, valDP);
+    }
+
+    // ── Field stock ──
     for (const r of fieldRows) {
       const qty    = Number(r.qty || 0);
-      const dp     = qty * lookupDp(r.product_name);
-      const cif    = qty * lookupCif(r.product_name);
       const srcLabel = locLabel(r.source_branch);
       const label    = r.officer_name
         ? `${r.officer_name} (from ${srcLabel})`
         : `Field — ${srcLabel}`;
-      upsert(r.product_name, 'field', label, qty, cif, dp);
+      upsert(r.product_name, 'field', label, qty,
+        qty * lookupCif(r.product_name),
+        qty * lookupDp(r.product_name),
+      );
     }
 
     const productList = Array.from(products.values())
