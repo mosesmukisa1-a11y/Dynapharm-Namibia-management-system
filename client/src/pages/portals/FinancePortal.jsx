@@ -1498,7 +1498,7 @@ function ReportsTab() {
   };
 
   const walkInRevenue = branchSummary.reduce((s, b) => s + parseFloat(b.salesRevenue || 0), 0);
-  const totalRevenue = walkInRevenue + prescriptionRev + consultFees;
+  const totalRevenue = walkInRevenue + prescriptionRev;
   const totalCash = branchSummary.reduce((s, b) => s + parseFloat(b.cashTotal || 0), 0);
   const totalSwipe = branchSummary.reduce((s, b) => s + parseFloat(b.swipeTotal || 0) + parseFloat(b.eftTotal || 0), 0);
 
@@ -1519,8 +1519,8 @@ function ReportsTab() {
     ]);
     rows.push(['TOTAL Walk-in', walkInRevenue.toFixed(2), '', totalCash.toFixed(2), totalSwipe.toFixed(2), '']);
     if (prescriptionRev > 0) rows.push(['Prescription Dispense Revenue', prescriptionRev.toFixed(2), '', '', '', '']);
-    if (consultFees > 0) rows.push(['Consultation Fees', consultFees.toFixed(2), '', '', '', '']);
-    rows.push(['GRAND TOTAL', totalRevenue.toFixed(2), '', '', '', '']);
+    rows.push(['GRAND TOTAL (Product Revenue)', totalRevenue.toFixed(2), '', '', '', '']);
+    if (consultFees > 0) rows.push(['Consultation Fees (Service — excluded from revenue)', consultFees.toFixed(2), '', '', '', '']);
     const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
@@ -1569,8 +1569,8 @@ function ReportsTab() {
       {loading ? <LoadingSpinner /> : (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <StatCard title="Total Revenue" value={formatCurrency(totalRevenue)} subtitle={`Walk-in: ${formatCurrency(walkInRevenue)}`} color="green" icon={<TrendingUp size={24} />} />
-            {prescriptionRev > 0 && <StatCard title="Prescription Revenue" value={formatCurrency(prescriptionRev)} subtitle="Dispense sales" color="purple" icon={<Receipt size={24} />} />}
+            <StatCard title="Total Revenue" value={formatCurrency(totalRevenue)} subtitle={`Walk-in: ${formatCurrency(walkInRevenue)}${prescriptionRev > 0 ? ` · Rx: ${formatCurrency(prescriptionRev)}` : ''}`} color="green" icon={<TrendingUp size={24} />} />
+            {consultFees > 0 && <StatCard title="Consultation Fees" value={formatCurrency(consultFees)} subtitle="Service fees (not product revenue)" color="yellow" icon={<Receipt size={24} />} />}
             <StatCard title="Cash Collected" value={formatCurrency(totalCash)} color="blue" icon={<DollarSign size={24} />} />
             <StatCard title="Swipe / EFT" value={formatCurrency(totalSwipe)} color="purple" icon={<Landmark size={24} />} />
           </div>
