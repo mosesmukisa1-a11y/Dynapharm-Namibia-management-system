@@ -1,1 +1,4 @@
-- [Income Statement expense sources](income-statement-sources.md) — salary/rent must come from dedicated backend endpoint, not scattered frontend API calls.
+- [Stock report double-count rule](stock-mis-double-count.md) — MIS stock-report.js: never add walkin_sales qty AND BIM movement qty for same branch; use bimSaleBranches set to guard.
+- [Branch stock-summary movement types](branch-summary-move-types.md) — src-side movement classification: adjustment→qty_adjusted (NOT qty_written_off); field_use→qty_written_off.
+- [gmFinanceMisEngine consultationFees](gm-engine-consult-fees.md) — getAllBranchesSalesRevenue does NOT return consultationFees; query BAT separately in gm/summary.js.
+- [stock_adjustments schema](stock-adjustments-schema.md) — Full column set added to server.js schemaSyncs; old api/stock/edit-requests.js uses field_name (legacy, not used by StockPortal).

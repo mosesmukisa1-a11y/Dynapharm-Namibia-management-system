@@ -87,6 +87,10 @@ export default async function handler(req, res) {
 
     // Build per-branch aggregation
     const branches = {};
+    // Track branches that already have BIM sale data so walkin_sales aren't double-counted.
+    // Every walk-in sale creates both a branch_inventory_movements row (type=sale/walkin_*) AND
+    // a branch_walkin_sales row. Adding both would double the sold quantities.
+    const bimSaleBranches = new Set();
 
     // Index inventory
     for (const row of invRows) {
@@ -126,12 +130,18 @@ export default async function handler(req, res) {
         type === 'walkin_sale' || type === 'walkin_member_sale' || type === 'walkin_non_member_sale' ||
         type === 'prescription_dispense' || type === 'dispense' ||
         type === 'campaign_sale' || type === 'online_order_fulfilment'
-      ) { prod.sales += qty; branches[b].totals.sales += qty; }
+      ) {
+        prod.sales += qty;
+        branches[b].totals.sales += qty;
+        bimSaleBranches.add(b); // mark this branch as having BIM-sourced sale data
+      }
     }
 
-    // Index sales
+    // Index walkin_sales — ONLY for branches with no BIM sale records to avoid double-counting.
+    // When BIM records exist, walkin_sale movements already captured the sold quantities above.
     for (const row of salesRows) {
       const b = row.branch_id;
+      if (bimSaleBranches.has(b)) continue; // BIM already captured this branch's sales
       if (!branches[b]) branches[b] = { branch: b, products: {}, totals: { received: 0, returns: 0, transfers_in: 0, transfers_out: 0, write_offs: 0, adjustments: 0, sales: 0, closing: 0, expired: 0, closing_value: 0 } };
       const name = row.product_name;
       if (!branches[b].products[name]) {

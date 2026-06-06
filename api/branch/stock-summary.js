@@ -169,10 +169,10 @@ export default async function handler(req, res) {
         smBranches.add(src);
         if (!br.movements.includes(movRecord)) br.movements.push(movRecord);
         if (t === 'transfer_out' || t === 'dispatched') br.qty_transferred_out += q;
-        else if (t === 'write_off') br.qty_written_off += q;
+        else if (t === 'write_off' || t === 'field_use') br.qty_written_off += q;
         else if (t === 'sale' || t.includes('sale')) br.qty_sold += q;
         else if (t === 'dispense' || t === 'prescription_dispense') br.qty_dispensed += q;
-        else if (t === 'adjustment') br.qty_written_off += q;
+        else if (t === 'adjustment' || t === 'positive_adjustment') br.qty_adjusted += q;
         const ld = fmtDt(sm.created_at);
         if (!br.last_movement || (ld && ld > br.last_movement)) br.last_movement = ld;
       }

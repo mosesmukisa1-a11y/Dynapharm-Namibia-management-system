@@ -56,7 +56,8 @@ export default async function handler(req, res) {
   // CIF cost per branch from stock_movements
   const cifRows = await getMany(
     `SELECT sm.source_location as branch_id,
-            SUM(sm.quantity * COALESCE(sm.unit_cif, pp.cif, 0)) as cif_cost
+            SUM(sm.quantity * COALESCE(sm.unit_cif, pp.cif, 0)) as cif_cost,
+            SUM(sm.quantity) as sales_units
      FROM stock_movements sm
      LEFT JOIN product_prices pp
        ON LOWER(TRIM(sm.product_name)) = LOWER(TRIM(pp.description))
@@ -68,7 +69,10 @@ export default async function handler(req, res) {
      GROUP BY sm.source_location`,
     [start, end]
   );
-  const cifByBranch = new Map(cifRows.map(r => [r.branch_id, Number(r.cif_cost || 0)]));
+  const cifByBranch = new Map(cifRows.map(r => [r.branch_id, {
+    cifCost:    Number(r.cif_cost    || 0),
+    salesUnits: Number(r.sales_units || 0),
+  }]));
 
   // Expenses per branch
   const expRows = await getMany(
@@ -105,7 +109,9 @@ export default async function handler(req, res) {
     const sales = salesByBranch.get(loc.locationId) || { revenue: 0, txns: 0 };
     const salesRevenue = sales.revenue;
     const transactions = sales.txns;
-    const cifCost = cifByBranch.get(loc.locationId) || 0;
+    const cifEntry = cifByBranch.get(loc.locationId) || { cifCost: 0, salesUnits: 0 };
+    const cifCost = cifEntry.cifCost;
+    const salesUnits = cifEntry.salesUnits;
     const grossProfit = salesRevenue - cifCost;
     const exp = expByBranch.get(loc.locationId) || { rent: 0, overheads: 0, bonus: 0 };
     const netContributionAfterExpenses = grossProfit - exp.rent - exp.overheads - exp.bonus;
@@ -117,7 +123,7 @@ export default async function handler(req, res) {
       branchId: loc.locationId,
       branchName: loc.locationName,
       salesRevenue,
-      salesUnits: 0,
+      salesUnits,
       cifCost,
       grossProfit,
       transactions,

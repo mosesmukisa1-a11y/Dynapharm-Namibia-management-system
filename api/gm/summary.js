@@ -19,6 +19,20 @@ export default async function handler(req, res) {
       getAllBranchesSalesRevenue(start, end),
     ]);
 
+    // Consultation fees: BAT rows for non-dispensing paid activities (walk-in and member check-ups).
+    // Excludes prescription_dispensing (already counted in prescriptionSales).
+    const consultRow = await getOne(
+      `SELECT COALESCE(SUM(COALESCE(consultation_fee, grand_total, 0)), 0) AS total
+       FROM branch_activity_transactions
+       WHERE activity_type NOT IN ('prescription_dispensing', 'dispense_draft')
+         AND workflow_source IS DISTINCT FROM 'dispense_draft'
+         AND payment_status = 'paid'
+         AND service_date >= $1::date
+         AND service_date <= ($2 || 'T23:59:59')::timestamp`,
+      [start, end]
+    );
+    const consultationFees = Number(consultRow?.total || 0);
+
     // CIF cost of sales: actual batch unit_cif from stock_movements, fallback to product_prices.cif
     const cifRow = await getOne(
       `SELECT COALESCE(SUM(sm.quantity * COALESCE(sm.unit_cif, pp.cif, 0)), 0) as cif_cost
@@ -88,7 +102,7 @@ export default async function handler(req, res) {
         expiringCount: companyStock.expiringCount,
       },
       sales: {
-        consultationFees: sales.consultationFees,
+        consultationFees,
         walkinSales: sales.walkinSales,
         memberSales: sales.memberSales,
         nonMemberSales: sales.nonMemberSales,
