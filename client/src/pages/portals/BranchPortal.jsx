@@ -6928,9 +6928,15 @@ function BankingTab() {
     if (!depositForm.amount || Number(depositForm.amount) <= 0 || !depositForm.bank_name.trim()) {
       setAlert({ type: 'error', message: 'Amount and bank name are required' }); return;
     }
+    const depositDate = depositForm.deposit_date || new Date().toISOString().slice(0, 10);
+    const today = new Date().toISOString().slice(0, 10);
+    if (depositDate > today) {
+      setAlert({ type: 'error', message: 'Deposit date cannot be in the future.' });
+      return;
+    }
     setSubmitting(true);
     try {
-      await api.branch.createDeposit({ amount: Number(depositForm.amount), bankName: depositForm.bank_name.trim(), slipNumber: depositForm.reference.trim(), date: depositForm.deposit_date || new Date().toISOString().slice(0, 10), notes: depositForm.notes.trim() });
+      await api.branch.createDeposit({ amount: Number(depositForm.amount), bankName: depositForm.bank_name.trim(), slipNumber: depositForm.reference.trim(), date: depositDate, notes: depositForm.notes.trim() });
       setAlert({ type: 'success', message: 'Deposit recorded successfully' });
       setDepositForm({ amount: '', bank_name: '', reference: '', deposit_date: '', notes: '' });
       setShowDepositForm(false);
@@ -7091,7 +7097,7 @@ function BankingTab() {
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div><label style={labelStyle}>Reference / Slip #</label><input type="text" value={depositForm.reference} onChange={e => setDepositForm(f => ({ ...f, reference: e.target.value }))} style={inputStyle} placeholder="Deposit slip ref" /></div>
-                <div><label style={labelStyle}>Deposit Date</label><input type="date" value={depositForm.deposit_date} onChange={e => setDepositForm(f => ({ ...f, deposit_date: e.target.value }))} style={inputStyle} /></div>
+                <div><label style={labelStyle}>Deposit Date</label><input type="date" value={depositForm.deposit_date} max={new Date().toISOString().slice(0, 10)} onChange={e => setDepositForm(f => ({ ...f, deposit_date: e.target.value }))} style={inputStyle} /></div>
               </div>
               <div><label style={labelStyle}>Notes</label><textarea value={depositForm.notes} onChange={e => setDepositForm(f => ({ ...f, notes: e.target.value }))} rows={2} placeholder="Optional notes…" style={{ ...inputStyle, resize: 'none' }} /></div>
               <div style={{ display: 'flex', gap: 10 }}>

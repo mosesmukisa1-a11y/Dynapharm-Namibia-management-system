@@ -146,6 +146,11 @@ export default async function handler(req, res) {
       }
 
       const date = body.date || new Date().toISOString().slice(0, 10);
+      const today = new Date().toISOString().slice(0, 10);
+      if (date > today) {
+        return res.status(400).json({ success: false, error: `Deposit date cannot be in the future (${date}). Today is ${today}.` });
+      }
+
       const amount = parseNumber(body.amount, null);
       if (amount === null || amount <= 0) {
         return res.status(400).json({ success: false, error: 'amount must be greater than zero' });
