@@ -105,7 +105,36 @@ export default async function handler(req, res) {
     );
     const bonusPayout = Number(bonusRow?.total || 0);
 
-    // Merge misc category maps (branch + dept + petty)
+    // ── 7. Payment Vouchers (Head Office expenses entered by Finance) ──
+    // Exclude supplier_remittance (that is procurement/COGS, not an operating expense).
+    const VOUCHER_LABEL_MAP = {
+      cash_request:         'HQ Cash Request Payout',
+      salary:               'HQ Salary / Wage Payment',
+      bonus:                'HQ Bonus Payout',
+      expense_reimbursement:'HQ Expense Reimbursement',
+      rent:                 'HQ Rent / Lease Payment',
+      ad_hoc:               'HQ Ad-Hoc Payment',
+    };
+    const voucherRows = await getMany(
+      `SELECT payment_type, COALESCE(SUM(amount), 0) AS total
+       FROM payment_vouchers
+       WHERE status IN ('paid', 'authorised')
+         AND payment_date >= $1::date
+         AND payment_date <= $2::date
+         AND payment_type != 'supplier_remittance'
+       GROUP BY payment_type
+       ORDER BY total DESC`,
+      [startDate, endDate]
+    );
+    const voucherByCategory = {};
+    let voucherTotal = 0;
+    for (const row of voucherRows) {
+      const label = VOUCHER_LABEL_MAP[row.payment_type] || `HQ: ${row.payment_type}`;
+      voucherByCategory[label] = (voucherByCategory[label] || 0) + Number(row.total || 0);
+      voucherTotal += Number(row.total || 0);
+    }
+
+    // Merge misc category maps (branch + dept + petty + vouchers)
     const expByCategory = { ...branchExpByCategory };
     for (const [cat, val] of Object.entries(deptExpByCategory)) {
       expByCategory[cat] = (expByCategory[cat] || 0) + val;
@@ -113,7 +142,10 @@ export default async function handler(req, res) {
     for (const [cat, val] of Object.entries(pettyByCategory)) {
       expByCategory[cat] = (expByCategory[cat] || 0) + val;
     }
-    const miscTotal = branchExpTotal + deptExpTotal + pettyTotal;
+    for (const [cat, val] of Object.entries(voucherByCategory)) {
+      expByCategory[cat] = (expByCategory[cat] || 0) + val;
+    }
+    const miscTotal = branchExpTotal + deptExpTotal + pettyTotal + voucherTotal;
 
     res.json({
       success: true,
