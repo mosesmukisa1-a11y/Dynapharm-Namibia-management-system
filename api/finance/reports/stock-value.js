@@ -63,12 +63,18 @@ export default async function handler(req, res) {
       }
     }
 
+    const warehouseValueDP = Array.from(warehouseMap.values()).reduce((s, w) => s + w.totalValueDP, 0);
+    const branchValueDP    = Array.from(branchMap.values()).reduce((s, b) => s + b.totalValueDP, 0);
+
     res.json({
       success: true,
       asOfDate,
       warehouses: Array.from(warehouseMap.values()),
       branches: Array.from(branchMap.values()),
       totalCompanyValueDP,
+      companyValueDP: totalCompanyValueDP,
+      warehouseValueDP,
+      branchValueDP,
     });
   } catch (err) {
     console.error('[finance/reports/stock-value]', err);

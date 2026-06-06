@@ -10,6 +10,7 @@ import { BarChart3, ClipboardList, CheckCircle, Megaphone, TrendingUp, Users, Do
 import { useAuth } from '../../contexts/AuthContext';
 import { useStockRealtime } from '../../hooks/useStockRealtime';
 import AccountsTab from '../../components/AccountsTab';
+import CurrentStockTab from '../../components/CurrentStockTab';
 import StaffMessagesTab from '../../components/StaffMessagesTab';
 
 export default function GMPortal() {
@@ -32,6 +33,7 @@ export default function GMPortal() {
     { id: 'priceList', label: 'Price List', icon: '💲' },
     { id: 'campaigns', label: 'Campaigns', icon: '📢' },
     { id: 'profitAnalysis', label: 'Profit Analysis', icon: '💰' },
+    { id: 'currentStock', label: 'Current Stock', icon: '📦' },
     { id: 'accounts', label: 'Accounts', icon: '📒' },
     { id: 'bonus', label: 'Bonus History', icon: '🎁' },
     { id: 'statements', label: 'Statements', icon: '📄' },
@@ -55,6 +57,7 @@ export default function GMPortal() {
         {activeTab === 'priceList' && <PriceListTab />}
         {activeTab === 'campaigns' && <CampaignsTab />}
         {activeTab === 'profitAnalysis' && <ProfitAnalysisTab />}
+        {activeTab === 'currentStock' && <CurrentStockTab />}
         {activeTab === 'accounts' && <AccountsTab role="gm" />}
         {activeTab === 'bonus' && <BonusHistoryTab />}
         {activeTab === 'statements' && <StatementsUploadTab />}
