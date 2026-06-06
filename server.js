@@ -2144,6 +2144,41 @@ server.on('error', (error) => {
       // Stored alongside unit_price (always DP / cost basis) so the correction script and reports
       // can distinguish company cost from patient revenue without re-joining product_prices.
       `ALTER TABLE branch_inventory_movements ADD COLUMN IF NOT EXISTS charge_unit NUMERIC(14,4)`,
+      // stock_adjustments: GM-approval workflow for stock record corrections
+      `CREATE TABLE IF NOT EXISTS stock_adjustments (
+        id                VARCHAR(100)  PRIMARY KEY,
+        adj_number        VARCHAR(50),
+        target_type       VARCHAR(50),
+        target_id         VARCHAR(100),
+        product_name      VARCHAR(255),
+        location          VARCHAR(100),
+        field_to_adjust   VARCHAR(100),
+        old_value         TEXT,
+        new_value         TEXT,
+        reason            TEXT,
+        requested_by      VARCHAR(255),
+        requested_by_name VARCHAR(255),
+        status            VARCHAR(20)   DEFAULT 'pending',
+        gm_notes          TEXT,
+        approved_by       VARCHAR(255),
+        approved_by_name  VARCHAR(255),
+        approved_at       TIMESTAMPTZ,
+        created_at        TIMESTAMPTZ   DEFAULT NOW(),
+        updated_at        TIMESTAMPTZ   DEFAULT NOW()
+      )`,
+      // Legacy column aliases (field_name was the old name before field_to_adjust)
+      `ALTER TABLE stock_adjustments ADD COLUMN IF NOT EXISTS adj_number        VARCHAR(50)`,
+      `ALTER TABLE stock_adjustments ADD COLUMN IF NOT EXISTS target_type       VARCHAR(50)`,
+      `ALTER TABLE stock_adjustments ADD COLUMN IF NOT EXISTS target_id         VARCHAR(100)`,
+      `ALTER TABLE stock_adjustments ADD COLUMN IF NOT EXISTS location          VARCHAR(100)`,
+      `ALTER TABLE stock_adjustments ADD COLUMN IF NOT EXISTS field_to_adjust   VARCHAR(100)`,
+      `ALTER TABLE stock_adjustments ADD COLUMN IF NOT EXISTS requested_by_name VARCHAR(255)`,
+      `ALTER TABLE stock_adjustments ADD COLUMN IF NOT EXISTS gm_notes          TEXT`,
+      `ALTER TABLE stock_adjustments ADD COLUMN IF NOT EXISTS approved_by       VARCHAR(255)`,
+      `ALTER TABLE stock_adjustments ADD COLUMN IF NOT EXISTS approved_by_name  VARCHAR(255)`,
+      `ALTER TABLE stock_adjustments ADD COLUMN IF NOT EXISTS approved_at       TIMESTAMPTZ`,
+      // Back-fill field_to_adjust from old field_name column (safe no-op if column doesn't exist yet)
+      `UPDATE stock_adjustments SET field_to_adjust = field_name WHERE field_to_adjust IS NULL AND field_name IS NOT NULL`,
     ];
     let schemaSynced = 0;
     for (const sql of schemaSyncs) {

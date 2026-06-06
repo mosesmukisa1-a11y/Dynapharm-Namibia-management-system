@@ -8476,7 +8476,7 @@ function WriteOffsTab({ branch }) {
       api.stock.movements('limit=2000').then(d => Array.isArray(d) ? d : d.movements || []).catch(() => []),
       api.stock.batches().then(d => Array.isArray(d) ? d : d.batches || []).catch(() => []),
       branch && branch !== 'all'
-        ? api.get(`/stock/branch/${branch}/inventory`).then(d => Array.isArray(d) ? d : d.inventory || d.batches || []).catch(() => [])
+        ? api.get(`/branch/inventory?branchId=${encodeURIComponent(branch)}`).then(d => Array.isArray(d) ? d : d.inventory || d.batches || []).catch(() => [])
         : Promise.resolve([]),
     ]).then(([mvs, centralBts, branchBts]) => {
       setMovements(mvs);
