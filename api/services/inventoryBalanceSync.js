@@ -5,6 +5,9 @@ import { query } from '../db.js';
  * Call this after any write to branch_inventory_batches to keep the Stock Manager
  * cache consistent with the Branch inventory view.
  *
+ * Handles deduplication: if multiple rows exist for the same
+ * (location_id, product_name, batch_no), keeps one and removes extras.
+ *
  * @param {Array<{branch_id, product_name, batch_no, expiry_date, quantity, unit_price}>} rows
  */
 export async function syncInventoryBalances(rows) {
@@ -26,18 +29,36 @@ export async function syncInventoryBalances(rows) {
          WHERE location_type = 'branch'
            AND LOWER(TRIM(location_id)) = LOWER(TRIM($1))
            AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))
-           AND COALESCE(batch_no, '') = $3`,
+           AND COALESCE(batch_no, '') = $3
+         ORDER BY updated_at DESC NULLS LAST`,
         [inv.branch_id, inv.product_name, batchNoVal]
       );
 
-      if (existing.rows.length > 0) {
+      if (existing.rows.length > 1) {
+        const keepId = existing.rows[0].id;
+        const extraIds = existing.rows.slice(1).map(r => r.id);
+        await query(
+          `DELETE FROM inventory_balances WHERE id = ANY($1::text[])`,
+          [extraIds]
+        );
         await query(
           `UPDATE inventory_balances
-           SET closing_qty = $1,
-               expiry_date = COALESCE($2::date, expiry_date),
-               unit_dp = COALESCE($3, unit_dp),
+           SET closing_qty    = $1,
+               expiry_date    = COALESCE($2::date, expiry_date),
+               unit_dp        = COALESCE($3, unit_dp),
                stock_value_dp = CASE WHEN $3 IS NOT NULL THEN $4 ELSE stock_value_dp END,
-               updated_at = NOW()
+               updated_at     = NOW()
+           WHERE id = $5`,
+          [qty, expiryVal, unitDp, stockValue, keepId]
+        );
+      } else if (existing.rows.length === 1) {
+        await query(
+          `UPDATE inventory_balances
+           SET closing_qty    = $1,
+               expiry_date    = COALESCE($2::date, expiry_date),
+               unit_dp        = COALESCE($3, unit_dp),
+               stock_value_dp = CASE WHEN $3 IS NOT NULL THEN $4 ELSE stock_value_dp END,
+               updated_at     = NOW()
            WHERE id = $5
              AND ABS(closing_qty - $1) > 0`,
           [qty, expiryVal, unitDp, stockValue, existing.rows[0].id]

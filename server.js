@@ -2589,6 +2589,89 @@ server.on('error', (error) => {
     }
     // ────────────────────────────────────────────────────────────────────────
 
+    // ── Reconcile stock_batches.remaining_quantity ───────────────────────────
+    // When stock leaves a location via postStockMovement (stockEngine path) but
+    // fefoDeductStockBatches was NOT called, stock_batches.remaining_quantity is
+    // left too high — the same units appear in both stock_batches and branch
+    // inventory (double-counting).  Fix: compute the un-captured outflow
+    // (sm_outflow - dispatched_quantity) and subtract it from remaining_quantity.
+    try {
+      const reconResult = await query(
+        `UPDATE stock_batches sb
+         SET remaining_quantity   = GREATEST(0, sb.quantity - new_dispatched),
+             dispatched_quantity  = new_dispatched,
+             updated_at           = NOW()
+         FROM (
+           SELECT
+             sb2.id,
+             GREATEST(
+               sb2.dispatched_quantity,
+               COALESCE((
+                 SELECT SUM(sm.quantity)
+                 FROM stock_movements sm
+                 WHERE sm.status IN ('posted','approved')
+                   AND sm.source_location = sb2.location
+                   AND LOWER(TRIM(sm.product_name)) = LOWER(TRIM(sb2.description))
+                   AND COALESCE(sm.batch_no,'') = COALESCE(sb2.batch_no,'')
+                   AND sm.movement_type NOT IN (
+                     'reserved','supplier_import_receipt','positive_adjustment',
+                     'return_in','received','warehouse_receipt','inward_receipt'
+                   )
+               ), 0)
+             ) AS new_dispatched
+           FROM stock_batches sb2
+           WHERE sb2.status NOT IN ('depleted','expired')
+         ) calc
+         WHERE sb.id = calc.id
+           AND (
+             calc.new_dispatched > sb.dispatched_quantity
+             OR GREATEST(0, sb.quantity - calc.new_dispatched) < sb.remaining_quantity
+           )`
+      );
+      if (reconResult && reconResult.rowCount > 0) {
+        console.log(`[startup] Reconciled stock_batches.remaining_quantity for ${reconResult.rowCount} row(s)`);
+      }
+    } catch (reconErr) {
+      console.warn('[startup stock_batches reconcile]', reconErr.message);
+    }
+    // ────────────────────────────────────────────────────────────────────────
+
+    // ── Deduplicate inventory_balances ──────────────────────────────────────
+    // Multiple rows for the same (location_type, location_id, product_name,
+    // batch_no, expiry_date) can accumulate over time, inflating stock totals.
+    // Keep the row with the highest closing_qty; delete the rest.
+    try {
+      const dedupIB = await query(
+        `DELETE FROM inventory_balances ib1
+         WHERE EXISTS (
+           SELECT 1 FROM inventory_balances ib2
+           WHERE ib2.location_type = ib1.location_type
+             AND LOWER(TRIM(ib2.location_id))  = LOWER(TRIM(ib1.location_id))
+             AND LOWER(TRIM(ib2.product_name)) = LOWER(TRIM(ib1.product_name))
+             AND COALESCE(ib2.batch_no,'')     = COALESCE(ib1.batch_no,'')
+             AND ib2.expiry_date IS NOT DISTINCT FROM ib1.expiry_date
+             AND (ib2.closing_qty > ib1.closing_qty
+               OR (ib2.closing_qty = ib1.closing_qty AND ib2.id > ib1.id))
+         )`
+      );
+      if (dedupIB && dedupIB.rowCount > 0) {
+        console.log(`[startup] Removed ${dedupIB.rowCount} duplicate inventory_balances row(s)`);
+      }
+      // Remove stale non-branch rows with negative / zero closing_qty
+      // (country_stock and warehouse balances are tracked via stock_batches, not here)
+      const cleanNeg = await query(
+        `DELETE FROM inventory_balances
+         WHERE location_type NOT IN ('branch')
+           AND closing_qty <= 0`
+      );
+      if (cleanNeg && cleanNeg.rowCount > 0) {
+        console.log(`[startup] Removed ${cleanNeg.rowCount} negative/zero non-branch inventory_balances row(s)`);
+      }
+    } catch (dedupErr) {
+      console.warn('[startup inventory_balances dedup]', dedupErr.message);
+    }
+    // ────────────────────────────────────────────────────────────────────────
+
     // ── Backfill branch_inventory_batches from inventory_balances ───────────
     // Any branch stock that arrived via the centralized stockEngine path
     // is imported here so the branch portal can see it.
@@ -2635,6 +2718,31 @@ server.on('error', (error) => {
     } catch (bfErr) {
       console.warn('[branch_inventory_batches backfill]', bfErr.message);
     }
+
+    // ── Deduplicate branch_inventory_batches ─────────────────────────────────
+    // Rows with a NULL batch_no can accumulate if the backfill or other code
+    // paths insert multiple rows for the same (branch, product, NULL batch).
+    // Keep the row with the highest quantity; delete the rest.
+    try {
+      const dedupBIB = await query(
+        `DELETE FROM branch_inventory_batches bib1
+         WHERE EXISTS (
+           SELECT 1 FROM branch_inventory_batches bib2
+           WHERE bib2.branch_id = bib1.branch_id
+             AND LOWER(TRIM(bib2.product_name)) = LOWER(TRIM(bib1.product_name))
+             AND bib2.batch_no IS NOT DISTINCT FROM bib1.batch_no
+             AND bib2.expiry_date IS NOT DISTINCT FROM bib1.expiry_date
+             AND (bib2.quantity > bib1.quantity
+               OR (bib2.quantity = bib1.quantity AND bib2.id > bib1.id))
+         )`
+      );
+      if (dedupBIB && dedupBIB.rowCount > 0) {
+        console.log(`[startup] Removed ${dedupBIB.rowCount} duplicate branch_inventory_batches row(s)`);
+      }
+    } catch (dedupBIBErr) {
+      console.warn('[startup branch_inventory_batches dedup]', dedupBIBErr.message);
+    }
+    // ────────────────────────────────────────────────────────────────────────
 
     // ── Backfill stock_batches for write-offs returned to warehouse ──────────
     // Approved write-offs with disposal_status='returned_to_warehouse' wrote their
