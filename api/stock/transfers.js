@@ -901,6 +901,9 @@ export default async function handler(req, res) {
       }
 
       const transfer = await update('stock_transfers', id, updatePayload, 'id');
+      if (!transfer) {
+        return res.status(404).json({ success: false, error: 'Transfer not found or was already modified by another user. Please refresh and try again.' });
+      }
 
       // Notify the preparing user when GM amends a transfer
       if ((body.gmAction === 'amend_approve' || body.gm_action === 'amend_approve') && body.amendmentLog && Array.isArray(body.amendmentLog) && body.amendmentLog.length > 0) {
@@ -1048,10 +1051,11 @@ export default async function handler(req, res) {
                 const batchNo = item.batch_no || null;
                 const expiryDate = item.expiry_date || null;
                 const movId = `MOV-APR-${Date.now()}-${Math.floor(Math.random() * 9999)}`;
+                const aprSrcType = (sourceWarehouse || '').includes('warehouse') ? 'warehouse' : 'country';
                 await client.query(
-                  `INSERT INTO stock_movements (id, product_name, batch_no, expiry_date, quantity, movement_type, source_location, destination_location, reference_id, notes, created_by, status, created_at, updated_at)
-                   VALUES ($1, $2, $3, $4, $5, 'reserved', $6, $7, $8, $9, $10, 'posted', NOW(), NOW())`,
-                  [movId, productName, batchNo, expiryDate, qtyToReserve, sourceWarehouse, transfer.to_branch || 'branch', id,
+                  `INSERT INTO stock_movements (id, product_name, batch_no, expiry_date, quantity, movement_type, source_location, source_location_type, destination_location, destination_location_type, reference_id, notes, created_by, status, created_at, updated_at)
+                   VALUES ($1, $2, $3, $4, $5, 'reserved', $6, $7, $8, 'branch', $9, $10, $11, 'posted', NOW(), NOW())`,
+                  [movId, productName, batchNo, expiryDate, qtyToReserve, sourceWarehouse, aprSrcType, transfer.to_branch || 'branch', id,
                    `GM approved — stock reserved for ${transfer.to_branch || 'branch'} — transfer ${id}`, actorName]
                 );
               }
@@ -1241,7 +1245,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ success: false, error: 'Method not allowed' });
   } catch (error) {
     console.error('Stock transfers API error:', error);
-    return res.status(500).json({ success: false, error: 'Internal server error' });
+    return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
   }
 }
 
