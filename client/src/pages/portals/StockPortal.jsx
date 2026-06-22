@@ -1906,7 +1906,7 @@ function AICommandCenter({ branch }) {
 
 // ── Overview Tab (branch-aware) ───────────────────────────────────────────────
 function OverviewTab({ branch }) {
-  const [data, setData] = useState({ batches: [], movements: [], transfers: [], imports: [], fieldStock: [], branchData: [] });
+  const [data, setData] = useState({ batches: [], movements: [], transfers: [], imports: [], fieldStock: [], branchData: [], locationBreakdown: [] });
   const [loading, setLoading] = useState(true);
 
   const loadOverview = useCallback(() => {
@@ -1919,7 +1919,8 @@ function OverviewTab({ branch }) {
       api.stock.supplierImports().catch(() => []),
       api.stock.fieldStock().catch(() => []),
       api.branch.stockSummary().then(d => d.branches || []).catch(() => []),
-    ]).then(([priceData, batches, movements, transfers, imports, fieldStock, branchData]) => {
+      api.stock.countryStock().then(d => d.locationBreakdown || []).catch(() => []),
+    ]).then(([priceData, batches, movements, transfers, imports, fieldStock, branchData, locationBreakdown]) => {
       if (Array.isArray(priceData) && priceData.length > 0) setLivePrices(priceData);
       setData({
         batches,
@@ -1928,6 +1929,7 @@ function OverviewTab({ branch }) {
         imports: Array.isArray(imports) ? imports : [],
         fieldStock: Array.isArray(fieldStock) ? fieldStock : [],
         branchData,
+        locationBreakdown: Array.isArray(locationBreakdown) ? locationBreakdown : [],
       });
     }).finally(() => setLoading(false));
   }, []);
@@ -1988,11 +1990,17 @@ function OverviewTab({ branch }) {
   }).length;
 
   const countryBatches = data.batches.filter(b => (b.location || '') === 'country_stock');
-  const countryQty = countryBatches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0), 0);
   const whkBatches = data.batches.filter(b => b.location === 'windhoek_warehouse');
-  const whkQty = whkBatches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0), 0);
   const ondBatches = data.batches.filter(b => b.location === 'ondangwa_warehouse');
-  const ondQty = ondBatches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0), 0);
+  // Use inventory_balances (locationBreakdown) for accurate qty — stock_batches.remaining_quantity
+  // can drift from the true balance tracked in inventory_balances via stock_movements.
+  const lb = data.locationBreakdown || [];
+  const csEntry  = lb.find(l => l.locationId === 'country_stock');
+  const whkEntry = lb.find(l => l.locationId === 'windhoek_warehouse');
+  const ondEntry = lb.find(l => l.locationId === 'ondangwa_warehouse');
+  const countryQty = csEntry  ? Number(csEntry.totalUnits  || 0) : countryBatches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0), 0);
+  const whkQty    = whkEntry  ? Number(whkEntry.totalUnits || 0) : whkBatches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0), 0);
+  const ondQty    = ondEntry  ? Number(ondEntry.totalUnits || 0) : ondBatches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0), 0);
   const fieldQty = data.fieldStock.reduce((s, f) => s + Number(f.balance || 0), 0);
 
   const now = new Date();
