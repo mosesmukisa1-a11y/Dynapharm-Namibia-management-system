@@ -2522,7 +2522,6 @@ function CountryStockTab() {
   const [activeSubTab, setActiveSubTab] = useState('holdings');
 
   const [releaseOpen, setReleaseOpen] = useState(false);
-  const [releaseWarehouse, setReleaseWarehouse] = useState('windhoek_warehouse');
   const [releaseItems, setReleaseItems] = useState([]);
   const [releaseNotes, setReleaseNotes] = useState('');
   const [releasing, setReleasing] = useState(false);
@@ -2571,8 +2570,7 @@ function CountryStockTab() {
   const { distinctProducts = 0, totalUnits = 0, stockValueDP = 0, lowStockItems = 0 } = data.summary;
 
   const openReleaseModal = (item) => {
-    setReleaseItems([{ productName: item.productName, batchNo: item.batchNo, expiryDate: item.expiryDate, quantity: '', availableQty: item.closingQty }]);
-    setReleaseWarehouse('windhoek_warehouse');
+    setReleaseItems([{ productName: item.productName, batchNo: item.batchNo, expiryDate: item.expiryDate, qtyWindhoek: '', qtyOndangwa: '', availableQty: item.closingQty }]);
     setReleaseNotes('');
     setReleaseAlert(null);
     setReleaseOpen(true);
@@ -2580,20 +2578,44 @@ function CountryStockTab() {
 
   const handleRelease = async (e) => {
     e.preventDefault();
-    const toSend = releaseItems.filter(i => Number(i.quantity) > 0);
-    if (toSend.length === 0) { setReleaseAlert({ type: 'error', msg: 'Enter a quantity greater than 0 for at least one item' }); return; }
-    const over = toSend.find(i => Number(i.quantity) > Number(i.availableQty));
-    if (over) { setReleaseAlert({ type: 'error', msg: `Quantity for "${over.productName}" exceeds available country stock (${over.availableQty})` }); return; }
+    const actor = user?.full_name || user?.username || 'system';
+
+    // Build per-warehouse item lists
+    const windhoekItems = releaseItems
+      .filter(i => Number(i.qtyWindhoek) > 0)
+      .map(i => ({ productName: i.productName, batchNo: i.batchNo, expiryDate: i.expiryDate, quantity: Number(i.qtyWindhoek) }));
+    const ondangwaItems = releaseItems
+      .filter(i => Number(i.qtyOndangwa) > 0)
+      .map(i => ({ productName: i.productName, batchNo: i.batchNo, expiryDate: i.expiryDate, quantity: Number(i.qtyOndangwa) }));
+
+    if (windhoekItems.length === 0 && ondangwaItems.length === 0) {
+      setReleaseAlert({ type: 'error', msg: 'Enter at least one quantity (Windhoek or Ondangwa) greater than 0' });
+      return;
+    }
+
+    // Validate totals don't exceed available stock per item
+    for (const item of releaseItems) {
+      const total = Number(item.qtyWindhoek || 0) + Number(item.qtyOndangwa || 0);
+      if (total > Number(item.availableQty)) {
+        setReleaseAlert({ type: 'error', msg: `Combined quantity for "${item.productName}" (${total}) exceeds available country stock (${item.availableQty})` });
+        return;
+      }
+    }
+
     setReleasing(true);
     try {
-      const result = await api.stock.releaseToWarehouse({
-        warehouseId: releaseWarehouse,
-        items: toSend.map(i => ({ productName: i.productName, batchNo: i.batchNo, expiryDate: i.expiryDate, quantity: Number(i.quantity) })),
-        releasedBy: user?.full_name || user?.username || 'system',
-        notes: releaseNotes || undefined,
-      });
-      setReleaseAlert({ type: 'success', msg: `Dispatch submitted for GM approval — ${toSend.length} item(s) to ${fmtLocation(releaseWarehouse)} (Ref: ${result.referenceId}). Stock remains at Country Stock until the warehouse confirms receipt after GM approval.` });
-      setTimeout(() => { setReleaseOpen(false); loadData(); }, 1800);
+      const refs = [];
+      if (windhoekItems.length > 0) {
+        const r = await api.stock.releaseToWarehouse({ warehouseId: 'windhoek_warehouse', items: windhoekItems, releasedBy: actor, notes: releaseNotes || undefined });
+        refs.push(`Windhoek: ${r.referenceId}`);
+      }
+      if (ondangwaItems.length > 0) {
+        const r = await api.stock.releaseToWarehouse({ warehouseId: 'ondangwa_warehouse', items: ondangwaItems, releasedBy: actor, notes: releaseNotes || undefined });
+        refs.push(`Ondangwa: ${r.referenceId}`);
+      }
+      const destLabel = refs.length === 2 ? 'both warehouses' : refs.length === 1 && windhoekItems.length > 0 ? 'Windhoek Warehouse' : 'Ondangwa Warehouse';
+      setReleaseAlert({ type: 'success', msg: `Dispatch submitted for GM approval — stock released to ${destLabel}. (${refs.join(' · ')}) Stock remains at Country Stock until each warehouse confirms receipt.` });
+      setTimeout(() => { setReleaseOpen(false); loadData(); }, 2200);
     } catch (err) {
       setReleaseAlert({ type: 'error', msg: err.message || 'Release failed' });
     } finally {
@@ -2621,7 +2643,7 @@ function CountryStockTab() {
             </p>
           </div>
           <div className="flex gap-2 flex-wrap">
-            <button onClick={() => { setReleaseItems([]); setReleaseWarehouse('windhoek_warehouse'); setReleaseNotes(''); setReleaseAlert(null); setReleaseOpen(true); }}
+            <button onClick={() => { setReleaseItems([]); setReleaseNotes(''); setReleaseAlert(null); setReleaseOpen(true); }}
               style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: '0.85rem', fontWeight: 700 }}>
               <ArrowLeftRight size={15} /> Release to Warehouse
             </button>
@@ -2742,84 +2764,105 @@ function CountryStockTab() {
         </div>
       )}
 
-      <Modal open={releaseOpen} onClose={() => setReleaseOpen(false)} title="Release Stock to Warehouse" size="lg">
+      <Modal open={releaseOpen} onClose={() => setReleaseOpen(false)} title="Release Imported Stock to Warehouses" size="xl">
         <form onSubmit={handleRelease} className="p-6 space-y-5">
-          <Alert type="info">
-            This moves stock from Country Stock to the selected warehouse in the inventory system. The warehouse will receive a warehouse_receipt movement and country stock will be decremented.
-          </Alert>
-          {releaseAlert && <Alert type={releaseAlert.type}>{releaseAlert.msg}</Alert>}
-
-          <div className="space-y-1">
-            <label className="block text-sm font-medium text-gray-700">Destination Warehouse <span className="text-red-500">*</span></label>
-            <select value={releaseWarehouse} onChange={e => setReleaseWarehouse(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
-              <option value="windhoek_warehouse">🏢 Windhoek Warehouse</option>
-              <option value="ondangwa_warehouse">🏬 Ondangwa Warehouse</option>
-            </select>
+          <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '10px 14px', fontSize: '0.83rem', color: '#1e40af', display: 'flex', gap: 8 }}>
+            <span style={{ fontSize: '1rem' }}>🏭</span>
+            <span>Enter how many units of each batch to send to <strong>Windhoek Warehouse</strong> and/or <strong>Ondangwa Warehouse</strong>. You can split a single batch across both. Leave a field blank (or 0) to skip that warehouse.</span>
           </div>
+          {releaseAlert && <Alert type={releaseAlert.type}>{releaseAlert.msg}</Alert>}
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <label className="block text-sm font-medium text-gray-700">Items to Release <span className="text-red-500">*</span></label>
-              <button type="button" onClick={() => setReleaseItems(prev => [...prev, { productName: '', batchNo: '', expiryDate: '', quantity: '', availableQty: 0, batchKey: '' }])}
+              <label className="block text-sm font-medium text-gray-700">Items to Dispatch <span className="text-red-500">*</span></label>
+              <button type="button" onClick={() => setReleaseItems(prev => [...prev, { productName: '', batchNo: '', expiryDate: '', qtyWindhoek: '', qtyOndangwa: '', availableQty: 0, batchKey: '' }])}
                 style={{ padding: '4px 10px', background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd', borderRadius: 6, fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer' }}>
                 + Add Row
               </button>
             </div>
+
+            {/* Column headers */}
+            <div style={{ display: 'grid', gridTemplateColumns: '2.5fr 1fr 1fr auto', gap: 8, padding: '4px 10px' }}>
+              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Product / Batch</span>
+              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#1e40af', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center' }}>🏢 Windhoek</span>
+              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#065f46', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center' }}>🏬 Ondangwa</span>
+              <span />
+            </div>
+
             {releaseItems.length === 0 && (
-              <p className="text-sm text-gray-400 italic">No items selected. Use "Add Row" or click Release on a batch row in the table.</p>
+              <p className="text-sm text-gray-400 italic px-2">No items selected. Use "+ Add Row" or click "Release" on a batch in the table above.</p>
             )}
-            {releaseItems.map((item, idx) => (
-              <div key={idx} style={{ display: 'grid', gridTemplateColumns: '3fr 1fr auto', gap: 8, alignItems: 'center', padding: '8px 10px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
-                <div>
-                  {item.productName && item.batchNo ? (
-                    <div>
-                      <div className="text-sm font-semibold text-gray-800">{item.productName}</div>
-                      <div className="text-xs text-gray-500">Batch: <span className="font-mono">{item.batchNo}</span>{item.expiryDate ? ` · Exp: ${formatDate(item.expiryDate)}` : ''}</div>
-                    </div>
-                  ) : (
-                    <select value={item.batchKey || ''} onChange={e => {
-                      const key = e.target.value;
-                      const match = data.items.find(i => `${i.productName}||${i.batchNo}` === key);
-                      setReleaseItems(prev => prev.map((r, i) => i === idx ? {
-                        ...r, batchKey: key,
-                        productName: match?.productName || '',
-                        batchNo: match?.batchNo || '',
-                        expiryDate: match?.expiryDate || '',
-                        availableQty: match?.closingQty || 0,
-                      } : r));
-                    }} className="w-full px-2 py-1.5 rounded border border-gray-300 text-xs">
-                      <option value="">Select product + batch...</option>
-                      {data.items.filter(i => i.closingQty > 0).map(i => (
-                        <option key={`${i.productName}||${i.batchNo}`} value={`${i.productName}||${i.batchNo}`}>
-                          {i.productName} — Batch: {i.batchNo || 'N/A'} (Avail: {i.closingQty}){i.expiryDate ? ` · Exp: ${formatDate(i.expiryDate)}` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  )}
+
+            {releaseItems.map((item, idx) => {
+              const total = Number(item.qtyWindhoek || 0) + Number(item.qtyOndangwa || 0);
+              const overLimit = item.availableQty > 0 && total > item.availableQty;
+              return (
+                <div key={idx} style={{ display: 'grid', gridTemplateColumns: '2.5fr 1fr 1fr auto', gap: 8, alignItems: 'center', padding: '8px 10px', background: overLimit ? '#fef2f2' : '#f8fafc', borderRadius: 8, border: `1px solid ${overLimit ? '#fecaca' : '#e2e8f0'}` }}>
+                  {/* Product info or selector */}
+                  <div>
+                    {item.productName ? (
+                      <div>
+                        <div className="text-sm font-semibold text-gray-800">{item.productName}</div>
+                        <div className="text-xs text-gray-500">
+                          {item.batchNo ? <>Batch: <span className="font-mono">{item.batchNo}</span></> : 'No batch'}
+                          {item.expiryDate ? ` · Exp: ${formatDate(item.expiryDate)}` : ''}
+                          {item.availableQty > 0 && <span className={`ml-2 font-semibold ${overLimit ? 'text-red-600' : 'text-gray-400'}`}>({total}/{item.availableQty} avail)</span>}
+                        </div>
+                      </div>
+                    ) : (
+                      <select value={item.batchKey || ''} onChange={e => {
+                        const key = e.target.value;
+                        const match = data.items.find(i => `${i.productName}||${i.batchNo}` === key);
+                        setReleaseItems(prev => prev.map((r, i) => i === idx ? {
+                          ...r, batchKey: key,
+                          productName: match?.productName || '',
+                          batchNo: match?.batchNo || '',
+                          expiryDate: match?.expiryDate || '',
+                          availableQty: match?.closingQty || 0,
+                        } : r));
+                      }} className="w-full px-2 py-1.5 rounded border border-gray-300 text-xs">
+                        <option value="">Select product + batch…</option>
+                        {data.items.filter(i => i.closingQty > 0).map(i => (
+                          <option key={`${i.productName}||${i.batchNo}`} value={`${i.productName}||${i.batchNo}`}>
+                            {i.productName} — Batch: {i.batchNo || 'N/A'} (Avail: {i.closingQty}){i.expiryDate ? ` · Exp: ${formatDate(i.expiryDate)}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                  {/* Windhoek qty */}
+                  <div className="flex flex-col items-center gap-0.5">
+                    <input type="number" min="0" max={item.availableQty || undefined} value={item.qtyWindhoek}
+                      onChange={e => setReleaseItems(prev => prev.map((r, i) => i === idx ? { ...r, qtyWindhoek: e.target.value } : r))}
+                      placeholder="0"
+                      style={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: '1px solid #bfdbfe', background: '#eff6ff', textAlign: 'center', fontSize: '0.88rem', fontWeight: 700, color: '#1e40af' }} />
+                  </div>
+                  {/* Ondangwa qty */}
+                  <div className="flex flex-col items-center gap-0.5">
+                    <input type="number" min="0" max={item.availableQty || undefined} value={item.qtyOndangwa}
+                      onChange={e => setReleaseItems(prev => prev.map((r, i) => i === idx ? { ...r, qtyOndangwa: e.target.value } : r))}
+                      placeholder="0"
+                      style={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: '1px solid #bbf7d0', background: '#f0fdf4', textAlign: 'center', fontSize: '0.88rem', fontWeight: 700, color: '#065f46' }} />
+                  </div>
+                  <button type="button" onClick={() => setReleaseItems(prev => prev.filter((_, i) => i !== idx))}
+                    style={{ padding: '4px 8px', background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: 6, cursor: 'pointer', fontSize: '0.75rem' }}>✕</button>
                 </div>
-                <div className="flex items-center gap-2">
-                  <input type="number" min="1" max={item.availableQty || undefined} value={item.quantity}
-                    onChange={e => setReleaseItems(prev => prev.map((r, i) => i === idx ? { ...r, quantity: e.target.value } : r))}
-                    placeholder="Qty" className="w-20 px-2 py-1.5 rounded border border-gray-300 text-sm text-center" />
-                  {item.availableQty > 0 && <span className="text-xs text-gray-500 whitespace-nowrap">/ {item.availableQty} avail</span>}
-                </div>
-                <button type="button" onClick={() => setReleaseItems(prev => prev.filter((_, i) => i !== idx))}
-                  style={{ padding: '4px 8px', background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: 6, cursor: 'pointer', fontSize: '0.75rem' }}>✕</button>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           <div className="space-y-1">
             <label className="block text-sm font-medium text-gray-700">Notes (optional)</label>
             <textarea value={releaseNotes} onChange={e => setReleaseNotes(e.target.value)} rows={2}
-              placeholder="Add any notes about this release..."
+              placeholder="Add any dispatch notes…"
               className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary resize-none" />
           </div>
 
           <div className="flex gap-3 pt-1">
-            <Button type="submit" disabled={releasing || releaseItems.filter(i => Number(i.quantity) > 0).length === 0}>
-              <ArrowLeftRight size={15} /> {releasing ? 'Releasing…' : `Release to ${fmtLocation(releaseWarehouse)}`}
+            <Button type="submit" disabled={releasing || (
+              releaseItems.filter(i => Number(i.qtyWindhoek) > 0 || Number(i.qtyOndangwa) > 0).length === 0
+            )}>
+              <ArrowLeftRight size={15} /> {releasing ? 'Dispatching…' : 'Dispatch to Warehouses'}
             </Button>
             <Button variant="secondary" type="button" onClick={() => setReleaseOpen(false)}>Cancel</Button>
           </div>
