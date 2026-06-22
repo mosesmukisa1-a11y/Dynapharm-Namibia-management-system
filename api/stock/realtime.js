@@ -31,12 +31,14 @@ export default async function handler(req, res) {
 
   try {
     const [warehouseRows, branchRows, branchNames, recentMovements, recentSales] = await Promise.all([
+      // Use inventory_balances (admin-edit source of truth) instead of stock_batches
       getMany(
-        `SELECT location, description AS product_name, SUM(remaining_quantity) AS qty
-         FROM stock_batches
-         WHERE remaining_quantity > 0
-         GROUP BY location, description
-         ORDER BY location, description`
+        `SELECT location_id AS location, product_name, SUM(closing_qty) AS qty
+         FROM inventory_balances
+         WHERE closing_qty > 0
+           AND location_type IN ('country', 'warehouse')
+         GROUP BY location_id, product_name
+         ORDER BY location_id, product_name`
       ),
       getMany(
         `SELECT branch_id, product_name, SUM(quantity) AS qty

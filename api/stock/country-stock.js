@@ -1,6 +1,7 @@
 import { applyAuthCors } from '../_lib/auth.js';
 import { getMany, getOne, query } from '../db.js';
 import { recomputeInventoryBalance, recomputeLocationBalances, inferLocationType } from '../services/stockEngine.js';
+import { publishRealtimeEvent } from '../db.js';
 
 /**
  * Recompute inventory_balances for every location that has ever had
@@ -293,6 +294,13 @@ export default async function handler(req, res) {
       //       (not just country_stock — warehouse and branch balances must reflect price / expiry changes)
       const finalBatchKey = effectiveBatchNo || batchNoKey;
       await recomputeAllLocationsForBatch(productName, finalBatchKey);
+
+      // ── 9. Notify realtime subscribers (InventoryTab, RealtimeTab, FieldStockTab, etc.)
+      publishRealtimeEvent('inventory_balances', 'update', {
+        productName,
+        batchNo: finalBatchKey,
+        source: 'admin_country_stock_edit',
+      }).catch(() => {});
 
       return res.status(200).json({ success: true, message: 'Batch updated successfully' });
     } catch (err) {

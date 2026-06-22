@@ -1909,7 +1909,8 @@ function OverviewTab({ branch }) {
   const [data, setData] = useState({ batches: [], movements: [], transfers: [], imports: [], fieldStock: [], branchData: [] });
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const loadOverview = useCallback(() => {
+    setLoading(true);
     Promise.all([
       api.prices.list().catch(() => []),
       api.stock.batches().then(d => Array.isArray(d) ? d : d.batches || []).catch(() => []),
@@ -1930,6 +1931,13 @@ function OverviewTab({ branch }) {
       });
     }).finally(() => setLoading(false));
   }, []);
+
+  useStockRealtime({ onUpdate: loadOverview });
+  useEffect(() => { loadOverview(); }, [loadOverview]);
+  useEffect(() => {
+    const iv = setInterval(loadOverview, 60000);
+    return () => clearInterval(iv);
+  }, [loadOverview]);
 
   if (loading) return <LoadingSpinner />;
 
@@ -3095,6 +3103,10 @@ function WarehouseTab({ name }) {
   }, [location, name, whKey]);
 
   useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => {
+    const iv = setInterval(loadData, 60000);
+    return () => clearInterval(iv);
+  }, [loadData]);
 
   const handleAcceptDispatch = async (transfer) => {
     setReceivingId(transfer.id);
@@ -5206,6 +5218,10 @@ function DistributionTab({ branch }) {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => {
+    const iv = setInterval(loadData, 60000);
+    return () => clearInterval(iv);
+  }, [loadData]);
 
   const warehouseDestinations = [
     { value: '', label: 'Select destination warehouse...' },
@@ -7112,12 +7128,20 @@ function ValuationTab({ branch }) {
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState('product');
 
-  useEffect(() => {
+  const loadValuation = useCallback(() => {
+    setLoading(true);
     api.stock.batches()
       .then(d => setBatches(Array.isArray(d) ? d : d.batches || []))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
+
+  useStockRealtime({ onUpdate: loadValuation });
+  useEffect(() => { loadValuation(); }, [loadValuation]);
+  useEffect(() => {
+    const iv = setInterval(loadValuation, 60000);
+    return () => clearInterval(iv);
+  }, [loadValuation]);
 
   if (loading) return <LoadingSpinner />;
 
