@@ -106,13 +106,13 @@ export default async function handler(req, res) {
       if (!productName) return res.status(400).json({ success: false, error: 'productName is required' });
       if (!reason || !reason.trim()) return res.status(400).json({ success: false, error: 'reason is required' });
 
-      // Find the batch record
+      // Find the batch record (stock_batches uses 'description' for product name)
       const batch = await getOne(
         `SELECT id, remaining_quantity, expiry_date, batch_no, dpc_unit_value, notes
          FROM stock_batches
          WHERE location = 'country_stock'
-           AND product_name = $1
-           AND (batch_no = $2 OR ($2 IS NULL AND batch_no IS NULL))
+           AND LOWER(TRIM(description)) = LOWER(TRIM($1))
+           AND COALESCE(batch_no, '') = COALESCE($2, '')
          ORDER BY expiry_date ASC NULLS LAST
          LIMIT 1`,
         [productName, batchNo || null]
