@@ -495,6 +495,96 @@ export default async function handler(req, res) {
         // Hoist effectiveBranchId so it is accessible in the return value below
         // even when the deduction block is skipped (qty=0 / no productName).
         let effectiveBranchId = branchId;
+
+        // ── Warehouse write-off path ──────────────────────────────────────────
+        // If the source is a warehouse, deduct from stock_batches.remaining_quantity
+        // (warehouse stock lives in stock_batches, not branch_inventory_batches).
+        const sourceLocType = r.source_location_type || inferLocationType(branchId);
+        if (sourceLocType === 'warehouse') {
+          if (branchId && productName && qty > 0) {
+            // Immediately adjust inventory_balances in-transaction
+            await client.query(
+              `UPDATE inventory_balances
+               SET closing_qty = GREATEST(closing_qty - $1, 0),
+                   outward_qty = outward_qty + $1,
+                   updated_at  = NOW()
+               WHERE location_type = 'warehouse'
+                 AND LOWER(REPLACE(location_id,' ','_')) = LOWER(REPLACE($2,' ','_'))
+                 AND LOWER(TRIM(product_name)) = LOWER(TRIM($3))
+                 AND COALESCE(batch_no,'') = COALESCE($4,'')`,
+              [qty, branchId, productName, batchNo || null]
+            );
+
+            // Deduct from stock_batches — specific batch first, then FIFO by expiry
+            let remaining = qty;
+            if (batchNo) {
+              const specific = await client.query(
+                `SELECT id, remaining_quantity FROM stock_batches
+                 WHERE (LOWER(TRIM(location)) = LOWER(TRIM($1)) OR LOWER(TRIM(COALESCE(warehouse_id,''))) = LOWER(TRIM($1)))
+                   AND LOWER(TRIM(description)) = LOWER(TRIM($2))
+                   AND LOWER(TRIM(COALESCE(batch_no,''))) = LOWER(TRIM($3))
+                   AND remaining_quantity > 0
+                 ORDER BY expiry_date ASC NULLS LAST FOR UPDATE`,
+                [branchId, productName, batchNo]
+              );
+              for (const b of specific.rows) {
+                if (remaining <= 0) break;
+                const take = Math.min(remaining, Number(b.remaining_quantity));
+                await client.query(
+                  `UPDATE stock_batches SET remaining_quantity = remaining_quantity - $1, updated_at = NOW() WHERE id = $2`,
+                  [take, b.id]
+                );
+                remaining -= take;
+              }
+            }
+            if (remaining > 0) {
+              const fifo = await client.query(
+                `SELECT id, remaining_quantity FROM stock_batches
+                 WHERE (LOWER(TRIM(location)) = LOWER(TRIM($1)) OR LOWER(TRIM(COALESCE(warehouse_id,''))) = LOWER(TRIM($1)))
+                   AND LOWER(TRIM(description)) = LOWER(TRIM($2))
+                   AND remaining_quantity > 0
+                   ${batchNo ? `AND LOWER(TRIM(COALESCE(batch_no,''))) != LOWER(TRIM($3))` : ''}
+                 ORDER BY expiry_date ASC NULLS LAST FOR UPDATE`,
+                batchNo ? [branchId, productName, batchNo] : [branchId, productName]
+              );
+              for (const b of fifo.rows) {
+                if (remaining <= 0) break;
+                const take = Math.min(remaining, Number(b.remaining_quantity));
+                await client.query(
+                  `UPDATE stock_batches SET remaining_quantity = remaining_quantity - $1, updated_at = NOW() WHERE id = $2`,
+                  [take, b.id]
+                );
+                remaining -= take;
+              }
+            }
+
+            // Log in warehouse_inventory_movements
+            const wimId = `WIM-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+            const woReason = r.write_off_reason || (r.notes ? r.notes.split(' — ')[0].split('|')[0].trim() : null);
+            await client.query(
+              `INSERT INTO warehouse_inventory_movements
+                 (id, warehouse_id, product_name, batch_no, movement_type, quantity, reference, notes, created_by, created_at)
+               VALUES ($1, $2, $3, $4, 'write_off', $5, $6, $7, $8, NOW())`,
+              [wimId, branchId, productName, batchNo || '', qty,
+               r.reference_id, (r.notes || woReason || '').trim(), gmName]
+            );
+          }
+
+          const derivedReasonWh = r.write_off_reason || (r.notes ? r.notes.split(' — ')[0].split('|')[0].trim() : null);
+          await client.query(
+            `UPDATE stock_movements
+             SET status = 'approved', approved_by = $1,
+                 notes = COALESCE(notes,'') || $2,
+                 disposal_status = 'dispose_off',
+                 write_off_reason = COALESCE(write_off_reason, $3),
+                 updated_at = NOW()
+             WHERE id = $4`,
+            [gmName, gmNote ? ` | GM: ${gmNote}` : '', derivedReasonWh, id]
+          );
+          return { branchId: null, effectiveBranchId: null, warehouseId: branchId };
+        }
+        // ── End warehouse write-off path ──────────────────────────────────────
+
         // Deduct from branch_inventory_batches
         if (branchId && productName && qty > 0) {
           // Resolve the actual branch_id stored in branch_inventory_batches.

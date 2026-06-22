@@ -3085,6 +3085,9 @@ function WarehouseTab({ name }) {
   const [mvTypeFilter, setMvTypeFilter] = useState('');
   const [mvProductSearch, setMvProductSearch] = useState('');
   const [writeoffReturns, setWriteoffReturns] = useState([]);
+  const [writeoffRecord, setWriteoffRecord] = useState(null);
+  const [writeoffForm, setWriteoffForm] = useState({ qty: '', reason: '', notes: '' });
+  const [writeoffSubmitting, setWriteoffSubmitting] = useState(false);
   const location = name.toLowerCase() + '_warehouse';
   const whKey = name.toLowerCase();
 
@@ -3259,12 +3262,19 @@ function WarehouseTab({ name }) {
     ...BRANCH_DETAILS.map(b => ({ value: b.id, label: b.name })),
   ];
 
+  const warehouseWriteoffs = movements.filter(m =>
+    m.movement_type === 'write_off' &&
+    (m.source_location === location || m.source_location === whKey)
+  );
+  const pendingWarehouseWriteoffs = warehouseWriteoffs.filter(m => m.status === 'pending_approval');
+
   const whSubTabs = [
     { id: 'inventory', label: `📦 Inventory (${batches.length})` },
     { id: 'incoming', label: `📥 Incoming (${pendingGMApproval.length + pendingReceipt.length + receivedHistory.length})${(pendingGMApproval.length + pendingReceipt.length) > 0 ? ' 🔔' : ''}` },
     { id: 'outbound', label: `🚚 Outbound (${outboundTransfers.length})` },
     { id: 'movements', label: `📊 Movements (${movements.length})` },
     { id: 'returns', label: `↩ Branch Returns (${writeoffReturns.length})${writeoffReturns.length > 0 ? ' 🔔' : ''}` },
+    { id: 'write_offs', label: `❌ Write-Offs (${warehouseWriteoffs.length})${pendingWarehouseWriteoffs.length > 0 ? ' 🔔' : ''}` },
   ];
 
   if (loading) return <LoadingSpinner />;
@@ -3336,10 +3346,18 @@ function WarehouseTab({ name }) {
               { header: 'CIF/Unit', render: r => formatCurrency(getBatchCIF(r)) },
               { header: 'DPC/Unit', render: r => formatCurrency(Number(r.dpc_unit_value || 0) || getDPCPrice(r.description || r.product_name || '')) },
               { header: '', render: r => (
-                <button onClick={() => setAdjRecord(r)} title="Request correction (requires GM approval)"
-                  style={{ padding: '4px 10px', background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d', borderRadius: 6, cursor: 'pointer', fontSize: '0.76rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <Edit2 size={12} /> Edit
-                </button>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={() => setAdjRecord(r)} title="Request correction (requires GM approval)"
+                    style={{ padding: '4px 10px', background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d', borderRadius: 6, cursor: 'pointer', fontSize: '0.76rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <Edit2 size={12} /> Edit
+                  </button>
+                  <button
+                    onClick={() => { setWriteoffRecord(r); setWriteoffForm({ qty: '', reason: '', notes: '' }); }}
+                    title="Write off warehouse stock (requires GM approval)"
+                    style={{ padding: '4px 10px', background: '#fee2e2', color: '#991b1b', border: '1px solid #fca5a5', borderRadius: 6, cursor: 'pointer', fontSize: '0.76rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    ✕ Write Off
+                  </button>
+                </div>
               )},
             ]}
             data={batches}
@@ -4234,6 +4252,238 @@ function WarehouseTab({ name }) {
               </div>
             </Card>
           )}
+        </div>
+      )}
+
+      {subTab === 'write_offs' && (
+        <div className="space-y-4">
+          <div style={{ background: '#fef2f2', border: '2px solid #fca5a5', borderRadius: 12, padding: '12px 18px' }}>
+            <p className="text-sm" style={{ color: '#991b1b' }}>
+              <strong>❌ Warehouse Write-Offs</strong> — Write off damaged, expired, or otherwise unusable stock directly from <strong>{name} Warehouse</strong>.
+              Submissions require <strong>GM approval</strong> before stock is deducted. Click <em>✕ Write Off</em> on any inventory row to submit a request.
+            </p>
+          </div>
+
+          {warehouseWriteoffs.length === 0 ? (
+            <Card>
+              <CardBody>
+                <EmptyState
+                  icon={<Package size={40} />}
+                  title="No Write-Offs Yet"
+                  description={`No write-off requests have been submitted for ${name} Warehouse. Click the ✕ Write Off button on any inventory row to submit one.`}
+                />
+              </CardBody>
+            </Card>
+          ) : (
+            <Card>
+              <CardHeader>
+                <div className="flex justify-between items-center flex-wrap gap-2">
+                  <div>
+                    <h3 className="font-bold text-gray-800">❌ Write-Offs — {name} Warehouse</h3>
+                    <p className="text-xs text-gray-500 mt-0.5">{warehouseWriteoffs.length} record{warehouseWriteoffs.length !== 1 ? 's' : ''} · {pendingWarehouseWriteoffs.length} pending GM approval</p>
+                  </div>
+                  <Button size="sm" variant="secondary" onClick={loadData}>↺ Refresh</Button>
+                </div>
+              </CardHeader>
+              <div className="overflow-x-auto">
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                  <thead>
+                    <tr style={{ background: '#fef2f2', borderBottom: '2px solid #fca5a5' }}>
+                      <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#991b1b' }}>Product</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#991b1b' }}>Batch #</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 700, color: '#991b1b' }}>Qty</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#991b1b' }}>Reason</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#991b1b' }}>Status</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#991b1b' }}>Submitted By</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#991b1b' }}>Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {warehouseWriteoffs.map((m, idx) => {
+                      const statusColors = {
+                        pending_approval: { bg: '#fef3c7', color: '#92400e', label: '⏳ Pending GM' },
+                        approved: { bg: '#dcfce7', color: '#166534', label: '✅ Approved' },
+                        rejected: { bg: '#fef2f2', color: '#991b1b', label: '❌ Rejected' },
+                        posted: { bg: '#eff6ff', color: '#1d4ed8', label: '📋 Posted' },
+                      };
+                      const sc = statusColors[m.status] || { bg: '#f8fafc', color: '#64748b', label: m.status };
+                      const reason = m.write_off_reason || (m.notes ? m.notes.split(' — ')[0].split('|')[0].trim() : null) || '—';
+                      return (
+                        <tr key={m.id || idx} style={{ background: idx % 2 === 0 ? '#fff' : '#fef2f2', borderBottom: '1px solid #fee2e2' }}>
+                          <td style={{ padding: '9px 12px', fontWeight: 600, color: '#1e293b' }}>{m.product_name || '—'}</td>
+                          <td style={{ padding: '9px 12px' }}>
+                            <span style={{ background: '#fef3c7', color: '#92400e', padding: '2px 8px', borderRadius: 5, fontFamily: 'monospace', fontSize: '0.76rem', fontWeight: 700 }}>
+                              {m.batch_no || '—'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 800, color: '#dc2626', fontSize: '0.95rem' }}>
+                            -{Number(m.quantity || 0).toLocaleString()}
+                          </td>
+                          <td style={{ padding: '9px 12px', color: '#64748b', fontSize: '0.78rem' }}>
+                            <span style={{ fontStyle: 'italic' }}>{String(reason).replace(/_/g, ' ')}</span>
+                          </td>
+                          <td style={{ padding: '9px 12px' }}>
+                            <span style={{ background: sc.bg, color: sc.color, padding: '3px 10px', borderRadius: 6, fontWeight: 700, fontSize: '0.73rem' }}>
+                              {sc.label}
+                            </span>
+                          </td>
+                          <td style={{ padding: '9px 12px' }}>
+                            {m.created_by ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                                <span style={{ width: 22, height: 22, borderRadius: '50%', background: '#fee2e2', color: '#991b1b', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.65rem', flexShrink: 0 }}>
+                                  {m.created_by[0]?.toUpperCase()}
+                                </span>
+                                <span style={{ fontSize: '0.78rem', color: '#374151' }}>{m.created_by}</span>
+                              </div>
+                            ) : <span style={{ color: '#cbd5e1' }}>—</span>}
+                          </td>
+                          <td style={{ padding: '9px 12px', color: '#64748b', whiteSpace: 'nowrap' }}>
+                            <div style={{ fontWeight: 600, color: '#374151', fontSize: '0.78rem' }}>{formatDate(m.created_at)}</div>
+                            <div style={{ color: '#94a3b8', fontSize: '0.69rem' }}>{m.created_at ? new Date(m.created_at).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' }) : ''}</div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ background: '#fef2f2', borderTop: '2px solid #fca5a5' }}>
+                      <td colSpan={2} style={{ padding: '8px 12px', fontWeight: 700, color: '#991b1b', fontSize: '0.8rem' }}>
+                        TOTAL ({warehouseWriteoffs.length} records)
+                      </td>
+                      <td style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 900, color: '#dc2626', fontSize: '0.9rem' }}>
+                        -{warehouseWriteoffs.reduce((s, m) => s + Number(m.quantity || 0), 0).toLocaleString()}
+                      </td>
+                      <td colSpan={4} style={{ padding: '8px 12px', fontSize: '0.75rem', color: '#991b1b' }}>
+                        units written off from {name} Warehouse
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {writeoffRecord && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: 14, padding: 28, width: 480, maxWidth: '95vw', boxShadow: '0 25px 60px rgba(0,0,0,0.25)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18 }}>
+              <div>
+                <h3 style={{ fontWeight: 800, fontSize: '1.1rem', color: '#1e293b', margin: 0 }}>❌ Write Off Warehouse Stock</h3>
+                <p style={{ fontSize: '0.8rem', color: '#64748b', marginTop: 4 }}>Requires GM approval before stock is deducted</p>
+              </div>
+              <button onClick={() => setWriteoffRecord(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: '1.3rem', lineHeight: 1, padding: 4 }}>×</button>
+            </div>
+
+            <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 10, padding: '10px 14px', marginBottom: 18, fontSize: '0.83rem' }}>
+              <div style={{ fontWeight: 700, color: '#991b1b', marginBottom: 4 }}>{writeoffRecord.description || writeoffRecord.product_name}</div>
+              <div style={{ display: 'flex', gap: 16, color: '#64748b', flexWrap: 'wrap' }}>
+                {writeoffRecord.batch_no && <span>Batch: <strong style={{ color: '#374151' }}>{writeoffRecord.batch_no}</strong></span>}
+                {writeoffRecord.expiry_date && <span>Expiry: <strong style={{ color: '#374151' }}>{formatDate(writeoffRecord.expiry_date)}</strong></span>}
+                <span>Available: <strong style={{ color: '#dc2626' }}>{Number(writeoffRecord.remaining_quantity || writeoffRecord.quantity || 0).toLocaleString()} units</strong></span>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div>
+                <label style={{ fontWeight: 700, fontSize: '0.83rem', color: '#374151', display: 'block', marginBottom: 5 }}>
+                  Quantity to Write Off <span style={{ color: '#dc2626' }}>*</span>
+                  <span style={{ fontWeight: 400, color: '#94a3b8', marginLeft: 6 }}>
+                    (max {Number(writeoffRecord.remaining_quantity || writeoffRecord.quantity || 0).toLocaleString()})
+                  </span>
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={Number(writeoffRecord.remaining_quantity || writeoffRecord.quantity || 0)}
+                  value={writeoffForm.qty}
+                  onChange={e => setWriteoffForm(f => ({ ...f, qty: e.target.value }))}
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: '0.9rem', boxSizing: 'border-box' }}
+                  placeholder="Enter quantity..."
+                />
+              </div>
+
+              <div>
+                <label style={{ fontWeight: 700, fontSize: '0.83rem', color: '#374151', display: 'block', marginBottom: 5 }}>
+                  Reason <span style={{ color: '#dc2626' }}>*</span>
+                </label>
+                <select
+                  value={writeoffForm.reason}
+                  onChange={e => setWriteoffForm(f => ({ ...f, reason: e.target.value }))}
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: '0.85rem', background: '#fff', boxSizing: 'border-box' }}>
+                  <option value="">Select reason...</option>
+                  <option value="expired">Expired</option>
+                  <option value="damaged">Damaged</option>
+                  <option value="stolen">Stolen / Missing</option>
+                  <option value="contaminated">Contaminated</option>
+                  <option value="field_use">Field Use / Sample</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontWeight: 700, fontSize: '0.83rem', color: '#374151', display: 'block', marginBottom: 5 }}>
+                  Additional Notes <span style={{ fontWeight: 400, color: '#94a3b8' }}>(optional)</span>
+                </label>
+                <textarea
+                  rows={2}
+                  value={writeoffForm.notes}
+                  onChange={e => setWriteoffForm(f => ({ ...f, notes: e.target.value }))}
+                  placeholder="e.g. Found during stock count, water damage..."
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: '0.85rem', resize: 'vertical', boxSizing: 'border-box' }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 22 }}>
+              <button
+                onClick={() => setWriteoffRecord(null)}
+                disabled={writeoffSubmitting}
+                style={{ padding: '9px 22px', borderRadius: 8, border: '1px solid #d1d5db', background: '#f8fafc', color: '#374151', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem' }}>
+                Cancel
+              </button>
+              <button
+                disabled={writeoffSubmitting}
+                onClick={async () => {
+                  const maxQty = Number(writeoffRecord.remaining_quantity || writeoffRecord.quantity || 0);
+                  const qty = Number(writeoffForm.qty);
+                  if (!qty || qty <= 0) { setAlert({ type: 'error', msg: 'Enter a valid quantity' }); return; }
+                  if (qty > maxQty) { setAlert({ type: 'error', msg: `Cannot write off more than available stock (${maxQty})` }); return; }
+                  if (!writeoffForm.reason) { setAlert({ type: 'error', msg: 'Select a reason' }); return; }
+                  setWriteoffSubmitting(true);
+                  try {
+                    const ref = `WH-WO-${Date.now().toString(36).toUpperCase()}`;
+                    await api.stock.createMovement({
+                      movement_type: 'write_off',
+                      source_location: location,
+                      source_location_type: 'warehouse',
+                      product_name: writeoffRecord.description || writeoffRecord.product_name,
+                      batch_no: writeoffRecord.batch_no || null,
+                      expiry_date: writeoffRecord.expiry_date || null,
+                      quantity: qty,
+                      reason: writeoffForm.reason,
+                      write_off_reason: writeoffForm.reason,
+                      notes: `${writeoffForm.reason}${writeoffForm.notes ? ' — ' + writeoffForm.notes : ''}`,
+                      reference_id: ref,
+                      created_by: user?.full_name || user?.username,
+                      status: 'pending_approval',
+                    });
+                    setAlert({ type: 'success', msg: `Write-off submitted for ${qty} × ${writeoffRecord.description || writeoffRecord.product_name} — awaiting GM approval.` });
+                    setWriteoffRecord(null);
+                    setSubTab('write_offs');
+                    setTimeout(() => loadData(), 200);
+                  } catch (err) {
+                    setAlert({ type: 'error', msg: err.message || 'Failed to submit write-off' });
+                  } finally {
+                    setWriteoffSubmitting(false);
+                  }
+                }}
+                style={{ padding: '9px 22px', borderRadius: 8, border: 'none', background: '#dc2626', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem', opacity: writeoffSubmitting ? 0.7 : 1 }}>
+                {writeoffSubmitting ? 'Submitting…' : '✕ Submit Write-Off'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
