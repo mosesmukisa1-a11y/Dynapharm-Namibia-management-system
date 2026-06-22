@@ -1,6 +1,48 @@
 import { applyAuthCors } from '../_lib/auth.js';
 import { getMany, getOne, query } from '../db.js';
-import { recomputeLocationBalances } from '../services/stockEngine.js';
+import { recomputeInventoryBalance, recomputeLocationBalances, inferLocationType } from '../services/stockEngine.js';
+
+/**
+ * Recompute inventory_balances for every location that has ever had
+ * a stock_movement for the given product+batch combination.
+ */
+async function recomputeAllLocationsForBatch(productName, batchNoKey) {
+  const result = await query(
+    `SELECT DISTINCT
+       COALESCE(source_location_type, NULL) AS loc_type, source_location AS loc_id
+     FROM stock_movements
+     WHERE LOWER(TRIM(product_name)) = LOWER(TRIM($1))
+       AND COALESCE(batch_no, '') = $2
+       AND source_location IS NOT NULL
+     UNION
+     SELECT DISTINCT
+       COALESCE(destination_location_type, NULL) AS loc_type, destination_location AS loc_id
+     FROM stock_movements
+     WHERE LOWER(TRIM(product_name)) = LOWER(TRIM($1))
+       AND COALESCE(batch_no, '') = $2
+       AND destination_location IS NOT NULL`,
+    [productName, batchNoKey]
+  );
+
+  const seen = new Set();
+  for (const row of result.rows) {
+    const locType = row.loc_type || inferLocationType(row.loc_id);
+    if (!locType || !row.loc_id) continue;
+    const key = `${locType}::${row.loc_id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    try {
+      await recomputeInventoryBalance({
+        locationType: locType,
+        locationId: row.loc_id,
+        productName,
+        batchNo: batchNoKey,
+      });
+    } catch (e) {
+      console.error(`[country-stock PUT] recompute error for ${key}:`, e.message);
+    }
+  }
+}
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
@@ -174,7 +216,8 @@ export default async function handler(req, res) {
         }
       }
 
-      // ── 4. Unit DP change: update existing stock_movements so recompute picks up new price
+      // ── 4. Unit DP change: update ALL stock_movements for this batch across every location
+      //       (warehouse→branch transfers don't reference country_stock but carry the same price)
       if (unitDp !== undefined && unitDp !== null && unitDp !== '') {
         const dp = Number(unitDp);
         if (isNaN(dp) || dp < 0) {
@@ -184,13 +227,21 @@ export default async function handler(req, res) {
           `UPDATE stock_movements
            SET unit_dp = $1, updated_at = NOW()
            WHERE LOWER(TRIM(product_name)) = LOWER(TRIM($2))
-             AND COALESCE(batch_no, '') = $3
-             AND (source_location = 'country_stock' OR destination_location = 'country_stock')`,
+             AND COALESCE(batch_no, '') = $3`,
+          [dp, productName, batchNoKey]
+        );
+        // Also update all stock_batches rows for this product+batch across all locations
+        await query(
+          `UPDATE stock_batches
+           SET dpc_unit_value = $1, updated_at = NOW()
+           WHERE LOWER(TRIM(description)) = LOWER(TRIM($2))
+             AND COALESCE(batch_no, '') = $3`,
           [dp, productName, batchNoKey]
         );
       }
 
-      // ── 5. Expiry date change: update stock_batches + all stock_movements for this batch
+      // ── 5. Expiry date change: propagate to ALL stock_movements + ALL stock_batches for this
+      //       product+batch across every location (expiry is a property of the batch, not location)
       if (expiryDate !== undefined && expiryDate !== null && expiryDate !== '') {
         await query(
           `UPDATE stock_movements SET expiry_date = $1, updated_at = NOW()
@@ -198,9 +249,15 @@ export default async function handler(req, res) {
              AND COALESCE(batch_no, '') = $3`,
           [expiryDate, productName, batchNoKey]
         );
+        await query(
+          `UPDATE stock_batches SET expiry_date = $1, updated_at = NOW()
+           WHERE LOWER(TRIM(description)) = LOWER(TRIM($2))
+             AND COALESCE(batch_no, '') = $3`,
+          [expiryDate, productName, batchNoKey]
+        );
       }
 
-      // ── 6. Batch number rename: update stock_movements + stock_batches
+      // ── 6. Batch number rename: propagate to ALL stock_movements + ALL stock_batches
       const effectiveBatchNo = (newBatchNo !== undefined && newBatchNo !== null && newBatchNo !== '' && newBatchNo !== batchNo)
         ? newBatchNo.trim() : null;
       if (effectiveBatchNo) {
@@ -210,23 +267,21 @@ export default async function handler(req, res) {
              AND COALESCE(batch_no, '') = $3`,
           [effectiveBatchNo, productName, batchNoKey]
         );
+        await query(
+          `UPDATE stock_batches SET batch_no = $1, updated_at = NOW()
+           WHERE LOWER(TRIM(description)) = LOWER(TRIM($2))
+             AND COALESCE(batch_no, '') = $3`,
+          [effectiveBatchNo, productName, batchNoKey]
+        );
       }
 
-      // ── 7. Update stock_batches for FEFO deduction consistency
+      // ── 7. Update the country_stock batch remaining_quantity + notes (location-specific fields)
+      //       unit_dp / expiry_date / batch_no already propagated system-wide above
       const batchSets = ['updated_at = NOW()'];
       const batchParams = [];
       let bp = 1;
       if (remainingQty !== undefined && remainingQty !== null && remainingQty !== '') {
         batchSets.push(`remaining_quantity = $${bp++}`); batchParams.push(Number(remainingQty));
-      }
-      if (expiryDate !== undefined && expiryDate !== null && expiryDate !== '') {
-        batchSets.push(`expiry_date = $${bp++}`); batchParams.push(expiryDate);
-      }
-      if (effectiveBatchNo) {
-        batchSets.push(`batch_no = $${bp++}`); batchParams.push(effectiveBatchNo);
-      }
-      if (unitDp !== undefined && unitDp !== null && unitDp !== '') {
-        batchSets.push(`dpc_unit_value = $${bp++}`); batchParams.push(Number(unitDp));
       }
       if (notes !== undefined && notes !== null) {
         batchSets.push(`notes = $${bp++}`); batchParams.push(notes);
@@ -234,8 +289,10 @@ export default async function handler(req, res) {
       batchParams.push(batch.id);
       await query(`UPDATE stock_batches SET ${batchSets.join(', ')} WHERE id = $${bp}`, batchParams);
 
-      // ── 8. Recompute inventory_balances from the now-updated stock_movements
-      await recomputeLocationBalances('country', 'country_stock');
+      // ── 8. Recompute inventory_balances for EVERY location that has ever handled this batch
+      //       (not just country_stock — warehouse and branch balances must reflect price / expiry changes)
+      const finalBatchKey = effectiveBatchNo || batchNoKey;
+      await recomputeAllLocationsForBatch(productName, finalBatchKey);
 
       return res.status(200).json({ success: true, message: 'Batch updated successfully' });
     } catch (err) {
