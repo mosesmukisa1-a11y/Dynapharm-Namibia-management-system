@@ -27,11 +27,11 @@ export default async function handler(req, res) {
       [start, end]
     ),
 
-    // Deposits confirmed in this period
+    // Deposits verified (approved) in this period
     getOne(
       `SELECT COALESCE(SUM(amount),0) as total
        FROM branch_bank_deposits
-       WHERE status='confirmed' AND date >= $1::date AND date <= $2::date`,
+       WHERE status IN ('confirmed','approved') AND date >= $1::date AND date <= $2::date`,
       [start, end]
     ),
 

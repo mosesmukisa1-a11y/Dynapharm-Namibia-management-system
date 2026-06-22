@@ -71,7 +71,7 @@ export default async function handler(req, res) {
 
   // Deposits (confirmed)
   const depositSum = await getOne(
-    `SELECT COALESCE(SUM(amount),0) as total FROM branch_bank_deposits WHERE status='confirmed' AND date >= $1::date AND date <= $2::date`,
+    `SELECT COALESCE(SUM(amount),0) as total FROM branch_bank_deposits WHERE status IN ('confirmed','approved') AND date >= $1::date AND date <= $2::date`,
     [start, end]
   );
   const totalDeposits = Number(depositSum?.total || 0);
