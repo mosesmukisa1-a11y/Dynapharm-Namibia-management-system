@@ -1,6 +1,6 @@
 /**
  * GET /api/director/branches/revenue-contribution?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
- * Each branch's % share of total company revenue.
+ * Each branch's % share of total company revenue (after refund deductions).
  */
 import { getDateRange, getAllBranchLocations, normalizeBranchName } from '../../services/gmFinanceMisEngine.js';
 import { getMany } from '../../db.js';
@@ -10,7 +10,7 @@ export default async function handler(req, res) {
 
   const { start, end } = getDateRange(req.query);
 
-  const [branchLocations, salesRows] = await Promise.all([
+  const [branchLocations, salesRows, refundRows] = await Promise.all([
     getAllBranchLocations(),
     getMany(
       `SELECT branch_id, COALESCE(SUM(total),0) as revenue
@@ -20,10 +20,29 @@ export default async function handler(req, res) {
        GROUP BY branch_id`,
       [start, end]
     ),
+    getMany(
+      `SELECT branch_id, COALESCE(SUM(refund_amount), 0) AS refund_total
+       FROM branch_refund_requests
+       WHERE status = 'approved'
+         AND processed_at::date >= $1::date
+         AND processed_at::date <= $2::date
+       GROUP BY branch_id`,
+      [start, end]
+    ),
   ]);
 
   const branchNameMap = new Map(branchLocations.map(l => [l.locationId, l.locationName]));
-  const salesMap = new Map(salesRows.map(r => [r.branch_id, Number(r.revenue)]));
+
+  // Build refund map keyed by normalised branch_id
+  const refundMap = new Map(refundRows.map(r => [
+    (r.branch_id || '').toLowerCase().replace(/ /g, '_'),
+    Number(r.refund_total || 0),
+  ]));
+
+  const salesMap = new Map(salesRows.map(r => {
+    const refund = refundMap.get((r.branch_id || '').toLowerCase().replace(/ /g, '_')) || 0;
+    return [r.branch_id, Math.max(0, Number(r.revenue) - refund)];
+  }));
 
   const allBranchIds = new Set([
     ...branchLocations.map(l => l.locationId),

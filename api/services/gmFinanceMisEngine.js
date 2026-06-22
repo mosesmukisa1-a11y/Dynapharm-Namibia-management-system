@@ -417,14 +417,20 @@ export async function getAllBranchesSalesRevenue(start, end) {
     let amt;
     // Non-member walk-in: branch_walkin_sales.total = CP (consumer price).
     // Parse item-level DP to get the true distributor-price basis.
+    // Fallback to total when items is empty (e.g. older records with customer_type='customer').
     if (ct.includes('non') || (!ct.includes('member') && !ct.includes('online'))) {
       let items = [];
       try { items = typeof r.items === 'string' ? JSON.parse(r.items) : (Array.isArray(r.items) ? r.items : []); } catch {}
-      amt = items.reduce((s, i) => {
-        const nm = (i.product_name || i.name || i.description || '').trim();
-        const dp = lookupDpABSR(nm) || Number(i.dpPrice || i.dp || i.unit_price || 0);
-        return s + dp * Number(i.quantity || i.qty || 1);
-      }, 0);
+      if (items.length > 0) {
+        amt = items.reduce((s, i) => {
+          const nm = (i.product_name || i.name || i.description || '').trim();
+          const dp = lookupDpABSR(nm) || Number(i.dpPrice || i.dp || i.unit_price || 0);
+          return s + dp * Number(i.quantity || i.qty || 1);
+        }, 0);
+      } else {
+        // No item detail — use total as-is (already at DP or best available)
+        amt = Number(r.total || 0);
+      }
     } else {
       // Member and online sales: total = DP (members pay at DP)
       amt = Number(r.total || 0);
