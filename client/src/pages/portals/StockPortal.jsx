@@ -2527,6 +2527,10 @@ function CountryStockTab() {
   const [releasing, setReleasing] = useState(false);
   const [releaseAlert, setReleaseAlert] = useState(null);
 
+  const [editRecord, setEditRecord] = useState(null);
+
+  const isAdmin = ['admin', 'superadmin', 'super_admin'].includes((user?.role || '').toLowerCase());
+
   const loadData = useCallback(() => {
     setLoading(true);
     api.stock.countryStock()
@@ -2708,12 +2712,22 @@ function CountryStockTab() {
                 </span>
               )},
               { header: 'DPC Value', render: r => <span className="text-xs">{formatCurrency(r.stockValueDP)}</span> },
-              { header: '', render: r => r.closingQty > 0 ? (
-                <button onClick={() => openReleaseModal(r)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 12px', background: '#dcfce7', color: '#166534', border: '1px solid #bbf7d0', borderRadius: 6, cursor: 'pointer', fontSize: '0.76rem', fontWeight: 700 }}>
-                  <ArrowLeftRight size={12} /> Release
-                </button>
-              ) : null },
+              { header: '', render: r => (
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  {r.closingQty > 0 && (
+                    <button onClick={() => openReleaseModal(r)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 12px', background: '#dcfce7', color: '#166534', border: '1px solid #bbf7d0', borderRadius: 6, cursor: 'pointer', fontSize: '0.76rem', fontWeight: 700 }}>
+                      <ArrowLeftRight size={12} /> Release
+                    </button>
+                  )}
+                  {isAdmin && (
+                    <button onClick={() => setEditRecord(r)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', borderRadius: 6, cursor: 'pointer', fontSize: '0.76rem', fontWeight: 700 }}>
+                      <Edit2 size={11} /> Edit
+                    </button>
+                  )}
+                </div>
+              ) },
             ]}
             data={filtered}
             emptyMessage="No country stock on hand — receive a supplier import to populate this."
@@ -2873,7 +2887,123 @@ function CountryStockTab() {
         open={!!adjRecord} onClose={() => setAdjRecord(null)}
         record={adjRecord} targetType="country_stock" location="country_stock"
       />
+
+      <AdminCountryStockEditModal
+        open={!!editRecord}
+        record={editRecord}
+        onClose={() => setEditRecord(null)}
+        onSaved={() => { setEditRecord(null); loadData(); }}
+      />
     </div>
+  );
+}
+
+function AdminCountryStockEditModal({ open, record, onClose, onSaved }) {
+  const { user } = useAuth();
+  const [remainingQty, setRemainingQty] = useState('');
+  const [expiryDate, setExpiryDate] = useState('');
+  const [newBatchNo, setNewBatchNo] = useState('');
+  const [unitDp, setUnitDp] = useState('');
+  const [notes, setNotes] = useState('');
+  const [reason, setReason] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [alert, setAlert] = useState(null);
+
+  useEffect(() => {
+    if (record) {
+      setRemainingQty(String(record.closingQty ?? ''));
+      setExpiryDate(record.expiryDate ? record.expiryDate.slice(0, 10) : '');
+      setNewBatchNo(record.batchNo || '');
+      setUnitDp(String(record.unitDP ?? ''));
+      setNotes('');
+      setReason('');
+      setAlert(null);
+    }
+  }, [record]);
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    if (!reason.trim()) { setAlert({ type: 'error', msg: 'Reason is required' }); return; }
+    setSaving(true);
+    setAlert(null);
+    try {
+      await api.stock.editCountryStock({
+        productName: record.productName,
+        batchNo: record.batchNo,
+        remainingQty: remainingQty !== '' ? Number(remainingQty) : undefined,
+        expiryDate: expiryDate || undefined,
+        newBatchNo: newBatchNo !== record.batchNo ? newBatchNo : undefined,
+        unitDp: unitDp !== '' ? Number(unitDp) : undefined,
+        notes: notes || undefined,
+        reason,
+      });
+      setAlert({ type: 'success', msg: 'Stock record updated successfully.' });
+      setTimeout(() => onSaved(), 800);
+    } catch (err) {
+      setAlert({ type: 'error', msg: err.message || 'Failed to save' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title="Edit Country Stock Record (Admin)" size="md">
+      {record && (
+        <form onSubmit={handleSave} className="p-6 space-y-4">
+          <Alert type="warning">
+            This is a direct admin edit. Changes take effect immediately without GM approval. All edits are logged for audit.
+          </Alert>
+          {alert && <Alert type={alert.type}>{alert.msg}</Alert>}
+
+          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '10px 14px' }}>
+            <p className="text-xs text-gray-500 font-semibold mb-0.5">Editing</p>
+            <p className="text-sm font-bold text-gray-800">{record.productName}</p>
+            <p className="text-xs text-gray-500">Batch: {record.batchNo || '—'} · Current qty: {record.closingQty?.toLocaleString()}</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="block text-xs font-semibold text-gray-700">Quantity on Hand</label>
+              <input type="number" min="0" step="1" value={remainingQty} onChange={e => setRemainingQty(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary" />
+            </div>
+            <div className="space-y-1">
+              <label className="block text-xs font-semibold text-gray-700">Unit DP (N$)</label>
+              <input type="number" min="0" step="0.01" value={unitDp} onChange={e => setUnitDp(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary" />
+            </div>
+            <div className="space-y-1">
+              <label className="block text-xs font-semibold text-gray-700">Batch Number</label>
+              <input type="text" value={newBatchNo} onChange={e => setNewBatchNo(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary" />
+            </div>
+            <div className="space-y-1">
+              <label className="block text-xs font-semibold text-gray-700">Expiry Date</label>
+              <input type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary" />
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="block text-xs font-semibold text-gray-700">Internal Notes (optional)</label>
+            <input type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder="e.g. Physical recount correction"
+              className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary" />
+          </div>
+
+          <div className="space-y-1">
+            <label className="block text-xs font-semibold text-gray-700">Reason for Change <span className="text-red-500">*</span></label>
+            <textarea value={reason} onChange={e => setReason(e.target.value)} rows={3} required
+              placeholder="State why this record is being corrected (e.g. data entry error, physical stocktake discrepancy)..."
+              className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary resize-y" />
+          </div>
+
+          <div className="flex gap-3 pt-1">
+            <Button type="submit" disabled={saving}><Edit2 size={14} /> {saving ? 'Saving…' : 'Save Changes'}</Button>
+            <Button variant="secondary" type="button" onClick={onClose}>Cancel</Button>
+          </div>
+        </form>
+      )}
+    </Modal>
   );
 }
 
