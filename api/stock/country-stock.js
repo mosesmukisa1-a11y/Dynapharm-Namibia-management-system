@@ -106,84 +106,136 @@ export default async function handler(req, res) {
       if (!productName) return res.status(400).json({ success: false, error: 'productName is required' });
       if (!reason || !reason.trim()) return res.status(400).json({ success: false, error: 'reason is required' });
 
-      // Find the batch record (stock_batches uses 'description' for product name)
+      const batchNoKey = batchNo || '';
+      const actor = user?.full_name || user?.username || 'admin';
+      const auditNote = `Admin edit by ${actor}: ${reason.trim()}`;
+
+      // ── 1. Find the stock_batches record (uses 'description' for product name)
       const batch = await getOne(
         `SELECT id, remaining_quantity, expiry_date, batch_no, dpc_unit_value, notes
          FROM stock_batches
          WHERE location = 'country_stock'
            AND LOWER(TRIM(description)) = LOWER(TRIM($1))
-           AND COALESCE(batch_no, '') = COALESCE($2, '')
+           AND COALESCE(batch_no, '') = $2
          ORDER BY expiry_date ASC NULLS LAST
          LIMIT 1`,
-        [productName, batchNo || null]
+        [productName, batchNoKey]
       );
 
       if (!batch) {
         return res.status(404).json({ success: false, error: `No country_stock batch found for ${productName} / ${batchNo || 'no batch'}` });
       }
 
-      // Build SET clause for only provided fields
-      const sets = [];
-      const params = [];
-      let p = 1;
+      // ── 2. Get current closing_qty from inventory_balances (source of truth for balance)
+      const currentBalance = await getOne(
+        `SELECT closing_qty FROM inventory_balances
+         WHERE location_type = 'country'
+           AND location_id = 'country_stock'
+           AND LOWER(TRIM(product_name)) = LOWER(TRIM($1))
+           AND COALESCE(batch_no, '') = $2
+         LIMIT 1`,
+        [productName, batchNoKey]
+      );
+      const currentQty = Number(currentBalance?.closing_qty ?? batch.remaining_quantity ?? 0);
 
+      // ── 3. Quantity correction: insert a corrective stock_movement so the
+      //       recompute (which reads stock_movements) arrives at the new qty.
       if (remainingQty !== undefined && remainingQty !== null && remainingQty !== '') {
-        const qty = Number(remainingQty);
-        if (isNaN(qty) || qty < 0) return res.status(400).json({ success: false, error: 'remainingQty must be a non-negative number' });
-        sets.push(`remaining_quantity = $${p++}`);
-        params.push(qty);
+        const newQty = Number(remainingQty);
+        if (isNaN(newQty) || newQty < 0) {
+          return res.status(400).json({ success: false, error: 'remainingQty must be a non-negative number' });
+        }
+        const delta = newQty - currentQty;
+        if (delta !== 0) {
+          const movType   = delta > 0 ? 'positive_adjustment' : 'negative_adjustment';
+          const srcLoc    = delta < 0 ? 'country_stock' : null;
+          const srcType   = delta < 0 ? 'country'       : null;
+          const dstLoc    = delta > 0 ? 'country_stock' : null;
+          const dstType   = delta > 0 ? 'country'       : null;
+          await query(
+            `INSERT INTO stock_movements
+               (id, movement_type,
+                source_location, source_location_type,
+                destination_location, destination_location_type,
+                product_name, batch_no, expiry_date, quantity,
+                unit_dp, notes, status, created_at, updated_at)
+             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'posted', NOW(), NOW())`,
+            [
+              movType,
+              srcLoc, srcType,
+              dstLoc, dstType,
+              productName, batchNo || null,
+              batch.expiry_date || null,
+              Math.abs(delta),
+              Number(unitDp ?? batch.dpc_unit_value ?? 0) || null,
+              auditNote,
+            ]
+          );
+        }
       }
-      if (expiryDate !== undefined && expiryDate !== null && expiryDate !== '') {
-        sets.push(`expiry_date = $${p++}`);
-        params.push(expiryDate);
-      }
-      if (newBatchNo !== undefined && newBatchNo !== null && newBatchNo !== '') {
-        sets.push(`batch_no = $${p++}`);
-        params.push(newBatchNo.trim());
-      }
+
+      // ── 4. Unit DP change: update existing stock_movements so recompute picks up new price
       if (unitDp !== undefined && unitDp !== null && unitDp !== '') {
         const dp = Number(unitDp);
-        if (isNaN(dp) || dp < 0) return res.status(400).json({ success: false, error: 'unitDp must be a non-negative number' });
-        sets.push(`dpc_unit_value = $${p++}`);
-        params.push(dp);
+        if (isNaN(dp) || dp < 0) {
+          return res.status(400).json({ success: false, error: 'unitDp must be a non-negative number' });
+        }
+        await query(
+          `UPDATE stock_movements
+           SET unit_dp = $1, updated_at = NOW()
+           WHERE LOWER(TRIM(product_name)) = LOWER(TRIM($2))
+             AND COALESCE(batch_no, '') = $3
+             AND (source_location = 'country_stock' OR destination_location = 'country_stock')`,
+          [dp, productName, batchNoKey]
+        );
+      }
+
+      // ── 5. Expiry date change: update stock_batches + all stock_movements for this batch
+      if (expiryDate !== undefined && expiryDate !== null && expiryDate !== '') {
+        await query(
+          `UPDATE stock_movements SET expiry_date = $1, updated_at = NOW()
+           WHERE LOWER(TRIM(product_name)) = LOWER(TRIM($2))
+             AND COALESCE(batch_no, '') = $3`,
+          [expiryDate, productName, batchNoKey]
+        );
+      }
+
+      // ── 6. Batch number rename: update stock_movements + stock_batches
+      const effectiveBatchNo = (newBatchNo !== undefined && newBatchNo !== null && newBatchNo !== '' && newBatchNo !== batchNo)
+        ? newBatchNo.trim() : null;
+      if (effectiveBatchNo) {
+        await query(
+          `UPDATE stock_movements SET batch_no = $1, updated_at = NOW()
+           WHERE LOWER(TRIM(product_name)) = LOWER(TRIM($2))
+             AND COALESCE(batch_no, '') = $3`,
+          [effectiveBatchNo, productName, batchNoKey]
+        );
+      }
+
+      // ── 7. Update stock_batches for FEFO deduction consistency
+      const batchSets = ['updated_at = NOW()'];
+      const batchParams = [];
+      let bp = 1;
+      if (remainingQty !== undefined && remainingQty !== null && remainingQty !== '') {
+        batchSets.push(`remaining_quantity = $${bp++}`); batchParams.push(Number(remainingQty));
+      }
+      if (expiryDate !== undefined && expiryDate !== null && expiryDate !== '') {
+        batchSets.push(`expiry_date = $${bp++}`); batchParams.push(expiryDate);
+      }
+      if (effectiveBatchNo) {
+        batchSets.push(`batch_no = $${bp++}`); batchParams.push(effectiveBatchNo);
+      }
+      if (unitDp !== undefined && unitDp !== null && unitDp !== '') {
+        batchSets.push(`dpc_unit_value = $${bp++}`); batchParams.push(Number(unitDp));
       }
       if (notes !== undefined && notes !== null) {
-        sets.push(`notes = $${p++}`);
-        params.push(notes);
+        batchSets.push(`notes = $${bp++}`); batchParams.push(notes);
       }
+      batchParams.push(batch.id);
+      await query(`UPDATE stock_batches SET ${batchSets.join(', ')} WHERE id = $${bp}`, batchParams);
 
-      if (sets.length === 0) {
-        return res.status(400).json({ success: false, error: 'No fields provided to update' });
-      }
-
-      sets.push(`updated_at = NOW()`);
-      params.push(batch.id);
-
-      await query(
-        `UPDATE stock_batches SET ${sets.join(', ')} WHERE id = $${p}`,
-        params
-      );
-
-      // Audit entry in stock_movements
-      await query(
-        `INSERT INTO stock_movements
-           (id, movement_type, source_location, source_location_type,
-            destination_location, destination_location_type,
-            product_name, batch_no, quantity, notes, status, created_at, updated_at)
-         VALUES (gen_random_uuid(), 'adjustment', 'country_stock', 'country',
-                 'country_stock', 'country',
-                 $1, $2, 0, $3, 'posted', NOW(), NOW())`,
-        [
-          productName,
-          batchNo || null,
-          `Admin edit by ${user?.full_name || user?.username || 'admin'}: ${reason.trim()}`,
-        ]
-      );
-
-      // Recompute inventory_balances cache
-      recomputeLocationBalances('country', 'country_stock').catch(e =>
-        console.error('[country-stock PUT] recompute error:', e.message)
-      );
+      // ── 8. Recompute inventory_balances from the now-updated stock_movements
+      await recomputeLocationBalances('country', 'country_stock');
 
       return res.status(200).json({ success: true, message: 'Batch updated successfully' });
     } catch (err) {
