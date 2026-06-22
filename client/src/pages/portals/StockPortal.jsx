@@ -198,10 +198,11 @@ function RequestAdjustmentModal({ open, onClose, record, targetType, location, o
   const [alert, setAlert] = useState(null);
 
   const allFieldOptions = [
-    { value: 'quantity', label: 'Quantity' },
+    { value: 'quantity', label: 'Quantity (Current Stock)' },
     { value: 'expiry_date', label: 'Expiry Date' },
     { value: 'batch_number', label: 'Batch Number' },
     { value: 'unit_price', label: 'Unit Price (CIF)' },
+    { value: 'dpc_unit_value', label: 'Unit DP Price' },
     { value: 'notes', label: 'Notes' },
   ];
   // distribution transfers only support quantity + notes (stock_transfers has no other stock fields)
@@ -210,10 +211,11 @@ function RequestAdjustmentModal({ open, onClose, record, targetType, location, o
     : allFieldOptions;
 
   const currentValue = record ? (
-    field === 'quantity' ? (record.quantity ?? '—') :
+    field === 'quantity' ? (record.remaining_quantity ?? record.remainingQuantity ?? record.quantity ?? '—') :
     field === 'expiry_date' ? (record.expiry_date ? formatDate(record.expiry_date) : '—') :
     field === 'batch_number' ? (record.batchNo || record.batch_number || record.batch_no || '—') :
     field === 'unit_price' ? (record.unit_price ?? record.unitPrice ?? '—') :
+    field === 'dpc_unit_value' ? (record.dpc_unit_value ?? record.dpcUnitValue ?? '—') :
     field === 'notes' ? (record.notes ?? record.dispatch_notes ?? '—') :
     '—'
   ) : '—';

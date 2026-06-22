@@ -693,13 +693,16 @@ app.patch('/api/stock-adjustments/:id/approve', async (req, res) => {
     const { field_to_adjust, new_value, target_id, target_type } = adj;
 
     // stock_batches column name mapping (API exposes 'batch_number' but DB column is 'batch_no')
+    // 'quantity' intentionally maps to 'remaining_quantity': when a user requests a quantity
+    // correction they mean current stock on hand, not the original received total.
     const batchColumnMap = {
       batch_number: 'batch_no',
-      quantity: 'quantity',
+      quantity: 'remaining_quantity',
+      remaining_quantity: 'remaining_quantity',
       expiry_date: 'expiry_date',
       unit_price: 'unit_price',
+      dpc_unit_value: 'dpc_unit_value',
       notes: 'notes',
-      remaining_quantity: 'remaining_quantity',
     };
 
     if (target_id && field_to_adjust) {
