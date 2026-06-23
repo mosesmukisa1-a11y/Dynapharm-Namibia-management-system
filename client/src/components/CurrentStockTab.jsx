@@ -2,24 +2,31 @@
  * CurrentStockTab — Countrywide live stock snapshot for GM Portal.
  * Shows total CIF + DP values, per-product quantities, and
  * location-level drill-down when a product row is clicked.
+ *
+ * Sources:
+ *   country  → stock_batches WHERE location = 'country_stock'
+ *   warehouse → stock_batches WHERE location IN (windhoek_warehouse, ondangwa_warehouse, …)
+ *   branch   → inventory_balances WHERE location_type = 'branch'
+ *   field    → field_stock balances
  */
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../lib/api';
 import { formatCurrency } from '../lib/constants';
 import { Card, CardBody, CardHeader, LoadingSpinner, Alert } from './ui';
-import { Package, TrendingUp, MapPin, ChevronDown, ChevronRight, Search, Download } from 'lucide-react';
+import { Package, TrendingUp, MapPin, ChevronDown, ChevronRight, Search, Download, Warehouse } from 'lucide-react';
 
 const LOC_COLORS = {
-  branch:    { bg: 'bg-blue-100',   text: 'text-blue-700',   dot: 'bg-blue-500',   label: 'Branch' },
-  warehouse: { bg: 'bg-purple-100', text: 'text-purple-700', dot: 'bg-purple-500', label: 'Warehouse' },
-  field:     { bg: 'bg-green-100',  text: 'text-green-700',  dot: 'bg-green-500',  label: 'Field' },
+  country:   { bg: 'bg-orange-100',  text: 'text-orange-700',  dot: 'bg-orange-500',  label: 'Country Stock' },
+  warehouse: { bg: 'bg-purple-100',  text: 'text-purple-700',  dot: 'bg-purple-500',  label: 'Warehouse' },
+  branch:    { bg: 'bg-blue-100',    text: 'text-blue-700',    dot: 'bg-blue-500',    label: 'Branch' },
+  field:     { bg: 'bg-green-100',   text: 'text-green-700',   dot: 'bg-green-500',   label: 'Field' },
 };
 
 function fmt(v) { return formatCurrency(Number(v) || 0); }
 function qty(v) { return Number(v || 0).toLocaleString('en-NA', { maximumFractionDigits: 0 }); }
 
 function LocBadge({ type }) {
-  const c = LOC_COLORS[type] || LOC_COLORS.branch;
+  const c = LOC_COLORS[type] || LOC_COLORS.warehouse;
   return (
     <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-semibold ${c.bg} ${c.text}`}>
       <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
@@ -34,6 +41,7 @@ function SummaryCard({ title, value, sub, color, icon }) {
     blue:   'border-blue-200 bg-blue-50',
     amber:  'border-amber-200 bg-amber-50',
     purple: 'border-purple-200 bg-purple-50',
+    orange: 'border-orange-200 bg-orange-50',
   };
   return (
     <div className={`rounded-xl border p-4 ${colors[color] || colors.blue}`}>
@@ -49,12 +57,27 @@ function SummaryCard({ title, value, sub, color, icon }) {
   );
 }
 
+/** Roll up totals by location type across all products */
+function buildLocTypeTotals(products) {
+  const totals = {};
+  for (const p of products) {
+    for (const l of p.locations) {
+      const t = l.locationType;
+      if (!totals[t]) totals[t] = { qty: 0, valueDP: 0, valueCIF: 0 };
+      totals[t].qty      += l.qty;
+      totals[t].valueDP  += l.valueDP;
+      totals[t].valueCIF += l.valueCIF;
+    }
+  }
+  return totals;
+}
+
 export default function CurrentStockTab() {
-  const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState('');
-  const [data, setData]       = useState(null);
-  const [search, setSearch]   = useState('');
-  const [expanded, setExpanded] = useState(null);   // productName of expanded row
+  const [loading, setLoading]   = useState(true);
+  const [error, setError]       = useState('');
+  const [data, setData]         = useState(null);
+  const [search, setSearch]     = useState('');
+  const [expanded, setExpanded] = useState(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -73,6 +96,12 @@ export default function CurrentStockTab() {
     !search || p.productName.toLowerCase().includes(search.toLowerCase())
   );
 
+  const locTypeTotals = data ? buildLocTypeTotals(data.products) : {};
+
+  // "In operations" = warehouses + branches (country stock is pre-dispatch staging)
+  const inOpsQty = (locTypeTotals.warehouse?.qty || 0) + (locTypeTotals.branch?.qty || 0) + (locTypeTotals.field?.qty || 0);
+  const inOpsDP  = (locTypeTotals.warehouse?.valueDP || 0) + (locTypeTotals.branch?.valueDP || 0) + (locTypeTotals.field?.valueDP || 0);
+
   const exportCSV = () => {
     if (!data) return;
     const rows = [['Product', 'Total Qty', 'CIF Value (N$)', 'DP Value (N$)', 'Location Type', 'Location', 'Loc Qty', 'Loc CIF', 'Loc DP']];
@@ -85,7 +114,7 @@ export default function CurrentStockTab() {
     const csv = rows.map(r => r.join(',')).join('\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    a.download = `Dynapharm-Stock-Overview-${new Date().toISOString().slice(0,10)}.csv`;
+    a.download = `Dynapharm-Stock-Overview-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
   };
 
@@ -97,7 +126,9 @@ export default function CurrentStockTab() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-base font-bold text-gray-800">Current Stock — Countrywide</h2>
-              <p className="text-xs text-gray-400 mt-0.5">Branches, warehouses &amp; field stock — priced from GM price list where stored value is absent</p>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Country stock · Warehouses · Branches · Field — live snapshot
+              </p>
             </div>
             <div className="flex items-center gap-2">
               <button onClick={load}
@@ -120,27 +151,20 @@ export default function CurrentStockTab() {
 
       {data && (
         <>
-          {/* Summary Cards */}
+          {/* Grand summary cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <SummaryCard
               title="Total Stock Value (DP)"
               value={fmt(data.summary.totalValueDP)}
-              sub="Distributor selling price"
+              sub="All locations combined"
               color="green"
               icon={<TrendingUp size={22} />}
             />
             <SummaryCard
               title="Total Stock Value (CIF)"
               value={fmt(data.summary.totalValueCIF)}
-              sub="Cost of import (landed cost)"
+              sub="Landed cost — all locations"
               color="amber"
-              icon={<Package size={22} />}
-            />
-            <SummaryCard
-              title="Total Products"
-              value={data.summary.productCount.toLocaleString()}
-              sub="Unique product lines"
-              color="blue"
               icon={<Package size={22} />}
             />
             <SummaryCard
@@ -150,9 +174,41 @@ export default function CurrentStockTab() {
               color="purple"
               icon={<MapPin size={22} />}
             />
+            <SummaryCard
+              title="In Operations (DP)"
+              value={fmt(inOpsDP)}
+              sub={`${qty(inOpsQty)} units — warehouses + branches + field`}
+              color="blue"
+              icon={<Warehouse size={22} />}
+            />
           </div>
 
-          {/* Location Type Legend */}
+          {/* Per-location-type breakdown strip */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              { type: 'country',   label: 'Country Stock',       icon: '🏛️' },
+              { type: 'warehouse', label: 'Warehouses',           icon: '🏭' },
+              { type: 'branch',    label: 'Branches',             icon: '🏪' },
+              { type: 'field',     label: 'Field Officers',       icon: '👤' },
+            ].map(({ type, label, icon }) => {
+              const c  = LOC_COLORS[type];
+              const t  = locTypeTotals[type];
+              const q  = t?.qty     || 0;
+              const dp = t?.valueDP || 0;
+              return (
+                <div key={type} className={`rounded-xl border p-3 ${c.bg} border-current/10`}>
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span>{icon}</span>
+                    <p className={`text-xs font-bold uppercase tracking-wide ${c.text}`}>{label}</p>
+                  </div>
+                  <p className="text-lg font-bold text-gray-800">{qty(q)} <span className="text-xs font-normal text-gray-500">units</span></p>
+                  <p className={`text-xs font-semibold ${c.text} mt-0.5`}>{fmt(dp)}</p>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Legend */}
           <div className="flex flex-wrap gap-2 px-1">
             {Object.entries(LOC_COLORS).map(([type, c]) => (
               <span key={type} className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${c.bg} ${c.text}`}>
