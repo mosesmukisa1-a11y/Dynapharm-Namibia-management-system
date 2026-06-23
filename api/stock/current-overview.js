@@ -51,9 +51,8 @@ export default async function handler(req, res) {
          GROUP BY location_id, product_name`
       ),
 
-      // ── Warehouses + Country Stock: stock_batches.remaining_quantity ──
-      // Only batches with stock remaining — avoids zero-qty rows inflating totals.
-      // Country stock is included so GM sees the same figures as the Stock Portal Overview.
+      // ── Warehouses only: stock_batches.remaining_quantity ──
+      // Country stock is excluded — it is a staging/holding area, not active operations.
       getMany(
         `SELECT location, description AS product_name,
                 SUM(remaining_quantity)                               AS qty,
@@ -64,6 +63,7 @@ export default async function handler(req, res) {
          FROM stock_batches
          WHERE remaining_quantity > 0
            AND COALESCE(status, '') != 'expired'
+           AND location != 'country_stock'
          GROUP BY location, description`
       ),
 

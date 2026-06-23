@@ -127,7 +127,7 @@ export default function CurrentStockTab() {
             <div>
               <h2 className="text-base font-bold text-gray-800">Current Stock — Countrywide</h2>
               <p className="text-xs text-gray-400 mt-0.5">
-                Country stock · Warehouses · Branches · Field — live snapshot
+                Warehouses · Branches · Field — live operational snapshot
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -183,10 +183,9 @@ export default function CurrentStockTab() {
             />
           </div>
 
-          {/* Per-location-type breakdown strip */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {/* Per-location-type breakdown strip — country stock excluded (staging/holding only) */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {[
-              { type: 'country',   label: 'Country Stock',       icon: '🏛️' },
               { type: 'warehouse', label: 'Warehouses',           icon: '🏭' },
               { type: 'branch',    label: 'Branches',             icon: '🏪' },
               { type: 'field',     label: 'Field Officers',       icon: '👤' },
@@ -208,9 +207,9 @@ export default function CurrentStockTab() {
             })}
           </div>
 
-          {/* Legend */}
+          {/* Legend — country stock omitted (staging/holding, not in operations) */}
           <div className="flex flex-wrap gap-2 px-1">
-            {Object.entries(LOC_COLORS).map(([type, c]) => (
+            {Object.entries(LOC_COLORS).filter(([type]) => type !== 'country').map(([type, c]) => (
               <span key={type} className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${c.bg} ${c.text}`}>
                 <span className={`w-2 h-2 rounded-full ${c.dot}`} /> {c.label}
               </span>

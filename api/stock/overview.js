@@ -24,9 +24,12 @@ export default async function handler(req, res) {
     const windhoekBatches = batches.filter(b => b.location === 'windhoek_warehouse');
     const ondangwaBatches = batches.filter(b => b.location === 'ondangwa_warehouse');
 
-    const warehouseQty = batches.reduce((s, b) => s + Number(b.remaining_quantity || 0), 0);
-    const warehouseCIF = batches.reduce((s, b) => s + Number(b.remaining_quantity || 0) * Number(b.cif_unit_cost || b.unit_price || 0), 0);
-    const warehouseDPC = batches.reduce((s, b) => s + Number(b.remaining_quantity || 0) * Number(b.dpc_unit_value || b.unit_price || 0), 0);
+    // Country stock is a staging/holding area — excluded from all operational totals
+    const activeBatches = batches.filter(b => b.location !== 'country_stock');
+
+    const warehouseQty = activeBatches.reduce((s, b) => s + Number(b.remaining_quantity || 0), 0);
+    const warehouseCIF = activeBatches.reduce((s, b) => s + Number(b.remaining_quantity || 0) * Number(b.cif_unit_cost || b.unit_price || 0), 0);
+    const warehouseDPC = activeBatches.reduce((s, b) => s + Number(b.remaining_quantity || 0) * Number(b.dpc_unit_value || b.unit_price || 0), 0);
 
     const branchQty = branchInv.reduce((s, b) => s + Number(b.closing_qty || 0), 0);
     const branchDPC = branchInv.reduce((s, b) => s + Number(b.closing_qty || 0) * Number(b.unit_dp || 0), 0);

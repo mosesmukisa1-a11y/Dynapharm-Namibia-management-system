@@ -41,11 +41,13 @@ export default async function handler(req, res) {
     if (to)   { params.push(to + 'T23:59:59');   dateFilter += ` AND created_at <= $${params.length}`; }
 
     const [batches, branchInv, sales, movements] = await Promise.all([
-      // Only fetch batches with stock remaining — avoids the 0||quantity fallback bug
+      // Only fetch batches with stock remaining — avoids the 0||quantity fallback bug.
+      // Country stock excluded: it is a staging/holding area, not active operations.
       getMany(`SELECT location, remaining_quantity, cif_unit_cost, dpc_unit_value, unit_price
                FROM stock_batches
                WHERE remaining_quantity > 0
-                 AND COALESCE(status, '') != 'expired'`),
+                 AND COALESCE(status, '') != 'expired'
+                 AND location != 'country_stock'`),
       getMany("SELECT location_id, closing_qty, unit_dp, stock_value_dp FROM inventory_balances WHERE location_type = 'branch'"),
       getMany(`SELECT branch_id, total, customer_type FROM branch_walkin_sales WHERE 1=1${dateFilter} LIMIT 5000`, params),
       getMany(`SELECT movement_type, quantity FROM stock_movements WHERE 1=1${dateFilter} LIMIT 5000`, params),

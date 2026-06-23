@@ -12,11 +12,13 @@ export default async function handler(req, res) {
     const sevenFwd  = new Date(Date.now() + 7  * 24 * 60 * 60 * 1000);
 
     const [batches, branchInv, movements] = await Promise.all([
-      // Only fetch batches with stock remaining — avoids the 0||quantity fallback bug
+      // Only fetch batches with stock remaining — avoids the 0||quantity fallback bug.
+      // Country stock excluded: it is a staging/holding area, not active operations.
       getMany(`SELECT description, location, remaining_quantity, expiry_date, unit_price
                FROM stock_batches
                WHERE remaining_quantity > 0
-                 AND COALESCE(status, '') != 'expired'`),
+                 AND COALESCE(status, '') != 'expired'
+                 AND location != 'country_stock'`),
       getMany("SELECT location_id, product_name, closing_qty, unit_dp FROM inventory_balances WHERE location_type = 'branch'"),
       getMany('SELECT product_name, movement_type, quantity, source_location FROM stock_movements ORDER BY created_at DESC LIMIT 1000'),
     ]);
