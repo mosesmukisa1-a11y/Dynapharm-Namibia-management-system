@@ -12,7 +12,28 @@ import { query } from '../db.js';
  */
 export async function syncInventoryBalances(rows) {
   if (!rows || rows.length === 0) return;
+
+  // Aggregate by (branch_id, product_name, batch_no) so that multiple
+  // branch_inventory_batches rows sharing the same batch_no (but different
+  // expiry dates) are SUMMED before writing to inventory_balances.
+  // Without this, the last row overwrites earlier ones and the cache goes stale.
+  const aggMap = new Map();
   for (const inv of rows) {
+    const key = [
+      (inv.branch_id || '').toLowerCase().trim(),
+      (inv.product_name || '').toLowerCase().trim(),
+      inv.batch_no || '',
+    ].join('||');
+    if (!aggMap.has(key)) {
+      aggMap.set(key, { ...inv, quantity: 0 });
+    }
+    const entry = aggMap.get(key);
+    entry.quantity += Number(inv.quantity || 0);
+    if (inv.expiry_date) entry.expiry_date = inv.expiry_date;
+    if (inv.unit_price)  entry.unit_price  = inv.unit_price;
+  }
+
+  for (const inv of aggMap.values()) {
     try {
       const batchNoVal = inv.batch_no || '';
       const expiryVal = inv.expiry_date

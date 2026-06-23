@@ -290,11 +290,18 @@ export async function getCompanyStockSummary() {
   // We read both and combine — avoiding double-counting by only using
   // inventory_balances for branches, and stock_batches for warehouses.
   const [ibRows, batchRows] = await Promise.all([
+    // Branch stock: read directly from branch_inventory_batches (authoritative source).
+    // inventory_balances is a derived cache that can become stale; branch_inventory_batches
+    // is always kept current by the transactional sale/receive/dispense flows.
     getMany(
-      `SELECT location_type, location_id, product_name, expiry_date,
-              closing_qty, stock_value_dp
-       FROM inventory_balances
-       WHERE location_type = 'branch'`
+      `SELECT b.branch_id AS location_id, b.product_name, b.expiry_date,
+              SUM(b.quantity)                                      AS closing_qty,
+              SUM(b.quantity * COALESCE(p.dp, 0))                 AS stock_value_dp
+       FROM branch_inventory_batches b
+       LEFT JOIN product_prices p
+             ON LOWER(TRIM(p.description)) = LOWER(TRIM(b.product_name))
+       WHERE b.quantity > 0
+       GROUP BY b.branch_id, b.product_name, b.expiry_date`
     ),
     getMany(
       `SELECT location, description as product_name, expiry_date,

@@ -37,18 +37,22 @@ export default async function handler(req, res) {
   try {
     const [branchRows, warehouseRows, fieldRows, priceRows] = await Promise.all([
 
-      // ── Branches: inventory_balances (movement-derived cache) ──
+      // ── Branches: branch_inventory_batches (authoritative source) ──
+      // inventory_balances is a derived cache that can become stale when multiple
+      // batches share the same batch_no. Reading branch_inventory_batches directly
+      // always reflects the exact physical quantities in each branch.
       getMany(
-        `SELECT location_id, product_name,
-                SUM(closing_qty)                                          AS qty,
-                SUM(stock_value_dp)                                       AS val_dp,
-                SUM(COALESCE(stock_value_cif, closing_qty * unit_cif, 0)) AS val_cif,
-                MAX(unit_dp)                                              AS unit_dp,
-                MAX(unit_cif)                                             AS unit_cif
-         FROM inventory_balances
-         WHERE location_type = 'branch'
-           AND closing_qty > 0
-         GROUP BY location_id, product_name`
+        `SELECT b.branch_id AS location_id, b.product_name,
+                SUM(b.quantity)                                AS qty,
+                SUM(b.quantity * COALESCE(p.dp,  0))          AS val_dp,
+                SUM(b.quantity * COALESCE(p.cif, 0))          AS val_cif,
+                MAX(p.dp)                                      AS unit_dp,
+                MAX(p.cif)                                     AS unit_cif
+         FROM branch_inventory_batches b
+         LEFT JOIN product_prices p
+               ON LOWER(TRIM(p.description)) = LOWER(TRIM(b.product_name))
+         WHERE b.quantity > 0
+         GROUP BY b.branch_id, b.product_name`
       ),
 
       // ── Warehouses only: stock_batches.remaining_quantity ──
