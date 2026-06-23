@@ -7384,15 +7384,15 @@ function OrdersTab({ branch }) {
 }
 
 function ValuationTab({ branch }) {
-  const [batches, setBatches] = useState([]);
+  const [valData, setValData] = useState({ rows: [] });
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState('product');
 
   const loadValuation = useCallback(() => {
     setLoading(true);
-    api.stock.batches()
-      .then(d => setBatches(Array.isArray(d) ? d : d.batches || []))
-      .catch(() => {})
+    api.stock.valuation()
+      .then(d => setValData(d || { rows: [] }))
+      .catch(() => setValData({ rows: [] }))
       .finally(() => setLoading(false));
   }, []);
 
@@ -7405,79 +7405,54 @@ function ValuationTab({ branch }) {
 
   if (loading) return <LoadingSpinner />;
 
-  const getDP  = name => { const p = getLiveProductList().find(p => p.description === name); return p ? Number(p.dp  || 0) : 0; };
-  const getCIF = name => { const p = getLiveProductList().find(p => p.description === name); return p ? Number(p.cif || 0) : 0; };
+  const allRows = valData.rows || [];
 
-  const WAREHOUSES = ['windhoek_warehouse', 'ondangwa_warehouse'];
-
-  const activeBatches = batches.filter(b => {
-    const loc = (b.location || '').toLowerCase();
-    if (loc === 'country_stock') return false;
-    const remaining = Number(b.remaining_quantity ?? b.remainingQuantity ?? b.quantity ?? 0);
-    if (remaining <= 0) return false;
-    const st = (b.status || '').toLowerCase();
-    if (st === 'expired' || st === 'depleted' || st === 'written_off') return false;
-    return true;
-  });
-
-  const scopedBatches = branch === 'all' ? activeBatches
-    : activeBatches.filter(b => {
-        const loc = (b.location || '').toLowerCase().replace(/\s+/g, '_');
-        return loc === branch || loc === branch + '_warehouse';
+  const scopedRows = branch === 'all' ? allRows
+    : allRows.filter(r => {
+        const lid = (r.locationId || '').toLowerCase();
+        return lid === branch || lid === branch + '_warehouse';
       });
 
-  const fmtLoc = loc => {
-    const l = (loc || '').toLowerCase();
-    if (l === 'windhoek_warehouse') return 'Windhoek Warehouse';
-    if (l === 'ondangwa_warehouse') return 'Ondangwa Warehouse';
-    const bd = BRANCH_DETAILS.find(b => b.id === l || b.id === l.replace(/_branch$/, ''));
-    if (bd) return bd.name;
-    return loc.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-  };
+  const byLoc = {};
+  scopedRows.forEach(r => {
+    const key = r.locationId || r.locationName;
+    if (!byLoc[key]) byLoc[key] = {
+      locationId:   r.locationId,
+      locationName: r.locationName,
+      isWarehouse:  r.locationType === 'warehouse',
+      qty: 0, dpValue: 0, cifValue: 0,
+    };
+    byLoc[key].qty      += r.qty;
+    byLoc[key].dpValue  += r.qty * (r.unitDPC || 0);
+    byLoc[key].cifValue += r.qty * (r.unitCIF || 0);
+  });
 
-  const computeGroup = batches => {
-    const byLoc = {};
-    batches.forEach(b => {
-      const loc = (b.location || 'unknown').toLowerCase();
-      const qty = Number(b.remaining_quantity ?? b.remainingQuantity ?? b.quantity ?? 0);
-      const dp  = getDP(b.product_name  || b.description) || Number(b.unit_price || b.dpc_unit_value || 0);
-      const cif = getCIF(b.product_name || b.description) || Number(b.cif_unit_cost || 0);
-      if (!byLoc[loc]) byLoc[loc] = { qty: 0, dpValue: 0, cifValue: 0, isWarehouse: WAREHOUSES.includes(loc) };
-      byLoc[loc].qty      += qty;
-      byLoc[loc].dpValue  += qty * dp;
-      byLoc[loc].cifValue += qty * cif;
-    });
-    return byLoc;
-  };
+  const warehouses    = Object.values(byLoc).filter(g =>  g.isWarehouse);
+  const branchEntries = Object.values(byLoc).filter(g => !g.isWarehouse);
 
-  const groups = computeGroup(scopedBatches);
-
-  const warehouses = Object.entries(groups).filter(([, g]) => g.isWarehouse);
-  const branchEntries = Object.entries(groups).filter(([, g]) => !g.isWarehouse);
-
-  const whTotals   = warehouses.reduce((s, [, g]) => ({ qty: s.qty + g.qty, dp: s.dp + g.dpValue, cif: s.cif + g.cifValue }), { qty: 0, dp: 0, cif: 0 });
-  const brTotals   = branchEntries.reduce((s, [, g]) => ({ qty: s.qty + g.qty, dp: s.dp + g.dpValue, cif: s.cif + g.cifValue }), { qty: 0, dp: 0, cif: 0 });
-  const grandQty   = whTotals.qty + brTotals.qty;
-  const grandDP    = whTotals.dp  + brTotals.dp;
-  const grandCIF   = whTotals.cif + brTotals.cif;
+  const whTotals = warehouses.reduce(   (s, g) => ({ qty: s.qty + g.qty, dp: s.dp + g.dpValue, cif: s.cif + g.cifValue }), { qty: 0, dp: 0, cif: 0 });
+  const brTotals = branchEntries.reduce((s, g) => ({ qty: s.qty + g.qty, dp: s.dp + g.dpValue, cif: s.cif + g.cifValue }), { qty: 0, dp: 0, cif: 0 });
+  const grandQty = whTotals.qty + brTotals.qty;
+  const grandDP  = whTotals.dp  + brTotals.dp;
+  const grandCIF = whTotals.cif + brTotals.cif;
 
   const productMap = {};
-  scopedBatches.forEach(b => {
-    const name = b.product_name || b.description || 'Unknown';
-    const loc  = (b.location || 'unknown').toLowerCase();
-    const qty  = Number(b.remaining_quantity ?? b.remainingQuantity ?? b.quantity ?? 0);
-    const dp   = getDP(name)  || Number(b.unit_price || b.dpc_unit_value || 0);
-    const cif  = getCIF(name) || Number(b.cif_unit_cost || 0);
-    const key  = `${name}||${loc}`;
-    if (!productMap[key]) productMap[key] = { product: name, location: fmtLoc(loc), isWarehouse: WAREHOUSES.includes(loc), qty: 0, dpValue: 0, cifValue: 0, dp, cif };
-    productMap[key].qty      += qty;
-    productMap[key].dpValue  += qty * dp;
-    productMap[key].cifValue += qty * cif;
+  scopedRows.forEach(r => {
+    const key = `${r.productName}||${r.locationId}`;
+    if (!productMap[key]) productMap[key] = {
+      product: r.productName, location: r.locationName,
+      isWarehouse: r.locationType === 'warehouse',
+      qty: 0, dpValue: 0, cifValue: 0,
+      dp: r.unitDPC || 0, cif: r.unitCIF || 0,
+    };
+    productMap[key].qty      += r.qty;
+    productMap[key].dpValue  += r.qty * (r.unitDPC || 0);
+    productMap[key].cifValue += r.qty * (r.unitCIF || 0);
   });
   const breakdown = Object.values(productMap).sort((a, b) => b.dpValue - a.dpValue);
 
   const branchSummary = branchEntries
-    .map(([loc, g]) => ({ name: fmtLoc(loc), qty: g.qty, dpValue: g.dpValue, cifValue: g.cifValue }))
+    .map(g => ({ name: g.locationName, qty: g.qty, dpValue: g.dpValue, cifValue: g.cifValue }))
     .sort((a, b) => b.dpValue - a.dpValue);
 
   return (
@@ -7488,9 +7463,9 @@ function ValuationTab({ branch }) {
           ? <div style={{ border: '1.5px dashed #e5e7eb', borderRadius: 10, padding: '14px 18px', color: '#9ca3af', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 8 }}>
               <Warehouse size={20} /> No warehouse stock on hand
             </div>
-          : warehouses.map(([loc, g]) => (
-              <StatCard key={loc}
-                title={fmtLoc(loc)}
+          : warehouses.map(g => (
+              <StatCard key={g.locationId}
+                title={g.locationName}
                 value={`N$ ${Math.round(g.dpValue).toLocaleString('en-ZA')}`}
                 subtitle={`${g.qty.toLocaleString()} units · CIF N$ ${Math.round(g.cifValue).toLocaleString('en-ZA')}`}
                 color="blue"

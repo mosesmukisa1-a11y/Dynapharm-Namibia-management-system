@@ -72,6 +72,18 @@ export default async function handler(req, res) {
         totalValueCIF: parseFloat(totalValueCIF.toFixed(2)),
         totalValueDPC: parseFloat(totalValueDPC.toFixed(2)),
       },
+      // Flat per-product per-location rows — consumed by the ValuationTab
+      // component so it can compute all summaries client-side without needing
+      // the raw stock_batches list (which has no branch data).
+      rows: allRows.map(r => ({
+        locationType:  r.locationType,
+        locationId:    (r.locationName || '').toLowerCase().replace(/\s+/g, '_'),
+        locationName:  r.locationName,
+        productName:   r.productName,
+        qty:           r.qty,
+        unitCIF:       parseFloat((r.unitCIF  || 0).toFixed(2)),
+        unitDPC:       parseFloat((r.unitDPC  || 0).toFixed(2)),
+      })),
       locations: Object.values(locationMap).map(l => ({
         ...l,
         totalValueCIF: parseFloat(l.totalValueCIF.toFixed(2)),
