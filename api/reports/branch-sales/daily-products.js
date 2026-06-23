@@ -76,7 +76,7 @@ export default async function handler(req, res) {
             WHEN cr.id   IS NOT NULL             THEN 'campaign_paid'
             ELSE                                      'regular'
           END
-      )
+      ),
       -- Approved refunds on this date (recognised on approval date)
       refund_agg AS (
         SELECT
