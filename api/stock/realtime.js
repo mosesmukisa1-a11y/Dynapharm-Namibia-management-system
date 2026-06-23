@@ -1,10 +1,10 @@
 /**
  * GET /api/stock/realtime
- * Unified product-level stock snapshot across ALL locations:
- *   - country_stock  (stock_batches)
- *   - warehouses     (stock_batches)
- *   - branches       (branch_inventory_batches — authoritative per-branch source)
+ * Unified product-level stock snapshot across operational locations:
+ *   - warehouses  (inventory_balances WHERE location_type='warehouse')
+ *   - branches    (branch_inventory_batches — authoritative per-branch source)
  *
+ * country_stock is excluded — it is staging/holding, not operational inventory.
  * Each product: { name, totalQty, locations: [{ locationId, locationName, locationType, qty }] }
  */
 import { applyAuthCors } from '../_lib/auth.js';
@@ -36,7 +36,7 @@ export default async function handler(req, res) {
         `SELECT location_id AS location, product_name, SUM(closing_qty) AS qty
          FROM inventory_balances
          WHERE closing_qty > 0
-           AND location_type IN ('country', 'warehouse')
+           AND location_type = 'warehouse'
          GROUP BY location_id, product_name
          ORDER BY location_id, product_name`
       ),

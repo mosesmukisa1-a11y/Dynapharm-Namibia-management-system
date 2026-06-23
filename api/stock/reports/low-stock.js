@@ -16,7 +16,7 @@ export default async function handler(req, res) {
     if (location) { batchParams.push(`%${location}%`); batchLocationCond = ` AND location ILIKE $${batchParams.length}`; }
 
     const batches = await getMany(
-      `SELECT id, description, location, remaining_quantity, quantity, unit_price, dpc_unit_value, expiry_date FROM stock_batches WHERE (remaining_quantity < $1 OR quantity < $1)${batchLocationCond} ORDER BY remaining_quantity ASC`,
+      `SELECT id, description, location, remaining_quantity, quantity, unit_price, dpc_unit_value, expiry_date FROM stock_batches WHERE remaining_quantity < $1 AND location != 'country_stock' AND COALESCE(status,'') != 'expired'${batchLocationCond} ORDER BY remaining_quantity ASC`,
       batchParams
     );
 

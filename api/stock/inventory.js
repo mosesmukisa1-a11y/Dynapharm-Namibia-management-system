@@ -14,7 +14,7 @@ export default async function handler(req, res) {
     const batchNoFilter = url.searchParams.get('batchNo') || '';
 
     const [batches, branchInv] = await Promise.all([
-      getMany('SELECT id, description, batch_no, barcode, location, remaining_quantity, quantity, cif_unit_cost, dpc_unit_value, unit_price, expiry_date, import_date FROM stock_batches ORDER BY location, description'),
+      getMany("SELECT id, description, batch_no, barcode, location, remaining_quantity, quantity, cif_unit_cost, dpc_unit_value, unit_price, expiry_date, import_date FROM stock_batches WHERE location != 'country_stock' AND remaining_quantity > 0 AND COALESCE(status,'') != 'expired' ORDER BY location, description"),
       getMany("SELECT location_id, product_name, batch_no, opening_qty, inward_qty, outward_qty, closing_qty, unit_dp, stock_value_dp, expiry_date, updated_at FROM inventory_balances WHERE location_type = 'branch' ORDER BY location_id, product_name"),
     ]);
 

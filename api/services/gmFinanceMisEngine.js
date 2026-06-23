@@ -298,10 +298,12 @@ export async function getCompanyStockSummary() {
     ),
     getMany(
       `SELECT location, description as product_name, expiry_date,
-              SUM(COALESCE(remaining_quantity, quantity, 0)) AS qty,
-              SUM(COALESCE(remaining_quantity, quantity, 0) * COALESCE(dpc_unit_value, unit_price, 0)) AS val_dp
+              SUM(remaining_quantity) AS qty,
+              SUM(remaining_quantity * COALESCE(dpc_unit_value, unit_price, 0)) AS val_dp
        FROM stock_batches
-       WHERE status IS DISTINCT FROM 'dispatched' AND status IS DISTINCT FROM 'depleted'
+       WHERE location != 'country_stock'
+         AND remaining_quantity > 0
+         AND COALESCE(status,'') != 'expired'
        GROUP BY location, description, expiry_date`
     ),
   ]);
@@ -315,27 +317,17 @@ export async function getCompanyStockSummary() {
 
   const productLowStock = new Map();
 
-  // Aggregate warehouse/country stock from stock_batches
+  // Aggregate warehouse stock from stock_batches (country_stock excluded at query level)
   for (const r of batchRows) {
     const qty = Number(r.qty || 0);
     const val = Number(r.val_dp || 0);
-    const loc = (r.location || '').toLowerCase();
-    if (loc === 'country_stock') {
-      totalValueDP += val;
-      // country stock counted separately — added to totalQty at end
-    } else {
-      warehouseQty += qty;
-      totalValueDP += val;
-    }
+    warehouseQty += qty;
+    totalValueDP += val;
     if (r.expiry_date && qty > 0) {
       const exp = new Date(r.expiry_date);
       if (exp <= warnDate) expiringCount++;
     }
   }
-
-  // Aggregate actual country stock quantity separately
-  const countryRows = batchRows.filter(r => (r.location || '').toLowerCase() === 'country_stock');
-  const countryQty = countryRows.reduce((s, r) => s + Number(r.qty || 0), 0);
 
   // Aggregate branch stock from inventory_balances
   for (const r of ibRows) {
@@ -356,11 +348,11 @@ export async function getCompanyStockSummary() {
     }
   }
 
-  totalQty = countryQty + warehouseQty + branchQty + inTransitQty;
+  totalQty = warehouseQty + branchQty + inTransitQty;
 
   return {
     totalQty, totalValueDP, warehouseQty, branchQty, inTransitQty,
-    countryQty, lowStockCount, expiringCount,
+    countryQty: 0, lowStockCount, expiringCount,
   };
 }
 

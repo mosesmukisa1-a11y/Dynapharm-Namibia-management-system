@@ -37,7 +37,7 @@ export default async function handler(req, res) {
     if (to) { params.push(to + 'T23:59:59'); dateFilter += ` AND created_at <= $${params.length}`; }
 
     const [batches, branchInv, sales] = await Promise.all([
-      getMany('SELECT location, remaining_quantity, quantity, cif_unit_cost, dpc_unit_value, unit_price FROM stock_batches'),
+      getMany("SELECT location, remaining_quantity, quantity, cif_unit_cost, dpc_unit_value, unit_price FROM stock_batches WHERE location != 'country_stock' AND remaining_quantity > 0 AND COALESCE(status,'') != 'expired'"),
       getMany("SELECT location_id, closing_qty, unit_dp, stock_value_dp FROM inventory_balances WHERE location_type = 'branch'"),
       getMany(`SELECT branch_id, total, customer_type, created_at FROM branch_walkin_sales WHERE 1=1${dateFilter} LIMIT 10000`, params),
     ]);
