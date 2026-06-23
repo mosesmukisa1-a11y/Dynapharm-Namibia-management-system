@@ -8,50 +8,70 @@ export default async function handler(req, res) {
 
   try {
     const [batches, branchInv] = await Promise.all([
-      getMany("SELECT description, location, remaining_quantity, quantity, cif_unit_cost, dpc_unit_value, unit_price FROM stock_batches WHERE location != 'country_stock' AND remaining_quantity > 0 AND COALESCE(status,'') != 'expired'"),
+      // Warehouse stock from stock_batches.
+      // LEFT JOIN product_prices so that when a batch has NULL/zero cif_unit_cost /
+      // dpc_unit_value (common for older Ondangwa imports), we fall back to the
+      // catalogue price for that product name.
+      getMany(`
+        SELECT sb.description,
+               sb.location,
+               sb.remaining_quantity,
+               sb.quantity,
+               COALESCE(NULLIF(sb.cif_unit_cost,   0), NULLIF(sb.unit_price, 0), p.cif, 0) AS cif_unit_cost,
+               COALESCE(NULLIF(sb.dpc_unit_value,  0), NULLIF(sb.unit_price, 0), p.dp,  0) AS dpc_unit_value
+        FROM   stock_batches sb
+        LEFT JOIN product_prices p
+               ON LOWER(TRIM(p.description)) = LOWER(TRIM(sb.description))
+        WHERE  sb.location != 'country_stock'
+          AND  sb.remaining_quantity > 0
+          AND  COALESCE(sb.status, '') != 'expired'
+      `),
       // Branch stock: read directly from branch_inventory_batches (authoritative source).
       // inventory_balances is a derived cache that can be stale; branch_inventory_batches
       // is always kept current by transactional sale/receive/dispense flows.
-      getMany(`SELECT b.branch_id AS location_id, b.product_name,
-                      SUM(b.quantity)                      AS closing_qty,
-                      MAX(COALESCE(p.dp,  0))              AS unit_dp,
-                      MAX(COALESCE(p.cif, 0))              AS unit_cif
-               FROM branch_inventory_batches b
-               LEFT JOIN product_prices p
-                     ON LOWER(TRIM(p.description)) = LOWER(TRIM(b.product_name))
-               WHERE b.quantity > 0
-               GROUP BY b.branch_id, b.product_name`),
+      getMany(`
+        SELECT b.branch_id AS location_id,
+               b.product_name,
+               SUM(b.quantity)          AS closing_qty,
+               MAX(COALESCE(p.dp,  0)) AS unit_dp,
+               MAX(COALESCE(p.cif, 0)) AS unit_cif
+        FROM   branch_inventory_batches b
+        LEFT JOIN product_prices p
+               ON LOWER(TRIM(p.description)) = LOWER(TRIM(b.product_name))
+        WHERE  b.quantity > 0
+        GROUP BY b.branch_id, b.product_name
+      `),
     ]);
 
     const warehouseRows = batches.map(b => ({
       locationType: 'warehouse',
       locationName: (b.location || 'unknown').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
       productName: b.description,
-      qty: Number(b.remaining_quantity || b.quantity || 0),
-      unitCIF: Number(b.cif_unit_cost || b.unit_price || 0),
-      unitDPC: Number(b.dpc_unit_value || b.unit_price || 0),
+      qty:     Number(b.remaining_quantity || b.quantity || 0),
+      unitCIF: Number(b.cif_unit_cost  || 0),
+      unitDPC: Number(b.dpc_unit_value || 0),
     }));
 
     const branchRows = branchInv.map(b => ({
       locationType: 'branch',
       locationName: (b.location_id || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
       productName: b.product_name,
-      qty: Number(b.closing_qty || 0),
-      unitCIF: Number(b.unit_cif || 0),
-      unitDPC: Number(b.unit_dp || 0),
+      qty:     Number(b.closing_qty || 0),
+      unitCIF: Number(b.unit_cif   || 0),
+      unitDPC: Number(b.unit_dp    || 0),
     }));
 
     const allRows = [...warehouseRows, ...branchRows];
 
-    const totalQty = allRows.reduce((s, r) => s + r.qty, 0);
-    const totalValueCIF = warehouseRows.reduce((s, r) => s + r.qty * r.unitCIF, 0);
+    const totalQty      = allRows.reduce((s, r) => s + r.qty, 0);
+    const totalValueCIF = allRows.reduce((s, r) => s + r.qty * r.unitCIF, 0);
     const totalValueDPC = allRows.reduce((s, r) => s + r.qty * r.unitDPC, 0);
 
     const locationMap = {};
     allRows.forEach(r => {
       const key = `${r.locationType}::${r.locationName}`;
       if (!locationMap[key]) locationMap[key] = { locationType: r.locationType, locationName: r.locationName, totalQty: 0, totalValueCIF: 0, totalValueDPC: 0 };
-      locationMap[key].totalQty += r.qty;
+      locationMap[key].totalQty      += r.qty;
       locationMap[key].totalValueCIF += r.qty * r.unitCIF;
       locationMap[key].totalValueDPC += r.qty * r.unitDPC;
     });
@@ -60,7 +80,7 @@ export default async function handler(req, res) {
     allRows.forEach(r => {
       const name = r.productName || 'Unknown';
       if (!productMap[name]) productMap[name] = { productName: name, totalQty: 0, totalValueCIF: 0, totalValueDPC: 0 };
-      productMap[name].totalQty += r.qty;
+      productMap[name].totalQty      += r.qty;
       productMap[name].totalValueCIF += r.qty * r.unitCIF;
       productMap[name].totalValueDPC += r.qty * r.unitDPC;
     });
@@ -72,17 +92,16 @@ export default async function handler(req, res) {
         totalValueCIF: parseFloat(totalValueCIF.toFixed(2)),
         totalValueDPC: parseFloat(totalValueDPC.toFixed(2)),
       },
-      // Flat per-product per-location rows — consumed by the ValuationTab
-      // component so it can compute all summaries client-side without needing
-      // the raw stock_batches list (which has no branch data).
+      // Flat per-product per-location rows — consumed by ValuationTab to compute
+      // all summaries client-side, covering both warehouses and branches.
       rows: allRows.map(r => ({
-        locationType:  r.locationType,
-        locationId:    (r.locationName || '').toLowerCase().replace(/\s+/g, '_'),
-        locationName:  r.locationName,
-        productName:   r.productName,
-        qty:           r.qty,
-        unitCIF:       parseFloat((r.unitCIF  || 0).toFixed(2)),
-        unitDPC:       parseFloat((r.unitDPC  || 0).toFixed(2)),
+        locationType: r.locationType,
+        locationId:   (r.locationName || '').toLowerCase().replace(/\s+/g, '_'),
+        locationName: r.locationName,
+        productName:  r.productName,
+        qty:          r.qty,
+        unitCIF:      parseFloat((r.unitCIF || 0).toFixed(2)),
+        unitDPC:      parseFloat((r.unitDPC || 0).toFixed(2)),
       })),
       locations: Object.values(locationMap).map(l => ({
         ...l,
