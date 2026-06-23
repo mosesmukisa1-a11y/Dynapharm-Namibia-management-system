@@ -12,7 +12,16 @@ export default async function handler(req, res) {
 
     const [batches, branchInv] = await Promise.all([
       getMany("SELECT description, remaining_quantity, quantity, cif_unit_cost, dpc_unit_value, unit_price FROM stock_batches WHERE location != 'country_stock' AND remaining_quantity > 0 AND COALESCE(status,'') != 'expired'"),
-      getMany("SELECT product_name, closing_qty, unit_dp FROM inventory_balances WHERE location_type = 'branch'"),
+      // Branch stock: authoritative source, not the stale inventory_balances cache.
+      getMany(`SELECT b.product_name,
+                      SUM(b.quantity)             AS closing_qty,
+                      MAX(COALESCE(p.dp,  0))     AS unit_dp,
+                      MAX(COALESCE(p.cif, 0))     AS unit_cif
+               FROM branch_inventory_batches b
+               LEFT JOIN product_prices p
+                     ON LOWER(TRIM(p.description)) = LOWER(TRIM(b.product_name))
+               WHERE b.quantity > 0
+               GROUP BY b.product_name`),
     ]);
 
     const productMap = {};
@@ -31,6 +40,7 @@ export default async function handler(req, res) {
       const qty = Number(b.closing_qty || 0);
       if (!productMap[name]) productMap[name] = { productName: name, totalQty: 0, totalValueCIF: 0, totalValueDPC: 0 };
       productMap[name].totalQty += qty;
+      productMap[name].totalValueCIF += qty * Number(b.unit_cif || 0);
       productMap[name].totalValueDPC += qty * Number(b.unit_dp || 0);
     });
 

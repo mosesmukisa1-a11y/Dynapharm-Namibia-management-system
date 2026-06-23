@@ -9,7 +9,18 @@ export default async function handler(req, res) {
   try {
     const [batches, branchInv] = await Promise.all([
       getMany("SELECT description, location, remaining_quantity, quantity, cif_unit_cost, dpc_unit_value, unit_price FROM stock_batches WHERE location != 'country_stock' AND remaining_quantity > 0 AND COALESCE(status,'') != 'expired'"),
-      getMany("SELECT location_id, product_name, closing_qty, unit_dp, stock_value_dp FROM inventory_balances WHERE location_type = 'branch'"),
+      // Branch stock: read directly from branch_inventory_batches (authoritative source).
+      // inventory_balances is a derived cache that can be stale; branch_inventory_batches
+      // is always kept current by transactional sale/receive/dispense flows.
+      getMany(`SELECT b.branch_id AS location_id, b.product_name,
+                      SUM(b.quantity)                      AS closing_qty,
+                      MAX(COALESCE(p.dp,  0))              AS unit_dp,
+                      MAX(COALESCE(p.cif, 0))              AS unit_cif
+               FROM branch_inventory_batches b
+               LEFT JOIN product_prices p
+                     ON LOWER(TRIM(p.description)) = LOWER(TRIM(b.product_name))
+               WHERE b.quantity > 0
+               GROUP BY b.branch_id, b.product_name`),
     ]);
 
     const warehouseRows = batches.map(b => ({
@@ -26,7 +37,7 @@ export default async function handler(req, res) {
       locationName: (b.location_id || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
       productName: b.product_name,
       qty: Number(b.closing_qty || 0),
-      unitCIF: 0,
+      unitCIF: Number(b.unit_cif || 0),
       unitDPC: Number(b.unit_dp || 0),
     }));
 
