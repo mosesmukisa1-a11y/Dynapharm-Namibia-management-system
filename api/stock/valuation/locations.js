@@ -8,14 +8,13 @@ export default async function handler(req, res) {
 
   try {
     const [batches, branchInv] = await Promise.all([
-      // Warehouse stock. LEFT JOIN product_prices so batches with NULL/zero price
-      // columns (common for older Ondangwa imports) fall back to catalogue prices.
+      // Warehouse stock. Prices come from product_prices (GM Price List) first.
       getMany(`
         SELECT sb.location,
                sb.remaining_quantity,
                sb.quantity,
-               COALESCE(NULLIF(sb.cif_unit_cost,  0), NULLIF(sb.unit_price, 0), p.cif, 0) AS cif_unit_cost,
-               COALESCE(NULLIF(sb.dpc_unit_value, 0), NULLIF(sb.unit_price, 0), p.dp,  0) AS dpc_unit_value
+               COALESCE(NULLIF(p.cif, 0), NULLIF(sb.cif_unit_cost,  0), NULLIF(sb.unit_price, 0), 0) AS cif_unit_cost,
+               COALESCE(NULLIF(p.dp,  0), NULLIF(sb.dpc_unit_value, 0), NULLIF(sb.unit_price, 0), 0) AS dpc_unit_value
         FROM   stock_batches sb
         LEFT JOIN product_prices p
                ON LOWER(TRIM(p.description)) = LOWER(TRIM(sb.description))
@@ -23,7 +22,7 @@ export default async function handler(req, res) {
           AND  sb.remaining_quantity > 0
           AND  COALESCE(sb.status, '') != 'expired'
       `),
-      // Branch stock: authoritative source, not the stale inventory_balances cache.
+      // Branch stock. Prices from product_prices (GM Price List).
       getMany(`
         SELECT b.branch_id AS location_id,
                SUM(b.quantity)          AS closing_qty,

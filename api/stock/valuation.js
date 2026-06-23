@@ -8,17 +8,17 @@ export default async function handler(req, res) {
 
   try {
     const [batches, branchInv] = await Promise.all([
-      // Warehouse stock from stock_batches.
-      // LEFT JOIN product_prices so that when a batch has NULL/zero cif_unit_cost /
-      // dpc_unit_value (common for older Ondangwa imports), we fall back to the
-      // catalogue price for that product name.
+      // Warehouse stock (stock_batches).
+      // Prices are sourced from product_prices (GM Price List) — the single
+      // authoritative price source. Batch-level price columns are only used as a
+      // last-resort fallback for products not yet in the catalogue.
       getMany(`
         SELECT sb.description,
                sb.location,
                sb.remaining_quantity,
                sb.quantity,
-               COALESCE(NULLIF(sb.cif_unit_cost,   0), NULLIF(sb.unit_price, 0), p.cif, 0) AS cif_unit_cost,
-               COALESCE(NULLIF(sb.dpc_unit_value,  0), NULLIF(sb.unit_price, 0), p.dp,  0) AS dpc_unit_value
+               COALESCE(NULLIF(p.cif, 0), NULLIF(sb.cif_unit_cost,  0), NULLIF(sb.unit_price, 0), 0) AS cif_unit_cost,
+               COALESCE(NULLIF(p.dp,  0), NULLIF(sb.dpc_unit_value, 0), NULLIF(sb.unit_price, 0), 0) AS dpc_unit_value
         FROM   stock_batches sb
         LEFT JOIN product_prices p
                ON LOWER(TRIM(p.description)) = LOWER(TRIM(sb.description))
@@ -27,8 +27,7 @@ export default async function handler(req, res) {
           AND  COALESCE(sb.status, '') != 'expired'
       `),
       // Branch stock: read directly from branch_inventory_batches (authoritative source).
-      // inventory_balances is a derived cache that can be stale; branch_inventory_batches
-      // is always kept current by transactional sale/receive/dispense flows.
+      // Prices sourced from product_prices (GM Price List).
       getMany(`
         SELECT b.branch_id AS location_id,
                b.product_name,
@@ -92,8 +91,6 @@ export default async function handler(req, res) {
         totalValueCIF: parseFloat(totalValueCIF.toFixed(2)),
         totalValueDPC: parseFloat(totalValueDPC.toFixed(2)),
       },
-      // Flat per-product per-location rows — consumed by ValuationTab to compute
-      // all summaries client-side, covering both warehouses and branches.
       rows: allRows.map(r => ({
         locationType: r.locationType,
         locationId:   (r.locationName || '').toLowerCase().replace(/\s+/g, '_'),
