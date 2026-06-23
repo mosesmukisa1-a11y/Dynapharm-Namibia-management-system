@@ -4,10 +4,12 @@
  *
  * Authoritative sources by location type:
  *
- *   Warehouses → stock_batches.remaining_quantity
- *     Same table the Stock Portal warehouse views use. Decremented
- *     transactionally on every dispatch — physically accurate.
- *     Excludes country_stock (transit/staging only).
+ *   Country Stock  → stock_batches WHERE location = 'country_stock'
+ *   Warehouses     → stock_batches WHERE location IN (warehouse IDs)
+ *     remaining_quantity is the physically accurate figure (decremented
+ *     transactionally on every dispatch/receive). Only rows with
+ *     remaining_quantity > 0 are included — zero-qty batches are excluded
+ *     so they don't inflate totals via any fallback.
  *
  *   Branches   → inventory_balances WHERE location_type = 'branch'
  *     Derived from posted stock_movements. Falls back to product_prices
@@ -49,19 +51,19 @@ export default async function handler(req, res) {
          GROUP BY location_id, product_name`
       ),
 
-      // ── Warehouses: stock_batches.remaining_quantity (physical, authoritative) ──
-      // Excludes country_stock (transit only). Same source as Stock Portal.
+      // ── Warehouses + Country Stock: stock_batches.remaining_quantity ──
+      // Only batches with stock remaining — avoids zero-qty rows inflating totals.
+      // Country stock is included so GM sees the same figures as the Stock Portal Overview.
       getMany(
         `SELECT location, description AS product_name,
-                SUM(remaining_quantity)                              AS qty,
-                SUM(remaining_quantity * COALESCE(cif_unit_cost, 0)) AS val_cif,
+                SUM(remaining_quantity)                               AS qty,
+                SUM(remaining_quantity * COALESCE(cif_unit_cost, 0))  AS val_cif,
                 SUM(remaining_quantity * COALESCE(dpc_unit_value, 0)) AS val_dp,
-                MAX(cif_unit_cost)                                   AS unit_cif,
-                MAX(dpc_unit_value)                                  AS unit_dp
+                MAX(cif_unit_cost)                                    AS unit_cif,
+                MAX(dpc_unit_value)                                   AS unit_dp
          FROM stock_batches
-         WHERE location NOT IN ('country_stock')
-           AND remaining_quantity > 0
-           AND status != 'expired'
+         WHERE remaining_quantity > 0
+           AND COALESCE(status, '') != 'expired'
          GROUP BY location, description`
       ),
 
@@ -91,6 +93,15 @@ export default async function handler(req, res) {
     const lookupCif = n => priceMap[(n || '').toLowerCase().trim()]?.cif || 0;
     const lookupDp  = n => priceMap[(n || '').toLowerCase().trim()]?.dp  || 0;
 
+    // Location-type classifier for stock_batches rows
+    const COUNTRY_LOCS  = new Set(['country_stock']);
+    const WAREHOUSE_LOCS = new Set(['windhoek_warehouse', 'ondangwa_warehouse']);
+    function batchLocType(loc) {
+      if (COUNTRY_LOCS.has(loc))   return 'country';
+      if (WAREHOUSE_LOCS.has(loc)) return 'warehouse';
+      return 'warehouse'; // unknown warehouse IDs default to warehouse
+    }
+
     const products = new Map();
 
     function upsert(productName, locationType, locationName, qty, cif, dp) {
@@ -100,7 +111,7 @@ export default async function handler(req, res) {
         products.set(key, { productName, totalQty: 0, totalValueCIF: 0, totalValueDP: 0, locations: [] });
       }
       const p = products.get(key);
-      p.productName   = productName;
+      p.productName    = productName;
       p.totalQty      += qty;
       p.totalValueCIF += cif;
       p.totalValueDP  += dp;
@@ -123,17 +134,17 @@ export default async function handler(req, res) {
       upsert(r.product_name, 'branch', locLabel(r.location_id), qty, valCIF, valDP);
     }
 
-    // ── Warehouse rows (from stock_batches) ──
+    // ── Warehouse + Country Stock rows (from stock_batches) ──
     for (const r of warehouseRows) {
       const qty    = Number(r.qty     || 0);
       const valDP  = Number(r.val_dp  || 0) || qty * lookupDp(r.product_name);
       const valCIF = Number(r.val_cif || 0) || qty * lookupCif(r.product_name);
-      upsert(r.product_name, 'warehouse', locLabel(r.location), qty, valCIF, valDP);
+      upsert(r.product_name, batchLocType(r.location), locLabel(r.location), qty, valCIF, valDP);
     }
 
     // ── Field stock ──
     for (const r of fieldRows) {
-      const qty    = Number(r.qty || 0);
+      const qty      = Number(r.qty || 0);
       const srcLabel = locLabel(r.source_branch);
       const label    = r.officer_name
         ? `${r.officer_name} (from ${srcLabel})`
