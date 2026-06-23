@@ -6001,6 +6001,7 @@ function InventoryTab({ branch }) {
   // ── data state ──────────────────────────────────────────────
   const [movements, setMovements]     = useState([]);
   const [batches, setBatches]         = useState([]);
+  const [branchBatches, setBranchBatches] = useState([]);
   const [imports, setImports]         = useState([]);
   const [transfers, setTransfers]     = useState([]);
   const [branchMovements, setBranchMovements] = useState([]);
@@ -6031,9 +6032,11 @@ function InventoryTab({ branch }) {
       api.stock.supplierImports().catch(() => []).then(d => Array.isArray(d) ? d : d.imports || []),
       api.stock.transfers().catch(() => []).then(d => Array.isArray(d) ? d : d.transfers || []),
       fetch('/api/branch/inventory-movements', { credentials: 'include' }).then(r => r.ok ? r.json() : []).catch(() => []),
-    ]).then(([mvs, bts, imps, trfs, brMvs]) => {
+      fetch('/api/stock/branch-batches', { credentials: 'include' }).then(r => r.ok ? r.json() : []).catch(() => []),
+    ]).then(([mvs, bts, imps, trfs, brMvs, brBts]) => {
       setMovements(mvs);
       setBatches(bts);
+      setBranchBatches(Array.isArray(brBts) ? brBts : []);
       setImports(Array.isArray(imps) ? imps : []);
       setTransfers(Array.isArray(trfs) ? trfs : []);
       setBranchMovements(Array.isArray(brMvs) ? brMvs : (brMvs?.movements || []));
@@ -6072,19 +6075,38 @@ function InventoryTab({ branch }) {
   const countryStockQty  = batches.filter(b => b.location === 'country_stock').reduce((s, b) => s + Number(b.remaining_quantity || 0), 0);
   const countryStockDPC  = batches.filter(b => b.location === 'country_stock').reduce((s, b) => s + Number(b.remaining_quantity || 0) * (getDPCPrice(b.product_name || b.description || '') || Number(b.unit_price || 0)), 0);
   const warehouseQty     = batches.filter(b => b.location && b.location !== 'country_stock' && !b.location.includes('branch')).reduce((s, b) => s + Number(b.remaining_quantity || 0), 0);
-  const totalAvailable   = batches.filter(b => b.status !== 'expired' && b.status !== 'depleted').reduce((s, b) => s + Number(b.remaining_quantity || 0), 0);
+  // totalAvailable = warehouse + country stock remaining (active batches) + current branch stock
+  const totalAvailable   = batches.filter(b => b.status !== 'expired' && b.status !== 'depleted').reduce((s, b) => s + Number(b.remaining_quantity || 0), 0)
+                         + branchBatches.reduce((s, b) => s + Number(b.quantity || 0), 0);
 
   const distributedToBranches = periodTransfers.filter(t => {
     const dest = (t.toBranch || t.to_location || '').toLowerCase();
-    return ['delivered','received'].includes(t.status) && dest && !dest.includes('warehouse') && !dest.includes('country_stock');
+    return ['delivered','received','dispatched'].includes(t.status) && dest && !dest.includes('warehouse') && !dest.includes('country_stock');
   }).reduce((s, t) => {
     const items = Array.isArray(t.items) ? t.items : [];
     return s + (items.length > 0 ? items.reduce((a, i) => a + Number(i.quantityReceived ?? i.quantity_received ?? i.quantity ?? 0), 0) : Number(t.quantity || 0));
   }, 0);
-  const branchHeld    = batches.filter(b => b.location && b.location.toLowerCase().includes('branch')).reduce((s, b) => s + Number(b.remaining_quantity || 0), 0) ||
-                        periodBranchMvs.filter(b => b.type === 'receive').reduce((s, b) => s + Number(b.quantity || 0), 0);
-  const branchSold    = periodBranchMvs.filter(b => ['dispense','sale','sold','issue'].includes((b.type||'').toLowerCase())).reduce((s, b) => s + Number(b.quantity || 0), 0);
-  const writtenOff    = periodMovements.filter(m => (m.movement_type||'').toLowerCase().includes('write_off') || (m.movement_type||'').toLowerCase().includes('write-off')).reduce((s, m) => s + Number(m.quantity || 0), 0);
+
+  // branchHeld: current on-hand at branches from branch_inventory_batches (authoritative).
+  const branchHeld = branchBatches.reduce((s, b) => s + Number(b.quantity || 0), 0)
+    || periodBranchMvs.filter(b => b.type === 'receive').reduce((s, b) => s + Number(b.quantity || 0), 0);
+
+  // branchSold: all sale/dispense movement types from branch_inventory_movements.
+  const BRANCH_SALE_TYPES = new Set(['dispense','sale','sold','issue',
+    'walk_in_non_member_sale','walk_in_member_sale','online_order_sale',
+    'prescription_dispense','field_use']);
+  const branchSold = periodBranchMvs
+    .filter(b => BRANCH_SALE_TYPES.has((b.type||'').toLowerCase()))
+    .reduce((s, b) => s + Number(b.quantity || 0), 0);
+
+  // writtenOff: warehouse write-offs (stock_movements) + branch write-offs (branch_inventory_movements).
+  const writtenOff = periodMovements
+    .filter(m => (m.movement_type||'').toLowerCase().includes('write'))
+    .reduce((s, m) => s + Number(m.quantity || 0), 0)
+    + periodBranchMvs
+    .filter(b => (b.type||'').toLowerCase().includes('write'))
+    .reduce((s, b) => s + Number(b.quantity || 0), 0);
+
   const expiredBatches = batches.filter(b => b.status === 'expired');
   const expiredQty    = expiredBatches.reduce((s, b) => s + Number(b.remaining_quantity || 0), 0);
   const releasedToWh  = periodMovements.filter(m => ['transfer_in','warehouse_receipt','received'].some(k => (m.movement_type||'').toLowerCase().includes(k)) && (m.destination_location||'').toLowerCase().includes('warehouse')).reduce((s, m) => s + Number(m.quantity || 0), 0);
@@ -6105,8 +6127,8 @@ function InventoryTab({ branch }) {
     const csHeld = csBatches.reduce((s, b) => s + Number(b.remaining_quantity||0), 0);
     const whHeld = whBatches.reduce((s, b) => s + Number(b.remaining_quantity||0), 0);
     const expQty = expBatches.reduce((s, b) => s + Number(b.remaining_quantity||0), 0);
-    const branchRcvd = periodBranchMvs.filter(b => norm(b.product_name) === nName && b.type === 'receive').reduce((s, b) => s + Number(b.quantity||0), 0);
-    const sold   = periodBranchMvs.filter(b => norm(b.product_name) === nName && ['dispense','sale','sold','issue'].includes((b.type||'').toLowerCase())).reduce((s, b) => s + Number(b.quantity||0), 0);
+    const branchRcvd = periodBranchMvs.filter(b => norm(b.product_name) === nName && ['receive','received','stock_receipt','transfer_in'].includes((b.type||'').toLowerCase())).reduce((s, b) => s + Number(b.quantity||0), 0);
+    const sold   = periodBranchMvs.filter(b => norm(b.product_name) === nName && BRANCH_SALE_TYPES.has((b.type||'').toLowerCase())).reduce((s, b) => s + Number(b.quantity||0), 0);
     const woff   = periodMovements.filter(m => norm(m.product_name) === nName && (m.movement_type||'').toLowerCase().includes('write')).reduce((s, m) => s + Number(m.quantity||0), 0);
     const batNum = [...new Set(batches.filter(b => norm(b.description || b.product_name) === nName).map(b => b.batch_no).filter(Boolean))];
     const dpcVal = getDPCPrice(name);
@@ -6347,180 +6369,226 @@ function InventoryTab({ branch }) {
       )}
 
       {/* ── Batch Status Overview ── */}
-      {mvSection === 'batches' && (
-        <Card>
-          <CardHeader>
-            <h3 className="font-bold text-gray-800">🗂 Batch Status Overview</h3>
-            <p className="text-xs text-gray-500 mt-0.5">All batches across country stock, warehouses and branches.</p>
-          </CardHeader>
-          <div className="overflow-x-auto">
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.81rem' }}>
-              <thead>
-                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-                  <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Product</th>
-                  <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Batch #</th>
-                  <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Location</th>
-                  <th style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 700, color: '#374151' }}>Original Qty</th>
-                  <th style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 700, color: '#374151' }}>Dispatched</th>
-                  <th style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 700, color: '#374151' }}>Remaining</th>
-                  <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Expiry</th>
-                  <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Status</th>
-                  <th style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 700, color: '#374151' }}>CIF/Unit</th>
-                  <th style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 700, color: '#374151' }}>DPC/Unit</th>
-                </tr>
-              </thead>
-              <tbody>
-                {batches.sort((a,b) => {
-                  const statusOrder = { expired: 0, depleted: 1, active: 2 };
-                  return (statusOrder[a.status]??3) - (statusOrder[b.status]??3);
-                }).map((b, idx) => {
-                  const expiry = b.expiry_date;
-                  const days = expiry ? Math.floor((new Date(expiry) - new Date()) / 86400000) : null;
-                  const rem = Number(b.remaining_quantity || 0);
-                  const orig = Number(b.quantity || 0);
-                  const pct = orig > 0 ? Math.round((rem / orig) * 100) : 0;
-                  const statusStyles = {
-                    active: { bg: '#f0fdf4', color: '#166534', border: '#86efac' },
-                    expired: { bg: '#fef2f2', color: '#dc2626', border: '#fca5a5' },
-                    depleted: { bg: '#f8fafc', color: '#94a3b8', border: '#e2e8f0' },
-                  };
-                  const ss = statusStyles[b.status] || statusStyles.active;
-                  return (
-                    <tr key={b.id || idx} style={{ borderBottom: '1px solid #f1f5f9', background: b.status === 'expired' ? '#fff5f5' : b.status === 'depleted' ? '#fafafa' : idx % 2 === 0 ? '#fff' : '#fafafe' }}>
-                      <td style={{ padding: '8px 12px', fontWeight: 600, color: '#1e293b' }}>{b.description || b.product_name || '—'}</td>
-                      <td style={{ padding: '8px 12px' }}>
-                        <span style={{ background: '#eff6ff', color: '#1d4ed8', padding: '2px 7px', borderRadius: 5, fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 700 }}>{b.batch_no || '—'}</span>
-                      </td>
-                      <td style={{ padding: '8px 12px', fontSize: '0.78rem', color: '#64748b' }}>{fmtLocation(b.location || b.warehouse_id || '')}</td>
-                      <td style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 700 }}>{orig.toLocaleString()}</td>
-                      <td style={{ padding: '8px 12px', textAlign: 'center', color: '#dc2626', fontWeight: 700 }}>{Number(b.dispatched_quantity||0).toLocaleString()}</td>
-                      <td style={{ padding: '8px 12px', textAlign: 'center' }}>
-                        <div style={{ fontWeight: 900, color: rem === 0 ? '#94a3b8' : rem < 10 ? '#dc2626' : '#065f46', fontSize: '0.95rem' }}>{rem.toLocaleString()}</div>
-                        {orig > 0 && <div style={{ fontSize: '0.65rem', color: '#94a3b8' }}>{pct}%</div>}
-                      </td>
-                      <td style={{ padding: '8px 12px' }}>
-                        {expiry ? (
-                          <span style={{ color: days !=null && days <= 0 ? '#dc2626' : days !=null && days <= 30 ? '#ea580c' : days !=null && days <= 90 ? '#d97706' : '#374151', fontWeight: days !=null && days <= 90 ? 700 : 400, fontSize: '0.78rem' }}>
-                            {formatDate(expiry)}{days != null && days <= 90 && days > 0 ? ` (${days}d)` : days != null && days <= 0 ? ' EXPIRED' : ''}
+      {mvSection === 'batches' && (() => {
+        // Combine warehouse/country-stock batches with branch batches into one list
+        const allBatches = [
+          ...batches.map(b => ({ ...b, locationType: 'warehouse', remaining_quantity: Number(b.remaining_quantity || 0), quantity: Number(b.quantity || 0), cif_unit_cost: Number(b.cif_unit_cost || 0) || 0, dpc_unit_value: Number(b.dpc_unit_value || 0) || getDPCPrice(b.description || b.product_name || '') })),
+          ...branchBatches.map(b => ({ ...b, locationType: 'branch', status: b.status || 'in_stock', location: b.branch_id, description: b.product_name, remaining_quantity: Number(b.quantity || 0), quantity: Number(b.quantity || 0), dispatched_quantity: 0, cif_unit_cost: Number(b.cif_unit_cost || b.cif || 0), dpc_unit_value: Number(b.dpc_unit_value || b.dp || 0) })),
+        ].sort((a, b) => {
+          // group by type first: warehouse batches before branch batches; expired last
+          if (a.locationType !== b.locationType) return a.locationType === 'warehouse' ? -1 : 1;
+          const ord = { expired: 0, depleted: 1, out_of_stock: 1, active: 2, in_stock: 2 };
+          return (ord[a.status] ?? 3) - (ord[b.status] ?? 3);
+        });
+        const statusStyles = {
+          active:       { bg: '#f0fdf4', color: '#166534', border: '#86efac' },
+          in_stock:     { bg: '#f0fdf4', color: '#166534', border: '#86efac' },
+          expired:      { bg: '#fef2f2', color: '#dc2626', border: '#fca5a5' },
+          depleted:     { bg: '#f8fafc', color: '#94a3b8', border: '#e2e8f0' },
+          out_of_stock: { bg: '#f8fafc', color: '#94a3b8', border: '#e2e8f0' },
+        };
+        return (
+          <Card>
+            <CardHeader>
+              <h3 className="font-bold text-gray-800">🗂 Batch Status Overview</h3>
+              <p className="text-xs text-gray-500 mt-0.5">All batches across country stock, warehouses and branches — {allBatches.length} total.</p>
+            </CardHeader>
+            <div className="overflow-x-auto">
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.81rem' }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                    <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Product</th>
+                    <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Batch #</th>
+                    <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Location</th>
+                    <th style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 700, color: '#374151' }}>Qty Received</th>
+                    <th style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 700, color: '#374151' }}>Remaining</th>
+                    <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Expiry</th>
+                    <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Status</th>
+                    <th style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 700, color: '#374151' }}>CIF/Unit</th>
+                    <th style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 700, color: '#374151' }}>DPC/Unit</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {allBatches.map((b, idx) => {
+                    const expiry = b.expiry_date;
+                    const days = expiry ? Math.floor((new Date(expiry) - new Date()) / 86400000) : null;
+                    const rem  = Number(b.remaining_quantity || 0);
+                    const orig = Number(b.quantity || 0);
+                    const pct  = orig > 0 ? Math.round((rem / orig) * 100) : 0;
+                    const ss   = statusStyles[b.status] || statusStyles.active;
+                    const isBranch = b.locationType === 'branch';
+                    return (
+                      <tr key={b.id || idx} style={{ borderBottom: '1px solid #f1f5f9', background: b.status === 'expired' ? '#fff5f5' : isBranch ? (idx % 2 === 0 ? '#fafff7' : '#f0fdf4') : (idx % 2 === 0 ? '#fff' : '#fafafe') }}>
+                        <td style={{ padding: '8px 12px', fontWeight: 600, color: '#1e293b' }}>
+                          {b.description || b.product_name || '—'}
+                        </td>
+                        <td style={{ padding: '8px 12px' }}>
+                          <span style={{ background: '#eff6ff', color: '#1d4ed8', padding: '2px 7px', borderRadius: 5, fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 700 }}>{b.batch_no || '—'}</span>
+                        </td>
+                        <td style={{ padding: '8px 12px', fontSize: '0.78rem' }}>
+                          <span style={{ color: isBranch ? '#166534' : '#64748b' }}>
+                            {isBranch && <span style={{ background: '#dcfce7', color: '#166534', padding: '1px 5px', borderRadius: 4, fontSize: '0.68rem', fontWeight: 700, marginRight: 4 }}>BRANCH</span>}
+                            {fmtLocation(b.location || b.branch_id || '')}
                           </span>
-                        ) : <span style={{ color: '#cbd5e1' }}>—</span>}
-                      </td>
-                      <td style={{ padding: '8px 12px' }}>
-                        <span style={{ background: ss.bg, color: ss.color, border: `1px solid ${ss.border}`, padding: '2px 8px', borderRadius: 5, fontSize: '0.72rem', fontWeight: 700, textTransform: 'capitalize' }}>
-                          {b.status || 'active'}
-                        </span>
-                      </td>
-                      <td style={{ padding: '8px 12px', textAlign: 'center', fontSize: '0.78rem', color: '#475569' }}>{formatCurrency(Number(b.cif_unit_cost || 0))}</td>
-                      <td style={{ padding: '8px 12px', textAlign: 'center', fontSize: '0.78rem', color: '#475569' }}>{formatCurrency(Number(b.dpc_unit_value || 0) || getDPCPrice(b.description || b.product_name || ''))}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-              <tfoot>
-                <tr style={{ background: '#f1f5f9', borderTop: '2px solid #e2e8f0', fontWeight: 800 }}>
-                  <td colSpan={3} style={{ padding: '8px 12px', color: '#374151' }}>TOTALS ({batches.length} batches)</td>
-                  <td style={{ padding: '8px 12px', textAlign: 'center' }}>{batches.reduce((s,b)=>s+Number(b.quantity||0),0).toLocaleString()}</td>
-                  <td style={{ padding: '8px 12px', textAlign: 'center', color: '#dc2626' }}>{batches.reduce((s,b)=>s+Number(b.dispatched_quantity||0),0).toLocaleString()}</td>
-                  <td style={{ padding: '8px 12px', textAlign: 'center', color: '#065f46' }}>{batches.reduce((s,b)=>s+Number(b.remaining_quantity||0),0).toLocaleString()}</td>
-                  <td colSpan={4} />
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        </Card>
-      )}
+                        </td>
+                        <td style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 700 }}>{orig.toLocaleString()}</td>
+                        <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                          <div style={{ fontWeight: 900, color: rem === 0 ? '#94a3b8' : rem < 10 ? '#dc2626' : '#065f46', fontSize: '0.95rem' }}>{rem.toLocaleString()}</div>
+                          {orig > 0 && <div style={{ fontSize: '0.65rem', color: '#94a3b8' }}>{pct}%</div>}
+                        </td>
+                        <td style={{ padding: '8px 12px' }}>
+                          {expiry ? (
+                            <span style={{ color: days != null && days <= 0 ? '#dc2626' : days != null && days <= 30 ? '#ea580c' : days != null && days <= 90 ? '#d97706' : '#374151', fontWeight: days != null && days <= 90 ? 700 : 400, fontSize: '0.78rem' }}>
+                              {formatDate(expiry)}{days != null && days <= 90 && days > 0 ? ` (${days}d)` : days != null && days <= 0 ? ' EXPIRED' : ''}
+                            </span>
+                          ) : <span style={{ color: '#cbd5e1' }}>—</span>}
+                        </td>
+                        <td style={{ padding: '8px 12px' }}>
+                          <span style={{ background: ss.bg, color: ss.color, border: `1px solid ${ss.border}`, padding: '2px 8px', borderRadius: 5, fontSize: '0.72rem', fontWeight: 700, textTransform: 'capitalize' }}>
+                            {(b.status || 'active').replace(/_/g, ' ')}
+                          </span>
+                        </td>
+                        <td style={{ padding: '8px 12px', textAlign: 'center', fontSize: '0.78rem', color: '#475569' }}>{formatCurrency(b.cif_unit_cost)}</td>
+                        <td style={{ padding: '8px 12px', textAlign: 'center', fontSize: '0.78rem', color: '#475569' }}>{formatCurrency(b.dpc_unit_value)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr style={{ background: '#f1f5f9', borderTop: '2px solid #e2e8f0', fontWeight: 800 }}>
+                    <td colSpan={3} style={{ padding: '8px 12px', color: '#374151' }}>TOTALS ({allBatches.length} batches — {batches.length} wh/cs + {branchBatches.length} branch)</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'center' }}>{allBatches.reduce((s,b)=>s+Number(b.quantity||0),0).toLocaleString()}</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'center', color: '#065f46' }}>{allBatches.reduce((s,b)=>s+Number(b.remaining_quantity||0),0).toLocaleString()}</td>
+                    <td colSpan={4} />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </Card>
+        );
+      })()}
 
       {/* ── Movement Log ── */}
-      {mvSection === 'movements' && (
-        <Card>
-          <CardHeader>
-            <div className="flex justify-between items-start flex-wrap gap-3">
-              <div>
-                <h3 className="font-bold text-gray-800">📋 Movement Log</h3>
-                <p className="text-xs text-gray-500 mt-0.5">{filteredMvs.length} movements in period</p>
+      {mvSection === 'movements' && (() => {
+        // Normalise branch_inventory_movements into the same shape as stock_movements
+        const normBranchMvs = periodBranchMvs.map(m => ({
+          id: m.id,
+          _source: 'branch',
+          product_name: m.product_name,
+          batch_no: m.batch_no,
+          movement_type: m.type,
+          quantity: Number(m.quantity || 0),
+          source_location: m.branch_id,
+          destination_location: BRANCH_SALE_TYPES.has((m.type||'').toLowerCase()) ? 'customer' : null,
+          reference_id: m.reference,
+          created_by: m.created_by,
+          created_at: m.created_at,
+        }));
+
+        // Combined and sorted log (warehouse + branch movements)
+        const allMvs = [...filteredMvs.map(m => ({ ...m, _source: 'warehouse' })), ...normBranchMvs]
+          .filter(m => {
+            if (mvSearch && !(m.product_name||'').toLowerCase().includes(mvSearch.toLowerCase()) && !(m.batch_no||'').toLowerCase().includes(mvSearch.toLowerCase())) return false;
+            if (mvTypeFilter && m.movement_type !== mvTypeFilter) return false;
+            return true;
+          })
+          .sort((a, b) => new Date(b.created_at||0) - new Date(a.created_at||0));
+
+        const allMvTypes = [...new Set([...mvTypes, ...branchMovements.map(m => m.type).filter(Boolean)])];
+
+        return (
+          <Card>
+            <CardHeader>
+              <div className="flex justify-between items-start flex-wrap gap-3">
+                <div>
+                  <h3 className="font-bold text-gray-800">📋 Movement Log</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">{allMvs.length} movements in period (warehouse + branch)</p>
+                </div>
               </div>
-            </div>
-            <div className="mt-3 flex gap-2 flex-wrap">
-              <div style={{ position: 'relative', flex: 1, minWidth: 180 }}>
-                <Search size={13} style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none' }} />
-                <input type="text" value={mvSearch} onChange={e => setMvSearch(e.target.value)} placeholder="Search product / batch…"
-                  style={{ width: '100%', padding: '7px 10px 7px 28px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: '0.8rem', outline: 'none', boxSizing: 'border-box' }} />
+              <div className="mt-3 flex gap-2 flex-wrap">
+                <div style={{ position: 'relative', flex: 1, minWidth: 180 }}>
+                  <Search size={13} style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none' }} />
+                  <input type="text" value={mvSearch} onChange={e => setMvSearch(e.target.value)} placeholder="Search product / batch…"
+                    style={{ width: '100%', padding: '7px 10px 7px 28px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: '0.8rem', outline: 'none', boxSizing: 'border-box' }} />
+                </div>
+                <select value={mvTypeFilter} onChange={e => setMvTypeFilter(e.target.value)}
+                  style={{ padding: '7px 10px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: '0.8rem', background: '#fff' }}>
+                  <option value="">All Types</option>
+                  {allMvTypes.map(t => <option key={t} value={t}>{t.replace(/_/g,' ')}</option>)}
+                </select>
               </div>
-              <select value={mvTypeFilter} onChange={e => setMvTypeFilter(e.target.value)}
-                style={{ padding: '7px 10px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: '0.8rem', background: '#fff' }}>
-                <option value="">All Types</option>
-                {mvTypes.map(t => <option key={t} value={t}>{t.replace(/_/g,' ')}</option>)}
-              </select>
+            </CardHeader>
+            <div className="overflow-x-auto">
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.81rem' }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                    <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Date & Time</th>
+                    <th style={{ padding: '9px 8px', textAlign: 'left', fontWeight: 700, color: '#374151', fontSize: '0.72rem' }}>Source</th>
+                    <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Product</th>
+                    <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Batch #</th>
+                    <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Type</th>
+                    <th style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 700, color: '#374151' }}>Qty</th>
+                    <th style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 700, color: '#374151' }}>DPC Value</th>
+                    <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>From</th>
+                    <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>To</th>
+                    <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Reference</th>
+                    <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>By</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {allMvs.map((m, idx) => {
+                    const mt = (m.movement_type||'').toLowerCase();
+                    const isIn  = ['in','received','import_received','transfer_in','warehouse_receipt','receipt','receive','stock_receipt'].some(k => mt.includes(k));
+                    const isOut = ['out','dispatched','transfer_out','dispatch','write_off','released','sale','sold','dispense','field_use'].some(k => mt.includes(k));
+                    const typeColor = isIn ? { bg: '#f0fdf4', color: '#166534', border: '#86efac' } : isOut ? { bg: '#fef2f2', color: '#991b1b', border: '#fca5a5' } : { bg: '#fffbeb', color: '#92400e', border: '#fcd34d' };
+                    const isBranch = m._source === 'branch';
+                    const dpcVal = Number(m.quantity||0) * (Number(m.dpc_unit_value||0) || getDPCPrice(m.product_name||''));
+                    return (
+                      <tr key={`${m._source}-${m.id||idx}`} style={{ borderBottom: '1px solid #f1f5f9', background: isBranch ? (idx % 2 === 0 ? '#fafff7' : '#f0fdf4') : (idx % 2 === 0 ? '#fff' : '#fafafa') }}>
+                        <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
+                          <div style={{ fontWeight: 600, fontSize: '0.78rem', color: '#374151' }}>{formatDate(m.created_at)}</div>
+                          <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{m.created_at ? new Date(m.created_at).toLocaleTimeString('en-ZA',{hour:'2-digit',minute:'2-digit'}) : ''}</div>
+                        </td>
+                        <td style={{ padding: '8px 8px' }}>
+                          <span style={{ background: isBranch ? '#dcfce7' : '#eff6ff', color: isBranch ? '#166534' : '#1d4ed8', padding: '1px 6px', borderRadius: 4, fontSize: '0.65rem', fontWeight: 800 }}>
+                            {isBranch ? 'BRANCH' : 'WH'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '8px 12px', fontWeight: 600, color: '#1e293b', maxWidth: 180 }}>{m.product_name || '—'}</td>
+                        <td style={{ padding: '8px 12px' }}>
+                          {m.batch_no ? <span style={{ background: '#eff6ff', color: '#1d4ed8', padding: '2px 6px', borderRadius: 4, fontFamily: 'monospace', fontSize: '0.72rem', fontWeight: 700 }}>{m.batch_no}</span> : <span style={{ color: '#cbd5e1' }}>—</span>}
+                        </td>
+                        <td style={{ padding: '8px 12px' }}>
+                          <span style={{ background: typeColor.bg, color: typeColor.color, border: `1px solid ${typeColor.border}`, padding: '2px 8px', borderRadius: 5, fontSize: '0.72rem', fontWeight: 700, textTransform: 'capitalize', whiteSpace: 'nowrap' }}>
+                            {(m.movement_type||'—').replace(/_/g,' ')}
+                          </span>
+                        </td>
+                        <td style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 900, fontSize: '1rem', color: isIn ? '#166534' : isOut ? '#dc2626' : '#d97706' }}>
+                          {isIn ? '+' : isOut ? '-' : '±'}{Number(m.quantity||0).toLocaleString()}
+                        </td>
+                        <td style={{ padding: '8px 12px', textAlign: 'center', fontSize: '0.78rem', color: '#475569', fontWeight: 600 }}>
+                          {dpcVal > 0 ? formatCurrency(dpcVal) : <span style={{ color: '#cbd5e1' }}>—</span>}
+                        </td>
+                        <td style={{ padding: '8px 12px', fontSize: '0.78rem', color: '#475569' }}>{fmtLocation(m.source_location||m.location||'')}</td>
+                        <td style={{ padding: '8px 12px', fontSize: '0.78rem', color: '#475569' }}>{fmtLocation(m.destination_location||'')}</td>
+                        <td style={{ padding: '8px 12px' }}>
+                          <span style={{ fontFamily: 'monospace', fontSize: '0.7rem', color: '#6366f1', background: '#eef2ff', padding: '2px 5px', borderRadius: 4 }}>
+                            {m.reference_id||m.reference||'—'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '8px 12px', fontSize: '0.78rem', color: '#374151' }}>{m.created_by || '—'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {allMvs.length === 0 && (
+                <div style={{ padding: '40px 20px', textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem' }}>No movements found for this period / filter.</div>
+              )}
             </div>
-          </CardHeader>
-          <div className="overflow-x-auto">
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.81rem' }}>
-              <thead>
-                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-                  <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Date & Time</th>
-                  <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Product</th>
-                  <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Batch #</th>
-                  <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Expiry</th>
-                  <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Type</th>
-                  <th style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 700, color: '#374151' }}>Qty</th>
-                  <th style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 700, color: '#374151' }}>DPC Value</th>
-                  <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>From</th>
-                  <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>To</th>
-                  <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Reference</th>
-                  <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>By</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredMvs.map((m, idx) => {
-                  const isIn = ['in','received','import_received','transfer_in','warehouse_receipt','receipt'].some(k => (m.movement_type||'').toLowerCase().includes(k));
-                  const isOut = ['out','dispatched','transfer_out','dispatch','write_off','released'].some(k => (m.movement_type||'').toLowerCase().includes(k));
-                  const typeColor = isIn ? { bg: '#f0fdf4', color: '#166534', border: '#86efac' } : isOut ? { bg: '#fef2f2', color: '#991b1b', border: '#fca5a5' } : { bg: '#fffbeb', color: '#92400e', border: '#fcd34d' };
-                  const expiry = m.expiry_date;
-                  const days = expiry ? Math.floor((new Date(expiry) - new Date()) / 86400000) : null;
-                  const dpcVal = Number(m.quantity||0) * (Number(m.dpc_unit_value||0) || getDPCPrice(m.product_name||''));
-                  return (
-                    <tr key={m.id||idx} style={{ borderBottom: '1px solid #f1f5f9', background: idx % 2 === 0 ? '#fff' : '#fafafa' }}>
-                      <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
-                        <div style={{ fontWeight: 600, fontSize: '0.78rem', color: '#374151' }}>{formatDate(m.created_at)}</div>
-                        <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{m.created_at ? new Date(m.created_at).toLocaleTimeString('en-ZA',{hour:'2-digit',minute:'2-digit'}) : ''}</div>
-                      </td>
-                      <td style={{ padding: '8px 12px', fontWeight: 600, color: '#1e293b', maxWidth: 180 }}>{m.product_name || '—'}</td>
-                      <td style={{ padding: '8px 12px' }}>
-                        {m.batch_no ? <span style={{ background: '#eff6ff', color: '#1d4ed8', padding: '2px 6px', borderRadius: 4, fontFamily: 'monospace', fontSize: '0.72rem', fontWeight: 700 }}>{m.batch_no}</span> : <span style={{ color: '#cbd5e1' }}>—</span>}
-                      </td>
-                      <td style={{ padding: '8px 12px', fontSize: '0.78rem' }}>
-                        {expiry ? <span style={{ color: days !=null && days <= 30 ? '#dc2626' : days !=null && days <= 90 ? '#d97706' : '#374151', fontWeight: days !=null && days <= 90 ? 700 : 400 }}>{formatDate(expiry)}{days != null && days <= 90 ? ` (${days}d)` : ''}</span> : <span style={{ color: '#cbd5e1' }}>—</span>}
-                      </td>
-                      <td style={{ padding: '8px 12px' }}>
-                        <span style={{ background: typeColor.bg, color: typeColor.color, border: `1px solid ${typeColor.border}`, padding: '2px 8px', borderRadius: 5, fontSize: '0.72rem', fontWeight: 700, textTransform: 'capitalize', whiteSpace: 'nowrap' }}>
-                          {(m.movement_type||'—').replace(/_/g,' ')}
-                        </span>
-                      </td>
-                      <td style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 900, fontSize: '1rem', color: isIn ? '#166534' : isOut ? '#dc2626' : '#d97706' }}>
-                        {isIn ? '+' : isOut ? '-' : '±'}{Number(m.quantity||0).toLocaleString()}
-                      </td>
-                      <td style={{ padding: '8px 12px', textAlign: 'center', fontSize: '0.78rem', color: '#475569', fontWeight: 600 }}>
-                        {dpcVal > 0 ? formatCurrency(dpcVal) : <span style={{ color: '#cbd5e1' }}>—</span>}
-                      </td>
-                      <td style={{ padding: '8px 12px', fontSize: '0.78rem', color: '#475569' }}>{fmtLocation(m.source_location||m.location||'')}</td>
-                      <td style={{ padding: '8px 12px', fontSize: '0.78rem', color: '#475569' }}>{fmtLocation(m.destination_location||'')}</td>
-                      <td style={{ padding: '8px 12px' }}>
-                        <span style={{ fontFamily: 'monospace', fontSize: '0.7rem', color: '#6366f1', background: '#eef2ff', padding: '2px 5px', borderRadius: 4 }}>
-                          {m.reference_id||m.reference||'—'}
-                        </span>
-                      </td>
-                      <td style={{ padding: '8px 12px', fontSize: '0.78rem', color: '#374151' }}>{m.created_by || '—'}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            {filteredMvs.length === 0 && (
-              <div style={{ padding: '40px 20px', textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem' }}>No movements found for this period / filter.</div>
-            )}
-          </div>
-        </Card>
-      )}
+          </Card>
+        );
+      })()}
 
       {/* ── Record movement modal ── */}
       <Modal open={showRecordForm} onClose={() => setShowRecordForm(false)} title="Record Stock Movement" size="md">

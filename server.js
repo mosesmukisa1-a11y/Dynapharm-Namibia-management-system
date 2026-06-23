@@ -1200,6 +1200,40 @@ app.get('/api/branch/inventory-movements', async (req, res) => {
   }
 });
 
+// All active branch inventory batches (branch_inventory_batches) with prices from
+// product_prices (GM Price List). Used by the Inventory tab Batch Status section.
+app.get('/api/stock/branch-batches', async (req, res) => {
+  try {
+    const { getMany } = await import('./api/db.js');
+    const rows = await getMany(`
+      SELECT b.id, b.branch_id, b.product_name, b.batch_no, b.expiry_date,
+             b.quantity, b.status, b.source_warehouse, b.created_at,
+             COALESCE(NULLIF(p.dp,  0), NULLIF(b.unit_price, 0), 0) AS dp,
+             COALESCE(NULLIF(p.cif, 0), 0)                          AS cif
+      FROM   branch_inventory_batches b
+      LEFT JOIN product_prices p
+             ON LOWER(TRIM(p.description)) = LOWER(TRIM(b.product_name))
+      WHERE  b.quantity > 0
+      ORDER  BY b.branch_id, b.product_name, b.expiry_date NULLS LAST
+    `);
+    res.json(rows.map(r => ({
+      ...r,
+      quantity:   Number(r.quantity  || 0),
+      dp:         Number(r.dp        || 0),
+      cif:        Number(r.cif       || 0),
+      location:   r.branch_id,
+      locationType: 'branch',
+      description: r.product_name,
+      remaining_quantity: Number(r.quantity || 0),
+      dpc_unit_value: Number(r.dp  || 0),
+      cif_unit_cost:  Number(r.cif || 0),
+    })));
+  } catch (err) {
+    console.error('[stock/branch-batches]', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 app.get('/api/stock/branch/:branchId/movements', async (req, res) => {
   try {
     const { getMany } = await import('./api/db.js');
