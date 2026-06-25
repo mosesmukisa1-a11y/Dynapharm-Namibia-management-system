@@ -9600,6 +9600,8 @@ function fmtPeriodLabel(from, to) {
 function BranchStockTab({ branch }) {
   const [branchData, setBranchData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState(null);
   const [selectedBranch, setSelectedBranch] = useState(branch && branch !== 'all' ? branch : 'all');
   const [viewMode, setViewMode] = useState('dashboard');
   const [productSearch, setProductSearch] = useState('');
@@ -9609,18 +9611,27 @@ function BranchStockTab({ branch }) {
   const [movCategoryFilter, setMovCategoryFilter] = useState('all');
   const [movProductSearch, setMovProductSearch] = useState('');
 
-  const loadData = useCallback(() => {
-    setLoading(true);
+  const loadData = useCallback((silent = false) => {
+    if (!silent) setLoading(true);
+    else setRefreshing(true);
     const params = new URLSearchParams();
     if (period.from) params.set('date_from', period.from);
     if (period.to) params.set('date_to', period.to);
     api.branch.stockSummary(params.toString())
-      .then(d => setBranchData(d.branches || []))
+      .then(d => { setBranchData(d.branches || []); setLastRefresh(new Date()); })
       .catch(() => setBranchData([]))
-      .finally(() => setLoading(false));
+      .finally(() => { setLoading(false); setRefreshing(false); });
   }, [period.from, period.to]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  // Real-time: refresh immediately on any stock WebSocket event
+  useStockRealtime({ onUpdate: () => loadData(true) });
+
+  // Fallback polling every 30 s (catches branch movements not emitted via WS)
+  useEffect(() => {
+    loadData();
+    const iv = setInterval(() => loadData(true), 30000);
+    return () => clearInterval(iv);
+  }, [loadData]);
 
   if (loading) return <LoadingSpinner />;
 
@@ -10079,8 +10090,16 @@ function BranchStockTab({ branch }) {
           <h3 style={{ color: '#fff', fontSize: '1.1rem', fontWeight: 800, margin: '3px 0 0' }}>Per-Branch Stock Dashboard</h3>
           <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '0.78rem', margin: '3px 0 0' }}>Live stock balances per shop · {periodLabel}</p>
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button onClick={loadData} style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)', color: '#fff', padding: '7px 14px', borderRadius: 20, fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}>Refresh</button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          {lastRefresh && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 20, padding: '4px 10px', fontSize: '0.72rem', color: 'rgba(255,255,255,0.8)', fontWeight: 600 }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: refreshing ? '#fbbf24' : '#4ade80', display: 'inline-block', animation: refreshing ? 'pulse 1s infinite' : 'none' }} />
+              {refreshing ? 'Updating…' : `Updated ${lastRefresh.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`}
+            </span>
+          )}
+          <button onClick={() => loadData(false)} disabled={loading || refreshing} style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)', color: '#fff', padding: '7px 14px', borderRadius: 20, fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', opacity: (loading || refreshing) ? 0.7 : 1 }}>
+            {refreshing ? '⟳ Refreshing…' : 'Refresh'}
+          </button>
           <button onClick={printCompanyReport} style={{ background: '#fff', border: 'none', color: '#c41e3a', padding: '7px 14px', borderRadius: 20, fontSize: '0.82rem', fontWeight: 800, cursor: 'pointer' }}>Company Report PDF</button>
         </div>
       </div>
