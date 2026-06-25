@@ -1947,11 +1947,15 @@ function OverviewTab({ branch }) {
 
   const filterBatch = (b) => branch === 'all' || (b.location || '').toLowerCase().replace(/\s+/g, '_') === branch;
   const filteredBatches = data.batches.filter(filterBatch);
-  const WAREHOUSE_LOCS = new Set(['country_stock', 'windhoek_warehouse', 'ondangwa_warehouse']);
+
+  // country_stock is staging/holding — excluded from all operational totals
+  const operationalBatches = filteredBatches.filter(b => (b.location || '') !== 'country_stock');
+
+  const WAREHOUSE_LOCS = new Set(['windhoek_warehouse', 'ondangwa_warehouse']);
   const isWarehouseLoc = (loc) => {
     if (!loc) return false;
     const s = loc.toLowerCase().replace(/\s+/g, '_');
-    return WAREHOUSE_LOCS.has(s) || s.includes('warehouse') || s === 'country_stock';
+    return WAREHOUSE_LOCS.has(s) || s.includes('warehouse');
   };
   const warehouseMovements = data.movements.filter(m =>
     isWarehouseLoc(m.source_location) || isWarehouseLoc(m.destination_location)
@@ -1970,15 +1974,16 @@ function OverviewTab({ branch }) {
     }, 0);
   }, 0);
 
-  const warehouseQty = filteredBatches.reduce((sum, b) => sum + Number(b.remaining_quantity || b.quantity || 0), 0);
+  // Use remaining_quantity only (no fallback to original quantity — depleted batches should count as 0)
+  const warehouseQty = operationalBatches.reduce((sum, b) => sum + Number(b.remaining_quantity || 0), 0);
   const totalItems = warehouseQty + branchTotalQty;
-  const totalCIF = filteredBatches.reduce((sum, b) => {
-    const qty = Number(b.remaining_quantity || b.quantity || 0);
+  const totalCIF = operationalBatches.reduce((sum, b) => {
+    const qty = Number(b.remaining_quantity || 0);
     const cif = getBatchCIF(b);
     return sum + qty * cif;
   }, 0);
-  const totalDPC = filteredBatches.reduce((sum, b) => {
-    const qty = Number(b.remaining_quantity || b.quantity || 0);
+  const totalDPC = operationalBatches.reduce((sum, b) => {
+    const qty = Number(b.remaining_quantity || 0);
     const dpc = Number(b.dpc_unit_value || 0) || getDPCPrice(b.description || b.product_name || '');
     return sum + qty * dpc;
   }, 0) + branchTotalDPC;
@@ -1992,17 +1997,13 @@ function OverviewTab({ branch }) {
   }).length;
 
   const countryBatches = data.batches.filter(b => (b.location || '') === 'country_stock');
-  const whkBatches = data.batches.filter(b => b.location === 'windhoek_warehouse');
-  const ondBatches = data.batches.filter(b => b.location === 'ondangwa_warehouse');
-  // Use inventory_balances (locationBreakdown) for accurate qty — stock_batches.remaining_quantity
-  // can drift from the true balance tracked in inventory_balances via stock_movements.
-  const lb = data.locationBreakdown || [];
-  const csEntry  = lb.find(l => l.locationId === 'country_stock');
-  const whkEntry = lb.find(l => l.locationId === 'windhoek_warehouse');
-  const ondEntry = lb.find(l => l.locationId === 'ondangwa_warehouse');
-  const countryQty = csEntry  ? Number(csEntry.totalUnits  || 0) : countryBatches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0), 0);
-  const whkQty    = whkEntry  ? Number(whkEntry.totalUnits || 0) : whkBatches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0), 0);
-  const ondQty    = ondEntry  ? Number(ondEntry.totalUnits || 0) : ondBatches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0), 0);
+  const whkBatches    = data.batches.filter(b => b.location === 'windhoek_warehouse');
+  const ondBatches    = data.batches.filter(b => b.location === 'ondangwa_warehouse');
+  // Use stock_batches.remaining_quantity directly — inventory_balances accumulates historical
+  // period rows and SUM(closing_qty) inflates figures. remaining_quantity is always live.
+  const countryQty = countryBatches.reduce((s, b) => s + Number(b.remaining_quantity || 0), 0);
+  const whkQty     = whkBatches.reduce((s, b) => s + Number(b.remaining_quantity || 0), 0);
+  const ondQty     = ondBatches.reduce((s, b) => s + Number(b.remaining_quantity || 0), 0);
   const fieldQty = data.fieldStock.reduce((s, f) => s + Number(f.balance || 0), 0);
 
   const now = new Date();
@@ -2177,10 +2178,11 @@ function OverviewTab({ branch }) {
           <CardBody>
             {(() => {
               const byLoc = {};
-              filteredBatches.forEach(b => {
+              // Use operationalBatches (country_stock excluded) with remaining_quantity only
+              operationalBatches.forEach(b => {
                 const label = fmtLocation(b.location || 'unknown');
                 if (!byLoc[label]) byLoc[label] = { qty: 0, cifValue: 0, dpcValue: 0, batches: 0 };
-                const qty = Number(b.remaining_quantity || b.quantity || 0);
+                const qty = Number(b.remaining_quantity || 0);
                 byLoc[label].qty += qty;
                 byLoc[label].cifValue += qty * getBatchCIF(b);
                 byLoc[label].dpcValue += qty * (Number(b.dpc_unit_value || 0) || getDPCPrice(b.description || b.product_name || ''));
