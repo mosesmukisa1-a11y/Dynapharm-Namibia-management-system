@@ -619,6 +619,7 @@ function ApprovalsTab() {
   const [amendShortfallWarning, setAmendShortfallWarning] = useState(false);
   const [amendShortfallAcknowledged, setAmendShortfallAcknowledged] = useState(false);
   const [amendCommentBeforeWarning, setAmendCommentBeforeWarning] = useState('');
+  const [amendAvailability, setAmendAvailability] = useState({});
   const [processing, setProcessing] = useState(false);
   const [rentReviewModal, setRentReviewModal] = useState(null);
   const [rentReviewNote, setRentReviewNote] = useState('');
@@ -772,6 +773,7 @@ function ApprovalsTab() {
       setAmendComment('');
       setAmendShortfallWarning(false);
       setAmendShortfallAcknowledged(false);
+      setAmendAvailability({});
     } catch (err) {
       setMessage('Error: ' + err.message);
     } finally {
@@ -801,7 +803,7 @@ function ApprovalsTab() {
     }
   };
 
-  const openAmendModal = (t) => {
+  const openAmendModal = async (t) => {
     const items = (t.items || []).map(it => ({
       ...it,
       quantityApproved: it.quantity,
@@ -810,7 +812,35 @@ function ApprovalsTab() {
     setAmendComment('');
     setAmendShortfallWarning(false);
     setAmendShortfallAcknowledged(false);
+    setAmendAvailability({});
     setAmendModal(t);
+
+    const warehouseId = t.fromWarehouse || t.from_location || t.from_warehouse || null;
+    if (warehouseId && items.length > 0) {
+      const productNames = [...new Set(items.map(it => it.productName).filter(Boolean))];
+      try {
+        const result = await api.stock.batchAvailability(warehouseId, productNames);
+        if (result.success && Array.isArray(result.availability)) {
+          const avMap = {};
+          result.availability.forEach(p => {
+            avMap[(p.productName || '').toLowerCase().trim()] = p;
+          });
+          setAmendAvailability(avMap);
+          setAmendItems(prev => prev.map(it => {
+            const key = (it.productName || '').toLowerCase().trim();
+            const avData = avMap[key];
+            if (!avData) return it;
+            const batchMatch = it.batchNo
+              ? avData.batches.find(b => b.batchNo === it.batchNo)
+              : null;
+            const availableQty = batchMatch
+              ? batchMatch.availableQty
+              : (it.batchNo ? null : avData.totalAvailable);
+            return { ...it, availableQty };
+          }));
+        }
+      } catch (_) {}
+    }
   };
 
   const handleWriteOffAction = async (ids, action, noteText) => {
@@ -2142,8 +2172,9 @@ function ApprovalsTab() {
                     <th style={{ textAlign: 'left', padding: '8px 10px', borderBottom: '2px solid #e5e7eb', fontSize: 12, color: '#6b7280' }}>Product</th>
                     <th style={{ textAlign: 'left', padding: '8px 10px', borderBottom: '2px solid #e5e7eb', fontSize: 12, color: '#6b7280' }}>Batch</th>
                     <th style={{ textAlign: 'left', padding: '8px 10px', borderBottom: '2px solid #e5e7eb', fontSize: 12, color: '#6b7280' }}>Expiry</th>
-                    <th style={{ textAlign: 'center', padding: '8px 10px', borderBottom: '2px solid #e5e7eb', fontSize: 12, color: '#6b7280' }}>Original Qty</th>
-                    <th style={{ textAlign: 'center', padding: '8px 10px', borderBottom: '2px solid #e5e7eb', fontSize: 12, color: '#6b7280' }}>Approved Qty</th>
+                    <th style={{ textAlign: 'center', padding: '8px 10px', borderBottom: '2px solid #e5e7eb', fontSize: 12, color: '#6b7280' }}>Requested</th>
+                    <th style={{ textAlign: 'center', padding: '8px 10px', borderBottom: '2px solid #e5e7eb', fontSize: 12, color: '#059669' }}>In Warehouse</th>
+                    <th style={{ textAlign: 'center', padding: '8px 10px', borderBottom: '2px solid #e5e7eb', fontSize: 12, color: '#6b7280' }}>Approve Qty</th>
                     <th style={{ textAlign: 'center', padding: '8px 10px', borderBottom: '2px solid #e5e7eb', fontSize: 12, color: '#6b7280' }}>Remove</th>
                   </tr>
                 </thead>
@@ -2152,6 +2183,12 @@ function ApprovalsTab() {
                     const isRemoved = Number(it.quantityApproved) === 0;
                     const isExpiringSoon = it.expiryDate && new Date(it.expiryDate) < new Date(Date.now() + 90 * 86400000);
                     const rowBg = isRemoved ? '#fef2f2' : i % 2 === 0 ? 'white' : '#f9fafb';
+                    const available = it.availableQty;
+                    const hasAvailability = available != null;
+                    const maxApprovable = hasAvailability
+                      ? Math.max(it.quantity, available)
+                      : it.quantity;
+                    const isShortfall = hasAvailability && available < it.quantity && !isRemoved;
                     return (
                       <tr key={i} style={{ background: rowBg, opacity: isRemoved ? 0.6 : 1 }}>
                         <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', fontSize: 13, fontWeight: 500, textDecoration: isRemoved ? 'line-through' : 'none', color: isRemoved ? '#9ca3af' : 'inherit' }}>{it.productName || it.productId}</td>
@@ -2162,16 +2199,30 @@ function ApprovalsTab() {
                         </td>
                         <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', fontSize: 13, textAlign: 'center', color: '#9ca3af' }}>{it.quantity}</td>
                         <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', textAlign: 'center' }}>
+                          {hasAvailability ? (
+                            <span style={{
+                              fontSize: 13, fontWeight: 700,
+                              color: isRemoved ? '#9ca3af' : available === 0 ? '#dc2626' : isShortfall ? '#d97706' : '#059669',
+                            }}>
+                              {available}
+                              {isShortfall && <span style={{ marginLeft: 4, fontSize: 10, background: '#fef3c7', color: '#92400e', borderRadius: 3, padding: '1px 4px' }}>low</span>}
+                              {available === 0 && !isRemoved && <span style={{ marginLeft: 4, fontSize: 10, background: '#fee2e2', color: '#dc2626', borderRadius: 3, padding: '1px 4px' }}>none</span>}
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: 12, color: '#d1d5db' }}>—</span>
+                          )}
+                        </td>
+                        <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', textAlign: 'center' }}>
                           {isRemoved ? (
                             <span style={{ fontSize: 12, color: '#dc2626', fontWeight: 600 }}>Removed</span>
                           ) : (
-                            <input type="number" min="1" max={it.quantity} value={it.quantityApproved}
+                            <input type="number" min="0" max={maxApprovable} value={it.quantityApproved}
                               onChange={e => {
-                                const val = Math.max(0, Math.min(Number(e.target.value) || 0, it.quantity));
+                                const val = Math.max(0, Math.min(Number(e.target.value) || 0, maxApprovable));
                                 setAmendItems(prev => prev.map((p, j) => j === i ? { ...p, quantityApproved: val } : p));
                                 setAmendShortfallAcknowledged(false);
                               }}
-                              style={{ width: 70, padding: '4px 8px', border: '1px solid #d1d5db', borderRadius: 6, textAlign: 'center', fontSize: 13, fontWeight: 600 }} />
+                              style={{ width: 70, padding: '4px 8px', border: `1px solid ${isShortfall ? '#fcd34d' : '#d1d5db'}`, borderRadius: 6, textAlign: 'center', fontSize: 13, fontWeight: 600 }} />
                           )}
                         </td>
                         <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', textAlign: 'center' }}>
@@ -2244,7 +2295,7 @@ function ApprovalsTab() {
                 );
               })()}
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <button onClick={() => { setAmendModal(null); setAmendItems([]); setAmendComment(''); setAmendShortfallWarning(false); setAmendShortfallAcknowledged(false); setAmendCommentBeforeWarning(''); }} disabled={processing}
+                <button onClick={() => { setAmendModal(null); setAmendItems([]); setAmendComment(''); setAmendShortfallWarning(false); setAmendShortfallAcknowledged(false); setAmendCommentBeforeWarning(''); setAmendAvailability({}); }} disabled={processing}
                   style={{ padding: '8px 16px', background: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: 6, cursor: processing ? 'not-allowed' : 'pointer', fontSize: 13, opacity: processing ? 0.5 : 1 }}>
                   Cancel
                 </button>

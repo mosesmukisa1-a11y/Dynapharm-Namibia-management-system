@@ -198,6 +198,11 @@ export const api = {
     fefoBatches: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/stock/fefo-batches${qs ? '?' + qs : ''}`); },
     requestBatches: (requestId) => api.get(`/stock/request-batches?request_id=${encodeURIComponent(requestId)}`),
     transferBatches: (transferId) => api.get(`/stock/request-batches?transfer_id=${encodeURIComponent(transferId)}`),
+    batchAvailability: (warehouseId, productNames = []) => {
+      const params = new URLSearchParams({ from_warehouse: warehouseId });
+      if (productNames.length > 0) params.set('products', productNames.join(','));
+      return api.get(`/stock/transfers/batch-availability?${params}`);
+    },
   },
 
   branch: {
