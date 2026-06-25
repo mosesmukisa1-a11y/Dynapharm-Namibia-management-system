@@ -1,9 +1,12 @@
 /**
  * GET /api/stock/realtime
- * Unified product-level stock snapshot across ALL operational locations:
- *   - country_stock  (stock_batches WHERE location = 'country_stock')
- *   - warehouses     (stock_batches WHERE location LIKE '%warehouse%')
- *   - branches       (branch_inventory_batches — authoritative per-branch source)
+ * Unified product-level stock snapshot across operational locations:
+ *   - warehouses  (stock_batches WHERE location LIKE '%warehouse%')
+ *   - branches    (branch_inventory_batches — authoritative per-branch source)
+ *
+ * country_stock is EXCLUDED — it is staging/holding stock, not yet operational.
+ * Branch stock is sourced ONLY from branch_inventory_batches to avoid double-counting
+ * with any branch-like rows that may exist in stock_batches.
  *
  * Source of truth: stock_batches.remaining_quantity (NOT inventory_balances,
  * which accumulates historical period rows and would massively inflate figures).
@@ -34,8 +37,9 @@ export default async function handler(req, res) {
 
   try {
     const [warehouseRows, branchRows, branchNames, recentMovements, branchMovements, recentSales] = await Promise.all([
-      // stock_batches is the live source of truth for warehouse + country_stock quantities.
-      // remaining_quantity tracks current on-hand after all deductions.
+      // stock_batches is the live source of truth for WAREHOUSE quantities only.
+      // Exclude country_stock (staging/holding) and any non-warehouse location rows.
+      // remaining_quantity is updated in real-time on every movement.
       // Group by location + description because multiple batches of the same product
       // exist per location (different expiry dates / batch numbers).
       getMany(
@@ -45,6 +49,7 @@ export default async function handler(req, res) {
          FROM stock_batches
          WHERE remaining_quantity > 0
            AND COALESCE(status, 'active') != 'expired'
+           AND location LIKE '%warehouse%'
          GROUP BY location, description
          ORDER BY location, description`
       ),
@@ -113,9 +118,20 @@ export default async function handler(req, res) {
       .sort((a, b) => b.totalQty - a.totalQty)
       .map(p => ({ ...p, locations: p.locations.sort((a, b) => b.qty - a.qty) }));
 
-    // Merge warehouse + branch movements, sorted newest-first, cap at 60
+    // Merge warehouse + branch movements, deduplicated, sorted newest-first, cap at 60.
+    // Branch sales (e.g. walk_in_non_member_sale) can appear in BOTH stock_movements
+    // (source_location = branch_id) AND branch_inventory_movements. Prefer the branch
+    // record and drop the matching warehouse duplicate so the feed shows each sale once.
+    const toTs = v => v ? new Date(v).toISOString().slice(0, 19) : '';
+    const branchMovementKeys = new Set(
+      branchMovements.map(m => `${m.product_name}|${m.movement_type}|${m.quantity}|${toTs(m.created_at)}`)
+    );
+    const deduplicatedWarehouse = recentMovements.filter(m => {
+      const key = `${m.product_name}|${m.movement_type}|${m.quantity}|${toTs(m.created_at)}`;
+      return !branchMovementKeys.has(key);
+    });
     const allMovements = [
-      ...recentMovements.map(m => ({ ...m, _source: 'warehouse' })),
+      ...deduplicatedWarehouse.map(m => ({ ...m, _source: 'warehouse' })),
       ...branchMovements.map(m => ({ ...m, _source: 'branch' })),
     ].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)).slice(0, 60);
 
