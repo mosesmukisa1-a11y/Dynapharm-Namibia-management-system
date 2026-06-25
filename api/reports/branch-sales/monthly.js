@@ -241,6 +241,31 @@ export default async function handler(req, res) {
       void fee; // intentionally not counted here
     }
 
+    // Build per-product aggregate for regular walk-in sales (member + non-member + general).
+    // Campaign sales are excluded — they appear separately in the campaign detail section.
+    const walkinProductAgg = {};
+    for (const s of walkinSalesRows) {
+      let sData = {};
+      try { sData = typeof s.data === 'string' ? JSON.parse(s.data) : (s.data || {}); } catch {}
+      if (sData.sale_type === 'campaign_sale') continue;
+
+      let items = [];
+      try { items = typeof s.items === 'string' ? JSON.parse(s.items) : (Array.isArray(s.items) ? s.items : []); } catch {}
+      for (const item of items) {
+        if (item.is_free) continue;
+        const name = (item.product_name || item.name || item.description || '').trim();
+        if (!name) continue;
+        const key = name.toUpperCase();
+        const qty = Number(item.quantity || item.qty || 0);
+        const dp  = lookupDp(name) || Number(item.dpPrice || item.dp || item.unit_price || 0);
+        if (!walkinProductAgg[key]) walkinProductAgg[key] = { product_name: name, qty: 0, dp_value: 0, unit_dp: dp };
+        walkinProductAgg[key].qty      += qty;
+        walkinProductAgg[key].dp_value  = parseFloat((walkinProductAgg[key].dp_value + qty * dp).toFixed(2));
+        if (dp > 0) walkinProductAgg[key].unit_dp = dp;
+      }
+    }
+    const walkinProducts = Object.values(walkinProductAgg).sort((a, b) => b.dp_value - a.dp_value);
+
     // Build per-product map and per-reference aggregates from campaign movements.
     const campaignProductMap = {};
     const campaignRefAgg = {};
@@ -475,10 +500,11 @@ export default async function handler(req, res) {
       campaign_sales: buildCampaignWithDetail(campaignRows),
       refund_deductions: { count: refundCount, total_amount: refundTotal },
       pending_unposted_records: pendingCapture,
+      walkin_products: walkinProducts,
       grand_total: grandTotal,
       total_pending_value: totalPendingValue,
-      total_transactions: txRows.length,
-      total_qty_sold: sum(txRows, 'total_qty'),
+      total_transactions: allTxRows.length,
+      total_qty_sold: sum(allTxRows, 'total_qty'),
       branch_summary: branchSummary,
     });
   } catch (err) {
