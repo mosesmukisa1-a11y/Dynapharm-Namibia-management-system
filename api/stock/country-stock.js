@@ -50,66 +50,90 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   // ── GET: list country stock ────────────────────────────────────────────────
+  // IMPORTANT: inventory_balances is NOT used here.  It accumulates one row
+  // per period per product per location, so SUM(closing_qty) inflates figures
+  // by the number of historical periods stored and can show non-zero values
+  // even when stock_batches.remaining_quantity is 0.
+  // All quantities come directly from the live physical tables:
+  //   country_stock / warehouses → stock_batches.remaining_quantity
+  //   branches                   → branch_inventory_batches.quantity
   if (req.method === 'GET') {
     try {
-      const [countryRows, allBalances] = await Promise.all([
+      const [countryRows, warehouseRows, branchRows, priceRows] = await Promise.all([
+        // Live country stock from stock_batches
         getMany(
-          `SELECT product_name, batch_no, expiry_date,
-                  closing_qty, inward_qty, outward_qty,
-                  unit_dp, stock_value_dp, last_movement_date
-           FROM inventory_balances
-           WHERE location_type = 'country'
-             AND location_id = 'country_stock'
-             AND closing_qty > 0
-           ORDER BY product_name ASC, expiry_date ASC NULLS LAST`
+          `SELECT sb.description AS product_name, sb.batch_no, sb.expiry_date,
+                  sb.remaining_quantity AS closing_qty,
+                  sb.quantity          AS inward_qty,
+                  (sb.quantity - sb.remaining_quantity) AS outward_qty,
+                  COALESCE(p.dp, sb.dpc_unit_value, sb.unit_price, 0) AS unit_dp,
+                  sb.remaining_quantity * COALESCE(p.dp, sb.dpc_unit_value, sb.unit_price, 0) AS stock_value_dp,
+                  sb.import_date AS last_movement_date
+           FROM stock_batches sb
+           LEFT JOIN product_prices p
+                  ON LOWER(TRIM(p.description)) = LOWER(TRIM(sb.description))
+           WHERE sb.location = 'country_stock'
+             AND sb.remaining_quantity > 0
+             AND COALESCE(sb.status, '') != 'expired'
+           ORDER BY sb.description ASC, sb.expiry_date ASC NULLS LAST`
         ),
+        // Live warehouse quantities
         getMany(
-          `SELECT location_type, location_id, product_name, batch_no,
-                  closing_qty, unit_dp, stock_value_dp
-           FROM inventory_balances
-           WHERE location_type IN ('country', 'warehouse', 'branch')
-             AND closing_qty > 0
-           ORDER BY location_type, location_id, product_name`
+          `SELECT sb.location, sb.description AS product_name,
+                  SUM(sb.remaining_quantity) AS qty,
+                  COALESCE(MAX(p.dp), MAX(sb.dpc_unit_value), 0) AS unit_dp,
+                  SUM(sb.remaining_quantity * COALESCE(p.dp, sb.dpc_unit_value, 0)) AS stock_value_dp
+           FROM stock_batches sb
+           LEFT JOIN product_prices p
+                  ON LOWER(TRIM(p.description)) = LOWER(TRIM(sb.description))
+           WHERE sb.location != 'country_stock'
+             AND sb.remaining_quantity > 0
+             AND COALESCE(sb.status, '') != 'expired'
+           GROUP BY sb.location, sb.description`
         ),
+        // Live branch quantities
+        getMany(
+          `SELECT b.branch_id, b.product_name,
+                  SUM(b.quantity) AS qty,
+                  COALESCE(MAX(p.dp), 0) AS unit_dp,
+                  SUM(b.quantity * COALESCE(p.dp, 0)) AS stock_value_dp
+           FROM branch_inventory_batches b
+           LEFT JOIN product_prices p
+                  ON LOWER(TRIM(p.description)) = LOWER(TRIM(b.product_name))
+           WHERE b.quantity > 0
+           GROUP BY b.branch_id, b.product_name`
+        ),
+        getMany(`SELECT description, dp FROM product_prices`),
       ]);
 
       const distinctProducts = new Set(countryRows.map(r => r.product_name)).size;
-      const totalUnits = countryRows.reduce((s, r) => s + Number(r.closing_qty || 0), 0);
-      const stockValueDP = countryRows.reduce((s, r) => s + Number(r.stock_value_dp || 0), 0);
+      const totalUnits    = countryRows.reduce((s, r) => s + Number(r.closing_qty || 0), 0);
+      const stockValueDP  = countryRows.reduce((s, r) => s + Number(r.stock_value_dp || 0), 0);
       const lowStockItems = countryRows.filter(r => Number(r.closing_qty || 0) < 10).length;
 
       const items = countryRows.map(r => ({
-        productName: r.product_name,
-        batchNo: r.batch_no || '',
-        expiryDate: r.expiry_date,
-        closingQty: Number(r.closing_qty || 0),
-        inwardQty: Number(r.inward_qty || 0),
-        outwardQty: Number(r.outward_qty || 0),
-        unitDP: Number(r.unit_dp || 0),
-        stockValueDP: Number(r.stock_value_dp || 0),
+        productName:      r.product_name,
+        batchNo:          r.batch_no || '',
+        expiryDate:       r.expiry_date,
+        closingQty:       Number(r.closing_qty || 0),
+        inwardQty:        Number(r.inward_qty || 0),
+        outwardQty:       Number(r.outward_qty || 0),
+        unitDP:           Number(r.unit_dp || 0),
+        stockValueDP:     Number(r.stock_value_dp || 0),
         lastMovementDate: r.last_movement_date,
       }));
 
+      // Build locationBreakdown from live physical tables only
       const locationBreakdown = {};
-      for (const row of allBalances) {
-        const key = `${row.location_type}||${row.location_id}`;
-        if (!locationBreakdown[key]) {
-          locationBreakdown[key] = {
-            locationType: row.location_type,
-            locationId: row.location_id,
-            products: [],
-            totalUnits: 0,
-          };
-        }
-        locationBreakdown[key].products.push({
-          productName: row.product_name,
-          batchNo: row.batch_no || '',
-          closingQty: Number(row.closing_qty || 0),
-          unitDP: Number(row.unit_dp || 0),
-          stockValueDP: Number(row.stock_value_dp || 0),
-        });
-        locationBreakdown[key].totalUnits += Number(row.closing_qty || 0);
-      }
+      const upsertLoc = (locationType, locationId, productName, qty, unitDP, valueDP) => {
+        const key = `${locationType}||${locationId}`;
+        if (!locationBreakdown[key]) locationBreakdown[key] = { locationType, locationId, products: [], totalUnits: 0 };
+        locationBreakdown[key].products.push({ productName, batchNo: '', closingQty: Number(qty), unitDP: Number(unitDP), stockValueDP: Number(valueDP) });
+        locationBreakdown[key].totalUnits += Number(qty);
+      };
+      for (const r of countryRows)   upsertLoc('country',   'country_stock',  r.product_name, r.closing_qty, r.unit_dp, r.stock_value_dp);
+      for (const r of warehouseRows) upsertLoc('warehouse',  r.location,       r.product_name, r.qty,         r.unit_dp, r.stock_value_dp);
+      for (const r of branchRows)    upsertLoc('branch',     r.branch_id,      r.product_name, r.qty,         r.unit_dp, r.stock_value_dp);
 
       const locationBreakdownList = Object.values(locationBreakdown).sort((a, b) => {
         const order = { country: 0, warehouse: 1, branch: 2 };
@@ -119,12 +143,7 @@ export default async function handler(req, res) {
 
       return res.status(200).json({
         success: true,
-        summary: {
-          distinctProducts,
-          totalUnits,
-          stockValueDP: parseFloat(stockValueDP.toFixed(2)),
-          lowStockItems,
-        },
+        summary: { distinctProducts, totalUnits, stockValueDP: parseFloat(stockValueDP.toFixed(2)), lowStockItems },
         items,
         locationBreakdown: locationBreakdownList,
       });

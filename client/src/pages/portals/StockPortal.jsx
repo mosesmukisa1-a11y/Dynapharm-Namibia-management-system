@@ -2567,6 +2567,9 @@ function CountryStockTab() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  // Real-time: any stock event (transfer, write-off, release) triggers immediate reload
+  useStockRealtime({ onUpdate: () => { if (!releaseOpen) loadData(); } });
+
   useEffect(() => {
     const interval = setInterval(() => {
       if (!releaseOpen) loadData();
@@ -3118,6 +3121,10 @@ function WarehouseTab({ name }) {
   }, [location, name, whKey]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // Real-time: warehouse receives dispatch, accepts transfer, etc.
+  useStockRealtime({ onUpdate: loadData });
+
   useEffect(() => {
     const iv = setInterval(loadData, 60000);
     return () => clearInterval(iv);
@@ -5480,6 +5487,10 @@ function DistributionTab({ branch }) {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // Real-time: country stock release creates a transfer → refresh immediately
+  useStockRealtime({ onUpdate: loadData });
+
   useEffect(() => {
     const iv = setInterval(loadData, 60000);
     return () => clearInterval(iv);
