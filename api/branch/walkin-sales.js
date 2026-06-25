@@ -1,6 +1,7 @@
 import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
 import { query, getMany, getOne, withTransaction } from '../db.js';
 import { recomputeLocationBalances } from '../services/stockEngine.js';
+import { broadcastStockEvent } from '../services/stockEvents.js';
 import { postActivityRecord, generateBatId } from '../_lib/activityCapture.js';
 import { getPackageComponents } from '../_lib/packageDefinitions.js';
 
@@ -583,6 +584,9 @@ export default async function handler(req, res) {
       recomputeLocationBalances('branch', branchId).catch(e =>
         console.error('[stockEngine] walkin-sale recompute error:', e.message)
       );
+
+      // Push immediate SSE notification so every connected dashboard refreshes
+      broadcastStockEvent('branch_sale', { branchId, customerType: record.customer_type });
 
       const actType = record.customer_type === 'member' ? 'member_sale'
         : record.customer_type === 'non_member' ? 'non_member_sale'

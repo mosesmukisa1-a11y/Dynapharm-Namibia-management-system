@@ -1,6 +1,7 @@
 import { applyAuthCors } from '../_lib/auth.js';
 import { query, getMany, getOne, withTransaction } from '../db.js';
 import { recomputeLocationBalances } from '../services/stockEngine.js';
+import { broadcastStockEvent } from '../services/stockEvents.js';
 import { postActivityRecord, generateBatId } from '../_lib/activityCapture.js';
 import { getPackageComponents } from '../_lib/packageDefinitions.js';
 
@@ -153,6 +154,9 @@ export default async function handler(req, res) {
       recomputeLocationBalances('branch', branchId).catch(e =>
         console.error('[stockEngine] dispense recompute error:', e.message)
       );
+
+      // Push immediate SSE notification so every connected dashboard refreshes
+      broadcastStockEvent('branch_dispense', { branchId });
 
       const totalDispensedQty = deductions.reduce((s, d) => s + Number(d.quantity || 0), 0);
       // DP total = stock cost basis (branch_inventory_movements.unit_price is always DP).

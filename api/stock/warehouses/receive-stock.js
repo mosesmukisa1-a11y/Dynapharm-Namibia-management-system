@@ -8,6 +8,7 @@
  */
 import { applyAuthCors } from '../../_lib/auth.js';
 import { getOne, getMany, withTransaction, publishRealtimeEvent } from '../../db.js';
+import { broadcastStockEvent } from '../../services/stockEvents.js';
 import { postStockMovementTx, recomputeInventoryBalance } from '../../services/stockEngine.js';
 
 async function parseBody(req) {
@@ -58,6 +59,7 @@ export default async function handler(req, res) {
       [rejectionReason || null, transferId]
     );
     publishRealtimeEvent('stock_transfers', 'update', { id: transferId, status: 'rejected' }).catch(() => {});
+    broadcastStockEvent('transfer_rejected', { transferId });
     return res.json({ success: true, action: 'rejected', transferId, message: 'Dispatch rejected — stock remains in Country Stock.' });
   }
 
@@ -236,6 +238,7 @@ export default async function handler(req, res) {
   await Promise.allSettled(unique.map(t => recomputeInventoryBalance(t)));
 
   publishRealtimeEvent('stock_transfers', 'update', { id: transferId, status: 'received', to_branch: warehouseId }).catch(() => {});
+  broadcastStockEvent('warehouse_received', { transferId, warehouseId });
 
   return res.json({
     success: true,

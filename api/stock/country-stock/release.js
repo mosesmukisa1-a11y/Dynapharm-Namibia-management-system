@@ -13,6 +13,7 @@
  */
 import { applyAuthCors } from '../../_lib/auth.js';
 import { getOne, getMany, withTransaction, publishRealtimeEvent } from '../../db.js';
+import { broadcastStockEvent } from '../../services/stockEvents.js';
 
 async function parseBody(req) {
   if (req.body && typeof req.body === 'object') return req.body;
@@ -133,6 +134,7 @@ export default async function handler(req, res) {
   });
 
   publishRealtimeEvent('stock_transfers', 'create', { id: transferId, from_warehouse: 'country_stock', to_branch: warehouseId, status: 'pending_approval' }).catch(() => {});
+  broadcastStockEvent('country_stock_released', { transferId, warehouseId });
 
   return res.status(201).json({
     success: true,
