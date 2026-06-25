@@ -1,10 +1,13 @@
 /**
  * GET /api/stock/realtime
- * Unified product-level stock snapshot across operational locations:
- *   - warehouses  (inventory_balances WHERE location_type='warehouse')
- *   - branches    (branch_inventory_batches — authoritative per-branch source)
+ * Unified product-level stock snapshot across ALL operational locations:
+ *   - country_stock  (stock_batches WHERE location = 'country_stock')
+ *   - warehouses     (stock_batches WHERE location LIKE '%warehouse%')
+ *   - branches       (branch_inventory_batches — authoritative per-branch source)
  *
- * country_stock is excluded — it is staging/holding, not operational inventory.
+ * Source of truth: stock_batches.remaining_quantity (NOT inventory_balances,
+ * which accumulates historical period rows and would massively inflate figures).
+ *
  * Each product: { name, totalQty, locations: [{ locationId, locationName, locationType, qty }] }
  */
 import { applyAuthCors } from '../_lib/auth.js';
@@ -30,16 +33,22 @@ export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ success: false, error: 'Method not allowed' });
 
   try {
-    const [warehouseRows, branchRows, branchNames, recentMovements, recentSales] = await Promise.all([
-      // Use inventory_balances (admin-edit source of truth) instead of stock_batches
+    const [warehouseRows, branchRows, branchNames, recentMovements, branchMovements, recentSales] = await Promise.all([
+      // stock_batches is the live source of truth for warehouse + country_stock quantities.
+      // remaining_quantity tracks current on-hand after all deductions.
+      // Group by location + description because multiple batches of the same product
+      // exist per location (different expiry dates / batch numbers).
       getMany(
-        `SELECT location_id AS location, product_name, SUM(closing_qty) AS qty
-         FROM inventory_balances
-         WHERE closing_qty > 0
-           AND location_type = 'warehouse'
-         GROUP BY location_id, product_name
-         ORDER BY location_id, product_name`
+        `SELECT location AS location_id,
+                description AS product_name,
+                SUM(remaining_quantity) AS qty
+         FROM stock_batches
+         WHERE remaining_quantity > 0
+           AND COALESCE(status, 'active') != 'expired'
+         GROUP BY location, description
+         ORDER BY location, description`
       ),
+      // branch_inventory_batches is the authoritative current stock for branches.
       getMany(
         `SELECT branch_id, product_name, SUM(quantity) AS qty
          FROM branch_inventory_batches
@@ -48,11 +57,24 @@ export default async function handler(req, res) {
          ORDER BY branch_id, product_name`
       ),
       getMany(`SELECT id, name FROM branches WHERE status = 'active'`),
+      // Recent warehouse-level movements
       getMany(
-        `SELECT id, product_name, movement_type, quantity, source_location,
-                destination_location, created_at, created_by, reference_id
-         FROM stock_movements
-         ORDER BY created_at DESC LIMIT 60`
+        `SELECT sm.id, sm.product_name, sm.movement_type, sm.quantity,
+                sm.source_location, sm.destination_location,
+                sm.created_at, sm.created_by, sm.reference_id,
+                sm.batch_no, sm.expiry_date
+         FROM stock_movements sm
+         ORDER BY sm.created_at DESC LIMIT 40`
+      ),
+      // Recent branch-level movements (sales, dispenses, write-offs, receipts)
+      getMany(
+        `SELECT bm.id, bm.product_name, bm.type AS movement_type, bm.quantity,
+                bm.branch_id AS source_location,
+                NULL::text AS destination_location,
+                bm.created_at, bm.created_by, bm.reference AS reference_id,
+                bm.batch_no, NULL::date AS expiry_date
+         FROM branch_inventory_movements bm
+         ORDER BY bm.created_at DESC LIMIT 40`
       ),
       getMany(
         `SELECT branch_id, total, customer_type, created_at
@@ -84,12 +106,18 @@ export default async function handler(req, res) {
       });
     };
 
-    for (const r of warehouseRows) upsert(r.product_name, r.location, r.qty);
+    for (const r of warehouseRows) upsert(r.product_name, r.location_id, r.qty);
     for (const r of branchRows)    upsert(r.product_name, r.branch_id, r.qty);
 
     const products = [...productMap.values()]
       .sort((a, b) => b.totalQty - a.totalQty)
       .map(p => ({ ...p, locations: p.locations.sort((a, b) => b.qty - a.qty) }));
+
+    // Merge warehouse + branch movements, sorted newest-first, cap at 60
+    const allMovements = [
+      ...recentMovements.map(m => ({ ...m, _source: 'warehouse' })),
+      ...branchMovements.map(m => ({ ...m, _source: 'branch' })),
+    ].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)).slice(0, 60);
 
     const todayRevenue = recentSales.reduce((s, r) => s + Number(r.total || 0), 0);
 
@@ -99,7 +127,7 @@ export default async function handler(req, res) {
       products,
       totalProducts: products.length,
       totalUnits: products.reduce((s, p) => s + p.totalQty, 0),
-      recentMovements,
+      recentMovements: allMovements,
       todayStats: {
         salesCount: recentSales.length,
         revenue: parseFloat(todayRevenue.toFixed(2)),
