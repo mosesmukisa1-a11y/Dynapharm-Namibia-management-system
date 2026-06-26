@@ -634,23 +634,26 @@ function ApprovalsTab() {
 
   const fmtDate = (d) => { if (!d) return '—'; try { return new Date(d).toLocaleDateString('en-ZA', { year: 'numeric', month: 'short', day: 'numeric' }); } catch { return d; } };
 
-  const loadData = () => {
+  const toArr = (v) => Array.isArray(v) ? v : [];
+
+  const loadData = async () => {
     setLoading(true);
-    Promise.all([
-      api.branch.cashMovements().then(d => Array.isArray(d) ? d : d.movements || []).catch(() => []),
-      api.get('/hr/leaves?status=pending').then(d => Array.isArray(d) ? d : d.leaves || []).catch(() => []),
-      api.stock.requests().then(d => Array.isArray(d) ? d : d.requests || []).catch(() => []),
-      api.stock.transfers('status=pending_approval').then(d => Array.isArray(d) ? d : d.transfers || []).catch(() => []),
-      api.get('/field_program_requests').then(d => Array.isArray(d) ? d : d.requests || []).catch(() => []),
-      api.finance.pettyCash.requests().then(d => d.requests || []).catch(() => []),
-      api.finance.rent.editRequests('pending').then(d => d.requests || []).catch(() => []),
-      api.hr.salaryLedger.editRequests('pending').then(d => d.requests || []).catch(() => []),
-      api.get('/cash-requests/admin?status=finance_reviewed').then(d => Array.isArray(d) ? d : []).catch(() => []),
-      api.get('/leave-requests/admin').then(d => Array.isArray(d) ? d : []).catch(() => []),
-      api.finance.getBonusPeriodDeleteRequests('pending_gm').then(d => d.requests || []).catch(() => []),
-      api.hr.staffChangeRequests.list('pending').then(d => d.requests || []).catch(() => []),
-      api.get('/stock-movements?type=write_off&status=pending_approval&limit=200').then(d => d.movements || []).catch(() => []),
-    ]).then(([cash, leaves, stock, transfers, fieldReqs, pcReqs, rentReqs, salaryReqs, casReqs, adminLeaves, bonusDelReqs, staffChangeReqs, writeOffs]) => {
+    try {
+      const [cash, leaves, stock, transfers, fieldReqs, pcReqs, rentReqs, salaryReqs, casReqs, adminLeaves, bonusDelReqs, staffChangeReqs, writeOffs] = await Promise.all([
+        api.branch.cashMovements().then(d => toArr(d?.movements ?? d)).catch(() => []),
+        api.get('/hr/leaves?status=pending').then(d => toArr(d?.leaves ?? d)).catch(() => []),
+        api.stock.requests().then(d => toArr(d?.requests ?? d)).catch(() => []),
+        api.stock.transfers('status=pending_approval').then(d => toArr(d?.transfers ?? d)).catch(() => []),
+        api.get('/field_program_requests').then(d => toArr(d?.requests ?? d)).catch(() => []),
+        api.finance.pettyCash.requests().then(d => toArr(d?.requests)).catch(() => []),
+        api.finance.rent.editRequests('pending').then(d => toArr(d?.requests)).catch(() => []),
+        api.hr.salaryLedger.editRequests('pending').then(d => toArr(d?.requests)).catch(() => []),
+        api.get('/cash-requests/admin?status=finance_reviewed').then(d => toArr(d)).catch(() => []),
+        api.get('/leave-requests/admin').then(d => toArr(d)).catch(() => []),
+        api.finance.getBonusPeriodDeleteRequests('pending_gm').then(d => toArr(d?.requests)).catch(() => []),
+        api.hr.staffChangeRequests.list('pending').then(d => toArr(d?.requests)).catch(() => []),
+        api.get('/stock-movements?type=write_off&status=pending_approval&limit=200').then(d => toArr(d?.movements)).catch(() => []),
+      ]);
       setCashRequests(cash.filter(c => c.status === 'pending'));
       setLeaveRequests(leaves.filter(l => l.status === 'pending'));
       setStockRequests(stock.filter(s => s.status === 'pending'));
@@ -666,7 +669,11 @@ function ApprovalsTab() {
       setBonusDeleteRequests(bonusDelReqs);
       setStaffChangeRequests(staffChangeReqs);
       setPendingWriteOffs(writeOffs.filter(w => w.status === 'pending_approval'));
-    }).finally(() => setLoading(false));
+    } catch (err) {
+      setMessage('Error: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { loadData(); }, []);
