@@ -41,34 +41,41 @@ export default async function handler(req, res) {
       // inventory_balances is a derived cache that can become stale when multiple
       // batches share the same batch_no. Reading branch_inventory_batches directly
       // always reflects the exact physical quantities in each branch.
+      // INNER JOIN branches ensures only real/registered branches appear.
       getMany(
-        `SELECT b.branch_id AS location_id, b.product_name,
+        `SELECT b.branch_id AS location_id,
+                COALESCE(br.name, b.branch_id) AS location_name,
+                b.product_name,
                 SUM(b.quantity)                                AS qty,
                 SUM(b.quantity * COALESCE(p.dp,  0))          AS val_dp,
                 SUM(b.quantity * COALESCE(p.cif, 0))          AS val_cif,
                 MAX(p.dp)                                      AS unit_dp,
                 MAX(p.cif)                                     AS unit_cif
          FROM branch_inventory_batches b
+         INNER JOIN branches br ON br.id = b.branch_id
          LEFT JOIN product_prices p
                ON LOWER(TRIM(p.description)) = LOWER(TRIM(b.product_name))
          WHERE b.quantity > 0
-         GROUP BY b.branch_id, b.product_name`
+         GROUP BY b.branch_id, br.name, b.product_name`
       ),
 
       // ── Warehouses only: stock_batches.remaining_quantity ──
       // Country stock is excluded — it is a staging/holding area, not active operations.
+      // INNER JOIN product_prices ensures only real catalogue products appear.
       getMany(
-        `SELECT location, description AS product_name,
-                SUM(remaining_quantity)                               AS qty,
-                SUM(remaining_quantity * COALESCE(cif_unit_cost, 0))  AS val_cif,
-                SUM(remaining_quantity * COALESCE(dpc_unit_value, 0)) AS val_dp,
-                MAX(cif_unit_cost)                                    AS unit_cif,
-                MAX(dpc_unit_value)                                   AS unit_dp
-         FROM stock_batches
-         WHERE remaining_quantity > 0
-           AND COALESCE(status, '') != 'expired'
-           AND location != 'country_stock'
-         GROUP BY location, description`
+        `SELECT sb.location, sb.description AS product_name,
+                SUM(sb.remaining_quantity)                               AS qty,
+                SUM(sb.remaining_quantity * COALESCE(sb.cif_unit_cost, 0))  AS val_cif,
+                SUM(sb.remaining_quantity * COALESCE(sb.dpc_unit_value, 0)) AS val_dp,
+                MAX(sb.cif_unit_cost)                                    AS unit_cif,
+                MAX(sb.dpc_unit_value)                                   AS unit_dp
+         FROM stock_batches sb
+         INNER JOIN product_prices pp
+               ON LOWER(TRIM(pp.description)) = LOWER(TRIM(sb.description))
+         WHERE sb.remaining_quantity > 0
+           AND COALESCE(sb.status, '') != 'expired'
+           AND sb.location != 'country_stock'
+         GROUP BY sb.location, sb.description`
       ),
 
       // ── Field stock: priced via GM price list ──
@@ -130,12 +137,13 @@ export default async function handler(req, res) {
 
     // ── Branch rows ──
     for (const r of branchRows) {
-      const qty    = Number(r.qty     || 0);
+      const qty     = Number(r.qty     || 0);
       const unitDP  = Number(r.unit_dp  || 0) || lookupDp(r.product_name);
       const unitCIF = Number(r.unit_cif || 0) || lookupCif(r.product_name);
-      const valDP  = Number(r.val_dp  || 0) || qty * unitDP;
-      const valCIF = Number(r.val_cif || 0) || qty * unitCIF;
-      upsert(r.product_name, 'branch', locLabel(r.location_id), qty, valCIF, valDP);
+      const valDP   = Number(r.val_dp  || 0) || qty * unitDP;
+      const valCIF  = Number(r.val_cif || 0) || qty * unitCIF;
+      // Use the real branch name from the branches table (r.location_name)
+      upsert(r.product_name, 'branch', r.location_name || locLabel(r.location_id), qty, valCIF, valDP);
     }
 
     // ── Warehouse + Country Stock rows (from stock_batches) ──
