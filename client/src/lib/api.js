@@ -283,10 +283,11 @@ export const api = {
   prices: {
     list: () => api.get('/prices'),
     update: (id, data) => api.patch(`/prices/${id}`, data),
-    bulkUpdate: (updates) => api.put('/prices', updates),
+    bulkUpdate: (updates, effectiveFrom) => api.put('/prices', { updates, effective_from: effectiveFrom || null }),
     create: (data) => api.post('/prices', data),
     delete: (id) => api.delete(`/prices/${id}`),
     history: (productId) => api.get(`/prices/history${productId ? `?product_id=${productId}` : ''}`),
+    pending: () => api.get('/prices/pending'),
   },
 
   gm: {

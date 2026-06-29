@@ -963,6 +963,9 @@ async function initProductPricesTable() {
     `);
     await query(`CREATE INDEX IF NOT EXISTS idx_pph_product_id ON product_price_history (product_id)`);
     await query(`CREATE INDEX IF NOT EXISTS idx_pph_changed_at ON product_price_history (changed_at DESC)`);
+    await query(`ALTER TABLE product_price_history ADD COLUMN IF NOT EXISTS effective_from DATE DEFAULT CURRENT_DATE`);
+    await query(`ALTER TABLE product_price_history ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'applied'`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_pph_status ON product_price_history (status) WHERE status = 'pending'`);
 
     // ── One-time normalisation: uppercase all descriptions and remove case-duplicates ──
     // For any group of rows that share the same UPPER(description), keep the most-recently
@@ -1032,10 +1035,39 @@ app.post('/api/gm/extract-pdf', _pdfUpload.single('pdf'), async (req, res) => {
   }
 });
 
+// Apply any pending price changes whose effective_from date has arrived
+async function applyPendingPriceChanges() {
+  try {
+    const { query } = await import('./api/db.js');
+    const { rows: pending } = await query(
+      `SELECT * FROM product_price_history WHERE status = 'pending' AND effective_from <= CURRENT_DATE ORDER BY effective_from ASC, id ASC`
+    );
+    if (!pending.length) return;
+    for (const c of pending) {
+      await query(
+        `UPDATE product_prices SET dp=$1, cp=$2, cif=$3, bv=$4, updated_at=NOW(), updated_by=$5 WHERE id=$6`,
+        [c.new_dp, c.new_cp, c.new_cif, c.new_bv, c.changed_by, c.product_id]
+      );
+      await query(`UPDATE product_price_history SET status='applied' WHERE id=$1`, [c.id]);
+    }
+    console.log(`[prices] Applied ${pending.length} scheduled price change(s)`);
+  } catch (err) {
+    console.error('[prices] applyPendingPriceChanges error:', err.message);
+  }
+}
+// Run once at startup and then every hour
+setInterval(applyPendingPriceChanges, 60 * 60 * 1000);
+
 app.get('/api/prices', async (req, res) => {
   try {
     const { query } = await import('./api/db.js');
-    const { rows } = await query('SELECT * FROM product_prices ORDER BY description');
+    // DISTINCT ON normalised description to eliminate near-duplicates (spacing/case variants)
+    const { rows } = await query(`
+      SELECT DISTINCT ON (UPPER(TRIM(REGEXP_REPLACE(description, '\\s+', ' ', 'g'))))
+        *
+      FROM product_prices
+      ORDER BY UPPER(TRIM(REGEXP_REPLACE(description, '\\s+', ' ', 'g'))), updated_at DESC
+    `);
     res.json(rows);
   } catch (err) {
     console.error('GET /api/prices error:', err.message);
@@ -1046,33 +1078,37 @@ app.get('/api/prices', async (req, res) => {
 app.put('/api/prices', async (req, res) => {
   try {
     const { query } = await import('./api/db.js');
-    const updates = req.body;
-    if (!Array.isArray(updates)) return res.status(400).json({ error: 'Expected array of price updates' });
+    // Accept both legacy array body and new {updates, effective_from} body
+    const updates = Array.isArray(req.body) ? req.body : (req.body?.updates || []);
+    const effectiveFrom = Array.isArray(req.body) ? null : (req.body?.effective_from || null);
+    if (!Array.isArray(updates) || updates.length === 0) return res.status(400).json({ error: 'Expected array of price updates' });
+    const today = new Date().toISOString().slice(0, 10);
+    const isImmediate = !effectiveFrom || effectiveFrom <= today;
     const updatedBy = req.user?.name || req.user?.username || 'gm';
     let count = 0;
     for (const u of updates) {
       if (!u.id) continue;
-      // Snapshot old values before overwriting
       const { rows: old } = await query(`SELECT dp, cp, cif, bv, description FROM product_prices WHERE id=$1`, [u.id]);
-      if (old.length) {
-        const o = old[0];
-        const newDp = Number(u.dp)||0, newCp = Number(u.cp)||0, newCif = Number(u.cif)||0, newBv = Number(u.bv)||0;
-        const changed = o.dp != newDp || o.cp != newCp || o.cif != newCif || o.bv != newBv;
-        if (changed) {
-          await query(
-            `INSERT INTO product_price_history (product_id, description, old_dp, old_cp, old_cif, old_bv, new_dp, new_cp, new_cif, new_bv, changed_by)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-            [u.id, o.description, o.dp, o.cp, o.cif, o.bv, newDp, newCp, newCif, newBv, updatedBy]
-          );
-        }
+      if (!old.length) continue;
+      const o = old[0];
+      const newDp = Number(u.dp)||0, newCp = Number(u.cp)||0, newCif = Number(u.cif)||0, newBv = Number(u.bv)||0;
+      const changed = o.dp != newDp || o.cp != newCp || o.cif != newCif || o.bv != newBv;
+      if (changed) {
+        await query(
+          `INSERT INTO product_price_history (product_id, description, old_dp, old_cp, old_cif, old_bv, new_dp, new_cp, new_cif, new_bv, changed_by, effective_from, status)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+          [u.id, o.description, o.dp, o.cp, o.cif, o.bv, newDp, newCp, newCif, newBv, updatedBy, effectiveFrom || today, isImmediate ? 'applied' : 'pending']
+        );
       }
-      await query(
-        `UPDATE product_prices SET dp=$1, cp=$2, cif=$3, bv=$4, updated_at=NOW(), updated_by=$5 WHERE id=$6`,
-        [Number(u.dp)||0, Number(u.cp)||0, Number(u.cif)||0, Number(u.bv)||0, updatedBy, u.id]
-      );
+      if (isImmediate) {
+        await query(
+          `UPDATE product_prices SET dp=$1, cp=$2, cif=$3, bv=$4, updated_at=NOW(), updated_by=$5 WHERE id=$6`,
+          [newDp, newCp, newCif, newBv, updatedBy, u.id]
+        );
+      }
       count++;
     }
-    res.json({ success: true, updated: count });
+    res.json({ success: true, updated: count, pending: !isImmediate, effective_from: effectiveFrom || today });
   } catch (err) {
     console.error('PUT /api/prices error:', err.message);
     res.status(500).json({ error: err.message });
@@ -1115,6 +1151,23 @@ app.patch('/api/prices/:id', async (req, res) => {
     res.json(rows[0] || { success: true });
   } catch (err) {
     console.error('PATCH /api/prices/:id error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/prices/pending', async (req, res) => {
+  try {
+    const { query } = await import('./api/db.js');
+    const { rows } = await query(
+      `SELECT h.*, pp.description AS current_description, pp.dp AS live_dp, pp.cp AS live_cp, pp.cif AS live_cif, pp.bv AS live_bv
+       FROM product_price_history h
+       LEFT JOIN product_prices pp ON pp.id = h.product_id
+       WHERE h.status = 'pending'
+       ORDER BY h.effective_from ASC, h.id ASC`
+    );
+    res.json({ success: true, pending: rows });
+  } catch (err) {
+    console.error('GET /api/prices/pending error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -3115,6 +3168,8 @@ server.on('error', (error) => {
         }
       }
     }
+    // Apply any pending price changes now that schema is fully up to date
+    await applyPendingPriceChanges();
   } catch (error) {
     console.warn('Database startup check failed:', error.message);
   }

@@ -4028,15 +4028,32 @@ function PriceListTab() {
   const [history, setHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historySearch, setHistorySearch] = useState('');
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [effectiveDate, setEffectiveDate] = useState('');
+  const [pendingChanges, setPendingChanges] = useState([]);
+
+  const todayStr = new Date().toISOString().slice(0, 10);
 
   const load = useCallback(() => {
     setLoading(true);
-    api.prices.list()
-      .then(data => {
+    Promise.all([
+      api.prices.list(),
+      api.prices.pending().catch(() => ({ pending: [] })),
+    ])
+      .then(([data, pData]) => {
         if (Array.isArray(data)) {
-          setRows(data);
-          setLivePrices(data);
+          // Deduplicate by normalised description (keep latest updated_at)
+          const seen = new Map();
+          for (const p of data) {
+            const key = (p.description || '').trim().toUpperCase().replace(/\s+/g, ' ');
+            const existing = seen.get(key);
+            if (!existing || new Date(p.updated_at) > new Date(existing.updated_at)) seen.set(key, p);
+          }
+          const deduped = [...seen.values()].sort((a, b) => (a.description || '').localeCompare(b.description || ''));
+          setRows(deduped);
+          setLivePrices(deduped);
         }
+        setPendingChanges(Array.isArray(pData?.pending) ? pData.pending : []);
       })
       .catch(() => setAlert({ type: 'error', msg: 'Failed to load prices.' }))
       .finally(() => setLoading(false));
@@ -4062,6 +4079,8 @@ function PriceListTab() {
   const saveAll = async () => {
     setSaving(true);
     setAlert(null);
+    const chosenDate = effectiveDate || todayStr;
+    const isFuture = chosenDate > todayStr;
     try {
       const updates = Object.entries(edits).map(([id, fields]) => {
         const row = rows.find(r => String(r.id) === String(id)) || {};
@@ -4074,9 +4093,15 @@ function PriceListTab() {
           bv:  Number((Number(fields.bv ?? row.bv) || 0).toFixed(2)),
         };
       });
-      await api.prices.bulkUpdate(updates);
+      await api.prices.bulkUpdate(updates, chosenDate);
       setEdits({});
-      setAlert({ type: 'success', msg: `${updates.length} product price(s) updated successfully.` });
+      setShowSaveModal(false);
+      setEffectiveDate('');
+      if (isFuture) {
+        setAlert({ type: 'success', msg: `✅ ${updates.length} price change(s) scheduled for ${chosenDate}. Current prices are unchanged until that date.` });
+      } else {
+        setAlert({ type: 'success', msg: `✅ ${updates.length} product price(s) updated and active immediately.` });
+      }
       load();
     } catch {
       setAlert({ type: 'error', msg: 'Failed to save prices. Please try again.' });
@@ -4243,13 +4268,18 @@ function PriceListTab() {
               >
                 + Add Product
               </button>
+              {pendingChanges.length > 0 && (
+                <span className="px-2 py-1 text-xs font-semibold rounded" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #f59e0b' }}>
+                  ⏳ {pendingChanges.length} scheduled
+                </span>
+              )}
               {hasEdits && (
                 <button
-                  onClick={saveAll}
+                  onClick={() => { setEffectiveDate(todayStr); setShowSaveModal(true); }}
                   disabled={saving}
                   className="px-4 py-1.5 bg-amber-400 text-gray-900 text-sm font-bold rounded shadow hover:bg-amber-300 disabled:opacity-60"
                 >
-                  {saving ? 'Saving…' : 'Save All Changes'}
+                  {saving ? 'Saving…' : `Save ${Object.keys(edits).length} Change(s)…`}
                 </button>
               )}
             </div>
@@ -4295,14 +4325,20 @@ function PriceListTab() {
                   const gpPct  = dpVal > 0 ? ((gp / dpVal) * 100).toFixed(1) : '—';
                   const retail = cpVal - dpVal;
                   const noCIF  = !row.is_package && cifVal === 0;
+                  const pendingForRow = pendingChanges.filter(p => p.product_id === row.id);
                   return (
-                    <tr key={row.id} className={`border-b hover:bg-gray-50 ${changed ? 'bg-amber-50' : noCIF ? 'bg-orange-50/60' : row.is_package ? 'bg-blue-50/40' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+                    <tr key={row.id} className={`border-b hover:bg-gray-50 ${changed ? 'bg-amber-50' : pendingForRow.length > 0 ? 'bg-yellow-50/40' : noCIF ? 'bg-orange-50/60' : row.is_package ? 'bg-blue-50/40' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
                       <td className="py-2 px-3">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-medium text-gray-800">{row.description}</span>
                           {row.is_package && <span className="text-xs px-1.5 py-0.5 rounded font-bold" style={{ background: '#dbeafe', color: '#1d4ed8' }}>📦 Package</span>}
                           {noCIF && <span className="text-xs px-1.5 py-0.5 rounded font-bold" style={{ background: '#ffedd5', color: '#c2410c' }} title="CIF is 0 — set the import cost for accurate profit and remittance calculations">⚠ No CIF</span>}
                           {changed && <span className="text-xs text-amber-600 font-semibold">&bull; unsaved</span>}
+                          {pendingForRow.map(p => (
+                            <span key={p.id} className="text-xs px-1.5 py-0.5 rounded font-semibold" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #f59e0b' }} title={`New prices take effect ${p.effective_from}`}>
+                              ⏳ from {p.effective_from}
+                            </span>
+                          ))}
                         </div>
                       </td>
                       <td className="py-2 px-2 text-right">{row.is_package ? <span className="text-xs text-gray-400 italic">bundle</span> : fieldInput(row, 'cif', 'Cost Insurance Freight (import cost from Malaysia)')}</td>
@@ -4540,6 +4576,45 @@ function PriceListTab() {
           </div>
         </Modal>
 
+      {/* Save price changes modal — lets GM choose when new prices take effect */}
+      <Modal open={showSaveModal} title="💾 Save Price Changes" onClose={() => { setShowSaveModal(false); setEffectiveDate(''); }}>
+        <div style={{ minWidth: 340, padding: '4px 4px 8px' }}>
+          <p className="text-sm text-gray-700 mb-4">
+            You have <strong>{Object.keys(edits).length}</strong> price change(s) pending. Choose when the new prices should take effect across all portals and sales.
+          </p>
+          <div className="mb-4">
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Effective From Date</label>
+            <input
+              type="date"
+              value={effectiveDate || todayStr}
+              min={todayStr}
+              onChange={e => setEffectiveDate(e.target.value)}
+              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300"
+            />
+            {effectiveDate && effectiveDate > todayStr ? (
+              <p className="text-xs text-amber-700 mt-2 bg-amber-50 rounded px-3 py-2 border border-amber-200">
+                ⏳ <strong>Scheduled:</strong> Current prices will remain active until <strong>{effectiveDate}</strong>. On that date the system will automatically apply the new prices.
+              </p>
+            ) : (
+              <p className="text-xs text-green-700 mt-2 bg-green-50 rounded px-3 py-2 border border-green-200">
+                ✅ <strong>Immediate:</strong> New prices will be applied right now and affect all future sales immediately.
+              </p>
+            )}
+          </div>
+          <div className="flex gap-3 justify-end">
+            <button onClick={() => { setShowSaveModal(false); setEffectiveDate(''); }} className="px-4 py-2 text-sm text-gray-600 bg-gray-100 rounded hover:bg-gray-200">Cancel</button>
+            <button
+              onClick={saveAll}
+              disabled={saving}
+              className="px-5 py-2 text-sm font-bold rounded shadow disabled:opacity-60"
+              style={{ background: effectiveDate && effectiveDate > todayStr ? '#f59e0b' : '#c41e3a', color: '#fff' }}
+            >
+              {saving ? 'Saving…' : effectiveDate && effectiveDate > todayStr ? `⏳ Schedule for ${effectiveDate}` : '✅ Apply Now'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
       <Modal open={showHistory} title="🕓 Price Change Log" onClose={() => setShowHistory(false)} size="xl">
         <div className="p-4 space-y-4" style={{ minWidth: 320 }}>
           <div className="flex items-center gap-3 flex-wrap">
@@ -4571,6 +4646,8 @@ function PriceListTab() {
                     <th className="text-left py-2 px-3 border-b text-gray-600 font-semibold">Date & Time</th>
                     <th className="text-left py-2 px-3 border-b text-gray-600 font-semibold">Product</th>
                     <th className="text-left py-2 px-3 border-b text-gray-600 font-semibold">Changed By</th>
+                    <th className="text-left py-2 px-2 border-b text-gray-600 font-semibold">Effective From</th>
+                    <th className="text-left py-2 px-2 border-b text-gray-600 font-semibold">Status</th>
                     <th className="text-center py-2 px-2 border-b font-semibold" style={{ color: '#6b21a8' }}>CIF Before→After</th>
                     <th className="text-center py-2 px-2 border-b font-semibold" style={{ color: '#c41e3a' }}>DP Before→After</th>
                     <th className="text-center py-2 px-2 border-b font-semibold" style={{ color: '#1d4ed8' }}>CP Before→After</th>
@@ -4596,13 +4673,23 @@ function PriceListTab() {
                       const dateStr = changed_at ? changed_at.toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
                       const timeStr = changed_at ? changed_at.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' }) : '';
                       return (
-                        <tr key={h.id} className={`border-b ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} hover:bg-blue-50/30`}>
+                        <tr key={h.id} className={`border-b ${h.status === 'pending' ? 'bg-amber-50/60' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} hover:bg-blue-50/30`}>
                           <td className="py-2 px-3 whitespace-nowrap">
                             <div className="font-medium text-gray-700">{dateStr}</div>
                             <div className="text-gray-400">{timeStr}</div>
                           </td>
                           <td className="py-2 px-3 font-medium text-gray-800" style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.description}</td>
                           <td className="py-2 px-3 text-gray-500">{h.changed_by || '—'}</td>
+                          <td className="py-2 px-2 whitespace-nowrap">
+                            <span className="text-gray-700">{h.effective_from ? String(h.effective_from).slice(0, 10) : '—'}</span>
+                          </td>
+                          <td className="py-2 px-2">
+                            {h.status === 'pending' ? (
+                              <span className="text-xs px-1.5 py-0.5 rounded font-bold" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #f59e0b' }}>⏳ Pending</span>
+                            ) : (
+                              <span className="text-xs px-1.5 py-0.5 rounded font-bold" style={{ background: '#dcfce7', color: '#166534', border: '1px solid #86efac' }}>✓ Applied</span>
+                            )}
+                          </td>
                           <td className="py-2 px-2 text-center">{arrow(h.old_cif, h.new_cif, '#6b21a8')}</td>
                           <td className="py-2 px-2 text-center">{arrow(h.old_dp, h.new_dp, '#c41e3a')}</td>
                           <td className="py-2 px-2 text-center">{arrow(h.old_cp, h.new_cp, '#1d4ed8')}</td>
