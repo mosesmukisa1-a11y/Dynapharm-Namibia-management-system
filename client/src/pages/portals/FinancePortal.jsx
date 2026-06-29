@@ -2568,8 +2568,6 @@ function PettyCashTab() {
   const [reqForm, setReqForm] = useState({ amount: '', purpose: '', location: 'head_office' });
   const [spendForm, setSpendForm] = useState({ amount: '', description: '', category: 'Office Supplies', branch_id: 'head_office', location: 'head_office' });
   const [submitting, setSubmitting] = useState(false);
-  const [actionModal, setActionModal] = useState(null);
-  const [actionNote, setActionNote] = useState('');
 
   const load = () => {
     setLoading(true);
