@@ -25,6 +25,8 @@ export async function getWarehouseBatches(warehouseKey) {
            AND wim.batch_no    = sb.batch_no
            AND wim.movement_type = 'write_off_return'
      WHERE sb.location = $1
+       AND sb.remaining_quantity > 0
+       AND COALESCE(sb.status, '') != 'expired'
      ORDER BY sb.description ASC, sb.expiry_date ASC NULLS LAST`,
     [warehouseKey]
   );
@@ -114,9 +116,9 @@ export async function getWarehouseWriteoffReturns(warehouseKey) {
 
 export function buildWarehouseSummary(warehouseName, batches, inbound, outbound) {
   const totalProductLines = new Set(batches.map(b => b.description)).size;
-  const totalUnits = batches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0), 0);
-  const cifValue = batches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0) * Number(b.cif_unit_cost || b.unit_price || 0), 0);
-  const dpcValue = batches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0) * Number(b.dpc_unit_value || b.unit_price || 0), 0);
+  const totalUnits = batches.reduce((s, b) => s + Number(b.remaining_quantity ?? 0), 0);
+  const cifValue = batches.reduce((s, b) => s + Number(b.remaining_quantity ?? 0) * Number(b.cif_unit_cost || b.unit_price || 0), 0);
+  const dpcValue = batches.reduce((s, b) => s + Number(b.remaining_quantity ?? 0) * Number(b.dpc_unit_value || b.unit_price || 0), 0);
 
   return {
     warehouseId: `wh_${warehouseName.toLowerCase()}`,
@@ -135,11 +137,11 @@ export function formatBatchItems(batches) {
     productId: b.id,
     productName: b.description,
     batchNo: b.batch_no || b.barcode,
-    availableQty: Number(b.remaining_quantity || b.quantity || 0),
+    availableQty: Number(b.remaining_quantity ?? 0),
     dispatchedQty: Number(b.dispatched_quantity || 0),
     expiryDate: b.expiry_date,
     unitCIF: Number(b.cif_unit_cost || b.unit_price || 0),
     unitDPC: Number(b.dpc_unit_value || b.unit_price || 0),
-    stockValueDPC: Number(b.remaining_quantity || b.quantity || 0) * Number(b.dpc_unit_value || b.unit_price || 0),
+    stockValueDPC: Number(b.remaining_quantity ?? 0) * Number(b.dpc_unit_value || b.unit_price || 0),
   }));
 }

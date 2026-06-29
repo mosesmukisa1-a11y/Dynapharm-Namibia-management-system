@@ -3362,7 +3362,7 @@ function WarehouseTab({ name }) {
                   : 'Country Stock';
                 return <span style={{ background: '#eff6ff', color: '#1d4ed8', padding: '2px 8px', borderRadius: 5, fontSize: '0.72rem', fontWeight: 700, whiteSpace: 'nowrap' }}>📦 {fromLabel}</span>;
               }},
-              { header: 'Available', render: r => <span className={Number(r.remaining_quantity || r.quantity) < 10 ? 'text-red-600 font-bold' : 'font-medium'}>{r.remaining_quantity || r.quantity}</span> },
+              { header: 'Available', render: r => <span className={Number(r.remaining_quantity ?? r.quantity ?? 0) < 10 ? 'text-red-600 font-bold' : 'font-medium'}>{Number(r.remaining_quantity ?? 0)}</span> },
               { header: 'Dispatched', render: r => r.dispatched_quantity || 0 },
               { header: 'Expiry', render: r => {
                 if (!r.expiry_date) return '—';
