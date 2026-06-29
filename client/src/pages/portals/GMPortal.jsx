@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
 import DistributorPerformanceTab from '../../components/DistributorPerformanceTab';
 import DispatchNote from '../../components/DispatchNote';
 import DailySalesCard from '../../components/DailySalesCard';
@@ -4378,7 +4378,7 @@ function PriceListTab() {
                   const cifExpanded = cifRow === row.id;
                   const codeVal = edits[row.id]?.product_code !== undefined ? edits[row.id].product_code : (row.product_code || '');
                   return (
-                    <React.Fragment key={row.id}>
+                    <Fragment key={row.id}>
                     <tr className={`border-b hover:bg-gray-50 ${changed ? 'bg-amber-50' : pendingForRow.length > 0 ? 'bg-yellow-50/40' : noCIF ? 'bg-orange-50/60' : row.is_package ? 'bg-blue-50/40' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
                       <td className="py-2 px-2">
                         <input
@@ -4516,7 +4516,7 @@ function PriceListTab() {
                         </td>
                       </tr>
                     )}
-                    </React.Fragment>
+                    </Fragment>
                   );
                 })}
               </tbody>
