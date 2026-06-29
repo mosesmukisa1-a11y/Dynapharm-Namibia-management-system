@@ -4024,6 +4024,10 @@ function PriceListTab() {
   const [importLoading, setImportLoading] = useState(false);
   const [importTab, setImportTab] = useState('upload');
   const importFileRef = useRef(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const [history, setHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historySearch, setHistorySearch] = useState('');
 
   const load = useCallback(() => {
     setLoading(true);
@@ -4037,6 +4041,15 @@ function PriceListTab() {
       .catch(() => setAlert({ type: 'error', msg: 'Failed to load prices.' }))
       .finally(() => setLoading(false));
   }, []);
+
+  const openHistory = () => {
+    setShowHistory(true);
+    setHistoryLoading(true);
+    api.prices.history()
+      .then(d => setHistory(Array.isArray(d.history) ? d.history : []))
+      .catch(() => setHistory([]))
+      .finally(() => setHistoryLoading(false));
+  };
 
   useEffect(() => { load(); }, [load]);
 
@@ -4210,6 +4223,13 @@ function PriceListTab() {
               <p className="text-xs text-red-100">{rows.length} products &middot; Source of truth for all portals &middot; {hasEdits ? `${Object.keys(edits).length} unsaved change(s)` : 'All changes saved'}</p>
             </div>
             <div className="flex gap-2 flex-wrap">
+              <button
+                onClick={openHistory}
+                className="px-3 py-1.5 text-sm font-semibold rounded shadow"
+                style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)' }}
+              >
+                🕓 Change Log
+              </button>
               <button
                 onClick={() => { setShowImport(true); setImportText(''); setImportParsed([]); }}
                 className="px-3 py-1.5 text-sm font-semibold rounded shadow"
@@ -4519,6 +4539,83 @@ function PriceListTab() {
             </div>
           </div>
         </Modal>
+
+      <Modal open={showHistory} title="🕓 Price Change Log" onClose={() => setShowHistory(false)} size="xl">
+        <div className="p-4 space-y-4" style={{ minWidth: 320 }}>
+          <div className="flex items-center gap-3 flex-wrap">
+            <input
+              type="text"
+              placeholder="Search product…"
+              value={historySearch}
+              onChange={e => setHistorySearch(e.target.value)}
+              className="border border-gray-300 rounded px-3 py-1.5 text-sm flex-1 focus:outline-none focus:ring-2 focus:ring-red-300"
+              style={{ minWidth: 180 }}
+            />
+            <span className="text-xs text-gray-400">
+              {historyLoading ? 'Loading…' : `${history.length} change${history.length !== 1 ? 's' : ''} recorded`}
+            </span>
+          </div>
+          {historyLoading ? (
+            <div className="text-center py-8 text-gray-400">Loading history…</div>
+          ) : history.length === 0 ? (
+            <div className="text-center py-8 text-gray-400">
+              <div className="text-3xl mb-2">🕓</div>
+              <div className="font-semibold text-gray-500">No price changes recorded yet</div>
+              <div className="text-xs text-gray-400 mt-1">Changes will appear here the next time a price is saved.</div>
+            </div>
+          ) : (
+            <div className="overflow-x-auto" style={{ maxHeight: 480, overflowY: 'auto' }}>
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr style={{ background: '#f8fafc', position: 'sticky', top: 0, zIndex: 1 }}>
+                    <th className="text-left py-2 px-3 border-b text-gray-600 font-semibold">Date & Time</th>
+                    <th className="text-left py-2 px-3 border-b text-gray-600 font-semibold">Product</th>
+                    <th className="text-left py-2 px-3 border-b text-gray-600 font-semibold">Changed By</th>
+                    <th className="text-center py-2 px-2 border-b font-semibold" style={{ color: '#6b21a8' }}>CIF Before→After</th>
+                    <th className="text-center py-2 px-2 border-b font-semibold" style={{ color: '#c41e3a' }}>DP Before→After</th>
+                    <th className="text-center py-2 px-2 border-b font-semibold" style={{ color: '#1d4ed8' }}>CP Before→After</th>
+                    <th className="text-center py-2 px-2 border-b font-semibold" style={{ color: '#374151' }}>BV Before→After</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {history
+                    .filter(h => !historySearch || h.description?.toLowerCase().includes(historySearch.toLowerCase()))
+                    .map((h, i) => {
+                      const fmtN = v => v != null ? Number(v).toLocaleString('en-ZA', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '—';
+                      const diff = (a, b) => Number(a) !== Number(b);
+                      const arrow = (old, nw, color) => (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                          <span style={{ color: '#6b7280' }}>{fmtN(old)}</span>
+                          <span style={{ color: '#9ca3af', fontSize: '0.65rem' }}>→</span>
+                          <span style={{ color: diff(old, nw) ? color : '#6b7280', fontWeight: diff(old, nw) ? 700 : 400 }}>{fmtN(nw)}</span>
+                          {diff(old, nw) && Number(nw) > Number(old) && <span style={{ fontSize: '0.6rem', color: '#15803d' }}>▲</span>}
+                          {diff(old, nw) && Number(nw) < Number(old) && <span style={{ fontSize: '0.6rem', color: '#dc2626' }}>▼</span>}
+                        </span>
+                      );
+                      const changed_at = h.changed_at ? new Date(h.changed_at) : null;
+                      const dateStr = changed_at ? changed_at.toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+                      const timeStr = changed_at ? changed_at.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' }) : '';
+                      return (
+                        <tr key={h.id} className={`border-b ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} hover:bg-blue-50/30`}>
+                          <td className="py-2 px-3 whitespace-nowrap">
+                            <div className="font-medium text-gray-700">{dateStr}</div>
+                            <div className="text-gray-400">{timeStr}</div>
+                          </td>
+                          <td className="py-2 px-3 font-medium text-gray-800" style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.description}</td>
+                          <td className="py-2 px-3 text-gray-500">{h.changed_by || '—'}</td>
+                          <td className="py-2 px-2 text-center">{arrow(h.old_cif, h.new_cif, '#6b21a8')}</td>
+                          <td className="py-2 px-2 text-center">{arrow(h.old_dp, h.new_dp, '#c41e3a')}</td>
+                          <td className="py-2 px-2 text-center">{arrow(h.old_cp, h.new_cp, '#1d4ed8')}</td>
+                          <td className="py-2 px-2 text-center">{arrow(h.old_bv, h.new_bv, '#374151')}</td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 }

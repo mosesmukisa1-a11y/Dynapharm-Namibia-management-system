@@ -286,6 +286,7 @@ export const api = {
     bulkUpdate: (updates) => api.put('/prices', updates),
     create: (data) => api.post('/prices', data),
     delete: (id) => api.delete(`/prices/${id}`),
+    history: (productId) => api.get(`/prices/history${productId ? `?product_id=${productId}` : ''}`),
   },
 
   gm: {

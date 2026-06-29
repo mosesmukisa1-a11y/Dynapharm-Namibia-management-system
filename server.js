@@ -943,6 +943,27 @@ async function initProductPricesTable() {
     `);
     await query(`ALTER TABLE product_prices ADD COLUMN IF NOT EXISTS is_package BOOLEAN DEFAULT FALSE`);
 
+    // ── Price change history ──────────────────────────────────────────────────
+    await query(`
+      CREATE TABLE IF NOT EXISTS product_price_history (
+        id            SERIAL PRIMARY KEY,
+        product_id    INTEGER REFERENCES product_prices(id) ON DELETE CASCADE,
+        description   TEXT NOT NULL,
+        old_dp        NUMERIC(10,2),
+        old_cp        NUMERIC(10,2),
+        old_cif       NUMERIC(10,2),
+        old_bv        NUMERIC(10,2),
+        new_dp        NUMERIC(10,2),
+        new_cp        NUMERIC(10,2),
+        new_cif       NUMERIC(10,2),
+        new_bv        NUMERIC(10,2),
+        changed_by    TEXT DEFAULT 'system',
+        changed_at    TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await query(`CREATE INDEX IF NOT EXISTS idx_pph_product_id ON product_price_history (product_id)`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_pph_changed_at ON product_price_history (changed_at DESC)`);
+
     // ── One-time normalisation: uppercase all descriptions and remove case-duplicates ──
     // For any group of rows that share the same UPPER(description), keep the most-recently
     // updated one and delete the rest, then rename the survivor to its uppercased form.
@@ -1031,6 +1052,20 @@ app.put('/api/prices', async (req, res) => {
     let count = 0;
     for (const u of updates) {
       if (!u.id) continue;
+      // Snapshot old values before overwriting
+      const { rows: old } = await query(`SELECT dp, cp, cif, bv, description FROM product_prices WHERE id=$1`, [u.id]);
+      if (old.length) {
+        const o = old[0];
+        const newDp = Number(u.dp)||0, newCp = Number(u.cp)||0, newCif = Number(u.cif)||0, newBv = Number(u.bv)||0;
+        const changed = o.dp != newDp || o.cp != newCp || o.cif != newCif || o.bv != newBv;
+        if (changed) {
+          await query(
+            `INSERT INTO product_price_history (product_id, description, old_dp, old_cp, old_cif, old_bv, new_dp, new_cp, new_cif, new_bv, changed_by)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+            [u.id, o.description, o.dp, o.cp, o.cif, o.bv, newDp, newCp, newCif, newBv, updatedBy]
+          );
+        }
+      }
       await query(
         `UPDATE product_prices SET dp=$1, cp=$2, cif=$3, bv=$4, updated_at=NOW(), updated_by=$5 WHERE id=$6`,
         [Number(u.dp)||0, Number(u.cp)||0, Number(u.cif)||0, Number(u.bv)||0, updatedBy, u.id]
@@ -1050,6 +1085,8 @@ app.patch('/api/prices/:id', async (req, res) => {
     const { id } = req.params;
     const { dp, cp, cif, bv, description } = req.body;
     const updatedBy = req.user?.name || req.user?.username || 'gm';
+    // Snapshot old values before patching
+    const { rows: old } = await query(`SELECT dp, cp, cif, bv, description FROM product_prices WHERE id=$1`, [id]);
     const fields = [];
     const vals = [];
     let i = 1;
@@ -1063,9 +1100,43 @@ app.patch('/api/prices/:id', async (req, res) => {
     vals.push(updatedBy, id);
     await query(`UPDATE product_prices SET ${fields.join(',')} WHERE id=$${i}`, vals);
     const { rows } = await query('SELECT * FROM product_prices WHERE id=$1', [id]);
+    // Log history if price values changed
+    if (old.length && rows.length) {
+      const o = old[0], n = rows[0];
+      const changed = o.dp != n.dp || o.cp != n.cp || o.cif != n.cif || o.bv != n.bv;
+      if (changed) {
+        await query(
+          `INSERT INTO product_price_history (product_id, description, old_dp, old_cp, old_cif, old_bv, new_dp, new_cp, new_cif, new_bv, changed_by)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+          [id, o.description, o.dp, o.cp, o.cif, o.bv, n.dp, n.cp, n.cif, n.bv, updatedBy]
+        );
+      }
+    }
     res.json(rows[0] || { success: true });
   } catch (err) {
     console.error('PATCH /api/prices/:id error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/prices/history', async (req, res) => {
+  try {
+    const { query } = await import('./api/db.js');
+    const { product_id, limit = 200 } = req.query;
+    const cond = product_id ? `WHERE h.product_id = $1` : '';
+    const params = product_id ? [product_id] : [];
+    const { rows } = await query(
+      `SELECT h.*, pp.description AS current_description
+       FROM product_price_history h
+       LEFT JOIN product_prices pp ON pp.id = h.product_id
+       ${cond}
+       ORDER BY h.changed_at DESC
+       LIMIT ${Number(limit) || 200}`,
+      params
+    );
+    res.json({ success: true, history: rows });
+  } catch (err) {
+    console.error('GET /api/prices/history error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
