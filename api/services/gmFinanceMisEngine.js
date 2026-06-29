@@ -111,12 +111,30 @@ function normalizeBranchName(id) {
  * Stock summary for a location from inventory_balances.
  */
 export async function getLocationStockSummary(locationType, locationId) {
-  const rows = await getMany(
-    `SELECT product_name, batch_no, expiry_date, closing_qty, stock_value_dp, inward_qty, outward_qty
-     FROM inventory_balances
-     WHERE location_type = $1 AND location_id = $2`,
-    [locationType, locationId]
-  );
+  let rows;
+  if (locationType === 'branch') {
+    // branch_inventory_batches is the authoritative source for branch stock.
+    // inventory_balances is a derived cache that can go stale / negative.
+    rows = await getMany(
+      `SELECT b.product_name,
+              b.expiry_date,
+              SUM(b.quantity)                                    AS closing_qty,
+              SUM(b.quantity * COALESCE(p.dp, 0))               AS stock_value_dp
+       FROM branch_inventory_batches b
+       LEFT JOIN product_prices p
+             ON LOWER(TRIM(p.description)) = LOWER(TRIM(b.product_name))
+       WHERE b.branch_id = $1 AND b.quantity > 0
+       GROUP BY b.product_name, b.expiry_date`,
+      [locationId]
+    );
+  } else {
+    rows = await getMany(
+      `SELECT product_name, batch_no, expiry_date, closing_qty, stock_value_dp, inward_qty, outward_qty
+       FROM inventory_balances
+       WHERE location_type = $1 AND location_id = $2`,
+      [locationType, locationId]
+    );
+  }
 
   let closingQty = 0;
   let stockValueDP = 0;
@@ -457,22 +475,29 @@ export async function getAllBranchesSalesRevenue(start, end) {
 }
 
 /**
- * Company stock value by DP from inventory_balances.
+ * Company stock value by DP.
+ * Branch stock: from branch_inventory_batches (authoritative — never goes negative).
+ * Warehouse stock: from inventory_balances (kept in sync by stock engine).
  */
 export async function getCompanyStockValueDP() {
-  const rows = await getMany(
-    `SELECT location_type, SUM(stock_value_dp) as total_value_dp, SUM(closing_qty) as total_qty
-     FROM inventory_balances
-     WHERE location_type IN ('warehouse','branch')
-     GROUP BY location_type`
-  );
+  const [warehouseRows, branchRow] = await Promise.all([
+    getMany(
+      `SELECT SUM(stock_value_dp) as total_value_dp
+       FROM inventory_balances
+       WHERE location_type = 'warehouse'`
+    ),
+    getMany(
+      `SELECT SUM(b.quantity * COALESCE(p.dp, 0)) as total_value_dp
+       FROM branch_inventory_batches b
+       LEFT JOIN product_prices p
+             ON LOWER(TRIM(p.description)) = LOWER(TRIM(b.product_name))
+       WHERE b.quantity > 0`
+    ),
+  ]);
 
-  let warehouseValueDP = 0, branchValueDP = 0;
-  for (const r of rows) {
-    if (r.location_type === 'warehouse') warehouseValueDP = Number(r.total_value_dp || 0);
-    else if (r.location_type === 'branch') branchValueDP = Number(r.total_value_dp || 0);
-  }
-  const companyValueDP = warehouseValueDP + branchValueDP;
+  const warehouseValueDP = Number(warehouseRows[0]?.total_value_dp || 0);
+  const branchValueDP    = Number(branchRow[0]?.total_value_dp    || 0);
+  const companyValueDP   = warehouseValueDP + branchValueDP;
 
   const writeOff = await getOne(
     `SELECT COALESCE(SUM(quantity * COALESCE(unit_dp, 0)), 0) as val
