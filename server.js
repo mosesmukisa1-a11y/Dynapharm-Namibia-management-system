@@ -1291,18 +1291,18 @@ app.get('/api/prices/analytics', async (req, res) => {
         pp.dp, pp.cp, pp.cif,
         pp.original_cif, pp.vat_pct, pp.import_duty_pct, pp.clearing_fee,
         pp.bv, pp.is_package,
-        COALESCE(SUM(CASE WHEN m.movement_type IN ('member_sale','walkin_sale','prescription_dispensing','campaign_sale','campaign_free_item')
+        COALESCE(SUM(CASE WHEN m.type IN ('walk_in_member_sale','walk_in_non_member_sale','sale','prescription_dispense','campaign_sale','campaign_free_item')
                           THEN ABS(m.quantity) ELSE 0 END), 0)::NUMERIC(14,2) AS units_sold_90d,
-        COALESCE(SUM(CASE WHEN m.movement_type IN ('member_sale','walkin_sale','prescription_dispensing','campaign_sale')
-                          THEN ABS(m.quantity) * COALESCE(m.unit_dp, pp.dp, 0) ELSE 0 END), 0)::NUMERIC(14,2) AS revenue_dp_90d,
-        COALESCE(SUM(CASE WHEN m.movement_type IN ('member_sale','walkin_sale','prescription_dispensing','campaign_sale')
-                          THEN ABS(m.quantity) * (COALESCE(m.unit_dp, pp.dp, 0) - pp.cif) ELSE 0 END), 0)::NUMERIC(14,2) AS gross_profit_90d,
+        COALESCE(SUM(CASE WHEN m.type IN ('walk_in_member_sale','walk_in_non_member_sale','sale','prescription_dispense','campaign_sale')
+                          THEN ABS(m.quantity) * COALESCE(m.unit_price, pp.dp, 0) ELSE 0 END), 0)::NUMERIC(14,2) AS revenue_dp_90d,
+        COALESCE(SUM(CASE WHEN m.type IN ('walk_in_member_sale','walk_in_non_member_sale','sale','prescription_dispense','campaign_sale')
+                          THEN ABS(m.quantity) * (COALESCE(m.unit_price, pp.dp, 0) - COALESCE(pp.cif, 0)) ELSE 0 END), 0)::NUMERIC(14,2) AS gross_profit_90d,
         COALESCE(COUNT(DISTINCT DATE_TRUNC('month', m.created_at)), 0)::INTEGER AS active_months
       FROM product_prices pp
       LEFT JOIN branch_inventory_movements m
         ON UPPER(TRIM(REGEXP_REPLACE(m.product_name, '\\s+', ' ', 'g'))) = UPPER(TRIM(REGEXP_REPLACE(pp.description, '\\s+', ' ', 'g')))
         AND m.created_at >= NOW() - INTERVAL '90 days'
-        AND m.movement_type IN ('member_sale','walkin_sale','prescription_dispensing','campaign_sale','campaign_free_item')
+        AND m.type IN ('walk_in_member_sale','walk_in_non_member_sale','sale','prescription_dispense','campaign_sale','campaign_free_item')
       WHERE pp.is_package IS NOT TRUE
       GROUP BY pp.id
       ORDER BY units_sold_90d DESC, pp.description ASC
