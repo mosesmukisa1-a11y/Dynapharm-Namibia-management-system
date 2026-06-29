@@ -288,6 +288,7 @@ export const api = {
     delete: (id) => api.delete(`/prices/${id}`),
     history: (productId) => api.get(`/prices/history${productId ? `?product_id=${productId}` : ''}`),
     pending: () => api.get('/prices/pending'),
+    analytics: () => api.get('/prices/analytics'),
   },
 
   gm: {

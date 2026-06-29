@@ -4031,6 +4031,14 @@ function PriceListTab() {
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [effectiveDate, setEffectiveDate] = useState('');
   const [pendingChanges, setPendingChanges] = useState([]);
+  const [showAdvisor, setShowAdvisor] = useState(false);
+  const [advisorData, setAdvisorData] = useState([]);
+  const [advisorLoading, setAdvisorLoading] = useState(false);
+  const [advisorSearch, setAdvisorSearch] = useState('');
+  const [advisorProduct, setAdvisorProduct] = useState(null);
+  const [advisorTargetGP, setAdvisorTargetGP] = useState(40);
+  const [advisorRetailMkup, setAdvisorRetailMkup] = useState(15);
+  const [cifRow, setCifRow] = useState(null);
 
   const todayStr = new Date().toISOString().slice(0, 10);
 
@@ -4068,6 +4076,29 @@ function PriceListTab() {
       .finally(() => setHistoryLoading(false));
   };
 
+  const openAdvisor = () => {
+    setShowAdvisor(true);
+    setAdvisorSearch('');
+    setAdvisorProduct(null);
+    if (advisorData.length === 0) {
+      setAdvisorLoading(true);
+      api.prices.analytics()
+        .then(d => setAdvisorData(Array.isArray(d?.products) ? d.products : []))
+        .catch(() => setAdvisorData([]))
+        .finally(() => setAdvisorLoading(false));
+    }
+  };
+
+  // Compute a CIF final value from breakdown fields
+  const computeFinalCif = (row, overrides = {}) => {
+    const orig = Number(overrides.original_cif ?? edits[row?.id]?.original_cif ?? row?.original_cif ?? 0);
+    const vat = Number(overrides.vat_pct ?? edits[row?.id]?.vat_pct ?? row?.vat_pct ?? 15);
+    const duty = Number(overrides.import_duty_pct ?? edits[row?.id]?.import_duty_pct ?? row?.import_duty_pct ?? 0);
+    const fee = Number(overrides.clearing_fee ?? edits[row?.id]?.clearing_fee ?? row?.clearing_fee ?? 1);
+    if (!orig) return null;
+    return +(orig + orig * vat / 100 + orig * duty / 100 + fee).toFixed(2);
+  };
+
   useEffect(() => { load(); }, [load]);
 
   const setEdit = (id, field, val) => {
@@ -4084,13 +4115,21 @@ function PriceListTab() {
     try {
       const updates = Object.entries(edits).map(([id, fields]) => {
         const row = rows.find(r => String(r.id) === String(id)) || {};
+        // If original_cif or its breakdown components are edited, recompute final CIF
+        const hasCifBreakdown = fields.original_cif !== undefined || fields.vat_pct !== undefined || fields.import_duty_pct !== undefined || fields.clearing_fee !== undefined;
+        const computedCif = hasCifBreakdown ? computeFinalCif(row) : null;
         return {
           id: Number(id),
           description: fields.description ?? row.description,
           dp:  Math.round(Number(fields.dp  ?? row.dp))  || 0,
           cp:  Math.round(Number(fields.cp  ?? row.cp))  || 0,
-          cif: Math.round(Number(fields.cif ?? row.cif)) || 0,
+          cif: computedCif !== null ? Math.round(computedCif) : (Math.round(Number(fields.cif ?? row.cif)) || 0),
           bv:  Number((Number(fields.bv ?? row.bv) || 0).toFixed(2)),
+          ...(fields.product_code !== undefined ? { product_code: fields.product_code } : {}),
+          ...(fields.original_cif !== undefined ? { original_cif: Number(fields.original_cif) } : {}),
+          ...(fields.vat_pct !== undefined ? { vat_pct: Number(fields.vat_pct) } : {}),
+          ...(fields.import_duty_pct !== undefined ? { import_duty_pct: Number(fields.import_duty_pct) } : {}),
+          ...(fields.clearing_fee !== undefined ? { clearing_fee: Number(fields.clearing_fee) } : {}),
         };
       });
       await api.prices.bulkUpdate(updates, chosenDate);
@@ -4256,6 +4295,14 @@ function PriceListTab() {
                 🕓 Change Log
               </button>
               <button
+                onClick={openAdvisor}
+                className="px-3 py-1.5 text-sm font-semibold rounded shadow"
+                style={{ background: 'rgba(255,215,0,0.25)', color: '#fef08a', border: '1px solid rgba(255,215,0,0.5)' }}
+                title="Price Advisor — view sales velocity data to guide DP/CP pricing decisions"
+              >
+                💡 Price Advisor
+              </button>
+              <button
                 onClick={() => { setShowImport(true); setImportText(''); setImportParsed([]); }}
                 className="px-3 py-1.5 text-sm font-semibold rounded shadow"
                 style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)' }}
@@ -4301,8 +4348,9 @@ function PriceListTab() {
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="text-xs uppercase" style={{ background: '#f8fafc' }}>
+                  <th className="text-left py-2 px-2 border-b text-gray-500" style={{ minWidth: 72 }} title="Product code from official price list">Code</th>
                   <th className="text-left py-2 px-3 border-b text-gray-600">Product Description</th>
-                  <th className="text-right py-2 px-3 border-b" style={{ color: '#6b21a8' }} title="Cost Insurance &amp; Freight — actual import cost from Malaysia">CIF (N$)</th>
+                  <th className="text-right py-2 px-3 border-b" style={{ color: '#6b21a8' }} title="Final CIF = original import cost + VAT + import duty + clearing fee. Click 📊 to expand breakdown.">CIF (N$)</th>
                   <th className="text-right py-2 px-3 border-b" style={{ color: '#c41e3a' }} title="Distributor Price — what members &amp; distributors pay">DP (N$)</th>
                   <th className="text-right py-2 px-3 border-b" style={{ color: '#1d4ed8' }} title="Consumer Price — walk-in retail price">CP (N$)</th>
                   <th className="text-right py-2 px-3 border-b text-gray-500" title="Business Volume points">BV</th>
@@ -4314,11 +4362,12 @@ function PriceListTab() {
               </thead>
               <tbody>
                 {filtered.length === 0 && (
-                  <tr><td colSpan={9} className="text-center py-8 text-gray-400">No products found.</td></tr>
+                  <tr><td colSpan={10} className="text-center py-8 text-gray-400">No products found.</td></tr>
                 )}
                 {filtered.map((row, i) => {
                   const changed = !!edits[row.id];
-                  const cifVal = Number(edits[row.id]?.cif ?? row.cif) || 0;
+                  const computedCif = computeFinalCif(row);
+                  const cifVal = computedCif !== null ? computedCif : (Number(edits[row.id]?.cif ?? row.cif) || 0);
                   const dpVal  = Number(edits[row.id]?.dp  ?? row.dp)  || 0;
                   const cpVal  = Number(edits[row.id]?.cp  ?? row.cp)  || 0;
                   const gp     = dpVal - cifVal;
@@ -4326,8 +4375,22 @@ function PriceListTab() {
                   const retail = cpVal - dpVal;
                   const noCIF  = !row.is_package && cifVal === 0;
                   const pendingForRow = pendingChanges.filter(p => p.product_id === row.id);
+                  const cifExpanded = cifRow === row.id;
+                  const codeVal = edits[row.id]?.product_code !== undefined ? edits[row.id].product_code : (row.product_code || '');
                   return (
-                    <tr key={row.id} className={`border-b hover:bg-gray-50 ${changed ? 'bg-amber-50' : pendingForRow.length > 0 ? 'bg-yellow-50/40' : noCIF ? 'bg-orange-50/60' : row.is_package ? 'bg-blue-50/40' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+                    <React.Fragment key={row.id}>
+                    <tr className={`border-b hover:bg-gray-50 ${changed ? 'bg-amber-50' : pendingForRow.length > 0 ? 'bg-yellow-50/40' : noCIF ? 'bg-orange-50/60' : row.is_package ? 'bg-blue-50/40' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+                      <td className="py-2 px-2">
+                        <input
+                          type="text"
+                          value={codeVal}
+                          onChange={e => setEdit(row.id, 'product_code', e.target.value)}
+                          placeholder="—"
+                          maxLength={20}
+                          className={`w-20 text-xs border rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-red-400 font-mono ${edits[row.id]?.product_code !== undefined ? 'border-amber-400 bg-amber-50' : 'border-gray-200 bg-white text-gray-500'}`}
+                          title="Product code (e.g. NB1201)"
+                        />
+                      </td>
                       <td className="py-2 px-3">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-medium text-gray-800">{row.description}</span>
@@ -4341,7 +4404,23 @@ function PriceListTab() {
                           ))}
                         </div>
                       </td>
-                      <td className="py-2 px-2 text-right">{row.is_package ? <span className="text-xs text-gray-400 italic">bundle</span> : fieldInput(row, 'cif', 'Cost Insurance Freight (import cost from Malaysia)')}</td>
+                      <td className="py-2 px-2 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          {row.is_package ? (
+                            <span className="text-xs text-gray-400 italic">bundle</span>
+                          ) : (
+                            <>
+                              {fieldInput(row, 'cif', 'Final CIF — can also expand breakdown via 📊 to compute from original import cost + VAT + duty + clearing')}
+                              <button
+                                onClick={() => setCifRow(cifExpanded ? null : row.id)}
+                                className="text-xs px-1 py-0.5 rounded hover:bg-purple-100"
+                                style={{ color: '#6b21a8' }}
+                                title="Expand CIF breakdown: original import cost, VAT%, import duty%, clearing fee"
+                              >📊</button>
+                            </>
+                          )}
+                        </div>
+                      </td>
                       <td className="py-2 px-2 text-right">{fieldInput(row, 'dp', 'Distributor Price — what members & distributors pay')}</td>
                       <td className="py-2 px-2 text-right">{fieldInput(row, 'cp', 'Consumer Price — walk-in retail price')}</td>
                       <td className="py-2 px-2 text-right">{fieldInput(row, 'bv', 'Business Volume points (supports 2 decimal places)')}</td>
@@ -4372,6 +4451,72 @@ function PriceListTab() {
                         )}
                       </td>
                     </tr>
+                    {/* CIF Breakdown expanded row */}
+                    {cifExpanded && !row.is_package && (
+                      <tr style={{ background: '#faf5ff', borderBottom: '1px solid #e9d5ff' }}>
+                        <td colSpan={10} className="px-4 py-3">
+                          <div className="flex flex-wrap items-end gap-4">
+                            <div className="text-xs font-bold" style={{ color: '#6b21a8' }}>📊 CIF Breakdown — {row.description}</div>
+                            <div className="flex flex-wrap items-end gap-3">
+                              <label className="flex flex-col gap-0.5">
+                                <span className="text-xs text-gray-500">Original CIF (N$)</span>
+                                <input
+                                  type="number" min="0" step="0.01"
+                                  value={edits[row.id]?.original_cif ?? (row.original_cif ?? '')}
+                                  placeholder="e.g. 120"
+                                  onChange={e => setEdit(row.id, 'original_cif', e.target.value)}
+                                  className="w-28 text-sm border border-purple-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-purple-400"
+                                />
+                              </label>
+                              <label className="flex flex-col gap-0.5">
+                                <span className="text-xs text-gray-500">VAT %</span>
+                                <input
+                                  type="number" min="0" max="100" step="0.5"
+                                  value={edits[row.id]?.vat_pct ?? (row.vat_pct ?? 15)}
+                                  onChange={e => setEdit(row.id, 'vat_pct', e.target.value)}
+                                  className="w-20 text-sm border border-purple-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-purple-400"
+                                />
+                              </label>
+                              <label className="flex flex-col gap-0.5">
+                                <span className="text-xs text-gray-500">Import Duty %</span>
+                                <input
+                                  type="number" min="0" max="100" step="0.5"
+                                  value={edits[row.id]?.import_duty_pct ?? (row.import_duty_pct ?? 0)}
+                                  onChange={e => setEdit(row.id, 'import_duty_pct', e.target.value)}
+                                  className="w-20 text-sm border border-purple-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-purple-400"
+                                />
+                              </label>
+                              <label className="flex flex-col gap-0.5">
+                                <span className="text-xs text-gray-500">Clearing Fee (N$)</span>
+                                <input
+                                  type="number" min="0" step="0.5"
+                                  value={edits[row.id]?.clearing_fee ?? (row.clearing_fee ?? 1)}
+                                  onChange={e => setEdit(row.id, 'clearing_fee', e.target.value)}
+                                  className="w-24 text-sm border border-purple-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-purple-400"
+                                />
+                              </label>
+                            </div>
+                            {computeFinalCif(row) !== null && (
+                              <div className="flex items-center gap-2 ml-2">
+                                <span className="text-xs text-gray-500">Computed Final CIF:</span>
+                                <span className="text-sm font-bold px-2 py-0.5 rounded" style={{ background: '#ede9fe', color: '#6b21a8' }}>
+                                  N${computeFinalCif(row)?.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                                {computeFinalCif(row) !== cifVal && (
+                                  <span className="text-xs text-amber-600 font-semibold">
+                                    ↳ will update CIF from N${cifVal} on save
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                            <div className="text-xs text-gray-400 italic ml-auto">
+                              Formula: Original + (Original × VAT%) + (Original × Duty%) + Clearing Fee
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </React.Fragment>
                   );
                 })}
               </tbody>
@@ -4379,7 +4524,7 @@ function PriceListTab() {
           </div>
 
           <div className="flex flex-wrap gap-4 mt-3 text-xs text-gray-500">
-            <span><strong style={{ color: '#6b21a8' }}>CIF</strong> = Import cost (Cost, Insurance &amp; Freight) from Malaysia</span>
+            <span><strong style={{ color: '#6b21a8' }}>CIF</strong> = Final landed cost (original import + VAT + duty + clearing). Click 📊 to edit breakdown.</span>
             <span><strong style={{ color: '#c41e3a' }}>DP</strong> = Distributor / Member Price</span>
             <span><strong style={{ color: '#1d4ed8' }}>CP</strong> = Consumer / Walk-in Price</span>
             <span><strong style={{ color: '#15803d' }}>GP%</strong> = Gross Profit Margin (DP−CIF)/DP</span>
@@ -4859,6 +5004,208 @@ function StatementsUploadTab() {
           )
         )}
       </Card>
+
+      {/* ── Price Advisor Modal ─────────────────────────────────────────── */}
+      {showAdvisor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.55)' }}>
+          <div className="bg-white rounded-xl shadow-2xl flex flex-col" style={{ width: '100%', maxWidth: 960, maxHeight: '90vh', overflow: 'hidden' }}>
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b" style={{ background: 'linear-gradient(135deg,#1e3a5f,#0f172a)' }}>
+              <div>
+                <h2 className="text-lg font-bold text-white">💡 Price Advisor</h2>
+                <p className="text-xs text-blue-200 mt-0.5">Sales velocity data from the last 90 days — use to guide DP / CP pricing decisions</p>
+              </div>
+              <button onClick={() => setShowAdvisor(false)} className="text-white hover:text-gray-300 text-xl font-bold">✕</button>
+            </div>
+
+            <div className="flex flex-1 overflow-hidden">
+              {/* Left — Product List */}
+              <div className="w-72 border-r flex flex-col" style={{ background: '#f8fafc', minWidth: 220 }}>
+                <div className="px-3 py-2 border-b">
+                  <input
+                    type="text"
+                    placeholder="Search products…"
+                    value={advisorSearch}
+                    onChange={e => setAdvisorSearch(e.target.value)}
+                    className="w-full text-xs border rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                  />
+                </div>
+                <div className="flex-1 overflow-y-auto">
+                  {advisorLoading ? (
+                    <div className="flex items-center justify-center h-32 text-gray-400 text-sm">⏳ Loading…</div>
+                  ) : (
+                    advisorData
+                      .filter(p => !advisorSearch || p.description.toLowerCase().includes(advisorSearch.toLowerCase()) || (p.product_code || '').toLowerCase().includes(advisorSearch.toLowerCase()))
+                      .map(p => {
+                        const sold = Number(p.units_sold_90d) || 0;
+                        const rev = Number(p.revenue_dp_90d) || 0;
+                        return (
+                          <button
+                            key={p.id}
+                            onClick={() => { setAdvisorProduct(p); setAdvisorTargetGP(40); setAdvisorRetailMkup(15); }}
+                            className={`w-full text-left px-3 py-2 border-b hover:bg-blue-50 transition-colors ${advisorProduct?.id === p.id ? 'bg-blue-100 border-l-4 border-l-blue-600' : ''}`}
+                          >
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="text-xs font-medium text-gray-700 leading-tight">{p.description}</span>
+                              {sold > 0 && <span className="text-xs font-bold text-green-600 whitespace-nowrap">{sold} sold</span>}
+                            </div>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              {p.product_code && <span className="text-xs text-gray-400 font-mono">{p.product_code}</span>}
+                              {sold === 0 && <span className="text-xs text-gray-400 italic">no sales in 90d</span>}
+                              {rev > 0 && <span className="text-xs text-gray-500">N${Math.round(rev).toLocaleString('en-ZA')}</span>}
+                            </div>
+                          </button>
+                        );
+                      })
+                  )}
+                </div>
+              </div>
+
+              {/* Right — Selected Product Detail + Calculator */}
+              <div className="flex-1 overflow-y-auto p-5">
+                {!advisorProduct ? (
+                  <div className="flex flex-col items-center justify-center h-full text-gray-400 text-sm gap-2">
+                    <span className="text-4xl">👈</span>
+                    <span>Select a product to see sales data and pricing calculator</span>
+                  </div>
+                ) : (() => {
+                  const p = advisorProduct;
+                  const liveRow = rows.find(r => r.id === p.id) || {};
+                  const finalCif = Number(p.original_cif)
+                    ? +(Number(p.original_cif) + Number(p.original_cif) * Number(p.vat_pct || 15) / 100 + Number(p.original_cif) * Number(p.import_duty_pct || 0) / 100 + Number(p.clearing_fee || 1)).toFixed(2)
+                    : Number(p.cif) || 0;
+                  const suggestedDp = finalCif > 0 && advisorTargetGP < 100 ? Math.round(finalCif / (1 - advisorTargetGP / 100)) : null;
+                  const suggestedCp = suggestedDp ? Math.round(suggestedDp * (1 + advisorRetailMkup / 100)) : null;
+                  const sold90 = Number(p.units_sold_90d) || 0;
+                  const rev90 = Number(p.revenue_dp_90d) || 0;
+                  const gp90 = Number(p.gross_profit_90d) || 0;
+                  const perMonthUnits = sold90 > 0 ? (sold90 / 3).toFixed(1) : 0;
+                  const liveGp = Number(liveRow.dp || 0) - Number(liveRow.cif || 0);
+                  const liveGpPct = Number(liveRow.dp) > 0 ? ((liveGp / Number(liveRow.dp)) * 100).toFixed(1) : null;
+                  return (
+                    <div className="space-y-5">
+                      <div>
+                        <h3 className="text-base font-bold text-gray-800">{p.description}</h3>
+                        {p.product_code && <span className="text-xs font-mono text-gray-400 bg-gray-100 px-2 py-0.5 rounded">{p.product_code}</span>}
+                      </div>
+
+                      {/* Stats Cards */}
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                        {[
+                          { label: 'Units Sold (90d)', val: sold90.toLocaleString('en-ZA'), color: sold90 > 0 ? '#15803d' : '#9ca3af' },
+                          { label: '~Monthly Units', val: perMonthUnits > 0 ? perMonthUnits : '—', color: '#1d4ed8' },
+                          { label: 'Revenue DP (90d)', val: rev90 > 0 ? `N$${Math.round(rev90).toLocaleString('en-ZA')}` : '—', color: '#c41e3a' },
+                          { label: 'Gross Profit (90d)', val: gp90 > 0 ? `N$${Math.round(gp90).toLocaleString('en-ZA')}` : '—', color: '#15803d' },
+                        ].map(s => (
+                          <div key={s.label} className="rounded-lg border p-3" style={{ background: '#f8fafc' }}>
+                            <div className="text-xs text-gray-400 mb-0.5">{s.label}</div>
+                            <div className="text-base font-bold" style={{ color: s.color }}>{s.val}</div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Current Prices */}
+                      <div className="rounded-lg border p-3" style={{ background: '#f8fafc' }}>
+                        <div className="text-xs font-semibold text-gray-500 uppercase mb-2">Current Live Prices</div>
+                        <div className="flex flex-wrap gap-4 text-sm">
+                          <span>CIF: <strong className="text-purple-700">N${Number(liveRow.cif || 0).toLocaleString('en-ZA')}</strong></span>
+                          <span>DP: <strong className="text-red-700">N${Number(liveRow.dp || 0).toLocaleString('en-ZA')}</strong></span>
+                          <span>CP: <strong className="text-blue-700">N${Number(liveRow.cp || 0).toLocaleString('en-ZA')}</strong></span>
+                          <span>BV: <strong className="text-gray-700">{Number(liveRow.bv || 0)}</strong></span>
+                          {liveGpPct && <span>GP%: <strong className={Number(liveGpPct) >= 30 ? 'text-green-700' : 'text-orange-600'}>{liveGpPct}%</strong></span>}
+                        </div>
+                        {finalCif > 0 && Number(p.original_cif) > 0 && (
+                          <div className="mt-2 text-xs text-gray-500 flex flex-wrap gap-3">
+                            <span>Original CIF: <strong>N${Number(p.original_cif)}</strong></span>
+                            <span>VAT: <strong>{Number(p.vat_pct || 15)}%</strong></span>
+                            <span>Import Duty: <strong>{Number(p.import_duty_pct || 0)}%</strong></span>
+                            <span>Clearing: <strong>N${Number(p.clearing_fee || 1)}</strong></span>
+                            <span className="font-semibold text-purple-700">→ Landed CIF: N${finalCif}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Pricing Calculator */}
+                      <div className="rounded-lg border p-4" style={{ background: 'linear-gradient(135deg,#f0f9ff,#fff)' }}>
+                        <div className="text-sm font-bold text-blue-800 mb-3">🧮 Pricing Calculator</div>
+                        <div className="flex flex-wrap gap-5 items-end mb-4">
+                          <label className="flex flex-col gap-1">
+                            <span className="text-xs font-semibold text-gray-600">Target GP Margin %</span>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="range" min="5" max="75" step="1"
+                                value={advisorTargetGP}
+                                onChange={e => setAdvisorTargetGP(Number(e.target.value))}
+                                className="w-36"
+                              />
+                              <span className="text-sm font-bold text-blue-700 w-12">{advisorTargetGP}%</span>
+                            </div>
+                          </label>
+                          <label className="flex flex-col gap-1">
+                            <span className="text-xs font-semibold text-gray-600">Retail Markup % (CP over DP)</span>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="range" min="0" max="50" step="1"
+                                value={advisorRetailMkup}
+                                onChange={e => setAdvisorRetailMkup(Number(e.target.value))}
+                                className="w-36"
+                              />
+                              <span className="text-sm font-bold text-amber-700 w-12">{advisorRetailMkup}%</span>
+                            </div>
+                          </label>
+                        </div>
+                        {finalCif === 0 ? (
+                          <div className="text-sm text-orange-600">⚠ Set Original CIF in the CIF breakdown first to use the calculator.</div>
+                        ) : (
+                          <div className="flex flex-wrap gap-4 items-center">
+                            <div className="text-center">
+                              <div className="text-xs text-gray-400 mb-0.5">Landed CIF</div>
+                              <div className="text-sm font-bold text-purple-700">N${finalCif}</div>
+                            </div>
+                            <div className="text-gray-300 text-xl">→</div>
+                            <div className="text-center">
+                              <div className="text-xs text-gray-400 mb-0.5">Suggested DP</div>
+                              <div className="text-xl font-bold text-red-700">{suggestedDp ? `N$${suggestedDp.toLocaleString('en-ZA')}` : '—'}</div>
+                              <div className="text-xs text-gray-400">GP = {advisorTargetGP}%</div>
+                            </div>
+                            <div className="text-gray-300 text-xl">→</div>
+                            <div className="text-center">
+                              <div className="text-xs text-gray-400 mb-0.5">Suggested CP</div>
+                              <div className="text-xl font-bold text-blue-700">{suggestedCp ? `N$${suggestedCp.toLocaleString('en-ZA')}` : '—'}</div>
+                              <div className="text-xs text-gray-400">+{advisorRetailMkup}% over DP</div>
+                            </div>
+                            {suggestedDp && (
+                              <button
+                                onClick={() => {
+                                  setEdit(p.id, 'dp', suggestedDp);
+                                  if (suggestedCp) setEdit(p.id, 'cp', suggestedCp);
+                                  setEdit(p.id, 'cif', Math.round(finalCif));
+                                  setShowAdvisor(false);
+                                }}
+                                className="ml-2 px-4 py-2 text-sm font-bold text-white rounded-lg shadow hover:opacity-90"
+                                style={{ background: 'linear-gradient(135deg,#15803d,#166534)' }}
+                              >
+                                ✅ Apply to Price List
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {sold90 === 0 && (
+                        <div className="text-xs text-gray-400 italic text-center py-2">
+                          📦 No recorded branch sales in the last 90 days. Pricing set independently of velocity.
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

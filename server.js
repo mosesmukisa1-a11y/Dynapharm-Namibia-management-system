@@ -916,6 +916,104 @@ const STATIC_PRICE_LIST = [
   {description:"INSTANT COFFEE MIX 20's x 30g",dp:260,cp:320,bv:38,cif:110},
 ];
 
+// CIF breakdown data from official price list PDF (before August 2026)
+// Keys are normalized descriptions matching STATIC_PRICE_LIST entries
+const CIF_DATA = {
+  "ARABICA COFFEE MIX W/GOAT'S AND GANO 25GX20'S":          { code:'NB1208',   orig:120,  vat:15, duty:20, clearing:1 },
+  "BEE POLLEN CAPSULE (30'S)":                               { code:'NB3801',   orig:75,   vat:15, duty:0,  clearing:1 },
+  "BEE POLLEN CAPSULE (100'S)":                              { code:'NB3802',   orig:158,  vat:15, duty:0,  clearing:1 },
+  "BODY CONTOUR CREAM":                                      { code:'NB7825',   orig:162,  vat:15, duty:20, clearing:1 },
+  "COMPACT POWDER 12G":                                      { code:'NB7859',   orig:108,  vat:15, duty:20, clearing:1 },
+  "D.I GROW (GREEN) (1 LITER)":                              { code:'NB9845',   orig:98,   vat:15, duty:0,  clearing:1 },
+  "D.I GROW (GREEN) (4LITERS)":                              { code:'NB9830',   orig:328,  vat:15, duty:0,  clearing:1 },
+  "D.I GROW (RED) (1 LITER)":                               { code:'NB9846',   orig:98,   vat:15, duty:0,  clearing:1 },
+  "D.I GROW (RED) (4LITERS)":                               { code:'NB9829',   orig:328,  vat:15, duty:0,  clearing:1 },
+  "D.I GROW BIO-8 1 LTR":                                   { code:'NB9848',   orig:135,  vat:15, duty:0,  clearing:1 },
+  "D.I GROW K 1 LTR":                                       { code:'NB9850',   orig:158,  vat:15, duty:0,  clearing:1 },
+  "D.I. INSTANT GOAT'S MILK POWDER PREMIX 20'S X 21G":      { code:'NB2814',   orig:135,  vat:15, duty:25, clearing:1 },
+  "D.I. INSTANT SOYBEAN MIXTURE WITH GINGER 25G X 20'":     { code:'NB2813',   orig:113,  vat:15, duty:10, clearing:1 },
+  "DI LIQUID ALFALFA PLUS GUARANA (500ML)":                  { code:'NB1802A',  orig:141,  vat:15, duty:20, clearing:1 },
+  "DI LIQUID ALFALFAPLUS GUARANA (150ML)":                   { code:'NB1801A',  orig:53,   vat:15, duty:20, clearing:1 },
+  "DI NONI 500ML":                                           { code:'NB5802N',  orig:225,  vat:15, duty:0,  clearing:1 },
+  "DI NONI JUICE 1 L":                                       { code:'NB5802A',  orig:352,  vat:15, duty:0,  clearing:1 },
+  "DYNA C- 100 TABLET 150'S":                                { code:'NB3805',   orig:78,   vat:15, duty:0,  clearing:1 },
+  "DYNA C- 250 TABLET 90'S":                                 { code:'NB3806',   orig:78,   vat:15, duty:0,  clearing:1 },
+  "DYNA 'S' TABLET 120'S":                                   { code:'NB5806',   orig:145,  vat:15, duty:0,  clearing:1 },
+  "DYNA SERENOA TABLET 100'S":                               { code:'NB9918',   orig:235,  vat:15, duty:0,  clearing:1 },
+  "DYNA SERENOA TABLET 30'S":                                { code:'NB9919',   orig:91,   vat:15, duty:0,  clearing:1 },
+  "DYNA TONIC (150ML)":                                      { code:'NB3803',   orig:75,   vat:15, duty:20, clearing:1 },
+  "DYNA TONIC (780ML)":                                      { code:'NB3804',   orig:230,  vat:15, duty:20, clearing:1 },
+  "DYNA TOOTHBRUSH (SET 3 OF 3)":                            { code:'NB7833',   orig:45,   vat:15, duty:10, clearing:1 },
+  "DYNA-RH CAPSULE 100'S":                                   { code:'NB6803',   orig:145,  vat:15, duty:0,  clearing:1 },
+  "E-VITA CREAM (50G)":                                      { code:'NB7816',   orig:412,  vat:15, duty:20, clearing:1 },
+  "GANODERMA LOTION 150ML":                                  { code:'NB7916',   orig:86,   vat:15, duty:20, clearing:1 },
+  "GANODERMA SHOWER GEL 150ML(GANODERMA BODY SCRUB)":       { code:'NB7920',   orig:98,   vat:15, duty:20, clearing:1 },
+  "GANODERMA SOAP 2 X 100G":                                 { code:'NB7839',   orig:75,   vat:15, duty:20, clearing:1 },
+  "GANODERMA TOOTHPASTE (150G)":                             { code:'NB7919',   orig:60,   vat:15, duty:20, clearing:1 },
+  "GINALI CAPSULE 100'S":                                    { code:'NB4811',   orig:165,  vat:15, duty:0,  clearing:1 },
+  "GINALI CAPSULE 30'S":                                     { code:'NB4812',   orig:90,   vat:15, duty:0,  clearing:1 },
+  "GINSENG CAPSULE 9 X 10'S":                                { code:'NB4805',   orig:260,  vat:15, duty:0,  clearing:1 },
+  "GOAT'S MILK SOAP (100G)":                                 { code:'NB7834',   orig:45,   vat:15, duty:20, clearing:1 },
+  "GOAT'S MILK TABLET 150'S":                                { code:'NB2802',   orig:110,  vat:15, duty:0,  clearing:1 },
+  "GOAT'S MILK TABLET 75'S":                                 { code:'NB2803',   orig:65,   vat:15, duty:0,  clearing:1 },
+  "GREEN TEA CAPSULE 30'S":                                  { code:'NB3811',   orig:90,   vat:15, duty:0,  clearing:1 },
+  "GREEN TEA CAPSULE 60'S":                                  { code:'NB3812',   orig:172,  vat:15, duty:0,  clearing:1 },
+  "HERBA WARISAN MAHARANI 6 X 10G":                          { code:'NB2812',   orig:230,  vat:15, duty:20, clearing:1 },
+  "HIGH FIBER NUTRITION FOOD 30'SX25G":                      { code:'NB5807',   orig:330,  vat:15, duty:0,  clearing:1 },
+  "INSTANT CAPPUCCINO W/ GANO 15'S X 35G":                  { code:'NB1205',   orig:113,  vat:15, duty:20, clearing:1 },
+  "INSTANT CEREAL 15'S X 32G":                               { code:'NB5801N',  orig:143,  vat:15, duty:10, clearing:1 },
+  "INSTANT CEREAL 30'S X 32G":                               { code:'NB5801',   orig:255,  vat:15, duty:10, clearing:1 },
+  "INSTANT CHOC W/ GANO 30'S X 30G":                        { code:'NB1814',   orig:150,  vat:15, duty:20, clearing:1 },
+  "INSTANT COFFEE MIX W/GANODERMA, COLLAGEN & KACIP":       { code:'NB1203',   orig:88,   vat:15, duty:20, clearing:1 },
+  "INSTANT COFFEE MIX W/TONGKAT & MACA POWDER(15'SX21G)":   { code:'NB1204',   orig:88,   vat:15, duty:20, clearing:1 },
+  "INSTANT COFFEE MIX WITH GANODERMA 4-IN-1(SACHET) (20'S X 21G)": { code:'NB1804', orig:88, vat:15, duty:20, clearing:1 },
+  "INSTANT COFFEE W/ GANO, GREEN TEA 20'S X 21G":           { code:'NB1202',   orig:105,  vat:15, duty:20, clearing:1 },
+  "INSTANT COFFEE W/ GINKGO & GINSENG 20'S X 21G":          { code:'NB1201',   orig:105,  vat:15, duty:20, clearing:1 },
+  "INSTANT COFFEE W/ TONGKAT ALI 20'S X 21G":               { code:'NB4810',   orig:88,   vat:15, duty:20, clearing:1 },
+  "INSTANT COFFEE W/GANO & TONGKAT ALI BLACK 30'S X 5G":    { code:'NB1818',   orig:120,  vat:15, duty:20, clearing:1 },
+  "INSTANT GINSENG HONEY GINGER 500G":                       { code:'NB4803',   orig:129,  vat:15, duty:20, clearing:1 },
+  "INSTANT PEGAGA CAFE 25G X 15S":                           { code:'NB1206',   orig:97,   vat:15, duty:20, clearing:1 },
+  "INSTANT PREMIX COFFEE WITH MANGOSTEEN(25'SX15G)":         { code:'NB1210',   orig:115,  vat:15, duty:20, clearing:1 },
+  "INSTANT WHEATGRASS W/ CHLOROPHYLL 20'S X 10G":            { code:'NB1812',   orig:102,  vat:15, duty:20, clearing:1 },
+  "MILK TEA WITH TONGKAT ALI 21G X 20'S":                    { code:'NB4810N',  orig:103,  vat:15, duty:20, clearing:1 },
+  "MILK THISTLE TABLET 120'S":                               { code:'NB4817',   orig:250,  vat:15, duty:0,  clearing:1 },
+  "MILK THISTLE TABLET 30'S":                                { code:'NB4816',   orig:77,   vat:15, duty:0,  clearing:1 },
+  "MINERAL POT":                                             { code:'NB8805',   orig:675,  vat:15, duty:20, clearing:1 },
+  "NANO HOME FEMININE WASH ANTISEPTIC W/ SIRIH 60ML":        { code:'NB7842',   orig:35,   vat:15, duty:20, clearing:1 },
+  "NANO HOME FEMININE WASH KACIP FATIMAH 60ML":              { code:'NB7841',   orig:36,   vat:15, duty:20, clearing:1 },
+  "NANO HOME FEMININE WASH WITH GAMAT 60ML":                 { code:'NB7843',   orig:35,   vat:15, duty:20, clearing:1 },
+  "NANO HOME GAMAT SOAP 100G":                               { code:'NB7840',   orig:41,   vat:15, duty:20, clearing:1 },
+  "NANO HOME PEGAGA SOAP 100G":                              { code:'NB7838',   orig:31,   vat:15, duty:20, clearing:1 },
+  "NONI PLUS TEA 30'S X 3G":                                 { code:'NB5803',   orig:145,  vat:15, duty:20, clearing:1 },
+  "NUTMEG OINTMENT (2'S X 20G)":                             { code:'NB6802',   orig:85,   vat:15, duty:20, clearing:1 },
+  "PRESIDENT'S CHOICE 4 IN 1 AND CHOCOLATE COFFEE 20'":     { code:'NB1817',   orig:135,  vat:15, duty:20, clearing:1 },
+  "PRO- LSB TABLET 150'S":                                   { code:'NB2809',   orig:225,  vat:15, duty:0,  clearing:1 },
+  "PROLINK 20'S X 20G":                                      { code:'NB3814',   orig:294,  vat:15, duty:20, clearing:1 },
+  "PROLINK 30'S X 20G":                                      { code:'NB3816N',  orig:382,  vat:15, duty:20, clearing:1 },
+  "RED COFFEE W/ GINSENG (12'S X 25G)":                     { code:'NB3810',   orig:90,   vat:15, duty:20, clearing:1 },
+  "REGISTRATION KIT WITH FERT,COFFEE & RI(PERMANENT)":      { code:'NB10804',  orig:375,  vat:15, duty:20, clearing:1 },
+  "REGISTRATION KIT WITH ALFALFA,COFFEE&RI(PERMANENT)":     { code:'NB10805A', orig:375,  vat:15, duty:20, clearing:1 },
+  "SEA CUCUMBER JELLY (250ML)":                              { code:'NB4808',   orig:125,  vat:15, duty:20, clearing:1 },
+  "SEA CUCUMBER JELLY (500ML)":                              { code:'NB4808A',  orig:227,  vat:15, duty:20, clearing:1 },
+  "SEA WATER SPIRULINA POWDER 500G":                         { code:'NB2805',   orig:141,  vat:15, duty:10, clearing:1 },
+  "SOYBEAN POWDER 454G":                                     { code:'NB2804',   orig:98,   vat:15, duty:10, clearing:1 },
+  "SPIRULINA TABLET (1,000'S)":                              { code:'NB2808',   orig:360,  vat:15, duty:0,  clearing:1 },
+  "SPIRULINA TABLET (100'S)":                                { code:'NB2806',   orig:68,   vat:15, duty:0,  clearing:1 },
+  "SPIRULINA TABLET (300'S)":                                { code:'NB2807',   orig:150,  vat:15, duty:0,  clearing:1 },
+  "TEA TREE OIL FEMININE WASH (250ML)":                      { code:'NB7835',   orig:100,  vat:15, duty:20, clearing:1 },
+  "TEA TREE OIL LOTION (250ML)":                             { code:'NB7813',   orig:96,   vat:15, duty:20, clearing:1 },
+  "TEA TREE OIL TOOTHPASTE (175G)":                          { code:'NB7837',   orig:60,   vat:15, duty:20, clearing:1 },
+  "TONGKAT ALI CAPSULE 100'S":                               { code:'NB4823',   orig:188,  vat:15, duty:0,  clearing:1 },
+  "TONGKAT ALI CAPSULE 30'S":                                { code:'NB4822',   orig:77,   vat:15, duty:0,  clearing:1 },
+  "YEEGANO CAPSULE 30'S":                                    { code:'NB1809',   orig:68,   vat:15, duty:0,  clearing:1 },
+  "YEEGANO CAPSULE 90'S":                                    { code:'NB1810',   orig:158,  vat:15, duty:0,  clearing:1 },
+  "YEEGARLIC CAPSULE 90'S":                                  { code:'NB1811',   orig:135,  vat:15, duty:0,  clearing:1 },
+  "YEEGINKGO TABLET (30'S)":                                 { code:'NB4814',   orig:68,   vat:15, duty:0,  clearing:1 },
+  "YEEGINKGO TABLETS 90'S":                                  { code:'NB4815',   orig:165,  vat:15, duty:0,  clearing:1 },
+  "YEEYANGYEN TABLET 30'S":                                  { code:'NB3808',   orig:74,   vat:15, duty:0,  clearing:1 },
+  "YEEYANGYEN TABLET 90'S":                                  { code:'NB3809',   orig:185,  vat:15, duty:0,  clearing:1 },
+};
+
 const STATIC_PACKAGE_LIST = [
   { description: 'Gastric Package', dp: 2054, cp: 2432, cif: 0, bv: 381 },
   { description: 'Womens Package', dp: 2543, cp: 2950, cif: 0, bv: 481 },
@@ -1011,6 +1109,20 @@ async function initProductPricesTable() {
       );
     }
     console.log(`Ensured ${STATIC_PACKAGE_LIST.length} packages in product_prices`);
+
+    // Seed product codes and CIF breakdown data from official PDF price list
+    let cifSeeded = 0;
+    for (const [normalizedDesc, d] of Object.entries(CIF_DATA)) {
+      const res = await query(
+        `UPDATE product_prices
+         SET product_code = $1, original_cif = $2, vat_pct = $3, import_duty_pct = $4, clearing_fee = $5
+         WHERE UPPER(TRIM(REGEXP_REPLACE(description, '\\s+', ' ', 'g'))) = $6
+           AND (product_code IS NULL OR product_code <> $1 OR original_cif IS DISTINCT FROM $2 OR vat_pct IS DISTINCT FROM $3 OR import_duty_pct IS DISTINCT FROM $4)`,
+        [d.code, d.orig, d.vat, d.duty, d.clearing, normalizedDesc]
+      );
+      if (res.rowCount > 0) cifSeeded++;
+    }
+    if (cifSeeded > 0) console.log(`[prices] Seeded CIF data + codes for ${cifSeeded} products`);
   } catch (err) {
     console.error('initProductPricesTable error:', err.message);
   }
@@ -1101,10 +1213,17 @@ app.put('/api/prices', async (req, res) => {
         );
       }
       if (isImmediate) {
-        await query(
-          `UPDATE product_prices SET dp=$1, cp=$2, cif=$3, bv=$4, updated_at=NOW(), updated_by=$5 WHERE id=$6`,
-          [newDp, newCp, newCif, newBv, updatedBy, u.id]
-        );
+        // Build dynamic SET for price + any CIF breakdown fields included in update
+        const setClauses = ['dp=$1','cp=$2','cif=$3','bv=$4','updated_at=NOW()','updated_by=$5'];
+        const setVals = [newDp, newCp, newCif, newBv, updatedBy];
+        let sIdx = 6;
+        if (u.product_code !== undefined) { setClauses.push(`product_code=$${sIdx++}`); setVals.push(u.product_code || null); }
+        if (u.original_cif !== undefined) { setClauses.push(`original_cif=$${sIdx++}`); setVals.push(u.original_cif != null ? Number(u.original_cif) : null); }
+        if (u.vat_pct !== undefined) { setClauses.push(`vat_pct=$${sIdx++}`); setVals.push(Number(u.vat_pct)||15); }
+        if (u.import_duty_pct !== undefined) { setClauses.push(`import_duty_pct=$${sIdx++}`); setVals.push(Number(u.import_duty_pct)||0); }
+        if (u.clearing_fee !== undefined) { setClauses.push(`clearing_fee=$${sIdx++}`); setVals.push(Number(u.clearing_fee)||1); }
+        setVals.push(u.id);
+        await query(`UPDATE product_prices SET ${setClauses.join(',')} WHERE id=$${sIdx}`, setVals);
       }
       count++;
     }
@@ -1119,7 +1238,7 @@ app.patch('/api/prices/:id', async (req, res) => {
   try {
     const { query } = await import('./api/db.js');
     const { id } = req.params;
-    const { dp, cp, cif, bv, description } = req.body;
+    const { dp, cp, cif, bv, description, product_code, original_cif, vat_pct, import_duty_pct, clearing_fee } = req.body;
     const updatedBy = req.user?.name || req.user?.username || 'gm';
     // Snapshot old values before patching
     const { rows: old } = await query(`SELECT dp, cp, cif, bv, description FROM product_prices WHERE id=$1`, [id]);
@@ -1131,6 +1250,11 @@ app.patch('/api/prices/:id', async (req, res) => {
     if (cif !== undefined) { fields.push(`cif=$${i++}`); vals.push(Number(cif)||0); }
     if (bv !== undefined) { fields.push(`bv=$${i++}`); vals.push(Number(bv)||0); }
     if (description !== undefined) { fields.push(`description=$${i++}`); vals.push(String(description)); }
+    if (product_code !== undefined) { fields.push(`product_code=$${i++}`); vals.push(product_code || null); }
+    if (original_cif !== undefined) { fields.push(`original_cif=$${i++}`); vals.push(original_cif != null ? Number(original_cif) : null); }
+    if (vat_pct !== undefined) { fields.push(`vat_pct=$${i++}`); vals.push(Number(vat_pct)||15); }
+    if (import_duty_pct !== undefined) { fields.push(`import_duty_pct=$${i++}`); vals.push(Number(import_duty_pct)||0); }
+    if (clearing_fee !== undefined) { fields.push(`clearing_fee=$${i++}`); vals.push(Number(clearing_fee)||1); }
     if (fields.length === 0) return res.status(400).json({ error: 'No fields to update' });
     fields.push(`updated_at=NOW()`, `updated_by=$${i++}`);
     vals.push(updatedBy, id);
@@ -1151,6 +1275,41 @@ app.patch('/api/prices/:id', async (req, res) => {
     res.json(rows[0] || { success: true });
   } catch (err) {
     console.error('PATCH /api/prices/:id error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Sales analytics per product — last 90 days of branch inventory movements
+app.get('/api/prices/analytics', async (req, res) => {
+  try {
+    const { query } = await import('./api/db.js');
+    const { rows } = await query(`
+      SELECT
+        pp.id,
+        pp.description,
+        pp.product_code,
+        pp.dp, pp.cp, pp.cif,
+        pp.original_cif, pp.vat_pct, pp.import_duty_pct, pp.clearing_fee,
+        pp.bv, pp.is_package,
+        COALESCE(SUM(CASE WHEN m.movement_type IN ('member_sale','walkin_sale','prescription_dispensing','campaign_sale','campaign_free_item')
+                          THEN ABS(m.quantity) ELSE 0 END), 0)::NUMERIC(14,2) AS units_sold_90d,
+        COALESCE(SUM(CASE WHEN m.movement_type IN ('member_sale','walkin_sale','prescription_dispensing','campaign_sale')
+                          THEN ABS(m.quantity) * COALESCE(m.unit_dp, pp.dp, 0) ELSE 0 END), 0)::NUMERIC(14,2) AS revenue_dp_90d,
+        COALESCE(SUM(CASE WHEN m.movement_type IN ('member_sale','walkin_sale','prescription_dispensing','campaign_sale')
+                          THEN ABS(m.quantity) * (COALESCE(m.unit_dp, pp.dp, 0) - pp.cif) ELSE 0 END), 0)::NUMERIC(14,2) AS gross_profit_90d,
+        COALESCE(COUNT(DISTINCT DATE_TRUNC('month', m.created_at)), 0)::INTEGER AS active_months
+      FROM product_prices pp
+      LEFT JOIN branch_inventory_movements m
+        ON UPPER(TRIM(REGEXP_REPLACE(m.product_name, '\\s+', ' ', 'g'))) = UPPER(TRIM(REGEXP_REPLACE(pp.description, '\\s+', ' ', 'g')))
+        AND m.created_at >= NOW() - INTERVAL '90 days'
+        AND m.movement_type IN ('member_sale','walkin_sale','prescription_dispensing','campaign_sale','campaign_free_item')
+      WHERE pp.is_package IS NOT TRUE
+      GROUP BY pp.id
+      ORDER BY units_sold_90d DESC, pp.description ASC
+    `);
+    res.json({ success: true, products: rows });
+  } catch (err) {
+    console.error('GET /api/prices/analytics error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -2340,6 +2499,13 @@ server.on('error', (error) => {
       `ALTER TABLE stock_adjustments ADD COLUMN IF NOT EXISTS approved_at       TIMESTAMPTZ`,
       // Back-fill field_to_adjust from old field_name column (safe no-op if column doesn't exist yet)
       `UPDATE stock_adjustments SET field_to_adjust = field_name WHERE field_to_adjust IS NULL AND field_name IS NOT NULL`,
+      // Product codes and CIF breakdown columns
+      `ALTER TABLE product_prices ADD COLUMN IF NOT EXISTS product_code VARCHAR(30)`,
+      `ALTER TABLE product_prices ADD COLUMN IF NOT EXISTS original_cif NUMERIC(10,2)`,
+      `ALTER TABLE product_prices ADD COLUMN IF NOT EXISTS vat_pct NUMERIC(5,2) DEFAULT 15`,
+      `ALTER TABLE product_prices ADD COLUMN IF NOT EXISTS import_duty_pct NUMERIC(5,2) DEFAULT 0`,
+      `ALTER TABLE product_prices ADD COLUMN IF NOT EXISTS clearing_fee NUMERIC(10,2) DEFAULT 1`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_pp_product_code ON product_prices(product_code) WHERE product_code IS NOT NULL`,
     ];
     let schemaSynced = 0;
     for (const sql of schemaSyncs) {
