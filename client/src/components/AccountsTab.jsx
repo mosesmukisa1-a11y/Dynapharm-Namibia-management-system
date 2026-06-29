@@ -79,43 +79,58 @@ export default function AccountsTab({ role = 'finance' }) {
       api.finance.remittances().catch(() => []),
       api.get(`/finance/income-statement?${qs}`).catch(() => ({})),
     ]).then(([pl, sv, pc, remittances, incSt]) => {
-      // Calculate period months for recurring fixed costs (salary, rent)
       const msPerMonth = 30.44 * 24 * 3600 * 1000;
       const periodMs = new Date(endDate).getTime() - new Date(startDate).getTime();
       const periodMonths = Math.max(1, Math.round(periodMs / msPerMonth));
 
-      // ── Salary (from dedicated income-statement endpoint) ──
+      // ── Salary ──
       const monthlyPayroll = Number(incSt?.salary?.monthly_total || 0);
-      const totalSalaries  = monthlyPayroll * periodMonths;
       const salaryCount    = Number(incSt?.salary?.count || 0);
+      // Use period-computed value from profit-loss when available, else prorate monthly total
+      const totalSalaries  = Number(pl.expenses?.salary ?? (monthlyPayroll * periodMonths));
 
-      // ── Rent (from dedicated income-statement endpoint) ──
+      // ── Rent ──
       const monthlyRent = Number(incSt?.rent?.monthly_total || 0);
-      const totalRent   = monthlyRent * periodMonths;
       const rentCount   = Number(incSt?.rent?.count || 0);
+      const totalRent   = Number(pl.expenses?.rent ?? (monthlyRent * periodMonths));
 
-      // ── Misc period expenses: branch + dept + petty cash ──
+      // ── Misc period expenses: branch + dept + petty cash + vouchers ──
       const totalMiscExpenses = Number(incSt?.misc_expenses?.total || 0);
       const expByCategory     = incSt?.misc_expenses?.by_category || {};
 
       // ── Bonus payouts ──
       const bonusPayout = Number(incSt?.bonus_payout || pl.bonusPayout || 0);
 
+      // ── SSC: 0.9% of gross payroll, capped at N$81 per employee per month ──
+      // Both employer and employee pay 0.9%; employer contribution is an additional payroll cost.
+      const sscEmployer = Math.min(
+        totalSalaries * SSC_RATE,
+        SSC_MONTHLY_CAP * Math.max(1, salaryCount) * periodMonths
+      );
+      const sscEmployee = sscEmployer; // Same rate/cap; deducted from employee gross salary
+
+      // ── PAYE estimate (withheld from employees, remitted monthly by employer) ──
+      // Namibia brackets: 0% ≤N$50k/yr, 18–37% above. Rough effective rate for a mixed workforce.
+      const PAYE_EFFECTIVE_RATE = 0.18;
+      const payeEstimate = totalSalaries * PAYE_EFFECTIVE_RATE;
+
       const revenue     = Number(pl.totalRevenueDP || 0);
       const cogs        = Number(pl.cifCost || 0);
       const grossProfit = Number(pl.grossProfit ?? (revenue - cogs));
-      const totalExpenses = totalMiscExpenses;
-      const opExpenses    = totalMiscExpenses + bonusPayout + totalSalaries + totalRent;
+
+      // SSC employer is an additional payroll cost — included in operating expenses
+      const opExpenses    = totalMiscExpenses + bonusPayout + totalSalaries + totalRent + sscEmployer;
       const ebit          = grossProfit - opExpenses;
-      const sscEmployer   = ebit > 0 ? Math.min(ebit * SSC_RATE, SSC_MONTHLY_CAP * 12 * 10) : 0;
-      const taxableIncome = Math.max(0, ebit - sscEmployer);
+      // SSC already deducted in opExpenses; taxable income = EBIT (losses = no CIT)
+      const taxableIncome = Math.max(0, ebit);
       const citProvision  = taxableIncome * CIT_RATE;
       const netProfit     = ebit - citProvision;
 
-      const stockValueDP    = Number(sv?.companyValueDP || sv?.stockValue?.companyValueDP || 0);
+      // Stock value uses companyValueDP (also aliased as totalCompanyValueDP)
+      const stockValueDP    = Number(sv?.companyValueDP || sv?.totalCompanyValueDP || sv?.stockValue?.companyValueDP || 0);
       const pcBalance       = (pc?.accounts || []).reduce((s, a) => s + Number(a.balance || 0), 0);
       const depositsReceived = Number(pl.depositsReceived || 0);
-      const remList = Array.isArray(remittances) ? remittances : remittances?.remittances || [];
+      const remList = Array.isArray(remittances) ? remittances : (remittances?.remittances || []);
       const pendingRemittances = remList
         .filter(r => r.status === 'pending' || r.status === 'submitted')
         .reduce((s, r) => s + Number(r.amount || 0), 0);
@@ -130,8 +145,9 @@ export default function AccountsTab({ role = 'finance' }) {
 
       setData({
         period: { start: startDate, end: endDate },
-        revenue, cogs, grossProfit, opExpenses, ebit, citProvision, netProfit, sscEmployer,
-        bonusPayout, totalExpenses, totalSalaries, totalRent,
+        revenue, cogs, grossProfit, opExpenses, ebit, citProvision, netProfit,
+        sscEmployer, sscEmployee, payeEstimate,
+        bonusPayout, totalSalaries, totalRent,
         monthlyPayroll, monthlyRent, periodMonths,
         expByCategory,
         stockValueDP, pcBalance, depositsReceived,
@@ -140,10 +156,8 @@ export default function AccountsTab({ role = 'finance' }) {
         importDuty, taxableIncome,
         grossMargin: revenue ? grossProfit / revenue * 100 : 0,
         netMargin:   revenue ? netProfit   / revenue * 100 : 0,
-        expList: [],
         pendingRemittances,
-        salaryCount,
-        rentCount,
+        salaryCount, rentCount,
       });
     }).catch(err => setError(err.message))
       .finally(() => setLoading(false));
@@ -177,9 +191,10 @@ export default function AccountsTab({ role = 'finance' }) {
   const expChartData = data
     ? [
         ...(data.totalSalaries > 0 ? [{ name: 'Staff Salaries', amount: data.totalSalaries }] : []),
+        ...(data.sscEmployer > 0 ? [{ name: 'Employer SSC', amount: data.sscEmployer }] : []),
         ...(data.totalRent > 0 ? [{ name: 'Rent & Lease', amount: data.totalRent }] : []),
         ...(data.bonusPayout > 0 ? [{ name: 'Distributor Bonuses', amount: data.bonusPayout }] : []),
-        ...Object.entries(data.expByCategory).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([cat, val]) => ({ name: cat, amount: val })),
+        ...Object.entries(data.expByCategory).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([cat, val]) => ({ name: cat, amount: val })),
       ].filter(d => d.amount > 0)
     : [];
 
@@ -272,7 +287,10 @@ export default function AccountsTab({ role = 'finance' }) {
 
                   <Section title="Operating Expenses" icon={<Building2 size={12} className="text-red-500" />}>
                     {data.totalSalaries > 0 && (
-                      <PRow label={`Staff Salaries & Benefits (${data.salaryCount} employees × ${data.periodMonths}mo)`} value={data.totalSalaries} indent negative />
+                      <PRow label={`Staff Gross Salaries (${data.salaryCount} employees × ${data.periodMonths}mo)`} value={data.totalSalaries} indent negative />
+                    )}
+                    {data.sscEmployer > 0 && (
+                      <PRow label={`Employer SSC @ 0.9% of payroll (cap N$81/emp/mo)`} value={data.sscEmployer} indent negative />
                     )}
                     {data.totalRent > 0 && (
                       <PRow label={`Branch Rent & Lease (${data.rentCount} locations × ${data.periodMonths}mo)`} value={data.totalRent} indent negative />
@@ -289,10 +307,9 @@ export default function AccountsTab({ role = 'finance' }) {
 
                   <Section title="Profitability" icon={<Scale size={12} className="text-blue-600" />}>
                     <PRow label="EBIT (Earnings Before Interest & Tax)" value={data.ebit} bold highlight />
-                    <PRow label="SSC Employer Contribution (0.9%)" value={data.sscEmployer} indent negative />
-                    <PRow label="Taxable Income" value={data.taxableIncome} bold />
-                    <PRow label="CIT Provision @ 32% (Namibia)" value={data.citProvision} indent negative />
-                    <PRow label="Net Profit / (Loss)" value={data.netProfit} bold highlight border />
+                    <PRow label="Taxable Income (max 0 on loss)" value={data.taxableIncome} bold />
+                    <PRow label="CIT Provision @ 32% (NamRA — Income Tax Act)" value={data.citProvision} indent negative />
+                    <PRow label="Net Profit / (Loss) After Tax" value={data.netProfit} bold highlight border />
                     <PRow label="Net Margin" value={`${pct(data.netMargin)}`} indent />
                   </Section>
                 </CardBody>
@@ -531,21 +548,38 @@ export default function AccountsTab({ role = 'finance' }) {
                     </div>
                   </Section>
 
-                  <Section title="Social Security Contributions" icon={<Building2 size={12} className="text-green-600" />}>
-                    <PRow label="Employer SSC (0.9%, cap N$81/mth)" value={data.sscEmployer} indent negative />
-                    <PRow label="Employee SSC (0.9%, deducted from salary)" value={data.sscEmployer} indent negative />
+                  <Section title="Social Security Contributions (SSC Act 34 of 1994)" icon={<Building2 size={12} className="text-green-600" />}>
+                    <PRow label="Employer SSC (0.9% of payroll, N$81/emp/mo cap) — in OpEx" value={data.sscEmployer} indent negative />
+                    <PRow label="Employee SSC (0.9%, deducted from gross salary)" value={data.sscEmployee} indent negative />
+                    <PRow label="Total SSC Remittance (employer + employee)" value={data.sscEmployer + data.sscEmployee} bold negative border />
                     <div className="bg-green-50 border border-green-100 rounded p-2 mt-1">
                       <p className="text-xs text-green-700">
-                        SSC contributions are capped at N$81/month per employee (N$9,000/year earnings ceiling). Submit monthly via SSC portal.
+                        SSC capped at N$81/month per employee (N$9,000/yr salary ceiling). Due last day of month. Submit via SSC online portal.
                       </p>
                     </div>
                   </Section>
 
-                  <Section title="Total Tax Obligations" icon={<Scale size={12} className="text-red-600" />}>
-                    <PRow label="CIT Provision" value={data.citProvision} indent negative />
-                    <PRow label="VAT Payable" value={data.vatPayable} indent negative />
-                    <PRow label="Estimated Import Duties" value={data.importDuty} indent negative />
-                    <PRow label="Total Tax Obligations" value={data.citProvision + data.vatPayable + data.importDuty} bold negative highlight border />
+                  <Section title="PAYE — Employees' Tax (Income Tax Act)" icon={<Receipt size={12} className="text-indigo-600" />}>
+                    <PRow label="Estimated PAYE Withheld (≈18% eff. rate on payroll)" value={data.payeEstimate} indent negative />
+                    <div className="bg-indigo-50 border border-indigo-100 rounded p-2 mt-1">
+                      <p className="text-xs text-indigo-700">
+                        PAYE is withheld from employee gross salary — not an additional employer cost. Employer must remit by the 20th of each following month to NamRA. Individual tax brackets: 0% ≤N$50k/yr, 18%, 25%, 28%, 30%, 32%, 37% above N$1.5M/yr.
+                      </p>
+                    </div>
+                  </Section>
+
+                  <Section title="Total Compliance Obligations" icon={<Scale size={12} className="text-red-600" />}>
+                    <PRow label="CIT Provision @ 32%" value={data.citProvision} indent negative />
+                    <PRow label="VAT Payable (Output − Input)" value={data.vatPayable} indent negative />
+                    <PRow label="Estimated Import Duties @ 5%" value={data.importDuty} indent negative />
+                    <PRow label="Employer SSC (additional payroll cost)" value={data.sscEmployer} indent negative />
+                    <PRow label="PAYE to Remit to NamRA (est.)" value={data.payeEstimate} indent negative />
+                    <PRow label="Total Obligations" value={data.citProvision + data.vatPayable + data.importDuty + data.sscEmployer + data.payeEstimate} bold negative highlight border />
+                    <div className="bg-amber-50 border border-amber-100 rounded p-2 mt-2">
+                      <p className="text-xs text-amber-700">
+                        <strong>Note:</strong> PAYE and Employee SSC are deducted from employee salaries — they are not additional costs to the company but must be remitted. CIT and VAT are direct company obligations. Consult a Namibian Chartered Accountant for precise tax computations.
+                      </p>
+                    </div>
                   </Section>
                 </CardBody>
               </Card>
