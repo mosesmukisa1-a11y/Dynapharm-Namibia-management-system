@@ -155,6 +155,7 @@ export const api = {
     countryStockItems: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/stock/country-stock/items${qs ? '?' + qs : ''}`); },
     releaseToWarehouse: (data) => api.post('/stock/country-stock/release', data),
     editCountryStock: (data) => api.put('/stock/country-stock', data),
+    clearCountryStock: () => api.delete('/stock/country-stock'),
     warehouseReceiveStock: (data) => api.post('/stock/warehouses/receive-stock', data),
     receiveRequest: (data) => api.post('/stock/receive-request', data),
     inventory: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/stock/inventory${qs ? '?' + qs : ''}`); },

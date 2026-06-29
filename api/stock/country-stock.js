@@ -329,5 +329,50 @@ export default async function handler(req, res) {
     return;
   }
 
+  // ── DELETE: wipe all country stock batches + supplier imports ──────────────
+  if (req.method === 'DELETE') {
+    try {
+      const { user } = req;
+      const role = (user?.role || '').toLowerCase();
+      if (!['admin', 'superadmin', 'super_admin'].includes(role)) {
+        return res.status(403).json({ success: false, error: 'Admin access required' });
+      }
+
+      // 1. Remove barcode events for country stock batches (FK dependency)
+      await query(
+        `DELETE FROM barcode_batch_events
+         WHERE batch_id IN (
+           SELECT id FROM stock_batches WHERE location = 'country_stock'
+         )`
+      );
+
+      // 2. Delete all country stock batches
+      const batchResult = await query(
+        `DELETE FROM stock_batches WHERE location = 'country_stock' RETURNING id`
+      );
+
+      // 3. Delete all supplier import records
+      const importResult = await query(`DELETE FROM supplier_imports RETURNING id`);
+
+      // 4. Delete inventory_balances rows for country location
+      await query(`DELETE FROM inventory_balances WHERE location_type = 'country'`);
+
+      publishRealtimeEvent('inventory_balances', 'delete', {
+        source: 'admin_clear_country_stock',
+      }).catch(() => {});
+
+      return res.status(200).json({
+        success: true,
+        message: `Cleared ${batchResult.rowCount} country stock batch(es) and ${importResult.rowCount} import record(s).`,
+        batchesDeleted: batchResult.rowCount,
+        importsDeleted: importResult.rowCount,
+      });
+    } catch (err) {
+      console.error('Country stock DELETE error:', err);
+      if (!res.headersSent) return res.status(500).json({ success: false, error: err.message });
+    }
+    return;
+  }
+
   return res.status(405).json({ success: false, error: 'Method not allowed' });
 }

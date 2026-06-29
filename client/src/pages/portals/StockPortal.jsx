@@ -2717,6 +2717,23 @@ function CountryStockTab() {
                     placeholder="Search product or batch..."
                     className="pl-8 pr-3 py-1.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20 w-52" />
                 </div>
+                {['admin','superadmin','super_admin'].includes((user?.role||'').toLowerCase()) && (
+                  <button
+                    onClick={async () => {
+                      if (!window.confirm('This will permanently delete ALL country stock batches and import records. Continue?')) return;
+                      try {
+                        await api.stock.clearCountryStock();
+                        alert('Country stock and import records cleared.');
+                        load();
+                      } catch(e) {
+                        alert('Error: ' + e.message);
+                      }
+                    }}
+                    className="px-3 py-1.5 text-sm font-semibold rounded-lg border border-red-300 text-red-700 bg-red-50 hover:bg-red-100"
+                  >
+                    🗑️ Clear All
+                  </button>
+                )}
               </div>
             </div>
           </CardHeader>
