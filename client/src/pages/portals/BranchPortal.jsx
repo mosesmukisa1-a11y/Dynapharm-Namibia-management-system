@@ -6946,13 +6946,24 @@ function BankingTab() {
     finally { setSubmitting(false); }
   };
 
-  const openExpenseForm = async (source = 'petty_cash') => {
+  const openExpenseForm = async (source = 'petty_cash', prefill = null) => {
     setShowExpenseForm(true);
     setExpenseSource(source);
     setAlert(null);
     setBankSubTab('expenses');
     setSelectedCAS(null);
     setApprovedCAS([]);
+    if (prefill) {
+      setExpenseForm({
+        category: prefill.category || 'Supplies',
+        amount: prefill.amount != null ? String(prefill.amount) : '',
+        description: prefill.description || '',
+        receipt_ref: prefill.receipt_ref || prefill.receiptRef || '',
+        date: prefill.date || new Date().toISOString().slice(0, 10),
+      });
+    } else {
+      setExpenseForm({ category: 'Supplies', amount: '', description: '', receipt_ref: '', date: new Date().toISOString().slice(0, 10) });
+    }
     setCasLoading(true);
     try {
       const res = await api.get('/cash-requests');
@@ -6960,6 +6971,17 @@ function BankingTab() {
       setApprovedCAS(all.filter(r => (r.status || '').toLowerCase() === 'approved'));
     } catch { setApprovedCAS([]); }
     finally { setCasLoading(false); }
+  };
+
+  const resubmitExpense = (row) => {
+    const src = row.metadata?.source || (row.metadata?.cas_id ? 'cas_linked' : 'petty_cash');
+    openExpenseForm(src, {
+      category: row.category,
+      amount: row.amount,
+      description: row.description,
+      receipt_ref: row.receipt_ref || row.receiptRef,
+      date: row.date ? row.date.slice(0, 10) : new Date().toISOString().slice(0, 10),
+    });
   };
 
   const submitExpense = async () => {
@@ -7089,7 +7111,26 @@ function BankingTab() {
               { header: 'Description', render: r => <span className="text-sm">{r.description || '-'}</span> },
               { header: 'Amount', render: r => <span className="font-bold text-red-600">{formatCurrency(r.amount)}</span> },
               { header: 'Receipt Ref', render: r => r.receipt_ref || r.receiptRef || '-' },
-              { header: 'Status', render: r => <Badge variant={r.status === 'approved' ? 'success' : 'warning'}>{r.status || 'Pending'}</Badge> },
+              { header: 'Status', render: r => (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
+                  <Badge variant={r.status === 'approved' ? 'success' : r.status === 'rejected' ? 'error' : 'warning'}>
+                    {r.status || 'Pending'}
+                  </Badge>
+                  {r.status === 'rejected' && r.notes && (
+                    <span style={{ fontSize: '0.72rem', color: '#b91c1c', maxWidth: 180 }}>
+                      ⚠️ {r.notes}
+                    </span>
+                  )}
+                </div>
+              )},
+              { header: '', render: r => r.status === 'rejected' ? (
+                <button
+                  onClick={() => resubmitExpense(r)}
+                  style={{ padding: '5px 12px', border: 'none', borderRadius: 7, background: '#c41e3a', color: '#fff', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                >
+                  🔄 Re-submit
+                </button>
+              ) : null },
             ]}
             data={expenses}
             emptyMessage="No expenses recorded — click 💸 Record Expense to start"
