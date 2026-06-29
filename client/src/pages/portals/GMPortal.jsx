@@ -16,6 +16,16 @@ import StaffMessagesTab from '../../components/StaffMessagesTab';
 export default function GMPortal() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [pendingAdj, setPendingAdj] = useState(0);
+  const [tabVisits, setTabVisits] = useState({ dashboard: 1 });
+
+  const handleTabChange = useCallback((tab) => {
+    setActiveTab(tab);
+    setTabVisits(prev => ({ ...prev, [tab]: (prev[tab] || 0) + 1 }));
+  }, []);
+
+  const refreshCurrentTab = useCallback(() => {
+    setTabVisits(prev => ({ ...prev, [activeTab]: (prev[activeTab] || 0) + 1 }));
+  }, [activeTab]);
 
   useEffect(() => {
     api.get('/stock-adjustments?status=pending')
@@ -50,23 +60,28 @@ export default function GMPortal() {
         <h1 className="text-xl font-bold text-gray-900">GM Portal</h1>
         <p className="text-sm text-gray-500">Country-wide oversight, approvals, and strategic management</p>
       </div>
-      <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
+      <div className="flex items-center gap-2">
+        <div className="flex-1"><Tabs tabs={tabs} active={activeTab} onChange={handleTabChange} /></div>
+        <button onClick={refreshCurrentTab} title="Refresh tab data" className="ml-2 p-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-500 hover:text-primary transition-colors shrink-0" style={{ marginBottom: '-2px' }}>
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+        </button>
+      </div>
       <div className="mt-6">
-        {activeTab === 'dashboard' && <DashboardTab />}
-        {activeTab === 'approvals' && <ApprovalsTab />}
-        {activeTab === 'stockAdjustments' && <StockAdjustmentsTab onCountChange={setPendingAdj} />}
-        {activeTab === 'priceList' && <PriceListTab />}
-        {activeTab === 'priceAdvisor' && <PriceAdvisorTab />}
-        {activeTab === 'campaigns' && <CampaignsTab />}
-        {activeTab === 'profitAnalysis' && <ProfitAnalysisTab />}
-        {activeTab === 'currentStock' && <CurrentStockTab />}
-        {activeTab === 'accounts' && <AccountsTab role="gm" />}
-        {activeTab === 'bonus' && <BonusHistoryTab />}
-        {activeTab === 'statements' && <StatementsUploadTab />}
-        {activeTab === 'communication' && <CommunicationTab />}
-        {activeTab === 'staff' && <StaffTab />}
-        {activeTab === 'messages' && <StaffMessagesTab accentColor="#7c3aed" />}
-        {activeTab === 'distributors' && <DistributorPerformanceTab title="Distributor Performance — All Branches" />}
+        {activeTab === 'dashboard' && <DashboardTab key={tabVisits.dashboard || 0} />}
+        {activeTab === 'approvals' && <ApprovalsTab key={tabVisits.approvals || 0} />}
+        {activeTab === 'stockAdjustments' && <StockAdjustmentsTab key={tabVisits.stockAdjustments || 0} onCountChange={setPendingAdj} />}
+        {activeTab === 'priceList' && <PriceListTab key={tabVisits.priceList || 0} />}
+        {activeTab === 'priceAdvisor' && <PriceAdvisorTab key={tabVisits.priceAdvisor || 0} />}
+        {activeTab === 'campaigns' && <CampaignsTab key={tabVisits.campaigns || 0} />}
+        {activeTab === 'profitAnalysis' && <ProfitAnalysisTab key={tabVisits.profitAnalysis || 0} />}
+        {activeTab === 'currentStock' && <CurrentStockTab key={tabVisits.currentStock || 0} />}
+        {activeTab === 'accounts' && <AccountsTab key={tabVisits.accounts || 0} role="gm" />}
+        {activeTab === 'bonus' && <BonusHistoryTab key={tabVisits.bonus || 0} />}
+        {activeTab === 'statements' && <StatementsUploadTab key={tabVisits.statements || 0} />}
+        {activeTab === 'communication' && <CommunicationTab key={tabVisits.communication || 0} />}
+        {activeTab === 'staff' && <StaffTab key={tabVisits.staff || 0} />}
+        {activeTab === 'messages' && <StaffMessagesTab key={tabVisits.messages || 0} accentColor="#7c3aed" />}
+        {activeTab === 'distributors' && <DistributorPerformanceTab key={tabVisits.distributors || 0} title="Distributor Performance — All Branches" />}
       </div>
     </div>
   );
@@ -3412,30 +3427,30 @@ function CampaignsTab() {
 }
 
 function BonusHistoryTab() {
-  const [filterForm, setFilterForm] = useState({ start_date: '', end_date: '', branch: '' });
-  const [bonusData] = useState([
-    { id: 1, period: 'March 2026', branch: 'Windhoek CBD', total_amount: 45200, distributors_count: 23, status: 'Paid', date: '2026-03-15' },
-    { id: 2, period: 'March 2026', branch: 'Oshakati', total_amount: 32100, distributors_count: 18, status: 'Paid', date: '2026-03-15' },
-    { id: 3, period: 'February 2026', branch: 'Windhoek CBD', total_amount: 41800, distributors_count: 21, status: 'Paid', date: '2026-02-15' },
-    { id: 4, period: 'February 2026', branch: 'Walvis Bay', total_amount: 28500, distributors_count: 15, status: 'Paid', date: '2026-02-15' },
-    { id: 5, period: 'April 2026', branch: 'Katutura', total_amount: 38900, distributors_count: 20, status: 'Pending', date: '2026-04-15' },
-    { id: 6, period: 'April 2026', branch: 'Rundu', total_amount: 19700, distributors_count: 12, status: 'Pending', date: '2026-04-15' },
-  ]);
+  const [bonusData, setBonusData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filterForm, setFilterForm] = useState({ start_date: '', end_date: '', period: '' });
+
+  useEffect(() => {
+    setLoading(true);
+    api.get('/finance/bonus-periods')
+      .then(d => setBonusData(Array.isArray(d) ? d : []))
+      .catch(() => setBonusData([]))
+      .finally(() => setLoading(false));
+  }, []);
 
   const filteredData = bonusData.filter(b => {
-    if (filterForm.branch && b.branch !== filterForm.branch) return false;
-    if (filterForm.start_date && b.date < filterForm.start_date) return false;
-    if (filterForm.end_date && b.date > filterForm.end_date) return false;
+    if (filterForm.period && !b.period?.toLowerCase().includes(filterForm.period.toLowerCase())) return false;
     return true;
   });
 
-  const totalPaid = filteredData.filter(b => b.status === 'Paid').reduce((sum, b) => sum + b.total_amount, 0);
-  const pendingAmount = filteredData.filter(b => b.status === 'Pending').reduce((sum, b) => sum + b.total_amount, 0);
-  const lastPayout = filteredData.filter(b => b.status === 'Paid').sort((a, b) => b.date.localeCompare(a.date))[0]?.date || '-';
+  const totalEarned = filteredData.reduce((sum, b) => sum + Number(b.total_earned || 0), 0);
+  const totalPaid = filteredData.reduce((sum, b) => sum + Number(b.total_paid || 0), 0);
+  const totalOutstanding = filteredData.reduce((sum, b) => sum + Number(b.outstanding || 0), 0);
 
   const handleCSVExport = () => {
-    const headers = 'Period,Branch,Total Amount,Distributors,Status,Date\n';
-    const rows = filteredData.map(b => `${b.period},${b.branch},${b.total_amount},${b.distributors_count},${b.status},${b.date}`).join('\n');
+    const headers = 'Period,Total Distributors,Unpaid Count,Total Earned,Total Paid,Outstanding\n';
+    const rows = filteredData.map(b => `${b.period},${b.total},${b.unpaid_count},${b.total_earned},${b.total_paid},${b.outstanding}`).join('\n');
     const csv = headers + rows;
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -3450,58 +3465,45 @@ function BonusHistoryTab() {
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div style={{ background: 'linear-gradient(135deg, #43e97b, #38f9d7)' }} className="rounded-xl p-5 shadow-lg text-white">
+          <p style={{ fontSize: '0.9rem', opacity: 0.9 }}>Total Earned</p>
+          <p style={{ fontSize: '2rem' }} className="font-bold mt-1">{formatCurrency(totalEarned)}</p>
+        </div>
+        <div style={{ background: 'linear-gradient(135deg, #4facfe, #00f2fe)' }} className="rounded-xl p-5 shadow-lg text-white">
           <p style={{ fontSize: '0.9rem', opacity: 0.9 }}>Total Paid</p>
           <p style={{ fontSize: '2rem' }} className="font-bold mt-1">{formatCurrency(totalPaid)}</p>
         </div>
         <div style={{ background: 'linear-gradient(135deg, #fa709a, #fee140)' }} className="rounded-xl p-5 shadow-lg text-white">
-          <p style={{ fontSize: '0.9rem', opacity: 0.9 }}>Pending Amount</p>
-          <p style={{ fontSize: '2rem' }} className="font-bold mt-1">{formatCurrency(pendingAmount)}</p>
-        </div>
-        <div style={{ background: 'linear-gradient(135deg, #4facfe, #00f2fe)' }} className="rounded-xl p-5 shadow-lg text-white">
-          <p style={{ fontSize: '0.9rem', opacity: 0.9 }}>Last Payout Date</p>
-          <p style={{ fontSize: '2rem' }} className="font-bold mt-1">{formatDate(lastPayout)}</p>
+          <p style={{ fontSize: '0.9rem', opacity: 0.9 }}>Outstanding</p>
+          <p style={{ fontSize: '2rem' }} className="font-bold mt-1">{formatCurrency(totalOutstanding)}</p>
         </div>
       </div>
 
       <Card>
         <CardHeader>
           <div className="flex justify-between items-center flex-wrap gap-2">
-            <h3 className="font-bold text-gray-800">Bonus History Filter</h3>
-            <Button size="sm" onClick={handleCSVExport}><Download size={16} /> Export CSV</Button>
+            <h3 className="font-bold text-gray-800">Bonus Periods</h3>
+            <div className="flex items-center gap-2">
+              <Input placeholder="Filter by period…" value={filterForm.period} onChange={e => setFilterForm({ ...filterForm, period: e.target.value })} />
+              <Button size="sm" onClick={handleCSVExport}><Download size={16} /> Export CSV</Button>
+            </div>
           </div>
         </CardHeader>
         <CardBody>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <Input label="Start Date" type="date" value={filterForm.start_date} onChange={e => setFilterForm({ ...filterForm, start_date: e.target.value })} />
-            <Input label="End Date" type="date" value={filterForm.end_date} onChange={e => setFilterForm({ ...filterForm, end_date: e.target.value })} />
-            <div className="space-y-1">
-              <label className="block text-sm font-medium text-gray-700">Branch</label>
-              <select value={filterForm.branch} onChange={e => setFilterForm({ ...filterForm, branch: e.target.value })}
-                className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20">
-                <option value="">All Branches</option>
-                {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
-              </select>
-            </div>
-            <div className="flex items-end">
-              <Button size="sm" variant="secondary" onClick={() => setFilterForm({ start_date: '', end_date: '', branch: '' })}>Clear Filters</Button>
-            </div>
-          </div>
+          {loading ? <LoadingSpinner /> : (
+            <Table
+              columns={[
+                { header: 'Period', key: 'period' },
+                { header: 'Distributors', key: 'total' },
+                { header: 'Unpaid', key: 'unpaid_count' },
+                { header: 'Total Earned', render: r => formatCurrency(r.total_earned) },
+                { header: 'Total Paid', render: r => formatCurrency(r.total_paid) },
+                { header: 'Outstanding', render: r => <span className={Number(r.outstanding) > 0 ? 'text-amber-600 font-semibold' : 'text-gray-500'}>{formatCurrency(r.outstanding)}</span> },
+              ]}
+              data={filteredData}
+              emptyMessage="No bonus period records found"
+            />
+          )}
         </CardBody>
-      </Card>
-
-      <Card>
-        <Table
-          columns={[
-            { header: 'Period', key: 'period' },
-            { header: 'Branch', key: 'branch' },
-            { header: 'Total Amount', render: r => formatCurrency(r.total_amount) },
-            { header: 'Distributors', key: 'distributors_count' },
-            { header: 'Status', render: r => <Badge variant={r.status === 'Paid' ? 'success' : 'warning'}>{r.status}</Badge> },
-            { header: 'Date', render: r => formatDate(r.date) },
-          ]}
-          data={filteredData}
-          emptyMessage="No bonus records found"
-        />
       </Card>
     </div>
   );
@@ -3509,39 +3511,43 @@ function BonusHistoryTab() {
 
 function CommunicationTab() {
   const [form, setForm] = useState({ message: '', priority: 'Normal', target: 'all_staff', branch: '' });
-  const [messages, setMessages] = useState([
-    { id: 1, message: 'Monthly targets have been updated for all branches. Please review your dashboard.', priority: 'Info', sender: 'GM Office', timestamp: '2026-03-10T09:00:00Z' },
-    { id: 2, message: 'Urgent: Stock audit scheduled for next week. All branch managers must prepare inventory reports.', priority: 'Urgent', sender: 'GM Office', timestamp: '2026-03-08T14:30:00Z' },
-    { id: 3, message: 'Congratulations to Windhoek CBD branch for exceeding March targets!', priority: 'Normal', sender: 'GM Office', timestamp: '2026-03-05T11:00:00Z' },
-  ]);
   const [submitMessage, setSubmitMessage] = useState('');
-  const [financeNotices, setFinanceNotices] = useState([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [notices, setNotices] = useState([]);
   const [noticesLoading, setNoticesLoading] = useState(true);
 
-  useEffect(() => {
+  const loadNotices = useCallback(() => {
+    setNoticesLoading(true);
     api.finance.notices()
-      .then(d => setFinanceNotices(Array.isArray(d) ? d : d.notices || []))
-      .catch(() => setFinanceNotices([]))
+      .then(d => setNotices(Array.isArray(d) ? d : d.notices || []))
+      .catch(() => setNotices([]))
       .finally(() => setNoticesLoading(false));
   }, []);
 
-  const handleSubmit = (e) => {
+  useEffect(() => { loadNotices(); }, [loadNotices]);
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.message.trim()) {
       setSubmitMessage('Error: Please enter a message.');
       return;
     }
-    const newMsg = {
-      id: Date.now(),
-      message: form.message,
-      priority: form.priority,
-      sender: 'GM Office',
-      target: form.target === 'specific_branch' ? form.branch : form.target,
-      timestamp: new Date().toISOString(),
-    };
-    setMessages(prev => [newMsg, ...prev]);
-    setForm({ message: '', priority: 'Normal', target: 'all_staff', branch: '' });
-    setSubmitMessage('Message sent successfully!');
+    setSubmitting(true);
+    setSubmitMessage('');
+    try {
+      await api.finance.createNotice({
+        message: form.message,
+        priority: form.priority,
+        title: form.target === 'specific_branch' ? `To: ${form.branch}` : form.target === 'branch_managers' ? 'To: Branch Managers' : 'To: All Staff',
+      });
+      setForm({ message: '', priority: 'Normal', target: 'all_staff', branch: '' });
+      setSubmitMessage('Message sent successfully!');
+      loadNotices();
+    } catch (err) {
+      setSubmitMessage('Error: ' + (err.message || 'Failed to send message.'));
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const priorityColors = { Normal: 'default', Urgent: 'danger', Info: 'info' };
@@ -3589,54 +3595,30 @@ function CommunicationTab() {
                 </div>
               )}
             </div>
-            <Button type="submit">Send Message</Button>
+            <Button type="submit" disabled={submitting}>{submitting ? 'Sending…' : 'Send Message'}</Button>
           </form>
-        </CardBody>
-      </Card>
-
-      <Card>
-        <CardHeader><h3 className="font-bold text-gray-800">Message History</h3></CardHeader>
-        <CardBody>
-          {messages.length === 0 ? (
-            <p className="text-sm text-gray-500 py-4 text-center">No messages sent yet.</p>
-          ) : (
-            <div className="space-y-4">
-              {messages.map(msg => (
-                <div key={msg.id} className="border border-gray-100 rounded-lg p-4 hover:bg-gray-50 transition-colors">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-xs text-gray-400">{formatDateTime(msg.timestamp)}</span>
-                    <Badge variant={priorityColors[msg.priority] || 'default'}>{msg.priority}</Badge>
-                    <span className="text-xs font-medium text-gray-600">{msg.sender}</span>
-                    {msg.target && <span className="text-xs text-gray-400">→ {msg.target}</span>}
-                  </div>
-                  <p className="text-sm text-gray-700">{msg.message}</p>
-                </div>
-              ))}
-            </div>
-          )}
         </CardBody>
       </Card>
 
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
-            <span className="text-blue-600">📋</span>
-            <h3 className="font-bold text-gray-800">Finance Notices</h3>
-            {financeNotices.length > 0 && <Badge variant="info">{financeNotices.length}</Badge>}
+            <h3 className="font-bold text-gray-800">Posted Notices</h3>
+            {notices.length > 0 && <Badge variant="info">{notices.length}</Badge>}
           </div>
         </CardHeader>
         <CardBody>
-          {noticesLoading ? <LoadingSpinner /> : financeNotices.length === 0 ? (
-            <p className="text-sm text-gray-500 py-4 text-center">No finance notices posted.</p>
+          {noticesLoading ? <LoadingSpinner /> : notices.length === 0 ? (
+            <p className="text-sm text-gray-500 py-4 text-center">No notices posted yet.</p>
           ) : (
             <div className="space-y-3">
-              {financeNotices.map(n => (
-                <div key={n.id} className="border border-blue-100 rounded-lg p-4 bg-blue-50/40">
+              {notices.map(n => (
+                <div key={n.id} className="border border-gray-100 rounded-lg p-4 hover:bg-gray-50 transition-colors">
                   <div className="flex items-center gap-2 flex-wrap mb-1">
-                    <Badge variant={n.priority === 'Urgent' ? 'danger' : n.priority === 'Info' ? 'success' : 'info'}>{n.priority || 'Normal'}</Badge>
+                    <Badge variant={priorityColors[n.priority] || 'default'}>{n.priority || 'Normal'}</Badge>
                     {n.title && <span className="font-semibold text-sm text-gray-900">{n.title}</span>}
                     <span className="text-xs text-gray-400">{formatDateTime(n.createdAt || n.created_at)}</span>
-                    {n.createdBy && <span className="text-xs text-gray-400">by {n.createdBy}</span>}
+                    {(n.createdBy || n.created_by) && <span className="text-xs text-gray-400">by {n.createdBy || n.created_by}</span>}
                   </div>
                   <p className="text-sm text-gray-700">{n.message}</p>
                 </div>
@@ -3645,6 +3627,7 @@ function CommunicationTab() {
           )}
         </CardBody>
       </Card>
+
     </div>
   );
 }
@@ -3737,16 +3720,19 @@ function ProfitAnalysisTab() {
 
   const load = useCallback(() => {
     setLoading(true);
-    api.director.profitAnalysis({ startDate, endDate })
-      .then(res => {
-        const map = {};
-        (res?.products || []).forEach(p => {
-          map[p.productName] = p.qtySold;
-        });
-        setQtySoldMap(map);
-      })
-      .catch(() => setQtySoldMap({}))
-      .finally(() => setLoading(false));
+    Promise.all([
+      api.director.profitAnalysis({ startDate, endDate }),
+      api.prices.list(),
+    ]).then(([res, prices]) => {
+      if (Array.isArray(prices) && prices.length > 0) setLivePrices(prices);
+      const map = {};
+      (res?.products || []).forEach(p => {
+        map[p.productName] = p.qtySold;
+      });
+      setQtySoldMap(map);
+    })
+    .catch(() => setQtySoldMap({}))
+    .finally(() => setLoading(false));
   }, [startDate, endDate]);
 
   useEffect(() => { load(); }, [load]);
