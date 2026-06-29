@@ -3077,6 +3077,24 @@ server.on('error', (error) => {
     // (which is what the warehouse portal display reads from).  Find all such
     // write-offs and ensure a stock_batches row exists for each.
     try {
+      // ── One-time bulk migration: mark all previously-credited write-off returns ─
+      // Earlier versions of this backfill loop lacked a persistent marker, so they
+      // re-credited stock_batches on every server restart (inflating warehouse quantities
+      // or re-inserting cleared country_stock rows).  Stamp them all as processed now
+      // so the SELECT below returns 0 rows for historical items.  Any new
+      // returned_to_warehouse records created after this run will be marked in the
+      // per-item loop below immediately after crediting.
+      const bulkMark = await query(
+        `UPDATE stock_movements
+         SET disposal_status = 'warehouse_stock_credited'
+         WHERE movement_type = 'write_off'
+           AND status = 'approved'
+           AND disposal_status = 'returned_to_warehouse'`
+      ).catch(() => null);
+      if (bulkMark && bulkMark.rowCount > 0) {
+        console.log(`[write-off backfill] Marked ${bulkMark.rowCount} historical returned write-offs as warehouse_stock_credited (one-time migration)`);
+      }
+
       const woReturns = await query(
         `SELECT sm.id, sm.product_name, sm.batch_no, sm.expiry_date, sm.quantity,
                 sm.unit_cif, sm.unit_dp, sm.source_location, sm.reference_id,
@@ -3099,20 +3117,15 @@ server.on('error', (error) => {
             return 'windhoek_warehouse';
           })();
           const qty = Number(wo.quantity || 0);
-          if (qty <= 0) continue;
+          if (qty <= 0) {
+            // Mark zero-quantity movements as processed so they are never re-queried
+            await query(
+              `UPDATE stock_movements SET disposal_status = 'warehouse_stock_credited' WHERE id = $1`,
+              [wo.id]
+            ).catch(() => {});
+            continue;
+          }
           const batchNo = wo.batch_no || '';
-          // Try to update an existing stock_batches row
-          // Check if we already created a write-off-return stock_batches row for this movement
-          const alreadyDone = await query(
-            `SELECT 1 FROM stock_batches
-             WHERE id LIKE 'SB-WO-%'
-               AND location = $1
-               AND LOWER(description) = LOWER($2)
-               AND LOWER(COALESCE(batch_no,'')) = LOWER($3)
-             LIMIT 1`,
-            [warehouseId, wo.product_name, batchNo]
-          );
-          if (alreadyDone?.rows?.length) continue;
 
           // Try to increment an existing batch first
           const sbUpd = await query(
@@ -3144,6 +3157,13 @@ server.on('error', (error) => {
             );
             woBackfilled++;
           }
+          // Mark this movement as fully processed — prevents re-crediting on every subsequent restart.
+          // The backfill query's WHERE clause filters on disposal_status = 'returned_to_warehouse',
+          // so setting it to 'warehouse_stock_credited' here makes this operation idempotent.
+          await query(
+            `UPDATE stock_movements SET disposal_status = 'warehouse_stock_credited' WHERE id = $1`,
+            [wo.id]
+          ).catch(() => {});
         } catch (_) {}
       }
       if (woBackfilled > 0) {
