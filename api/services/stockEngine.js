@@ -31,6 +31,8 @@ export const OUTWARD_TYPES = new Set([
   'walkin_non_member_sale',
   'walk_in_member_sale',
   'walk_in_non_member_sale',
+  'campaign_sale',       // member campaign sales (deduct stock like a walk-in sale)
+  'campaign_free_item',  // free items given away during campaigns (stock leaves branch)
   'online_order_fulfilment',
   'prescription_dispense',
   'write_off',

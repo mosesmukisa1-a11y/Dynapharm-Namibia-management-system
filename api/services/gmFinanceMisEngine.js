@@ -13,6 +13,8 @@ const EXPIRY_WARN_DAYS = 90;
 const SALE_TYPES = new Set([
   'walkin_sale', 'walkin_member_sale', 'walkin_non_member_sale',
   'walk_in_member_sale', 'walk_in_non_member_sale', 'sale', 'online_order_fulfilment',
+  'campaign_sale',      // member campaign sales
+  'campaign_free_item', // free items distributed via campaigns (stock out)
 ]);
 const DISPENSE_TYPES = new Set(['prescription_dispense']);
 const WRITEOFF_TYPES = new Set(['write_off', 'field_use']);

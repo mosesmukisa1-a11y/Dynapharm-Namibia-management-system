@@ -124,12 +124,13 @@ export default async function handler(req, res) {
       else if (type === 'transfer_out') { prod.transfers_out += qty; branches[b].totals.transfers_out += qty; }
       else if (type === 'write_off' || type === 'field_use') { prod.write_offs += qty; branches[b].totals.write_offs += qty; }
       else if (type === 'adjustment' || type === 'adjust' || type === 'positive_adjustment') { prod.adjustments += qty; branches[b].totals.adjustments += qty; }
+      else if (type === 'negative_adjustment') { prod.write_offs += qty; branches[b].totals.write_offs += qty; }
       else if (
         type === 'sale' || type === 'sold' ||
         type === 'walk_in_member_sale' || type === 'walk_in_non_member_sale' ||
         type === 'walkin_sale' || type === 'walkin_member_sale' || type === 'walkin_non_member_sale' ||
         type === 'prescription_dispense' || type === 'dispense' ||
-        type === 'campaign_sale' || type === 'online_order_fulfilment'
+        type === 'campaign_sale' || type === 'campaign_free_item' || type === 'online_order_fulfilment'
       ) {
         prod.sales += qty;
         branches[b].totals.sales += qty;
@@ -152,14 +153,16 @@ export default async function handler(req, res) {
       branches[b].totals.sales += qty;
     }
 
-    // Compute formula: Opening = Closing - Issued + Returns + Expiring + Write-offs
-    // (Working backwards from closing)
+    // Compute formula: Opening = Closing - Inflows + Outflows
+    // Inflows  = received + transfers_in + positive_adjustments
+    // Outflows = sales + transfers_out + write_offs + expired + returns
+    // (Working backwards from closing stock to derive opening)
     const result = Object.values(branches).map(br => {
       const issued = br.totals.received + br.totals.transfers_in;
       const outflows = br.totals.sales + br.totals.transfers_out + br.totals.write_offs + br.totals.expired;
       const returns_ = br.totals.returns;
-      const promotions = br.totals.adjustments;
-      const opening = br.totals.closing - issued + outflows - returns_;
+      const promotions = br.totals.adjustments; // positive adjustments add stock (treated as inflows)
+      const opening = br.totals.closing - issued - promotions + outflows - returns_;
 
       return {
         branch: br.branch,
