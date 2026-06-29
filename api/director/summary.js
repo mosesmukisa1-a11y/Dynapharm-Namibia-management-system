@@ -75,7 +75,14 @@ export default async function handler(req, res) {
     [start, end]
   );
   const totalDeposits = Number(depositSum?.total || 0);
-  const remittanceDue = Math.max(0, cifCostOfSales - totalDeposits);
+
+  // Actual remittance payments already sent to supplier in the period
+  const remittedSum = await getOne(
+    `SELECT COALESCE(SUM(amount),0) as total FROM finance_remittances WHERE status = 'completed' AND payment_date >= $1 AND payment_date <= $2`,
+    [start, end]
+  );
+  const totalRemitted = Number(remittedSum?.total || 0);
+  const remittanceDue = Math.max(0, cifCostOfSales - totalDeposits - totalRemitted);
 
   // Bonus payout from branch_expenses where category='bonus'
   const bonusRow = await getOne(
@@ -112,6 +119,7 @@ export default async function handler(req, res) {
       cifCostOfSales,
       grossProfit,
       totalDeposits,
+      totalRemitted,
       remittanceDue,
       bonusPayout,
       consultationFees: salesRevenue.consultationFees || 0,
