@@ -6898,6 +6898,7 @@ function BankingTab() {
   // Expense form
   const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [expenseForm, setExpenseForm] = useState({ category: 'Supplies', amount: '', description: '', receipt_ref: '', date: new Date().toISOString().slice(0, 10) });
+  const [expenseSource, setExpenseSource] = useState('petty_cash'); // 'petty_cash' | 'cas_linked'
   const [approvedCAS, setApprovedCAS] = useState([]);
   const [selectedCAS, setSelectedCAS] = useState(null);
   const [casLoading, setCasLoading] = useState(false);
@@ -6945,8 +6946,9 @@ function BankingTab() {
     finally { setSubmitting(false); }
   };
 
-  const openExpenseForm = async () => {
+  const openExpenseForm = async (source = 'petty_cash') => {
     setShowExpenseForm(true);
+    setExpenseSource(source);
     setAlert(null);
     setBankSubTab('expenses');
     setSelectedCAS(null);
@@ -6961,11 +6963,11 @@ function BankingTab() {
   };
 
   const submitExpense = async () => {
-    if (!selectedCAS) {
-      setAlert({ type: 'error', message: 'You must link this expense to an approved cash advance request (CAS).' }); return;
+    if (expenseSource === 'cas_linked' && !selectedCAS) {
+      setAlert({ type: 'error', message: 'Please select an approved CAS request to link this expense to.' }); return;
     }
     if (!expenseForm.amount || Number(expenseForm.amount) <= 0 || !expenseForm.description.trim()) {
-      setAlert({ type: 'error', message: 'Amount and description are required' }); return;
+      setAlert({ type: 'error', message: 'Amount and description are required.' }); return;
     }
     setSubmitting(true);
     try {
@@ -6979,10 +6981,13 @@ function BankingTab() {
         branch: user?.branch || '',
         offline_id: expOfflineId,
         metadata: {
-          cas_id: selectedCAS.id || selectedCAS.staffId,
-          cas_number: selectedCAS.saleNumber || selectedCAS.request_number || selectedCAS.requestNumber,
-          cas_purpose: selectedCAS.purpose,
-          cas_amount: Number(selectedCAS.amount || 0),
+          source: expenseSource,
+          ...(expenseSource === 'cas_linked' && selectedCAS ? {
+            cas_id: selectedCAS.id || selectedCAS.staffId,
+            cas_number: selectedCAS.saleNumber || selectedCAS.request_number || selectedCAS.requestNumber,
+            cas_purpose: selectedCAS.purpose,
+            cas_amount: Number(selectedCAS.amount || 0),
+          } : {}),
         },
       };
       if (!navigator.onLine) {
@@ -6997,9 +7002,15 @@ function BankingTab() {
       } else {
         await api.branch.createExpense(expPayload);
       }
-      setAlert({ type: 'success', message: navigator.onLine ? 'Branch expense recorded and linked to CAS ' + (selectedCAS.requestNumber || selectedCAS.saleNumber || '') : 'Expense saved offline — will sync when connected' });
+      const successMsg = navigator.onLine
+        ? expenseSource === 'cas_linked' && selectedCAS
+          ? `Expense recorded and linked to CAS ${selectedCAS.requestNumber || selectedCAS.saleNumber || ''}`
+          : 'Petty cash expense recorded successfully.'
+        : 'Expense saved offline — will sync when connected.';
+      setAlert({ type: 'success', message: successMsg });
       setExpenseForm({ category: 'Supplies', amount: '', description: '', receipt_ref: '', date: new Date().toISOString().slice(0, 10) });
       setSelectedCAS(null);
+      setExpenseSource('petty_cash');
       setShowExpenseForm(false);
       await reloadAll();
     } catch (err) { setAlert({ type: 'error', message: err.message || 'Failed to record expense' }); }
@@ -7070,6 +7081,10 @@ function BankingTab() {
           <Table
             columns={[
               { header: 'Date', render: r => formatDateTime(r.date || r.created_at) },
+              { header: 'Source', render: r => {
+                const src = r.metadata?.source || (r.metadata?.cas_id ? 'cas_linked' : 'petty_cash');
+                return <Badge variant={src === 'cas_linked' ? 'success' : 'info'}>{src === 'cas_linked' ? '🔗 CAS' : '💵 Petty Cash'}</Badge>;
+              }},
               { header: 'Category', render: r => <Badge variant="info">{r.category || '-'}</Badge> },
               { header: 'Description', render: r => <span className="text-sm">{r.description || '-'}</span> },
               { header: 'Amount', render: r => <span className="font-bold text-red-600">{formatCurrency(r.amount)}</span> },
@@ -7077,7 +7092,7 @@ function BankingTab() {
               { header: 'Status', render: r => <Badge variant={r.status === 'approved' ? 'success' : 'warning'}>{r.status || 'Pending'}</Badge> },
             ]}
             data={expenses}
-            emptyMessage="No expenses recorded — click Record Expense to start"
+            emptyMessage="No expenses recorded — click 💸 Record Expense to start"
           />
         </Card>
       )}
@@ -7118,36 +7133,65 @@ function BankingTab() {
               <button onClick={() => setShowExpenseForm(false)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 34, height: 34, borderRadius: '50%', cursor: 'pointer', fontSize: '1.1rem' }}>×</button>
             </div>
             <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto', flex: 1 }}>
-              {/* CAS selector - required */}
-              <div style={{ padding: 14, borderRadius: 10, border: '2px solid', borderColor: selectedCAS ? '#86efac' : '#fca5a5', background: selectedCAS ? '#f0fdf4' : '#fef2f2' }}>
-                <label style={{ ...labelStyle, color: selectedCAS ? '#166534' : '#991b1b' }}>🔗 Link to Approved Branch CAS Request *</label>
-                {casLoading ? (
-                  <div style={{ fontSize: '0.82rem', color: '#64748b' }}>Loading approved CAS requests for your branch…</div>
-                ) : approvedCAS.length === 0 ? (
-                  <div style={{ fontSize: '0.82rem', color: '#b91c1c', fontWeight: 600 }}>
-                    No approved CAS requests found. You must have a GM-approved Branch Expense Cash Advance (CAS) before recording an expense.
-                    <div style={{ marginTop: 4, fontSize: '0.78rem', color: '#64748b', fontWeight: 400 }}>Submit a CAS request from the Staff tab → CAS Requests and wait for GM approval.</div>
-                  </div>
-                ) : (
-                  <select value={selectedCAS ? (selectedCAS.id || '') : ''} onChange={e => {
-                    const cas = approvedCAS.find(r => (r.id || r.staffId) === e.target.value) || null;
-                    setSelectedCAS(cas);
-                    if (cas) setExpenseForm(f => ({ ...f, description: f.description || cas.purpose || '' }));
-                  }} style={{ ...inputStyle, borderColor: selectedCAS ? '#86efac' : '#d1d5db', background: selectedCAS ? '#f0fdf4' : '#fff' }}>
-                    <option value="">— Select an approved CAS request —</option>
-                    {approvedCAS.map(r => (
-                      <option key={r.id || r.staffId} value={r.id || r.staffId}>
-                        {r.saleNumber || r.requestNumber || r.request_number || r.id} · N${Math.round(Number(r.amount || 0)).toLocaleString("en-ZA")} · {r.purpose}
-                      </option>
-                    ))}
-                  </select>
-                )}
-                {selectedCAS && (
-                  <div style={{ marginTop: 8, fontSize: '0.78rem', color: '#166534' }}>
-                    ✅ CAS: {selectedCAS.saleNumber || selectedCAS.requestNumber || selectedCAS.id} · N$ {Math.round(Number(selectedCAS.amount || 0)).toLocaleString("en-ZA")} · {selectedCAS.purpose}
-                  </div>
-                )}
+
+              {/* Source selector */}
+              <div>
+                <label style={labelStyle}>Expense Source *</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {[
+                    { value: 'petty_cash', label: '💵 Petty Cash', desc: 'Small day-to-day expenses from cash on hand' },
+                    { value: 'cas_linked', label: '🔗 CAS-Linked', desc: 'Spending against a GM-approved cash advance' },
+                  ].map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => { setExpenseSource(opt.value); setSelectedCAS(null); }}
+                      style={{
+                        flex: 1, padding: '10px 12px', borderRadius: 10, cursor: 'pointer', textAlign: 'left',
+                        border: `2px solid ${expenseSource === opt.value ? '#c41e3a' : '#e2e8f0'}`,
+                        background: expenseSource === opt.value ? '#fef2f2' : '#f8fafc',
+                        transition: 'all .15s',
+                      }}
+                    >
+                      <div style={{ fontWeight: 700, fontSize: '0.85rem', color: expenseSource === opt.value ? '#c41e3a' : '#374151' }}>{opt.label}</div>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 2 }}>{opt.desc}</div>
+                    </button>
+                  ))}
+                </div>
               </div>
+
+              {/* CAS selector — only shown when cas_linked */}
+              {expenseSource === 'cas_linked' && (
+                <div style={{ padding: 14, borderRadius: 10, border: '2px solid', borderColor: selectedCAS ? '#86efac' : '#fca5a5', background: selectedCAS ? '#f0fdf4' : '#fef2f2' }}>
+                  <label style={{ ...labelStyle, color: selectedCAS ? '#166534' : '#991b1b' }}>🔗 Approved CAS Request *</label>
+                  {casLoading ? (
+                    <div style={{ fontSize: '0.82rem', color: '#64748b' }}>Loading approved CAS requests…</div>
+                  ) : approvedCAS.length === 0 ? (
+                    <div style={{ fontSize: '0.82rem', color: '#b91c1c', fontWeight: 600 }}>
+                      No approved CAS requests found for your branch.
+                      <div style={{ marginTop: 4, fontSize: '0.78rem', color: '#64748b', fontWeight: 400 }}>Submit a CAS request (Staff tab → CAS Requests) and wait for GM approval, or switch to Petty Cash above.</div>
+                    </div>
+                  ) : (
+                    <select value={selectedCAS ? (selectedCAS.id || '') : ''} onChange={e => {
+                      const cas = approvedCAS.find(r => (r.id || r.staffId) === e.target.value) || null;
+                      setSelectedCAS(cas);
+                      if (cas) setExpenseForm(f => ({ ...f, description: f.description || cas.purpose || '' }));
+                    }} style={{ ...inputStyle, borderColor: selectedCAS ? '#86efac' : '#d1d5db', background: selectedCAS ? '#f0fdf4' : '#fff' }}>
+                      <option value="">— Select an approved CAS request —</option>
+                      {approvedCAS.map(r => (
+                        <option key={r.id || r.staffId} value={r.id || r.staffId}>
+                          {r.saleNumber || r.requestNumber || r.request_number || r.id} · N${Math.round(Number(r.amount || 0)).toLocaleString("en-ZA")} · {r.purpose}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  {selectedCAS && (
+                    <div style={{ marginTop: 8, fontSize: '0.78rem', color: '#166534' }}>
+                      ✅ {selectedCAS.saleNumber || selectedCAS.requestNumber || selectedCAS.id} · N$ {Math.round(Number(selectedCAS.amount || 0)).toLocaleString("en-ZA")} · {selectedCAS.purpose}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
                   <label style={labelStyle}>Expense Category *</label>
@@ -7162,9 +7206,12 @@ function BankingTab() {
                 <div><label style={labelStyle}>Receipt / Ref #</label><input type="text" value={expenseForm.receipt_ref} onChange={e => setExpenseForm(f => ({ ...f, receipt_ref: e.target.value }))} style={inputStyle} placeholder="Receipt reference" /></div>
                 <div><label style={labelStyle}>Date</label><input type="date" value={expenseForm.date} onChange={e => setExpenseForm(f => ({ ...f, date: e.target.value }))} style={inputStyle} /></div>
               </div>
+              <div style={{ background: '#f8fafc', borderRadius: 8, padding: '8px 12px', fontSize: '0.75rem', color: '#64748b' }}>
+                All expenses are submitted to Finance for review regardless of source. Approved expenses appear in financial reports.
+              </div>
               <div style={{ display: 'flex', gap: 10 }}>
                 <button onClick={() => setShowExpenseForm(false)} style={{ flex: 1, padding: '11px', border: '1.5px solid #e2e8f0', borderRadius: 10, background: '#fff', cursor: 'pointer', color: '#64748b', fontWeight: 600 }}>Cancel</button>
-                <button onClick={submitExpense} disabled={submitting || !selectedCAS || approvedCAS.length === 0} style={{ flex: 2, padding: '11px', border: 'none', borderRadius: 10, background: 'linear-gradient(135deg,#c41e3a,#8b0000)', color: '#fff', fontWeight: 800, cursor: (submitting || !selectedCAS) ? 'not-allowed' : 'pointer', opacity: (submitting || !selectedCAS) ? 0.65 : 1 }}>{submitting ? '⏳ Saving…' : '💸 Record Expense'}</button>
+                <button onClick={submitExpense} disabled={submitting || (expenseSource === 'cas_linked' && (!selectedCAS || approvedCAS.length === 0))} style={{ flex: 2, padding: '11px', border: 'none', borderRadius: 10, background: 'linear-gradient(135deg,#c41e3a,#8b0000)', color: '#fff', fontWeight: 800, cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.65 : 1 }}>{submitting ? '⏳ Saving…' : '💸 Record Expense'}</button>
               </div>
             </div>
           </div>
@@ -7189,19 +7236,26 @@ function BankingTab() {
                 <input type="number" min="0" value={drawerOpening} onChange={e => setDrawerOpening(e.target.value)} placeholder="Enter opening cash amount…" style={{ width: '100%', padding: '10px 14px', border: '2px solid #c8d8e8', borderRadius: 9, fontSize: '1.05rem', fontWeight: 700, outline: 'none', boxSizing: 'border-box', textAlign: 'right' }} />
               </div>
 
-              {/* Add entry */}
-              <div style={{ border: '1.5px dashed #fecaca', borderRadius: 12, padding: '14px 16px', marginBottom: 16, background: '#fff8f8' }}>
-                <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#c41e3a', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 10 }}>Add Cash Movement</div>
+              {/* Expense notice */}
+              <div style={{ background: '#fef9ec', border: '1.5px solid #fcd34d', borderRadius: 10, padding: '10px 14px', marginBottom: 4 }}>
+                <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#92400e', marginBottom: 3 }}>💸 Need to record an expense?</div>
+                <div style={{ fontSize: '0.74rem', color: '#78350f' }}>Use the <strong>💸 Record Expense</strong> button — it saves the expense to Finance for review and includes it in financial reports. The drawer below is for counting the physical cash in the till only.</div>
+                <button onClick={() => { setShowDrawer(false); openExpenseForm('petty_cash'); }} style={{ marginTop: 8, padding: '6px 14px', border: 'none', borderRadius: 7, background: '#c41e3a', color: '#fff', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer' }}>💸 Record Expense</button>
+              </div>
+
+              {/* Add cash movement (counting only) */}
+              <div style={{ border: '1.5px dashed #bfdbfe', borderRadius: 12, padding: '14px 16px', marginBottom: 16, background: '#f0f9ff' }}>
+                <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#1e40af', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 10 }}>Add Cash Movement (Counting)</div>
                 <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                  <select value={drawerEntry.type} onChange={e => setDrawerEntry(d => ({ ...d, type: e.target.value }))} style={{ padding: '8px 12px', border: '1.5px solid #fecaca', borderRadius: 8, fontSize: '0.87rem', fontWeight: 700, color: drawerEntry.type === 'in' ? '#166534' : '#c41e3a', outline: 'none', background: drawerEntry.type === 'in' ? '#f0fdf4' : '#fff0f3' }}>
-                    <option value="in">+ Cash In</option>
-                    <option value="out">− Cash Out</option>
+                  <select value={drawerEntry.type} onChange={e => setDrawerEntry(d => ({ ...d, type: e.target.value }))} style={{ padding: '8px 12px', border: '1.5px solid #bfdbfe', borderRadius: 8, fontSize: '0.87rem', fontWeight: 700, color: drawerEntry.type === 'in' ? '#166534' : '#1e40af', outline: 'none', background: drawerEntry.type === 'in' ? '#f0fdf4' : '#eff6ff' }}>
+                    <option value="in">+ Cash Added to Drawer</option>
+                    <option value="out">− Cash Removed from Drawer</option>
                   </select>
-                  <input type="number" min="1" value={drawerEntry.amount} onChange={e => setDrawerEntry(d => ({ ...d, amount: e.target.value }))} placeholder="Amount" style={{ flex: 1, padding: '8px 12px', border: '1.5px solid #fecaca', borderRadius: 8, fontSize: '0.87rem', fontWeight: 700, outline: 'none' }} />
+                  <input type="number" min="1" value={drawerEntry.amount} onChange={e => setDrawerEntry(d => ({ ...d, amount: e.target.value }))} placeholder="Amount" style={{ flex: 1, padding: '8px 12px', border: '1.5px solid #bfdbfe', borderRadius: 8, fontSize: '0.87rem', fontWeight: 700, outline: 'none' }} />
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <input type="text" value={drawerEntry.description} onChange={e => setDrawerEntry(d => ({ ...d, description: e.target.value }))} placeholder="Description (e.g. Sale payment, Petty cash)" style={{ flex: 1, padding: '8px 12px', border: '1.5px solid #fecaca', borderRadius: 8, fontSize: '0.85rem', outline: 'none' }} />
-                  <button onClick={addDrawerEntry} style={{ padding: '8px 16px', border: 'none', borderRadius: 8, background: '#c41e3a', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem' }}>+ Add</button>
+                  <input type="text" value={drawerEntry.description} onChange={e => setDrawerEntry(d => ({ ...d, description: e.target.value }))} placeholder="e.g. Float top-up, Cash drop to safe" style={{ flex: 1, padding: '8px 12px', border: '1.5px solid #bfdbfe', borderRadius: 8, fontSize: '0.85rem', outline: 'none' }} />
+                  <button onClick={addDrawerEntry} style={{ padding: '8px 16px', border: 'none', borderRadius: 8, background: '#1e40af', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem' }}>+ Add</button>
                 </div>
               </div>
 
