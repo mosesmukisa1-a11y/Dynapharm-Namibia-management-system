@@ -42,7 +42,10 @@ export default async function handler(req, res) {
     const productId = url.searchParams.get('productId') || '';
 
     if (barcode) {
-      const batch = await getOne('SELECT * FROM stock_batches WHERE barcode = $1', [barcode]);
+      const batch = await getOne(
+        'SELECT * FROM stock_batches WHERE barcode = $1 OR qr_code = $1 LIMIT 1',
+        [barcode]
+      );
       if (!batch) return res.status(404).json({ success: false, error: 'Barcode not found' });
 
       const { qty, dp, cp, bv } = await enrichWithPrices(batch);

@@ -2506,6 +2506,9 @@ server.on('error', (error) => {
       `ALTER TABLE product_prices ADD COLUMN IF NOT EXISTS import_duty_pct NUMERIC(5,2) DEFAULT 0`,
       `ALTER TABLE product_prices ADD COLUMN IF NOT EXISTS clearing_fee NUMERIC(10,2) DEFAULT 1`,
       `CREATE UNIQUE INDEX IF NOT EXISTS idx_pp_product_code ON product_prices(product_code) WHERE product_code IS NOT NULL`,
+      // QR code field on stock_batches (separate from Code128 barcode)
+      `ALTER TABLE stock_batches ADD COLUMN IF NOT EXISTS qr_code VARCHAR(200)`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_stock_batches_qr_code ON stock_batches(qr_code) WHERE qr_code IS NOT NULL`,
     ];
     let schemaSynced = 0;
     for (const sql of schemaSyncs) {

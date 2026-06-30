@@ -5,6 +5,7 @@ function normalizeInboundPayload(payload) {
   return {
     id: payload.id || payload.batchId || null,
     barcode: payload.barcode || null,
+    qrCode: payload.qr_code ?? payload.qrCode ?? null,
     cartonNo: payload.cartonNo || payload.carton_no || null,
     description: payload.description || payload.product_name || payload.product || payload.productName || '',
     batchNo: payload.batchNo || payload.batch_no || payload.batch_number || null,
@@ -293,27 +294,33 @@ export default async function handler(req, res) {
       // Use a direct UPDATE to avoid ON CONFLICT (barcode) clashing with the
       // existing primary-key when the barcode is being assigned for the first time.
       const merged = normalizeInboundPayload({ ...existing, ...body });
+      // qr_code: explicit null in body clears it; undefined preserves existing
+      const qrCodeValue = Object.prototype.hasOwnProperty.call(body, 'qr_code')
+        ? (body.qr_code || null)
+        : (existing.qr_code ?? null);
       await query(
         `UPDATE stock_batches
          SET barcode              = $2,
-             carton_no            = $3,
-             description          = $4,
-             batch_no             = $5,
-             expiry_date          = $6,
-             quantity             = $7,
-             remaining_quantity   = $8,
-             dispatched_quantity  = $9,
-             location             = $10,
-             status               = $11,
-             product_id           = $12,
-             warehouse_id         = $13,
-             unit_price           = $14,
-             notes                = $15,
+             qr_code              = $3,
+             carton_no            = $4,
+             description          = $5,
+             batch_no             = $6,
+             expiry_date          = $7,
+             quantity             = $8,
+             remaining_quantity   = $9,
+             dispatched_quantity  = $10,
+             location             = $11,
+             status               = $12,
+             product_id           = $13,
+             warehouse_id         = $14,
+             unit_price           = $15,
+             notes                = $16,
              updated_at           = NOW()
          WHERE id = $1`,
         [
           existing.id,
           merged.barcode,
+          qrCodeValue,
           merged.cartonNo  || existing.carton_no  || null,
           merged.description || existing.description || null,
           merged.batchNo   || existing.batch_no   || null,

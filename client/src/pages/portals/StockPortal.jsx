@@ -7800,18 +7800,28 @@ function BarcodeLabelDisplay({ code, name, batch, expiry, location, qty, dp }) {
   );
 }
 
+function QRThumb({ value }) {
+  const [url, setUrl] = useState(null);
+  useEffect(() => { if (value) genQRDataUrl(value).then(setUrl); else setUrl(null); }, [value]);
+  if (!url) return null;
+  return <img src={url} alt="QR" style={{ width: 40, height: 40, display: 'block', flexShrink: 0, borderRadius: 4, border: '1px solid #ddd6fe' }} />;
+}
+
 function BarcodeTab() {
   const [batches, setBatches]         = useState([]);
   const [loading, setLoading]         = useState(true);
   const [search, setSearch]           = useState('');
   const [locFilter, setLocFilter]     = useState('all');
   const [codeFilter, setCodeFilter]   = useState('all');
-  const [assigningId, setAssigningId] = useState(null);
-  const [assignCode, setAssignCode]   = useState('');
-  const [saving, setSaving]           = useState(false);
-  const [alert, setAlert]             = useState(null);
-  const [selected, setSelected]       = useState({});
-  const [preview, setPreview]         = useState(null);
+  const [assigningId, setAssigningId]     = useState(null);
+  const [assignCode, setAssignCode]       = useState('');
+  const [saving, setSaving]               = useState(false);
+  const [assigningQRId, setAssigningQRId] = useState(null);
+  const [assignQRCode, setAssignQRCode]   = useState('');
+  const [savingQR, setSavingQR]           = useState(false);
+  const [alert, setAlert]                 = useState(null);
+  const [selected, setSelected]           = useState({});
+  const [preview, setPreview]             = useState(null);
 
   const load = () => {
     setLoading(true);
@@ -7835,6 +7845,22 @@ function BarcodeTab() {
     if (b.batch_no || b.batch_number) return `DYN-${(b.batch_no || b.batch_number).replace(/\s+/g,'').toUpperCase().slice(0,10)}`;
     const idx = getLiveProductList().findIndex(p => p.description === (b.product_name || b.description));
     return `DYN-${String(idx >= 0 ? idx : Math.floor(Math.random()*9000)+1000).padStart(4,'0')}`;
+  };
+  const suggestQRCode = b => b.barcode || suggestCode(b);
+
+  const handleSaveQR = async (batchId) => {
+    if (!assignQRCode.trim()) return;
+    setSavingQR(true);
+    setAlert(null);
+    try {
+      await api.stock.updateBatch(batchId, { qr_code: assignQRCode.trim() });
+      setAlert({ type: 'success', msg: `QR code ${assignQRCode.trim()} assigned successfully` });
+      setAssigningQRId(null);
+      setAssignQRCode('');
+      load();
+    } catch {
+      setAlert({ type: 'error', msg: 'Failed to assign QR code — please try again' });
+    } finally { setSavingQR(false); }
   };
 
   const activeBatches = batches.filter(b => {
@@ -7862,6 +7888,7 @@ function BarcodeTab() {
 
   const totalAssigned   = activeBatches.filter(b => b.barcode).length;
   const totalUnassigned = activeBatches.length - totalAssigned;
+  const totalQRAssigned = activeBatches.filter(b => b.qr_code).length;
 
   const handleSave = async (batchId) => {
     if (!assignCode.trim()) return;
@@ -7935,7 +7962,7 @@ function BarcodeTab() {
   };
 
   const printQRLabel = async (b) => {
-    const code    = b.barcode || '';
+    const code    = b.qr_code || b.barcode || '';
     const name    = b.product_name || b.description || '';
     const bno     = b.batch_no || b.batch_number || '';
     const exp     = b.expiry_date;
@@ -7991,7 +8018,7 @@ function BarcodeTab() {
     if (!ids.length) return;
     const items = filtered.filter(b => ids.includes(String(b.id)));
     const qrMap = {};
-    await Promise.all(items.map(async b => { if (b.barcode) qrMap[b.id] = await genQRDataUrl(b.barcode); }));
+    await Promise.all(items.map(async b => { const src = b.qr_code || b.barcode; if (src) qrMap[b.id] = await genQRDataUrl(src); }));
     const { labelCss } = makeLabelHTML(items[0], qrMap[items[0].id] || null);
     const allHtml = items.map(b => makeLabelHTML(b, qrMap[b.id] || null).html).join('');
     const w = window.open('', '_blank', 'width=900,height=700');
@@ -8064,7 +8091,7 @@ function BarcodeTab() {
       {alert && <Alert type={alert.type} onClose={() => setAlert(null)}>{alert.msg}</Alert>}
 
       {/* ── Stats ─────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-4 gap-3">
         <div style={{ background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: 10, padding: '12px 16px' }}>
           <div className="text-2xl font-bold text-green-800">{activeBatches.length}</div>
           <div className="text-xs font-semibold text-green-700">Active Batches</div>
@@ -8072,6 +8099,10 @@ function BarcodeTab() {
         <div style={{ background: '#eff6ff', border: '1.5px solid #93c5fd', borderRadius: 10, padding: '12px 16px' }}>
           <div className="text-2xl font-bold text-blue-800">{totalAssigned}</div>
           <div className="text-xs font-semibold text-blue-700">Barcodes Assigned</div>
+        </div>
+        <div style={{ background: '#f5f3ff', border: '1.5px solid #c4b5fd', borderRadius: 10, padding: '12px 16px' }}>
+          <div className="text-2xl font-bold" style={{ color: '#6d28d9' }}>{totalQRAssigned}</div>
+          <div className="text-xs font-semibold" style={{ color: '#7c3aed' }}>QR Codes Assigned</div>
         </div>
         <div style={{ background: '#fffbeb', border: '1.5px solid #fde68a', borderRadius: 10, padding: '12px 16px' }}>
           <div className="text-2xl font-bold text-yellow-800">{totalUnassigned}</div>
@@ -8153,14 +8184,14 @@ function BarcodeTab() {
                       checked={filtered.length > 0 && filtered.every(b => selected[b.id])}
                       onChange={toggleAll} />
                   </th>
-                  {['Product','Batch #','Expiry','Location','Qty on Hand','Barcode','Actions'].map(h => (
+                  {['Product','Batch #','Expiry','Location','Qty on Hand','Barcode','QR Code','Actions'].map(h => (
                     <th key={h} className="px-3 py-2.5 text-left text-xs font-bold text-gray-700 uppercase tracking-wide">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0
-                  ? <tr><td colSpan={8} className="px-4 py-10 text-center text-gray-400">No active batches found — import stock or adjust filters</td></tr>
+                  ? <tr><td colSpan={9} className="px-4 py-10 text-center text-gray-400">No active batches found — import stock or adjust filters</td></tr>
                   : filtered.map((b, i) => {
                       const name    = b.product_name || b.description || '—';
                       const bno     = b.batch_no || b.batch_number || '—';
@@ -8214,6 +8245,38 @@ function BarcodeTab() {
                               </button>
                             )}
                           </td>
+                          {/* ── QR Code Column ──────────────────────────── */}
+                          <td className="px-3 py-2.5 border-b" style={{ minWidth: 180 }}>
+                            {assigningQRId === b.id ? (
+                              <div className="flex gap-1 items-center">
+                                <input className="px-2 py-1 rounded border border-gray-300 text-xs w-32 font-mono focus:outline-none focus:ring-1 focus:border-primary"
+                                  value={assignQRCode} onChange={e => setAssignQRCode(e.target.value)}
+                                  placeholder="e.g. DYN-QR-001" autoFocus
+                                  onKeyDown={e => { if (e.key === 'Enter') handleSaveQR(b.id); if (e.key === 'Escape') setAssigningQRId(null); }} />
+                                <button onClick={() => handleSaveQR(b.id)} disabled={savingQR || !assignQRCode.trim()}
+                                  className="px-2 py-1 rounded text-xs font-bold border-none cursor-pointer"
+                                  style={{ background: '#6d28d9', color: '#fff', opacity: savingQR ? 0.6 : 1 }}>{savingQR ? '…' : '✓'}</button>
+                                <button onClick={() => setAssigningQRId(null)}
+                                  className="px-2 py-1 rounded text-xs font-bold border-none cursor-pointer"
+                                  style={{ background: '#f3f4f6', color: '#374151' }}>✕</button>
+                              </div>
+                            ) : b.qr_code ? (
+                              <div className="flex items-center gap-2">
+                                <QRThumb value={b.qr_code} />
+                                <div>
+                                  <div className="font-mono text-xs font-bold px-1.5 py-0.5 rounded" style={{ background: '#f5f3ff', color: '#6d28d9', border: '1px solid #ddd6fe', maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={b.qr_code}>{b.qr_code}</div>
+                                  <button onClick={() => { setAssigningQRId(b.id); setAssignQRCode(b.qr_code); }}
+                                    className="text-xs px-1.5 py-0.5 rounded border-none cursor-pointer mt-0.5" style={{ background: '#eff6ff', color: '#1d4ed8' }} title="Edit QR code">✏ edit</button>
+                                </div>
+                              </div>
+                            ) : (
+                              <button onClick={() => { setAssigningQRId(b.id); setAssignQRCode(suggestQRCode(b)); }}
+                                className="px-2.5 py-1 rounded-lg text-xs font-bold border-none cursor-pointer flex items-center gap-1"
+                                style={{ background: '#f5f3ff', color: '#6d28d9', border: '1px solid #ddd6fe' }}>
+                                📱 Assign QR
+                              </button>
+                            )}
+                          </td>
                           <td className="px-3 py-2.5 border-b">
                             <div className="flex gap-1 flex-wrap">
                               <button onClick={() => setPreview(b)} title="Preview label"
@@ -8224,7 +8287,7 @@ function BarcodeTab() {
                                 style={{ background: b.barcode ? '#fff0f3' : '#f3f4f6', color: b.barcode ? '#c41e3a' : '#9ca3af', border: b.barcode ? '1px solid #fecaca' : '1px solid #e5e7eb' }}>
                                 <Printer size={11} />
                               </button>
-                              {b.barcode && (
+                              {(b.qr_code || b.barcode) && (
                                 <button onClick={() => printQRLabel(b)} title="Print mobile QR label"
                                   className="px-2 py-1 rounded text-xs font-bold border-none cursor-pointer"
                                   style={{ background: '#f5f3ff', color: '#7c3aed', border: '1px solid #ddd6fe' }}>
