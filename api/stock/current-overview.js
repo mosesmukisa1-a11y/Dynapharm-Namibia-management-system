@@ -20,7 +20,7 @@
  */
 import { applyAuthCors } from '../_lib/auth.js';
 import { getMany } from '../db.js';
-import { ALL_BRANCH_IDS } from '../_lib/branchUtils.js';
+import { ALL_BRANCH_LOCATION_ALIASES } from '../_lib/branchUtils.js';
 
 const ALLOWED = new Set(['admin', 'gm', 'director', 'mis', 'stock', 'finance']);
 
@@ -88,7 +88,7 @@ export default async function handler(req, res) {
            AND COALESCE(sb.status, '') != 'expired'
            AND sb.location != ALL($1::text[])
          GROUP BY sb.location, sb.description`,
-        [ALL_BRANCH_IDS]
+        [ALL_BRANCH_LOCATION_ALIASES]
       ),
 
       // ── Field stock: priced via GM price list ──

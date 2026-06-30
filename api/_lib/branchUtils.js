@@ -66,6 +66,28 @@ export const ALL_BRANCH_IDS = [
 ];
 
 /**
+ * Expanded set of ALL text forms that could appear in stock_batches.location for
+ * branch locations — canonical IDs plus every known alias.
+ * Used ONLY for SQL exclusion filters (sb.location != ALL(...)) so that
+ * accidentally-imported branch-location stock_batches rows do not appear as
+ * fake warehouse rows in overview / valuation queries.
+ * Do NOT use for iteration (use ALL_BRANCH_IDS for that).
+ */
+export const ALL_BRANCH_LOCATION_ALIASES = [
+  ...ALL_BRANCH_IDS,
+  // Windhoek CBD / Townshop aliases
+  'windhoek', 'windhoek_cbd', 'windhoek cbd', 'cbd', 'cdb',
+  // Oshakati aliases
+  'oshakati', 'oshakati branch',
+  // Katima Mulilo aliases
+  'katima', 'katima mulilo', 'katima-mulilo', 'katima_branch', 'katima_mulilo_branch',
+  // Walvis Bay aliases
+  'walvis bay', 'walvis_bay',
+  // Hochland Park aliases
+  'hochland park', 'hochland_park', 'hochlandpark',
+];
+
+/**
  * Branch ID → all possible text values that could be stored in DB columns like
  * requesting_branch, to_branch, branch_id, etc.
  * Used to build SQL ANY() conditions that match regardless of whether the stored value
