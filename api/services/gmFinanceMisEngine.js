@@ -5,6 +5,7 @@
  * and branch_walkin_sales (sales engine). No independent calculations.
  */
 import { query, getMany, getOne } from '../db.js';
+import { ALL_BRANCH_LOCATION_ALIASES } from '../_lib/branchUtils.js';
 
 const LOW_STOCK_THRESHOLD = 10;
 const EXPIRY_WARN_DAYS = 90;
@@ -337,9 +338,11 @@ export async function getCompanyStockSummary() {
               SUM(remaining_quantity * COALESCE(dpc_unit_value, unit_price, 0)) AS val_dp
        FROM stock_batches
        WHERE location != 'country_stock'
+         AND location != ALL($1::text[])
          AND remaining_quantity > 0
          AND COALESCE(status,'') != 'expired'
-       GROUP BY location, description, expiry_date`
+       GROUP BY location, description, expiry_date`,
+      [ALL_BRANCH_LOCATION_ALIASES]
     ),
   ]);
 
