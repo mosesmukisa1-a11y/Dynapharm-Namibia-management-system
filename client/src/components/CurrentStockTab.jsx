@@ -104,6 +104,7 @@ export default function CurrentStockTab() {
 
   const exportCSV = () => {
     if (!data) return;
+    const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
     const rows = [['Product', 'Total Qty', 'CIF Value (N$)', 'DP Value (N$)', 'Location Type', 'Location', 'Loc Qty', 'Loc CIF', 'Loc DP']];
     for (const p of data.products) {
       rows.push([p.productName, p.totalQty, p.totalValueCIF, p.totalValueDP, '', '', '', '', '']);
@@ -111,7 +112,7 @@ export default function CurrentStockTab() {
         rows.push(['', '', '', '', l.locationType, l.locationName, l.qty, l.valueCIF, l.valueDP]);
       }
     }
-    const csv = rows.map(r => r.join(',')).join('\n');
+    const csv = rows.map(r => r.map(q).join(',')).join('\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
     a.download = `Dynapharm-Stock-Overview-${new Date().toISOString().slice(0, 10)}.csv`;

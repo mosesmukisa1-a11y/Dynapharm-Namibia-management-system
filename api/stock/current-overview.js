@@ -65,22 +65,22 @@ export default async function handler(req, res) {
          GROUP BY b.branch_id, br.name, b.product_name`
       ),
 
-      // ── Warehouses only: stock_batches.remaining_quantity ──
-      // Country stock is excluded — it is a staging/holding area, not active operations.
-      // INNER JOIN product_prices ensures only real catalogue products appear.
+      // ── Warehouses + Country Stock: stock_batches.remaining_quantity ──
+      // LEFT JOIN product_prices so batches without an exact price-catalogue
+      // match are still included (prices fall back to 0 / lookupCif/Dp).
+      // Country stock is included so the GM sees the complete picture.
       getMany(
         `SELECT sb.location, sb.description AS product_name,
-                SUM(sb.remaining_quantity)                               AS qty,
+                SUM(sb.remaining_quantity)                                   AS qty,
                 SUM(sb.remaining_quantity * COALESCE(sb.cif_unit_cost, 0))  AS val_cif,
                 SUM(sb.remaining_quantity * COALESCE(sb.dpc_unit_value, 0)) AS val_dp,
-                MAX(sb.cif_unit_cost)                                    AS unit_cif,
-                MAX(sb.dpc_unit_value)                                   AS unit_dp
+                MAX(sb.cif_unit_cost)                                        AS unit_cif,
+                MAX(sb.dpc_unit_value)                                       AS unit_dp
          FROM stock_batches sb
-         INNER JOIN product_prices pp
+         LEFT JOIN product_prices pp
                ON LOWER(TRIM(pp.description)) = LOWER(TRIM(sb.description))
          WHERE sb.remaining_quantity > 0
            AND COALESCE(sb.status, '') != 'expired'
-           AND sb.location != 'country_stock'
          GROUP BY sb.location, sb.description`
       ),
 
