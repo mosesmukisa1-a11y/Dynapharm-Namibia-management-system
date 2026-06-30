@@ -1,5 +1,5 @@
 import { applyAuthCors } from '../_lib/auth.js';
-import { getMany } from '../db.js';
+import { getMany, getOne } from '../db.js';
 
 function parseDate(value) {
   if (!value) return null;
@@ -241,7 +241,7 @@ export default async function handler(req, res) {
         NULL::text                                               AS customer_email,
         'prescription'                                           AS customer_type,
         bat.payment_method                                       AS payment_method,
-        bat.grand_total                                          AS total,
+        bat.product_total_dp                                     AS total,
         bat.product_total_dp                                     AS subtotal,
         0                                                        AS discount,
         0                                                        AS tax,
@@ -258,10 +258,35 @@ export default async function handler(req, res) {
       LIMIT 1000
     `;
 
-    const [walkinRows, rxRows] = await Promise.all([
+    const [walkinRows, rxRows, priceRows] = await Promise.all([
       getMany(walkinQuery, walkinParams),
       getMany(rxQuery, rxParams),
+      getMany(`SELECT description, dp FROM product_prices`),
     ]);
+
+    // Build DP price map for non-member receipt recalculation.
+    // Non-member receipts are stored at CP; recompute at DP so the total is
+    // uniform across the system (every sale = DP × qty).
+    const dpMap = {};
+    for (const p of priceRows) {
+      if (p.description) dpMap[p.description.toLowerCase().trim()] = Number(p.dp || 0);
+    }
+
+    for (const row of walkinRows) {
+      const ct = (row.customer_type || '').toLowerCase();
+      if (ct.includes('non') || (!ct.includes('member') && !ct.includes('online'))) {
+        let items = [];
+        try { items = typeof row.items === 'string' ? JSON.parse(row.items) : (Array.isArray(row.items) ? row.items : []); } catch {}
+        if (items.length > 0) {
+          const dpTotal = items.reduce((s, i) => {
+            const nm = (i.product_name || i.name || i.description || '').trim();
+            const dp = (nm ? dpMap[nm.toLowerCase().trim()] : 0) || Number(i.dpPrice || i.dp || i.unit_price || 0);
+            return s + dp * Number(i.quantity || i.qty || 1);
+          }, 0);
+          if (dpTotal > 0) row.total = dpTotal;
+        }
+      }
+    }
 
     const allRows = [...walkinRows, ...rxRows];
 
