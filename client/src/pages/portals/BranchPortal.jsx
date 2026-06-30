@@ -2411,6 +2411,7 @@ function PrescriptionsTab() {
   const [rxItemQtys, setRxItemQtys] = useState({}); // { [pendingItemIndex]: qty } for current session
   const [rxItemSelected, setRxItemSelected] = useState({}); // { [pendingItemIndex]: boolean } — true = selected for dispense
   const [expandedPackages, setExpandedPackages] = useState({});
+  const [dispenseCameraMode, setDispenseCameraMode] = useState(false);
 
   const CHECKUP_FEE_OPTIONS = {
     standard:        { label: 'Full Body Check Up',              fee: 200, cashback: 50, consultantEarns: 150 },
@@ -3539,10 +3540,20 @@ function PrescriptionsTab() {
                   ))}
                 </div>
               )}
-              {/* ── Barcode scanner — scan product code to auto-select ─── */}
+              {/* ── Barcode / QR scanner — scan product code to auto-select ─── */}
               <div style={{ marginBottom: 12, padding: '10px 12px', background: '#f8fafc', borderRadius: 10, border: '1.5px solid #e2e8f0' }}>
-                <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
-                  🔲 Scan product barcode to select item
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                    🔲 Scan product barcode to select item
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setDispenseCameraMode(m => !m)}
+                    title="Scan product QR code with camera"
+                    style={{ padding: '4px 10px', borderRadius: 7, border: dispenseCameraMode ? '2px solid #7c3aed' : '1.5px solid #d1d5db', background: dispenseCameraMode ? '#f5f3ff' : '#fff', color: dispenseCameraMode ? '#7c3aed' : '#374151', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all .15s' }}
+                  >
+                    📷 QR
+                  </button>
                 </div>
                 <BarcodeScanner
                   onResult={handleDispenseScan}
@@ -3550,6 +3561,18 @@ function PrescriptionsTab() {
                   autoFocus={false}
                   placeholder="Scan or type product code (NB9845)…"
                 />
+                {dispenseCameraMode && (
+                  <div style={{ marginTop: 8 }}>
+                    <QRCameraScanner
+                      onResult={(res) => { handleDispenseScan(res); }}
+                      onError={() => {}}
+                      onClose={() => setDispenseCameraMode(false)}
+                    />
+                    <div style={{ marginTop: 4, fontSize: '0.72rem', color: '#6b7280', textAlign: 'center' }}>
+                      Point your camera at a product QR code — matching items are selected automatically
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* ── Item selection header ─────────────────────────────── */}
