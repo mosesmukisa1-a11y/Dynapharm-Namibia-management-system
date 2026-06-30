@@ -2725,7 +2725,7 @@ function CountryStockTab() {
                       try {
                         await api.stock.clearCountryStock();
                         alert('Country stock and import records cleared.');
-                        load();
+                        loadData();
                       } catch(e) {
                         alert('Error: ' + e.message);
                       }
