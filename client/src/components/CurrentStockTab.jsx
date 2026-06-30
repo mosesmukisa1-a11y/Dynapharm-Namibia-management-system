@@ -118,6 +118,111 @@ export default function CurrentStockTab() {
     a.click();
   };
 
+  const exportPDF = () => {
+    if (!data) return;
+    const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const fmtN = v => 'N$ ' + Number(v || 0).toLocaleString('en-NA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const fmtQ = v => Number(v || 0).toLocaleString('en-NA', { maximumFractionDigits: 0 });
+    const today = new Date().toLocaleDateString('en-NA', { day: '2-digit', month: 'long', year: 'numeric' });
+    const logo = window.location.origin + '/assets/dynapharm-logo.png';
+
+    const locColor = { country: '#f97316', warehouse: '#a855f7', branch: '#3b82f6', field: '#22c55e' };
+    const locLabel = { country: 'Country Stock', warehouse: 'Warehouse', branch: 'Branch', field: 'Field' };
+
+    const summaryCards = `
+      <div class="summary-grid">
+        <div class="card green"><div class="card-label">Total Value (DP)</div><div class="card-val">${fmtN(data.summary.totalValueDP)}</div><div class="card-sub">All locations</div></div>
+        <div class="card amber"><div class="card-label">Total Value (CIF)</div><div class="card-val">${fmtN(data.summary.totalValueCIF)}</div><div class="card-sub">Landed cost</div></div>
+        <div class="card purple"><div class="card-label">Total Units</div><div class="card-val">${fmtQ(data.summary.totalQtyUnits)}</div><div class="card-sub">All locations</div></div>
+        <div class="card blue"><div class="card-label">In Operations (DP)</div><div class="card-val">${fmtN(inOpsDP)}</div><div class="card-sub">${fmtQ(inOpsQty)} units · WH + Branch + Field</div></div>
+      </div>`;
+
+    const productRows = data.products.map((p, idx) => {
+      const locRows = p.locations.map(l => `
+        <tr class="loc-row">
+          <td style="padding-left:28px;color:#64748b;font-size:10px;">↳ <span style="display:inline-block;padding:1px 7px;border-radius:10px;background:${locColor[l.locationType] || '#64748b'}22;color:${locColor[l.locationType] || '#64748b'};font-weight:700;">${locLabel[l.locationType] || l.locationType}</span> ${esc(l.locationName)}</td>
+          <td class="num">${fmtQ(l.qty)}</td>
+          <td class="num amber">${l.valueCIF > 0 ? fmtN(l.valueCIF) : '—'}</td>
+          <td class="num green">${l.valueDP > 0 ? fmtN(l.valueDP) : '—'}</td>
+        </tr>`).join('');
+      return `
+        <tr class="prod-row ${idx % 2 === 0 ? 'even' : 'odd'}">
+          <td><strong>${esc(p.productName)}</strong><br><span style="font-size:10px;color:#94a3b8">${p.locations.length} location${p.locations.length !== 1 ? 's' : ''}</span></td>
+          <td class="num"><strong>${fmtQ(p.totalQty)}</strong></td>
+          <td class="num amber"><strong>${fmtN(p.totalValueCIF)}</strong></td>
+          <td class="num green"><strong>${fmtN(p.totalValueDP)}</strong></td>
+        </tr>
+        ${locRows}`;
+    }).join('');
+
+    const w = window.open('', '_blank', 'width=1050,height=800');
+    if (!w) return;
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>Dynapharm — Current Stock Overview — ${today}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;padding:20px;line-height:1.4;}
+  .header{display:flex;align-items:center;gap:14px;border-bottom:3px solid #1d4ed8;padding-bottom:12px;margin-bottom:16px;}
+  .logo{height:52px;}
+  .co{font-size:1.1rem;font-weight:900;color:#1d4ed8;}
+  .sub{font-size:0.75rem;color:#64748b;margin-top:2px;}
+  .title{font-size:0.9rem;font-weight:800;color:#1e3a8a;margin-top:4px;}
+  .meta{margin-left:auto;text-align:right;font-size:0.75rem;color:#64748b;line-height:1.8;}
+  .summary-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;}
+  .card{border-radius:10px;padding:10px 14px;border:1px solid #e5e7eb;}
+  .card.green{background:#f0fdf4;border-color:#bbf7d0;}.card.amber{background:#fffbeb;border-color:#fde68a;}.card.blue{background:#eff6ff;border-color:#bfdbfe;}.card.purple{background:#faf5ff;border-color:#e9d5ff;}
+  .card-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#64748b;margin-bottom:4px;}
+  .card-val{font-size:1rem;font-weight:900;color:#1e293b;}
+  .card-sub{font-size:9px;color:#94a3b8;margin-top:2px;}
+  table{width:100%;border-collapse:collapse;font-size:11px;}
+  thead tr{background:#1e3a8a;color:#fff;}
+  thead th{padding:7px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;}
+  thead th.num{text-align:right;}
+  .prod-row.even{background:#fff;}.prod-row.odd{background:#f8fafc;}
+  .prod-row td{padding:7px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top;}
+  .loc-row td{padding:4px 10px;border-bottom:1px dashed #f1f5f9;background:#f8fafc;}
+  .num{text-align:right;font-family:monospace;}
+  .amber{color:#b45309;}.green{color:#15803d;}
+  .footer{margin-top:18px;border-top:2px solid #1d4ed8;padding-top:8px;display:flex;justify-content:space-between;font-size:9px;color:#94a3b8;}
+  .conf{background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;padding:2px 10px;border-radius:20px;font-size:9px;font-weight:700;}
+  .print-btn{position:fixed;top:12px;right:12px;background:#1d4ed8;color:#fff;border:none;padding:7px 16px;border-radius:7px;font-weight:700;cursor:pointer;font-size:12px;}
+  @media print{.print-btn{display:none;}body{padding:10px;}@page{size:A4 landscape;margin:10mm;}}
+</style></head><body>
+<button class="print-btn" onclick="window.print()">🖨️ Print / Save PDF</button>
+<div class="header">
+  <img class="logo" src="${logo}" onerror="this.style.display='none'" />
+  <div>
+    <div class="co">DYNAPHARM INTERNATIONAL NAMIBIA</div>
+    <div class="sub">Stock Management Division</div>
+    <div class="title">CURRENT STOCK OVERVIEW — COUNTRYWIDE</div>
+  </div>
+  <div class="meta">
+    <div><b>Date:</b> ${today}</div>
+    <div><b>Products:</b> ${data.products.length}</div>
+    <div><b>Scope:</b> Warehouses · Branches · Field</div>
+  </div>
+</div>
+${summaryCards}
+<table>
+  <thead>
+    <tr>
+      <th>Product / Location</th>
+      <th class="num">Units</th>
+      <th class="num">CIF Value (N$)</th>
+      <th class="num">DP Value (N$)</th>
+    </tr>
+  </thead>
+  <tbody>${productRows}</tbody>
+</table>
+<div class="footer">
+  <span class="conf">🔒 CONFIDENTIAL — INTERNAL USE ONLY</span>
+  <span>Dynapharm International Namibia — Generated ${today}</span>
+</div>
+</body></html>`);
+    w.document.close();
+    setTimeout(() => { try { w.focus(); } catch {} }, 300);
+  };
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -136,10 +241,16 @@ export default function CurrentStockTab() {
                 ↻ Refresh
               </button>
               {data && (
-                <button onClick={exportCSV}
-                  className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold border border-primary text-primary rounded hover:bg-primary/5">
-                  <Download size={12} /> Export CSV
-                </button>
+                <>
+                  <button onClick={exportCSV}
+                    className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold border border-primary text-primary rounded hover:bg-primary/5">
+                    <Download size={12} /> Export CSV
+                  </button>
+                  <button onClick={exportPDF}
+                    className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold border border-red-400 text-red-600 rounded hover:bg-red-50">
+                    <Download size={12} /> Export PDF
+                  </button>
+                </>
               )}
             </div>
           </div>
