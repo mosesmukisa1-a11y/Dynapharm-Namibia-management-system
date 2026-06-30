@@ -2867,7 +2867,6 @@ function FollowUpReportModal({ parentReport, onClose, onSaved }) {
       const prescriptions = medicines.map(m => ({ product: m.name, quantity: 1 }));
       await api.reports.create({
         client_name: parentReport.client_name || '',
-        appointment_id: parentReport.appointment_id || null,
         diagnosis,
         recommendations: diagnosis,
         prescriptions,
@@ -2883,7 +2882,11 @@ function FollowUpReportModal({ parentReport, onClose, onSaved }) {
         report_required: true,
         branch: parentReport.branch || user?.branch || '',
         parent_report_id: parentReport.id,
+        nb_number: parentReport.nb_number || null,
+        referral_name: parentReport.referral_name || null,
+        referral_nb: parentReport.referral_nb || null,
       });
+      api.reports.update(parentReport.id, { id: parentReport.id, follow_up_done: true }).catch(() => {});
       if (onSaved) onSaved();
       onClose();
     } catch (err) {
@@ -3042,7 +3045,6 @@ ${r.follow_up_date ? `
       const prescriptions = medicines.map(m => ({ product: m.name, quantity: 1 }));
       const created = await api.reports.create({
         client_name: parentReport.client_name || '',
-        appointment_id: parentReport.appointment_id || null,
         diagnosis,
         recommendations: diagnosis,
         prescriptions,
@@ -3058,9 +3060,13 @@ ${r.follow_up_date ? `
         report_required: true,
         branch: parentReport.branch || user?.branch || '',
         parent_report_id: parentReport.id,
+        nb_number: parentReport.nb_number || null,
+        referral_name: parentReport.referral_name || null,
+        referral_nb: parentReport.referral_nb || null,
       });
       const savedId = created?.id || created?.report?.id || null;
       printFollowUpReport(savedId);
+      api.reports.update(parentReport.id, { id: parentReport.id, follow_up_done: true }).catch(() => {});
       if (onSaved) onSaved();
       onClose();
     } catch (err) {
@@ -3173,7 +3179,7 @@ ${r.follow_up_date ? `
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-            <button onClick={printFollowUpReport}
+            <button onClick={() => printFollowUpReport()}
               style={{ padding: '10px 22px', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem' }}>
               🖨️ Print / PDF
             </button>
@@ -3206,7 +3212,7 @@ function FollowupsSection() {
     api.reports.list()
       .then(data => {
         const all = Array.isArray(data) ? data : data.reports || [];
-        setReports(all.filter(r => r.follow_up_date));
+        setReports(all.filter(r => r.follow_up_date && !r.follow_up_done));
       })
       .catch(() => {})
       .finally(() => setLoading(false));

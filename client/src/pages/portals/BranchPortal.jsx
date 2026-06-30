@@ -2409,6 +2409,17 @@ function PrescriptionsTab() {
       .finally(() => setLoading(false));
   }, [effectiveBranch]);
 
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const params = {};
+      if (effectiveBranch) params.branch = effectiveBranch;
+      api.reports.list(params)
+        .then(d => setReports(Array.isArray(d) ? d : d.reports || []))
+        .catch(() => {});
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [effectiveBranch]);
+
   if (loading && reports.length === 0) return <LoadingSpinner />;
 
   const getConsultMode = (reportId, isMem = false) => consultFeeMode[reportId] || (isMem ? 'inclusive' : 'separate');
