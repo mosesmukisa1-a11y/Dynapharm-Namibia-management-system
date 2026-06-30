@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import QRCodeLib from 'qrcode';
 import { api } from '../../lib/api';
 import { useStockRealtime } from '../../hooks/useStockRealtime';
 import StaffServicesTab from '../../components/StaffServicesTab';
@@ -7712,6 +7713,17 @@ function ValuationTab({ branch }) {
   );
 }
 
+// ── QR code helper ────────────────────────────────────────────────────────────
+async function genQRDataUrl(value) {
+  if (!value) return null;
+  try {
+    return await QRCodeLib.toDataURL(String(value), {
+      width: 200, margin: 1,
+      color: { dark: '#000000', light: '#ffffff' },
+    });
+  } catch { return null; }
+}
+
 // ── Code128-B SVG barcode generator ─────────────────────────────────────────
 // Only ASCII 32–126 (Code128-B charset) is supported. Characters outside that
 // range are silently stripped so the SVG is always valid.
@@ -7759,19 +7771,29 @@ function code128SVG(value) {
 
 function BarcodeLabelDisplay({ code, name, batch, expiry, location, qty, dp }) {
   const svg = code ? code128SVG(code) : null;
+  const [qrUrl, setQrUrl] = useState(null);
   const fmtExp = d => { try { return d ? new Date(d).toLocaleDateString('en-ZA',{month:'short',year:'numeric'}) : null; } catch { return d; } };
+  useEffect(() => { if (code) genQRDataUrl(code).then(setQrUrl); else setQrUrl(null); }, [code]);
   return (
-    <div style={{ border: '1.5px solid #d1d5db', borderRadius: 8, padding: '10px 12px', textAlign: 'center', background: '#fff', width: 240, flexShrink: 0 }}>
+    <div style={{ border: '1.5px solid #d1d5db', borderRadius: 8, padding: '10px 12px', textAlign: 'center', background: '#fff', width: 260, flexShrink: 0 }}>
       <div style={{ fontSize: 8, fontWeight: 800, color: '#c41e3a', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 }}>DYNAPHARM NAMIBIA</div>
       <div style={{ fontSize: 10, fontWeight: 700, color: '#1a1a1a', lineHeight: 1.3, marginBottom: 6, minHeight: 28, overflow: 'hidden' }}>{name}</div>
       {batch && <div style={{ fontSize: 9, color: '#6b7280', marginBottom: 1 }}>Batch: <strong style={{ color: '#374151' }}>{batch}</strong></div>}
       {expiry && <div style={{ fontSize: 9, color: '#6b7280', marginBottom: 1 }}>Exp: <strong style={{ color: '#374151' }}>{fmtExp(expiry)}</strong></div>}
       {location && <div style={{ fontSize: 9, color: '#6b7280', marginBottom: 4 }}>Loc: <strong style={{ color: '#374151' }}>{location}</strong></div>}
+      {/* 1-D barcode */}
       {svg
         ? <div dangerouslySetInnerHTML={{ __html: svg }} style={{ display:'flex', justifyContent:'center', margin:'4px 0' }} />
         : <div style={{ height: 56, background: '#f3f4f6', borderRadius: 4, margin: '4px 0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: '#9ca3af' }}>No barcode assigned</div>
       }
       {code && <div style={{ fontSize: 10, fontFamily: 'monospace', fontWeight: 700, color: '#374151', letterSpacing: 1 }}>{code}</div>}
+      {/* QR code */}
+      {qrUrl && (
+        <div style={{ marginTop: 8, borderTop: '1px dashed #e5e7eb', paddingTop: 6 }}>
+          <div style={{ fontSize: 8, color: '#9ca3af', marginBottom: 3 }}>📱 Scan QR on mobile</div>
+          <img src={qrUrl} alt="QR" style={{ width: 80, height: 80, display: 'block', margin: '0 auto' }} />
+        </div>
+      )}
       {dp > 0 && <div style={{ fontSize: 11, fontWeight: 800, color: '#c41e3a', marginTop: 4 }}>NAD {formatCurrency(dp)}</div>}
       {qty != null && <div style={{ fontSize: 9, color: '#6b7280', marginTop: 2 }}>Qty on hand: {qty}</div>}
     </div>
@@ -7856,7 +7878,7 @@ function BarcodeTab() {
     } finally { setSaving(false); }
   };
 
-  const makeLabelHTML = (b, qty = 1) => {
+  const makeLabelHTML = (b, qrDataUrl = null, qty = 1) => {
     const name = b.product_name || b.description || '';
     const bno  = b.batch_no || b.batch_number || '';
     const exp  = b.expiry_date;
@@ -7876,6 +7898,8 @@ function BarcodeTab() {
       .lbl-code  { font-family: monospace; font-size: 10px; font-weight: 700; letter-spacing: 1px; color: #374151; }
       .lbl-price { font-size: 11px; font-weight: 800; color: #c41e3a; margin-top: 3px; }
       .lbl-qty   { font-size: 9px; color: #6b7280; margin-top: 2px; }
+      .lbl-qr-wrap { margin: 6px auto 2px; display: flex; justify-content: center; border-top: 1px dashed #e5e7eb; padding-top: 6px; }
+      .lbl-qr-hint { font-size: 7px; color: #9ca3af; margin-top: 2px; }
     `;
     const singleLabel = `
       <div class="lbl">
@@ -7886,15 +7910,17 @@ function BarcodeTab() {
         <div class="lbl-meta">Location: <strong>${loc}</strong></div>
         ${svg  ? `<div class="lbl-barcode">${svg}</div>` : '<div style="height:40px;background:#f3f4f6;border-radius:4px;margin:5px 0;display:flex;align-items:center;justify-content:center;font-size:9px;color:#9ca3af">No barcode</div>'}
         ${code ? `<div class="lbl-code">${code}</div>` : ''}
+        ${qrDataUrl ? `<div class="lbl-qr-wrap"><img src="${qrDataUrl}" alt="QR" style="width:64px;height:64px;display:block;" /></div><div class="lbl-qr-hint" style="text-align:center;">📱 Scan QR on mobile</div>` : ''}
         ${dp   ? `<div class="lbl-price">NAD ${Math.round(dp).toLocaleString('en-ZA')}</div>` : ''}
         <div class="lbl-qty">Qty on hand: ${rem}</div>
       </div>`;
     return { labelCss, html: Array.from({ length: qty }, () => singleLabel).join('') };
   };
 
-  const printSingle = (b) => {
-    const { labelCss, html } = makeLabelHTML(b);
-    const w = window.open('', '_blank', 'width=600,height=500');
+  const printSingle = async (b) => {
+    const qrDataUrl = b.barcode ? await genQRDataUrl(b.barcode) : null;
+    const { labelCss, html } = makeLabelHTML(b, qrDataUrl);
+    const w = window.open('', '_blank', 'width=600,height=520');
     w.document.write(`<!DOCTYPE html><html><head><title>Label — ${b.product_name||b.description||''}</title><style>
       body { font-family: Arial, sans-serif; padding: 16px; }
       @media print { @page { margin: 8mm; } .no-print { display:none!important; } }
@@ -7908,12 +7934,66 @@ function BarcodeTab() {
     w.document.close();
   };
 
-  const printSelected_ = () => {
+  const printQRLabel = async (b) => {
+    const code    = b.barcode || '';
+    const name    = b.product_name || b.description || '';
+    const bno     = b.batch_no || b.batch_number || '';
+    const exp     = b.expiry_date;
+    const loc     = fmtLoc(b.location || '');
+    const rem     = Number(b.remaining_quantity ?? b.remainingQuantity ?? b.quantity ?? 0);
+    const dp      = getDP(name) || Number(b.unit_price || b.dpc_unit_value || 0);
+    const qrDataUrl = code ? await genQRDataUrl(code) : null;
+    const fmtExp  = d => { try { return d ? new Date(d).toLocaleDateString('en-ZA',{day:'2-digit',month:'short',year:'numeric'}) : ''; } catch { return ''; } };
+    const w = window.open('', '_blank', 'width=480,height=640');
+    if (!w) return;
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>QR Label — ${name}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:Arial,sans-serif;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px;}
+  .card{border:2px solid #d1d5db;border-radius:14px;padding:20px 24px;text-align:center;width:300px;background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.08);}
+  .brand{font-size:9px;font-weight:800;color:#c41e3a;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;}
+  .name{font-size:13px;font-weight:700;color:#1a1a1a;line-height:1.35;margin-bottom:10px;}
+  .price{font-size:22px;font-weight:900;color:#c41e3a;margin:10px 0 4px;}
+  .meta{font-size:10px;color:#6b7280;margin:2px 0;}
+  .qr-wrap{margin:14px auto 8px;display:flex;justify-content:center;}
+  .qr-img{width:160px;height:160px;display:block;}
+  .code{font-family:monospace;font-size:11px;font-weight:700;color:#374151;letter-spacing:1px;margin-top:6px;}
+  .hint{font-size:9px;color:#9ca3af;margin-top:4px;}
+  .qty{font-size:10px;color:#6b7280;margin-top:6px;}
+  .print-btn{margin-top:20px;padding:10px 32px;background:#c41e3a;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;}
+  @media print{.print-btn{display:none;}body{padding:0;}@page{size:90mm 120mm;margin:4mm;}}
+</style></head><body>
+  <div class="card">
+    <div class="brand">DYNAPHARM INTERNATIONAL NAMIBIA</div>
+    <div class="name">${name}</div>
+    ${dp > 0 ? `<div class="price">NAD ${Math.round(dp).toLocaleString('en-ZA')}</div>` : ''}
+    ${bno   ? `<div class="meta">Batch: <strong>${bno}</strong></div>` : ''}
+    ${exp   ? `<div class="meta">Expiry: <strong>${fmtExp(exp)}</strong></div>` : ''}
+    ${loc   ? `<div class="meta">Location: <strong>${loc}</strong></div>` : ''}
+    <div class="qr-wrap">
+      ${qrDataUrl
+        ? `<img class="qr-img" src="${qrDataUrl}" alt="QR Code" />`
+        : `<div style="width:160px;height:160px;background:#f3f4f6;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#9ca3af;border:1px solid #e5e7eb;">No barcode assigned</div>`}
+    </div>
+    ${code ? `<div class="code">${code}</div>` : ''}
+    <div class="hint">📱 Scan with any phone camera or barcode reader</div>
+    ${rem > 0 ? `<div class="qty">Qty on hand: ${rem.toLocaleString()}</div>` : ''}
+  </div>
+  <button class="print-btn" onclick="window.print()">🖨️ Print / Save PDF</button>
+</body></html>`);
+    w.document.close();
+    setTimeout(() => { try { w.focus(); } catch {} }, 200);
+  };
+
+  const printSelected_ = async () => {
     const ids = Object.keys(selected).filter(id => selected[id]);
     if (!ids.length) return;
-    const items = filtered.filter(b => ids.includes(b.id));
-    const { labelCss } = makeLabelHTML(items[0]);
-    const allHtml = items.map(b => makeLabelHTML(b).html).join('');
+    const items = filtered.filter(b => ids.includes(String(b.id)));
+    const qrMap = {};
+    await Promise.all(items.map(async b => { if (b.barcode) qrMap[b.id] = await genQRDataUrl(b.barcode); }));
+    const { labelCss } = makeLabelHTML(items[0], qrMap[items[0].id] || null);
+    const allHtml = items.map(b => makeLabelHTML(b, qrMap[b.id] || null).html).join('');
     const w = window.open('', '_blank', 'width=900,height=700');
     w.document.write(`<!DOCTYPE html><html><head><title>Barcode Labels (${items.length})</title><style>
       body { font-family: Arial, sans-serif; padding: 16px; }
@@ -7924,6 +8004,47 @@ function BarcodeTab() {
       <div style="display:flex;flex-wrap:wrap;gap:6px">${allHtml}</div>
       <div class="no-print" style="margin-top:16px;text-align:center">
         <button onclick="window.print()" style="padding:8px 24px;background:#c41e3a;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px">🖨️ Print All Labels</button>
+      </div>
+    </body></html>`);
+    w.document.close();
+  };
+
+  const printSelectedQR_ = async () => {
+    const ids = Object.keys(selected).filter(id => selected[id]);
+    if (!ids.length) return;
+    const items = filtered.filter(b => ids.includes(String(b.id)) && b.barcode);
+    if (!items.length) { setAlert({ type: 'error', msg: 'None of the selected batches have a barcode assigned' }); return; }
+    const qrMap = {};
+    await Promise.all(items.map(async b => { qrMap[b.id] = await genQRDataUrl(b.barcode); }));
+    const cards = items.map(b => {
+      const name = b.product_name || b.description || '';
+      const dp   = getDP(name) || Number(b.unit_price || b.dpc_unit_value || 0);
+      const bno  = b.batch_no || b.batch_number || '';
+      const exp  = b.expiry_date ? new Date(b.expiry_date).toLocaleDateString('en-ZA',{day:'2-digit',month:'short',year:'numeric'}) : '';
+      const rem  = Number(b.remaining_quantity ?? b.remainingQuantity ?? b.quantity ?? 0);
+      return `<div style="border:2px solid #d1d5db;border-radius:12px;padding:14px 16px;text-align:center;width:240px;display:inline-block;margin:6px;vertical-align:top;background:#fff;">
+        <div style="font-size:8px;font-weight:800;color:#c41e3a;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px;">DYNAPHARM NAMIBIA</div>
+        <div style="font-size:12px;font-weight:700;color:#1a1a1a;line-height:1.3;margin-bottom:6px;">${name}</div>
+        ${dp > 0 ? `<div style="font-size:18px;font-weight:900;color:#c41e3a;margin-bottom:4px;">NAD ${Math.round(dp).toLocaleString('en-ZA')}</div>` : ''}
+        ${bno ? `<div style="font-size:9px;color:#6b7280;">Batch: <strong>${bno}</strong></div>` : ''}
+        ${exp ? `<div style="font-size:9px;color:#6b7280;">Expiry: <strong>${exp}</strong></div>` : ''}
+        <div style="margin:10px auto 4px;display:flex;justify-content:center;">
+          ${qrMap[b.id] ? `<img src="${qrMap[b.id]}" alt="QR" style="width:130px;height:130px;display:block;" />` : ''}
+        </div>
+        <div style="font-family:monospace;font-size:10px;font-weight:700;color:#374151;letter-spacing:1px;margin-top:4px;">${b.barcode}</div>
+        <div style="font-size:8px;color:#9ca3af;margin-top:2px;">📱 Scan QR on mobile</div>
+        <div style="font-size:8px;color:#9ca3af;margin-top:2px;">Qty: ${rem}</div>
+      </div>`;
+    }).join('');
+    const w = window.open('', '_blank', 'width=900,height=700');
+    w.document.write(`<!DOCTYPE html><html><head><title>QR Labels (${items.length})</title><style>
+      body { font-family: Arial, sans-serif; padding: 16px; }
+      @media print { @page { margin: 8mm; } .no-print { display:none!important; } }
+    </style></head><body>
+      <div style="margin-bottom:12px;font-size:11px;color:#555;font-weight:bold">DYNAPHARM INTERNATIONAL NAMIBIA — QR Labels (${items.length} batch${items.length>1?'es':''})</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">${cards}</div>
+      <div class="no-print" style="margin-top:16px;text-align:center">
+        <button onclick="window.print()" style="padding:8px 24px;background:#c41e3a;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px">🖨️ Print All QR Labels</button>
       </div>
     </body></html>`);
     w.document.close();
@@ -7979,11 +8100,14 @@ function BarcodeTab() {
               <option value="unassigned">Unassigned only</option>
             </select>
             <Button size="sm" variant="secondary" onClick={load}>↺ Refresh</Button>
-            {numSelected > 0 && (
+            {numSelected > 0 && (<>
               <Button size="sm" onClick={printSelected_} style={{ background: '#c41e3a', color: '#fff' }}>
                 <Printer size={14} /> Print {numSelected} Label{numSelected > 1 ? 's' : ''}
               </Button>
-            )}
+              <Button size="sm" onClick={printSelectedQR_} style={{ background: '#7c3aed', color: '#fff' }}>
+                📱 QR Labels ({numSelected})
+              </Button>
+            </>)}
           </div>
         </CardBody>
       </Card>
@@ -8091,15 +8215,22 @@ function BarcodeTab() {
                             )}
                           </td>
                           <td className="px-3 py-2.5 border-b">
-                            <div className="flex gap-1">
+                            <div className="flex gap-1 flex-wrap">
                               <button onClick={() => setPreview(b)} title="Preview label"
                                 className="px-2 py-1 rounded text-xs font-bold border-none cursor-pointer"
                                 style={{ background: '#f8fafc', color: '#374151', border: '1px solid #e2e8f0' }}>👁</button>
-                              <button onClick={() => printSingle(b)} title="Print label now"
+                              <button onClick={() => printSingle(b)} title="Print barcode label"
                                 className="px-2 py-1 rounded text-xs font-bold border-none cursor-pointer flex items-center gap-1"
                                 style={{ background: b.barcode ? '#fff0f3' : '#f3f4f6', color: b.barcode ? '#c41e3a' : '#9ca3af', border: b.barcode ? '1px solid #fecaca' : '1px solid #e5e7eb' }}>
                                 <Printer size={11} />
                               </button>
+                              {b.barcode && (
+                                <button onClick={() => printQRLabel(b)} title="Print mobile QR label"
+                                  className="px-2 py-1 rounded text-xs font-bold border-none cursor-pointer"
+                                  style={{ background: '#f5f3ff', color: '#7c3aed', border: '1px solid #ddd6fe' }}>
+                                  📱
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>
