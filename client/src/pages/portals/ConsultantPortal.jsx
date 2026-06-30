@@ -2305,6 +2305,12 @@ function ClientViewDetails({ client }) {
           <div style={fieldStyle}><strong>Branch:</strong> {client.branch || 'N/A'}</div>
           <div style={fieldStyle}><strong>Signature:</strong> {client.signature || 'Not signed'}</div>
         </div>
+        {client.edited_by_consultant && (
+          <div style={{ marginTop: '10px', padding: '8px 12px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', fontSize: '0.85rem', color: '#1d4ed8' }}>
+            ✏️ <strong>Edited by consultant:</strong> {client.edited_by_consultant_name || 'Consultant'}
+            {client.edited_by_consultant_at && <span style={{ marginLeft: '8px', color: '#64748b' }}>{new Date(client.edited_by_consultant_at).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -2315,6 +2321,39 @@ function ClientEditForm({ form, setForm }) {
   const inputStyle = { width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '0.9rem', boxSizing: 'border-box' };
   const labelStyle = { display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#374151', marginBottom: '4px' };
   const groupStyle = { marginBottom: '12px' };
+  const sectionHeadStyle = { color: '#2c3e50', marginBottom: '16px', borderTop: '1px solid #e5e7eb', paddingTop: '16px' };
+
+  const memberStatus = form.membershipStatus || form.membership_status || 'referred';
+  const isMember = memberStatus === 'member';
+
+  const [distQuery, setDistQuery] = useState('');
+  const [distResults, setDistResults] = useState([]);
+  const [distLoading, setDistLoading] = useState(false);
+  const [distOpen, setDistOpen] = useState(false);
+
+  useEffect(() => {
+    if (!distQuery.trim() || distQuery.length < 2) { setDistResults([]); setDistOpen(false); return; }
+    setDistLoading(true);
+    api.distributors.search(distQuery)
+      .then(data => {
+        const list = Array.isArray(data) ? data : data.distributors || [];
+        setDistResults(list.slice(0, 10));
+        setDistOpen(list.length > 0);
+      })
+      .catch(() => setDistResults([]))
+      .finally(() => setDistLoading(false));
+  }, [distQuery]);
+
+  const selectDist = (d) => {
+    const name = d.distributor_name || d.full_name || d.name || '';
+    const nb = d.distributor_code || d.nb_number || '';
+    update('referralName', name);
+    update('referral_name', name);
+    update('referralNbNumber', nb);
+    update('referral_nb', nb);
+    setDistQuery(`${name}${nb ? ` (${nb})` : ''}`);
+    setDistOpen(false);
+  };
 
   return (
     <div style={{ background: '#f8f9fa', padding: '20px', borderRadius: '8px' }}>
@@ -2325,16 +2364,17 @@ function ClientEditForm({ form, setForm }) {
           <input style={inputStyle} value={form.full_name || form.fullName || form.name || ''} onChange={e => update('full_name', e.target.value)} />
         </div>
         <div style={groupStyle}>
-          <label style={labelStyle}>Namibian ID Number *</label>
+          <label style={labelStyle}>Namibian ID Number</label>
           <input style={inputStyle} value={form.nbNumber || form.nb_number || ''} onChange={e => update('nbNumber', e.target.value)} />
         </div>
         <div style={groupStyle}>
-          <label style={labelStyle}>Date of Birth *</label>
+          <label style={labelStyle}>Date of Birth</label>
           <input type="date" style={inputStyle} value={form.dob || ''} onChange={e => update('dob', e.target.value)} />
         </div>
         <div style={groupStyle}>
-          <label style={labelStyle}>Gender *</label>
+          <label style={labelStyle}>Gender</label>
           <select style={inputStyle} value={form.gender || ''} onChange={e => update('gender', e.target.value)}>
+            <option value="">— Select —</option>
             <option value="Male">Male</option>
             <option value="Female">Female</option>
           </select>
@@ -2356,7 +2396,69 @@ function ClientEditForm({ form, setForm }) {
           <input style={inputStyle} value={form.weight || ''} onChange={e => update('weight', e.target.value)} />
         </div>
       </div>
-      <h4 style={{ color: '#2c3e50', marginBottom: '16px', borderTop: '1px solid #e5e7eb', paddingTop: '16px' }}>Health Assessment</h4>
+
+      <h4 style={sectionHeadStyle}>Member / Referral Information</h4>
+      <div style={{ marginBottom: '16px' }}>
+        <div style={{ ...groupStyle, marginBottom: '16px' }}>
+          <label style={labelStyle}>Membership Status</label>
+          <select style={{ ...inputStyle, maxWidth: '260px' }}
+            value={memberStatus}
+            onChange={e => { update('membershipStatus', e.target.value); update('membership_status', e.target.value); }}>
+            <option value="referred">🤝 Non-Member (Referred)</option>
+            <option value="member">🏅 Registered Member</option>
+          </select>
+        </div>
+
+        {isMember ? (
+          <div style={groupStyle}>
+            <label style={labelStyle}>Member NB Number</label>
+            <input style={{ ...inputStyle, maxWidth: '320px' }}
+              placeholder="e.g. NB001234"
+              value={form.nbNumber || form.nb_number || ''}
+              onChange={e => { update('nbNumber', e.target.value); update('nb_number', e.target.value); }} />
+          </div>
+        ) : (
+          <div style={{ position: 'relative', maxWidth: '480px' }}>
+            <label style={labelStyle}>Referral (Distributor)</label>
+            <input
+              style={inputStyle}
+              placeholder="Type name or NB number to search distributors..."
+              value={distQuery || (form.referralName || form.referral_name
+                ? `${form.referralName || form.referral_name}${form.referralNbNumber || form.referral_nb ? ` (${form.referralNbNumber || form.referral_nb})` : ''}`
+                : '')}
+              onChange={e => { setDistQuery(e.target.value); if (!e.target.value) { update('referralName', ''); update('referral_name', ''); update('referralNbNumber', ''); update('referral_nb', ''); } }}
+            />
+            {distLoading && <span style={{ position: 'absolute', right: '10px', top: '34px', fontSize: '0.8rem', color: '#6b7280' }}>Searching…</span>}
+            {distOpen && distResults.length > 0 && (
+              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #d1d5db', borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,0.12)', zIndex: 9999, maxHeight: '220px', overflowY: 'auto' }}>
+                {distResults.map((d, i) => {
+                  const dName = d.distributor_name || d.full_name || d.name || '';
+                  const dNb = d.distributor_code || d.nb_number || '';
+                  return (
+                    <div key={i}
+                      onClick={() => selectDist(d)}
+                      style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid #f3f4f6', fontSize: '0.88rem' }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#f0f9ff'}
+                      onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+                      <span style={{ fontWeight: 700, color: '#1e293b' }}>{dName}</span>
+                      {dNb && <span style={{ marginLeft: '8px', color: '#64748b', fontSize: '0.8rem' }}>{dNb}</span>}
+                      {d.branch && <span style={{ marginLeft: '8px', color: '#9ca3af', fontSize: '0.78rem' }}>{d.branch}</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {(form.referralName || form.referral_name) && !distOpen && (
+              <div style={{ marginTop: '6px', fontSize: '0.82rem', color: '#16a34a' }}>
+                ✓ Selected: <strong>{form.referralName || form.referral_name}</strong>
+                {(form.referralNbNumber || form.referral_nb) && <span style={{ color: '#6b7280', marginLeft: '6px' }}>({form.referralNbNumber || form.referral_nb})</span>}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <h4 style={sectionHeadStyle}>Health Assessment</h4>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
         <div style={groupStyle}>
           <label style={labelStyle}>Primary Reason for Visit</label>
