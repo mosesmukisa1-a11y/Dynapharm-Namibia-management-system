@@ -4398,7 +4398,7 @@ function BranchStockTab() {
           expiryDate: item.expiry_date || null,
           quantity: Number(item.received_qty),
         })),
-        warehouseSource: 'Warehouse',
+        warehouseSource: selectedRequest.dispatch_warehouse || selectedRequest.dispatchWarehouse || selectedRequest.from_warehouse || 'Warehouse',
         deliveryNote: receiveDeliveryNote || null,
         receivedBy: receiveReceivedBy || user?.full_name || user?.username || null,
       });

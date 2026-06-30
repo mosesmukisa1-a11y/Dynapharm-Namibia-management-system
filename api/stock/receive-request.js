@@ -99,7 +99,44 @@ export default async function handler(req, res) {
           `Expiry: ${expiryDate || 'N/A'}`,
         ].join(' ');
 
-        // Insert into stock_movements
+        // ── Deduct from source warehouse stock_batches (FEFO) ────────────────────
+        // Uses the same FEFO pattern as fefoDeductStockBatches() in transfers.js.
+        // Best-effort: logs a warning on shortfall but does not abort the receipt.
+        if (warehouseSource) {
+          const whBatches = await client.query(
+            `SELECT id, remaining_quantity
+             FROM stock_batches
+             WHERE (LOWER(TRIM(location)) = LOWER(TRIM($1)) OR LOWER(TRIM(warehouse_id)) = LOWER(TRIM($1)))
+               AND LOWER(TRIM(description)) = LOWER(TRIM($2))
+               AND remaining_quantity > 0
+             ORDER BY expiry_date ASC NULLS LAST, import_date ASC
+             FOR UPDATE`,
+            [warehouseSource, productName]
+          );
+          let toDeduct = qty;
+          for (const row of whBatches.rows) {
+            if (toDeduct <= 0) break;
+            const take = Math.min(toDeduct, Number(row.remaining_quantity));
+            await client.query(
+              `UPDATE stock_batches
+               SET remaining_quantity = remaining_quantity - $1, updated_at = NOW()
+               WHERE id = $2`,
+              [take, row.id]
+            );
+            toDeduct -= take;
+          }
+          if (toDeduct > 0) {
+            console.warn(
+              `[stock/receive-request] shortfall: could not fully deduct ` +
+              `${productName} from ${warehouseSource} (shortfall: ${toDeduct}). ` +
+              `Stock may have already been reserved or dispatched via a transfer.`
+            );
+          }
+        }
+
+        // Insert into stock_movements — 'branch_receipt' is in both INWARD_TYPES
+        // (adds to branch) and OUTWARD_TYPES (subtracts from warehouse) in stockEngine,
+        // so inventory_balances for both locations are correctly updated on recompute.
         const smId = generateId('MOV');
         await client.query(
           `INSERT INTO stock_movements
@@ -108,7 +145,7 @@ export default async function handler(req, res) {
               destination_location, destination_location_type,
               reference_id, notes, created_by, status,
               movement_date, created_at, updated_at)
-           VALUES ($1,$2,$3,$4,$5,'received',$6,'warehouse',$7,'branch',$8,$9,$10,'posted',NOW(),NOW(),NOW())`,
+           VALUES ($1,$2,$3,$4,$5,'branch_receipt',$6,'warehouse',$7,'branch',$8,$9,$10,'posted',NOW(),NOW(),NOW())`,
           [smId, productName, batchNo, expiryDate, qty,
            warehouseSource, branchId, requestId, noteText, receivedBy]
         );
@@ -158,10 +195,15 @@ export default async function handler(req, res) {
       return { requestRef, itemsProcessed: processed.length, processed };
     });
 
-    // ── Post-transaction: recompute balances (best-effort, non-blocking) ────────
+    // ── Post-transaction: recompute balances for both branch and warehouse ───────
     recomputeLocationBalances('branch', branchId).catch((e) =>
-      console.error('[stock/receive-request] recompute error:', e.message)
+      console.error('[stock/receive-request] branch recompute error:', e.message)
     );
+    if (warehouseSource) {
+      recomputeLocationBalances('warehouse', warehouseSource).catch((e) =>
+        console.error('[stock/receive-request] warehouse recompute error:', e.message)
+      );
+    }
 
     return res.json({
       success: true,

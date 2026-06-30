@@ -3,3 +3,4 @@
 - [gmFinanceMisEngine consultationFees](gm-engine-consult-fees.md) — getAllBranchesSalesRevenue does NOT return consultationFees; query BAT separately in gm/summary.js.
 - [stock_adjustments schema](stock-adjustments-schema.md) — Full column set added to server.js schemaSyncs; old api/stock/edit-requests.js uses field_name (legacy, not used by StockPortal).
 - [Warehouse write-off deduction path](warehouse-writeoff-path.md) — warehouse write-offs deduct stock_batches.remaining_quantity (not branch_inventory_batches); detected via inferLocationType(source_location) in approve handler.
+- [receive-request warehouse deduction](receive-request-warehouse-deduction.md) — stock-request receipt path must FEFO-deduct stock_batches + use branch_receipt (not received) movement type + recompute warehouse balances.
