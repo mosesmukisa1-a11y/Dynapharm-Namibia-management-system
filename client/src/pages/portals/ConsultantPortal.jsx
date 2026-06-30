@@ -3454,6 +3454,12 @@ ${r.follow_up_date ? `
             </div>
           </div>
 
+          {error && (
+            <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', color: '#b91c1c', padding: '10px 14px', borderRadius: '8px', marginBottom: '12px', fontSize: '0.9rem', fontWeight: 600 }}>
+              ⚠️ {error}
+            </div>
+          )}
+
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
             <button onClick={() => printFollowUpReport()}
               style={{ padding: '10px 22px', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem' }}>
