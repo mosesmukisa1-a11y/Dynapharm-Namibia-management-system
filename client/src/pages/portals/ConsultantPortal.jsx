@@ -2900,6 +2900,8 @@ function FollowUpReportModal({ parentReport, onClose, onSaved }) {
     client_name: parentReport.client_name || '',
     branch: parentReport.branch || user?.branch || '',
     consultant: user?.full_name || user?.username || 'Consultant',
+    consultant_phone: user?.phone || user?.mobile || null,
+    consultant_email: user?.email || null,
     membership_status: parentReport.membership_status || 'referred',
     consultation_fee: 150,
     nb_number: parentReport.nb_number || null,
@@ -2971,6 +2973,8 @@ function FollowUpReportModal({ parentReport, onClose, onSaved }) {
     <div><b>Date:</b> ${fmtDateTime(r.created_at)}</div>
     <div><b>Branch:</b> ${esc(r.branch || 'N/A')}</div>
     <div><b>Consultant:</b> ${esc(r.consultant)}</div>
+    ${r.consultant_phone ? `<div><b>Phone:</b> ${esc(r.consultant_phone)}</div>` : ''}
+    ${r.consultant_email ? `<div><b>Email:</b> ${esc(r.consultant_email)}</div>` : ''}
   </div>
 </div>
 
@@ -3019,6 +3023,8 @@ ${r.follow_up_date ? `
     <div class="sig-box">
       <div class="sig-label">Consultant Signature</div>
       <div class="sig-name">${esc(r.consultant)}</div>
+      ${r.consultant_phone ? `<div class="sig-label" style="margin-top:3px;">📞 ${esc(r.consultant_phone)}</div>` : ''}
+      ${r.consultant_email ? `<div class="sig-label">✉️ ${esc(r.consultant_email)}</div>` : ''}
     </div>
     <div class="sig-box">
       <div class="sig-label">Patient / Guardian Signature</div>
