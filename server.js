@@ -710,15 +710,35 @@ app.patch('/api/stock-adjustments/:id/approve', async (req, res) => {
         const dbCol = batchColumnMap[field_to_adjust];
         if (!dbCol) return res.status(400).json({ error: `Field '${field_to_adjust}' is not adjustable` });
 
-        await query(`UPDATE stock_batches SET ${dbCol} = $1, updated_at = NOW() WHERE id = $2`, [new_value, target_id]);
+        const qtyDelta = field_to_adjust === 'quantity' ? Number(new_value) - Number(adj.old_value || 0) : 0;
+
+        if (field_to_adjust === 'quantity') {
+          // Update both remaining_quantity AND quantity (by the same delta) so the
+          // invariant  remaining = quantity - dispatched_quantity  always holds.
+          // Without bumping quantity, the startup reconciliation detects
+          // remaining > (quantity - dispatched) and reverts the approved edit on
+          // every server restart.  'positive_adjustment' is already in the
+          // reconciliation exclusion list, so the audit movement won't re-trigger it.
+          await query(
+            `UPDATE stock_batches
+             SET remaining_quantity = $1,
+                 quantity           = GREATEST(quantity + $2, $1),
+                 updated_at         = NOW()
+             WHERE id = $3`,
+            [Number(new_value), qtyDelta, target_id]
+          );
+        } else {
+          await query(`UPDATE stock_batches SET ${dbCol} = $1, updated_at = NOW() WHERE id = $2`, [new_value, target_id]);
+        }
 
         // Log to stock_movements (no ON CONFLICT — use unique movement id)
+        // Use 'positive_adjustment' (excluded from the startup reconciliation query)
+        // so the audit entry never re-triggers a recalculation of remaining_quantity.
         const movId = 'MOV-ADJ-' + Date.now() + '-' + Math.floor(Math.random() * 9999);
-        const qtyDelta = field_to_adjust === 'quantity' ? Number(new_value) - Number(adj.old_value || 0) : 0;
         try {
           await query(
             `INSERT INTO stock_movements (id, product_name, quantity, movement_type, source_location, destination_location, reference_id, notes, created_by, created_at, updated_at)
-             VALUES ($1,$2,$3,'adjustment',$4,$4,$5,$6,$7,NOW(),NOW())`,
+             VALUES ($1,$2,$3,'positive_adjustment',$4,$4,$5,$6,$7,NOW(),NOW())`,
             [movId, adj.product_name || 'Unknown', qtyDelta, adj.location || target_type, adjId,
              `Approved correction: ${field_to_adjust} changed from ${adj.old_value} to ${new_value}`, approved_by]
           );
