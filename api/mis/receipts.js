@@ -165,7 +165,13 @@ export default async function handler(req, res) {
       walkinWhere.push(`(sale_number ILIKE $${walkinParams.length} OR customer_name ILIKE $${walkinParams.length} OR customer_phone ILIKE $${walkinParams.length})`);
     }
 
-    // Always include only completed sales so the receipt total matches GM Total Sales.
+    // Only completed sales, and exclude any receipt that has an approved refund —
+    // a refunded receipt should not appear in the MIS entry list.
+    walkinWhere.unshift(`NOT EXISTS (
+      SELECT 1 FROM branch_refund_requests rr
+      WHERE rr.sale_reference = branch_walkin_sales.sale_number
+        AND rr.status = 'approved'
+    )`);
     walkinWhere.unshift(`status = 'completed'`);
 
     let walkinQuery = `
