@@ -1,5 +1,6 @@
 import { applyAuthCors } from '../_lib/auth.js';
 import { getMany } from '../db.js';
+import { normalizeBranchName } from '../services/gmFinanceMisEngine.js';
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
@@ -44,7 +45,7 @@ export default async function handler(req, res) {
 
     const warehouseRows = batches.map(b => ({
       locationType: 'warehouse',
-      locationName: (b.location || 'unknown').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+      locationName: normalizeBranchName(b.location) || 'Unknown',
       productName: b.description,
       qty:     Number(b.remaining_quantity || b.quantity || 0),
       unitCIF: Number(b.cif_unit_cost  || 0),
@@ -53,7 +54,7 @@ export default async function handler(req, res) {
 
     const branchRows = branchInv.map(b => ({
       locationType: 'branch',
-      locationName: (b.location_id || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+      locationName: normalizeBranchName(b.location_id) || b.location_id || 'Unknown',
       productName: b.product_name,
       qty:     Number(b.closing_qty || 0),
       unitCIF: Number(b.unit_cif   || 0),

@@ -1,5 +1,6 @@
 import { applyAuthCors } from '../_lib/auth.js';
 import { getMany } from '../db.js';
+import { normalizeBranchSlug } from '../_lib/branchUtils.js';
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
@@ -26,8 +27,9 @@ export default async function handler(req, res) {
       getMany(`SELECT product_name, movement_type, quantity, source_location, created_at FROM stock_movements WHERE movement_type IN ('dispense','prescription_dispense') ${month ? 'AND created_at >= $1 AND created_at <= $2' : ''} ORDER BY created_at DESC`.trim(), month ? params : []),
     ]);
 
-    const filtered = branchId !== 'all'
-      ? walkinSales.filter(s => s.branch_id === branchId || (s.branch_id || '').includes(branchId))
+    const canonicalFilter = branchId !== 'all' ? (normalizeBranchSlug(branchId) || branchId) : null;
+    const filtered = canonicalFilter
+      ? walkinSales.filter(s => (normalizeBranchSlug(s.branch_id) || s.branch_id) === canonicalFilter)
       : walkinSales;
 
     const memberSales = filtered.filter(s => ['member', 'walk_in_member_sale', 'walkin_member_sale'].includes(s.customer_type));
