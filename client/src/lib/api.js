@@ -204,6 +204,7 @@ export const api = {
       if (productNames.length > 0) params.set('products', productNames.join(','));
       return api.get(`/stock/transfers/batch-availability?${params}`);
     },
+    disposeAllWriteoffs: (ids, data = {}) => api.put('/stock-movements', { ...data, action: 'dispose_all', ids }),
   },
 
   branch: {

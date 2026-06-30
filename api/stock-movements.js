@@ -241,8 +241,13 @@ export default async function handler(req, res) {
         const srcLocType = body.source_location_type || inferLocationType(srcLoc);
         const dstLocType = body.destination_location_type || inferLocationType(destLoc);
         const branchId = srcLoc || destLoc;
-        // Allow branch users to submit write-offs pending GM approval
-        const movStatus = body.status === 'pending_approval' ? 'pending_approval' : 'posted';
+        // Allow branch users to submit write-offs pending GM approval.
+        // Warehouse and country-stock write-offs ALWAYS require GM approval so
+        // the approve handler (not the POST path) can deduct from stock_batches.
+        const forceApproval = movType === 'write_off' &&
+          (srcLocType === 'warehouse' || srcLocType === 'country');
+        const movStatus = (body.status === 'pending_approval' || forceApproval)
+          ? 'pending_approval' : 'posted';
 
         if (branchScope.enforced) {
           // Branch users cannot post warehouse_dispatch movements
@@ -391,6 +396,7 @@ export default async function handler(req, res) {
                   if (remaining <= 0) break;
                   const take = Math.min(remaining, Number(b.quantity));
                   await client.query(`UPDATE branch_inventory_batches SET quantity = quantity - $1, updated_at = NOW() WHERE id = $2`, [take, b.id]);
+                  await client.query(`DELETE FROM branch_inventory_batches WHERE id = $1 AND quantity <= 0`, [b.id]);
                   remaining -= take;
                 }
               }
@@ -408,6 +414,7 @@ export default async function handler(req, res) {
                   if (remaining <= 0) break;
                   const take = Math.min(remaining, Number(b.quantity));
                   await client.query(`UPDATE branch_inventory_batches SET quantity = quantity - $1, updated_at = NOW() WHERE id = $2`, [take, b.id]);
+                  await client.query(`DELETE FROM branch_inventory_batches WHERE id = $1 AND quantity <= 0`, [b.id]);
                   remaining -= take;
                 }
               }
@@ -500,19 +507,21 @@ export default async function handler(req, res) {
         // If the source is a warehouse, deduct from stock_batches.remaining_quantity
         // (warehouse stock lives in stock_batches, not branch_inventory_batches).
         const sourceLocType = r.source_location_type || inferLocationType(branchId);
-        if (sourceLocType === 'warehouse') {
+        if (sourceLocType === 'warehouse' || sourceLocType === 'country') {
           if (branchId && productName && qty > 0) {
-            // Immediately adjust inventory_balances in-transaction
+            // Immediately adjust inventory_balances in-transaction.
+            // Use the actual sourceLocType (country_stock has location_type='country',
+            // not 'warehouse') so the correct row is found and updated.
             await client.query(
               `UPDATE inventory_balances
                SET closing_qty = GREATEST(closing_qty - $1, 0),
                    outward_qty = outward_qty + $1,
                    updated_at  = NOW()
-               WHERE location_type = 'warehouse'
+               WHERE location_type = $5
                  AND LOWER(REPLACE(location_id,' ','_')) = LOWER(REPLACE($2,' ','_'))
                  AND LOWER(TRIM(product_name)) = LOWER(TRIM($3))
                  AND COALESCE(batch_no,'') = COALESCE($4,'')`,
-              [qty, branchId, productName, batchNo || null]
+              [qty, branchId, productName, batchNo || null, sourceLocType]
             );
 
             // Deduct from stock_batches — specific batch first, then FIFO by expiry
