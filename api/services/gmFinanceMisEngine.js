@@ -395,9 +395,9 @@ export async function getCompanyStockSummary() {
  * All sales across the company (all branches).
  */
 export async function getAllBranchesSalesRevenue(start, end) {
-  const [rows, refundRow, rxRows, priceListRows] = await Promise.all([
+  const [rows, refundRow, rxRows] = await Promise.all([
     getMany(
-      `SELECT branch_id, customer_type, payment_method, total, items
+      `SELECT branch_id, customer_type, payment_method, total
        FROM branch_walkin_sales
        WHERE status = 'completed'
          AND sale_date >= $1::date
@@ -412,9 +412,8 @@ export async function getAllBranchesSalesRevenue(start, end) {
          AND processed_at::date <= $2::date`,
       [start, end]
     ),
-    // Prescription DP from BAT — the authoritative source for DP figures.
-    // Uses product_total_dp for non-member Rx (branch keeps DP; CP-DP margin → distributor).
-    // Uses grand_total for member Rx (members pay DP; grand_total = DP).
+    // Prescription revenue from BAT — grand_total is what the patient was actually charged,
+    // matching the receipt total visible in MIS reports.
     getMany(
       `SELECT grand_total, product_total_dp, client_type
        FROM branch_activity_transactions
@@ -425,43 +424,16 @@ export async function getAllBranchesSalesRevenue(start, end) {
          AND service_date <= $2::date`,
       [start, end]
     ),
-    // GM price list — authoritative DP source
-    getMany(`SELECT description, dp FROM product_prices`),
   ]);
-
-  // Build price-map from GM price list
-  const priceMapABSR = {};
-  for (const p of priceListRows) {
-    if (p.description) priceMapABSR[p.description.toLowerCase().trim()] = Number(p.dp || 0);
-  }
-  const lookupDpABSR = (name) => (name ? (priceMapABSR[name.toLowerCase().trim()] || 0) : 0);
 
   const refundTotal = Number(refundRow?.refund_total || 0);
   let walkinSales = 0, memberSales = 0, nonMemberSales = 0, onlineSales = 0;
 
   for (const r of rows) {
     const ct = (r.customer_type || '').toLowerCase();
-    let amt;
-    // Non-member walk-in: branch_walkin_sales.total = CP (consumer price).
-    // Parse item-level DP to get the true distributor-price basis.
-    // Fallback to total when items is empty (e.g. older records with customer_type='customer').
-    if (ct.includes('non') || (!ct.includes('member') && !ct.includes('online'))) {
-      let items = [];
-      try { items = typeof r.items === 'string' ? JSON.parse(r.items) : (Array.isArray(r.items) ? r.items : []); } catch {}
-      if (items.length > 0) {
-        amt = items.reduce((s, i) => {
-          const nm = (i.product_name || i.name || i.description || '').trim();
-          const dp = lookupDpABSR(nm) || Number(i.dpPrice || i.dp || i.unit_price || 0);
-          return s + dp * Number(i.quantity || i.qty || 1);
-        }, 0);
-      } else {
-        // No item detail — use total as-is (already at DP or best available)
-        amt = Number(r.total || 0);
-      }
-    } else {
-      // Member and online sales: total = DP (members pay at DP)
-      amt = Number(r.total || 0);
-    }
+    // Use the stored receipt total for every sale type so Total Sales matches
+    // what customers actually paid (= what MIS receipts report shows).
+    const amt = Number(r.total || 0);
     const isMember = ct.includes('member') && !ct.includes('non');
     if (isMember) memberSales += amt;
     else if (ct.includes('online')) onlineSales += amt;
@@ -473,11 +445,10 @@ export async function getAllBranchesSalesRevenue(start, end) {
   walkinSales    = Math.max(0, walkinSales    - refundTotal);
   nonMemberSales = Math.max(0, nonMemberSales - refundTotal);
 
-  // Prescription DP from BAT — always use product_total_dp (DP from price list = company money).
-  // grand_total for non-member Rx = CP (patient charge), excluded from company revenue.
+  // Prescription revenue: grand_total = what the patient was charged (matches MIS receipts).
   let prescriptionSales = 0;
   for (const r of rxRows) {
-    prescriptionSales += Number(r.product_total_dp || r.grand_total || 0);
+    prescriptionSales += Number(r.grand_total || r.product_total_dp || 0);
   }
 
   const totalSales = walkinSales + prescriptionSales;

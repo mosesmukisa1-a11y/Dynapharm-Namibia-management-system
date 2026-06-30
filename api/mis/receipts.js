@@ -165,6 +165,9 @@ export default async function handler(req, res) {
       walkinWhere.push(`(sale_number ILIKE $${walkinParams.length} OR customer_name ILIKE $${walkinParams.length} OR customer_phone ILIKE $${walkinParams.length})`);
     }
 
+    // Always include only completed sales so the receipt total matches GM Total Sales.
+    walkinWhere.unshift(`status = 'completed'`);
+
     let walkinQuery = `
       SELECT id, sale_number, branch_id, customer_name, customer_phone, customer_email,
              customer_type, payment_method, total, subtotal, discount, tax, total_bv,
@@ -174,7 +177,7 @@ export default async function handler(req, res) {
     if (walkinWhere.length > 0) {
       walkinQuery += ` WHERE ${walkinWhere.join(' AND ')}`;
     }
-    walkinQuery += ` ORDER BY sale_date DESC LIMIT 1000`;
+    walkinQuery += ` ORDER BY sale_date DESC LIMIT 2000`;
 
     // ── Prescription dispensing query ─────────────────────────────────────────
     const rxParams = [];
@@ -263,7 +266,7 @@ export default async function handler(req, res) {
       return db - da;
     });
 
-    const receipts = allRows.slice(0, 1000).map(normalizeReceipt).filter(Boolean);
+    const receipts = allRows.slice(0, 3000).map(normalizeReceipt).filter(Boolean);
     const totals = summarizeReceipts(receipts);
 
     return res.status(200).json({
