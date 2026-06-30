@@ -97,6 +97,7 @@ function normalizeBatch(row) {
   return {
     id: row.id,
     barcode: row.barcode,
+    qr_code: row.qr_code || null,
     cartonNo: row.carton_no,
     carton_no: row.carton_no,
     description: row.description,
@@ -206,7 +207,7 @@ export default async function handler(req, res) {
 
   try {
     const expiryFallbackSelect = `
-        SELECT sb.id, sb.barcode, sb.carton_no, sb.description, sb.batch_no,
+        SELECT sb.id, sb.barcode, sb.qr_code, sb.carton_no, sb.description, sb.batch_no,
                COALESCE(sb.expiry_date, cs.expiry_date) AS expiry_date,
                sb.quantity, sb.total_ctns, sb.import_date, sb.location, sb.status,
                sb.dispatched_quantity, sb.remaining_quantity, sb.product_id,
