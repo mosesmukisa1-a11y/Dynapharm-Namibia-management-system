@@ -663,7 +663,7 @@ export default async function handler(req, res) {
       }
 
       await publishRealtimeEvent('stock_transfers', 'create', transfer);
-      broadcastStockEvent('transfer_created', { transferId: transfer.id, status: transfer.status }).catch?.(() => {});
+      broadcastStockEvent('transfer_created', { transferId: transfer.id, status: transfer.status })?.catch(() => {});
 
       const itemsMap = await loadTransferItems([transfer.id]);
       const notesMap = new Map();
@@ -1203,7 +1203,7 @@ export default async function handler(req, res) {
       }
 
       await publishRealtimeEvent('stock_transfers', 'update', transfer);
-      broadcastStockEvent('transfer_updated', { transferId: transfer.id, status: transfer.status }).catch?.(() => {});
+      broadcastStockEvent('transfer_updated', { transferId: transfer.id, status: transfer.status })?.catch(() => {});
 
       const itemsMap = await loadTransferItems([transfer.id]);
       const notesMap = await loadDispatchNotes([transfer.id]);
@@ -1242,7 +1242,7 @@ export default async function handler(req, res) {
       await query('DELETE FROM stock_transfer_items WHERE transfer_id = $1', [id]);
       await query('DELETE FROM dispatch_notes WHERE transfer_id = $1', [id]);
       await publishRealtimeEvent('stock_transfers', 'delete', { id });
-      broadcastStockEvent('transfer_deleted', { transferId: id }).catch?.(() => {});
+      broadcastStockEvent('transfer_deleted', { transferId: id })?.catch(() => {});
       return res.status(200).json({ success: true });
     }
 
