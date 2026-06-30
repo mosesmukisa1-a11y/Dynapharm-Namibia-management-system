@@ -1,5 +1,7 @@
 import { applyAuthCors } from '../../_lib/auth.js';
 import { getMany } from '../../db.js';
+import { ALL_BRANCH_IDS } from '../../_lib/branchUtils.js';
+import { normalizeBranchName } from '../../services/gmFinanceMisEngine.js';
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
@@ -18,10 +20,10 @@ export default async function handler(req, res) {
         FROM   stock_batches sb
         LEFT JOIN product_prices p
                ON LOWER(TRIM(p.description)) = LOWER(TRIM(sb.description))
-        WHERE  sb.location != 'country_stock'
-          AND  sb.remaining_quantity > 0
+        WHERE  sb.remaining_quantity > 0
           AND  COALESCE(sb.status, '') != 'expired'
-      `),
+          AND  sb.location != ALL($1::text[])
+      `, [ALL_BRANCH_IDS]),
       // Branch stock. Prices from product_prices (GM Price List).
       getMany(`
         SELECT b.branch_id AS location_id,
@@ -39,7 +41,7 @@ export default async function handler(req, res) {
     const locationMap = {};
 
     batches.forEach(b => {
-      const loc = (b.location || 'Unknown').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      const loc = normalizeBranchName(b.location) || (b.location || 'Unknown').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
       const qty = Number(b.remaining_quantity || b.quantity || 0);
       if (!locationMap[loc]) locationMap[loc] = { locationName: loc, locationType: 'warehouse', totalQty: 0, totalValueCIF: 0, totalValueDPC: 0 };
       locationMap[loc].totalQty      += qty;
@@ -48,7 +50,7 @@ export default async function handler(req, res) {
     });
 
     branchInv.forEach(b => {
-      const loc = (b.location_id || 'Unknown').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      const loc = normalizeBranchName(b.location_id) || (b.location_id || 'Unknown').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
       const qty = Number(b.closing_qty || 0);
       if (!locationMap[loc]) locationMap[loc] = { locationName: loc, locationType: 'branch', totalQty: 0, totalValueCIF: 0, totalValueDPC: 0 };
       locationMap[loc].totalQty      += qty;

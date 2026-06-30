@@ -20,6 +20,7 @@
  */
 import { applyAuthCors } from '../_lib/auth.js';
 import { getMany } from '../db.js';
+import { ALL_BRANCH_IDS } from '../_lib/branchUtils.js';
 
 const ALLOWED = new Set(['admin', 'gm', 'director', 'mis', 'stock', 'finance']);
 
@@ -69,6 +70,10 @@ export default async function handler(req, res) {
       // LEFT JOIN product_prices so batches without an exact price-catalogue
       // match are still included (prices fall back to 0 / lookupCif/Dp).
       // Country stock is included so the GM sees the complete picture.
+      // IMPORTANT: exclude all known branch IDs from stock_batches so that
+      // any batch that was mistakenly imported under a branch location, or whose
+      // remaining_quantity was not zeroed after dispatch, does not double-count
+      // with the branch_inventory_batches query above.
       getMany(
         `SELECT sb.location, sb.description AS product_name,
                 SUM(sb.remaining_quantity)                                   AS qty,
@@ -81,7 +86,9 @@ export default async function handler(req, res) {
                ON LOWER(TRIM(pp.description)) = LOWER(TRIM(sb.description))
          WHERE sb.remaining_quantity > 0
            AND COALESCE(sb.status, '') != 'expired'
-         GROUP BY sb.location, sb.description`
+           AND sb.location != ALL($1::text[])
+         GROUP BY sb.location, sb.description`,
+        [ALL_BRANCH_IDS]
       ),
 
       // ── Field stock: priced via GM price list ──

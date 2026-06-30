@@ -1,6 +1,7 @@
 import { applyAuthCors } from '../_lib/auth.js';
 import { getMany } from '../db.js';
 import { normalizeBranchName } from '../services/gmFinanceMisEngine.js';
+import { ALL_BRANCH_IDS } from '../_lib/branchUtils.js';
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
@@ -23,10 +24,10 @@ export default async function handler(req, res) {
         FROM   stock_batches sb
         LEFT JOIN product_prices p
                ON LOWER(TRIM(p.description)) = LOWER(TRIM(sb.description))
-        WHERE  sb.location != 'country_stock'
-          AND  sb.remaining_quantity > 0
+        WHERE  sb.remaining_quantity > 0
           AND  COALESCE(sb.status, '') != 'expired'
-      `),
+          AND  sb.location != ALL($1::text[])
+      `, [ALL_BRANCH_IDS]),
       // Branch stock: read directly from branch_inventory_batches (authoritative source).
       // Prices sourced from product_prices (GM Price List).
       getMany(`
