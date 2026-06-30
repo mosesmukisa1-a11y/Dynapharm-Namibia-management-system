@@ -16,6 +16,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { MembershipAgreementForm } from '../../components/MembershipAgreementForm';
 import StaffMessagesTab from '../../components/StaffMessagesTab';
 import BarcodeScanner from '../../components/BarcodeScanner';
+import QRCameraScanner from '../../components/QRCameraScanner';
 
 const DEFAULT_REFERRAL = { name: 'Dynapharm Namibia', nb_number: 'NB005676', id: 'DEFAULT_REFERRAL' };
 
@@ -1393,7 +1394,8 @@ function WalkInSalesTab() {
   const [salesDateTo, setSalesDateTo] = useState('');
   const [regFromCache, setRegFromCache] = useState(false);
   const [refFromCache, setRefFromCache] = useState(false);
-  const [scanMode, setScanMode] = useState(false);
+  const [scanMode, setScanMode]     = useState(false);
+  const [cameraMode, setCameraMode] = useState(false);
 
   const loadSales = (branch) =>
     api.branch.walkinSales(branch ? `branch_id=${branch}` : '')
@@ -2064,7 +2066,7 @@ function WalkInSalesTab() {
 
                 {/* Search + price badge */}
                 <div style={{ padding: '12px 16px 0', background: '#fff', flexShrink: 0 }}>
-                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: scanMode ? 6 : 10 }}>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: (scanMode || cameraMode) ? 6 : 10 }}>
                     <div style={{ position: 'relative', flex: 1 }}>
                       <div style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: '#c41e3a', fontSize: '0.9rem', pointerEvents: 'none' }}>🔍</div>
                       <input type="text" value={productSearch} onChange={e => setProductSearch(e.target.value)} placeholder="Search products…"
@@ -2072,11 +2074,19 @@ function WalkInSalesTab() {
                     </div>
                     <button
                       type="button"
-                      onClick={() => setScanMode(m => !m)}
-                      title="Toggle barcode scanner"
+                      onClick={() => { setScanMode(m => !m); setCameraMode(false); }}
+                      title="Toggle barcode scanner (USB/Bluetooth)"
                       style={{ flexShrink: 0, padding: '7px 13px', borderRadius: 9, border: scanMode ? '2px solid #c41e3a' : '1.5px solid #d1d5db', background: scanMode ? '#fff0f3' : '#f8fafc', color: scanMode ? '#c41e3a' : '#374151', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all .15s' }}
                     >
                       🔲 Scan
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setCameraMode(m => !m); setScanMode(false); }}
+                      title="Scan product QR code with camera"
+                      style={{ flexShrink: 0, padding: '7px 13px', borderRadius: 9, border: cameraMode ? '2px solid #7c3aed' : '1.5px solid #d1d5db', background: cameraMode ? '#f5f3ff' : '#f8fafc', color: cameraMode ? '#7c3aed' : '#374151', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all .15s' }}
+                    >
+                      📷 QR
                     </button>
                     <span style={{ fontSize: '0.76rem', padding: '6px 12px', borderRadius: 20, fontWeight: 700, whiteSpace: 'nowrap', background: isMember ? '#fff0f3' : '#fffbeb', color: isMember ? '#c41e3a' : '#92400e', border: `1.5px solid ${isMember ? '#fecaca' : '#fcd34d'}` }}>
                       {isMember ? '🏅 DP Price' : '👤 CP Price'}
@@ -2089,6 +2099,18 @@ function WalkInSalesTab() {
                       placeholder="Aim scanner at product barcode…"
                       style={{ marginBottom: 10 }}
                     />
+                  )}
+                  {cameraMode && (
+                    <div style={{ marginBottom: 10 }}>
+                      <QRCameraScanner
+                        onResult={(res) => { handleBarcodeScan(res); }}
+                        onError={(msg) => setError(msg)}
+                        onClose={() => setCameraMode(false)}
+                      />
+                      <div style={{ marginTop: 6, fontSize: '0.76rem', color: '#6b7280', textAlign: 'center' }}>
+                        Point your camera at a product QR code label — items are added to cart automatically
+                      </div>
+                    </div>
                   )}
 
                   {/* Category filter tabs */}
