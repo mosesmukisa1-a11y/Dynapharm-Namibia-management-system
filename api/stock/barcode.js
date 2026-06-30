@@ -42,6 +42,33 @@ export default async function handler(req, res) {
     const productId = url.searchParams.get('productId') || '';
 
     if (barcode) {
+      // ── Priority 1: permanent product_code from the GM price list ──────────
+      // Scanning a product code (e.g. NB9845) returns product identity only.
+      // FEFO batch selection happens at sale/dispense time on the backend.
+      const productRow = await getOne(
+        `SELECT description, dp, cp, bv, cif, product_code
+         FROM product_prices
+         WHERE product_code = $1
+         LIMIT 1`,
+        [barcode.trim().toUpperCase()]
+      );
+      if (productRow) {
+        return res.status(200).json({
+          success: true,
+          productName: productRow.description,
+          barcode: productRow.product_code,
+          productCode: productRow.product_code,
+          dp: Number(productRow.dp || 0),
+          cp: Number(productRow.cp || 0),
+          bv: Number(productRow.bv || 0),
+          cifUnitCost: Number(productRow.cif || 0),
+          unitPrice: Number(productRow.dp || 0),
+          // No batch/stock fields — FEFO is applied at sale time
+          fefoEnforced: true,
+        });
+      }
+
+      // ── Priority 2: legacy batch-level barcode on stock_batches ─────────────
       const batch = await getOne(
         'SELECT * FROM stock_batches WHERE barcode = $1 OR qr_code = $1 LIMIT 1',
         [barcode]

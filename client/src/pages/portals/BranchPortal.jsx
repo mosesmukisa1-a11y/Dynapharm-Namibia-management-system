@@ -2620,6 +2620,26 @@ function PrescriptionsTab() {
     });
   };
 
+  const handleDispenseScan = (result) => {
+    if (!dispensePreview) return;
+    const scannedName = (result.productName || '').toLowerCase().trim();
+    if (!scannedName) return;
+    const matches = [];
+    dispensePreview.pendingItems.forEach((item, i) => {
+      const itemName = (item.name || '').toLowerCase().trim();
+      if (itemName === scannedName || itemName.includes(scannedName) || scannedName.includes(itemName)) {
+        matches.push(i);
+      }
+    });
+    if (matches.length > 0) {
+      setRxItemSelected(prev => {
+        const next = { ...prev };
+        matches.forEach(i => { next[i] = true; });
+        return next;
+      });
+    }
+  };
+
   const confirmDispense = async () => {
     if (!dispensePreview) return;
     const { report, pendingItems, isMember, membershipStatus } = dispensePreview;
@@ -3519,6 +3539,19 @@ function PrescriptionsTab() {
                   ))}
                 </div>
               )}
+              {/* ── Barcode scanner — scan product code to auto-select ─── */}
+              <div style={{ marginBottom: 12, padding: '10px 12px', background: '#f8fafc', borderRadius: 10, border: '1.5px solid #e2e8f0' }}>
+                <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
+                  🔲 Scan product barcode to select item
+                </div>
+                <BarcodeScanner
+                  onResult={handleDispenseScan}
+                  onError={() => {}}
+                  autoFocus={false}
+                  placeholder="Scan or type product code (NB9845)…"
+                />
+              </div>
+
               {/* ── Item selection header ─────────────────────────────── */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                 <div style={{ fontSize: '0.65rem', fontWeight: 700, color: dpSelectedCount === 0 ? '#dc2626' : '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.1em' }}>

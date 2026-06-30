@@ -7822,6 +7822,11 @@ function BarcodeTab() {
   const [alert, setAlert]                 = useState(null);
   const [selected, setSelected]           = useState({});
   const [preview, setPreview]             = useState(null);
+  const [subTab, setSubTab]               = useState('products');
+  const [plProducts, setPlProducts]       = useState([]);
+  const [plLoading, setPlLoading]         = useState(false);
+  const [plSearch, setPlSearch]           = useState('');
+  const [plSelected, setPlSelected]       = useState({});
 
   const load = () => {
     setLoading(true);
@@ -7831,6 +7836,16 @@ function BarcodeTab() {
       .finally(() => setLoading(false));
   };
   useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    if (subTab === 'products' && plProducts.length === 0 && !plLoading) {
+      setPlLoading(true);
+      api.prices.list()
+        .then(d => setPlProducts((Array.isArray(d) ? d : []).filter(p => p.product_code)))
+        .catch(() => {})
+        .finally(() => setPlLoading(false));
+    }
+  }, [subTab]);
 
   const fmtDate = d => { try { return d ? new Date(d).toLocaleDateString('en-ZA', { day:'2-digit', month:'short', year:'numeric' }) : '—'; } catch { return d || '—'; } };
   const fmtLoc  = loc => {
@@ -7903,6 +7918,76 @@ function BarcodeTab() {
     } catch {
       setAlert({ type: 'error', msg: 'Failed to assign barcode — please try again' });
     } finally { setSaving(false); }
+  };
+
+  const printProductLabel = async (p) => {
+    const code = p.product_code || '';
+    const name = p.description || '';
+    const dp = Number(p.dp || 0);
+    const cp = Number(p.cp || 0);
+    const svg = code ? code128SVG(code) : '';
+    const qrDataUrl = code ? await genQRDataUrl(code) : null;
+    const w = window.open('', '_blank', 'width=480,height=620');
+    if (!w) return;
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Label — ${name}</title>
+<style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:Arial,sans-serif;background:#fff;display:flex;flex-direction:column;align-items:center;padding:24px;}
+.card{border:2px solid #d1d5db;border-radius:14px;padding:20px 24px;text-align:center;width:300px;background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.08);}
+.brand{font-size:9px;font-weight:800;color:#c41e3a;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;}
+.name{font-size:13px;font-weight:700;color:#1a1a1a;line-height:1.35;margin-bottom:10px;}
+.bc-wrap{display:flex;justify-content:center;margin:6px 0;}
+.code{font-family:monospace;font-size:11px;font-weight:700;color:#374151;letter-spacing:1px;margin:4px 0;}
+.price-dp{font-size:20px;font-weight:900;color:#c41e3a;margin:8px 0 2px;}
+.price-cp{font-size:12px;color:#6b7280;margin:2px 0;}
+.qr-wrap{margin:12px auto 4px;display:flex;justify-content:center;}
+.hint{font-size:8px;color:#9ca3af;margin-top:3px;}
+.print-btn{margin-top:18px;padding:10px 32px;background:#c41e3a;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;}
+@media print{.print-btn{display:none;}@page{size:90mm 130mm;margin:4mm;}}</style>
+</head><body>
+  <div class="card">
+    <div class="brand">DYNAPHARM INTERNATIONAL NAMIBIA</div>
+    <div class="name">${name}</div>
+    ${svg ? `<div class="bc-wrap">${svg}</div>` : ''}
+    <div class="code">${code}</div>
+    ${dp > 0 ? `<div class="price-dp">NAD ${Math.round(dp).toLocaleString('en-ZA')}</div><div class="price-cp">Consumer Price: NAD ${Math.round(cp).toLocaleString('en-ZA')}</div>` : ''}
+    ${qrDataUrl ? `<div class="qr-wrap"><img src="${qrDataUrl}" alt="QR" style="width:120px;height:120px;display:block;" /></div><div class="hint">📱 Scan to identify product — FEFO applied at point of sale</div>` : ''}
+  </div>
+  <button class="print-btn" onclick="window.print()">🖨️ Print / Save PDF</button>
+</body></html>`);
+    w.document.close();
+    setTimeout(() => { try { w.focus(); } catch {} }, 150);
+  };
+
+  const printSelectedProductLabels = async () => {
+    const codes = Object.keys(plSelected).filter(c => plSelected[c]);
+    if (!codes.length) return;
+    const items = plProducts.filter(p => codes.includes(p.product_code));
+    const cards = await Promise.all(items.map(async p => {
+      const code = p.product_code || '';
+      const name = p.description || '';
+      const dp = Number(p.dp || 0);
+      const svg = code ? code128SVG(code) : '';
+      const qrDataUrl = code ? await genQRDataUrl(code) : null;
+      return `<div style="border:1.5px solid #d1d5db;border-radius:12px;padding:12px 14px;text-align:center;width:210px;display:inline-block;margin:5px;vertical-align:top;background:#fff;">
+        <div style="font-size:8px;font-weight:800;color:#c41e3a;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:4px;">DYNAPHARM NAMIBIA</div>
+        <div style="font-size:10px;font-weight:700;color:#1a1a1a;line-height:1.3;margin-bottom:5px;min-height:22px;">${name}</div>
+        ${svg ? `<div style="display:flex;justify-content:center;margin:3px 0;">${svg}</div>` : ''}
+        <div style="font-family:monospace;font-size:9px;font-weight:700;color:#374151;letter-spacing:1px;margin:2px 0;">${code}</div>
+        ${dp > 0 ? `<div style="font-size:13px;font-weight:900;color:#c41e3a;margin:4px 0;">NAD ${Math.round(dp).toLocaleString('en-ZA')}</div>` : ''}
+        ${qrDataUrl ? `<img src="${qrDataUrl}" alt="QR" style="width:80px;height:80px;display:block;margin:5px auto;" />` : ''}
+      </div>`;
+    }));
+    const w = window.open('', '_blank', 'width=900,height=700');
+    if (!w) return;
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Product Labels (${items.length})</title>
+<style>body{font-family:Arial,sans-serif;padding:16px;}@media print{@page{margin:8mm;}.no-print{display:none!important;}}</style>
+</head><body>
+  <div class="no-print" style="margin-bottom:10px;font-size:11px;color:#555;font-weight:bold">DYNAPHARM — Product Labels (${items.length})</div>
+  <div style="display:flex;flex-wrap:wrap;gap:4px">${cards.join('')}</div>
+  <div class="no-print" style="margin-top:16px;text-align:center">
+    <button onclick="window.print()" style="padding:8px 24px;background:#c41e3a;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px">🖨️ Print All Labels</button>
+  </div>
+</body></html>`);
+    w.document.close();
   };
 
   const makeLabelHTML = (b, qrDataUrl = null, qty = 1) => {
@@ -8086,9 +8171,120 @@ function BarcodeTab() {
   };
   const numSelected = Object.values(selected).filter(Boolean).length;
 
+  const plFiltered = plProducts.filter(p =>
+    !plSearch || (p.description||'').toLowerCase().includes(plSearch.toLowerCase()) ||
+    (p.product_code||'').toLowerCase().includes(plSearch.toLowerCase())
+  );
+  const plNumSelected = Object.values(plSelected).filter(Boolean).length;
+
   return (
     <div className="space-y-4">
       {alert && <Alert type={alert.type} onClose={() => setAlert(null)}>{alert.msg}</Alert>}
+
+      {/* ── Sub-tab switcher ─────────────────────────────────────────── */}
+      <div style={{ display: 'flex', gap: 8, borderBottom: '2px solid #f1f5f9', paddingBottom: 12 }}>
+        {[
+          { id: 'products', label: '🏷️ Product Labels', hint: 'Permanent product-code labels for shelf & POS scanning' },
+          { id: 'batch',    label: '📦 Batch Barcodes',  hint: 'Assign and print batch-level barcodes' },
+        ].map(t => (
+          <button key={t.id} onClick={() => setSubTab(t.id)} title={t.hint}
+            style={{ padding: '8px 20px', borderRadius: 9, border: subTab === t.id ? '2px solid #c41e3a' : '1.5px solid #e5e7eb', background: subTab === t.id ? '#fff0f3' : '#f8fafc', color: subTab === t.id ? '#c41e3a' : '#374151', fontWeight: subTab === t.id ? 700 : 500, fontSize: '0.87rem', cursor: 'pointer', transition: 'all .15s' }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Product Labels sub-tab ──────────────────────────────────── */}
+      {subTab === 'products' && (
+        <div className="space-y-4">
+          <Card>
+            <CardBody>
+              <div className="flex flex-wrap gap-3 items-center">
+                <div className="relative flex-1 min-w-[220px]">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary"
+                    placeholder="Search product name or code…" value={plSearch} onChange={e => setPlSearch(e.target.value)} />
+                </div>
+                <Button size="sm" variant="secondary" onClick={() => { setPlLoading(true); api.prices.list().then(d => setPlProducts((Array.isArray(d)?d:[]).filter(p=>p.product_code))).catch(()=>{}).finally(()=>setPlLoading(false)); }}>↺ Refresh</Button>
+                {plNumSelected > 0 && (
+                  <Button size="sm" onClick={printSelectedProductLabels} style={{ background: '#c41e3a', color: '#fff' }}>
+                    <Printer size={14} /> Print {plNumSelected} Label{plNumSelected > 1 ? 's' : ''}
+                  </Button>
+                )}
+                <button onClick={() => { const n = {}; plProducts.forEach(p => { n[p.product_code] = true; }); setPlSelected(n); }}
+                  style={{ fontSize: '0.78rem', padding: '6px 12px', border: '1.5px solid #d1d5db', borderRadius: 7, background: '#f8fafc', cursor: 'pointer', fontWeight: 600, color: '#374151' }}>
+                  ☑ Select All
+                </button>
+                {plNumSelected > 0 && (
+                  <button onClick={() => setPlSelected({})}
+                    style={{ fontSize: '0.78rem', padding: '6px 12px', border: '1.5px solid #d1d5db', borderRadius: 7, background: '#f8fafc', cursor: 'pointer', fontWeight: 600, color: '#374151' }}>
+                    ✕ Clear
+                  </button>
+                )}
+              </div>
+              <div style={{ marginTop: 10, fontSize: '0.75rem', color: '#6b7280' }}>
+                {plLoading ? 'Loading products…' : `${plFiltered.length} product${plFiltered.length !== 1 ? 's' : ''} with permanent codes${plNumSelected > 0 ? ` · ${plNumSelected} selected` : ''}`}
+              </div>
+            </CardBody>
+          </Card>
+
+          {plLoading ? (
+            <div className="flex justify-center py-10"><LoadingSpinner /></div>
+          ) : plFiltered.length === 0 ? (
+            <Card><CardBody><div className="text-center py-8 text-gray-400 text-sm">No products with product codes found. Assign product codes in the GM portal price list.</div></CardBody></Card>
+          ) : (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+              {plFiltered.map(p => {
+                const code = p.product_code || '';
+                const svg  = code ? code128SVG(code) : '';
+                const isSelected = !!plSelected[code];
+                return (
+                  <div key={code} onClick={() => setPlSelected(prev => ({ ...prev, [code]: !prev[code] }))}
+                    style={{ border: isSelected ? '2px solid #c41e3a' : '1.5px solid #d1d5db', borderRadius: 12, padding: '12px 14px', width: 220, textAlign: 'center', background: isSelected ? '#fff8f8' : '#fff', cursor: 'pointer', position: 'relative', transition: 'border-color .15s, background .15s', flexShrink: 0 }}>
+                    {isSelected && (
+                      <div style={{ position: 'absolute', top: 8, right: 8, background: '#c41e3a', color: '#fff', borderRadius: '50%', width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800 }}>✓</div>
+                    )}
+                    <div style={{ fontSize: 8, fontWeight: 800, color: '#c41e3a', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 4 }}>DYNAPHARM NAMIBIA</div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#1a1a1a', lineHeight: 1.3, marginBottom: 6, minHeight: 28 }}>{p.description}</div>
+                    {svg ? (
+                      <div dangerouslySetInnerHTML={{ __html: svg }} style={{ display: 'flex', justifyContent: 'center', margin: '4px 0', overflow: 'hidden' }} />
+                    ) : (
+                      <div style={{ height: 52, background: '#f3f4f6', borderRadius: 4, margin: '4px 0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: '#9ca3af' }}>Code128 barcode</div>
+                    )}
+                    <div style={{ fontFamily: 'monospace', fontSize: 10, fontWeight: 700, color: '#374151', letterSpacing: 1, margin: '2px 0' }}>{code}</div>
+                    {Number(p.dp || 0) > 0 && (
+                      <div style={{ fontSize: 12, fontWeight: 800, color: '#c41e3a', margin: '4px 0 1px' }}>NAD {Math.round(Number(p.dp)).toLocaleString('en-ZA')}</div>
+                    )}
+                    {Number(p.cp || 0) > 0 && (
+                      <div style={{ fontSize: 9, color: '#6b7280' }}>CP: NAD {Math.round(Number(p.cp)).toLocaleString('en-ZA')}</div>
+                    )}
+                    <QRThumb value={code} />
+                    <div style={{ display: 'flex', gap: 5, marginTop: 8, justifyContent: 'center' }}>
+                      <button onClick={e => { e.stopPropagation(); printProductLabel(p); }}
+                        style={{ fontSize: '0.72rem', padding: '5px 12px', background: '#c41e3a', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <Printer size={12} /> Print
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {plNumSelected > 0 && (
+            <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-3 rounded-xl shadow-xl" style={{ background: '#c41e3a', color: '#fff' }}>
+              <span className="font-semibold text-sm">{plNumSelected} product{plNumSelected > 1 ? 's' : ''} selected</span>
+              <button onClick={printSelectedProductLabels} className="flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-bold border-none cursor-pointer" style={{ background: '#fff', color: '#c41e3a' }}>
+                <Printer size={14} /> Print Labels
+              </button>
+              <button onClick={() => setPlSelected({})} className="text-white/70 hover:text-white text-lg border-none bg-transparent cursor-pointer">✕</button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Batch Barcodes sub-tab ──────────────────────────────────── */}
+      {subTab === 'batch' && <>
 
       {/* ── Stats ─────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-4 gap-3">
@@ -8316,6 +8512,7 @@ function BarcodeTab() {
           <button onClick={() => setSelected({})} className="text-white/70 hover:text-white text-lg border-none bg-transparent cursor-pointer">✕</button>
         </div>
       )}
+      </>}
     </div>
   );
 }
