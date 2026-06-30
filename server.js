@@ -2322,7 +2322,7 @@ server.on('error', (error) => {
       'Eenhana': 'eenhana',
       'Ondangwa': 'ondangwa',
       'Rundu': 'rundu',
-      'Katima Mulilo': 'katima', 'katima mulilo': 'katima',
+      'Katima Mulilo': 'katima_mulilo', 'katima mulilo': 'katima_mulilo', 'katima': 'katima_mulilo',
       'Hochlandpark': 'hochland-park', 'hochland_park': 'hochland-park',
       // Warehouse display names → warehouse slugs (for stock-role users)
       'Windhoek Warehouse': 'windhoek_warehouse', 'windhoek warehouse': 'windhoek_warehouse',
@@ -2355,6 +2355,28 @@ server.on('error', (error) => {
     }
     if (branchMigrationsApplied > 0) {
       console.log(`Branch ID normalization: updated ${branchMigrationsApplied} rows`);
+    }
+
+    // ── Ensure canonical branch IDs exist in the branches table ────────────
+    // The branches table may have been seeded with short IDs (e.g. 'oshakati',
+    // 'katima') but operational tables use the canonical slugs
+    // ('oshakati_branch', 'katima_mulilo'). Insert canonical rows so that
+    // any JOIN on branches.id = branch_inventory_batches.branch_id succeeds.
+    const canonicalBranchRows = [
+      { id: 'oshakati_branch', name: 'Oshakati',      region: 'Oshana' },
+      { id: 'katima_mulilo',   name: 'Katima Mulilo', region: 'Zambezi' },
+    ];
+    for (const b of canonicalBranchRows) {
+      try {
+        await query(
+          `INSERT INTO branches (id, name, region, status, created_at, updated_at)
+           VALUES ($1, $2, $3, 'active', NOW(), NOW())
+           ON CONFLICT (id) DO NOTHING`,
+          [b.id, b.name, b.region]
+        );
+      } catch (e) {
+        console.warn(`[canonical branch insert] ${b.id}:`, e.message);
+      }
     }
 
     // ── Normalize status values: legacy 'completed' → 'posted' ─────────────
@@ -2779,7 +2801,7 @@ server.on('error', (error) => {
         'Oshakati': 'oshakati_branch', 'oshakati_branch': 'oshakati_branch', 'oshakati': 'oshakati_branch',
         'Hochlandpark': 'hochland-park', 'hochland-park': 'hochland-park',
         'Walvis Bay': 'walvisbay', 'walvisbay': 'walvisbay',
-        'Katima Mulilo': 'katima', 'katima': 'katima',
+        'Katima Mulilo': 'katima_mulilo', 'katima': 'katima_mulilo', 'katima_mulilo': 'katima_mulilo',
         'Gobabis': 'gobabis', 'gobabis': 'gobabis',
         'Eenhana': 'eenhana', 'eenhana': 'eenhana',
         'Ondangwa': 'ondangwa', 'ondangwa': 'ondangwa',
@@ -2820,7 +2842,7 @@ server.on('error', (error) => {
         'Oshakati': 'oshakati_branch', 'oshakati_branch': 'oshakati_branch', 'oshakati': 'oshakati_branch',
         'Hochlandpark': 'hochland-park', 'hochland-park': 'hochland-park', 'hochland park': 'hochland-park',
         'Walvis Bay': 'walvisbay', 'walvisbay': 'walvisbay', 'walvis bay': 'walvisbay',
-        'Katima Mulilo': 'katima', 'katima': 'katima', 'katima mulilo': 'katima',
+        'Katima Mulilo': 'katima_mulilo', 'katima': 'katima_mulilo', 'katima_mulilo': 'katima_mulilo', 'katima mulilo': 'katima_mulilo',
         'Gobabis': 'gobabis', 'gobabis': 'gobabis',
         'Eenhana': 'eenhana', 'eenhana': 'eenhana',
         'Ondangwa': 'ondangwa', 'ondangwa': 'ondangwa',

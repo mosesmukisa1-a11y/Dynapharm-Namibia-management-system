@@ -52,7 +52,13 @@ export default async function handler(req, res) {
                 MAX(p.dp)                                      AS unit_dp,
                 MAX(p.cif)                                     AS unit_cif
          FROM branch_inventory_batches b
-         INNER JOIN branches br ON br.id = b.branch_id
+         LEFT JOIN branches br ON br.id = b.branch_id
+            OR br.id = CASE b.branch_id
+              WHEN 'oshakati_branch' THEN 'oshakati'
+              WHEN 'oshakati'        THEN 'oshakati_branch'
+              WHEN 'katima_mulilo'   THEN 'katima'
+              WHEN 'katima'          THEN 'katima_mulilo'
+              ELSE NULL END
          LEFT JOIN product_prices p
                ON LOWER(TRIM(p.description)) = LOWER(TRIM(b.product_name))
          WHERE b.quantity > 0
