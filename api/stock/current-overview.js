@@ -20,7 +20,7 @@
  */
 import { applyAuthCors } from '../_lib/auth.js';
 import { getMany } from '../db.js';
-import { ALL_BRANCH_LOCATION_ALIASES } from '../_lib/branchUtils.js';
+import { ALL_BRANCH_LOCATION_ALIASES, normalizeBranchSlug } from '../_lib/branchUtils.js';
 
 const ALLOWED = new Set(['admin', 'gm', 'director', 'mis', 'stock', 'finance']);
 
@@ -148,8 +148,41 @@ export default async function handler(req, res) {
       });
     }
 
-    // ── Branch rows ──
+    // ── Normalize + merge branch rows ────────────────────────────────────────
+    // branch_inventory_batches may have rows stored under alias IDs (e.g.
+    // 'katima' alongside 'katima_mulilo', 'hochlandpark' alongside
+    // 'hochland-park'). Normalize every branch_id to its canonical slug and
+    // merge matching rows so each branch shows as a single row per product.
+    const branchMerged = new Map(); // key: `${canonicalId}||${productLower}`
     for (const r of branchRows) {
+      const canonId = normalizeBranchSlug(r.location_id) || r.location_id;
+      const key     = `${canonId}||${(r.product_name || '').toLowerCase().trim()}`;
+      if (!branchMerged.has(key)) {
+        branchMerged.set(key, {
+          location_id:   canonId,
+          // Prefer the name resolved via the branches JOIN (real branch name).
+          // Alias rows where the JOIN missed will have location_name === location_id;
+          // we keep updating so whichever row has a real name wins.
+          location_name: r.location_name,
+          product_name:  r.product_name,
+          qty:    0, val_dp:  0, val_cif: 0,
+          unit_dp: 0, unit_cif: 0,
+        });
+      }
+      const agg = branchMerged.get(key);
+      agg.qty     += Number(r.qty     || 0);
+      agg.val_dp  += Number(r.val_dp  || 0);
+      agg.val_cif += Number(r.val_cif || 0);
+      if (Number(r.unit_dp  || 0) > 0) agg.unit_dp  = Number(r.unit_dp);
+      if (Number(r.unit_cif || 0) > 0) agg.unit_cif = Number(r.unit_cif);
+      // Prefer the real branch name from the branches table over a raw slug
+      if (r.location_name && r.location_name !== r.location_id) {
+        agg.location_name = r.location_name;
+      }
+    }
+
+    // ── Branch rows ──
+    for (const r of branchMerged.values()) {
       const qty     = Number(r.qty     || 0);
       const unitDP  = Number(r.unit_dp  || 0) || lookupDp(r.product_name);
       const unitCIF = Number(r.unit_cif || 0) || lookupCif(r.product_name);

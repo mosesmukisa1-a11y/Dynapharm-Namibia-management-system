@@ -2323,7 +2323,7 @@ server.on('error', (error) => {
       'Ondangwa': 'ondangwa',
       'Rundu': 'rundu',
       'Katima Mulilo': 'katima_mulilo', 'katima mulilo': 'katima_mulilo', 'katima': 'katima_mulilo',
-      'Hochlandpark': 'hochland-park', 'hochland_park': 'hochland-park',
+      'Hochlandpark': 'hochland-park', 'hochland_park': 'hochland-park', 'hochlandpark': 'hochland-park',
       // Warehouse display names → warehouse slugs (for stock-role users)
       'Windhoek Warehouse': 'windhoek_warehouse', 'windhoek warehouse': 'windhoek_warehouse',
       'Ondangwa Warehouse': 'ondangwa_warehouse', 'ondangwa warehouse': 'ondangwa_warehouse',

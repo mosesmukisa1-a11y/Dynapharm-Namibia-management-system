@@ -132,11 +132,47 @@ async function resolveBranchId(raw) {
   return ciResult ? ciResult.branch_id : key;
 }
 
+/**
+ * Build every known alias form for a branch slug so we can query all of them
+ * in a single ANY($1) clause. Catches rows stored under historical alias IDs
+ * (e.g. 'katima' vs 'katima_mulilo', 'hochlandpark' vs 'hochland-park').
+ */
+function buildBranchCandidates(...ids) {
+  const set = new Set();
+  for (const id of ids) {
+    if (!id) continue;
+    const s = id.trim().toLowerCase();
+    set.add(s);
+    set.add(id); // original casing preserved as well
+    // _branch suffix variants
+    if (s.endsWith('_branch')) set.add(s.replace(/_branch$/, ''));
+    else                        set.add(s + '_branch');
+    // Katima Mulilo
+    if (s === 'katima_mulilo') { set.add('katima'); set.add('katima-mulilo'); set.add('katima_branch'); set.add('katima_mulilo_branch'); }
+    if (s === 'katima')         set.add('katima_mulilo');
+    // Oshakati
+    if (s === 'oshakati_branch') set.add('oshakati');
+    if (s === 'oshakati')        set.add('oshakati_branch');
+    // Hochland Park
+    if (s === 'hochland-park')   { set.add('hochlandpark'); set.add('hochland_park'); }
+    if (s === 'hochlandpark' || s === 'hochland_park') set.add('hochland-park');
+    // Walvis Bay
+    if (s === 'walvisbay')       { set.add('walvis_bay'); set.add('walvis bay'); }
+    if (s === 'walvis_bay')      set.add('walvisbay');
+    // Windhoek CBD / Townshop
+    if (s === 'townshop')        { set.add('windhoek'); set.add('windhoek_cbd'); }
+    if (s === 'windhoek_cbd' || s === 'windhoek') set.add('townshop');
+  }
+  return [...set].filter(Boolean);
+}
+
 async function getInventoryByBranch(branchId, enriched = false) {
   const resolvedId = await resolveBranchId(branchId);
+  // Query with ALL alias forms so rows stored under any historical variant are returned.
+  const allCandidates = buildBranchCandidates(resolvedId, branchId);
   const rows = await getMany(
-    `SELECT * FROM branch_inventory_batches WHERE branch_id = $1 AND quantity > 0 ORDER BY product_name ASC, expiry_date ASC NULLS LAST`,
-    [resolvedId]
+    `SELECT * FROM branch_inventory_batches WHERE branch_id = ANY($1::text[]) AND quantity > 0 ORDER BY product_name ASC, expiry_date ASC NULLS LAST`,
+    [allCandidates]
   );
   const normalized = rows.map(normalizeInventoryRow).filter(Boolean);
 
