@@ -1987,6 +1987,7 @@ function ClientsSection() {
   const [selectedClient, setSelectedClient] = useState(null);
   const [editMode, setEditMode] = useState(false);
   const [editForm, setEditForm] = useState({});
+  const [referralModal, setReferralModal] = useState(null);
 
   useEffect(() => {
     api.clients.list()
@@ -2197,6 +2198,17 @@ function ClientsSection() {
         </div>
       )}
 
+      {referralModal && (
+        <ReferralEditModal
+          client={referralModal}
+          onClose={() => setReferralModal(null)}
+          onSaved={(updated) => {
+            setClients(prev => prev.map(c => c.id === referralModal.id ? { ...c, ...updated } : c));
+            setSelectedClient(prev => prev ? { ...prev, ...updated } : prev);
+            setReferralModal(null);
+          }}
+        />
+      )}
       {selectedClient && (
         <div onClick={e => { if (e.target === e.currentTarget) { setSelectedClient(null); setEditMode(false); } }} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 999999, overflowY: 'auto', padding: '20px', boxSizing: 'border-box' }}>
           <div style={{ maxWidth: '900px', margin: '20px auto', background: 'white', borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.3)', maxHeight: '90vh', overflowY: 'auto' }}>
@@ -2219,6 +2231,7 @@ function ClientsSection() {
                 </>
               ) : (
                 <>
+                  <button onClick={() => setReferralModal(selectedClient)} style={{ padding: '10px 20px', background: '#c41e3a', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>🔗 Edit Referral</button>
                   <button onClick={() => { setEditForm({ ...selectedClient }); setEditMode(true); }} style={{ padding: '10px 20px', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>✏️ Edit Details</button>
                   <button onClick={() => printClientDetails(selectedClient)} style={{ padding: '10px 20px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>🖨️ Print Details</button>
                   <button onClick={() => { setSelectedClient(null); setEditMode(false); }} style={{ padding: '10px 20px', background: '#6b7280', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>Close</button>
@@ -2311,6 +2324,161 @@ function ClientViewDetails({ client }) {
             {client.edited_by_consultant_at && <span style={{ marginLeft: '8px', color: '#64748b' }}>{new Date(client.edited_by_consultant_at).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function ReferralEditModal({ client, onClose, onSaved }) {
+  const iStyle = { width: '100%', padding: '9px 12px', border: '1.5px solid #d1d5db', borderRadius: 8, fontSize: '0.9rem', boxSizing: 'border-box', outline: 'none' };
+  const lStyle = { display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#374151', marginBottom: 5 };
+
+  const [membership, setMembership] = useState(client.membershipStatus || client.membership_status || 'referred');
+  const [referralName, setReferralName] = useState(client.referralName || client.referral_name || '');
+  const [referralNb, setReferralNb] = useState(client.referralNbNumber || client.referral_nb || '');
+  const [nbNumber, setNbNumber] = useState(client.nbNumber || client.nb_number || '');
+  const [distQuery, setDistQuery] = useState('');
+  const [distResults, setDistResults] = useState([]);
+  const [distLoading, setDistLoading] = useState(false);
+  const [distOpen, setDistOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveAlert, setSaveAlert] = useState(null);
+
+  const isMember = membership === 'member';
+
+  useEffect(() => {
+    if (!distQuery.trim() || distQuery.length < 2) { setDistResults([]); setDistOpen(false); return; }
+    setDistLoading(true);
+    api.distributors.search(distQuery)
+      .then(d => { const list = Array.isArray(d) ? d : d.distributors || []; setDistResults(list.slice(0, 10)); setDistOpen(list.length > 0); })
+      .catch(() => setDistResults([]))
+      .finally(() => setDistLoading(false));
+  }, [distQuery]);
+
+  const selectDist = (d) => {
+    const nm = d.distributor_name || d.full_name || d.name || '';
+    const nb = d.distributor_code || d.nb_number || '';
+    setReferralName(nm); setReferralNb(nb);
+    setDistQuery(''); setDistOpen(false);
+  };
+
+  const clearReferral = () => { setReferralName(''); setReferralNb(''); setDistQuery(''); };
+
+  const handleSave = async () => {
+    setSaving(true); setSaveAlert(null);
+    try {
+      const payload = {
+        membershipStatus: membership, membership_status: membership,
+        referralName:    isMember ? '' : referralName,
+        referral_name:   isMember ? '' : referralName,
+        referralNbNumber: isMember ? '' : referralNb,
+        referral_nb:     isMember ? '' : referralNb,
+        nbNumber:        isMember ? nbNumber : '',
+        nb_number:       isMember ? nbNumber : '',
+      };
+      await api.clients.update(client.id, payload);
+      onSaved(payload);
+    } catch (err) {
+      setSaveAlert(err.message || 'Save failed — please try again');
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 1000001, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 480, boxShadow: '0 20px 60px rgba(0,0,0,0.3)', overflow: 'hidden' }}>
+        {/* Header */}
+        <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', padding: '18px 24px', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontSize: '0.62rem', fontWeight: 700, letterSpacing: '0.14em', opacity: 0.7, marginBottom: 4, textTransform: 'uppercase' }}>Edit Referral Details</div>
+            <div style={{ fontWeight: 800, fontSize: '1.05rem' }}>{client.full_name || client.fullName || client.name}</div>
+            <div style={{ fontSize: '0.78rem', opacity: 0.7, marginTop: 2 }}>{client.reference || client.referenceNumber || client.id}</div>
+          </div>
+          <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 8, color: '#fff', padding: '7px 14px', cursor: 'pointer', fontSize: '1rem', fontWeight: 700 }}>✕</button>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: '20px 24px' }}>
+          {/* Membership toggle */}
+          <div style={{ marginBottom: 18 }}>
+            <label style={lStyle}>Client Type</label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {[{ v: 'referred', label: '🤝 Non-Member (Referred)' }, { v: 'member', label: '🏅 Registered Member' }].map(opt => (
+                <button key={opt.v} onClick={() => setMembership(opt.v)}
+                  style={{ flex: 1, padding: '9px 10px', borderRadius: 8, border: membership === opt.v ? '2px solid #c41e3a' : '1.5px solid #d1d5db', background: membership === opt.v ? '#fff0f3' : '#f8fafc', color: membership === opt.v ? '#c41e3a' : '#374151', fontWeight: membership === opt.v ? 700 : 500, fontSize: '0.83rem', cursor: 'pointer' }}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Referral distributor (non-member) */}
+          {!isMember && (
+            <div style={{ marginBottom: 16 }}>
+              <label style={lStyle}>Referring Distributor</label>
+              {referralName ? (
+                <div style={{ padding: '10px 14px', background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontWeight: 700, color: '#166534', fontSize: '0.92rem' }}>{referralName}</div>
+                    {referralNb && <div style={{ fontSize: '0.8rem', color: '#6b7280', marginTop: 2 }}>NB: {referralNb}</div>}
+                  </div>
+                  <button onClick={clearReferral} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', fontSize: '1.1rem', fontWeight: 700 }}>✕</button>
+                </div>
+              ) : (
+                <div style={{ position: 'relative' }}>
+                  <input style={iStyle} placeholder="Type name or NB number to search…"
+                    value={distQuery} onChange={e => setDistQuery(e.target.value)} autoComplete="off" />
+                  {distLoading && <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.78rem', color: '#6b7280' }}>Searching…</span>}
+                  {distOpen && distResults.length > 0 && (
+                    <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1.5px solid #e5e7eb', borderRadius: 10, boxShadow: '0 6px 20px rgba(0,0,0,0.12)', zIndex: 9999, maxHeight: 220, overflowY: 'auto' }}>
+                      {distResults.map((d, i) => {
+                        const nm = d.distributor_name || d.full_name || d.name || '';
+                        const nb = d.distributor_code || d.nb_number || '';
+                        return (
+                          <div key={i} onClick={() => selectDist(d)}
+                            style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid #f3f4f6', fontSize: '0.88rem' }}
+                            onMouseEnter={e => e.currentTarget.style.background = '#f0f9ff'}
+                            onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+                            <span style={{ fontWeight: 700, color: '#1e293b' }}>{nm}</span>
+                            {nb && <span style={{ marginLeft: 8, color: '#64748b', fontSize: '0.8rem' }}>{nb}</span>}
+                            {d.branch && <span style={{ marginLeft: 8, color: '#9ca3af', fontSize: '0.75rem' }}>{d.branch}</span>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+              <div style={{ marginTop: 6, fontSize: '0.78rem', color: '#6b7280' }}>
+                Search by distributor name or NB number, then select from the list.
+              </div>
+            </div>
+          )}
+
+          {/* Member NB number */}
+          {isMember && (
+            <div style={{ marginBottom: 16 }}>
+              <label style={lStyle}>Member NB Number</label>
+              <input style={{ ...iStyle, maxWidth: 280 }} placeholder="e.g. NB001234"
+                value={nbNumber} onChange={e => setNbNumber(e.target.value)} />
+            </div>
+          )}
+
+          {saveAlert && (
+            <div style={{ padding: '9px 12px', background: '#fee2e2', border: '1px solid #fecaca', borderRadius: 8, color: '#dc2626', fontSize: '0.84rem', marginBottom: 4 }}>
+              ⚠️ {saveAlert}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: '14px 24px', borderTop: '1px solid #f1f5f9', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button onClick={onClose} style={{ padding: '9px 20px', border: '1.5px solid #d1d5db', borderRadius: 8, background: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: '0.88rem', color: '#374151' }}>Cancel</button>
+          <button onClick={handleSave} disabled={saving}
+            style={{ padding: '9px 20px', border: 'none', borderRadius: 8, background: saving ? '#9ca3af' : '#c41e3a', color: '#fff', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.88rem' }}>
+            {saving ? 'Saving…' : '✓ Save Referral'}
+          </button>
+        </div>
       </div>
     </div>
   );
