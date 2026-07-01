@@ -3291,13 +3291,42 @@ function WarehouseTab({ name }) {
   );
   const pendingWarehouseWriteoffs = warehouseWriteoffs.filter(m => m.status === 'pending_approval');
 
+  // Derived counts for tab labels — each shows ACTIONABLE/CURRENT state, not all-time history
+  const uniqueProductSKUs   = new Set(batches.map(b => b.description || b.product_name).filter(Boolean)).size;
+  const incomingActionable  = pendingGMApproval.length + pendingReceipt.length;   // needs attention
+  const activeOutbound      = outboundTransfers.filter(t =>
+    ['pending_approval', 'approved', 'dispatched', 'in_transit'].includes(t.status)
+  ).length;
+  const movementsAtLimit    = movements.length >= 2000;  // we LIMIT to 2000
+  // Returns bell: only if any return arrived in the last 30 days (not all-time)
+  const thirtyDaysAgo       = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const recentReturns       = writeoffReturns.filter(r => new Date(r.created_at) >= thirtyDaysAgo);
+
   const whSubTabs = [
-    { id: 'inventory', label: `📦 Inventory (${batches.length})` },
-    { id: 'incoming', label: `📥 Incoming (${pendingGMApproval.length + pendingReceipt.length + receivedHistory.length})${(pendingGMApproval.length + pendingReceipt.length) > 0 ? ' 🔔' : ''}` },
-    { id: 'outbound', label: `🚚 Outbound (${outboundTransfers.length})` },
-    { id: 'movements', label: `📊 Movements (${movements.length})` },
-    { id: 'returns', label: `↩ Branch Returns (${writeoffReturns.length})${writeoffReturns.length > 0 ? ' 🔔' : ''}` },
-    { id: 'write_offs', label: `❌ Write-Offs (${warehouseWriteoffs.length})${pendingWarehouseWriteoffs.length > 0 ? ' 🔔' : ''}` },
+    {
+      id: 'inventory',
+      label: `📦 Inventory (${uniqueProductSKUs} SKUs · ${batches.length} batches)`,
+    },
+    {
+      id: 'incoming',
+      label: `📥 Incoming${incomingActionable > 0 ? ` (${incomingActionable} pending)` : receivedHistory.length > 0 ? ` (${receivedHistory.length} received)` : ''}${incomingActionable > 0 ? ' 🔔' : ''}`,
+    },
+    {
+      id: 'outbound',
+      label: `🚚 Outbound${activeOutbound > 0 ? ` (${activeOutbound} active)` : ` (${outboundTransfers.length} total)`}`,
+    },
+    {
+      id: 'movements',
+      label: `📊 Movements (${movementsAtLimit ? '2000+' : movements.length})`,
+    },
+    {
+      id: 'returns',
+      label: `↩ Branch Returns (${writeoffReturns.length})${recentReturns.length > 0 ? ' 🔔' : ''}`,
+    },
+    {
+      id: 'write_offs',
+      label: `❌ Write-Offs (${warehouseWriteoffs.length})${pendingWarehouseWriteoffs.length > 0 ? ` 🔔 ${pendingWarehouseWriteoffs.length} pending` : ''}`,
+    },
   ];
 
   if (loading) return <LoadingSpinner />;
