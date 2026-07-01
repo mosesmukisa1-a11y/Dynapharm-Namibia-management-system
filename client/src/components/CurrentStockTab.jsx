@@ -119,6 +119,168 @@ export default function CurrentStockTab() {
     a.click();
   };
 
+  const exportSummaryPDF = () => {
+    if (!data) return;
+    const esc  = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const fmtN = v => 'N$ ' + Number(v || 0).toLocaleString('en-NA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const fmtQ = v => Number(v || 0).toLocaleString('en-NA', { maximumFractionDigits: 0 });
+    const today = new Date().toLocaleDateString('en-NA', { day: '2-digit', month: 'long', year: 'numeric' });
+    const logo  = window.location.origin + '/assets/dynapharm-logo.png';
+
+    const locTypes = [
+      { key: 'country',   label: 'Country Stock', color: '#f97316', bg: '#fff7ed' },
+      { key: 'warehouse', label: 'Warehouses',    color: '#a855f7', bg: '#faf5ff' },
+      { key: 'branch',    label: 'Branches',      color: '#3b82f6', bg: '#eff6ff' },
+      { key: 'field',     label: 'Field Officers', color: '#22c55e', bg: '#f0fdf4' },
+    ];
+
+    const locTypeTotalsLocal = buildLocTypeTotals(data.products);
+
+    const locBreakdownRows = locTypes
+      .filter(lt => locTypeTotalsLocal[lt.key])
+      .map(lt => {
+        const t = locTypeTotalsLocal[lt.key];
+        return `<tr>
+          <td><span style="display:inline-block;padding:2px 9px;border-radius:12px;background:${lt.bg};color:${lt.color};font-weight:700;font-size:10px;">${lt.label}</span></td>
+          <td class="num">${fmtQ(t.qty)}</td>
+          <td class="num amber">${fmtN(t.valueCIF)}</td>
+          <td class="num green">${fmtN(t.valueDP)}</td>
+        </tr>`;
+      }).join('');
+
+    const productSummaryRows = data.products.map((p, i) => {
+      const locTypesPresent = [...new Set(p.locations.map(l => l.locationType))];
+      const badges = locTypesPresent.map(lt => {
+        const c = locTypes.find(x => x.key === lt) || { color: '#64748b', bg: '#f1f5f9', label: lt };
+        return `<span style="display:inline-block;margin-right:3px;padding:1px 7px;border-radius:10px;background:${c.bg};color:${c.color};font-size:9px;font-weight:700;">${c.label}</span>`;
+      }).join('');
+      return `<tr class="${i % 2 === 0 ? 'even' : 'odd'}">
+        <td class="idx">${i + 1}</td>
+        <td><strong>${esc(p.productName)}</strong><div style="margin-top:2px">${badges}</div></td>
+        <td class="num"><strong>${fmtQ(p.totalQty)}</strong></td>
+        <td class="num amber">${fmtN(p.totalValueCIF)}</td>
+        <td class="num green"><strong>${fmtN(p.totalValueDP)}</strong></td>
+      </tr>`;
+    }).join('');
+
+    const w = window.open('', '_blank', 'width=900,height=750');
+    if (!w) return;
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>Dynapharm — Stock Summary — ${today}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;padding:20px;line-height:1.5;}
+  .header{display:flex;align-items:center;gap:14px;border-bottom:3px solid #1d4ed8;padding-bottom:12px;margin-bottom:16px;}
+  .logo{height:50px;}
+  .co{font-size:1.05rem;font-weight:900;color:#1d4ed8;}
+  .sub{font-size:0.7rem;color:#64748b;margin-top:2px;}
+  .title{font-size:0.85rem;font-weight:800;color:#1e3a8a;margin-top:3px;}
+  .meta{margin-left:auto;text-align:right;font-size:0.72rem;color:#64748b;line-height:1.9;}
+
+  /* KPI cards */
+  .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px;}
+  .kpi{border-radius:9px;padding:9px 12px;border:1px solid #e5e7eb;}
+  .kpi.g{background:#f0fdf4;border-color:#bbf7d0;} .kpi.a{background:#fffbeb;border-color:#fde68a;}
+  .kpi.b{background:#eff6ff;border-color:#bfdbfe;} .kpi.p{background:#faf5ff;border-color:#e9d5ff;}
+  .kpi-lbl{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#64748b;margin-bottom:3px;}
+  .kpi-val{font-size:0.95rem;font-weight:900;color:#1e293b;}
+  .kpi-sub{font-size:8px;color:#94a3b8;margin-top:2px;}
+
+  /* Section headings */
+  .sec-head{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#475569;
+            border-left:3px solid #1d4ed8;padding-left:7px;margin:14px 0 7px;}
+
+  /* Tables */
+  table{width:100%;border-collapse:collapse;font-size:10.5px;}
+  thead tr{background:#1e3a8a;color:#fff;}
+  thead th{padding:6px 9px;text-align:left;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;}
+  thead th.num{text-align:right;}
+  tr.even td{background:#fff;} tr.odd td{background:#f8fafc;}
+  td{padding:6px 9px;border-bottom:1px solid #f1f5f9;vertical-align:middle;}
+  .num{text-align:right;font-family:monospace;}
+  .amber{color:#b45309;} .green{color:#15803d;}
+  .idx{width:28px;text-align:center;color:#94a3b8;font-size:10px;}
+  tfoot td{background:#1e3a8a !important;color:#fff;font-weight:800;padding:7px 9px;}
+  tfoot .num{text-align:right;}
+  tfoot .amber{color:#fde68a;} tfoot .green{color:#86efac;}
+
+  .footer{margin-top:16px;border-top:2px solid #1d4ed8;padding-top:8px;display:flex;justify-content:space-between;font-size:8.5px;color:#94a3b8;}
+  .conf{background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;padding:2px 10px;border-radius:20px;font-size:8.5px;font-weight:700;}
+  .print-btn{position:fixed;top:12px;right:12px;background:#1d4ed8;color:#fff;border:none;padding:6px 14px;border-radius:7px;font-weight:700;cursor:pointer;font-size:12px;}
+  @media print{.print-btn{display:none;}body{padding:10px;}@page{size:A4 portrait;margin:10mm;}}
+</style></head><body>
+<button class="print-btn" onclick="window.print()">🖨️ Print / Save PDF</button>
+
+<div class="header">
+  <img class="logo" src="${logo}" onerror="this.style.display='none'" />
+  <div>
+    <div class="co">DYNAPHARM INTERNATIONAL NAMIBIA</div>
+    <div class="sub">Stock Management Division</div>
+    <div class="title">CURRENT STOCK — EXECUTIVE SUMMARY</div>
+  </div>
+  <div class="meta">
+    <div><strong>Date:</strong> ${today}</div>
+    <div><strong>Products:</strong> ${data.products.length}</div>
+    <div><strong>Scope:</strong> Country · Warehouses · Branches · Field</div>
+  </div>
+</div>
+
+<!-- KPI Cards -->
+<div class="kpi-grid">
+  <div class="kpi g"><div class="kpi-lbl">Total Value (DP)</div><div class="kpi-val">${fmtN(data.summary.totalValueDP)}</div><div class="kpi-sub">All locations</div></div>
+  <div class="kpi a"><div class="kpi-lbl">Total Value (CIF)</div><div class="kpi-val">${fmtN(data.summary.totalValueCIF)}</div><div class="kpi-sub">Landed cost</div></div>
+  <div class="kpi p"><div class="kpi-lbl">Total Units</div><div class="kpi-val">${fmtQ(data.summary.totalQtyUnits)}</div><div class="kpi-sub">All locations</div></div>
+  <div class="kpi b"><div class="kpi-lbl">In Operations (DP)</div><div class="kpi-val">${fmtN(inOpsDP)}</div><div class="kpi-sub">${fmtQ(inOpsQty)} units · WH + Branch + Field</div></div>
+</div>
+
+<!-- Location-type breakdown -->
+<div class="sec-head">Stock by Location Type</div>
+<table>
+  <thead><tr>
+    <th>Location Type</th>
+    <th class="num">Total Units</th>
+    <th class="num">CIF Value (N$)</th>
+    <th class="num">DP Value (N$)</th>
+  </tr></thead>
+  <tbody>
+    ${locBreakdownRows}
+  </tbody>
+  <tfoot><tr>
+    <td>TOTAL</td>
+    <td class="num">${fmtQ(data.summary.totalQtyUnits)}</td>
+    <td class="num amber">${fmtN(data.summary.totalValueCIF)}</td>
+    <td class="num green">${fmtN(data.summary.totalValueDP)}</td>
+  </tr></tfoot>
+</table>
+
+<!-- Per-product summary -->
+<div class="sec-head">Products Overview (${data.products.length} products · sorted by DP value)</div>
+<table>
+  <thead><tr>
+    <th class="idx">#</th>
+    <th>Product</th>
+    <th class="num">Total Units</th>
+    <th class="num">CIF Value (N$)</th>
+    <th class="num">DP Value (N$)</th>
+  </tr></thead>
+  <tbody>${productSummaryRows}</tbody>
+  <tfoot><tr>
+    <td colspan="2">TOTAL — ${data.products.length} products</td>
+    <td class="num">${fmtQ(data.summary.totalQtyUnits)}</td>
+    <td class="num amber">${fmtN(data.summary.totalValueCIF)}</td>
+    <td class="num green">${fmtN(data.summary.totalValueDP)}</td>
+  </tr></tfoot>
+</table>
+
+<div class="footer">
+  <span class="conf">🔒 CONFIDENTIAL — INTERNAL USE ONLY</span>
+  <span>Dynapharm International Namibia — Generated ${today}</span>
+</div>
+</body></html>`);
+    w.document.close();
+    setTimeout(() => { try { w.focus(); } catch {} }, 300);
+  };
+
   const exportPDF = () => {
     if (!data) return;
     const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -247,9 +409,13 @@ ${summaryCards}
                     className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold border border-primary text-primary rounded hover:bg-primary/5">
                     <Download size={12} /> Export CSV
                   </button>
+                  <button onClick={exportSummaryPDF}
+                    className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold border border-emerald-500 text-emerald-700 rounded hover:bg-emerald-50">
+                    <Download size={12} /> Summary PDF
+                  </button>
                   <button onClick={exportPDF}
                     className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold border border-red-400 text-red-600 rounded hover:bg-red-50">
-                    <Download size={12} /> Export PDF
+                    <Download size={12} /> Detailed PDF
                   </button>
                 </>
               )}
