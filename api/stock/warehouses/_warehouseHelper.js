@@ -57,7 +57,7 @@ export async function getWarehouseTransfers(warehouseKey, direction = 'all') {
   let itemMap = {};
   try {
     const itemRows = await getMany(
-      `SELECT transfer_id, product_name, batch_no, expiry_date, quantity, quantity_received
+      `SELECT transfer_id, product_name, batch_no, expiry_date, quantity, quantity_approved, quantity_received
        FROM stock_transfer_items WHERE transfer_id = ANY($1::text[]) ORDER BY created_at ASC`,
       [ids]
     );
@@ -69,8 +69,9 @@ export async function getWarehouseTransfers(warehouseKey, direction = 'all') {
         expiryDate:  row.expiry_date
           ? (row.expiry_date instanceof Date ? row.expiry_date.toISOString().split('T')[0] : row.expiry_date)
           : null,
-        quantity:         Number(row.quantity || 0),
-        quantityReceived: row.quantity_received != null ? Number(row.quantity_received) : null,
+        quantity:          Number(row.quantity || 0),
+        quantityApproved:  row.quantity_approved != null ? Number(row.quantity_approved) : null,
+        quantityReceived:  row.quantity_received != null ? Number(row.quantity_received) : null,
       });
     }
   } catch (_) {}

@@ -3111,6 +3111,7 @@ function WarehouseTab({ name }) {
   const [writeoffRecord, setWriteoffRecord] = useState(null);
   const [writeoffForm, setWriteoffForm] = useState({ qty: '', reason: '', notes: '' });
   const [writeoffSubmitting, setWriteoffSubmitting] = useState(false);
+  const [invSearch, setInvSearch] = useState('');
   const location = name.toLowerCase() + '_warehouse';
   const whKey = name.toLowerCase();
 
@@ -3120,19 +3121,14 @@ function WarehouseTab({ name }) {
       api.stock.batches().then(d => (Array.isArray(d) ? d : d.batches || []).filter(b => b.location === location)).catch(() => []),
       api.stock.transfers(`branch=${encodeURIComponent(location)}`).then(d => Array.isArray(d) ? d : d.transfers || []).catch(() => []),
       api.stock.transfers(`fromWarehouse=${encodeURIComponent(location)}`).then(d => Array.isArray(d) ? d : d.transfers || []).catch(() => []),
-      api.stock.movements().then(d => Array.isArray(d) ? d : d.movements || []).catch(() => []),
+      api.stock.warehouseMovements(whKey).then(d => Array.isArray(d) ? d : d.movements || []).catch(() => []),
       api.stock.warehouseReturns(whKey).then(d => Array.isArray(d) ? d : d.returns || []).catch(() => []),
     ])
       .then(([batchData, inbound, outbound, movData, returnsData]) => {
         setBatches(batchData);
         setIncomingTransfers(inbound.filter(t => t.status !== 'cancelled'));
         setOutboundTransfers(outbound.filter(t => t.status !== 'cancelled'));
-        const locKey = location.toLowerCase();
-        setMovements(movData.filter(m => {
-          const src = (m.source_location || '').toLowerCase();
-          const dst = (m.destination_location || '').toLowerCase();
-          return src.includes(locKey) || dst.includes(locKey) || src.includes(name.toLowerCase()) || dst.includes(name.toLowerCase());
-        }));
+        setMovements(movData);
         setWriteoffReturns(returnsData);
       })
       .finally(() => setLoading(false));
@@ -3338,8 +3334,28 @@ function WarehouseTab({ name }) {
           <CardHeader>
             <div className="flex justify-between items-center flex-wrap gap-2">
               <h3 className="font-bold text-gray-800">{name} Warehouse — Current Inventory</h3>
-              <Button size="sm" variant="secondary" onClick={loadData}>↺ Refresh</Button>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <div style={{ position: 'relative' }}>
+                  <Search size={13} style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none' }} />
+                  <input
+                    type="text"
+                    value={invSearch}
+                    onChange={e => setInvSearch(e.target.value)}
+                    placeholder="Search products…"
+                    style={{ paddingLeft: 28, paddingRight: 10, paddingTop: 6, paddingBottom: 6, border: '1px solid #e2e8f0', borderRadius: 7, fontSize: '0.82rem', outline: 'none', width: 190 }}
+                  />
+                </div>
+                {invSearch && (
+                  <button onClick={() => setInvSearch('')} style={{ fontSize: '0.75rem', color: '#c41e3a', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700 }}>✕ Clear</button>
+                )}
+                <Button size="sm" variant="secondary" onClick={loadData}>↺ Refresh</Button>
+              </div>
             </div>
+            {invSearch && (
+              <p className="text-xs text-gray-400 mt-1">
+                Showing {batches.filter(r => (r.description || r.product_name || '').toLowerCase().includes(invSearch.toLowerCase())).length} of {batches.length} batch rows
+              </p>
+            )}
           </CardHeader>
           <Table
             columns={[
@@ -3387,8 +3403,8 @@ function WarehouseTab({ name }) {
                 </div>
               )},
             ]}
-            data={batches}
-            emptyMessage={`No confirmed stock in ${name} warehouse yet. Receive incoming distributions from Country Stock to populate inventory.`}
+            data={invSearch ? batches.filter(r => (r.description || r.product_name || '').toLowerCase().includes(invSearch.toLowerCase())) : batches}
+            emptyMessage={invSearch ? `No products matching "${invSearch}" in ${name} warehouse` : `No confirmed stock in ${name} warehouse yet. Receive incoming distributions from Country Stock to populate inventory.`}
           />
         </Card>
       )}
@@ -3720,9 +3736,12 @@ function WarehouseTab({ name }) {
               <option value="">All Statuses</option>
               <option value="pending_approval">Pending Approval</option>
               <option value="approved">Approved</option>
+              <option value="dispatched">Dispatched</option>
+              <option value="in_transit">In Transit</option>
               <option value="rejected">Rejected</option>
               <option value="returned">Returned</option>
               <option value="delivered">Delivered</option>
+              <option value="received">Received</option>
             </select>
             <span className="text-xs text-gray-400">{filteredOutbound.length} of {outboundTransfers.length}</span>
           </div>
