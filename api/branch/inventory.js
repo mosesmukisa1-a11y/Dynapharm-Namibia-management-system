@@ -780,8 +780,10 @@ export default async function handler(req, res) {
         return res.status(200).json({ success: true, inventory });
       }
       if (!requestedBranch) {
-        const allRows = await getMany('SELECT * FROM branch_inventory_batches ORDER BY product_name ASC, expiry_date ASC NULLS LAST LIMIT 500');
-        return res.status(200).json({ success: true, inventory: allRows.map(normalizeInventoryRow).filter(Boolean) });
+        // Require an explicit branch parameter — returning all branches' inventory
+        // without a filter causes phantom stock to appear under whichever branch
+        // happens to be labelled in the UI when the request fires.
+        return res.status(400).json({ success: false, error: 'branch parameter is required' });
       }
       if (branchScope.enforced && !normalizedScopeBranches.includes(requestedBranch)) {
         return res.status(403).json({ success: false, error: 'Access denied: cannot view inventory for this branch' });

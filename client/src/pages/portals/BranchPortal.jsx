@@ -4271,6 +4271,7 @@ function BranchStockTab() {
   }, [selectedBranch]);
 
   const loadData = async () => {
+    if (!selectedBranch) { setLoading(false); return; }
     const loadId = ++loadDataRef.current;
     setLoading(true);
     try {
