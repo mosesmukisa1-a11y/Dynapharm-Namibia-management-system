@@ -4228,6 +4228,10 @@ function BranchStockTab() {
   const [rejectTarget, setRejectTarget] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
   const [availableBranches, setAvailableBranches] = useState([]);
+  const [reportDate, setReportDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [reportMonth, setReportMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [bonusFrom, setBonusFrom] = useState('');
+  const [bonusTo, setBonusTo] = useState('');
   useEffect(() => {
     const isAdmin = user?.role === 'admin';
 
@@ -6243,8 +6247,9 @@ function BranchStockTab() {
 
         const handleDailyReport = async () => {
           try {
-            const data = await api.reports.branchSalesDaily({ branch_id: branchIdParam, date: todayStr });
-            printDPSalesReportFromData(data, 'Daily — ' + new Date().toLocaleDateString('en-NA'));
+            const data = await api.reports.branchSalesDaily({ branch_id: branchIdParam, date: reportDate });
+            const label = new Date(reportDate + 'T00:00:00').toLocaleDateString('en-NA', { day: '2-digit', month: 'long', year: 'numeric' });
+            printDPSalesReportFromData(data, 'Daily — ' + label);
           } catch (e) {
             alert('Failed to load daily report: ' + (e.message || 'Unknown error'));
           }
@@ -6252,8 +6257,9 @@ function BranchStockTab() {
 
         const handleMonthlyReport = async () => {
           try {
-            const data = await api.reports.branchSalesMonthly({ branch_id: branchIdParam, month: monthStr });
-            printDPSalesReportFromData(data, monthLabel);
+            const data = await api.reports.branchSalesMonthly({ branch_id: branchIdParam, month: reportMonth });
+            const label = new Date(reportMonth + '-01').toLocaleDateString('en-NA', { month: 'long', year: 'numeric' });
+            printDPSalesReportFromData(data, label);
           } catch (e) {
             alert('Failed to load monthly report: ' + (e.message || 'Unknown error'));
           }
@@ -6261,7 +6267,7 @@ function BranchStockTab() {
 
         const handleStockFormulaReport = async () => {
           try {
-            const data = await api.reports.branchStockFormula({ branch_id: branchIdParam, month: monthStr });
+            const data = await api.reports.branchStockFormula({ branch_id: branchIdParam, month: reportMonth });
             printStockFormulaFromData(data);
           } catch (e) {
             alert('Failed to load stock formula report: ' + (e.message || 'Unknown error'));
@@ -6289,6 +6295,68 @@ function BranchStockTab() {
               </button>
             )}
           </div>
+
+          {/* ── Date Filters ── */}
+          <div style={{ background: '#fff', border: '1.5px solid #fecaca', borderRadius: 12, padding: '14px 18px', marginBottom: 18 }}>
+            <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#c41e3a', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.06em' }}>🗓️ Report Filters</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20, alignItems: 'flex-end' }}>
+              {/* Daily report date */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  📊 Report Date <span style={{ color: '#94a3b8', fontWeight: 400, textTransform: 'none' }}>(Daily Sales)</span>
+                </label>
+                <input
+                  type="date"
+                  value={reportDate}
+                  max={new Date().toISOString().slice(0, 10)}
+                  onChange={e => setReportDate(e.target.value)}
+                  style={{ border: '1.5px solid #fecaca', borderRadius: 8, padding: '6px 10px', fontSize: '0.85rem', color: '#1e293b', background: '#fdf2f4', outline: 'none', cursor: 'pointer' }}
+                />
+              </div>
+
+              {/* Monthly report month */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  📈 Report Month <span style={{ color: '#94a3b8', fontWeight: 400, textTransform: 'none' }}>(Monthly Sales &amp; Stock Formula)</span>
+                </label>
+                <input
+                  type="month"
+                  value={reportMonth}
+                  max={new Date().toISOString().slice(0, 7)}
+                  onChange={e => setReportMonth(e.target.value)}
+                  style={{ border: '1.5px solid #fecaca', borderRadius: 8, padding: '6px 10px', fontSize: '0.85rem', color: '#1e293b', background: '#fdf2f4', outline: 'none', cursor: 'pointer' }}
+                />
+              </div>
+
+              {/* Bonus date range */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  🎁 Bonus Date Range <span style={{ color: '#94a3b8', fontWeight: 400, textTransform: 'none' }}>(leave blank for all)</span>
+                </label>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input
+                    type="date"
+                    value={bonusFrom}
+                    onChange={e => setBonusFrom(e.target.value)}
+                    placeholder="From"
+                    style={{ border: '1.5px solid #fecaca', borderRadius: 8, padding: '6px 10px', fontSize: '0.85rem', color: '#1e293b', background: '#fdf2f4', outline: 'none', cursor: 'pointer' }}
+                  />
+                  <span style={{ color: '#94a3b8', fontSize: '0.78rem' }}>to</span>
+                  <input
+                    type="date"
+                    value={bonusTo}
+                    onChange={e => setBonusTo(e.target.value)}
+                    placeholder="To"
+                    style={{ border: '1.5px solid #fecaca', borderRadius: 8, padding: '6px 10px', fontSize: '0.85rem', color: '#1e293b', background: '#fdf2f4', outline: 'none', cursor: 'pointer' }}
+                  />
+                  {(bonusFrom || bonusTo) && (
+                    <button onClick={() => { setBonusFrom(''); setBonusTo(''); }} style={{ fontSize: '0.72rem', color: '#c41e3a', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700, padding: '0 4px' }}>✕ Clear</button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 14 }}>
             {[
               { icon: '📊', title: 'Daily DP Sales Report', desc: "Today's sales — all categories including Rx dispenses with payment method breakdown. Server-side aggregation covers all records.", action: handleDailyReport },
@@ -6306,13 +6374,11 @@ function BranchStockTab() {
                 if (!requests || requests.length === 0) { alert('No stock requests loaded for this branch. Please navigate to the Stock Requests tab first to load data.'); return; }
                 printReceivingStockReport(requests, branchName);
               }},
-              { icon: '🎁', title: 'Bonus Payments Report', desc: 'Distributor bonus payments made by this branch with optional date range filter.', action: async () => {
+              { icon: '🎁', title: 'Bonus Payments Report', desc: 'Distributor bonus payments made by this branch. Use the "Bonus Date Range" filter above to narrow by date.', action: async () => {
                 try {
-                  const fromDate = prompt('From date (YYYY-MM-DD), leave blank for all:') || '';
-                  const toDate = prompt('To date (YYYY-MM-DD), leave blank for all:') || '';
                   const params = { branch: branchIdParam };
-                  if (fromDate) params.from = fromDate;
-                  if (toDate) params.to = toDate;
+                  if (bonusFrom) params.from = bonusFrom;
+                  if (bonusTo) params.to = bonusTo;
                   const result = await api.branch.bonusPayments(params);
                   const paidList = result.paidHistory || [];
                   if (paidList.length === 0) { alert('No bonus payments recorded for this branch.'); return; }
