@@ -3060,6 +3060,10 @@ function WarehouseTab({ name }) {
   const [dispatchBranch, setDispatchBranch] = useState('');
   const [dispatchNote, setDispatchNote] = useState('');
   const [dispatchBatchSelections, setDispatchBatchSelections] = useState({});
+  const [scanMode, setScanMode] = useState(false);
+  const [scanInput, setScanInput] = useState('');
+  const [scanLog, setScanLog] = useState([]);
+  const scanRef = useRef(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -3209,6 +3213,37 @@ function WarehouseTab({ name }) {
     if (!m[key]) m[key] = r;
     return m;
   }, {});
+
+  // ── Barcode scan handler (component level) ───────────────────────────────
+  const handleBarcodeScan = (rawValue) => {
+    const value = (rawValue || '').trim();
+    if (!value) return;
+    setScanInput('');
+    const matched = batches.find(b =>
+      (b.batch_no || '').trim().toLowerCase() === value.toLowerCase() ||
+      (b.barcode  || '').trim().toLowerCase() === value.toLowerCase()
+    );
+    if (!matched) {
+      setScanLog(prev => [{ batchNo: value, productName: null, status: 'not_found', ts: Date.now() }, ...prev.slice(0, 14)]);
+      setTimeout(() => scanRef.current?.focus(), 30);
+      return;
+    }
+    const productName = matched.description || matched.product_name || '';
+    const remaining   = Number(matched.remaining_quantity ?? matched.remainingQuantity ?? matched.quantity ?? 0);
+    if (remaining <= 0) {
+      setScanLog(prev => [{ batchNo: matched.batch_no || value, productName, status: 'no_stock', ts: Date.now() }, ...prev.slice(0, 14)]);
+      setTimeout(() => scanRef.current?.focus(), 30);
+      return;
+    }
+    setDispatchCart(prev => {
+      const exists = prev.find(c => c.description === productName);
+      if (exists) return prev.map(c => c.description === productName ? { ...c, qty: c.qty + 1 } : c);
+      return [...prev, { description: productName, qty: 1 }];
+    });
+    setDispatchBatchSelections(prev => ({ ...prev, [productName]: matched.id }));
+    setScanLog(prev => [{ batchNo: matched.batch_no || value, productName, expiry: matched.expiry_date, remaining, status: 'ok', ts: Date.now() }, ...prev.slice(0, 14)]);
+    setTimeout(() => scanRef.current?.focus(), 30);
+  };
 
   const handleDispatchToBranch = async (e) => {
     e.preventDefault();
@@ -4750,7 +4785,7 @@ function WarehouseTab({ name }) {
         </div>
       )}
 
-      <Modal open={showDispatch} onClose={() => setShowDispatch(false)} title={`Dispatch from ${name} Warehouse to Branch`} size="lg">
+      <Modal open={showDispatch} onClose={() => { setShowDispatch(false); setScanMode(false); setScanInput(''); setScanLog([]); }} title={`Dispatch from ${name} Warehouse to Branch`} size="lg">
         <form onSubmit={handleDispatchToBranch} style={{ display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: '24px 24px 0', display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10, padding: '10px 14px', fontSize: '0.83rem', color: '#92400e' }}>
@@ -4765,10 +4800,124 @@ function WarehouseTab({ name }) {
             </div>
             <Select label="Destination Branch" options={branchDestinations} value={dispatchBranch} onChange={e => setDispatchBranch(e.target.value)} />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Select Products & Quantities</label>
-            <ProductMultiCart cart={dispatchCart} onCartChange={setDispatchCart} />
+
+          {/* ── Mode toggle ── */}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button"
+              onClick={() => { setScanMode(false); setScanLog([]); }}
+              style={{ flex: 1, padding: '9px 0', borderRadius: 8, border: `2px solid ${!scanMode ? '#c41e3a' : '#e2e8f0'}`,
+                background: !scanMode ? '#fdf2f4' : '#f8fafc', color: !scanMode ? '#c41e3a' : '#64748b',
+                fontWeight: 700, fontSize: '0.83rem', cursor: 'pointer' }}>
+              📋 Manual Selection
+            </button>
+            <button type="button"
+              onClick={() => { setScanMode(true); setTimeout(() => scanRef.current?.focus(), 80); }}
+              style={{ flex: 1, padding: '9px 0', borderRadius: 8, border: `2px solid ${scanMode ? '#059669' : '#e2e8f0'}`,
+                background: scanMode ? '#f0fdf4' : '#f8fafc', color: scanMode ? '#059669' : '#64748b',
+                fontWeight: 700, fontSize: '0.83rem', cursor: 'pointer' }}>
+              📷 Scan Barcode / QR
+            </button>
           </div>
+
+          {/* ── Scan Mode UI ── */}
+          {scanMode ? (
+            <div style={{ border: '2px solid #059669', borderRadius: 12, overflow: 'hidden' }}>
+              {/* Scanner header */}
+              <div style={{ background: '#059669', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 20 }}>🔍</span>
+                <div style={{ color: '#fff' }}>
+                  <div style={{ fontWeight: 800, fontSize: '0.9rem' }}>Scan Mode Active</div>
+                  <div style={{ fontSize: '0.75rem', opacity: 0.85 }}>Point scanner at product barcode or QR — each scan adds 1 unit to the dispatch cart</div>
+                </div>
+              </div>
+              {/* Scan input */}
+              <div style={{ padding: '14px 16px', background: '#f0fdf4' }}>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    ref={scanRef}
+                    type="text"
+                    value={scanInput}
+                    onChange={e => setScanInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleBarcodeScan(scanInput); } }}
+                    placeholder="Scan or type batch number / barcode, then press Enter…"
+                    autoComplete="off"
+                    style={{ width: '100%', padding: '12px 48px 12px 14px', border: '2px solid #059669', borderRadius: 8,
+                      fontSize: '1rem', fontFamily: 'monospace', background: '#fff', outline: 'none', boxSizing: 'border-box' }}
+                  />
+                  <button type="button" onClick={() => handleBarcodeScan(scanInput)}
+                    style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+                      background: '#059669', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 10px',
+                      cursor: 'pointer', fontWeight: 700, fontSize: '0.8rem' }}>
+                    ↵
+                  </button>
+                </div>
+              </div>
+              {/* Scan log */}
+              {scanLog.length > 0 && (
+                <div style={{ maxHeight: 200, overflowY: 'auto', borderTop: '1px solid #d1fae5' }}>
+                  {scanLog.map((entry, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 16px',
+                      background: entry.status === 'ok' ? (idx % 2 === 0 ? '#fff' : '#f0fdf4')
+                        : entry.status === 'no_stock' ? '#fffbeb' : '#fef2f2',
+                      borderBottom: '1px solid #e2e8f0' }}>
+                      <span style={{ fontSize: 14 }}>
+                        {entry.status === 'ok' ? '✅' : entry.status === 'no_stock' ? '⚠️' : '❌'}
+                      </span>
+                      <span style={{ fontFamily: 'monospace', fontSize: '0.8rem', fontWeight: 700, color: '#1e293b', minWidth: 100 }}>
+                        {entry.batchNo}
+                      </span>
+                      {entry.status === 'ok' ? (
+                        <>
+                          <span style={{ fontSize: '0.8rem', color: '#166534', flex: 1 }}>{entry.productName}</span>
+                          {entry.expiry && <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Exp: {formatDate(entry.expiry)}</span>}
+                          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#059669' }}>+1 added</span>
+                        </>
+                      ) : entry.status === 'no_stock' ? (
+                        <span style={{ fontSize: '0.8rem', color: '#92400e', flex: 1 }}>No stock remaining — {entry.productName}</span>
+                      ) : (
+                        <span style={{ fontSize: '0.8rem', color: '#991b1b', flex: 1 }}>Barcode not found in this warehouse</span>
+                      )}
+                      <span style={{ fontSize: '0.7rem', color: '#9ca3af' }}>{new Date(entry.ts).toLocaleTimeString()}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {/* Scanned cart summary */}
+              {dispatchCart.length > 0 && (
+                <div style={{ padding: '10px 16px', borderTop: '1px solid #d1fae5', background: '#ecfdf5' }}>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#059669', marginBottom: 6 }}>
+                    📦 Scanned Dispatch Cart ({dispatchCart.reduce((s, c) => s + c.qty, 0)} units)
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {dispatchCart.map(c => {
+                      const sel = dispatchBatchSelections[c.description];
+                      const batch = batches.find(b => b.id === sel);
+                      return (
+                        <div key={c.description} style={{ background: '#fff', border: '1px solid #86efac', borderRadius: 8, padding: '5px 10px', fontSize: '0.78rem' }}>
+                          <span style={{ fontWeight: 600 }}>{c.description}</span>
+                          <span style={{ color: '#64748b', margin: '0 4px' }}>·</span>
+                          <span style={{ fontFamily: 'monospace', fontSize: '0.74rem', color: '#1d4ed8' }}>{batch?.batch_no || '—'}</span>
+                          <span style={{ margin: '0 4px', color: '#94a3b8' }}>×</span>
+                          <input type="number" min={1} max={Number(batch?.remaining_quantity ?? 999)}
+                            value={c.qty}
+                            onChange={e => setDispatchCart(prev => prev.map(p => p.description === c.description ? { ...p, qty: Math.max(1, Number(e.target.value) || 1) } : p))}
+                            style={{ width: 52, padding: '2px 5px', border: '1px solid #86efac', borderRadius: 5, fontWeight: 700, fontSize: '0.82rem', textAlign: 'center' }}
+                          />
+                          <button type="button" onClick={() => { setDispatchCart(prev => prev.filter(p => p.description !== c.description)); setDispatchBatchSelections(prev => { const n = { ...prev }; delete n[c.description]; return n; }); }}
+                            style={{ marginLeft: 6, color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>×</button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Select Products & Quantities</label>
+              <ProductMultiCart cart={dispatchCart} onCartChange={setDispatchCart} />
+            </div>
+          )}
           {dispatchCart.length > 0 && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Batch Selection</label>

@@ -5664,6 +5664,88 @@ function BranchStockTab() {
                   </div>
                 </div>
 
+                {/* ── FEFO ADVISORY ── */}
+                {(() => {
+                  const fefoWarnings = receiveItems.flatMap(incoming => {
+                    const incomingExpiry = incoming.expiryDate || incoming.expiry_date;
+                    const incomingDate   = incomingExpiry ? new Date(incomingExpiry) : null;
+                    const pName = (incoming.productName || incoming.productId || '').toLowerCase();
+                    if (!pName) return [];
+                    // Find existing branch inventory rows for this product with earlier expiry
+                    const existing = inventory.filter(inv => {
+                      const invName = (inv.product_name || inv.productName || '').toLowerCase();
+                      const qty = Number(inv.quantity ?? inv.remaining_quantity ?? 0);
+                      return invName === pName && qty > 0;
+                    });
+                    if (existing.length === 0) return [];
+                    const older = existing
+                      .filter(inv => {
+                        const exp = inv.expiry_date || inv.expiryDate;
+                        if (!exp) return false;
+                        const d = new Date(exp);
+                        // Older than incoming = expires before incoming batch
+                        return !incomingDate || d < incomingDate;
+                      })
+                      .sort((a, b) => new Date(a.expiry_date || a.expiryDate) - new Date(b.expiry_date || b.expiryDate));
+                    if (older.length === 0) return [];
+                    return [{ product: incoming.productName || incoming.productId, incomingExpiry, older }];
+                  });
+
+                  if (fefoWarnings.length === 0) {
+                    // No FEFO conflict — show a brief green confirmation
+                    return (
+                      <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: '9px 14px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+                        <span style={{ fontSize: 16 }}>✅</span>
+                        <span style={{ color: '#166534', fontWeight: 600 }}>FEFO Check Passed — </span>
+                        <span style={{ color: '#4b7c5e' }}>Incoming stock has the earliest expiry (or no conflict with existing batches). Stock may be shelved normally.</span>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div style={{ background: '#fff7ed', border: '1.5px solid #fb923c', borderRadius: 10, padding: '12px 16px', marginBottom: 16 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                        <span style={{ fontSize: 18 }}>⚠️</span>
+                        <div>
+                          <div style={{ fontWeight: 800, fontSize: 13, color: '#9a3412' }}>FEFO Alert — Older Stock Already on Shelf</div>
+                          <div style={{ fontSize: 11, color: '#c2410c', marginTop: 1 }}>First Expired First Out: the products below have existing batches that expire BEFORE this incoming shipment. Use those existing batches first — store this delivery behind them.</div>
+                        </div>
+                      </div>
+                      {fefoWarnings.map((w, wi) => (
+                        <div key={wi} style={{ background: '#fff', border: '1px solid #fed7aa', borderRadius: 8, padding: '8px 12px', marginTop: wi > 0 ? 8 : 0 }}>
+                          <div style={{ fontWeight: 700, fontSize: 12, color: '#1e293b', marginBottom: 4 }}>
+                            📦 {w.product}
+                            {w.incomingExpiry && <span style={{ fontWeight: 400, color: '#64748b', marginLeft: 8, fontFamily: 'monospace', fontSize: 11 }}>Incoming expiry: {w.incomingExpiry?.slice(0, 7)}</span>}
+                          </div>
+                          <div style={{ fontSize: 11, color: '#92400e', marginBottom: 4 }}>⬇ Existing batches to use FIRST (expire sooner):</div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                            {w.older.map((inv, ii) => {
+                              const exp = inv.expiry_date || inv.expiryDate;
+                              const qty = Number(inv.quantity ?? inv.remaining_quantity ?? 0);
+                              const isExpired = exp && new Date(exp) < new Date();
+                              return (
+                                <span key={ii} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px',
+                                  background: isExpired ? '#fef2f2' : '#fff7ed',
+                                  border: `1px solid ${isExpired ? '#fca5a5' : '#fcd34d'}`,
+                                  borderRadius: 20, fontSize: 11, fontWeight: 600 }}>
+                                  {isExpired ? '🔴' : '🟡'}
+                                  <span style={{ fontFamily: 'monospace', color: '#1e293b' }}>{inv.batch_no || inv.batchNo || 'Unknown batch'}</span>
+                                  <span style={{ color: '#64748b' }}>Exp: {exp?.slice(0, 7) || '—'}</span>
+                                  <span style={{ color: '#059669' }}>{qty} units</span>
+                                  {isExpired && <span style={{ color: '#dc2626', fontWeight: 800 }}>EXPIRED</span>}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                      <div style={{ marginTop: 10, fontSize: 11, color: '#9a3412', fontStyle: 'italic' }}>
+                        ℹ Receiving this stock is fine — just ensure older batches are sold/used before this new shipment. Consider writing off any expired batches above.
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* ── ITEMS TABLE ── */}
                 <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 20 }}>
                   <thead>
