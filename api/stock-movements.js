@@ -1,6 +1,7 @@
 import { applyAuthCors, getBranchScope } from './_lib/auth.js';
 import { query, getMany, getOne, withTransaction } from './db.js';
 import { recomputeLocationBalances, recomputeInventoryBalance, inferLocationType } from './services/stockEngine.js';
+import { branchSearchTerms } from './_lib/branchUtils.js';
 
 function normalizeMovement(row) {
   if (!row) return null;
@@ -380,17 +381,20 @@ export default async function handler(req, res) {
               [bimId, branchId, movType, productName, batchNo || '', qty, referenceId, notes, createdBy]
             );
             if (['write_off', 'sale', 'field_use'].includes(movType)) {
+              // Use the full alias map so hyphenated slugs like 'hochland-park' match
+              // rows stored as 'hochlandpark', and _branch-suffix variants also resolve.
+              const postBranchCandidates = branchSearchTerms(branchId);
               let remaining = qty;
               // If a specific batch_no is given, deduct from it first before falling back to FIFO
               if (batchNo) {
                 const specificBatch = await client.query(
                   `SELECT id, quantity FROM branch_inventory_batches
-                   WHERE LOWER(REPLACE(branch_id, ' ', '_')) = LOWER(REPLACE($1, ' ', '_'))
+                   WHERE LOWER(REPLACE(branch_id, ' ', '_')) = ANY($1)
                      AND LOWER(product_name) = LOWER($2)
                      AND LOWER(COALESCE(batch_no,'')) = LOWER($3)
                      AND quantity > 0
                    LIMIT 1`,
-                  [branchId, productName, batchNo]
+                  [postBranchCandidates, productName, batchNo]
                 );
                 for (const b of specificBatch.rows) {
                   if (remaining <= 0) break;
@@ -403,12 +407,12 @@ export default async function handler(req, res) {
               if (remaining > 0) {
                 const batches = await client.query(
                   `SELECT id, quantity FROM branch_inventory_batches
-                   WHERE LOWER(REPLACE(branch_id, ' ', '_')) = LOWER(REPLACE($1, ' ', '_'))
+                   WHERE LOWER(REPLACE(branch_id, ' ', '_')) = ANY($1)
                      AND LOWER(product_name) = LOWER($2)
                      AND quantity > 0
                      ${batchNo ? `AND LOWER(COALESCE(batch_no,'')) != LOWER($3)` : ''}
                    ORDER BY expiry_date ASC NULLS LAST`,
-                  batchNo ? [branchId, productName, batchNo] : [branchId, productName]
+                  batchNo ? [postBranchCandidates, productName, batchNo] : [postBranchCandidates, productName]
                 );
                 for (const b of batches.rows) {
                   if (remaining <= 0) break;
@@ -596,16 +600,10 @@ export default async function handler(req, res) {
 
         // Deduct from branch_inventory_batches
         if (branchId && productName && qty > 0) {
-          // Resolve the actual branch_id stored in branch_inventory_batches.
-          // The normalization may have left rows under a _branch-suffixed variant
-          // (e.g. 'ondangwa_branch') even though source_location is 'ondangwa'.
-          // Build a candidate list and pick whichever slug is actually in the table.
-          const branchSlug = branchId.toLowerCase().replace(/\s+/g, '_');
-          const branchCandidates = Array.from(new Set([
-            branchSlug,
-            branchSlug.endsWith('_branch') ? branchSlug : branchSlug + '_branch',
-            branchSlug.replace(/_branch$/, ''),
-          ]));
+          // Use the full alias map from branchUtils so that hyphenated slugs like
+          // 'hochland-park' correctly resolve to stored forms like 'hochlandpark',
+          // and _branch-suffixed variants ('ondangwa_branch') are also covered.
+          const branchCandidates = branchSearchTerms(branchId);
           const resolvedRow = await client.query(
             `SELECT DISTINCT branch_id FROM branch_inventory_batches
              WHERE LOWER(REPLACE(branch_id,' ','_')) = ANY($1) LIMIT 1`,
@@ -632,13 +630,14 @@ export default async function handler(req, res) {
 
           let remaining = qty;
           if (batchNo) {
+            // Use ANY(branchCandidates) so rows stored under any alias form are matched.
             const specific = await client.query(
               `SELECT id, quantity FROM branch_inventory_batches
-               WHERE branch_id = $1
+               WHERE LOWER(REPLACE(branch_id,' ','_')) = ANY($1)
                  AND LOWER(product_name) = LOWER($2)
                  AND LOWER(COALESCE(batch_no,'')) = LOWER($3)
                  AND quantity > 0 LIMIT 1`,
-              [effectiveBranchId, productName, batchNo]
+              [branchCandidates, productName, batchNo]
             );
             for (const b of specific.rows) {
               const take = Math.min(remaining, Number(b.quantity));
@@ -650,12 +649,12 @@ export default async function handler(req, res) {
           if (remaining > 0) {
             const fifo = await client.query(
               `SELECT id, quantity FROM branch_inventory_batches
-               WHERE branch_id = $1
+               WHERE LOWER(REPLACE(branch_id,' ','_')) = ANY($1)
                  AND LOWER(product_name) = LOWER($2)
                  AND quantity > 0
                  ${batchNo ? `AND LOWER(COALESCE(batch_no,'')) != LOWER($3)` : ''}
                ORDER BY expiry_date ASC NULLS LAST`,
-              batchNo ? [effectiveBranchId, productName, batchNo] : [effectiveBranchId, productName]
+              batchNo ? [branchCandidates, productName, batchNo] : [branchCandidates, productName]
             );
             for (const b of fifo.rows) {
               if (remaining <= 0) break;
