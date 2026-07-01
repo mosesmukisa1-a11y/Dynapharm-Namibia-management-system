@@ -4021,47 +4021,166 @@ function WarehouseTab({ name }) {
         const allTypes = [...new Set(movements.map(m => m.movement_type).filter(Boolean))];
 
         const printMovements = () => {
-          const dateRange = mvDateFrom || mvDateTo ? `<div style="font-size:11px;color:#666;margin-bottom:8px">Period: ${mvDateFrom || 'all'} to ${mvDateTo || 'present'}</div>` : '';
-          const summaryHtml = `
-            <div style="display:flex;gap:20px;margin-bottom:16px;flex-wrap:wrap">
-              <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px 16px;min-width:120px">
-                <div style="font-size:22px;font-weight:900;color:#166534">${totalIn.toLocaleString()}</div>
-                <div style="font-size:11px;color:#166534;font-weight:700">TOTAL RECEIVED</div>
+          const now = new Date().toLocaleString('en-NA');
+          const logoUrl = window.location.origin + '/assets/dynapharm-logo.png';
+
+          // ── Filter summary banner ──
+          const filterChips = [];
+          if (mvDateFrom || mvDateTo) filterChips.push(`Period: <b>${mvDateFrom || 'start'}</b> → <b>${mvDateTo || 'present'}</b>`);
+          if (mvTypeFilter) {
+            const label = mvTypeFilter === '__in__' ? 'Inbound Only' : mvTypeFilter === '__out__' ? 'Outbound Only' : mvTypeFilter.replace(/_/g,' ').replace(/\b\w/g, c => c.toUpperCase());
+            filterChips.push(`Type: <b>${label}</b>`);
+          }
+          if (mvProductSearch) filterChips.push(`Product search: <b>${mvProductSearch}</b>`);
+          const filterBanner = filterChips.length
+            ? `<div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;padding:7px 12px;margin-bottom:14px;font-size:10.5px;color:#92400e">
+                🔍 Filters applied — ${filterChips.join(' &nbsp;|&nbsp; ')} &nbsp;&nbsp;
+                <span style="color:#64748b">(${filtered.length} of ${movements.length} movements shown${movements.length >= 2000 ? ' — full history exceeds 2000 records' : ''})</span>
+               </div>`
+            : `<div style="color:#64748b;font-size:10px;margin-bottom:12px">Showing ${filtered.length} movement record${filtered.length !== 1 ? 's' : ''}${movements.length >= 2000 ? ' (2000+ total — export limited to most recent 2000)' : ''}.</div>`;
+
+          // ── KPI summary strip ──
+          const kpiBar = `
+            <div style="display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap">
+              <div style="flex:1;min-width:110px;background:#f0fdf4;border:1.5px solid #86efac;border-radius:8px;padding:10px 14px">
+                <div style="font-size:24px;font-weight:900;color:#166534">+${totalIn.toLocaleString()}</div>
+                <div style="font-size:10px;font-weight:700;color:#166534;letter-spacing:0.5px;margin-top:2px">📥 TOTAL RECEIVED</div>
               </div>
-              <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:10px 16px;min-width:120px">
-                <div style="font-size:22px;font-weight:900;color:#991b1b">${totalOut.toLocaleString()}</div>
-                <div style="font-size:11px;color:#991b1b;font-weight:700">TOTAL DISPATCHED</div>
+              <div style="flex:1;min-width:110px;background:#fef2f2;border:1.5px solid #fca5a5;border-radius:8px;padding:10px 14px">
+                <div style="font-size:24px;font-weight:900;color:#991b1b">-${totalOut.toLocaleString()}</div>
+                <div style="font-size:10px;font-weight:700;color:#991b1b;letter-spacing:0.5px;margin-top:2px">📤 TOTAL DISPATCHED</div>
               </div>
-              ${totalAdj > 0 ? `<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:10px 16px;min-width:120px"><div style="font-size:22px;font-weight:900;color:#92400e">${totalAdj.toLocaleString()}</div><div style="font-size:11px;color:#92400e;font-weight:700">ADJUSTMENTS</div></div>` : ''}
-              <div style="background:#eff6ff;border:1px solid #93c5fd;border-radius:8px;padding:10px 16px;min-width:120px">
-                <div style="font-size:22px;font-weight:900;color:#1e40af">${netMovement >= 0 ? '+' : ''}${netMovement.toLocaleString()}</div>
-                <div style="font-size:11px;color:#1e40af;font-weight:700">NET MOVEMENT</div>
+              ${totalAdj > 0 ? `<div style="flex:1;min-width:110px;background:#fffbeb;border:1.5px solid #fcd34d;border-radius:8px;padding:10px 14px"><div style="font-size:24px;font-weight:900;color:#92400e">±${totalAdj.toLocaleString()}</div><div style="font-size:10px;font-weight:700;color:#92400e;letter-spacing:0.5px;margin-top:2px">⚖️ ADJUSTMENTS</div></div>` : ''}
+              <div style="flex:1;min-width:110px;background:#eff6ff;border:1.5px solid #93c5fd;border-radius:8px;padding:10px 14px">
+                <div style="font-size:24px;font-weight:900;color:#1e40af">${netMovement >= 0 ? '+' : ''}${netMovement.toLocaleString()}</div>
+                <div style="font-size:10px;font-weight:700;color:#1e40af;letter-spacing:0.5px;margin-top:2px">📊 NET MOVEMENT</div>
               </div>
             </div>`;
-          const productRows = productSummary.map(p => {
+
+          // ── Per-product summary table ──
+          const productRows = productSummary.map((p, idx) => {
             const rem = getRemainingForProduct(p.product);
-            return `<tr><td style="padding:6px 10px;font-weight:600">${p.product}</td><td style="padding:6px 10px;text-align:center;color:#166534;font-weight:700">+${p.in}</td><td style="padding:6px 10px;text-align:center;color:#991b1b;font-weight:700">-${p.out}</td>${p.adj ? `<td style="padding:6px 10px;text-align:center;color:#92400e;font-weight:700">${p.adj}</td>` : '<td style="padding:6px 10px;text-align:center;color:#94a3b8">—</td>'}<td style="padding:6px 10px;text-align:center;font-weight:800;color:#1d4ed8">${rem}</td></tr>`;
+            const net = p.in - p.out;
+            const rowBg = idx % 2 === 0 ? '#fff' : '#f8fafc';
+            const remColor = rem === 0 ? '#94a3b8' : rem < 10 ? '#dc2626' : '#1d4ed8';
+            return `<tr style="background:${rowBg}">
+              <td style="padding:5px 9px;font-weight:600;color:#1e293b">${p.product}</td>
+              <td style="padding:5px 9px;text-align:center;color:#166534;font-weight:700">+${p.in}</td>
+              <td style="padding:5px 9px;text-align:center;color:#991b1b;font-weight:700">-${p.out}</td>
+              <td style="padding:5px 9px;text-align:center;color:#92400e;font-weight:600">${p.adj || '—'}</td>
+              <td style="padding:5px 9px;text-align:center;font-weight:700;color:${net >= 0 ? '#166534' : '#991b1b'}">${net >= 0 ? '+' : ''}${net}</td>
+              <td style="padding:5px 9px;text-align:center;font-weight:800;color:${remColor}">${rem}${rem < 10 && rem > 0 ? ' ⚠' : ''}</td>
+            </tr>`;
           }).join('');
-          const detailRows = filtered.map(m => {
+
+          // ── Detailed movement rows (colour-coded by direction) ──
+          const detailRows = filtered.map((m, idx) => {
             const d = mvDir(m);
-            const sign = d === 'in' ? '+' : d === 'out' ? '-' : '±';
-            const clr = d === 'in' ? '#166534' : d === 'out' ? '#991b1b' : '#92400e';
-            return `<tr><td style="padding:5px 8px">${m.product_name||'—'}</td><td style="padding:5px 8px;font-family:monospace;font-size:10px">${m.batch_no||'—'}</td><td style="padding:5px 8px;font-size:10px">${m.expiry_date ? formatDate(m.expiry_date) : '—'}</td><td style="padding:5px 8px;text-transform:capitalize;font-size:10px">${(m.movement_type||'').replace(/_/g,' ')}</td><td style="padding:5px 8px;font-weight:800;color:${clr};text-align:center">${sign}${Number(m.quantity||0)}</td><td style="padding:5px 8px;font-size:10px">${fmtLocation(m.source_location)}</td><td style="padding:5px 8px;font-size:10px">${fmtLocation(m.destination_location)}</td><td style="padding:5px 8px;font-family:monospace;font-size:9px">${m.reference_id||m.reference||'—'}</td><td style="padding:5px 8px;font-size:10px">${m.created_by||'—'}</td><td style="padding:5px 8px;font-size:10px;white-space:nowrap">${formatDateTime(m.created_at)}</td></tr>`;
+            const sign   = d === 'in' ? '+' : d === 'out' ? '-' : '±';
+            const clr    = d === 'in' ? '#166534' : d === 'out' ? '#991b1b' : '#92400e';
+            const rowBg  = d === 'in'  ? (idx % 2 === 0 ? '#f0fdf4' : '#dcfce7')
+                         : d === 'out' ? (idx % 2 === 0 ? '#fef2f2' : '#fee2e2')
+                         : (idx % 2 === 0 ? '#fffbeb' : '#fef9c3');
+            const typeLabel = (m.movement_type || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+            const dirLabel = d === 'in' ? '↓ IN' : d === 'out' ? '↑ OUT' : '± ADJ';
+            return `<tr style="background:${rowBg}">
+              <td style="padding:4px 7px;font-weight:600;font-size:10px">${m.product_name || '—'}</td>
+              <td style="padding:4px 7px;font-family:monospace;font-size:9px;color:#1d4ed8">${m.batch_no || '—'}</td>
+              <td style="padding:4px 7px;font-size:9px;white-space:nowrap">${m.expiry_date ? formatDate(m.expiry_date) : '—'}</td>
+              <td style="padding:4px 7px;font-size:9px">
+                <span style="background:${d === 'in' ? '#dcfce7' : d === 'out' ? '#fee2e2' : '#fef9c3'};color:${clr};padding:1px 5px;border-radius:4px;font-weight:700;font-size:8.5px">${dirLabel}</span>
+                <span style="font-size:9px;color:#475569;margin-left:3px">${typeLabel}</span>
+              </td>
+              <td style="padding:4px 7px;font-weight:900;color:${clr};text-align:center;font-size:11px">${sign}${Number(m.quantity || 0)}</td>
+              <td style="padding:4px 7px;font-size:9px;color:#334155">${fmtLocation(m.source_location)}</td>
+              <td style="padding:4px 7px;font-size:9px;color:#334155">${fmtLocation(m.destination_location)}</td>
+              <td style="padding:4px 7px;font-family:monospace;font-size:8.5px;color:#64748b">${m.reference_id || m.reference || '—'}</td>
+              <td style="padding:4px 7px;font-size:9px">${m.created_by || '—'}</td>
+              <td style="padding:4px 7px;font-size:9px;white-space:nowrap;color:#475569">${formatDateTime(m.created_at)}</td>
+            </tr>`;
           }).join('');
-          printDocument(`${name} Warehouse — Stock Movements Report`, `
-            ${dateRange}
-            ${summaryHtml}
-            <h3 style="font-size:13px;font-weight:800;margin:16px 0 6px;color:#1e293b">Per-Product Summary</h3>
-            <table style="width:100%;border-collapse:collapse;margin-bottom:20px;font-size:12px">
-              <thead><tr style="background:#f1f5f9"><th style="padding:6px 10px;text-align:left">Product</th><th style="padding:6px 10px">Received</th><th style="padding:6px 10px">Dispatched</th><th style="padding:6px 10px">Adjusted</th><th style="padding:6px 10px">Remaining</th></tr></thead>
+
+          const w = window.open('', '_blank', 'width=1100,height=800');
+          w.document.write(`<!DOCTYPE html><html><head><title>${name} Warehouse — Movements Report</title>
+          <style>
+            @media print { @page { size: A4 landscape; margin: 10mm; } .no-print { display:none!important; } }
+            * { box-sizing: border-box; }
+            body { font-family: Arial, sans-serif; font-size: 11px; color: #1e293b; margin: 0; padding: 16px; }
+            .doc-header { display:flex; align-items:center; gap:14px; border-bottom: 3px solid #8b0000; padding-bottom: 10px; margin-bottom: 14px; }
+            .doc-header img { height: 50px; width: auto; }
+            .doc-header-text h2 { font-size: 16px; font-weight: 900; color: #8b0000; margin: 0 0 2px; }
+            .doc-header-text .sub { font-size: 10px; color: #555; }
+            .doc-header-right { margin-left:auto; text-align:right; }
+            .doc-header-right .wh-name { font-size:13px;font-weight:900;color:#0f172a; }
+            .doc-header-right .print-time { font-size:9.5px;color:#64748b;margin-top:2px; }
+            h3 { font-size:12px;font-weight:800;margin:16px 0 5px;color:#1e293b;border-left:3px solid #8b0000;padding-left:8px; }
+            table { width:100%;border-collapse:collapse;margin-bottom:18px; }
+            th { background:#8b0000;color:#fff;font-weight:700;padding:6px 7px;text-align:left;font-size:10px;letter-spacing:0.3px; }
+            td { border-bottom:1px solid #f1f5f9; }
+            .legend { display:flex;gap:12px;margin-bottom:14px;font-size:9.5px; }
+            .leg { display:flex;align-items:center;gap:4px; }
+            .leg-swatch { width:12px;height:12px;border-radius:2px; }
+            .footer { margin-top:14px;font-size:9px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:6px;display:flex;justify-content:space-between; }
+            .print-btn { position:fixed;top:10px;right:10px;background:#8b0000;color:#fff;border:none;padding:8px 20px;border-radius:6px;font-weight:700;cursor:pointer;font-size:13px; }
+          </style></head><body>
+            <button class="print-btn no-print" onclick="window.print()">🖨️ Print / Save PDF</button>
+            <div class="doc-header">
+              <img src="${logoUrl}" alt="Dynapharm" onerror="this.style.display='none'"/>
+              <div class="doc-header-text">
+                <h2>DYNAPHARM INTERNATIONAL NAMIBIA</h2>
+                <div class="sub">Health &bull; Wealth &bull; Freedom &mdash; Stock Movements Report</div>
+              </div>
+              <div class="doc-header-right">
+                <div class="wh-name">🏭 ${name} Warehouse</div>
+                <div class="print-time">Printed: ${now}</div>
+                <div class="print-time" style="color:#8b0000;font-weight:700">${mvDateFrom || mvDateTo ? `Period: ${mvDateFrom || 'start'} → ${mvDateTo || 'present'}` : 'All time'}</div>
+              </div>
+            </div>
+
+            ${filterBanner}
+            ${kpiBar}
+
+            <h3>Per-Product Summary (${productSummary.length} products)</h3>
+            <table>
+              <thead><tr>
+                <th>Product</th>
+                <th style="text-align:center">Received ↓</th>
+                <th style="text-align:center">Dispatched ↑</th>
+                <th style="text-align:center">Adjusted ±</th>
+                <th style="text-align:center">Net</th>
+                <th style="text-align:center">Stock Now</th>
+              </tr></thead>
               <tbody>${productRows}</tbody>
             </table>
-            <h3 style="font-size:13px;font-weight:800;margin:16px 0 6px;color:#1e293b">Movement Detail (${filtered.length} records)</h3>
-            <table style="width:100%;border-collapse:collapse;font-size:11px">
-              <thead><tr style="background:#f1f5f9"><th style="padding:5px 8px;text-align:left">Product</th><th style="padding:5px 8px">Batch</th><th style="padding:5px 8px">Expiry</th><th style="padding:5px 8px">Type</th><th style="padding:5px 8px">Qty</th><th style="padding:5px 8px">From</th><th style="padding:5px 8px">To</th><th style="padding:5px 8px">Reference</th><th style="padding:5px 8px">By</th><th style="padding:5px 8px">Date & Time</th></tr></thead>
+
+            <h3>Movement Ledger — ${filtered.length} record${filtered.length !== 1 ? 's' : ''}</h3>
+            <div class="legend">
+              <span class="leg"><span class="leg-swatch" style="background:#86efac"></span> Inbound / Received</span>
+              <span class="leg"><span class="leg-swatch" style="background:#fca5a5"></span> Outbound / Dispatched</span>
+              <span class="leg"><span class="leg-swatch" style="background:#fcd34d"></span> Adjustment / Other</span>
+            </div>
+            <table>
+              <thead><tr>
+                <th>Product</th>
+                <th>Batch No.</th>
+                <th>Expiry</th>
+                <th>Direction / Type</th>
+                <th style="text-align:center">Qty</th>
+                <th>From</th>
+                <th>To</th>
+                <th>Reference</th>
+                <th>Recorded By</th>
+                <th>Date &amp; Time</th>
+              </tr></thead>
               <tbody>${detailRows}</tbody>
             </table>
-          `);
+
+            <div class="footer">
+              <span>Dynapharm International Namibia &mdash; Confidential Internal Document</span>
+              <span>${now}</span>
+            </div>
+          </body></html>`);
+          w.document.close();
         };
 
         return (
