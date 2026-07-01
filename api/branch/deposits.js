@@ -98,6 +98,10 @@ export default async function handler(req, res) {
 
       const branchScope = getBranchScope(currentUser);
       const requestedBranch = searchParams.get('branch');
+      // Require branch for unrestricted roles (admin) to prevent all-branches dump.
+      if (!branchScope.enforced && !requestedBranch) {
+        return res.status(400).json({ success: false, error: 'branch parameter is required' });
+      }
       const effectiveBranchId = branchScope.enforced ? (branchScope.primaryBranch || branchScope.branches?.[0] || null) : requestedBranch;
       const status = searchParams.get('status');
       const from = searchParams.get('from');

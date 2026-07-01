@@ -7160,6 +7160,8 @@ function BranchStockTab() {
 
 function BankingTab() {
   const { user } = useAuth();
+  const portalBranch = useContext(PortalBranchContext);
+  const effectiveBranch = portalBranch || user?.branch || '';
   const [deposits, setDeposits] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -7186,17 +7188,19 @@ function BankingTab() {
   const [drawerEntry, setDrawerEntry] = useState({ type: 'in', amount: '', description: '' });
 
   useEffect(() => {
+    if (!effectiveBranch) { setLoading(false); return; }
     Promise.all([
-      api.branch.deposits().catch(() => []),
-      api.branch.expenses().catch(() => []),
+      api.branch.deposits(`branch=${encodeURIComponent(effectiveBranch)}`).catch(() => []),
+      api.branch.expenses(`branch=${encodeURIComponent(effectiveBranch)}`).catch(() => []),
     ]).then(([d, e]) => {
       setDeposits(Array.isArray(d) ? d : d.deposits || []);
       setExpenses(Array.isArray(e) ? e : e.expenses || []);
     }).finally(() => setLoading(false));
-  }, []);
+  }, [effectiveBranch]);
 
   const reloadAll = async () => {
-    const [d, e] = await Promise.all([api.branch.deposits().catch(() => []), api.branch.expenses().catch(() => [])]);
+    if (!effectiveBranch) return;
+    const [d, e] = await Promise.all([api.branch.deposits(`branch=${encodeURIComponent(effectiveBranch)}`).catch(() => []), api.branch.expenses(`branch=${encodeURIComponent(effectiveBranch)}`).catch(() => [])]);
     setDeposits(Array.isArray(d) ? d : d.deposits || []);
     setExpenses(Array.isArray(e) ? e : e.expenses || []);
   };

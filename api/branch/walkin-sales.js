@@ -373,6 +373,13 @@ export default async function handler(req, res) {
         return res.status(200).json({ success: true, sale: normalizeSaleRow(row) });
       }
 
+      // Require an explicit branch filter for unrestricted roles (admin) — returning
+      // all branches' sales without a filter causes phantom data to appear under
+      // whichever branch label happens to be active in the UI.
+      if (!branchScope.enforced && !searchParams.get('branch') && !searchParams.get('branch_id') && !searchParams.get('distributor_nb') && !searchParams.get('referral_nb')) {
+        return res.status(400).json({ success: false, error: 'branch parameter is required' });
+      }
+
       const { queryText, params } = buildSelectQuery(searchParams, branchScope.branches, branchScope.enforced);
       const { queryText: rxQueryText, params: rxParams } = buildRxQuery(searchParams, branchScope.branches, branchScope.enforced);
 
