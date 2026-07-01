@@ -4280,7 +4280,7 @@ function BranchStockTab() {
       const [inv, reqs, trans, movs, prods, sl] = await Promise.all([
         api.branch.inventory(branchParam ? branchParam + '&include_movements=1&limit=10000' : 'include_movements=1&limit=10000').catch(() => ({ inventory: [], movements: [] })),
         api.stock.requests(branchParam).catch(() => ({ requests: [] })),
-        api.stock.transfers(branchParam).catch(() => ({ transfers: [] })),
+        api.stock.transfers(branchParam ? branchParam + '&limit=500' : 'limit=500').catch(() => ({ transfers: [] })),
         api.get(`/stock-movements?${movBranchParam}`).catch(() => ({ movements: [] })),
         api.products.list().catch(() => []),
         api.branch.walkinSales(branchParam).catch(() => []),
@@ -4697,8 +4697,13 @@ function BranchStockTab() {
   const incomingDeliveries = transfers.filter(t => {
     const dest = t.toBranch || t.to_location || '';
     const st = (t.status || '').toLowerCase();
-    const isApproved = st === 'approved' || st === 'in_transit' || st === 'dispatched';
-    return isBranchMatch(dest) && isApproved;
+    const isPhysicallyDispatched = st === 'dispatched' || st === 'in_transit';
+    return isBranchMatch(dest) && isPhysicallyDispatched;
+  });
+  const upcomingDeliveries = transfers.filter(t => {
+    const dest = t.toBranch || t.to_location || '';
+    const st = (t.status || '').toLowerCase();
+    return isBranchMatch(dest) && st === 'approved';
   });
   // Pending requests approved/dispatched by stock management
   const pendingRequests = requests.filter(r => r.status === 'approved' || r.status === 'dispatched');
@@ -5345,12 +5350,12 @@ function BranchStockTab() {
             <button onClick={loadData} className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 bg-white cursor-pointer font-semibold text-gray-500">↺ Refresh</button>
           </div>
           <div style={{ background: 'linear-gradient(90deg,#f0fdf4,#ecfdf5)', border: '1.5px solid #bbf7d0', borderRadius: 10, padding: '10px 16px', fontSize: '0.76rem', color: '#166534', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
-            <span>🏭 Deliveries dispatched from</span>
+            <span>🏭 Deliveries physically dispatched from</span>
             {user?.role === 'admin'
               ? <button onClick={() => navigate('/stock')} style={{ fontWeight: 700, color: '#166534', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>Stock Portal › Distribution tab ↗</button>
               : <strong>Stock Portal › Distribution tab</strong>
             }
-            <span>appear here once approved by GM. Receive them to update your inventory automatically.</span>
+            <span>appear here once marked as dispatched. GM-approved but unsent deliveries appear separately below.</span>
           </div>
 
           {incomingDeliveries.length > 0 && (
@@ -5502,7 +5507,40 @@ function BranchStockTab() {
             </div>
           )}
 
-          {incomingDeliveries.length === 0 && pendingRequests.length === 0 && (
+          {upcomingDeliveries.length > 0 && (
+            <div>
+              <h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+                ⏳ Approved — Awaiting Warehouse Dispatch
+                <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700">{upcomingDeliveries.length}</span>
+              </h4>
+              <div style={{ background: '#fffbeb', border: '1.5px solid #fde68a', borderRadius: 10, padding: '10px 16px', fontSize: '0.76rem', color: '#92400e', marginBottom: 12 }}>
+                ℹ️ These dispatches are GM-approved but the warehouse has not physically sent them yet. You will be able to receive them once the warehouse marks them as dispatched.
+              </div>
+              <div className="space-y-3">
+                {upcomingDeliveries.map(t => {
+                  const tItems = Array.isArray(t.items) ? t.items : [];
+                  const totalQty = tItems.reduce((s, it) => s + Number(it.quantityApproved ?? it.quantity ?? 0), 0);
+                  return (
+                    <div key={t.id} style={{ background: '#fffbeb', border: '1.5px solid #fde68a', borderRadius: 12, padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+                      <div>
+                        <div className="text-sm font-bold text-gray-800">
+                          📄 {t.dispatchReference || t.id}
+                          <span className="ml-2 text-xs font-normal text-gray-500">from {fmtLocation(t.fromWarehouse || t.from_location)}</span>
+                        </div>
+                        <div className="text-xs text-gray-600 mt-1">
+                          {tItems.length > 0 ? tItems.map(it => it.productName || it.product_name).filter(Boolean).join(', ') : (t.product_name || '—')}
+                          {totalQty > 0 && <span className="ml-2 font-semibold">· {totalQty} units</span>}
+                        </div>
+                      </div>
+                      <span style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #f59e0b', borderRadius: 20, padding: '3px 12px', fontSize: '0.75rem', fontWeight: 700 }}>⏳ Awaiting Dispatch</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {incomingDeliveries.length === 0 && pendingRequests.length === 0 && upcomingDeliveries.length === 0 && (
             <Card><CardBody><p className="text-center text-gray-400 py-8">No incoming stock — warehouse deliveries and approved requests will appear here</p></CardBody></Card>
           )}
         </div>

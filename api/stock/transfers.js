@@ -1156,6 +1156,7 @@ export default async function handler(req, res) {
             // Normalize branch ID: transfer.to_branch can be a display name (e.g. "Oshakati Branch")
             // but branch_inventory_batches / inventory_balances use the canonical slug.
             const branchId = normalizeBranchSlug(transfer.to_branch) || transfer.to_branch || null;
+            const sourceWarehouse = transfer.from_warehouse || null;
             for (const item of transferItems) {
               const qtyReceived = Number(item.quantity_received ?? item.quantity ?? 0);
               if (qtyReceived <= 0) continue;
@@ -1163,14 +1164,28 @@ export default async function handler(req, res) {
               const batchNo = item.batch_no || null;
               const expiryDate = item.expiry_date || null;
 
+              // Look up unit price from the source warehouse batch
+              const priceRow = await client.query(
+                `SELECT COALESCE(dpc_unit_value, 0) AS unit_price
+                   FROM stock_batches
+                  WHERE location = $1 AND description ILIKE $2
+                    AND ($3::text IS NULL OR batch_no = $3)
+                  ORDER BY created_at DESC LIMIT 1`,
+                [sourceWarehouse, productName, batchNo]
+              );
+              const unitPrice = Number(priceRow.rows[0]?.unit_price || 0);
+
               const batchId = `BIB-${id.slice(-6)}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
               if (batchNo !== null && batchNo !== undefined && expiryDate !== null && expiryDate !== undefined) {
                 await client.query(
-                  `INSERT INTO branch_inventory_batches (id, branch_id, product_name, batch_no, expiry_date, quantity, status, created_at, updated_at)
-                   VALUES ($1, $2, $3, $4, $5::date, $6, 'in_stock', NOW(), NOW())
+                  `INSERT INTO branch_inventory_batches (id, branch_id, product_name, batch_no, expiry_date, quantity, unit_price, source_warehouse, status, created_at, updated_at)
+                   VALUES ($1, $2, $3, $4, $5::date, $6, $7, $8, 'in_stock', NOW(), NOW())
                    ON CONFLICT (branch_id, product_name, batch_no, expiry_date) DO UPDATE
-                     SET quantity = branch_inventory_batches.quantity + EXCLUDED.quantity, updated_at = NOW()`,
-                  [batchId, branchId, productName, batchNo, expiryDate, qtyReceived]
+                     SET quantity = branch_inventory_batches.quantity + EXCLUDED.quantity,
+                         unit_price = COALESCE(EXCLUDED.unit_price, branch_inventory_batches.unit_price),
+                         source_warehouse = COALESCE(EXCLUDED.source_warehouse, branch_inventory_batches.source_warehouse),
+                         updated_at = NOW()`,
+                  [batchId, branchId, productName, batchNo, expiryDate, qtyReceived, unitPrice || null, sourceWarehouse]
                 );
               } else {
                 // No batch_no/expiry_date — ON CONFLICT won't fire for NULLs; use a safe
@@ -1185,14 +1200,19 @@ export default async function handler(req, res) {
                 );
                 if (existingBranch.rows.length > 0) {
                   await client.query(
-                    `UPDATE branch_inventory_batches SET quantity = quantity + $1, updated_at = NOW() WHERE id = $2`,
-                    [qtyReceived, existingBranch.rows[0].id]
+                    `UPDATE branch_inventory_batches
+                        SET quantity = quantity + $1,
+                            unit_price = COALESCE($2, unit_price),
+                            source_warehouse = COALESCE($3, source_warehouse),
+                            updated_at = NOW()
+                      WHERE id = $4`,
+                    [qtyReceived, unitPrice || null, sourceWarehouse, existingBranch.rows[0].id]
                   );
                 } else {
                   await client.query(
-                    `INSERT INTO branch_inventory_batches (id, branch_id, product_name, batch_no, expiry_date, quantity, status, created_at, updated_at)
-                     VALUES ($1, $2, $3, $4, $5, $6, 'in_stock', NOW(), NOW())`,
-                    [batchId, branchId, productName, batchNo || null, expiryDate || null, qtyReceived]
+                    `INSERT INTO branch_inventory_batches (id, branch_id, product_name, batch_no, expiry_date, quantity, unit_price, source_warehouse, status, created_at, updated_at)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'in_stock', NOW(), NOW())`,
+                    [batchId, branchId, productName, batchNo || null, expiryDate || null, qtyReceived, unitPrice || null, sourceWarehouse]
                   );
                 }
               }
