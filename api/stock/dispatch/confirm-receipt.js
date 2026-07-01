@@ -187,36 +187,12 @@ export default async function handler(req, res) {
            dispatchNoteId, notes, receivedBy || 'system']
         );
 
-        // 2. Deduct FIFO from source warehouse stock_batches
-        if (sourceLocation) {
-          const warehouseBatches = await client.query(
-            `SELECT id, remaining_quantity FROM stock_batches
-             WHERE location = $1
-               AND LOWER(TRIM(description)) = LOWER(TRIM($2))
-               AND COALESCE(batch_no, '') = $3
-               AND remaining_quantity > 0
-             ORDER BY import_date ASC, created_at ASC
-             FOR UPDATE`,
-            [sourceLocation, productName, batchNo]
-          );
-          let toDeduct = qtyReceived;
-          for (const row of warehouseBatches.rows) {
-            if (toDeduct <= 0) break;
-            const take = Math.min(toDeduct, Number(row.remaining_quantity));
-            await client.query(
-              `UPDATE stock_batches
-               SET remaining_quantity = remaining_quantity - $1,
-                   dispatched_quantity = COALESCE(dispatched_quantity, 0) + $1,
-                   updated_at = NOW()
-               WHERE id = $2`,
-              [take, row.id]
-            );
-            toDeduct -= take;
-          }
-          if (toDeduct > 0) {
-            console.warn(`[confirm-receipt] Warehouse batch shortfall for ${productName}/${batchNo} at ${sourceLocation}: ${toDeduct} units not deducted (batch may have been created outside system)`);
-          }
-        }
+        // 2. Warehouse stock deduction is intentionally skipped here.
+        // The stock_transfers PUT handler already calls fefoDeductStockBatches when the
+        // transfer transitions to 'approved' (GM approval step), physically reserving the
+        // units in stock_batches at that point. Deducting again here would double-count
+        // and drive remaining_quantity negative. The stock_movements entry above provides
+        // the full audit trail of the physical movement.
 
         // 3. Upsert into branch_inventory_batches (carry unit_price for DP value tracking)
         const batchId = generateId('BIB');

@@ -649,6 +649,59 @@ export default async function handler(req, res) {
         });
       }
 
+      // Server-side stock availability guard for warehouse→branch dispatches.
+      // Prevents over-committing the same batch to multiple in-flight dispatches before GM approval.
+      // We check: remaining_quantity (warehouse stock_batches) minus already-committed quantities
+      // from other non-terminal transfers for the same warehouse must be >= requested qty.
+      const WAREHOUSE_LOCATIONS = ['windhoek_warehouse', 'ondangwa_warehouse'];
+      const IN_FLIGHT_STATUSES = ['pending', 'pending_approval', 'approved', 'dispatched', 'in_transit'];
+      if (fromLocation && WAREHOUSE_LOCATIONS.includes(fromLocation) && items.length > 0) {
+        const shortfalls = [];
+        for (const item of items) {
+          const reqQty = Number(item.quantity ?? 0);
+          if (reqQty <= 0) continue;
+          const pName = item.productName || item.productId || '';
+          const pBatch = item.batchNo || null;
+          if (!pName) continue;
+
+          // Get warehouse remaining_quantity for this product+batch
+          const batchRes = await query(
+            `SELECT COALESCE(SUM(remaining_quantity), 0) AS available
+             FROM stock_batches
+             WHERE location = $1
+               AND LOWER(TRIM(description)) = LOWER(TRIM($2))
+               AND (COALESCE(batch_no,'') = COALESCE($3,'') OR $3 IS NULL)
+               AND remaining_quantity > 0`,
+            [fromLocation, pName, pBatch]
+          );
+          const available = Number(batchRes.rows?.[0]?.available ?? 0);
+
+          // Get already-committed quantity from other in-flight transfers for same warehouse+product+batch
+          const committedRes = await query(
+            `SELECT COALESCE(SUM(sti.quantity), 0) AS committed
+             FROM stock_transfer_items sti
+             JOIN stock_transfers st ON st.id = sti.transfer_id
+             WHERE st.from_warehouse = $1
+               AND st.status = ANY($2::text[])
+               AND LOWER(TRIM(sti.product_name)) = LOWER(TRIM($3))
+               AND (COALESCE(sti.batch_no,'') = COALESCE($4,'') OR $4 IS NULL)`,
+            [fromLocation, IN_FLIGHT_STATUSES, pName, pBatch]
+          );
+          const committed = Number(committedRes.rows?.[0]?.committed ?? 0);
+          const netAvailable = available - committed;
+
+          if (reqQty > netAvailable) {
+            shortfalls.push(`${pName}${pBatch ? ` (batch ${pBatch})` : ''}: requested ${reqQty}, available ${Math.max(0, netAvailable)}`);
+          }
+        }
+        if (shortfalls.length > 0) {
+          return res.status(409).json({
+            success: false,
+            error: `Insufficient warehouse stock for dispatch. ${shortfalls.join('; ')}. Other in-flight dispatches may already be using this stock.`,
+          });
+        }
+      }
+
       const transfer = await insert('stock_transfers', transferData);
 
       let finalItems = items;

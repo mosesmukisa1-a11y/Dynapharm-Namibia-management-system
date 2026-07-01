@@ -84,7 +84,7 @@ export async function getWarehouseTransfers(warehouseKey, direction = 'all') {
 
 export async function getWarehouseMovements(warehouseKey) {
   return getMany(
-    `SELECT * FROM stock_movements WHERE (source_location = $1 OR destination_location = $1) ORDER BY created_at DESC LIMIT 500`,
+    `SELECT * FROM stock_movements WHERE (source_location = $1 OR destination_location = $1) ORDER BY created_at DESC LIMIT 2000`,
     [warehouseKey]
   ).catch(() => []);
 }
@@ -128,8 +128,8 @@ export function buildWarehouseSummary(warehouseName, batches, inbound, outbound)
     totalUnits,
     cifValue: parseFloat(cifValue.toFixed(2)),
     dpcValue: parseFloat(dpcValue.toFixed(2)),
-    pendingInbound: inbound.filter(t => ['pending', 'in_transit', 'dispatched', 'approved'].includes(t.status)).length,
-    pendingOutbound: outbound.filter(t => ['pending', 'dispatched'].includes(t.status)).length,
+    pendingInbound: inbound.filter(t => ['pending', 'pending_approval', 'in_transit', 'dispatched', 'approved'].includes(t.status)).length,
+    pendingOutbound: outbound.filter(t => ['pending', 'pending_approval', 'approved', 'dispatched', 'in_transit'].includes(t.status)).length,
   };
 }
 
