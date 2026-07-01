@@ -3306,24 +3306,93 @@ function WarehouseTab({ name }) {
     <div className="space-y-5">
       {alert && <Alert type={alert.type} className="mb-2" onClose={() => setAlert(null)}>{alert.msg}</Alert>}
 
-      <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', borderRadius: 14, padding: '16px 22px', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-        <div>
-          <div style={{ fontWeight: 900, fontSize: '1.1rem' }}>{name} Warehouse</div>
-          <div style={{ fontSize: '0.78rem', opacity: 0.85, marginTop: 4 }}>
-            {batches.length} product lines · {batches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0), 0).toLocaleString()} units
-            {' · CIF: '}{formatCurrency(batches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0) * getBatchCIF(b), 0))}
-            {' · DPC: '}{formatCurrency(batches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0) * (Number(b.dpc_unit_value || 0) || getDPCPrice(b.description || b.product_name || '')), 0))}
+      {/* ── Warehouse Hero Header ── */}
+      <div style={{ background: '#0f172a', borderRadius: 16, overflow: 'hidden', boxShadow: '0 8px 32px rgba(0,0,0,0.18)' }}>
+        {/* Top bar */}
+        <div style={{ padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div style={{ width: 54, height: 54, borderRadius: 14, background: 'rgba(196,30,58,0.18)', border: '1.5px solid rgba(196,30,58,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.7rem', flexShrink: 0 }}>
+              🏭
+            </div>
+            <div>
+              <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.67rem', fontWeight: 700, letterSpacing: '0.13em', textTransform: 'uppercase', marginBottom: 3 }}>
+                Dynapharm · Distribution Warehouse
+              </div>
+              <div style={{ color: '#fff', fontWeight: 900, fontSize: '1.45rem', lineHeight: 1.1, letterSpacing: '-0.01em' }}>{name}</div>
+              <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.72rem', marginTop: 5, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', display: 'inline-block', boxShadow: '0 0 6px #22c55e' }} />
+                  Live
+                </span>
+                <span style={{ color: 'rgba(255,255,255,0.2)' }}>·</span>
+                <span style={{ fontFamily: 'monospace', fontSize: '0.68rem' }}>{location}</span>
+              </div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <button onClick={loadData}
+              style={{ padding: '7px 14px', borderRadius: 8, background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.65)', border: '1px solid rgba(255,255,255,0.12)', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 }}>
+              ↺ Refresh
+            </button>
+            <button onClick={() => setShowDispatch(true)}
+              style={{ padding: '9px 20px', borderRadius: 9, background: '#c41e3a', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 7, boxShadow: '0 2px 12px rgba(196,30,58,0.4)' }}>
+              🚚 Dispatch to Branch
+            </button>
           </div>
         </div>
-        <Button size="sm" onClick={() => setShowDispatch(true)} style={{ background: '#fff', color: '#c41e3a', fontWeight: 700 }}>
-          <Truck size={15} className="mr-1" /> Dispatch to Branch
-        </Button>
+
+        {/* KPI metric strip */}
+        {(() => {
+          const totalUnits = batches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0), 0);
+          const cifValue   = batches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0) * getBatchCIF(b), 0);
+          const dpcValue   = batches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0) * (Number(b.dpc_unit_value || 0) || getDPCPrice(b.description || b.product_name || '')), 0);
+          const uniqueSKUs = new Set(batches.map(b => b.description || b.product_name).filter(Boolean)).size;
+          const awaitingReceipt  = pendingReceipt.length;
+          const awaitingGM       = pendingGMApproval.length;
+          const pendingOutboundGM = outboundTransfers.filter(t => t.status === 'pending_approval').length;
+          const hasAlerts = awaitingReceipt > 0 || pendingOutboundGM > 0;
+          return (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+              {[
+                { label: 'Unique Products', value: uniqueSKUs, sub: 'product lines', accent: '#60a5fa', icon: '📦' },
+                { label: 'Units in Stock', value: totalUnits.toLocaleString(), sub: 'available units', accent: '#34d399', icon: '🗂️' },
+                { label: 'CIF Value', value: formatCurrency(cifValue), sub: 'at import cost', accent: '#f9a8d4', icon: '💵' },
+                { label: 'DPC Value', value: formatCurrency(dpcValue), sub: 'distributor price', accent: '#fbbf24', icon: '💹' },
+                {
+                  label: 'Pending Actions',
+                  value: awaitingReceipt + pendingOutboundGM,
+                  sub: awaitingReceipt > 0
+                    ? `${awaitingReceipt} to receive · ${pendingOutboundGM} outbound`
+                    : awaitingGM > 0 ? `${awaitingGM} awaiting GM` : 'All clear',
+                  accent: hasAlerts ? '#f87171' : '#6ee7b7',
+                  icon: hasAlerts ? '🔔' : '✅',
+                },
+              ].map((k, i) => (
+                <div key={k.label} style={{ padding: '14px 18px', borderLeft: i > 0 ? '1px solid rgba(255,255,255,0.06)' : 'none' }}>
+                  <div style={{ fontSize: '0.63rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)', marginBottom: 5 }}>
+                    {k.icon} {k.label}
+                  </div>
+                  <div style={{ fontSize: '1.15rem', fontWeight: 900, color: k.accent, lineHeight: 1.2 }}>{k.value}</div>
+                  <div style={{ fontSize: '0.63rem', color: 'rgba(255,255,255,0.28)', marginTop: 3 }}>{k.sub}</div>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
       </div>
 
-      <div className="flex gap-2 flex-wrap">
-        {whSubTabs.map(t => (
-          <button key={t.id} onClick={() => setSubTab(t.id)} className="px-4 py-2 rounded-full text-sm font-semibold cursor-pointer border-none transition-all"
-            style={subTab === t.id ? { background: '#fff0f3', color: '#c41e3a', border: '2px solid #fecaca' } : { background: '#f8fafc', color: '#64748b', border: '2px solid #f1f5f9' }}>
+      {/* ── Tab navigation bar ── */}
+      <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #f1f5f9', display: 'flex', overflowX: 'auto', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
+        {whSubTabs.map((t, i) => (
+          <button key={t.id} onClick={() => setSubTab(t.id)}
+            style={{
+              flex: 1, minWidth: 'max-content', padding: '11px 16px', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer',
+              border: 'none', background: 'none', whiteSpace: 'nowrap',
+              color: subTab === t.id ? '#c41e3a' : '#64748b',
+              borderBottom: subTab === t.id ? '2.5px solid #c41e3a' : '2.5px solid transparent',
+              borderRight: i < whSubTabs.length - 1 ? '1px solid #f1f5f9' : 'none',
+              transition: 'color 0.15s',
+            }}>
             {t.label}
           </button>
         ))}
@@ -5471,23 +5540,44 @@ function BranchRequestsPanel() {
 
 function WarehousesTab() {
   const [selected, setSelected] = useState('windhoek');
+  const warehouses = [
+    { id: 'windhoek', label: 'Windhoek', icon: '🏢', sub: 'Central Distribution Hub' },
+    { id: 'ondangwa', label: 'Ondangwa', icon: '🏬', sub: 'Northern Regional Hub' },
+  ];
   return (
-    <div>
+    <div className="space-y-5">
       <BranchRequestsPanel />
-      <div style={{ borderTop: '2px solid #f0f0f0', margin: '8px 0 18px', paddingTop: 18 }}>
-        <div style={{ fontWeight: 800, fontSize: '1rem', color: '#1e293b', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span>🏭</span> Warehouse Management
+
+      {/* Warehouse selector */}
+      <div>
+        <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 10 }}>
+          SELECT WAREHOUSE
         </div>
-        <div className="flex gap-2 mb-4">
-          {[{ id: 'windhoek', label: '🏢 Windhoek Warehouse' }, { id: 'ondangwa', label: '🏬 Ondangwa Warehouse' }].map(w => (
-            <button key={w.id} onClick={() => setSelected(w.id)}
-              style={{ padding: '8px 20px', borderRadius: 99, fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', border: '2px solid', borderColor: selected === w.id ? '#c41e3a' : '#e2e8f0', background: selected === w.id ? '#fff0f3' : '#f8fafc', color: selected === w.id ? '#c41e3a' : '#64748b' }}>
-              {w.label}
-            </button>
-          ))}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 12, maxWidth: 520 }}>
+          {warehouses.map(w => {
+            const active = selected === w.id;
+            return (
+              <button key={w.id} onClick={() => setSelected(w.id)}
+                style={{
+                  padding: '14px 18px', borderRadius: 12, cursor: 'pointer', textAlign: 'left',
+                  border: active ? '2px solid #c41e3a' : '2px solid #e2e8f0',
+                  background: active ? 'linear-gradient(135deg,#fff0f3,#fff5f5)' : '#f8fafc',
+                  transition: 'all 0.15s', boxShadow: active ? '0 4px 16px rgba(196,30,58,0.12)' : 'none',
+                }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: '1.4rem' }}>{w.icon}</span>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: '0.9rem', color: active ? '#c41e3a' : '#1e293b' }}>{w.label}</div>
+                    <div style={{ fontSize: '0.72rem', color: active ? '#e87c8a' : '#94a3b8', marginTop: 1 }}>{w.sub}</div>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
         </div>
-        <WarehouseTab name={selected === 'windhoek' ? 'Windhoek' : 'Ondangwa'} />
       </div>
+
+      <WarehouseTab name={selected === 'windhoek' ? 'Windhoek' : 'Ondangwa'} />
     </div>
   );
 }
