@@ -170,11 +170,16 @@ async function getInventoryByBranch(branchId, enriched = false) {
   const resolvedId = await resolveBranchId(branchId);
   // Query with ALL alias forms so rows stored under any historical variant are returned.
   const allCandidates = buildBranchCandidates(resolvedId, branchId);
+  // Fetch ALL BIB rows — including zero-quantity ones — so that recently-depleted
+  // batches (qty just set to 0 by a sale/dispense) still appear in the guard set
+  // and cannot be re-injected as ghost stock from a stale inventory_balances entry.
   const rows = await getMany(
-    `SELECT * FROM branch_inventory_batches WHERE branch_id = ANY($1::text[]) AND quantity > 0 ORDER BY product_name ASC, expiry_date ASC NULLS LAST`,
+    `SELECT * FROM branch_inventory_batches WHERE branch_id = ANY($1::text[]) ORDER BY product_name ASC, expiry_date ASC NULLS LAST`,
     [allCandidates]
   );
-  const normalized = rows.map(normalizeInventoryRow).filter(Boolean);
+  // Only positive-qty rows shown to the user; zero-qty rows are kept in the full set
+  // purely to block inventory_balances from resurrecting them as synthetic ghosts.
+  const normalized = rows.filter(r => Number(r.quantity || 0) > 0).map(normalizeInventoryRow).filter(Boolean);
 
   // Merge with inventory_balances:
   //  1. Add any items that exist ONLY in inventory_balances (stock that came via
@@ -198,17 +203,20 @@ async function getInventoryByBranch(branchId, enriched = false) {
       [ibCandidates]
     );
     const normKey = (pn, bn) => `${(pn || '').trim().toLowerCase()}|${(bn || '').trim().toLowerCase()}`;
-    // Build lookup map: key → index in normalized array
+    // Build lookup map: key → index in normalized (qty > 0) array
     const existingMap = new Map();
     normalized.forEach((n, idx) => existingMap.set(normKey(n.product_name, n.batch_no), idx));
+    // Guard set: ALL BIB keys including zero-qty rows.
+    // Prevents a recently-depleted batch (qty just set to 0 by a sale) from being
+    // re-added by a stale inventory_balances row before recomputeLocationBalances runs.
+    const allBibKeys = new Set(rows.map(r => normKey(r.product_name, r.batch_no)));
 
     for (const ib of ibRows) {
       const key = normKey(ib.product_name, ib.batch_no);
       const ibQty = parseNumber(ib.quantity);
-      if (existingMap.has(key)) {
-        // Item already in branch_inventory_batches — that table is authoritative.
-        // Do NOT override with inventory_balances value; doing so would cause
-        // written-off stock to reappear if inventory_balances is momentarily stale.
+      if (existingMap.has(key) || allBibKeys.has(key)) {
+        // Item exists in branch_inventory_batches (even if quantity is now 0) —
+        // BIB is authoritative; never let a stale inventory_balances entry override it.
       } else if (ibQty > 0) {
         // Item only exists in inventory_balances — add it
         const expiryDate = ib.expiry_date ? (ib.expiry_date instanceof Date ? ib.expiry_date.toISOString().slice(0, 10) : String(ib.expiry_date).slice(0, 10)) : null;

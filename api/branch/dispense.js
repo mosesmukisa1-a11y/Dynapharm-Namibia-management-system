@@ -1,5 +1,6 @@
 import { applyAuthCors } from '../_lib/auth.js';
 import { query, getMany, getOne, withTransaction } from '../db.js';
+import { branchSearchTerms } from '../_lib/branchUtils.js';
 import { recomputeLocationBalances } from '../services/stockEngine.js';
 import { broadcastStockEvent } from '../services/stockEvents.js';
 import { postActivityRecord, generateBatId } from '../_lib/activityCapture.js';
@@ -88,6 +89,9 @@ export default async function handler(req, res) {
         }
       }
 
+      // Resolve ALL alias forms once — covers hochland-park↔hochlandpark, etc.
+      const dispenseBranchCandidates = branchSearchTerms(branchId);
+
       await withTransaction(async (client) => {
         for (const item of resolvedItems) {
           const productName = item.product_name;
@@ -104,10 +108,12 @@ export default async function handler(req, res) {
           let remaining = qty;
           const batches = (await client.query(
             `SELECT id, product_name, batch_no, expiry_date, quantity FROM branch_inventory_batches
-             WHERE branch_id = $1 AND LOWER(TRIM(product_name)) = LOWER(TRIM($2)) AND quantity > 0
+             WHERE LOWER(REPLACE(branch_id, ' ', '_')) = ANY($1)
+               AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))
+               AND quantity > 0
              ORDER BY expiry_date ASC NULLS LAST
              FOR UPDATE`,
-            [branchId, productName]
+            [dispenseBranchCandidates, productName]
           )).rows;
 
           for (const batch of batches) {
@@ -117,6 +123,12 @@ export default async function handler(req, res) {
             await client.query(
               `UPDATE branch_inventory_batches SET quantity = quantity - $1, updated_at = NOW() WHERE id = $2`,
               [take, batch.id]
+            );
+            // Remove zero-qty rows immediately so they cannot be resurrected as
+            // ghost stock by a stale inventory_balances entry before recompute runs.
+            await client.query(
+              `DELETE FROM branch_inventory_batches WHERE id = $1 AND quantity <= 0`,
+              [batch.id]
             );
 
             const ts = Date.now();
