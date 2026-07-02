@@ -48,8 +48,10 @@ export default async function handler(req, res) {
     // ── GET /api/campaigns/analytics ─────────────────────────────────────────
     // NOTE: must appear BEFORE /:id so "analytics" is not treated as an id
     if (req.method === 'GET' && path === '/analytics') {
-      const [overview, typeBreakdown, winnerStats, topByParticipants, topByWinners,
-             recentWinners, branchParticipation, campaignSales] = await Promise.all([
+      const [overview, typeBreakdown, winnerStats, campaignDetails,
+             distributorLeaderboard, branchBvRanking, recentWinners, campaignSales] = await Promise.all([
+
+        // 1. Overview counts
         getOne(`
           SELECT
             COUNT(*)                                             AS total,
@@ -60,6 +62,8 @@ export default async function handler(req, res) {
             COUNT(*) FILTER (WHERE status = 'rejected')         AS rejected
           FROM campaigns
         `),
+
+        // 2. Type breakdown
         getMany(`
           SELECT campaign_type, COUNT(*) AS cnt
           FROM   campaigns
@@ -67,6 +71,8 @@ export default async function handler(req, res) {
           GROUP  BY campaign_type
           ORDER  BY cnt DESC
         `),
+
+        // 3. Winner summary
         getOne(`
           SELECT
             COUNT(*)                                          AS total,
@@ -76,26 +82,92 @@ export default async function handler(req, res) {
             COUNT(DISTINCT distributor_code)                  AS unique_winners
           FROM campaign_winners
         `),
+
+        // 4. Per-campaign detail with embedded participants and winners
         getMany(`
-          SELECT c.id, c.name, c.campaign_type, c.status, c.start_date, c.end_date,
-                 COUNT(DISTINCT cp.id) AS participant_count
-          FROM   campaigns c
-          LEFT   JOIN campaign_participants cp ON cp.campaign_id = c.id
-          GROUP  BY c.id, c.name, c.campaign_type, c.status, c.start_date, c.end_date
-          ORDER  BY participant_count DESC
-          LIMIT  5
+          SELECT
+            c.id, c.name, c.campaign_type, c.status, c.start_date, c.end_date,
+            c.branch, c.conditions, c.prize, c.discount_percentage,
+            COALESCE(pa.participant_count, 0)  AS participant_count,
+            COALESCE(pa.total_bv, 0)           AS total_bv,
+            COALESCE(wa.winner_count, 0)       AS winner_count,
+            COALESCE(pa.participants, '[]')    AS participants,
+            COALESCE(wa.winners, '[]')         AS winners
+          FROM campaigns c
+          LEFT JOIN (
+            SELECT
+              campaign_id,
+              COUNT(*)                         AS participant_count,
+              SUM(current_bv::numeric)         AS total_bv,
+              json_agg(
+                jsonb_build_object(
+                  'id',          id,
+                  'code',        distributor_code,
+                  'name',        distributor_name,
+                  'branch',      branch,
+                  'bv',          current_bv,
+                  'recruits',    current_recruits,
+                  'status',      status,
+                  'enrolled_at', enrolled_at
+                ) ORDER BY current_bv::numeric DESC NULLS LAST
+              ) AS participants
+            FROM campaign_participants
+            GROUP BY campaign_id
+          ) pa ON pa.campaign_id = c.id
+          LEFT JOIN (
+            SELECT
+              campaign_id,
+              COUNT(*)   AS winner_count,
+              json_agg(
+                jsonb_build_object(
+                  'id',               id,
+                  'code',             distributor_code,
+                  'name',             distributor_name,
+                  'branch',           branch,
+                  'prize_tier',       prize_tier,
+                  'prize_description',prize_description,
+                  'prize_rank',       prize_rank,
+                  'status',           status,
+                  'won_at',           won_at
+                ) ORDER BY prize_rank ASC
+              ) AS winners
+            FROM campaign_winners
+            GROUP BY campaign_id
+          ) wa ON wa.campaign_id = c.id
+          ORDER BY c.start_date DESC
         `),
+
+        // 5. Distributor leaderboard — top by cumulative BV across all campaigns
         getMany(`
-          SELECT c.id, c.name, c.campaign_type, c.status,
-                 COUNT(DISTINCT cw.id) AS winner_count,
-                 COUNT(DISTINCT cp.id) AS participant_count
-          FROM   campaigns c
-          LEFT   JOIN campaign_winners    cw ON cw.campaign_id = c.id
-          LEFT   JOIN campaign_participants cp ON cp.campaign_id = c.id
-          GROUP  BY c.id, c.name, c.campaign_type, c.status
-          ORDER  BY winner_count DESC
-          LIMIT  5
+          SELECT
+            distributor_code,
+            MAX(distributor_name)              AS distributor_name,
+            COUNT(DISTINCT campaign_id)        AS campaigns,
+            SUM(current_bv::numeric)           AS total_bv,
+            SUM(current_recruits)              AS total_recruits,
+            string_agg(DISTINCT branch, ', ') AS branches
+          FROM campaign_participants
+          WHERE distributor_code IS NOT NULL AND distributor_code <> ''
+          GROUP BY distributor_code
+          ORDER BY total_bv DESC NULLS LAST
+          LIMIT 20
         `),
+
+        // 6. Branch ranking by total BV
+        getMany(`
+          SELECT
+            branch,
+            COUNT(*)                     AS participants,
+            COUNT(DISTINCT campaign_id)  AS campaigns,
+            SUM(current_bv::numeric)     AS total_bv
+          FROM campaign_participants
+          WHERE branch IS NOT NULL AND branch <> ''
+          GROUP BY branch
+          ORDER BY total_bv DESC NULLS LAST
+          LIMIT 10
+        `),
+
+        // 7. Recent winners with campaign info
         getMany(`
           SELECT cw.*, c.name AS campaign_name, c.campaign_type
           FROM   campaign_winners cw
@@ -103,42 +175,37 @@ export default async function handler(req, res) {
           ORDER  BY cw.won_at DESC
           LIMIT  30
         `),
-        getMany(`
-          SELECT branch, COUNT(*) AS participant_count, COUNT(DISTINCT campaign_id) AS campaigns
-          FROM   campaign_participants
-          WHERE  branch IS NOT NULL AND branch <> ''
-          GROUP  BY branch
-          ORDER  BY participant_count DESC
-          LIMIT  10
-        `),
+
+        // 8. Campaign-tagged stock movements (product-level sales)
         getMany(`
           SELECT
-            SUM(ABS(quantity))                               AS total_units,
-            SUM(ABS(quantity) * COALESCE(unit_dp, 0))        AS dp_value
-          FROM   stock_movements
-          WHERE  movement_type = 'campaign_sale'
+            product_name,
+            SUM(ABS(quantity))                          AS total_qty,
+            SUM(ABS(quantity) * COALESCE(unit_dp, 0))   AS dp_value
+          FROM stock_movements
+          WHERE movement_type = 'campaign_sale'
+          GROUP BY product_name
+          ORDER BY total_qty DESC
+          LIMIT 15
         `),
       ]);
 
-      // Prize cost estimate from completed campaigns with stock assignments
-      const allCampaigns = await getMany(`SELECT id, name, campaign_type, conditions, prize, discount_percentage, status FROM campaigns`);
-      let discountEstimate = 0;
-      for (const c of allCampaigns) {
-        if (c.campaign_type === 'discount' && c.status === 'completed') {
-          discountEstimate += Number(c.discount_percentage || 0);
-        }
-      }
+      // Total campaign sales figures
+      const salesTotal = campaignSales.reduce(
+        (acc, r) => { acc.total_units += Number(r.total_qty || 0); acc.dp_value += Number(r.dp_value || 0); return acc; },
+        { total_units: 0, dp_value: 0 }
+      );
 
       return res.json({
         overview,
         typeBreakdown,
         winnerStats,
-        topByParticipants,
-        topByWinners,
+        campaignDetails,
+        distributorLeaderboard,
+        branchBvRanking,
         recentWinners,
-        branchParticipation,
-        campaignSales: campaignSales[0] || { total_units: 0, dp_value: 0 },
-        allCampaigns,
+        campaignSales: salesTotal,
+        campaignProducts: campaignSales,
       });
     }
 

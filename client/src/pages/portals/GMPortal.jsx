@@ -2651,194 +2651,118 @@ function CampaignPrizeForm({ type, prize, onChange, products = [] }) {
 }
 
 // ── Campaign Analytics View ───────────────────────────────────────────────────
-function CampaignAnalyticsView({ data, loading, onRefresh, campaigns = [] }) {
-  const fmt = (n) => Number(n || 0).toLocaleString('en-NA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function CampaignAnalyticsView({ data, loading, onRefresh }) {
+  const fmt  = (n) => Number(n || 0).toLocaleString('en-NA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const fmtN = (n) => Number(n || 0).toLocaleString();
+  const [expandedCamp, setExpandedCamp] = React.useState(null);
 
-  const TYPE_LABELS = {
-    bv_achievement: '🏆 BV Achievement',
-    elite_bingo:    '🎯 Elite Bingo',
-    buy_x_get_y:    '🛒 Buy X Get Y',
-    discount:       '🏷️ Discount',
-    custom:         '⚙️ Custom',
+  const TYPE_LABELS = { bv_achievement: '🏆 BV Achievement', elite_bingo: '🎯 Elite Bingo', buy_x_get_y: '🛒 Buy X Get Y', discount: '🏷️ Discount', custom: '\u2699\uFE0F Custom' };
+  const TYPE_BG   = { bv_achievement: '#fef3c7', elite_bingo: '#ede9fe', buy_x_get_y: '#d1fae5', discount: '#fee2e2', custom: '#f0f9ff' };
+  const TYPE_TEXT = { bv_achievement: '#92400e', elite_bingo: '#5b21b6', buy_x_get_y: '#065f46', discount: '#991b1b', custom: '#0c4a6e' };
+
+  const statusBadge = (s) => {
+    const cfg = { active: { bg: '#d1fae5', color: '#065f46' }, completed: { bg: '#ede9fe', color: '#5b21b6' }, upcoming: { bg: '#fef9c3', color: '#92400e' }, pending: { bg: '#fef3c7', color: '#92400e' }, verified: { bg: '#d1fae5', color: '#065f46' }, rejected: { bg: '#fee2e2', color: '#991b1b' } };
+    const c = cfg[s] || { bg: '#f1f5f9', color: '#475569' };
+    return <span style={{ background: c.bg, color: c.color, borderRadius: 99, padding: '2px 9px', fontSize: '0.72rem', fontWeight: 700 }}>{s}</span>;
   };
-  const TYPE_BG = {
-    bv_achievement: '#fef3c7', elite_bingo: '#ede9fe',
-    buy_x_get_y: '#d1fae5', discount: '#fee2e2', custom: '#f0f9ff',
-  };
-  const TYPE_TEXT = {
-    bv_achievement: '#92400e', elite_bingo: '#5b21b6',
-    buy_x_get_y: '#065f46', discount: '#991b1b', custom: '#0c4a6e',
-  };
+
+  const thStyle = { padding: '7px 10px', textAlign: 'left', fontWeight: 700, color: '#475569', borderBottom: '2px solid #e2e8f0', whiteSpace: 'nowrap', fontSize: '0.75rem' };
 
   const printReport = () => {
     if (!data) return;
     const ov = data.overview || {};
     const ws = data.winnerStats || {};
-    const cs = data.campaignSales || {};
-    const allC = data.allCampaigns || [];
-    const totalParts = allC.reduce((s, c) => s + 0, 0); // will be shown from topByParticipants
-    const topP = data.topByParticipants || [];
-    const topW = data.topByWinners || [];
-    const rw = data.recentWinners || [];
-    const bp = data.branchParticipation || [];
-    const tb = data.typeBreakdown || [];
-
+    const cd = data.campaignDetails || [];
+    const dl = data.distributorLeaderboard || [];
+    const br = data.branchBvRanking || [];
     const now = new Date().toLocaleDateString('en-NA', { day: '2-digit', month: 'long', year: 'numeric' });
-    const totalParticipants = topP.reduce((s, c) => s + Number(c.participant_count || 0), 0);
-
-    const html = `<!DOCTYPE html>
-<html><head><meta charset="UTF-8">
-<title>Dynapharm Campaigns Analytics Report</title>
-<style>
-  body { font-family: Arial, sans-serif; margin: 0; padding: 24px; color: #1e293b; font-size: 12px; }
-  h1 { color: #1e3a5f; font-size: 20px; margin: 0 0 4px; }
-  .sub { color: #64748b; font-size: 11px; margin-bottom: 20px; }
-  .kpi-row { display: flex; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; }
-  .kpi { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 16px; text-align: center; min-width: 100px; }
-  .kpi .val { font-size: 20px; font-weight: 900; color: #1e3a5f; }
-  .kpi .lbl { font-size: 10px; color: #64748b; margin-top: 2px; }
-  h2 { font-size: 13px; color: #1e3a5f; border-bottom: 2px solid #e2e8f0; padding-bottom: 4px; margin: 18px 0 8px; }
-  table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
-  th { background: #1e3a5f; color: #fff; padding: 6px 10px; text-align: left; font-size: 11px; }
-  td { padding: 5px 10px; border-bottom: 1px solid #f1f5f9; font-size: 11px; }
-  tr:nth-child(even) td { background: #f8fafc; }
-  .badge { display: inline-block; border-radius: 4px; padding: 2px 7px; font-size: 10px; font-weight: 700; }
-  .fin-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
-  .fin { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 10px 16px; flex: 1; min-width: 150px; }
-  .fin .val { font-size: 16px; font-weight: 900; color: #065f46; }
-  .fin .lbl { font-size: 10px; color: #6b7280; margin-top: 2px; }
-  .footer { margin-top: 24px; border-top: 1px solid #e2e8f0; padding-top: 10px; color: #94a3b8; font-size: 10px; text-align: center; }
-  @media print { body { padding: 10px; } }
-</style></head><body>
-<h1>📢 Campaign Analytics Report</h1>
-<div class="sub">Dynapharm Namibia &nbsp;|&nbsp; Generated: ${now}</div>
-
-<h2>Overview</h2>
-<div class="kpi-row">
-  <div class="kpi"><div class="val">${fmtN(ov.total)}</div><div class="lbl">Total Campaigns</div></div>
-  <div class="kpi"><div class="val">${fmtN(ov.active)}</div><div class="lbl">Active</div></div>
-  <div class="kpi"><div class="val">${fmtN(ov.upcoming)}</div><div class="lbl">Upcoming</div></div>
-  <div class="kpi"><div class="val">${fmtN(ov.completed)}</div><div class="lbl">Completed</div></div>
-  <div class="kpi"><div class="val">${fmtN(ws.total)}</div><div class="lbl">Total Winners</div></div>
-  <div class="kpi"><div class="val">${fmtN(ws.pending)}</div><div class="lbl">Awaiting Verification</div></div>
-  <div class="kpi"><div class="val">${fmtN(ws.unique_winners)}</div><div class="lbl">Unique Winners</div></div>
-</div>
-
-<h2>Campaign Type Breakdown</h2>
-<table><thead><tr><th>Type</th><th>Count</th></tr></thead><tbody>
-${tb.map(t => `<tr><td>${TYPE_LABELS[t.campaign_type] || t.campaign_type}</td><td>${fmtN(t.cnt)}</td></tr>`).join('')}
-</tbody></table>
-
-<h2>Top Campaigns by Participants</h2>
-<table><thead><tr><th>#</th><th>Campaign</th><th>Type</th><th>Status</th><th>Participants</th></tr></thead><tbody>
-${topP.map((c, i) => `<tr><td>${i + 1}</td><td>${c.name}</td><td>${TYPE_LABELS[c.campaign_type] || c.campaign_type}</td><td>${c.status}</td><td>${fmtN(c.participant_count)}</td></tr>`).join('')}
-</tbody></table>
-
-<h2>Top Campaigns by Winners Generated</h2>
-<table><thead><tr><th>#</th><th>Campaign</th><th>Type</th><th>Status</th><th>Winners</th><th>Participants</th></tr></thead><tbody>
-${topW.map((c, i) => `<tr><td>${i + 1}</td><td>${c.name}</td><td>${TYPE_LABELS[c.campaign_type] || c.campaign_type}</td><td>${c.status}</td><td>${fmtN(c.winner_count)}</td><td>${fmtN(c.participant_count)}</td></tr>`).join('')}
-</tbody></table>
-
-<h2>Branch Participation Ranking</h2>
-<table><thead><tr><th>Branch</th><th>Participants</th><th>Campaigns</th></tr></thead><tbody>
-${bp.map(b => `<tr><td>${b.branch}</td><td>${fmtN(b.participant_count)}</td><td>${fmtN(b.campaigns)}</td></tr>`).join('')}
-</tbody></table>
-
-<h2>Financial Summary</h2>
-<div class="fin-row">
-  <div class="fin"><div class="val">N$ ${fmt(cs.dp_value)}</div><div class="lbl">Campaign Sales Revenue (DP)</div></div>
-  <div class="fin"><div class="val">${fmtN(cs.total_units)}</div><div class="lbl">Total Units Sold via Campaigns</div></div>
-</div>
-
-<h2>Recent Winners (Last 30)</h2>
-<table><thead><tr><th>Campaign</th><th>Winner</th><th>Branch</th><th>Prize</th><th>Rank</th><th>Status</th><th>Date</th></tr></thead><tbody>
-${rw.map(w => `<tr><td>${w.campaign_name}</td><td>${w.distributor_name || w.distributor_code}</td><td>${w.branch || '-'}</td><td>${w.prize_tier}</td><td>${w.prize_rank}</td><td>${w.status}</td><td>${w.won_at ? new Date(w.won_at).toLocaleDateString() : '-'}</td></tr>`).join('')}
-</tbody></table>
-
-<div class="footer">Dynapharm Namibia Health Management System &nbsp;|&nbsp; Campaigns Analytics Report &nbsp;|&nbsp; ${now}</div>
-</body></html>`;
-
-    const win = window.open('', '_blank');
-    win.document.write(html);
-    win.document.close();
-    setTimeout(() => win.print(), 500);
+    const fN = (n) => Number(n || 0).toLocaleString();
+    const fC = (n) => Number(n || 0).toLocaleString('en-NA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Campaign Analytics</title>'
+      + '<style>body{font-family:Arial,sans-serif;margin:0;padding:24px;color:#1e293b;font-size:12px}'
+      + 'h1{color:#1e3a5f;font-size:20px;margin:0 0 4px}.sub{color:#64748b;font-size:11px;margin-bottom:20px}'
+      + '.kpi-row{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap}'
+      + '.kpi{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 16px;text-align:center;min-width:100px}'
+      + '.kpi .val{font-size:20px;font-weight:900;color:#1e3a5f}.kpi .lbl{font-size:10px;color:#64748b;margin-top:2px}'
+      + 'h2{font-size:13px;color:#1e3a5f;border-bottom:2px solid #e2e8f0;padding-bottom:4px;margin:18px 0 8px}'
+      + 'h3{font-size:12px;color:#374151;margin:12px 0 4px;padding:6px 10px;background:#f8fafc;border-radius:4px}'
+      + 'table{width:100%;border-collapse:collapse;margin-bottom:12px}'
+      + 'th{background:#1e3a5f;color:#fff;padding:5px 8px;text-align:left;font-size:10px}'
+      + 'td{padding:4px 8px;border-bottom:1px solid #f1f5f9;font-size:10px}'
+      + 'tr:nth-child(even) td{background:#f8fafc}'
+      + '.footer{margin-top:24px;border-top:1px solid #e2e8f0;padding-top:10px;color:#94a3b8;font-size:10px;text-align:center}'
+      + '@media print{body{padding:10px}}</style></head><body>'
+      + '<h1>Campaign Analytics Report</h1><div class="sub">Dynapharm Namibia | Generated: ' + now + '</div>'
+      + '<div class="kpi-row">'
+      + '<div class="kpi"><div class="val">' + fN(ov.total) + '</div><div class="lbl">Total Campaigns</div></div>'
+      + '<div class="kpi"><div class="val">' + fN(ov.active) + '</div><div class="lbl">Active</div></div>'
+      + '<div class="kpi"><div class="val">' + fN(ov.completed) + '</div><div class="lbl">Completed</div></div>'
+      + '<div class="kpi"><div class="val">' + fN(ws.total) + '</div><div class="lbl">Total Winners</div></div>'
+      + '<div class="kpi"><div class="val">' + fN(ws.unique_winners) + '</div><div class="lbl">Unique Winners</div></div>'
+      + '</div>'
+      + '<h2>Campaign Detail</h2>'
+      + cd.map(c => {
+          const parts = Array.isArray(c.participants) ? c.participants : [];
+          const wins  = Array.isArray(c.winners)      ? c.winners      : [];
+          return '<h3>' + c.name + ' (' + c.status + ')</h3>'
+            + '<table><thead><tr><th>#</th><th>Distributor</th><th>NB Code</th><th>Branch</th><th>BV</th><th>Recruits</th></tr></thead><tbody>'
+            + (parts.length ? parts.map((p,i) => '<tr><td>' + (i+1) + '</td><td>' + (p.name||p.code) + '</td><td>' + p.code + '</td><td>' + (p.branch||'-') + '</td><td>' + fN(p.bv) + '</td><td>' + (p.recruits||0) + '</td></tr>').join('') : '<tr><td colspan="6" style="color:#94a3b8">No participants</td></tr>')
+            + '</tbody></table>'
+            + (wins.length ? '<table><thead><tr><th>Rank</th><th>Winner</th><th>NB Code</th><th>Branch</th><th>Prize</th><th>Status</th></tr></thead><tbody>'
+              + wins.map(w => '<tr><td>#' + w.prize_rank + '</td><td>' + (w.name||w.code) + '</td><td>' + w.code + '</td><td>' + (w.branch||'-') + '</td><td>' + w.prize_tier + '</td><td>' + w.status + '</td></tr>').join('')
+              + '</tbody></table>' : '');
+        }).join('')
+      + '<h2>Distributor Leaderboard</h2>'
+      + '<table><thead><tr><th>#</th><th>Distributor</th><th>NB Code</th><th>Branches</th><th>Campaigns</th><th>Total BV</th><th>Recruits</th></tr></thead><tbody>'
+      + (dl.length ? dl.map((d,i) => '<tr><td>' + (i+1) + '</td><td>' + (d.distributor_name||d.distributor_code) + '</td><td>' + d.distributor_code + '</td><td>' + (d.branches||'-') + '</td><td>' + d.campaigns + '</td><td>' + fN(d.total_bv) + '</td><td>' + (d.total_recruits||0) + '</td></tr>').join('') : '<tr><td colspan="7" style="color:#94a3b8">No data</td></tr>')
+      + '</tbody></table>'
+      + '<h2>Branch BV Ranking</h2>'
+      + '<table><thead><tr><th>#</th><th>Branch</th><th>Participants</th><th>Campaigns</th><th>Total BV</th></tr></thead><tbody>'
+      + (br.length ? br.map((b,i) => '<tr><td>' + (i+1) + '</td><td>' + b.branch + '</td><td>' + b.participants + '</td><td>' + b.campaigns + '</td><td>' + fN(b.total_bv) + '</td></tr>').join('') : '<tr><td colspan="5" style="color:#94a3b8">No data</td></tr>')
+      + '</tbody></table>'
+      + '<div class="footer">Dynapharm Namibia Health Management System | Campaigns Analytics | ' + now + '</div></body></html>';
+    const win = window.open('', '_blank'); win.document.write(html); win.document.close(); setTimeout(() => win.print(), 400);
   };
 
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 60 }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 32, marginBottom: 8 }}>📊</div>
-          <div style={{ color: '#64748b', fontWeight: 600 }}>Loading analytics…</div>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 60 }}>
+      <div style={{ textAlign: 'center' }}><div style={{ fontSize: 32, marginBottom: 8 }}>📊</div><div style={{ color: '#64748b', fontWeight: 600 }}>Loading analytics…</div></div>
+    </div>
+  );
 
-  if (!data) {
-    return (
-      <div style={{ textAlign: 'center', padding: 60 }}>
-        <div style={{ fontSize: 40, marginBottom: 12 }}>📊</div>
-        <div style={{ color: '#64748b', marginBottom: 16 }}>Click the button below to load campaign analytics</div>
-        <button onClick={onRefresh} style={{ background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 24px', fontWeight: 700, cursor: 'pointer' }}>
-          Load Analytics
-        </button>
-      </div>
-    );
-  }
+  if (!data) return (
+    <div style={{ textAlign: 'center', padding: 60 }}>
+      <div style={{ fontSize: 40, marginBottom: 12 }}>📊</div>
+      <div style={{ color: '#64748b', marginBottom: 16 }}>Click the button below to load campaign analytics</div>
+      <button onClick={onRefresh} style={{ background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 24px', fontWeight: 700, cursor: 'pointer' }}>Load Analytics</button>
+    </div>
+  );
 
-  const ov = data.overview || {};
-  const ws = data.winnerStats || {};
-  const cs = data.campaignSales || {};
-  const topP = data.topByParticipants || [];
-  const topW = data.topByWinners || [];
-  const rw = data.recentWinners || [];
-  const bp = data.branchParticipation || [];
-  const tb = data.typeBreakdown || [];
-
-  // best campaign (most participants)
-  const bestCamp = topP[0] || null;
-  const bestWinner = topW[0] || null;
+  const ov = data.overview            || {};
+  const ws = data.winnerStats         || {};
+  const cs = data.campaignSales       || {};
+  const cd = data.campaignDetails     || [];
+  const dl = data.distributorLeaderboard || [];
+  const br = data.branchBvRanking     || [];
+  const rw = data.recentWinners       || [];
+  const tb = data.typeBreakdown       || [];
+  const cp = data.campaignProducts    || [];
 
   const kpis = [
-    { label: 'Total Campaigns', val: fmtN(ov.total), bg: '#eff6ff', border: '#bfdbfe', text: '#1d4ed8' },
-    { label: 'Active Now',       val: fmtN(ov.active), bg: '#f0fdf4', border: '#bbf7d0', text: '#15803d' },
-    { label: 'Completed',        val: fmtN(ov.completed), bg: '#f5f3ff', border: '#ddd6fe', text: '#6d28d9' },
-    { label: 'Total Winners',    val: fmtN(ws.total), bg: '#fefce8', border: '#fde68a', text: '#b45309' },
+    { label: 'Total Campaigns',  val: fmtN(ov.total),          bg: '#eff6ff', border: '#bfdbfe', text: '#1d4ed8' },
+    { label: 'Active Now',       val: fmtN(ov.active),         bg: '#f0fdf4', border: '#bbf7d0', text: '#15803d' },
+    { label: 'Completed',        val: fmtN(ov.completed),      bg: '#f5f3ff', border: '#ddd6fe', text: '#6d28d9' },
+    { label: 'Total Winners',    val: fmtN(ws.total),          bg: '#fefce8', border: '#fde68a', text: '#b45309' },
     { label: 'Unique Winners',   val: fmtN(ws.unique_winners), bg: '#fff7ed', border: '#fed7aa', text: '#c2410c' },
-    { label: 'Awaiting Verify',  val: fmtN(ws.pending), bg: '#fef2f2', border: '#fecaca', text: '#dc2626' },
+    { label: 'Awaiting Verify',  val: fmtN(ws.pending),        bg: '#fef2f2', border: '#fecaca', text: '#dc2626' },
   ];
-
-  const statusBadge = (s) => {
-    const cfg = {
-      active:    { bg: '#d1fae5', color: '#065f46' },
-      completed: { bg: '#ede9fe', color: '#5b21b6' },
-      upcoming:  { bg: '#fef9c3', color: '#92400e' },
-      pending:   { bg: '#fef3c7', color: '#92400e' },
-      verified:  { bg: '#d1fae5', color: '#065f46' },
-      rejected:  { bg: '#fee2e2', color: '#991b1b' },
-    };
-    const c = cfg[s] || { bg: '#f1f5f9', color: '#475569' };
-    return (
-      <span style={{ background: c.bg, color: c.color, borderRadius: 99, padding: '2px 9px', fontSize: '0.72rem', fontWeight: 700 }}>
-        {s}
-      </span>
-    );
-  };
 
   return (
     <div className="space-y-5">
       {/* Controls */}
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-        <button onClick={onRefresh}
-          style={{ background: '#f1f5f9', color: '#374151', border: '1px solid #e2e8f0', borderRadius: 8, padding: '7px 16px', fontWeight: 600, fontSize: '0.82rem', cursor: 'pointer' }}>
-          🔄 Refresh
-        </button>
-        <button onClick={printReport}
-          style={{ background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 16px', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}>
-          🖨️ Print PDF Report
-        </button>
+        <button onClick={onRefresh} style={{ background: '#f1f5f9', color: '#374151', border: '1px solid #e2e8f0', borderRadius: 8, padding: '7px 16px', fontWeight: 600, fontSize: '0.82rem', cursor: 'pointer' }}>🔄 Refresh</button>
+        <button onClick={printReport} style={{ background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 16px', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}>🖨️ Print PDF Report</button>
       </div>
 
       {/* KPI Strip */}
@@ -2851,148 +2775,211 @@ ${rw.map(w => `<tr><td>${w.campaign_name}</td><td>${w.distributor_name || w.dist
         ))}
       </div>
 
-      {/* Best Campaign + Financial Side-by-side */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        {/* Best Campaign */}
+      {/* Type Breakdown */}
+      {tb.length > 0 && (
         <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: 16 }}>
-          <div style={{ fontWeight: 800, fontSize: '0.85rem', color: '#374151', marginBottom: 10 }}>🏆 Best Campaign</div>
-          {bestCamp ? (
-            <div>
-              <div style={{ fontSize: '1rem', fontWeight: 800, color: '#1e3a5f', marginBottom: 4 }}>{bestCamp.name}</div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-                <span style={{ background: TYPE_BG[bestCamp.campaign_type] || '#f8fafc', color: TYPE_TEXT[bestCamp.campaign_type] || '#374151', borderRadius: 99, padding: '2px 9px', fontSize: '0.72rem', fontWeight: 700 }}>
-                  {TYPE_LABELS[bestCamp.campaign_type] || bestCamp.campaign_type}
-                </span>
-                {statusBadge(bestCamp.status)}
-              </div>
-              <div style={{ display: 'flex', gap: 16 }}>
-                <div>
-                  <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#1d4ed8' }}>{fmtN(bestCamp.participant_count)}</div>
-                  <div style={{ fontSize: '0.72rem', color: '#64748b' }}>Participants</div>
-                </div>
-                {bestWinner && bestCamp.id === bestWinner.id && (
-                  <div>
-                    <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#b45309' }}>{fmtN(bestWinner.winner_count)}</div>
-                    <div style={{ fontSize: '0.72rem', color: '#64748b' }}>Winners</div>
-                  </div>
-                )}
-              </div>
-              {bestCamp.start_date && (
-                <div style={{ marginTop: 8, fontSize: '0.75rem', color: '#94a3b8' }}>
-                  {new Date(bestCamp.start_date).toLocaleDateString()} – {bestCamp.end_date ? new Date(bestCamp.end_date).toLocaleDateString() : 'ongoing'}
-                </div>
-              )}
-            </div>
-          ) : (
-            <div style={{ color: '#94a3b8', fontSize: '0.82rem' }}>No campaign data yet</div>
-          )}
-        </div>
-
-        {/* Financial Summary */}
-        <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 12, padding: 16 }}>
-          <div style={{ fontWeight: 800, fontSize: '0.85rem', color: '#374151', marginBottom: 10 }}>💰 Financial Summary</div>
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#15803d' }}>N$ {fmt(cs.dp_value)}</div>
-            <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Campaign Sales Revenue (DP value)</div>
-          </div>
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0369a1' }}>{fmtN(cs.total_units)}</div>
-            <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Units sold through campaigns</div>
-          </div>
-          <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #bbf7d0' }}>
-            <div style={{ fontSize: '0.75rem', color: '#6b7280', lineHeight: 1.5 }}>
-              Revenue reflects DP-priced stock movements tagged as campaign sales. Discount cost is tracked per campaign type.
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Campaign Type Breakdown */}
-      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: 16 }}>
-        <div style={{ fontWeight: 800, fontSize: '0.85rem', color: '#374151', marginBottom: 10 }}>📊 Campaign Type Distribution</div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {tb.length === 0 && <span style={{ color: '#94a3b8', fontSize: '0.82rem' }}>No campaigns yet</span>}
-          {tb.map(t => (
-            <div key={t.campaign_type} style={{ background: TYPE_BG[t.campaign_type] || '#f8fafc', border: `1px solid ${TYPE_TEXT[t.campaign_type] || '#94a3b8'}30`, borderRadius: 10, padding: '10px 16px', textAlign: 'center', minWidth: 110 }}>
-              <div style={{ fontSize: '1.2rem', fontWeight: 900, color: TYPE_TEXT[t.campaign_type] || '#374151' }}>{fmtN(t.cnt)}</div>
-              <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 2 }}>{TYPE_LABELS[t.campaign_type] || t.campaign_type}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Top Campaigns — side by side */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        {/* By participants */}
-        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: 16 }}>
-          <div style={{ fontWeight: 800, fontSize: '0.85rem', color: '#374151', marginBottom: 10 }}>👥 Top Campaigns by Participants</div>
-          {topP.length === 0 && <div style={{ color: '#94a3b8', fontSize: '0.82rem' }}>No data</div>}
-          {topP.map((c, i) => (
-            <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, padding: '6px 8px', borderRadius: 8, background: i === 0 ? '#eff6ff' : '#f8fafc' }}>
-              <div style={{ width: 22, height: 22, borderRadius: 99, background: i === 0 ? '#1d4ed8' : '#94a3b8', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.7rem', flexShrink: 0 }}>
-                {i + 1}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: '0.8rem', color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
-                <div style={{ fontSize: '0.7rem', color: '#64748b' }}>{TYPE_LABELS[c.campaign_type] || c.campaign_type}</div>
-              </div>
-              <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                <div style={{ fontWeight: 900, color: '#1d4ed8', fontSize: '0.9rem' }}>{fmtN(c.participant_count)}</div>
-                <div style={{ fontSize: '0.67rem', color: '#94a3b8' }}>participants</div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* By winners */}
-        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: 16 }}>
-          <div style={{ fontWeight: 800, fontSize: '0.85rem', color: '#374151', marginBottom: 10 }}>🥇 Top Campaigns by Winners</div>
-          {topW.length === 0 && <div style={{ color: '#94a3b8', fontSize: '0.82rem' }}>No winners generated yet</div>}
-          {topW.filter(c => Number(c.winner_count) > 0).map((c, i) => (
-            <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, padding: '6px 8px', borderRadius: 8, background: i === 0 ? '#fefce8' : '#f8fafc' }}>
-              <div style={{ width: 22, height: 22, borderRadius: 99, background: i === 0 ? '#d97706' : '#94a3b8', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.7rem', flexShrink: 0 }}>
-                {i + 1}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: '0.8rem', color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
-                <div style={{ fontSize: '0.7rem', color: '#64748b' }}>{TYPE_LABELS[c.campaign_type] || c.campaign_type} &nbsp;·&nbsp; {fmtN(c.participant_count)} participants</div>
-              </div>
-              <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                <div style={{ fontWeight: 900, color: '#d97706', fontSize: '0.9rem' }}>{fmtN(c.winner_count)}</div>
-                <div style={{ fontSize: '0.67rem', color: '#94a3b8' }}>winners</div>
-              </div>
-            </div>
-          ))}
-          {topW.every(c => Number(c.winner_count) === 0) && topW.length > 0 && (
-            <div style={{ color: '#94a3b8', fontSize: '0.82rem' }}>No winners generated yet</div>
-          )}
-        </div>
-      </div>
-
-      {/* Branch Participation */}
-      {bp.length > 0 && (
-        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: 16 }}>
-          <div style={{ fontWeight: 800, fontSize: '0.85rem', color: '#374151', marginBottom: 10 }}>🏢 Branch Participation Ranking</div>
+          <div style={{ fontWeight: 800, fontSize: '0.85rem', color: '#374151', marginBottom: 10 }}>📊 Campaign Type Distribution</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {bp.map((b, i) => (
-              <div key={b.branch} style={{ background: i === 0 ? '#eff6ff' : '#f8fafc', border: `1px solid ${i === 0 ? '#bfdbfe' : '#e2e8f0'}`, borderRadius: 10, padding: '8px 14px', textAlign: 'center', minWidth: 110 }}>
-                <div style={{ fontSize: '0.65rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>#{i + 1}</div>
-                <div style={{ fontWeight: 800, fontSize: '0.8rem', color: '#1e293b' }}>{b.branch}</div>
-                <div style={{ fontSize: '0.85rem', fontWeight: 900, color: i === 0 ? '#1d4ed8' : '#374151' }}>{fmtN(b.participant_count)}</div>
-                <div style={{ fontSize: '0.67rem', color: '#64748b' }}>{fmtN(b.campaigns)} campaign{Number(b.campaigns) !== 1 ? 's' : ''}</div>
+            {tb.map(t => (
+              <div key={t.campaign_type} style={{ background: TYPE_BG[t.campaign_type] || '#f8fafc', border: `1px solid ${TYPE_TEXT[t.campaign_type] || '#94a3b8'}30`, borderRadius: 10, padding: '10px 16px', textAlign: 'center', minWidth: 110 }}>
+                <div style={{ fontSize: '1.2rem', fontWeight: 900, color: TYPE_TEXT[t.campaign_type] || '#374151' }}>{fmtN(t.cnt)}</div>
+                <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 2 }}>{TYPE_LABELS[t.campaign_type] || t.campaign_type}</div>
               </div>
             ))}
           </div>
         </div>
       )}
 
-      {/* Recent Winners Table */}
+      {/* Per-Campaign Detail */}
+      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: 16 }}>
+        <div style={{ fontWeight: 800, fontSize: '0.85rem', color: '#374151', marginBottom: 12 }}>📢 Campaigns — Participant & Winner Breakdown</div>
+        {cd.length === 0 ? (
+          <div style={{ color: '#94a3b8', textAlign: 'center', padding: '20px 0' }}>No campaigns yet</div>
+        ) : cd.map(c => {
+          const parts = Array.isArray(c.participants) ? c.participants : [];
+          const wins  = Array.isArray(c.winners)      ? c.winners      : [];
+          const isOpen = expandedCamp === c.id;
+          const totalBv = Number(c.total_bv || 0);
+          return (
+            <div key={c.id} style={{ border: '1px solid #e2e8f0', borderRadius: 10, marginBottom: 10, overflow: 'hidden' }}>
+              <div onClick={() => setExpandedCamp(isOpen ? null : c.id)}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: isOpen ? '#f0f7ff' : '#f8fafc', cursor: 'pointer', userSelect: 'none' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#1e293b' }}>{c.name}</div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 3 }}>
+                    <span style={{ background: TYPE_BG[c.campaign_type] || '#f8fafc', color: TYPE_TEXT[c.campaign_type] || '#374151', borderRadius: 99, padding: '1px 8px', fontSize: '0.7rem', fontWeight: 700 }}>{TYPE_LABELS[c.campaign_type] || c.campaign_type}</span>
+                    {statusBadge(c.status)}
+                    {c.start_date && <span style={{ color: '#94a3b8', fontSize: '0.7rem' }}>{new Date(c.start_date).toLocaleDateString('en-NA')} – {c.end_date ? new Date(c.end_date).toLocaleDateString('en-NA') : 'ongoing'}</span>}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 16, flexShrink: 0 }}>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontWeight: 900, color: '#1d4ed8', fontSize: '1.1rem' }}>{fmtN(c.participant_count)}</div>
+                    <div style={{ fontSize: '0.67rem', color: '#64748b' }}>Participants</div>
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontWeight: 900, color: '#059669', fontSize: '1.1rem' }}>{fmtN(totalBv)}</div>
+                    <div style={{ fontSize: '0.67rem', color: '#64748b' }}>Total BV</div>
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontWeight: 900, color: '#d97706', fontSize: '1.1rem' }}>{fmtN(c.winner_count)}</div>
+                    <div style={{ fontSize: '0.67rem', color: '#64748b' }}>Winners</div>
+                  </div>
+                </div>
+                <div style={{ color: '#94a3b8', fontSize: '0.9rem', marginLeft: 4 }}>{isOpen ? '\u25B2' : '\u25BC'}</div>
+              </div>
+
+              {isOpen && (
+                <div style={{ padding: '12px 14px', borderTop: '1px solid #e2e8f0' }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.8rem', color: '#374151', marginBottom: 6 }}>👥 Participants ({parts.length})</div>
+                  {parts.length === 0 ? (
+                    <div style={{ color: '#94a3b8', fontSize: '0.8rem', marginBottom: 12 }}>No participants enrolled</div>
+                  ) : (
+                    <div style={{ overflowX: 'auto', marginBottom: 14 }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                        <thead>
+                          <tr style={{ background: '#f0f7ff' }}>
+                            {['#', 'Distributor', 'NB Code', 'Branch', 'BV Accumulated', 'Recruits', 'Status'].map(h => (
+                              <th key={h} style={thStyle}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {parts.map((p, i) => (
+                            <tr key={p.id || i} style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? '#fff' : '#f8fafc' }}>
+                              <td style={{ padding: '6px 10px', color: '#94a3b8', fontWeight: 700 }}>{i + 1}</td>
+                              <td style={{ padding: '6px 10px', fontWeight: 700, color: '#1e293b' }}>{p.name || p.code}</td>
+                              <td style={{ padding: '6px 10px', fontFamily: 'monospace', color: '#6d28d9' }}>{p.code}</td>
+                              <td style={{ padding: '6px 10px', color: '#374151' }}>{p.branch || '—'}</td>
+                              <td style={{ padding: '6px 10px', fontWeight: 900, color: '#059669' }}>{Number(p.bv || 0).toLocaleString()}</td>
+                              <td style={{ padding: '6px 10px', textAlign: 'center', color: '#374151' }}>{p.recruits || 0}</td>
+                              <td style={{ padding: '6px 10px' }}>{statusBadge(p.status)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {wins.length > 0 && (
+                    <>
+                      <div style={{ fontWeight: 700, fontSize: '0.8rem', color: '#374151', marginBottom: 6 }}>🏅 Winners ({wins.length})</div>
+                      <div style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                          <thead>
+                            <tr style={{ background: '#fffbeb' }}>
+                              {['Rank', 'Winner', 'NB Code', 'Branch', 'Prize Tier', 'Prize Detail', 'Status', 'Date'].map(h => (
+                                <th key={h} style={thStyle}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {wins.map((w, i) => (
+                              <tr key={w.id || i} style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? '#fff' : '#fffef5' }}>
+                                <td style={{ padding: '6px 10px', fontWeight: 900, color: '#d97706', textAlign: 'center' }}>#{w.prize_rank}</td>
+                                <td style={{ padding: '6px 10px', fontWeight: 700, color: '#1e293b' }}>{w.name || w.code}</td>
+                                <td style={{ padding: '6px 10px', fontFamily: 'monospace', color: '#6d28d9' }}>{w.code}</td>
+                                <td style={{ padding: '6px 10px', color: '#374151' }}>{w.branch || '—'}</td>
+                                <td style={{ padding: '6px 10px', fontWeight: 700, color: '#b45309' }}>{w.prize_tier}</td>
+                                <td style={{ padding: '6px 10px', color: '#6b7280', fontSize: '0.73rem' }}>{w.prize_description || '—'}</td>
+                                <td style={{ padding: '6px 10px' }}>{statusBadge(w.status)}</td>
+                                <td style={{ padding: '6px 10px', color: '#94a3b8', whiteSpace: 'nowrap' }}>{w.won_at ? new Date(w.won_at).toLocaleDateString('en-NA') : '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Distributor Leaderboard */}
+      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: 16 }}>
+        <div style={{ fontWeight: 800, fontSize: '0.85rem', color: '#374151', marginBottom: 10 }}>🏆 Distributor Leaderboard — Total BV (All Campaigns)</div>
+        {dl.length === 0 ? (
+          <div style={{ color: '#94a3b8', fontSize: '0.82rem' }}>No participant data yet</div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+              <thead>
+                <tr style={{ background: '#f8fafc' }}>
+                  {['#', 'Distributor', 'NB Code', 'Branch(es)', 'Campaigns', 'Total BV', 'Recruits'].map(h => (
+                    <th key={h} style={thStyle}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {dl.map((d, i) => (
+                  <tr key={d.distributor_code} style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
+                    <td style={{ padding: '6px 10px', fontWeight: 800, color: i === 0 ? '#d97706' : '#94a3b8' }}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`}</td>
+                    <td style={{ padding: '6px 10px', fontWeight: 700, color: '#1e293b' }}>{d.distributor_name || d.distributor_code}</td>
+                    <td style={{ padding: '6px 10px', fontFamily: 'monospace', color: '#6d28d9' }}>{d.distributor_code}</td>
+                    <td style={{ padding: '6px 10px', color: '#374151', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.branches || '—'}</td>
+                    <td style={{ padding: '6px 10px', textAlign: 'center', color: '#374151' }}>{d.campaigns}</td>
+                    <td style={{ padding: '6px 10px', fontWeight: 900, color: '#059669' }}>{Number(d.total_bv || 0).toLocaleString()}</td>
+                    <td style={{ padding: '6px 10px', textAlign: 'center', color: '#374151' }}>{d.total_recruits || 0}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Branch BV Ranking */}
+      {br.length > 0 && (
+        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: 16 }}>
+          <div style={{ fontWeight: 800, fontSize: '0.85rem', color: '#374151', marginBottom: 10 }}>🏢 Branch BV Ranking</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {br.map((b, i) => (
+              <div key={b.branch} style={{ background: i === 0 ? '#f0fdf4' : '#f8fafc', border: `1px solid ${i === 0 ? '#bbf7d0' : '#e2e8f0'}`, borderRadius: 10, padding: '10px 16px', textAlign: 'center', minWidth: 120 }}>
+                <div style={{ fontSize: '0.65rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>#{i + 1}</div>
+                <div style={{ fontWeight: 800, fontSize: '0.82rem', color: '#1e293b' }}>{b.branch}</div>
+                <div style={{ fontSize: '1rem', fontWeight: 900, color: i === 0 ? '#059669' : '#374151', marginTop: 2 }}>{Number(b.total_bv || 0).toLocaleString()}</div>
+                <div style={{ fontSize: '0.67rem', color: '#64748b' }}>BV · {fmtN(b.participants)} participants</div>
+                <div style={{ fontSize: '0.65rem', color: '#94a3b8' }}>{fmtN(b.campaigns)} campaign{Number(b.campaigns) !== 1 ? 's' : ''}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Product Sales via Campaigns */}
+      {cp.length > 0 && (
+        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: 16 }}>
+          <div style={{ fontWeight: 800, fontSize: '0.85rem', color: '#374151', marginBottom: 10 }}>🛒 Products Sold via Campaign Sales</div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+              <thead>
+                <tr style={{ background: '#f8fafc' }}>
+                  {['#', 'Product', 'Units Sold', 'DP Value (N$)'].map(h => <th key={h} style={thStyle}>{h}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {cp.map((p, i) => (
+                  <tr key={p.product_name} style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
+                    <td style={{ padding: '6px 10px', color: '#94a3b8', fontWeight: 700 }}>{i + 1}</td>
+                    <td style={{ padding: '6px 10px', fontWeight: 600, color: '#1e293b' }}>{p.product_name}</td>
+                    <td style={{ padding: '6px 10px', fontWeight: 900, color: '#1d4ed8' }}>{fmtN(p.total_qty)}</td>
+                    <td style={{ padding: '6px 10px', fontWeight: 700, color: '#15803d' }}>{fmt(p.dp_value)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* All Winners */}
       <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: 16 }}>
         <div style={{ fontWeight: 800, fontSize: '0.85rem', color: '#374151', marginBottom: 10 }}>
-          🏅 Recent Winners
-          <span style={{ marginLeft: 8, background: '#f1f5f9', color: '#475569', borderRadius: 99, padding: '2px 9px', fontSize: '0.72rem', fontWeight: 700 }}>
-            Last {rw.length}
-          </span>
+          🏅 All Winners
+          <span style={{ marginLeft: 8, background: '#f1f5f9', color: '#475569', borderRadius: 99, padding: '2px 9px', fontSize: '0.72rem', fontWeight: 700 }}>{rw.length}</span>
         </div>
         {rw.length === 0 ? (
           <div style={{ color: '#94a3b8', fontSize: '0.82rem', textAlign: 'center', padding: '20px 0' }}>No winners generated yet</div>
@@ -3001,25 +2988,22 @@ ${rw.map(w => `<tr><td>${w.campaign_name}</td><td>${w.distributor_name || w.dist
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
               <thead>
                 <tr style={{ background: '#f8fafc' }}>
-                  {['Campaign', 'Winner', 'Branch', 'Prize', 'Rank', 'Status', 'Date'].map(h => (
-                    <th key={h} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: 700, color: '#475569', borderBottom: '2px solid #e2e8f0', whiteSpace: 'nowrap' }}>{h}</th>
+                  {['Campaign', 'Winner', 'NB Code', 'Branch', 'Prize', 'Rank', 'Status', 'Date'].map(h => (
+                    <th key={h} style={thStyle}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {rw.map((w, i) => (
                   <tr key={w.id} style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
-                    <td style={{ padding: '6px 10px', fontWeight: 600, color: '#1e293b', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      <span title={w.campaign_name}>{w.campaign_name}</span>
-                    </td>
+                    <td style={{ padding: '6px 10px', fontWeight: 600, color: '#1e293b', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><span title={w.campaign_name}>{w.campaign_name}</span></td>
                     <td style={{ padding: '6px 10px', color: '#374151' }}>{w.distributor_name || w.distributor_code}</td>
-                    <td style={{ padding: '6px 10px', color: '#64748b' }}>{w.branch || '-'}</td>
+                    <td style={{ padding: '6px 10px', fontFamily: 'monospace', color: '#6d28d9', fontSize: '0.73rem' }}>{w.distributor_code}</td>
+                    <td style={{ padding: '6px 10px', color: '#64748b' }}>{w.branch || '—'}</td>
                     <td style={{ padding: '6px 10px', color: '#374151' }}>{w.prize_tier}</td>
                     <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700 }}>#{w.prize_rank}</td>
                     <td style={{ padding: '6px 10px' }}>{statusBadge(w.status)}</td>
-                    <td style={{ padding: '6px 10px', color: '#64748b', whiteSpace: 'nowrap' }}>
-                      {w.won_at ? new Date(w.won_at).toLocaleDateString('en-NA') : '-'}
-                    </td>
+                    <td style={{ padding: '6px 10px', color: '#64748b', whiteSpace: 'nowrap' }}>{w.won_at ? new Date(w.won_at).toLocaleDateString('en-NA') : '—'}</td>
                   </tr>
                 ))}
               </tbody>
