@@ -2714,6 +2714,7 @@ function CampaignsTab() {
   const [editCampaignModal, setEditCampaignModal] = useState(null);
   const [editCampaignForm, setEditCampaignForm] = useState({});
   const [editCampaignSubmitting, setEditCampaignSubmitting] = useState(false);
+  const [showCompleted, setShowCompleted] = useState(false);
 
   const safeJsonGm = (val) => {
     if (!val) return {};
@@ -2841,6 +2842,25 @@ function CampaignsTab() {
     }
   };
 
+  const handleRerun = (c) => {
+    const cond = typeof c.conditions === 'object' ? c.conditions : {};
+    const prize = typeof c.prize === 'object' ? c.prize : {};
+    setForm({
+      name: `${c.name} (Re-run)`,
+      description: c.description || '',
+      campaign_type: c.campaign_type || 'bv_achievement',
+      start_date: '',
+      end_date: '',
+      scope: c.scope || 'countrywide',
+      target_branches: Array.isArray(c.target_branches) ? c.target_branches : [],
+      conditions: { ...cond, stock_assignments: undefined },
+      prize: { ...prize },
+    });
+    setShowForm(true);
+    setSelectedCampaign(null);
+    setCampaignDetail(null);
+  };
+
   const handleAddParticipant = async () => {
     if (!participantForm.distributor_code.trim()) return;
     try {
@@ -2961,11 +2981,12 @@ function CampaignsTab() {
                         {/* Show conditions summary */}
                         {(() => {
                           const cond = typeof c.conditions === 'string' ? JSON.parse(c.conditions || '{}') : (c.conditions || {});
-                          const entries = Object.entries(cond).filter(([, v]) => v !== '' && v !== null);
+                          const entries = Object.entries(cond).filter(([k, v]) => v !== '' && v !== null && k !== 'stock_assignments');
                           if (entries.length === 0) return null;
+                          const safeStr = (v) => Array.isArray(v) ? v.map(i => (i && typeof i === 'object') ? (i.name || i.product || i.branch || '') : String(i)).filter(Boolean).join(', ') : (v !== null && v !== undefined && typeof v === 'object') ? '' : String(v);
                           return (
                             <div className="mt-2 text-xs text-gray-600">
-                              <strong>Conditions:</strong> {entries.map(([k, v]) => `${k.replace(/_/g,' ')}: ${v}`).join(' · ')}
+                              <strong>Conditions:</strong> {entries.map(([k, v]) => `${k.replace(/_/g,' ')}: ${safeStr(v)}`).filter(s => !s.endsWith(': ')).join(' · ')}
                             </div>
                           );
                         })()}
@@ -3071,15 +3092,15 @@ function CampaignsTab() {
       )}
 
       {/* Campaign List */}
-      {!showForm && (
-        <div className="grid gap-3">
-          {loading ? <LoadingSpinner /> : campaigns.length === 0 ? (
-            <div className="text-center py-10 text-gray-400">No campaigns yet. Click "+ New Campaign" to start.</div>
-          ) : campaigns.map(c => {
-            const st = campaignStatus(c);
-            const tc = TYPE_COLORS[c.campaign_type] || TYPE_COLORS.custom;
-            const isSelected = selectedCampaign?.id === c.id;
-            return (
+      {!showForm && (() => {
+        const isCompleted = (c) => { const st = campaignStatus(c); return st === 'completed' || st === 'ended'; };
+        const activeCampaigns = campaigns.filter(c => !isCompleted(c));
+        const completedCampaigns = campaigns.filter(c => isCompleted(c));
+        const renderCard = (c, completed = false) => {
+          const st = campaignStatus(c);
+          const tc = TYPE_COLORS[c.campaign_type] || TYPE_COLORS.custom;
+          const isSelected = selectedCampaign?.id === c.id;
+          return (
               <div key={c.id} className="rounded-xl border-2 overflow-hidden cursor-pointer transition-all"
                 style={{ borderColor: isSelected ? tc.border : '#e2e8f0', background: isSelected ? tc.bg : '#fff' }}
                 onClick={() => isSelected ? (setSelectedCampaign(null), setCampaignDetail(null)) : handleSelectCampaign(c)}>
@@ -3125,17 +3146,21 @@ function CampaignsTab() {
                             <div className="text-xs font-bold text-gray-500 uppercase mb-2">Conditions</div>
                             {(() => {
                               const cond = typeof c.conditions === 'string' ? JSON.parse(c.conditions || '{}') : (c.conditions || {});
-                              const entries = Object.entries(cond);
+                              const entries = Object.entries(cond).filter(([k]) => k !== 'stock_assignments');
                               if (entries.length === 0) return <span className="text-xs text-gray-400">None set</span>;
-                              return entries.map(([k, v]) => (
-                                <div key={k} className="text-xs mb-1">
-                                  <span className="font-semibold capitalize">{k.replace(/_/g, ' ')}:</span>{' '}
-                                  {Array.isArray(v)
-                                    ? v.length === 0 ? <span className="text-gray-400">All</span>
-                                      : <span className="inline-flex flex-wrap gap-1 ml-1">{v.map(item => <span key={item} className="bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded text-xs">{item}</span>)}</span>
-                                    : String(v)}
-                                </div>
-                              ));
+                              return entries.map(([k, v]) => {
+                                const isObjArray = Array.isArray(v) && v.length > 0 && v[0] !== null && typeof v[0] === 'object';
+                                if (isObjArray) return null;
+                                return (
+                                  <div key={k} className="text-xs mb-1">
+                                    <span className="font-semibold capitalize">{k.replace(/_/g, ' ')}:</span>{' '}
+                                    {Array.isArray(v)
+                                      ? v.length === 0 ? <span className="text-gray-400">All</span>
+                                        : <span className="inline-flex flex-wrap gap-1 ml-1">{v.map((item, idx) => <span key={idx} className="bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded text-xs">{String(item)}</span>)}</span>
+                                      : (v !== null && typeof v === 'object') ? null : String(v)}
+                                  </div>
+                                );
+                              });
                             })()}
                           </div>
                           <div className="p-3 rounded-lg bg-amber-50 border border-amber-200">
@@ -3289,7 +3314,13 @@ function CampaignsTab() {
                         </div>
 
                         {/* Actions */}
-                        <div className="flex gap-2 pt-2 border-t border-gray-100">
+                        <div className="flex gap-2 pt-2 border-t border-gray-100 flex-wrap">
+                          {completed && (
+                            <button onClick={() => handleRerun(c)}
+                              style={{ padding: '5px 12px', background: '#f0fdf4', color: '#166534', border: '1px solid #86efac', borderRadius: 7, cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700 }}>
+                              🔄 Re-run Campaign
+                            </button>
+                          )}
                           <button onClick={() => openEditCampaign(c)}
                             style={{ padding: '5px 12px', background: '#eff6ff', color: '#1d4ed8', border: '1px solid #93c5fd', borderRadius: 7, cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700 }}>
                             ✏️ Edit Campaign
@@ -3302,9 +3333,35 @@ function CampaignsTab() {
                 )}
               </div>
             );
-          })}
-        </div>
-      )}
+        };
+        return (
+          <>
+            <div className="grid gap-3">
+              {loading ? <LoadingSpinner /> : activeCampaigns.length === 0 && completedCampaigns.length === 0 ? (
+                <div className="text-center py-10 text-gray-400">No campaigns yet. Click "+ New Campaign" to start.</div>
+              ) : activeCampaigns.length === 0 ? (
+                <div className="text-center py-6 text-gray-400 text-sm">No active or upcoming campaigns right now.</div>
+              ) : activeCampaigns.map(c => renderCard(c, false))}
+            </div>
+            {!loading && completedCampaigns.length > 0 && (
+              <div className="mt-2">
+                <button onClick={() => setShowCompleted(v => !v)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', background: '#f1f5f9', border: '1.5px solid #e2e8f0', borderRadius: 10, cursor: 'pointer', fontWeight: 700, fontSize: '0.87rem', color: '#475569', width: '100%' }}>
+                  <span>{showCompleted ? '▲' : '▼'}</span>
+                  <span>✅ Completed Campaigns</span>
+                  <span style={{ background: '#d8b4fe', color: '#6b21a8', borderRadius: 99, padding: '1px 10px', fontSize: '0.75rem', fontWeight: 800 }}>{completedCampaigns.length}</span>
+                  <span style={{ marginLeft: 'auto', fontSize: '0.78rem', color: '#94a3b8', fontWeight: 400 }}>Re-run or edit past campaigns</span>
+                </button>
+                {showCompleted && (
+                  <div className="grid gap-3 mt-3">
+                    {completedCampaigns.map(c => renderCard(c, true))}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        );
+      })()}
 
       {/* Edit Campaign Modal */}
       {editCampaignModal && (

@@ -29,6 +29,11 @@ export default async function handler(req, res) {
   try {
     // ── GET /api/campaigns ─────────────────────────────────────────────────────
     if (req.method === 'GET' && (path === '' || path === '/')) {
+      // Auto-expire: campaigns whose end_date has passed automatically become 'completed'
+      await query(
+        `UPDATE campaigns SET status = 'completed', updated_at = NOW()
+         WHERE end_date::date < CURRENT_DATE AND status IN ('active', 'upcoming')`
+      ).catch(() => {});
       const status = searchParams.get('status');
       let sql = `SELECT * FROM campaigns ORDER BY created_at DESC`;
       const params = [];
