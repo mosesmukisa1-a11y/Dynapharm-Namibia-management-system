@@ -10915,127 +10915,162 @@ function BranchStockTab({ branch }) {
 
   return (
     <div>
-      <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', borderRadius: 14, padding: '16px 20px', marginBottom: 18, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+      {/* ── Header ──────────────────────────────────────────────────────────── */}
+      <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', borderRadius: 14, padding: '18px 22px', marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.12em', margin: 0 }}>Stock Management · Branch View</p>
-          <h3 style={{ color: '#fff', fontSize: '1.1rem', fontWeight: 800, margin: '3px 0 0' }}>Per-Branch Stock Dashboard</h3>
-          <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '0.78rem', margin: '3px 0 0' }}>Live stock balances per shop · {periodLabel}</p>
+          <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.14em', margin: 0 }}>Stock Management · Branch View</p>
+          <h3 style={{ color: '#fff', fontSize: '1.15rem', fontWeight: 900, margin: '4px 0 2px' }}>Per-Branch Stock Dashboard</h3>
+          <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '0.78rem', margin: 0 }}>Live stock balances per shop · {periodLabel}</p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           {lastRefresh && (
-            <span style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 20, padding: '4px 10px', fontSize: '0.72rem', color: 'rgba(255,255,255,0.8)', fontWeight: 600 }}>
-              <span style={{ width: 7, height: 7, borderRadius: '50%', background: refreshing ? '#fbbf24' : '#4ade80', display: 'inline-block', animation: refreshing ? 'pulse 1s infinite' : 'none' }} />
+            <span style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.18)', borderRadius: 20, padding: '4px 12px', fontSize: '0.72rem', color: 'rgba(255,255,255,0.8)', fontWeight: 600 }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: refreshing ? '#fbbf24' : '#4ade80', display: 'inline-block' }} />
               {refreshing ? 'Updating…' : `Updated ${lastRefresh.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`}
             </span>
           )}
-          <button onClick={() => loadData(false)} disabled={loading || refreshing} style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)', color: '#fff', padding: '7px 14px', borderRadius: 20, fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', opacity: (loading || refreshing) ? 0.7 : 1 }}>
-            {refreshing ? '⟳ Refreshing…' : 'Refresh'}
+          <button onClick={() => loadData(false)} disabled={loading || refreshing} style={{ background: 'rgba(255,255,255,0.14)', border: '1px solid rgba(255,255,255,0.25)', color: '#fff', padding: '7px 16px', borderRadius: 20, fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', opacity: (loading || refreshing) ? 0.65 : 1 }}>
+            {refreshing ? '⟳ Refreshing…' : '⟳ Refresh'}
           </button>
-          <button onClick={printCompanyReport} style={{ background: '#fff', border: 'none', color: '#c41e3a', padding: '7px 14px', borderRadius: 20, fontSize: '0.82rem', fontWeight: 800, cursor: 'pointer' }}>Company Report PDF</button>
+          <button onClick={printCompanyReport} style={{ background: '#fff', border: 'none', color: '#c41e3a', padding: '7px 16px', borderRadius: 20, fontSize: '0.82rem', fontWeight: 800, cursor: 'pointer' }}>📄 Company Report PDF</button>
         </div>
       </div>
 
+      {/* ── Period Filter ──────────────────────────────────────────────────── */}
       <PeriodFilter period={period} onChange={setPeriod} />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(130px,1fr))', gap: 10, marginBottom: 18 }}>
+      {/* ── KPI Summary — two tiers ───────────────────────────────────────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 10 }}>
         {[
-          ['Total Branches', allBranchSummaries.length, '#1e3a5f', '#f4f7fb'],
-          ['Closing Stock', companySummary.closing.toLocaleString(), '#15803d', '#f0fdf4'],
-          ['DP Stock Value', `N$${Math.round(companySummary.closingValue).toLocaleString()}`, '#c41e3a', '#fff0f3'],
-          ['Sales (units)', companySummary.salesQty.toLocaleString(), '#c41e3a', '#fef2f2'],
-          ['Dispensed', companySummary.dispensed.toLocaleString(), '#6d28d9', '#f5f3ff'],
-          ['Sales Revenue', `N$${Math.round(companySummary.salesRevenue).toLocaleString()}`, '#166534', '#f0fdf4'],
-          ['Write-offs', companySummary.writeoffs.toLocaleString(), companySummary.writeoffs > 0 ? '#c41e3a' : '#166534', '#fef2f2'],
-          ['Expiring', companySummary.expiry.toLocaleString(), companySummary.expiry > 0 ? '#c41e3a' : '#166534', '#fef2f2'],
-        ].map(([l, v, col, bg]) => (
-          <div key={l} style={{ background: bg, border: '1.5px solid #f0e8ea', borderRadius: 12, padding: '10px 12px', textAlign: 'center' }}>
-            <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.06em' }}>{l}</div>
-            <div style={{ fontSize: '1.2rem', fontWeight: 900, color: col, marginTop: 3 }}>{v}</div>
+          { label: 'Total Branches', value: allBranchSummaries.length, accent: '#1e3a5f', bg: '#f4f7fb', icon: '🏪' },
+          { label: 'Closing Stock', value: companySummary.closing.toLocaleString(), accent: '#15803d', bg: '#f0fdf4', icon: '📦' },
+          { label: 'DP Stock Value', value: `N$ ${Math.round(companySummary.closingValue).toLocaleString()}`, accent: '#c41e3a', bg: '#fff5f5', icon: '💰' },
+          { label: 'Sales Revenue', value: `N$ ${Math.round(companySummary.salesRevenue).toLocaleString()}`, accent: '#166534', bg: '#f0fdf4', icon: '📈' },
+        ].map(({ label, value, accent, bg, icon }) => (
+          <div key={label} style={{ background: bg, border: `2px solid ${accent}22`, borderRadius: 12, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ fontSize: '1.5rem', lineHeight: 1 }}>{icon}</div>
+            <div>
+              <div style={{ fontSize: '0.62rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.07em' }}>{label}</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 900, color: accent, marginTop: 2 }}>{value}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 20 }}>
+        {[
+          { label: 'Sales (units)', value: companySummary.salesQty.toLocaleString(), accent: '#92400e', bg: '#fffbeb' },
+          { label: 'Dispensed', value: companySummary.dispensed.toLocaleString(), accent: '#6d28d9', bg: '#f5f3ff' },
+          { label: 'Write-offs', value: companySummary.writeoffs.toLocaleString(), accent: companySummary.writeoffs > 0 ? '#c41e3a' : '#166534', bg: companySummary.writeoffs > 0 ? '#fff0f3' : '#f0fdf4' },
+          { label: 'Expiring Soon', value: companySummary.expiry.toLocaleString(), accent: companySummary.expiry > 0 ? '#d97706' : '#166534', bg: companySummary.expiry > 0 ? '#fffbeb' : '#f0fdf4' },
+        ].map(({ label, value, accent, bg }) => (
+          <div key={label} style={{ background: bg, border: `1.5px solid ${accent}22`, borderRadius: 10, padding: '10px 14px', textAlign: 'center' }}>
+            <div style={{ fontSize: '0.62rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.07em' }}>{label}</div>
+            <div style={{ fontSize: '1.1rem', fontWeight: 900, color: accent, marginTop: 2 }}>{value}</div>
           </div>
         ))}
       </div>
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-        {[{ id: 'dashboard', label: 'Dashboard' }, { id: 'products', label: 'Products' }, { id: 'movements', label: 'Movement Ledger' }].map(v => (
-          <button key={v.id} onClick={() => setViewMode(v.id)} style={{ padding: '7px 18px', borderRadius: 20, fontSize: '0.83rem', fontWeight: 600, border: 'none', cursor: 'pointer', background: viewMode === v.id ? '#c41e3a' : '#f1f5f9', color: viewMode === v.id ? '#fff' : '#64748b' }}>{v.label}</button>
-        ))}
-        <select value={selectedBranch} onChange={e => setSelectedBranch(e.target.value)} style={{ marginLeft: 'auto', padding: '7px 12px', border: '1.5px solid #e8d5d8', borderRadius: 20, fontSize: '0.83rem', outline: 'none', color: '#374151', fontWeight: 600 }}>
-          <option value="all">All Branches</option>
-          {BRANCH_DETAILS.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-        </select>
+      {/* ── Controls: Tabs + Branch Filter ───────────────────────────────── */}
+      <div style={{ background: '#fff', border: '1.5px solid #f0e8ea', borderRadius: 12, padding: '10px 14px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {[{ id: 'dashboard', label: '🏪 Dashboard' }, { id: 'products', label: '📋 Products' }, { id: 'movements', label: '📊 Movement Ledger' }].map(v => (
+            <button key={v.id} onClick={() => setViewMode(v.id)} style={{ padding: '7px 16px', borderRadius: 20, fontSize: '0.82rem', fontWeight: 700, border: viewMode === v.id ? 'none' : '1.5px solid #e2e8f0', cursor: 'pointer', background: viewMode === v.id ? '#c41e3a' : '#f8fafc', color: viewMode === v.id ? '#fff' : '#475569', transition: 'all .15s' }}>{v.label}</button>
+          ))}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Filter:</span>
+          <select value={selectedBranch} onChange={e => setSelectedBranch(e.target.value)} style={{ padding: '7px 12px', border: '1.5px solid #e8d5d8', borderRadius: 20, fontSize: '0.83rem', outline: 'none', color: '#374151', fontWeight: 600, background: '#fff' }}>
+            <option value="all">All Branches</option>
+            {BRANCH_DETAILS.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </select>
+        </div>
       </div>
 
+      {/* ── Dashboard View ────────────────────────────────────────────────── */}
       {viewMode === 'dashboard' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(340px,1fr))', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(320px,1fr))', gap: 16 }}>
           {displayBranches.length === 0 && (
-            <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '40px 20px', color: '#94a3b8' }}>
+            <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '48px 20px', color: '#94a3b8' }}>
               <div style={{ fontSize: '2.5rem', marginBottom: 12 }}>🏪</div>
-              <p style={{ fontWeight: 600 }}>No branch stock data available</p>
-              <p style={{ fontSize: '0.82rem', marginTop: 6 }}>Stock data appears here once inventory is loaded into branches via transfers from the warehouse</p>
+              <p style={{ fontWeight: 700, fontSize: '0.95rem' }}>No branch stock data available</p>
+              <p style={{ fontSize: '0.82rem', marginTop: 6, color: '#b0bec5' }}>Stock data appears here once inventory is loaded into branches via transfers from the warehouse</p>
             </div>
           )}
-          {displayBranches.map(br => (
-            <div key={br.key} style={{ background: '#fff', border: `1.5px solid ${br.noData ? '#e5e7eb' : '#f0e8ea'}`, borderRadius: 14, overflow: 'hidden', boxShadow: '0 2px 8px rgba(196,30,58,0.06)', cursor: br.noData ? 'default' : 'pointer', opacity: br.noData ? 0.7 : 1 }} onClick={() => !br.noData && setDrillBranch(br.key)}>
-              <div style={{ background: br.noData ? 'linear-gradient(135deg,#6b7280,#4b5563)' : 'linear-gradient(135deg,#c41e3a,#8b0000)', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ color: '#fff', fontWeight: 800, fontSize: '0.95rem' }}>{br.name}</div>
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  {br.noData
-                    ? <span style={{ color: 'rgba(255,255,255,0.65)', fontSize: '0.72rem', fontStyle: 'italic' }}>No stock received yet</span>
-                    : <>
-                        <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.72rem' }}>{br.products.length} products</span>
-                        <button onClick={(e) => { e.stopPropagation(); printBranchReport(br); }} style={{ background: 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.25)', color: '#fff', padding: '4px 10px', borderRadius: 12, fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer' }}>Print</button>
-                      </>
-                  }
+          {displayBranches.map(br => {
+            const hasAlerts = br.expiredQty > 0 || br.expiringQty > 0 || br.lowStockCount > 0;
+            return (
+              <div key={br.key} style={{ background: '#fff', border: `1.5px solid ${br.noData ? '#e5e7eb' : hasAlerts ? '#fecaca' : '#e8f5e9'}`, borderRadius: 14, overflow: 'hidden', boxShadow: '0 2px 10px rgba(0,0,0,0.06)', cursor: br.noData ? 'default' : 'pointer', opacity: br.noData ? 0.65 : 1, display: 'flex', flexDirection: 'column' }} onClick={() => !br.noData && setDrillBranch(br.key)}>
+
+                {/* Card header */}
+                <div style={{ background: br.noData ? 'linear-gradient(135deg,#94a3b8,#64748b)' : 'linear-gradient(135deg,#c41e3a,#8b0000)', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <div style={{ color: '#fff', fontWeight: 800, fontSize: '0.95rem' }}>{br.name}</div>
+                    {!br.noData && <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: '0.7rem', marginTop: 2 }}>{br.products.length} product{br.products.length !== 1 ? 's' : ''} on file</div>}
+                  </div>
+                  {!br.noData && (
+                    <button onClick={(e) => { e.stopPropagation(); printBranchReport(br); }} style={{ background: 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.3)', color: '#fff', padding: '4px 10px', borderRadius: 12, fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer' }}>🖨 Print</button>
+                  )}
                 </div>
+
+                {br.noData ? (
+                  <div style={{ flex: 1, padding: '24px 16px', textAlign: 'center', color: '#9ca3af' }}>
+                    <div style={{ fontSize: '1.75rem', marginBottom: 8 }}>📦</div>
+                    <p style={{ fontWeight: 700, color: '#6b7280', fontSize: '0.82rem' }}>No stock dispatched yet</p>
+                    <p style={{ fontSize: '0.72rem', marginTop: 4 }}>Issue stock from the warehouse to begin tracking</p>
+                  </div>
+                ) : (
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                    {/* Hero closing stock */}
+                    <div style={{ padding: '14px 16px 10px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontSize: '0.62rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.07em' }}>Closing Stock</div>
+                        <div style={{ fontSize: '1.6rem', fontWeight: 900, color: '#15803d', lineHeight: 1.1, marginTop: 2 }}>{br.closingQty.toLocaleString()}</div>
+                        <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: 2 }}>units on hand</div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '0.62rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.07em' }}>DP Value</div>
+                        <div style={{ fontSize: '1rem', fontWeight: 800, color: '#c41e3a', marginTop: 2 }}>N$ {Math.round(br.closingDPC).toLocaleString()}</div>
+                        <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: 2 }}>N$ {Math.round(br.salesRevenue).toLocaleString()} revenue</div>
+                      </div>
+                    </div>
+
+                    {/* Stock formula rows */}
+                    <div style={{ padding: '8px 16px', flex: 1 }}>
+                      {[
+                        { label: 'Opening Stock', val: br.opening, color: '#1e3a5f', sign: '' },
+                        { label: '+ Received / Issued', val: br.issued, color: '#166534', sign: '+' },
+                        { label: '− Sales (units)', val: br.salesQty, color: '#c41e3a', sign: '−' },
+                        { label: '− Rx Dispensed', val: br.dispensedQty, color: '#6d28d9', sign: '−' },
+                        { label: '− Transfers Out', val: br.transferredOut, color: '#92400e', sign: '−' },
+                        { label: '− Write-offs', val: br.writeoffs, color: '#c41e3a', sign: '−' },
+                        { label: '+ Returns', val: br.returns, color: '#166534', sign: '+' },
+                      ].map(({ label, val, color, sign }) => (
+                        <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #f8fafc' }}>
+                          <span style={{ fontSize: '0.76rem', color: '#475569', fontWeight: 500 }}>{label}</span>
+                          <span style={{ fontSize: '0.82rem', fontWeight: 700, color }}>{sign}{Number(val || 0).toLocaleString()}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Alert strip */}
+                    {hasAlerts && (
+                      <div style={{ padding: '6px 16px', background: '#fff8f0', borderTop: '1px solid #fde68a', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                        {br.expiredQty > 0 && <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#c41e3a' }}>⚠ {br.expiredQty} expired</span>}
+                        {br.expiringQty > 0 && <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#d97706' }}>⏳ {br.expiringQty} expiring soon</span>}
+                        {br.lowStockCount > 0 && <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#d97706' }}>📉 {br.lowStockCount} low stock</span>}
+                      </div>
+                    )}
+
+                    {/* Footer metadata */}
+                    <div style={{ padding: '5px 16px 8px', background: '#f8fafc', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.68rem', color: '#94a3b8' }}>
+                      <span>{br.batchCount} batch{br.batchCount !== 1 ? 'es' : ''} · {br.salesCount} sales</span>
+                      {br.lastMovement && <span>Last: {formatDateTime(br.lastMovement)}</span>}
+                    </div>
+                  </div>
+                )}
               </div>
-              {br.noData ? (
-                <div style={{ padding: '20px 16px', textAlign: 'center', color: '#9ca3af', fontSize: '0.8rem' }}>
-                  <div style={{ fontSize: '1.5rem', marginBottom: 6 }}>📦</div>
-                  <p style={{ fontWeight: 600, color: '#6b7280' }}>No stock dispatched to this branch</p>
-                  <p style={{ fontSize: '0.73rem', marginTop: 4 }}>Issue stock from the warehouse to begin tracking</p>
-                </div>
-              ) : (
-                <div>
-                  {[
-                    ['Opening Stock', br.opening, '#1e3a5f'],
-                    ['+ Received / Issued', br.issued, '#166534'],
-                    ['- Sales (units)', br.salesQty, '#c41e3a'],
-                    ['- Prescription Dispensed', br.dispensedQty, '#6d28d9'],
-                    ['- Transfers Out', br.transferredOut, '#92400e'],
-                    ['- Write-offs', br.writeoffs, '#c41e3a'],
-                    ['+ Returns', br.returns, '#166534'],
-                  ].map(([label, val, color]) => (
-                    <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 16px', borderBottom: '1px solid #f1f5f9' }}>
-                      <span style={{ fontSize: '0.8rem', color: '#374151', fontWeight: 600 }}>{label}</span>
-                      <span style={{ fontSize: '0.92rem', fontWeight: 800, color }}>{Number(val || 0).toLocaleString()}</span>
-                    </div>
-                  ))}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', background: 'linear-gradient(135deg,#f0fdf4,#dcfce7)', borderTop: '2px solid #86efac' }}>
-                    <span style={{ fontSize: '0.88rem', color: '#166534', fontWeight: 800 }}>= Closing Stock</span>
-                    <span style={{ fontSize: '1.15rem', fontWeight: 900, color: '#15803d' }}>{br.closingQty.toLocaleString()}</span>
-                  </div>
-                  <div style={{ padding: '8px 16px', background: '#fafafa', display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 4, fontSize: '0.72rem', color: '#64748b' }}>
-                    <span>DP Value: <strong style={{ color: '#c41e3a' }}>N$ {br.closingDPC.toFixed(2)}</strong></span>
-                    <span>Revenue: <strong style={{ color: '#166534' }}>N$ {br.salesRevenue.toFixed(2)}</strong></span>
-                    <span>Sales: <strong style={{ color: '#c41e3a' }}>{br.salesQty} units</strong></span>
-                    <span>Dispensed: <strong style={{ color: '#6d28d9' }}>{br.dispensedQty} units</strong></span>
-                  </div>
-                  {(br.expiredQty > 0 || br.expiringQty > 0 || br.lowStockCount > 0) && (
-                    <div style={{ padding: '6px 16px', background: '#fff0f3', borderTop: '1px solid #fecaca', fontSize: '0.73rem', color: '#c41e3a', fontWeight: 700, display: 'flex', gap: 12 }}>
-                      {br.expiredQty > 0 && <span>{br.expiredQty} expired</span>}
-                      {br.expiringQty > 0 && <span style={{ color: '#d97706' }}>{br.expiringQty} expiring soon</span>}
-                      {br.lowStockCount > 0 && <span style={{ color: '#d97706' }}>{br.lowStockCount} low stock</span>}
-                    </div>
-                  )}
-                  {br.lastMovement && (
-                    <div style={{ padding: '4px 16px 6px', background: '#f8fafc', fontSize: '0.68rem', color: '#94a3b8' }}>
-                      Last movement: {formatDateTime(br.lastMovement)}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
