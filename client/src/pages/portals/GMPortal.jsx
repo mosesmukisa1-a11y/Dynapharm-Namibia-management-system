@@ -2654,7 +2654,7 @@ function CampaignPrizeForm({ type, prize, onChange, products = [] }) {
 function CampaignAnalyticsView({ data, loading, onRefresh }) {
   const fmt  = (n) => Number(n || 0).toLocaleString('en-NA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const fmtN = (n) => Number(n || 0).toLocaleString();
-  const [expandedCamp, setExpandedCamp] = React.useState(null);
+  const [expandedCamp, setExpandedCamp] = useState(null);
 
   const TYPE_LABELS = { bv_achievement: '🏆 BV Achievement', elite_bingo: '🎯 Elite Bingo', buy_x_get_y: '🛒 Buy X Get Y', discount: '🏷️ Discount', custom: '\u2699\uFE0F Custom' };
   const TYPE_BG   = { bv_achievement: '#fef3c7', elite_bingo: '#ede9fe', buy_x_get_y: '#d1fae5', discount: '#fee2e2', custom: '#f0f9ff' };
