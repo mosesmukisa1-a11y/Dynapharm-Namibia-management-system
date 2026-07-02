@@ -1950,7 +1950,12 @@ function OverviewTab({ branch }) {
   const filteredBatches = data.batches.filter(filterBatch);
 
   // country_stock is staging/holding — excluded from all operational totals
-  const operationalBatches = filteredBatches.filter(b => (b.location || '') !== 'country_stock');
+  // Expired batches are also excluded so headline stats match GM current-overview counts
+  const operationalBatches = filteredBatches.filter(b =>
+    (b.location || '') !== 'country_stock' &&
+    Number(b.remaining_quantity || 0) > 0 &&
+    (b.status || '').toLowerCase() !== 'expired'
+  );
 
   const WAREHOUSE_LOCS = new Set(['windhoek_warehouse', 'ondangwa_warehouse']);
   const isWarehouseLoc = (loc) => {
@@ -1997,9 +2002,10 @@ function OverviewTab({ branch }) {
     return related && (t.status === 'in_transit' || t.status === 'dispatched' || t.status === 'approved');
   }).length;
 
+  const isActiveBatch = (b) => Number(b.remaining_quantity || 0) > 0 && (b.status || '').toLowerCase() !== 'expired';
   const countryBatches = data.batches.filter(b => (b.location || '') === 'country_stock');
-  const whkBatches    = data.batches.filter(b => b.location === 'windhoek_warehouse');
-  const ondBatches    = data.batches.filter(b => b.location === 'ondangwa_warehouse');
+  const whkBatches    = data.batches.filter(b => b.location === 'windhoek_warehouse' && isActiveBatch(b));
+  const ondBatches    = data.batches.filter(b => b.location === 'ondangwa_warehouse' && isActiveBatch(b));
   // Use stock_batches.remaining_quantity directly — inventory_balances accumulates historical
   // period rows and SUM(closing_qty) inflates figures. remaining_quantity is always live.
   const countryQty = countryBatches.reduce((s, b) => s + Number(b.remaining_quantity || 0), 0);
@@ -3122,7 +3128,7 @@ function WarehouseTab({ name }) {
   const loadData = useCallback(() => {
     setLoading(true);
     Promise.all([
-      api.stock.batches().then(d => (Array.isArray(d) ? d : d.batches || []).filter(b => b.location === location)).catch(() => []),
+      api.stock.batches().then(d => (Array.isArray(d) ? d : d.batches || []).filter(b => b.location === location && Number(b.remaining_quantity || 0) > 0 && (b.status || '').toLowerCase() !== 'expired')).catch(() => []),
       api.stock.transfers(`branch=${encodeURIComponent(location)}`).then(d => Array.isArray(d) ? d : d.transfers || []).catch(() => []),
       api.stock.transfers(`fromWarehouse=${encodeURIComponent(location)}`).then(d => Array.isArray(d) ? d : d.transfers || []).catch(() => []),
       api.stock.warehouseMovements(whKey).then(d => Array.isArray(d) ? d : d.movements || []).catch(() => []),
