@@ -1,6 +1,6 @@
 import { applyAuthCors } from '../_lib/auth.js';
 import { query, getMany, getOne, insert, update, remove, publishRealtimeEvent, withTransaction } from '../db.js';
-import { recomputeLocationBalances } from '../services/stockEngine.js';
+import { recomputeLocationBalances, inferLocationType } from '../services/stockEngine.js';
 import { broadcastStockEvent } from '../services/stockEvents.js';
 import { branchSearchTerms, normalizeBranchSlug } from '../_lib/branchUtils.js';
 
@@ -51,6 +51,35 @@ async function fefoDeductWarehouseInventory(client, warehouseId, productName, to
     const deduct = Math.min(remaining, Number(row.quantity));
     await client.query(
       `UPDATE warehouse_inventory
+       SET quantity = quantity - $1,
+           updated_at = NOW()
+       WHERE id = $2`,
+      [deduct, row.id]
+    );
+    remaining -= deduct;
+  }
+  return totalQty - remaining;
+}
+
+async function fefoDeductBranchInventoryBatches(client, branchId, productName, totalQty) {
+  const batches = await client.query(
+    `SELECT id, quantity FROM branch_inventory_batches
+     WHERE branch_id = $1
+       AND (LOWER(product_name) = LOWER($2) OR product_name ILIKE $3)
+       AND quantity > 0
+       AND status != 'expired'
+     ORDER BY
+       CASE WHEN LOWER(product_name) = LOWER($2) THEN 0 ELSE 1 END,
+       expiry_date ASC NULLS LAST
+     FOR UPDATE`,
+    [branchId, productName, '%' + productName + '%']
+  );
+  let remaining = totalQty;
+  for (const row of batches.rows) {
+    if (remaining <= 0) break;
+    const deduct = Math.min(remaining, Number(row.quantity));
+    await client.query(
+      `UPDATE branch_inventory_batches
        SET quantity = quantity - $1,
            updated_at = NOW()
        WHERE id = $2`,
@@ -597,7 +626,7 @@ export default async function handler(req, res) {
         request_number: body.requestNumber || body.request_number || null,
         from_warehouse: fromLocation,
         to_branch: toLocation,
-        status: body.status || 'pending',
+        status: body.status || 'pending_approval',
         dispatch_reference: body.dispatchReference || body.dispatch_reference || null,
         dispatch_notes: body.dispatchNotes || body.dispatch_notes || null,
         dispatched_by: body.dispatchedBy || null,
@@ -1090,23 +1119,27 @@ export default async function handler(req, res) {
             // Country→Warehouse dispatches: receive-stock.js handles ALL physical stock
             // movements (FIFO deduction + stock_batches creation + stock_movements) when
             // the warehouse accepts.  Deducting here would cause a double deduction.
-            // Only apply the approval reservation for warehouse→branch transfers.
+            // Only apply the approval reservation for warehouse→branch and branch→branch transfers.
             const isCountryToWarehouse = sourceWarehouse === 'country_stock';
+            const aprSrcType = inferLocationType(sourceWarehouse) || 'warehouse';
             if (sourceWarehouse && !isCountryToWarehouse) {
               for (const item of transferItems) {
                 const qtyToReserve = Number(item.quantity_approved ?? item.quantity ?? 0);
                 if (qtyToReserve <= 0) continue;
                 const productName = item.product_name || item.product_id || 'Unknown';
+                const normalizedSrc = normalizeBranchSlug(sourceWarehouse) || sourceWarehouse;
 
-                // Physically reserve from source warehouse stock_batches so the stock
-                // cannot be over-sold while this transfer is in-flight.
-                await fefoDeductStockBatches(client, sourceWarehouse, productName, qtyToReserve);
-                await fefoDeductWarehouseInventory(client, sourceWarehouse, productName, qtyToReserve);
+                // Physically reserve from source — deduct the right table depending on source type.
+                if (aprSrcType === 'branch') {
+                  await fefoDeductBranchInventoryBatches(client, normalizedSrc, productName, qtyToReserve);
+                } else {
+                  await fefoDeductStockBatches(client, sourceWarehouse, productName, qtyToReserve);
+                  await fefoDeductWarehouseInventory(client, sourceWarehouse, productName, qtyToReserve);
+                }
 
                 const batchNo = item.batch_no || null;
                 const expiryDate = item.expiry_date || null;
                 const movId = `MOV-APR-${Date.now()}-${Math.floor(Math.random() * 9999)}`;
-                const aprSrcType = (sourceWarehouse || '').includes('warehouse') ? 'warehouse' : 'country';
                 await client.query(
                   `INSERT INTO stock_movements (id, product_name, batch_no, expiry_date, quantity, movement_type, source_location, source_location_type, destination_location, destination_location_type, reference_id, notes, created_by, status, created_at, updated_at)
                    VALUES ($1, $2, $3, $4, $5, 'reserved', $6, $7, $8, 'branch', $9, $10, $11, 'posted', NOW(), NOW())`,
@@ -1120,20 +1153,25 @@ export default async function handler(req, res) {
           if (transfer.status === 'dispatched' && previousStatus !== 'dispatched') {
             const sourceWarehouse = transfer.from_warehouse || null;
             const alreadyDeducted = previousStatus === 'approved';
+            const dspSrcType = inferLocationType(sourceWarehouse) || 'warehouse';
             for (const item of transferItems) {
               const qty = Number(item.quantity || 0);
               if (qty <= 0) continue;
               const productName = item.product_name || item.product_id || 'Unknown';
 
               if (!alreadyDeducted && sourceWarehouse) {
-                await fefoDeductStockBatches(client, sourceWarehouse, productName, qty);
-                await fefoDeductWarehouseInventory(client, sourceWarehouse, productName, qty);
+                const normalizedSrc = normalizeBranchSlug(sourceWarehouse) || sourceWarehouse;
+                if (dspSrcType === 'branch') {
+                  await fefoDeductBranchInventoryBatches(client, normalizedSrc, productName, qty);
+                } else {
+                  await fefoDeductStockBatches(client, sourceWarehouse, productName, qty);
+                  await fefoDeductWarehouseInventory(client, sourceWarehouse, productName, qty);
+                }
               }
 
               const batchNo = item.batch_no || null;
               const expiryDate = item.expiry_date || null;
               const movId = `MOV-DSP-${Date.now()}-${Math.floor(Math.random() * 9999)}`;
-              const dspSrcType = (sourceWarehouse || '').includes('warehouse') ? 'warehouse' : 'country';
               await client.query(
                 `INSERT INTO stock_movements (id, product_name, batch_no, expiry_date, quantity, movement_type, source_location, source_location_type, destination_location, destination_location_type, reference_id, notes, created_by, status, created_at, updated_at)
                  VALUES ($1, $2, $3, $4, $5, 'transfer_out', $6, $7, $8, 'branch', $9, $10, $11, 'posted', NOW(), NOW())`,
@@ -1244,7 +1282,11 @@ export default async function handler(req, res) {
           const srcWarehouse = transfer.from_warehouse;
           const dstBranch = transfer.to_branch;
           if (['dispatched', 'approved'].includes(transfer.status) && srcWarehouse) {
-            recomputeLocationBalances('warehouse', srcWarehouse).catch(e =>
+            const srcLocType = inferLocationType(srcWarehouse) || 'warehouse';
+            const normalizedSrc = srcLocType === 'branch'
+              ? (normalizeBranchSlug(srcWarehouse) || srcWarehouse)
+              : srcWarehouse;
+            recomputeLocationBalances(srcLocType, normalizedSrc).catch(e =>
               console.error('[stockEngine] transfer dispatch recompute error:', e.message)
             );
           }
