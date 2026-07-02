@@ -45,6 +45,103 @@ export default async function handler(req, res) {
       return res.json({ campaigns });
     }
 
+    // ── GET /api/campaigns/analytics ─────────────────────────────────────────
+    // NOTE: must appear BEFORE /:id so "analytics" is not treated as an id
+    if (req.method === 'GET' && path === '/analytics') {
+      const [overview, typeBreakdown, winnerStats, topByParticipants, topByWinners,
+             recentWinners, branchParticipation, campaignSales] = await Promise.all([
+        getOne(`
+          SELECT
+            COUNT(*)                                             AS total,
+            COUNT(*) FILTER (WHERE status = 'active')           AS active,
+            COUNT(*) FILTER (WHERE status = 'upcoming')         AS upcoming,
+            COUNT(*) FILTER (WHERE status = 'completed')        AS completed,
+            COUNT(*) FILTER (WHERE status = 'pending_approval') AS pending_approval,
+            COUNT(*) FILTER (WHERE status = 'rejected')         AS rejected
+          FROM campaigns
+        `),
+        getMany(`
+          SELECT campaign_type, COUNT(*) AS cnt
+          FROM   campaigns
+          WHERE  status NOT IN ('rejected')
+          GROUP  BY campaign_type
+          ORDER  BY cnt DESC
+        `),
+        getOne(`
+          SELECT
+            COUNT(*)                                          AS total,
+            COUNT(*) FILTER (WHERE status = 'pending')       AS pending,
+            COUNT(*) FILTER (WHERE status = 'verified')      AS verified,
+            COUNT(DISTINCT campaign_id)                       AS campaigns_with_winners,
+            COUNT(DISTINCT distributor_code)                  AS unique_winners
+          FROM campaign_winners
+        `),
+        getMany(`
+          SELECT c.id, c.name, c.campaign_type, c.status, c.start_date, c.end_date,
+                 COUNT(DISTINCT cp.id) AS participant_count
+          FROM   campaigns c
+          LEFT   JOIN campaign_participants cp ON cp.campaign_id = c.id
+          GROUP  BY c.id, c.name, c.campaign_type, c.status, c.start_date, c.end_date
+          ORDER  BY participant_count DESC
+          LIMIT  5
+        `),
+        getMany(`
+          SELECT c.id, c.name, c.campaign_type, c.status,
+                 COUNT(DISTINCT cw.id) AS winner_count,
+                 COUNT(DISTINCT cp.id) AS participant_count
+          FROM   campaigns c
+          LEFT   JOIN campaign_winners    cw ON cw.campaign_id = c.id
+          LEFT   JOIN campaign_participants cp ON cp.campaign_id = c.id
+          GROUP  BY c.id, c.name, c.campaign_type, c.status
+          ORDER  BY winner_count DESC
+          LIMIT  5
+        `),
+        getMany(`
+          SELECT cw.*, c.name AS campaign_name, c.campaign_type
+          FROM   campaign_winners cw
+          JOIN   campaigns c ON c.id = cw.campaign_id
+          ORDER  BY cw.won_at DESC
+          LIMIT  30
+        `),
+        getMany(`
+          SELECT branch, COUNT(*) AS participant_count, COUNT(DISTINCT campaign_id) AS campaigns
+          FROM   campaign_participants
+          WHERE  branch IS NOT NULL AND branch <> ''
+          GROUP  BY branch
+          ORDER  BY participant_count DESC
+          LIMIT  10
+        `),
+        getMany(`
+          SELECT
+            SUM(ABS(quantity))                               AS total_units,
+            SUM(ABS(quantity) * COALESCE(unit_dp, 0))        AS dp_value
+          FROM   stock_movements
+          WHERE  movement_type = 'campaign_sale'
+        `),
+      ]);
+
+      // Prize cost estimate from completed campaigns with stock assignments
+      const allCampaigns = await getMany(`SELECT id, name, campaign_type, conditions, prize, discount_percentage, status FROM campaigns`);
+      let discountEstimate = 0;
+      for (const c of allCampaigns) {
+        if (c.campaign_type === 'discount' && c.status === 'completed') {
+          discountEstimate += Number(c.discount_percentage || 0);
+        }
+      }
+
+      return res.json({
+        overview,
+        typeBreakdown,
+        winnerStats,
+        topByParticipants,
+        topByWinners,
+        recentWinners,
+        branchParticipation,
+        campaignSales: campaignSales[0] || { total_units: 0, dp_value: 0 },
+        allCampaigns,
+      });
+    }
+
     // ── GET /api/campaigns/:id ─────────────────────────────────────────────────
     if (req.method === 'GET' && path.match(/^\/[^/]+$/)) {
       const id = path.slice(1);
