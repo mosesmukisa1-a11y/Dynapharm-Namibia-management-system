@@ -6380,6 +6380,7 @@ function TransfersTab({ branch }) {
             }},
             { header: 'Status', render: r => {
               if (r.status === 'approved') return <Badge variant="warning" style={{ background: '#fef9c3', color: '#854d0e', border: '1px solid #fde68a' }}>✅ Approved — Ready to Dispatch</Badge>;
+              if (r.status === 'pending_approval') return <Badge variant="warning" style={{ background: '#fff7ed', color: '#9a3412', border: '1px solid #fdba74' }}>⏳ Awaiting GM Approval</Badge>;
               if (r.status === 'completed' || r.status === 'delivered') return <Badge variant="success">{r.status}</Badge>;
               if (r.status === 'in_transit' || r.status === 'dispatched') return <Badge variant="info">{r.status.replace(/_/g, ' ')}</Badge>;
               return <Badge variant="warning">{r.status || 'Pending'}</Badge>;
@@ -6390,9 +6391,15 @@ function TransfersTab({ branch }) {
             }},
             { header: 'Actions', render: r => (
               <div className="flex gap-1 flex-wrap">
-                {(!r.status || r.status === 'pending' || r.status === 'approved') && (
+                {(!r.status || r.status === 'pending') && (
+                  <Button size="sm" variant="secondary" onClick={() => updateStatus(r.id, 'pending_approval')}
+                    title="Submit this transfer to the GM for approval">
+                    📋 Submit for Approval
+                  </Button>
+                )}
+                {r.status === 'approved' && (
                   <Button size="sm" variant="warning" onClick={() => updateStatus(r.id, 'dispatched')}>
-                    {r.status === 'approved' ? '🚚 Dispatch' : 'Dispatch'}
+                    🚚 Dispatch
                   </Button>
                 )}
                 {r.status === 'dispatched' && (
