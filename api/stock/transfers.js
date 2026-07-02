@@ -99,8 +99,8 @@ function normalizeTransferItem(item) {
   if (!item || typeof item !== 'object') return null;
   const quantity = Number(item.quantity ?? item.qty ?? 0);
   return {
-    productId: item.productId || item.id || item.sku || item.description || 'UNKNOWN',
-    productName: item.productName || item.description || item.productId || 'Item',
+    productId: item.productId || item.id || item.sku || item.product_name || item.description || 'UNKNOWN',
+    productName: item.productName || item.product_name || item.description || item.productId || 'Item',
     batchNo: item.batchNo || item.batch || item.batch_no || null,
     expiryDate: item.expiryDate || item.expiry_date || item.expiry || null,
     quantity: Number.isFinite(quantity) ? quantity : 0,

@@ -2506,6 +2506,7 @@ server.on('error', (error) => {
       // Stored alongside unit_price (always DP / cost basis) so the correction script and reports
       // can distinguish company cost from patient revenue without re-joining product_prices.
       `ALTER TABLE branch_inventory_movements ADD COLUMN IF NOT EXISTS charge_unit NUMERIC(14,4)`,
+      `ALTER TABLE stock_transfers DROP CONSTRAINT IF EXISTS stock_transfers_from_warehouse_fkey`,
       // stock_adjustments: GM-approval workflow for stock record corrections
       `CREATE TABLE IF NOT EXISTS stock_adjustments (
         id                VARCHAR(100)  PRIMARY KEY,
