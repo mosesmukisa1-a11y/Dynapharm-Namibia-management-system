@@ -5900,57 +5900,108 @@ function BranchStockTab() {
               <button onClick={() => { const win = window.open('','_blank'); if (!win) return; const rows = transfers.filter(r => isBranchMatch(r.toBranch || r.to_branch || r.to_location || '')).map(r => { const items = (()=>{try{return typeof r.items==='string'?JSON.parse(r.items):(r.items||[]);}catch{return [];}})(); return `<tr><td>${r.from_warehouse||user?.branch||'-'}</td><td>${r.to_branch||'-'}</td><td>${items.map(i=>`${i.product_name} ×${i.quantity}`).join(', ')||'-'}</td><td><span class="badge ${r.status==='delivered'?'badge-green':r.status==='dispatched'?'badge-blue':'badge-amber'}">${r.status||'pending'}</span></td><td>${r.created_at?new Date(r.created_at).toLocaleDateString('en-NA'):'-'}</td></tr>`; }).join(''); win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Stock Transfers</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;padding:24px}.header{display:flex;justify-content:space-between;border-bottom:3px solid #c41e3a;padding-bottom:10px;margin-bottom:16px}.company{color:#c41e3a;font-weight:900;font-size:15px}table{width:100%;border-collapse:collapse;margin-top:8px}th{background:#c41e3a;color:#fff;font-weight:700;padding:7px 8px;text-align:left;font-size:10px}td{padding:6px 8px;border-bottom:1px solid #f1f5f9;font-size:10px}tr:nth-child(even) td{background:#fdf7f8}.badge{display:inline-block;padding:1px 7px;border-radius:20px;font-weight:700;font-size:9px}.badge-green{background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}.badge-blue{background:#eff6ff;color:#1e40af;border:1px solid #93c5fd}.badge-amber{background:#fffbeb;color:#92400e;border:1px solid #fcd34d}.print-btn{position:fixed;top:12px;right:12px;background:#c41e3a;color:#fff;border:none;padding:8px 18px;border-radius:8px;font-weight:700;cursor:pointer}@media print{*{print-color-adjust:exact;-webkit-print-color-adjust:exact}.print-btn{display:none}}</style></head><body><button class="print-btn" onclick="window.print()">🖨️ Print</button><div class="header"><div><div class="company">DYNAPHARM INTERNATIONAL NAMIBIA</div><div style="font-size:14px;font-weight:800;color:#8b0000;margin-top:4px">↔ Stock Transfers Report</div><div style="color:#64748b;font-size:10px;margin-top:3px">${user?.branch||'Branch'}</div></div><div style="text-align:right;color:#64748b;font-size:10px">Date: ${new Date().toLocaleDateString('en-NA',{day:'2-digit',month:'long',year:'numeric'})}</div></div><table><thead><tr><th>From</th><th>To Branch</th><th>Items</th><th>Status</th><th>Date</th></tr></thead><tbody>${rows||'<tr><td colspan="5" style="text-align:center;color:#94a3b8">No transfers</td></tr>'}</tbody></table></body></html>`); win.document.close(); }} className="px-3 py-1.5 rounded-lg text-xs font-bold border-none cursor-pointer" style={{ background: '#f1f5f9', color: '#374151' }}>📄 Print</button>
               <button onClick={openTransferForm} className="px-4 py-2 rounded-lg text-sm font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>New Transfer</button>
           </div>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
-              <thead>
-                <tr style={{ background: '#f8f5f5' }}>
-                  {['Transfer #', 'From', 'To', 'Products (Batch / Expiry / Qty)', 'Status', 'Date', 'Prepared By', 'Received By', ''].map(h => (
-                    <th key={h} style={{ textAlign: 'left', padding: '8px 8px', borderBottom: '2px solid #c41e3a', fontSize: '0.68rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {(() => {
-                  // Only show transfers where this branch is the destination
-                  const branchTransfers = transfers.filter(t => isBranchMatch(t.toBranch || t.to_branch || t.to_location || ''));
-                  if (branchTransfers.length === 0) return (
-                    <tr><td colSpan={9} style={{ textAlign: 'center', padding: '32px 0', color: '#94a3b8' }}>No transfers for this branch yet</td></tr>
-                  );
-                  return branchTransfers.map((t, idx) => {
-                  const items = Array.isArray(t.items) ? t.items : (() => { try { return typeof t.items === 'string' ? JSON.parse(t.items) : []; } catch { return []; } })();
-                  const statusColors = { delivered: '#166534', received: '#166534', dispatched: '#1e40af', approved: '#7c3aed', pending: '#d97706', rejected: '#c41e3a' };
-                  const statusBgs = { delivered: '#f0fdf4', received: '#f0fdf4', dispatched: '#eff6ff', approved: '#f5f3ff', pending: '#fffbeb', rejected: '#fef2f2' };
-                  return (
-                    <tr key={t.id || idx} style={{ background: idx % 2 === 0 ? 'white' : '#fdf8f8', borderBottom: '1px solid #f5f0f0', verticalAlign: 'top' }}>
-                      <td style={{ padding: '8px', fontFamily: 'monospace', fontSize: '0.74rem', color: '#374151' }}>{t.dispatchReference || t.dispatch_reference || t.id || '-'}</td>
-                      <td style={{ padding: '8px', fontWeight: 600, color: '#1e293b', whiteSpace: 'nowrap' }}>{fmtLocation(t.fromWarehouse || t.from_location || user?.branch)}</td>
-                      <td style={{ padding: '8px', fontWeight: 600, color: '#1e293b', whiteSpace: 'nowrap' }}>{fmtLocation(t.toBranch || t.to_location)}</td>
-                      <td style={{ padding: '8px', maxWidth: 300 }}>
-                        {items.length > 0 ? items.map((it, i) => (
-                          <div key={i} style={{ fontSize: '0.74rem', marginBottom: i < items.length - 1 ? 3 : 0, paddingBottom: i < items.length - 1 ? 3 : 0, borderBottom: i < items.length - 1 ? '1px dotted #e5e7eb' : 'none' }}>
-                            <span style={{ fontWeight: 600, color: '#1e293b' }}>{it.productName || it.product_name || it.productId}</span>
-                            {(it.batchNo || it.batch_no) && <span style={{ color: '#9333ea', marginLeft: 6, fontFamily: 'monospace', fontSize: '0.7rem' }}>B:{it.batchNo || it.batch_no}</span>}
-                            {(it.expiryDate || it.expiry_date) && <span style={{ color: '#d97706', marginLeft: 4, fontSize: '0.7rem' }}>Exp:{formatDate(it.expiryDate || it.expiry_date)}</span>}
-                            <span style={{ color: '#6b7280', marginLeft: 4 }}>x{it.quantityApproved || it.quantity_approved || it.quantity}</span>
-                          </div>
-                        )) : <span style={{ color: '#94a3b8' }}>{t.product_name ? `${t.product_name} x${t.quantity}` : '-'}</span>}
-                      </td>
-                      <td style={{ padding: '8px' }}>
-                        <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 20, fontSize: '0.68rem', fontWeight: 700, color: statusColors[t.status] || '#64748b', background: statusBgs[t.status] || '#f1f5f9', border: `1px solid ${statusColors[t.status] || '#e2e8f0'}22` }}>{(t.status || 'pending').replace(/_/g, ' ')}</span>
-                      </td>
-                      <td style={{ padding: '8px', color: '#6b7280', fontSize: '0.76rem', whiteSpace: 'nowrap' }}>{formatDateTime(t.createdAt || t.created_at)}</td>
-                      <td style={{ padding: '8px', color: '#6b7280', fontSize: '0.76rem' }}>{t.createdBy || t.created_by || t.dispatchedBy || t.dispatched_by || '—'}</td>
-                      <td style={{ padding: '8px', color: '#6b7280', fontSize: '0.76rem' }}>{t.receivedBy || t.received_by || '—'}</td>
-                      <td style={{ padding: '8px' }}>
-                        <button onClick={() => setViewTransfer(t)} className="px-3 py-1 text-xs rounded-lg font-bold border-none cursor-pointer" style={{ background: '#f1f5f9', color: '#374151' }}>View</button>
-                      </td>
-                    </tr>
-                  );
-                  });
-                })()}
-              </tbody>
-            </table>
-          </div>
+          {/* ── shared status colour helpers ── */}
+          {(() => {
+            const statusColors = { delivered: '#166534', received: '#166534', partially_received: '#166534', dispatched: '#1e40af', in_transit: '#1e40af', approved: '#7c3aed', pending_approval: '#b45309', pending: '#d97706', rejected: '#c41e3a' };
+            const statusBgs   = { delivered: '#f0fdf4', received: '#f0fdf4', partially_received: '#f0fdf4', dispatched: '#eff6ff', in_transit: '#eff6ff', approved: '#f5f3ff', pending_approval: '#fffbeb', pending: '#fffbeb', rejected: '#fef2f2' };
+            const statusLabel = { pending_approval: '⏳ Awaiting GM Approval', approved: '✅ GM Approved', dispatched: '🚚 Dispatched', in_transit: '🚚 In Transit', delivered: '📦 Delivered', received: '📦 Received', partially_received: '📦 Partial Receipt', pending: 'Pending', rejected: '❌ Rejected' };
+            const renderStatusBadge = (status) => {
+              const s = status || 'pending';
+              return <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 20, fontSize: '0.68rem', fontWeight: 700, color: statusColors[s] || '#64748b', background: statusBgs[s] || '#f1f5f9', border: `1px solid ${statusColors[s] || '#94a3b8'}44`, whiteSpace: 'nowrap' }}>{statusLabel[s] || s.replace(/_/g, ' ')}</span>;
+            };
+            const renderItems = (t) => {
+              const items = Array.isArray(t.items) ? t.items : (() => { try { return typeof t.items === 'string' ? JSON.parse(t.items) : []; } catch { return []; } })();
+              return items.length > 0 ? items.map((it, i) => (
+                <div key={i} style={{ fontSize: '0.74rem', marginBottom: i < items.length - 1 ? 3 : 0, paddingBottom: i < items.length - 1 ? 3 : 0, borderBottom: i < items.length - 1 ? '1px dotted #e5e7eb' : 'none' }}>
+                  <span style={{ fontWeight: 600, color: '#1e293b' }}>{it.productName || it.product_name || it.productId}</span>
+                  {(it.batchNo || it.batch_no) && <span style={{ color: '#9333ea', marginLeft: 6, fontFamily: 'monospace', fontSize: '0.7rem' }}>B:{it.batchNo || it.batch_no}</span>}
+                  {(it.expiryDate || it.expiry_date) && <span style={{ color: '#d97706', marginLeft: 4, fontSize: '0.7rem' }}>Exp:{formatDate(it.expiryDate || it.expiry_date)}</span>}
+                  <span style={{ color: '#6b7280', marginLeft: 4 }}>x{it.quantityApproved || it.quantity_approved || it.quantity}</span>
+                </div>
+              )) : <span style={{ color: '#94a3b8' }}>{t.product_name ? `${t.product_name} x${t.quantity}` : '-'}</span>;
+            };
+            const thStyle = { textAlign: 'left', padding: '8px', borderBottom: '2px solid #c41e3a', fontSize: '0.68rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase', whiteSpace: 'nowrap' };
+
+            const outgoingTransfers = transfers.filter(t => isBranchMatch(t.fromWarehouse || t.from_location || ''));
+            const incomingTransfers = transfers.filter(t => isBranchMatch(t.toBranch || t.to_branch || t.to_location || ''));
+
+            return (
+              <>
+                {/* ── Outgoing transfers this branch initiated ── */}
+                <div style={{ padding: '12px 16px 0' }}>
+                  <h4 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                    📤 Outgoing Transfers (Submitted by This Branch)
+                    <span style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #f59e0b', borderRadius: 20, padding: '1px 10px', fontSize: '0.7rem', fontWeight: 700 }}>{outgoingTransfers.length}</span>
+                  </h4>
+                  {outgoingTransfers.length === 0 ? (
+                    <p style={{ color: '#94a3b8', fontSize: '0.78rem', padding: '10px 0 4px' }}>No outgoing transfers submitted yet — use New Transfer to send stock to another branch.</p>
+                  ) : (
+                    <div style={{ overflowX: 'auto', marginBottom: 4 }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                        <thead>
+                          <tr style={{ background: '#fffbeb' }}>
+                            {['Transfer #', 'To Branch', 'Products', 'Status', 'Date', 'Submitted By'].map(h => (
+                              <th key={h} style={thStyle}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {outgoingTransfers.map((t, idx) => (
+                            <tr key={t.id || idx} style={{ background: idx % 2 === 0 ? 'white' : '#fffef5', borderBottom: '1px solid #f5f0f0', verticalAlign: 'top' }}>
+                              <td style={{ padding: '8px', fontFamily: 'monospace', fontSize: '0.74rem', color: '#374151' }}>{t.dispatchReference || t.dispatch_reference || t.id || '-'}</td>
+                              <td style={{ padding: '8px', fontWeight: 600, color: '#1e293b', whiteSpace: 'nowrap' }}>{fmtLocation(t.toBranch || t.to_location)}</td>
+                              <td style={{ padding: '8px', maxWidth: 260 }}>{renderItems(t)}</td>
+                              <td style={{ padding: '8px' }}>{renderStatusBadge(t.status)}</td>
+                              <td style={{ padding: '8px', color: '#6b7280', fontSize: '0.76rem', whiteSpace: 'nowrap' }}>{formatDateTime(t.createdAt || t.created_at)}</td>
+                              <td style={{ padding: '8px', color: '#6b7280', fontSize: '0.76rem' }}>{t.createdBy || t.created_by || '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                {/* ── Incoming transfers destined for this branch ── */}
+                <div style={{ padding: '12px 16px 0' }}>
+                  <h4 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                    📥 Incoming Transfers (From Warehouse / Other Branches)
+                    <span style={{ background: '#dbeafe', color: '#1e40af', border: '1px solid #93c5fd', borderRadius: 20, padding: '1px 10px', fontSize: '0.7rem', fontWeight: 700 }}>{incomingTransfers.length}</span>
+                  </h4>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                      <thead>
+                        <tr style={{ background: '#f8f5f5' }}>
+                          {['Transfer #', 'From', 'To', 'Products (Batch / Expiry / Qty)', 'Status', 'Date', 'Prepared By', 'Received By', ''].map(h => (
+                            <th key={h} style={thStyle}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {incomingTransfers.length === 0 ? (
+                          <tr><td colSpan={9} style={{ textAlign: 'center', padding: '32px 0', color: '#94a3b8' }}>No incoming transfers for this branch yet</td></tr>
+                        ) : incomingTransfers.map((t, idx) => (
+                          <tr key={t.id || idx} style={{ background: idx % 2 === 0 ? 'white' : '#fdf8f8', borderBottom: '1px solid #f5f0f0', verticalAlign: 'top' }}>
+                            <td style={{ padding: '8px', fontFamily: 'monospace', fontSize: '0.74rem', color: '#374151' }}>{t.dispatchReference || t.dispatch_reference || t.id || '-'}</td>
+                            <td style={{ padding: '8px', fontWeight: 600, color: '#1e293b', whiteSpace: 'nowrap' }}>{fmtLocation(t.fromWarehouse || t.from_location || user?.branch)}</td>
+                            <td style={{ padding: '8px', fontWeight: 600, color: '#1e293b', whiteSpace: 'nowrap' }}>{fmtLocation(t.toBranch || t.to_location)}</td>
+                            <td style={{ padding: '8px', maxWidth: 300 }}>{renderItems(t)}</td>
+                            <td style={{ padding: '8px' }}>{renderStatusBadge(t.status)}</td>
+                            <td style={{ padding: '8px', color: '#6b7280', fontSize: '0.76rem', whiteSpace: 'nowrap' }}>{formatDateTime(t.createdAt || t.created_at)}</td>
+                            <td style={{ padding: '8px', color: '#6b7280', fontSize: '0.76rem' }}>{t.createdBy || t.created_by || t.dispatchedBy || t.dispatched_by || '—'}</td>
+                            <td style={{ padding: '8px', color: '#6b7280', fontSize: '0.76rem' }}>{t.receivedBy || t.received_by || '—'}</td>
+                            <td style={{ padding: '8px' }}>
+                              <button onClick={() => setViewTransfer(t)} className="px-3 py-1 text-xs rounded-lg font-bold border-none cursor-pointer" style={{ background: '#f1f5f9', color: '#374151' }}>View</button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </>
+            );
+          })()}
         </Card>
       )}
 
