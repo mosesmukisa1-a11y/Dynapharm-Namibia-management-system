@@ -3354,6 +3354,34 @@ server.on('error', (error) => {
     }
     // ─────────────────────────────────────────────────────────────────────────
 
+    // ── Backfill source_warehouse on branch_inventory_batches ────────────────
+    // receive-request.js previously omitted source_warehouse from the INSERT.
+    // Recover it from the matching stock_movements (branch_receipt) record.
+    try {
+      const bfSw = await query(`
+        UPDATE branch_inventory_batches bib
+        SET source_warehouse = sm.source_location,
+            updated_at       = NOW()
+        FROM (
+          SELECT DISTINCT ON (destination_location, product_name, batch_no)
+                 destination_location, product_name, batch_no, source_location
+          FROM   stock_movements
+          WHERE  movement_type = 'branch_receipt'
+            AND  source_location IS NOT NULL
+          ORDER  BY destination_location, product_name, batch_no, created_at ASC
+        ) sm
+        WHERE bib.source_warehouse IS NULL
+          AND bib.branch_id   = sm.destination_location
+          AND LOWER(TRIM(bib.product_name)) = LOWER(TRIM(sm.product_name))
+          AND COALESCE(bib.batch_no, '') = COALESCE(sm.batch_no, '')
+      `);
+      if (bfSw.rowCount > 0)
+        console.log(`[data-correction] Backfilled source_warehouse on ${bfSw.rowCount} branch_inventory_batches row(s).`);
+    } catch (swErr) {
+      console.warn('[data-correction] source_warehouse backfill error:', swErr.message);
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     // ── Start automated stock reporting scheduler ────────────────────────────
     try {
       const { startStockScheduler, ensureStockSummaryTable } = await import('./api/services/stockScheduler.js');

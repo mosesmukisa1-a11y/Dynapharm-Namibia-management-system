@@ -151,6 +151,7 @@ export default async function handler(req, res) {
         br.movements.push(movRecord);
         // transfer_in OR transfer_out/dispatched FROM a warehouse TO this branch = stock received
         if (t === 'transfer_in' || t === 'received' || t === 'receive' ||
+            t === 'branch_receipt' ||
             (t === 'transfer_out' && isWarehouseLoc(src)) ||
             t === 'dispatched' || t === 'import_received') {
           br.qty_received += q;

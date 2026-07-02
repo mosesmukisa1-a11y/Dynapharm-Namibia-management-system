@@ -150,20 +150,21 @@ export default async function handler(req, res) {
            warehouseSource, branchId, requestId, noteText, receivedBy]
         );
 
-        // Upsert into branch_inventory_batches (add qty, preserve existing price)
+        // Upsert into branch_inventory_batches (add qty, preserve existing price + source)
         const bibId = generateId('BATCH');
         await client.query(
           `INSERT INTO branch_inventory_batches
              (id, branch_id, product_name, batch_no, expiry_date,
-              quantity, unit_price, status, created_at, updated_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,'in_stock',NOW(),NOW())
+              quantity, unit_price, source_warehouse, status, created_at, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'in_stock',NOW(),NOW())
            ON CONFLICT (branch_id, product_name, batch_no, expiry_date)
            DO UPDATE SET
-             quantity   = branch_inventory_batches.quantity + EXCLUDED.quantity,
-             unit_price = COALESCE(EXCLUDED.unit_price, branch_inventory_batches.unit_price),
-             status     = 'in_stock',
-             updated_at = NOW()`,
-          [bibId, branchId, productName, batchNo, expiryDate, qty, unitPrice]
+             quantity        = branch_inventory_batches.quantity + EXCLUDED.quantity,
+             unit_price      = COALESCE(EXCLUDED.unit_price, branch_inventory_batches.unit_price),
+             source_warehouse = COALESCE(EXCLUDED.source_warehouse, branch_inventory_batches.source_warehouse),
+             status          = 'in_stock',
+             updated_at      = NOW()`,
+          [bibId, branchId, productName, batchNo, expiryDate, qty, unitPrice, warehouseSource || null]
         );
 
         // Insert into branch_inventory_movements
