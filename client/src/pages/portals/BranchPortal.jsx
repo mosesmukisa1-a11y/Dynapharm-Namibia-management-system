@@ -4224,7 +4224,7 @@ function BranchStockTab() {
   const [stockCardModal, setStockCardModal] = useState(null);
   const [stockCardData, setStockCardData] = useState(null);
   const [stockCardLoading, setStockCardLoading] = useState(false);
-  const [selectedBranch, setSelectedBranch] = useState(user?.branch || '');
+  const [selectedBranch, setSelectedBranch] = useState(['admin', 'super_admin'].includes(user?.role) ? '' : (user?.branch || ''));
   const [rejectTarget, setRejectTarget] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
   const [availableBranches, setAvailableBranches] = useState([]);

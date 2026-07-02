@@ -1511,7 +1511,7 @@ function AdjustmentsTab() {
 export default function StockPortal() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('aiDashboard');
-  const [globalBranch, setGlobalBranch] = useState(user?.branch || 'all');
+  const [globalBranch, setGlobalBranch] = useState(['admin', 'super_admin'].includes(user?.role) ? 'all' : (user?.branch || 'all'));
 
   const tabs = [
     { id: 'aiDashboard', label: 'Command Center', icon: '🧠' },
