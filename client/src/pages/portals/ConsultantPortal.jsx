@@ -656,9 +656,39 @@ function CheckupsSection() {
   const [editPrescReport, setEditPrescReport] = useState(null);
   const [branchViewFilter, setBranchViewFilter] = useState('');
   const [showBooking, setShowBooking] = useState(false);
-  const [bookingForm, setBookingForm] = useState({ full_name: '', phone: '', dob: '', height: '', weight: '', date: '', time: '', branch: '', notes: '' });
+  const [bookingForm, setBookingForm] = useState({ full_name: '', phone: '', dob: '', height: '', weight: '', date: '', time: '', branch: '', notes: '', membershipStatus: 'referred', referralName: '', referralNbNumber: '', nbNumber: '' });
   const [bookingSubmitting, setBookingSubmitting] = useState(false);
   const [bookingError, setBookingError] = useState('');
+  const [bookingDistQuery, setBookingDistQuery] = useState('');
+  const [bookingDistResults, setBookingDistResults] = useState([]);
+  const [bookingDistLoading, setBookingDistLoading] = useState(false);
+  const [bookingDistOpen, setBookingDistOpen] = useState(false);
+
+  useEffect(() => {
+    if (!bookingDistQuery.trim() || bookingDistQuery.length < 2) { setBookingDistResults([]); setBookingDistOpen(false); return; }
+    setBookingDistLoading(true);
+    api.distributors.search(bookingDistQuery)
+      .then(data => {
+        const list = Array.isArray(data) ? data : data.distributors || [];
+        setBookingDistResults(list.slice(0, 10));
+        setBookingDistOpen(list.length > 0);
+      })
+      .catch(() => setBookingDistResults([]))
+      .finally(() => setBookingDistLoading(false));
+  }, [bookingDistQuery]);
+
+  const selectBookingDist = (d) => {
+    const name = d.distributor_name || d.full_name || d.name || '';
+    const nb = d.distributor_code || d.nb_number || '';
+    setBookingForm(f => ({ ...f, referralName: name, referralNbNumber: nb }));
+    setBookingDistQuery('');
+    setBookingDistOpen(false);
+  };
+
+  const clearBookingReferral = () => {
+    setBookingForm(f => ({ ...f, referralName: '', referralNbNumber: '' }));
+    setBookingDistQuery('');
+  };
 
   const consultantBranch = user?.branch || '';
   // All branches this consultant is assigned to (primary + multi-branch array)
@@ -702,6 +732,7 @@ function CheckupsSection() {
     setBookingSubmitting(true);
     setBookingError('');
     try {
+      const isMember = bookingForm.membershipStatus === 'member';
       await api.appointments.create({
         full_name: bookingForm.full_name,
         phone: bookingForm.phone,
@@ -715,10 +746,19 @@ function CheckupsSection() {
           dob: bookingForm.dob || null,
           height: bookingForm.height || null,
           weight: bookingForm.weight || null,
+          membershipStatus: bookingForm.membershipStatus,
+          membership_status: bookingForm.membershipStatus,
+          referralName: isMember ? '' : bookingForm.referralName,
+          referral_name: isMember ? '' : bookingForm.referralName,
+          referralNbNumber: isMember ? '' : bookingForm.referralNbNumber,
+          referral_nb: isMember ? '' : bookingForm.referralNbNumber,
+          nbNumber: isMember ? bookingForm.nbNumber : '',
+          nb_number: isMember ? bookingForm.nbNumber : '',
         },
       });
       setShowBooking(false);
-      setBookingForm({ full_name: '', phone: '', dob: '', height: '', weight: '', date: '', time: '', branch: '', notes: '' });
+      setBookingForm({ full_name: '', phone: '', dob: '', height: '', weight: '', date: '', time: '', branch: '', notes: '', membershipStatus: 'referred', referralName: '', referralNbNumber: '', nbNumber: '' });
+      setBookingDistQuery('');
       loadCheckups();
     } catch (err) {
       setBookingError(err.message || 'Failed to book appointment. Please try again.');
@@ -1124,6 +1164,10 @@ ${consultantNotes ? `
       current_medications: d.current_medications || d.currentMedications || d.medications || '',
       allergies: d.allergies || '',
       medical_history: Array.isArray(d.medical_history) ? d.medical_history.join(', ') : (d.medical_history || (Array.isArray(d.medicalHistory) ? d.medicalHistory.join(', ') : (d.medicalHistory || ''))),
+      membershipStatus: d.membershipStatus || d.membership_status || d.customer_type || 'referred',
+      referralName: d.referral_name || d.referralName || d.distributorName || '',
+      referralNbNumber: d.referral_nb || d.referralNbNumber || d.distributorNB || '',
+      nbNumber: d.nb_number || d.nbNumber || '',
     });
     setShowEditCheckup(true);
   };
@@ -1154,6 +1198,14 @@ ${consultantNotes ? `
         allergies: editCheckupData.allergies,
         medical_history: editCheckupData.medical_history,
         medicalHistory: editCheckupData.medical_history,
+        membershipStatus: editCheckupData.membershipStatus,
+        membership_status: editCheckupData.membershipStatus,
+        referralName: editCheckupData.membershipStatus === 'member' ? '' : editCheckupData.referralName,
+        referral_name: editCheckupData.membershipStatus === 'member' ? '' : editCheckupData.referralName,
+        referralNbNumber: editCheckupData.membershipStatus === 'member' ? '' : editCheckupData.referralNbNumber,
+        referral_nb: editCheckupData.membershipStatus === 'member' ? '' : editCheckupData.referralNbNumber,
+        nbNumber: editCheckupData.membershipStatus === 'member' ? editCheckupData.nbNumber : '',
+        nb_number: editCheckupData.membershipStatus === 'member' ? editCheckupData.nbNumber : '',
       };
       const updatedApt = {
         ...detailCheckup,
@@ -1786,6 +1838,55 @@ ${consultantNotes ? `
                     {BRANCH_DETAILS.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
                   </select>
                 </div>
+                <div style={{ gridColumn: '1 / -1', borderTop: '1px solid #f1f5f9', paddingTop: 10, marginTop: 4 }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>Client Type</label>
+                  <select value={bookingForm.membershipStatus} onChange={e => setBookingForm(f => ({ ...f, membershipStatus: e.target.value }))} style={{ width: '100%', maxWidth: 280, boxSizing: 'border-box', padding: '9px 12px', borderRadius: 8, border: '1.5px solid #e2e8f0', fontSize: '0.88rem', background: '#fff' }}>
+                    <option value="referred">🤝 Non-Member (Referred)</option>
+                    <option value="member">🏅 Registered Member</option>
+                  </select>
+                </div>
+                {bookingForm.membershipStatus === 'member' ? (
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>Member NB Number</label>
+                    <input style={{ width: '100%', maxWidth: 320, boxSizing: 'border-box', padding: '9px 12px', borderRadius: 8, border: '1.5px solid #e2e8f0', fontSize: '0.88rem' }} placeholder="e.g. NB001234" value={bookingForm.nbNumber} onChange={e => setBookingForm(f => ({ ...f, nbNumber: e.target.value }))} />
+                  </div>
+                ) : (
+                  <div style={{ gridColumn: '1 / -1', position: 'relative' }}>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>Referring Distributor</label>
+                    {bookingForm.referralName ? (
+                      <div style={{ padding: '9px 12px', background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <div style={{ fontWeight: 700, color: '#166534', fontSize: '0.88rem' }}>{bookingForm.referralName}</div>
+                          {bookingForm.referralNbNumber && <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: 2 }}>NB: {bookingForm.referralNbNumber}</div>}
+                        </div>
+                        <button type="button" onClick={clearBookingReferral} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', fontSize: '1.05rem', fontWeight: 700 }}>✕</button>
+                      </div>
+                    ) : (
+                      <>
+                        <input style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', borderRadius: 8, border: '1.5px solid #e2e8f0', fontSize: '0.88rem' }} placeholder="Type name or NB number to search distributors…" value={bookingDistQuery} onChange={e => setBookingDistQuery(e.target.value)} autoComplete="off" />
+                        {bookingDistLoading && <span style={{ position: 'absolute', right: 12, top: 34, fontSize: '0.78rem', color: '#6b7280' }}>Searching…</span>}
+                        {bookingDistOpen && bookingDistResults.length > 0 && (
+                          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1.5px solid #e5e7eb', borderRadius: 10, boxShadow: '0 6px 20px rgba(0,0,0,0.12)', zIndex: 9999, maxHeight: 220, overflowY: 'auto' }}>
+                            {bookingDistResults.map((d, i) => {
+                              const nm = d.distributor_name || d.full_name || d.name || '';
+                              const nb = d.distributor_code || d.nb_number || '';
+                              return (
+                                <div key={i} onClick={() => selectBookingDist(d)}
+                                  style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid #f3f4f6', fontSize: '0.88rem' }}
+                                  onMouseEnter={e => e.currentTarget.style.background = '#f0f9ff'}
+                                  onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+                                  <span style={{ fontWeight: 700, color: '#1e293b' }}>{nm}</span>
+                                  {nb && <span style={{ marginLeft: 8, color: '#64748b', fontSize: '0.8rem' }}>{nb}</span>}
+                                  {d.branch && <span style={{ marginLeft: 8, color: '#9ca3af', fontSize: '0.75rem' }}>{d.branch}</span>}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
                 <div style={{ gridColumn: '1 / -1' }}>
                   <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>Notes (optional)</label>
                   <textarea value={bookingForm.notes} onChange={e => setBookingForm(f => ({ ...f, notes: e.target.value }))} placeholder="Any additional notes…" rows={3} style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', borderRadius: 8, border: '1.5px solid #e2e8f0', fontSize: '0.88rem', resize: 'vertical' }} />
@@ -1810,6 +1911,39 @@ function CheckupEditForm({ form, setForm }) {
   const inp = { width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '0.9rem', boxSizing: 'border-box' };
   const lbl = { display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: '3px' };
   const grp = { marginBottom: '10px' };
+
+  const memberStatus = form.membershipStatus || 'referred';
+  const isMember = memberStatus === 'member';
+
+  const [distQuery, setDistQuery] = useState('');
+  const [distResults, setDistResults] = useState([]);
+  const [distLoading, setDistLoading] = useState(false);
+  const [distOpen, setDistOpen] = useState(false);
+
+  useEffect(() => {
+    if (!distQuery.trim() || distQuery.length < 2) { setDistResults([]); setDistOpen(false); return; }
+    setDistLoading(true);
+    api.distributors.search(distQuery)
+      .then(data => {
+        const list = Array.isArray(data) ? data : data.distributors || [];
+        setDistResults(list.slice(0, 10));
+        setDistOpen(list.length > 0);
+      })
+      .catch(() => setDistResults([]))
+      .finally(() => setDistLoading(false));
+  }, [distQuery]);
+
+  const selectDist = (d) => {
+    const name = d.distributor_name || d.full_name || d.name || '';
+    const nb = d.distributor_code || d.nb_number || '';
+    upd('referralName', name);
+    upd('referralNbNumber', nb);
+    setDistQuery('');
+    setDistOpen(false);
+  };
+
+  const clearReferral = () => { upd('referralName', ''); upd('referralNbNumber', ''); setDistQuery(''); };
+
   return (
     <div>
       <h4 style={{ color: '#c41e3a', marginBottom: '12px', fontSize: '0.95rem' }}>Personal Details</h4>
@@ -1827,6 +1961,61 @@ function CheckupEditForm({ form, setForm }) {
         <div style={grp}><label style={lbl}>Height (cm)</label><input type="number" style={inp} value={form.height || ''} onChange={e => upd('height', e.target.value)} /></div>
         <div style={grp}><label style={lbl}>Weight (kg)</label><input type="number" style={inp} value={form.weight || ''} onChange={e => upd('weight', e.target.value)} /></div>
       </div>
+
+      <h4 style={{ color: '#c41e3a', marginBottom: '12px', fontSize: '0.95rem', borderTop: '1px solid #e5e7eb', paddingTop: '14px' }}>Client Type / Referral</h4>
+      <div style={{ marginBottom: '16px' }}>
+        <div style={{ ...grp, marginBottom: '12px' }}>
+          <label style={lbl}>Membership Status</label>
+          <select style={{ ...inp, maxWidth: '260px' }} value={memberStatus} onChange={e => upd('membershipStatus', e.target.value)}>
+            <option value="referred">🤝 Non-Member (Referred)</option>
+            <option value="member">🏅 Registered Member</option>
+          </select>
+        </div>
+
+        {isMember ? (
+          <div style={grp}>
+            <label style={lbl}>Member NB Number</label>
+            <input style={{ ...inp, maxWidth: '320px' }} placeholder="e.g. NB001234" value={form.nbNumber || ''} onChange={e => upd('nbNumber', e.target.value)} />
+          </div>
+        ) : (
+          <div style={{ position: 'relative', maxWidth: '480px' }}>
+            <label style={lbl}>Referring Distributor</label>
+            {form.referralName ? (
+              <div style={{ padding: '9px 12px', background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontWeight: 700, color: '#166534', fontSize: '0.9rem' }}>{form.referralName}</div>
+                  {form.referralNbNumber && <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: 2 }}>NB: {form.referralNbNumber}</div>}
+                </div>
+                <button type="button" onClick={clearReferral} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', fontSize: '1.05rem', fontWeight: 700 }}>✕</button>
+              </div>
+            ) : (
+              <>
+                <input style={inp} placeholder="Type name or NB number to search distributors..." value={distQuery} onChange={e => setDistQuery(e.target.value)} autoComplete="off" />
+                {distLoading && <span style={{ position: 'absolute', right: '10px', top: '34px', fontSize: '0.8rem', color: '#6b7280' }}>Searching…</span>}
+                {distOpen && distResults.length > 0 && (
+                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #d1d5db', borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,0.12)', zIndex: 9999, maxHeight: '220px', overflowY: 'auto' }}>
+                    {distResults.map((d, i) => {
+                      const dName = d.distributor_name || d.full_name || d.name || '';
+                      const dNb = d.distributor_code || d.nb_number || '';
+                      return (
+                        <div key={i} onClick={() => selectDist(d)}
+                          style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid #f3f4f6', fontSize: '0.88rem' }}
+                          onMouseEnter={e => e.currentTarget.style.background = '#f0f9ff'}
+                          onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+                          <span style={{ fontWeight: 700, color: '#1e293b' }}>{dName}</span>
+                          {dNb && <span style={{ marginLeft: '8px', color: '#64748b', fontSize: '0.8rem' }}>{dNb}</span>}
+                          {d.branch && <span style={{ marginLeft: '8px', color: '#9ca3af', fontSize: '0.78rem' }}>{d.branch}</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
       <h4 style={{ color: '#c41e3a', marginBottom: '12px', fontSize: '0.95rem', borderTop: '1px solid #e5e7eb', paddingTop: '14px' }}>Health Assessment</h4>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
         <div style={{ ...grp, gridColumn: '1 / -1' }}><label style={lbl}>Primary Reason for Visit</label><input style={inp} placeholder="e.g. Weight management, Joint pain..." value={form.primary_reason || ''} onChange={e => upd('primary_reason', e.target.value)} /></div>
