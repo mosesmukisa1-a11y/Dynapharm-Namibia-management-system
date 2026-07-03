@@ -8,7 +8,27 @@ import './index.css';
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
+    navigator.serviceWorker.register('/sw.js').then((registration) => {
+      // Force an update check right away, and periodically, so a stale
+      // installed worker doesn't linger even if the browser's own
+      // "check every 24h" heuristic hasn't kicked in yet.
+      registration.update().catch(() => {});
+      setInterval(() => {
+        registration.update().catch(() => {});
+      }, 60 * 60 * 1000);
+    }).catch(() => {});
+
+    // When a new service worker takes control of this page (i.e. it just
+    // finished activating via skipWaiting/clients.claim), the page that's
+    // currently open is still running the OLD cached JS in memory. Reload
+    // once so the user actually sees the new build instead of having to
+    // manually refresh.
+    let hasReloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (hasReloaded) return;
+      hasReloaded = true;
+      window.location.reload();
+    });
   });
 }
 
