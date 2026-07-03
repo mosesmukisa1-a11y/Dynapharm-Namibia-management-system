@@ -2254,6 +2254,12 @@ if (hasReactBuild) {
     setHeaders(res, filePath) {
       if (filePath.endsWith('.html')) {
         res.setHeader('Cache-Control', 'no-store');
+      } else if (filePath.endsWith('sw.js')) {
+        // The service worker filename never changes between builds (unlike
+        // Vite's content-hashed assets), so it must never be cached long-term
+        // or browsers will keep running a stale worker indefinitely and never
+        // pick up new deploys.
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       } else {
         res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
       }

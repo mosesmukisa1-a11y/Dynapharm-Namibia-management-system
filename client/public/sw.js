@@ -5,7 +5,7 @@
 //   navigation/HTML → network-first → cached shell fallback  (SPA works offline)
 //   everything else → network-first → cache fallback
 
-const CACHE = 'dynapharm-shell-v5';
+const CACHE = 'dynapharm-shell-v6';
 
 // ── Install: pre-cache the app shell ──────────────────────────────────────────
 self.addEventListener('install', (event) => {
