@@ -8137,17 +8137,36 @@ async function genQRDataUrl(value) {
   if (!value) return null;
   try {
     return await QRCodeLib.toDataURL(String(value), {
-      width: 200, margin: 1,
+      width: 300, margin: 1,
       color: { dark: '#000000', light: '#ffffff' },
     });
   } catch { return null; }
 }
 
+// Standard label physical size used across the Barcode tab's print windows
+// (matches the small thermal/sticker label printers used in-branch).
+const LABEL_W_MM = 50;
+const LABEL_H_MM = 80;
+const LABEL_MARGIN_MM = 3;
+
 // ── Code128-B SVG barcode generator ─────────────────────────────────────────
 // Only ASCII 32–126 (Code128-B charset) is supported. Characters outside that
 // range are silently stripped so the SVG is always valid.
-function code128SVG(value) {
+//
+// IMPORTANT: the SVG is sized in real physical millimetres (width="Xmm"
+// height="Ymm"), not raw pixel/SVG units. Label/thermal printers render at
+// their own DPI (203/300dpi) which has nothing to do with a screen's 96
+// CSS-px-per-inch assumption — sizing in raw units let the printer/driver
+// decide the physical bar width, which is what made barcodes unreadable by
+// handheld scanners. Millimetres are honoured by print engines directly.
+//
+// The module (bar) width auto-shrinks to fit `maxWidthMm` for long codes,
+// but never drops below `minModuleMm` — below that, bars become too thin
+// for cheap CCD/laser scanners to resolve reliably, so we'd rather overflow
+// slightly than produce a code that can't be scanned at all.
+function code128SVG(value, opts = {}) {
   if (!value) return '';
+  const { maxWidthMm = 42, minModuleMm = 0.25, maxModuleMm = 0.42, heightMm = 14 } = opts;
   // Strip chars outside Code128-B printable range; cap at 20 chars so the
   // physical barcode stays compact and scannable when printed.
   const safe = String(value).replace(/[^\x20-\x7E]/g, '').slice(0, 20);
@@ -8175,17 +8194,30 @@ function code128SVG(value) {
   }
   bits += P[chk % 103] + P[CODE128_STOP];
 
-  // 1 SVG unit per module — no CSS max-width, which destroys bar ratios on print.
-  // Quiet zones of 10 modules on each side are required for scanner recognition.
-  const bw = 1, bh = 48, qz = 10;
+  // 1 module per bit. Quiet zones of 10 modules on each side are required
+  // for scanner recognition.
+  const qz = 10;
+  const totalModules = bits.length + qz * 2;
+
+  // Auto-fit the module width to the target physical width, clamped to a
+  // scan-safe range.
+  let moduleMm = maxWidthMm / totalModules;
+  moduleMm = Math.max(minModuleMm, Math.min(maxModuleMm, moduleMm));
+  const widthMm = totalModules * moduleMm;
+  const barHeightMm = heightMm;
+  const textHeightMm = 3.6;
+  const totalHeightMm = barHeightMm + textHeightMm;
+
   let x = qz, rects = '';
   for (let i = 0; i < bits.length; i++) {
-    if (bits[i] === '1') rects += `<rect x="${x}" y="0" width="${bw}" height="${bh}" fill="black"/>`;
-    x += bw;
+    if (bits[i] === '1') rects += `<rect x="${x}" y="0" width="1" height="${barHeightMm}" fill="black"/>`;
+    x += 1;
   }
-  const tw = x + qz, th = bh + 14;
   const label = safe.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${tw} ${th}" width="${tw}" height="${th}" style="display:block;background:white;"><rect x="0" y="0" width="${tw}" height="${th}" fill="white"/>${rects}<text x="${tw/2}" y="${bh+11}" text-anchor="middle" font-family="monospace" font-size="9" font-weight="bold" fill="black">${label}</text></svg>`;
+  // viewBox uses module units for x (so bar widths stay crisp integers) and
+  // mm units for y (bar height); width/height attrs are real mm so the
+  // browser/printer renders at true physical size.
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalModules} ${totalHeightMm}" width="${widthMm}mm" height="${totalHeightMm}mm" preserveAspectRatio="none" style="display:block;background:white;"><rect x="0" y="0" width="${totalModules}" height="${totalHeightMm}" fill="white"/><g transform="scale(1,1)">${rects}</g><text x="${totalModules / 2}" y="${barHeightMm + 3}" text-anchor="middle" font-family="monospace" font-size="3" font-weight="bold" fill="black">${label}</text></svg>`;
 }
 
 function BarcodeLabelDisplay({ code, name, batch, expiry, location, qty, dp }) {
@@ -8344,23 +8376,24 @@ function BarcodeTab() {
     const name = p.description || '';
     const dp = Number(p.dp || 0);
     const cp = Number(p.cp || 0);
-    const svg = code ? code128SVG(code) : '';
+    const contentWidthMm = LABEL_W_MM - LABEL_MARGIN_MM * 2 - 6;
+    const svg = code ? code128SVG(code, { maxWidthMm: contentWidthMm, heightMm: 12 }) : '';
     const qrDataUrl = code ? await genQRDataUrl(code) : null;
-    const w = window.open('', '_blank', 'width=480,height=620');
+    const w = window.open('', '_blank', 'width=400,height=600');
     if (!w) return;
     w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Label — ${name}</title>
-<style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:Arial,sans-serif;background:#fff;display:flex;flex-direction:column;align-items:center;padding:24px;}
-.card{border:2px solid #d1d5db;border-radius:14px;padding:20px 24px;text-align:center;width:300px;background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.08);}
-.brand{font-size:9px;font-weight:800;color:#c41e3a;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;}
-.name{font-size:13px;font-weight:700;color:#1a1a1a;line-height:1.35;margin-bottom:10px;}
-.bc-wrap{display:flex;justify-content:center;margin:6px 0;}
-.code{font-family:monospace;font-size:11px;font-weight:700;color:#374151;letter-spacing:1px;margin:4px 0;}
-.price-dp{font-size:20px;font-weight:900;color:#c41e3a;margin:8px 0 2px;}
-.price-cp{font-size:12px;color:#6b7280;margin:2px 0;}
-.qr-wrap{margin:12px auto 4px;display:flex;justify-content:center;}
-.hint{font-size:8px;color:#9ca3af;margin-top:3px;}
+<style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:Arial,sans-serif;background:#fff;display:flex;flex-direction:column;align-items:center;padding:6mm;}
+.card{border:2px solid #d1d5db;border-radius:2mm;padding:3mm;text-align:center;width:${LABEL_W_MM - LABEL_MARGIN_MM * 2}mm;height:${LABEL_H_MM - LABEL_MARGIN_MM * 2}mm;background:#fff;overflow:hidden;}
+.brand{font-size:7px;font-weight:800;color:#c41e3a;text-transform:uppercase;letter-spacing:1px;margin-bottom:1.5mm;}
+.name{font-size:9.5px;font-weight:700;color:#1a1a1a;line-height:1.3;margin-bottom:1.5mm;}
+.bc-wrap{display:flex;justify-content:center;margin:1.5mm 0;}
+.code{font-family:monospace;font-size:8.5px;font-weight:700;color:#374151;letter-spacing:0.5px;margin:1mm 0;}
+.price-dp{font-size:14px;font-weight:900;color:#c41e3a;margin:1.5mm 0 0.5mm;}
+.price-cp{font-size:8px;color:#6b7280;margin:0.5mm 0;}
+.qr-wrap{margin:2mm auto 1mm;display:flex;justify-content:center;}
+.hint{font-size:6.5px;color:#9ca3af;margin-top:1mm;}
 .print-btn{margin-top:18px;padding:10px 32px;background:#c41e3a;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;}
-@media print{.print-btn{display:none;}@page{size:90mm 130mm;margin:4mm;}}</style>
+@media print{.print-btn{display:none;}body{padding:0;}@page{size:${LABEL_W_MM}mm ${LABEL_H_MM}mm;margin:${LABEL_MARGIN_MM}mm;}}</style>
 </head><body>
   <div class="card">
     <div class="brand">DYNAPHARM INTERNATIONAL NAMIBIA</div>
@@ -8368,7 +8401,7 @@ function BarcodeTab() {
     ${svg ? `<div class="bc-wrap">${svg}</div>` : ''}
     <div class="code">${code}</div>
     ${dp > 0 ? `<div class="price-dp">NAD ${Math.round(dp).toLocaleString('en-ZA')}</div><div class="price-cp">Consumer Price: NAD ${Math.round(cp).toLocaleString('en-ZA')}</div>` : ''}
-    ${qrDataUrl ? `<div class="qr-wrap"><img src="${qrDataUrl}" alt="QR" style="width:120px;height:120px;display:block;" /></div><div class="hint">📱 Scan to identify product — FEFO applied at point of sale</div>` : ''}
+    ${qrDataUrl ? `<div class="qr-wrap"><img src="${qrDataUrl}" alt="QR" style="width:24mm;height:24mm;display:block;" /></div><div class="hint">📱 Scan to identify product — FEFO applied at point of sale</div>` : ''}
   </div>
   <button class="print-btn" onclick="window.print()">🖨️ Print / Save PDF</button>
 </body></html>`);
@@ -8380,28 +8413,30 @@ function BarcodeTab() {
     const codes = Object.keys(plSelected).filter(c => plSelected[c]);
     if (!codes.length) return;
     const items = plProducts.filter(p => codes.includes(p.product_code));
-    const cards = await Promise.all(items.map(async p => {
+    const contentWidthMm = LABEL_W_MM - LABEL_MARGIN_MM * 2 - 6;
+    const cards = await Promise.all(items.map(async (p, i) => {
       const code = p.product_code || '';
       const name = p.description || '';
       const dp = Number(p.dp || 0);
-      const svg = code ? code128SVG(code) : '';
+      const svg = code ? code128SVG(code, { maxWidthMm: contentWidthMm, heightMm: 12 }) : '';
       const qrDataUrl = code ? await genQRDataUrl(code) : null;
-      return `<div style="border:1.5px solid #d1d5db;border-radius:12px;padding:12px 14px;text-align:center;width:210px;display:inline-block;margin:5px;vertical-align:top;background:#fff;">
-        <div style="font-size:8px;font-weight:800;color:#c41e3a;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:4px;">DYNAPHARM NAMIBIA</div>
-        <div style="font-size:10px;font-weight:700;color:#1a1a1a;line-height:1.3;margin-bottom:5px;min-height:22px;">${name}</div>
-        ${svg ? `<div style="display:flex;justify-content:center;margin:3px 0;">${svg}</div>` : ''}
-        <div style="font-family:monospace;font-size:9px;font-weight:700;color:#374151;letter-spacing:1px;margin:2px 0;">${code}</div>
-        ${dp > 0 ? `<div style="font-size:13px;font-weight:900;color:#c41e3a;margin:4px 0;">NAD ${Math.round(dp).toLocaleString('en-ZA')}</div>` : ''}
-        ${qrDataUrl ? `<img src="${qrDataUrl}" alt="QR" style="width:80px;height:80px;display:block;margin:5px auto;" />` : ''}
+      const pageBreak = i < items.length - 1 ? 'page-break-after:always;' : '';
+      return `<div style="box-sizing:border-box;border:1.5px solid #d1d5db;border-radius:2mm;padding:3mm;text-align:center;width:${LABEL_W_MM - LABEL_MARGIN_MM * 2}mm;height:${LABEL_H_MM - LABEL_MARGIN_MM * 2}mm;display:block;margin:0 auto;background:#fff;overflow:hidden;${pageBreak}">
+        <div style="font-size:7px;font-weight:800;color:#c41e3a;text-transform:uppercase;letter-spacing:1px;margin-bottom:1.5mm;">DYNAPHARM NAMIBIA</div>
+        <div style="font-size:9px;font-weight:700;color:#1a1a1a;line-height:1.3;margin-bottom:1.5mm;">${name}</div>
+        ${svg ? `<div style="display:flex;justify-content:center;margin:1mm 0;">${svg}</div>` : ''}
+        <div style="font-family:monospace;font-size:8px;font-weight:700;color:#374151;letter-spacing:0.5px;margin:1mm 0;">${code}</div>
+        ${dp > 0 ? `<div style="font-size:12px;font-weight:900;color:#c41e3a;margin:1mm 0;">NAD ${Math.round(dp).toLocaleString('en-ZA')}</div>` : ''}
+        ${qrDataUrl ? `<img src="${qrDataUrl}" alt="QR" style="width:20mm;height:20mm;display:block;margin:1.5mm auto;" />` : ''}
       </div>`;
     }));
-    const w = window.open('', '_blank', 'width=900,height=700');
+    const w = window.open('', '_blank', 'width=400,height=600');
     if (!w) return;
     w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Product Labels (${items.length})</title>
-<style>body{font-family:Arial,sans-serif;padding:16px;}@media print{@page{margin:8mm;}.no-print{display:none!important;}}</style>
+<style>body{font-family:Arial,sans-serif;margin:0;padding:16px;}@media print{@page{size:${LABEL_W_MM}mm ${LABEL_H_MM}mm;margin:${LABEL_MARGIN_MM}mm;}.no-print{display:none!important;}body{padding:0;}}</style>
 </head><body>
-  <div class="no-print" style="margin-bottom:10px;font-size:11px;color:#555;font-weight:bold">DYNAPHARM — Product Labels (${items.length})</div>
-  <div style="display:flex;flex-wrap:wrap;gap:4px">${cards.join('')}</div>
+  <div class="no-print" style="margin-bottom:10px;font-size:11px;color:#555;font-weight:bold">DYNAPHARM — Product Labels (${items.length}) — one label per page (${LABEL_W_MM}mm × ${LABEL_H_MM}mm)</div>
+  ${cards.join('')}
   <div class="no-print" style="margin-top:16px;text-align:center">
     <button onclick="window.print()" style="padding:8px 24px;background:#c41e3a;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px">🖨️ Print All Labels</button>
   </div>
@@ -8417,20 +8452,22 @@ function BarcodeTab() {
     const rem  = Number(b.remaining_quantity ?? b.remainingQuantity ?? b.quantity ?? 0);
     const dp   = getDP(name) || Number(b.unit_price || b.dpc_unit_value || 0);
     const code = b.barcode || '';
-    const svg  = code ? code128SVG(code) : '';
+    const contentWidthMm = LABEL_W_MM - LABEL_MARGIN_MM * 2 - 4; // account for border+padding
+    const svg  = code ? code128SVG(code, { maxWidthMm: contentWidthMm, heightMm: 12 }) : '';
     const labelCss = `
-      .lbl { border: 1.5px solid #d1d5db; border-radius: 8px; padding: 10px 14px; width: 240px; text-align: center; display: inline-block; margin: 4px; vertical-align: top; background: #fff; }
-      .lbl-brand { font-size: 8px; font-weight: 800; color: #c41e3a; text-transform: uppercase; letter-spacing: 1px; }
-      .lbl-name  { font-size: 10px; font-weight: 700; color: #1a1a1a; margin: 5px 0; min-height: 28px; line-height: 1.3; }
-      .lbl-meta  { font-size: 9px; color: #6b7280; margin: 1px 0; }
+      .lbl { box-sizing: border-box; border: 1.5px solid #d1d5db; border-radius: 2mm; padding: 2mm; width: ${LABEL_W_MM - LABEL_MARGIN_MM * 2}mm; height: ${LABEL_H_MM - LABEL_MARGIN_MM * 2}mm; text-align: center; display: block; margin: 0 auto; background: #fff; overflow: hidden; page-break-after: always; }
+      .lbl:last-child { page-break-after: auto; }
+      .lbl-brand { font-size: 7px; font-weight: 800; color: #c41e3a; text-transform: uppercase; letter-spacing: 0.5px; }
+      .lbl-name  { font-size: 9px; font-weight: 700; color: #1a1a1a; margin: 1.5mm 0; line-height: 1.25; max-height: 8mm; overflow: hidden; }
+      .lbl-meta  { font-size: 7.5px; color: #6b7280; margin: 0.3mm 0; }
       .lbl-meta strong { color: #374151; }
-      .lbl-barcode { margin: 5px auto 2px; display: flex; justify-content: center; overflow: visible; }
+      .lbl-barcode { margin: 1.5mm auto 0.5mm; display: flex; justify-content: center; overflow: visible; }
       .lbl-barcode svg { display: block; }
-      .lbl-code  { font-family: monospace; font-size: 10px; font-weight: 700; letter-spacing: 1px; color: #374151; }
-      .lbl-price { font-size: 11px; font-weight: 800; color: #c41e3a; margin-top: 3px; }
-      .lbl-qty   { font-size: 9px; color: #6b7280; margin-top: 2px; }
-      .lbl-qr-wrap { margin: 6px auto 2px; display: flex; justify-content: center; border-top: 1px dashed #e5e7eb; padding-top: 6px; }
-      .lbl-qr-hint { font-size: 7px; color: #9ca3af; margin-top: 2px; }
+      .lbl-code  { font-family: monospace; font-size: 8px; font-weight: 700; letter-spacing: 0.5px; color: #374151; }
+      .lbl-price { font-size: 10px; font-weight: 800; color: #c41e3a; margin-top: 1mm; }
+      .lbl-qty   { font-size: 7px; color: #6b7280; margin-top: 0.5mm; }
+      .lbl-qr-wrap { margin: 1.5mm auto 0.5mm; display: flex; justify-content: center; border-top: 1px dashed #e5e7eb; padding-top: 1.5mm; }
+      .lbl-qr-hint { font-size: 6px; color: #9ca3af; margin-top: 0.5mm; }
     `;
     const singleLabel = `
       <div class="lbl">
@@ -8439,9 +8476,9 @@ function BarcodeTab() {
         ${bno  ? `<div class="lbl-meta">Batch: <strong>${bno}</strong></div>` : ''}
         ${exp  ? `<div class="lbl-meta">Expiry: <strong>${fmtDate(exp)}</strong></div>` : ''}
         <div class="lbl-meta">Location: <strong>${loc}</strong></div>
-        ${svg  ? `<div class="lbl-barcode">${svg}</div>` : '<div style="height:40px;background:#f3f4f6;border-radius:4px;margin:5px 0;display:flex;align-items:center;justify-content:center;font-size:9px;color:#9ca3af">No barcode</div>'}
+        ${svg  ? `<div class="lbl-barcode">${svg}</div>` : '<div style="height:10mm;background:#f3f4f6;border-radius:1mm;margin:1.5mm 0;display:flex;align-items:center;justify-content:center;font-size:7px;color:#9ca3af">No barcode</div>'}
         ${code ? `<div class="lbl-code">${code}</div>` : ''}
-        ${qrDataUrl ? `<div class="lbl-qr-wrap"><img src="${qrDataUrl}" alt="QR" style="width:64px;height:64px;display:block;" /></div><div class="lbl-qr-hint" style="text-align:center;">📱 Scan QR on mobile</div>` : ''}
+        ${qrDataUrl ? `<div class="lbl-qr-wrap"><img src="${qrDataUrl}" alt="QR" style="width:20mm;height:20mm;display:block;" /></div><div class="lbl-qr-hint" style="text-align:center;">📱 Scan QR on mobile</div>` : ''}
         ${dp   ? `<div class="lbl-price">NAD ${Math.round(dp).toLocaleString('en-ZA')}</div>` : ''}
         <div class="lbl-qty">Qty on hand: ${rem}</div>
       </div>`;
@@ -8451,10 +8488,10 @@ function BarcodeTab() {
   const printSingle = async (b) => {
     const qrDataUrl = b.barcode ? await genQRDataUrl(b.barcode) : null;
     const { labelCss, html } = makeLabelHTML(b, qrDataUrl);
-    const w = window.open('', '_blank', 'width=600,height=520');
+    const w = window.open('', '_blank', 'width=400,height=600');
     w.document.write(`<!DOCTYPE html><html><head><title>Label — ${b.product_name||b.description||''}</title><style>
-      body { font-family: Arial, sans-serif; padding: 16px; }
-      @media print { @page { margin: 8mm; } .no-print { display:none!important; } }
+      body { font-family: Arial, sans-serif; margin: 0; padding: ${LABEL_MARGIN_MM}mm; }
+      @media print { @page { size: ${LABEL_W_MM}mm ${LABEL_H_MM}mm; margin: ${LABEL_MARGIN_MM}mm; } .no-print { display:none!important; } body { padding: 0; } }
       ${labelCss}
     </style></head><body>
       ${html}
@@ -8475,25 +8512,25 @@ function BarcodeTab() {
     const dp      = getDP(name) || Number(b.unit_price || b.dpc_unit_value || 0);
     const qrDataUrl = code ? await genQRDataUrl(code) : null;
     const fmtExp  = d => { try { return d ? new Date(d).toLocaleDateString('en-ZA',{day:'2-digit',month:'short',year:'numeric'}) : ''; } catch { return ''; } };
-    const w = window.open('', '_blank', 'width=480,height=640');
+    const w = window.open('', '_blank', 'width=400,height=600');
     if (!w) return;
     w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>QR Label — ${name}</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0;}
-  body{font-family:Arial,sans-serif;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px;}
-  .card{border:2px solid #d1d5db;border-radius:14px;padding:20px 24px;text-align:center;width:300px;background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.08);}
-  .brand{font-size:9px;font-weight:800;color:#c41e3a;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;}
-  .name{font-size:13px;font-weight:700;color:#1a1a1a;line-height:1.35;margin-bottom:10px;}
-  .price{font-size:22px;font-weight:900;color:#c41e3a;margin:10px 0 4px;}
-  .meta{font-size:10px;color:#6b7280;margin:2px 0;}
-  .qr-wrap{margin:14px auto 8px;display:flex;justify-content:center;}
-  .qr-img{width:160px;height:160px;display:block;}
-  .code{font-family:monospace;font-size:11px;font-weight:700;color:#374151;letter-spacing:1px;margin-top:6px;}
-  .hint{font-size:9px;color:#9ca3af;margin-top:4px;}
-  .qty{font-size:10px;color:#6b7280;margin-top:6px;}
+  body{font-family:Arial,sans-serif;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:6mm;}
+  .card{border:2px solid #d1d5db;border-radius:2mm;padding:3mm;text-align:center;width:${LABEL_W_MM - LABEL_MARGIN_MM * 2}mm;height:${LABEL_H_MM - LABEL_MARGIN_MM * 2}mm;background:#fff;box-sizing:border-box;overflow:hidden;}
+  .brand{font-size:7px;font-weight:800;color:#c41e3a;text-transform:uppercase;letter-spacing:1px;margin-bottom:1mm;}
+  .name{font-size:9.5px;font-weight:700;color:#1a1a1a;line-height:1.3;margin-bottom:1.5mm;}
+  .price{font-size:14px;font-weight:900;color:#c41e3a;margin:1.5mm 0 1mm;}
+  .meta{font-size:7.5px;color:#6b7280;margin:0.3mm 0;}
+  .qr-wrap{margin:2mm auto 1mm;display:flex;justify-content:center;}
+  .qr-img{width:26mm;height:26mm;display:block;}
+  .code{font-family:monospace;font-size:8.5px;font-weight:700;color:#374151;letter-spacing:0.5px;margin-top:1mm;}
+  .hint{font-size:6.5px;color:#9ca3af;margin-top:1mm;}
+  .qty{font-size:7px;color:#6b7280;margin-top:1mm;}
   .print-btn{margin-top:20px;padding:10px 32px;background:#c41e3a;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;}
-  @media print{.print-btn{display:none;}body{padding:0;}@page{size:90mm 120mm;margin:4mm;}}
+  @media print{.print-btn{display:none;}body{padding:0;}@page{size:${LABEL_W_MM}mm ${LABEL_H_MM}mm;margin:${LABEL_MARGIN_MM}mm;}}
 </style></head><body>
   <div class="card">
     <div class="brand">DYNAPHARM INTERNATIONAL NAMIBIA</div>
@@ -8505,7 +8542,7 @@ function BarcodeTab() {
     <div class="qr-wrap">
       ${qrDataUrl
         ? `<img class="qr-img" src="${qrDataUrl}" alt="QR Code" />`
-        : `<div style="width:160px;height:160px;background:#f3f4f6;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#9ca3af;border:1px solid #e5e7eb;">No barcode assigned</div>`}
+        : `<div style="width:26mm;height:26mm;background:#f3f4f6;border-radius:2mm;display:flex;align-items:center;justify-content:center;font-size:8px;color:#9ca3af;border:1px solid #e5e7eb;">No barcode assigned</div>`}
     </div>
     ${code ? `<div class="code">${code}</div>` : ''}
     <div class="hint">📱 Scan with any phone camera or barcode reader</div>
@@ -8525,14 +8562,14 @@ function BarcodeTab() {
     await Promise.all(items.map(async b => { const src = b.qr_code || b.barcode; if (src) qrMap[b.id] = await genQRDataUrl(src); }));
     const { labelCss } = makeLabelHTML(items[0], qrMap[items[0].id] || null);
     const allHtml = items.map(b => makeLabelHTML(b, qrMap[b.id] || null).html).join('');
-    const w = window.open('', '_blank', 'width=900,height=700');
+    const w = window.open('', '_blank', 'width=400,height=600');
     w.document.write(`<!DOCTYPE html><html><head><title>Barcode Labels (${items.length})</title><style>
-      body { font-family: Arial, sans-serif; padding: 16px; }
-      @media print { @page { margin: 8mm; } .no-print { display:none!important; } }
+      body { font-family: Arial, sans-serif; margin: 0; padding: 16px; }
+      @media print { @page { size: ${LABEL_W_MM}mm ${LABEL_H_MM}mm; margin: ${LABEL_MARGIN_MM}mm; } .no-print { display:none!important; } body { padding: 0; } }
       ${labelCss}
     </style></head><body>
-      <div style="margin-bottom:12px;font-size:11px;color:#555;font-weight:bold">DYNAPHARM INTERNATIONAL NAMIBIA — Barcode Labels (${items.length} batch${items.length>1?'es':''})</div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px">${allHtml}</div>
+      <div class="no-print" style="margin-bottom:12px;font-size:11px;color:#555;font-weight:bold">DYNAPHARM INTERNATIONAL NAMIBIA — Barcode Labels (${items.length} batch${items.length>1?'es':''}) — one label per page (${LABEL_W_MM}mm × ${LABEL_H_MM}mm)</div>
+      ${allHtml}
       <div class="no-print" style="margin-top:16px;text-align:center">
         <button onclick="window.print()" style="padding:8px 24px;background:#c41e3a;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px">🖨️ Print All Labels</button>
       </div>
@@ -8547,33 +8584,35 @@ function BarcodeTab() {
     if (!items.length) { setAlert({ type: 'error', msg: 'None of the selected batches have a barcode assigned' }); return; }
     const qrMap = {};
     await Promise.all(items.map(async b => { qrMap[b.id] = await genQRDataUrl(b.barcode); }));
-    const cards = items.map(b => {
+    const cardWH = `width:${LABEL_W_MM - LABEL_MARGIN_MM * 2}mm;height:${LABEL_H_MM - LABEL_MARGIN_MM * 2}mm;`;
+    const cards = items.map((b, i) => {
       const name = b.product_name || b.description || '';
       const dp   = getDP(name) || Number(b.unit_price || b.dpc_unit_value || 0);
       const bno  = b.batch_no || b.batch_number || '';
       const exp  = b.expiry_date ? new Date(b.expiry_date).toLocaleDateString('en-ZA',{day:'2-digit',month:'short',year:'numeric'}) : '';
       const rem  = Number(b.remaining_quantity ?? b.remainingQuantity ?? b.quantity ?? 0);
-      return `<div style="border:2px solid #d1d5db;border-radius:12px;padding:14px 16px;text-align:center;width:240px;display:inline-block;margin:6px;vertical-align:top;background:#fff;">
-        <div style="font-size:8px;font-weight:800;color:#c41e3a;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px;">DYNAPHARM NAMIBIA</div>
-        <div style="font-size:12px;font-weight:700;color:#1a1a1a;line-height:1.3;margin-bottom:6px;">${name}</div>
-        ${dp > 0 ? `<div style="font-size:18px;font-weight:900;color:#c41e3a;margin-bottom:4px;">NAD ${Math.round(dp).toLocaleString('en-ZA')}</div>` : ''}
-        ${bno ? `<div style="font-size:9px;color:#6b7280;">Batch: <strong>${bno}</strong></div>` : ''}
-        ${exp ? `<div style="font-size:9px;color:#6b7280;">Expiry: <strong>${exp}</strong></div>` : ''}
-        <div style="margin:10px auto 4px;display:flex;justify-content:center;">
-          ${qrMap[b.id] ? `<img src="${qrMap[b.id]}" alt="QR" style="width:130px;height:130px;display:block;" />` : ''}
+      const pageBreak = i < items.length - 1 ? 'page-break-after:always;' : '';
+      return `<div style="box-sizing:border-box;border:2px solid #d1d5db;border-radius:2mm;padding:3mm;text-align:center;${cardWH}display:block;margin:0 auto;background:#fff;overflow:hidden;${pageBreak}">
+        <div style="font-size:7px;font-weight:800;color:#c41e3a;text-transform:uppercase;letter-spacing:1px;margin-bottom:1.5mm;">DYNAPHARM NAMIBIA</div>
+        <div style="font-size:9.5px;font-weight:700;color:#1a1a1a;line-height:1.3;margin-bottom:1.5mm;">${name}</div>
+        ${dp > 0 ? `<div style="font-size:14px;font-weight:900;color:#c41e3a;margin-bottom:1mm;">NAD ${Math.round(dp).toLocaleString('en-ZA')}</div>` : ''}
+        ${bno ? `<div style="font-size:7.5px;color:#6b7280;">Batch: <strong>${bno}</strong></div>` : ''}
+        ${exp ? `<div style="font-size:7.5px;color:#6b7280;">Expiry: <strong>${exp}</strong></div>` : ''}
+        <div style="margin:2mm auto 1mm;display:flex;justify-content:center;">
+          ${qrMap[b.id] ? `<img src="${qrMap[b.id]}" alt="QR" style="width:26mm;height:26mm;display:block;" />` : ''}
         </div>
-        <div style="font-family:monospace;font-size:10px;font-weight:700;color:#374151;letter-spacing:1px;margin-top:4px;">${b.barcode}</div>
-        <div style="font-size:8px;color:#9ca3af;margin-top:2px;">📱 Scan QR on mobile</div>
-        <div style="font-size:8px;color:#9ca3af;margin-top:2px;">Qty: ${rem}</div>
+        <div style="font-family:monospace;font-size:8.5px;font-weight:700;color:#374151;letter-spacing:0.5px;margin-top:1mm;">${b.barcode}</div>
+        <div style="font-size:6.5px;color:#9ca3af;margin-top:1mm;">📱 Scan QR on mobile</div>
+        <div style="font-size:6.5px;color:#9ca3af;margin-top:0.5mm;">Qty: ${rem}</div>
       </div>`;
     }).join('');
-    const w = window.open('', '_blank', 'width=900,height=700');
+    const w = window.open('', '_blank', 'width=400,height=600');
     w.document.write(`<!DOCTYPE html><html><head><title>QR Labels (${items.length})</title><style>
-      body { font-family: Arial, sans-serif; padding: 16px; }
-      @media print { @page { margin: 8mm; } .no-print { display:none!important; } }
+      body { font-family: Arial, sans-serif; margin: 0; padding: 16px; }
+      @media print { @page { size: ${LABEL_W_MM}mm ${LABEL_H_MM}mm; margin: ${LABEL_MARGIN_MM}mm; } .no-print { display:none!important; } body { padding: 0; } }
     </style></head><body>
-      <div style="margin-bottom:12px;font-size:11px;color:#555;font-weight:bold">DYNAPHARM INTERNATIONAL NAMIBIA — QR Labels (${items.length} batch${items.length>1?'es':''})</div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px">${cards}</div>
+      <div class="no-print" style="margin-bottom:12px;font-size:11px;color:#555;font-weight:bold">DYNAPHARM INTERNATIONAL NAMIBIA — QR Labels (${items.length} batch${items.length>1?'es':''}) — one label per page (${LABEL_W_MM}mm × ${LABEL_H_MM}mm)</div>
+      ${cards}
       <div class="no-print" style="margin-top:16px;text-align:center">
         <button onclick="window.print()" style="padding:8px 24px;background:#c41e3a;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px">🖨️ Print All QR Labels</button>
       </div>
