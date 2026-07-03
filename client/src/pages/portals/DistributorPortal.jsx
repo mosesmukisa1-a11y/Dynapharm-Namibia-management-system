@@ -2860,8 +2860,8 @@ function CommunicationsTab() {
 
 function CheckupTab() {
   const { user } = useAuth();
-  const referralNB = (user?.username || user?.distributor_code || user?.nb_number || '').toUpperCase();
-  const referralName = user?.full_name || user?.name || '';
+  const selfNB = (user?.username || user?.distributor_code || user?.nb_number || '').toUpperCase();
+  const selfName = user?.fullName || user?.full_name || user?.name || '';
 
   const BRANCHES = ['Windhoek CBD', 'Hochlandpark', 'Khomasdal', 'Walvis Bay', 'Swakopmund', 'Oshakati', 'Ondangwa', 'Eenhana', 'Okahao', 'Outapi', 'Rundu', 'Katima Mulilo', 'Gobabis', 'Otjiwarongo', 'Tsumeb'];
 
@@ -2879,6 +2879,42 @@ function CheckupTab() {
   const [booked, setBooked] = useState(null);
   const [error, setError] = useState('');
 
+  const [referralNB, setReferralNB] = useState(selfNB);
+  const [referralName, setReferralName] = useState(selfName);
+  const [distQuery, setDistQuery] = useState('');
+  const [distResults, setDistResults] = useState([]);
+  const [distLoading, setDistLoading] = useState(false);
+  const [distOpen, setDistOpen] = useState(false);
+
+  useEffect(() => {
+    if (!distQuery.trim() || distQuery.length < 2) { setDistResults([]); setDistOpen(false); return; }
+    setDistLoading(true);
+    api.distributors.search(distQuery)
+      .then(data => {
+        const list = Array.isArray(data) ? data : data.distributors || [];
+        setDistResults(list.slice(0, 10));
+        setDistOpen(list.length > 0);
+      })
+      .catch(() => setDistResults([]))
+      .finally(() => setDistLoading(false));
+  }, [distQuery]);
+
+  const selectReferralDist = (d) => {
+    const name = d.distributor_name || d.full_name || d.name || '';
+    const nb = d.distributor_code || d.nb_number || '';
+    setReferralName(name);
+    setReferralNB(nb.toUpperCase());
+    setDistQuery('');
+    setDistOpen(false);
+  };
+
+  const resetReferralToSelf = () => {
+    setReferralName(selfName);
+    setReferralNB(selfNB);
+    setDistQuery('');
+    setDistOpen(false);
+  };
+
   const handleBook = async () => {
     if (!form.full_name.trim() || !form.phone.trim()) { setError('Full name and phone number are required.'); return; }
     setSubmitting(true); setError('');
@@ -2892,8 +2928,8 @@ function CheckupTab() {
         branch: form.branch,
         type: 'checkup',
         status: 'pending',
-        notes: [form.notes.trim(), `Booked by distributor ${referralNB}${referralName ? ' (' + referralName + ')' : ''}. Client to complete full health form.`].filter(Boolean).join(' — '),
-        data: JSON.stringify({ referral_nb: referralNB, referral_name: referralName, booking_source: 'distributor_portal' }),
+        notes: [form.notes.trim(), `Booked by distributor ${selfNB}${selfName ? ' (' + selfName + ')' : ''}. Client to complete full health form.`].filter(Boolean).join(' — '),
+        data: JSON.stringify({ referral_nb: referralNB, referral_name: referralName, booked_by_nb: selfNB, booked_by_name: selfName, booking_source: 'distributor_portal' }),
       });
       setBooked(result);
     } catch (err) { console.error('Booking error:', err); setError(err.message || 'Booking failed. Please try again.'); }
@@ -2925,7 +2961,7 @@ function CheckupTab() {
                   className="block w-full py-3 rounded-xl font-bold text-white text-center" style={{ background: '#25D366', textDecoration: 'none' }}>
                   📱 Share via WhatsApp
                 </a>
-                <button onClick={() => { setBooked(null); setForm({ full_name: '', phone: '', email: '', branch: BRANCHES[0], preferred_date: getTomorrowStr(), notes: '' }); }}
+                <button onClick={() => { setBooked(null); setForm({ full_name: '', phone: '', email: '', branch: BRANCHES[0], preferred_date: getTomorrowStr(), notes: '' }); resetReferralToSelf(); }}
                   className="w-full py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-semibold bg-white cursor-pointer">
                   + Book Another Client
                 </button>
@@ -2977,9 +3013,41 @@ function CheckupTab() {
               <label style={lbl}>Preferred Date</label>
               <input type="date" style={inp} value={form.preferred_date} min={getTodayStr()} onChange={e => setForm(f => ({ ...f, preferred_date: e.target.value }))} />
             </div>
-            <div style={{ padding: 12, borderRadius: 10, background: '#f0fdf4', border: '1px solid #86efac' }}>
-              <div style={{ fontSize: '0.75rem', color: '#166534', fontWeight: 700, marginBottom: 2 }}>Your Referral Details (pre-filled)</div>
-              <div style={{ fontSize: '0.85rem', color: '#15803d' }}>{referralNB}{referralName ? ` · ${referralName}` : ''}</div>
+            <div style={{ padding: 12, borderRadius: 10, background: referralNB === selfNB ? '#f0fdf4' : '#fff7ed', border: referralNB === selfNB ? '1px solid #86efac' : '1px solid #fdba74', position: 'relative' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <label style={{ ...lbl, marginBottom: 0, color: referralNB === selfNB ? '#166534' : '#9a3412' }}>Referral {referralNB === selfNB ? '(you, by default)' : ''}</label>
+                {referralNB !== selfNB && (
+                  <button type="button" onClick={resetReferralToSelf} style={{ fontSize: '0.72rem', color: '#166534', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700, padding: 0 }}>
+                    Reset to me
+                  </button>
+                )}
+              </div>
+              <div style={{ fontSize: '0.85rem', color: referralNB === selfNB ? '#15803d' : '#9a3412', fontWeight: 600, marginBottom: 8 }}>
+                {referralName || '—'}{referralNB ? ` (${referralNB})` : ''}
+              </div>
+              <input
+                style={inp}
+                value={distQuery}
+                onChange={e => setDistQuery(e.target.value)}
+                onFocus={() => { if (distResults.length > 0) setDistOpen(true); }}
+                placeholder="Search to change referral to another distributor…"
+              />
+              {distLoading && <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: 4 }}>Searching…</div>}
+              {distOpen && distResults.length > 0 && (
+                <div style={{ marginTop: 6, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', maxHeight: 180, overflowY: 'auto', boxShadow: '0 4px 10px rgba(0,0,0,0.06)' }}>
+                  {distResults.map((d, i) => {
+                    const name = d.distributor_name || d.full_name || d.name || 'Unknown';
+                    const nb = d.distributor_code || d.nb_number || '';
+                    return (
+                      <div key={i} onClick={() => selectReferralDist(d)} style={{ padding: '8px 12px', cursor: 'pointer', borderBottom: i < distResults.length - 1 ? '1px solid #f1f5f9' : 'none', fontSize: '0.85rem' }}
+                        onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+                        <div style={{ fontWeight: 600, color: '#1e293b' }}>{name}</div>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{nb}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
             <div>
               <label style={lbl}>Additional Notes (optional)</label>

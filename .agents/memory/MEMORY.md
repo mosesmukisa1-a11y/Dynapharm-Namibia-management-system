@@ -5,3 +5,4 @@
 - [Warehouse write-off deduction path](warehouse-writeoff-path.md) — warehouse write-offs deduct stock_batches.remaining_quantity (not branch_inventory_batches); detected via inferLocationType(source_location) in approve handler.
 - [receive-request warehouse deduction](receive-request-warehouse-deduction.md) — stock-request receipt path must FEFO-deduct stock_batches + use branch_receipt (not received) movement type + recompute warehouse balances.
 - [Portal route naming](portal-route-naming.md) — portal routes are short names (/consultant, /branch, /finance...) not "/xxx-portal"; wrong URL causes blank page, easily mistaken for a real bug.
+- [Auth user field naming](auth-user-field-naming.md) — sanitizeUser() returns fullName (camelCase), not full_name; reading user.full_name silently gives undefined.
