@@ -474,7 +474,35 @@ function generateRecommendations(client) {
   return { recommendations, reasonsMap };
 }
 
+function useBranchStock(branchId) {
+  const [outOfStock, setOutOfStock] = useState(new Set());
+  const fetchStock = useCallback(async () => {
+    if (!branchId) return;
+    try {
+      const data = await api.get(`/stock/branch/${encodeURIComponent(branchId)}/inventory`);
+      const inv = Array.isArray(data.inventory) ? data.inventory : [];
+      const qtyMap = {};
+      for (const row of inv) {
+        const name = row.productName || row.product_name || '';
+        if (!name) continue;
+        qtyMap[name] = (qtyMap[name] || 0) + Number(row.availableQty ?? row.closingQty ?? 0);
+      }
+      setOutOfStock(new Set(Object.entries(qtyMap).filter(([, q]) => q <= 0).map(([n]) => n)));
+    } catch {
+      // fail silently — no indicators shown if fetch fails
+    }
+  }, [branchId]);
+  useEffect(() => {
+    fetchStock();
+    const id = setInterval(fetchStock, 30000);
+    return () => clearInterval(id);
+  }, [fetchStock]);
+  return outOfStock;
+}
+
 function PrescriptionEditModal({ report, onClose, onSaved }) {
+  const { user } = useAuth();
+  const outOfStock = useBranchStock(user?.branch || '');
   const [meds, setMeds] = useState(() => {
     const existing = Array.isArray(report.prescriptions)
       ? report.prescriptions.map(p => typeof p === 'string' ? p : (p.product || p.name || ''))
@@ -568,16 +596,25 @@ function PrescriptionEditModal({ report, onClose, onSaved }) {
               <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>{meds.size} selected</span>
             </div>
             <input type="text" placeholder="Search products…" value={medSearch} onChange={e => setMedSearch(e.target.value)}
-              style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '0.9rem', marginBottom: '10px', boxSizing: 'border-box' }} />
+              style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '0.9rem', marginBottom: '8px', boxSizing: 'border-box' }} />
+            {outOfStock.size > 0 && (
+              <div style={{ fontSize: '0.78rem', color: '#991b1b', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', padding: '5px 10px', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span>🔴</span> <span><strong>Red items</strong> are currently out of stock at your branch. You can still prescribe them — the branch will source stock before dispensing.</span>
+              </div>
+            )}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(270px, 1fr))', gap: '7px', maxHeight: '340px', overflowY: 'auto', marginBottom: '12px' }}>
               {visPkgs.map((pkg, idx) => {
                 const isChecked = meds.has(pkg.description);
+                const isOos = outOfStock.has(pkg.description);
+                const bg = isOos ? (isChecked ? '#fef3c7' : '#fee2e2') : (isChecked ? '#dcfce7' : '#e8f5e9');
+                const borderColor = isOos ? (isChecked ? '#d97706' : '#dc2626') : (isChecked ? '#16a34a' : '#27ae60');
                 return (
                   <div key={`epkg-${idx}`} onClick={() => toggleMed(pkg.description)}
-                    style={{ background: isChecked ? '#dcfce7' : '#e8f5e9', borderLeft: `4px solid ${isChecked ? '#16a34a' : '#27ae60'}`, padding: '9px 10px', borderRadius: '6px', display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer' }}>
+                    style={{ background: bg, borderLeft: `4px solid ${borderColor}`, padding: '9px 10px', borderRadius: '6px', display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer' }}>
                     <input type="checkbox" checked={isChecked} onChange={() => toggleMed(pkg.description)} style={{ marginTop: '3px', cursor: 'pointer' }} onClick={e => e.stopPropagation()} />
                     <label style={{ cursor: 'pointer', flex: 1, fontSize: '0.87rem' }}>
-                      <span style={{ fontWeight: 700, color: '#166534' }}>📦 {pkg.description}</span>
+                      <span style={{ fontWeight: 700, color: isOos ? (isChecked ? '#92400e' : '#991b1b') : '#166534' }}>📦 {pkg.description}</span>
+                      {isOos && <span style={{ marginLeft: '6px', fontSize: '0.72rem', fontWeight: 700, color: '#fff', background: '#dc2626', borderRadius: '4px', padding: '1px 5px' }}>OUT OF STOCK</span>}
                       <br /><small style={{ color: '#555' }}>Bundle · DP: N${pkg.dp}</small>
                     </label>
                   </div>
@@ -585,12 +622,19 @@ function PrescriptionEditModal({ report, onClose, onSaved }) {
               })}
               {visProds.map((product, idx) => {
                 const isChecked = meds.has(product.description);
+                const isOos = outOfStock.has(product.description);
+                const bg = isOos ? (isChecked ? '#fffbeb' : '#fff5f5') : (isChecked ? '#f0fdf4' : 'white');
+                const borderColor = isOos ? (isChecked ? '#fcd34d' : '#fca5a5') : (isChecked ? '#86efac' : '#f0f0f0');
+                const borderWidth = isOos ? '1.5px' : '1px';
                 return (
                   <div key={`eprod-${idx}`} onClick={() => toggleMed(product.description)}
-                    style={{ padding: '8px 10px', borderRadius: '6px', display: 'flex', alignItems: 'flex-start', gap: '8px', border: `1px solid ${isChecked ? '#86efac' : '#f0f0f0'}`, background: isChecked ? '#f0fdf4' : 'white', cursor: 'pointer' }}>
+                    style={{ padding: '8px 10px', borderRadius: '6px', display: 'flex', alignItems: 'flex-start', gap: '8px', border: `${borderWidth} solid ${borderColor}`, background: bg, cursor: 'pointer' }}>
                     <input type="checkbox" checked={isChecked} onChange={() => toggleMed(product.description)} style={{ marginTop: '3px', cursor: 'pointer' }} onClick={e => e.stopPropagation()} />
                     <label style={{ cursor: 'pointer', flex: 1, fontSize: '0.87rem' }}>
-                      <span style={{ fontWeight: isChecked ? 600 : 400, color: isChecked ? '#166534' : '#1e293b' }}>{product.description}</span>
+                      <span style={{ fontWeight: isChecked ? 600 : 400, color: isOos ? (isChecked ? '#92400e' : '#991b1b') : (isChecked ? '#166534' : '#1e293b') }}>
+                        {product.description}
+                        {isOos && <span style={{ marginLeft: '6px', fontSize: '0.7rem', fontWeight: 700, color: '#fff', background: '#dc2626', borderRadius: '4px', padding: '1px 5px' }}>OUT OF STOCK</span>}
+                      </span>
                       <br /><small style={{ color: '#666' }}>DP: N${product.dp} · BV: {product.bv}</small>
                     </label>
                   </div>
@@ -654,6 +698,7 @@ function CheckupsSection() {
   const [reportRequired, setReportRequired] = useState(true);
   const [editPrescLoadingId, setEditPrescLoadingId] = useState(null);
   const [editPrescReport, setEditPrescReport] = useState(null);
+  const outOfStock = useBranchStock(user?.branch || '');
   const [branchViewFilter, setBranchViewFilter] = useState('');
   const [showBooking, setShowBooking] = useState(false);
   const [bookingForm, setBookingForm] = useState({ full_name: '', phone: '', dob: '', height: '', weight: '', date: '', time: '', branch: '', notes: '', membershipStatus: 'referred', referralName: '', referralNbNumber: '', nbNumber: '' });
@@ -1672,17 +1717,26 @@ ${consultantNotes ? `
                         placeholder="Search products…"
                         value={medSearch}
                         onChange={e => setMedSearch(e.target.value)}
-                        style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '0.9rem', marginBottom: '10px', boxSizing: 'border-box' }}
+                        style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '0.9rem', marginBottom: '8px', boxSizing: 'border-box' }}
                       />
+                      {outOfStock.size > 0 && (
+                        <div style={{ fontSize: '0.78rem', color: '#991b1b', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', padding: '5px 10px', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span>🔴</span> <span><strong>Red items</strong> are currently out of stock at your branch. You can still prescribe them — the branch will source stock before dispensing.</span>
+                        </div>
+                      )}
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '8px', maxHeight: '420px', overflowY: 'auto', marginBottom: '12px' }}>
                         {filteredPkgs.map((pkg, idx) => {
                           const staticEntry = PACKAGE_DATABASE[pkg.description];
                           const isChecked = selectedMedicines.has(pkg.description);
+                          const isOos = outOfStock.has(pkg.description);
+                          const bg = isOos ? (isChecked ? '#fef3c7' : '#fee2e2') : (isChecked ? '#dcfce7' : '#e8f5e9');
+                          const borderColor = isOos ? (isChecked ? '#d97706' : '#dc2626') : (isChecked ? '#16a34a' : '#27ae60');
                           return (
-                            <div key={`pkg-${idx}`} style={{ background: isChecked ? '#dcfce7' : '#e8f5e9', borderLeft: `4px solid ${isChecked ? '#16a34a' : '#27ae60'}`, padding: '10px', borderRadius: '6px', display: 'flex', alignItems: 'start', gap: '8px', cursor: 'pointer' }} onClick={() => toggleMedicine(pkg.description)}>
+                            <div key={`pkg-${idx}`} style={{ background: bg, borderLeft: `4px solid ${borderColor}`, padding: '10px', borderRadius: '6px', display: 'flex', alignItems: 'start', gap: '8px', cursor: 'pointer' }} onClick={() => toggleMedicine(pkg.description)}>
                               <input type="checkbox" checked={isChecked} onChange={() => toggleMedicine(pkg.description)} style={{ marginTop: '3px', width: '16px', height: '16px', cursor: 'pointer' }} onClick={e => e.stopPropagation()} />
                               <label style={{ cursor: 'pointer', flex: 1 }}>
-                                <span style={{ fontWeight: 'bold', color: '#166534' }}>📦 {pkg.description}</span>
+                                <span style={{ fontWeight: 'bold', color: isOos ? (isChecked ? '#92400e' : '#991b1b') : '#166534' }}>📦 {pkg.description}</span>
+                                {isOos && <span style={{ marginLeft: '6px', fontSize: '0.7rem', fontWeight: 700, color: '#fff', background: '#dc2626', borderRadius: '4px', padding: '1px 5px' }}>OUT OF STOCK</span>}
                                 <br /><small style={{ color: '#555' }}>{staticEntry ? `${staticEntry.products.length}-product bundle` : 'Bundle'} · DP: N${pkg.dp} · CP: N${pkg.cp} · BV: {pkg.bv}</small>
                                 {staticEntry && <><br /><small style={{ fontSize: '0.72rem', color: '#888' }}>Contains: {staticEntry.products.map(p => p.name).join(', ')}</small></>}
                               </label>
@@ -1691,11 +1745,18 @@ ${consultantNotes ? `
                         })}
                         {filteredProds.map((product, idx) => {
                           const isChecked = selectedMedicines.has(product.description);
+                          const isOos = outOfStock.has(product.description);
+                          const bg = isOos ? (isChecked ? '#fffbeb' : '#fff5f5') : (isChecked ? '#f0fdf4' : 'white');
+                          const borderColor = isOos ? (isChecked ? '#fcd34d' : '#fca5a5') : (isChecked ? '#86efac' : '#f0f0f0');
+                          const borderWidth = isOos ? '1.5px' : '1px';
                           return (
-                            <div key={`prod-${idx}`} style={{ padding: '8px 10px', borderRadius: '6px', display: 'flex', alignItems: 'start', gap: '8px', border: `1px solid ${isChecked ? '#86efac' : '#f0f0f0'}`, background: isChecked ? '#f0fdf4' : 'white', cursor: 'pointer' }} onClick={() => toggleMedicine(product.description)}>
+                            <div key={`prod-${idx}`} style={{ padding: '8px 10px', borderRadius: '6px', display: 'flex', alignItems: 'start', gap: '8px', border: `${borderWidth} solid ${borderColor}`, background: bg, cursor: 'pointer' }} onClick={() => toggleMedicine(product.description)}>
                               <input type="checkbox" checked={isChecked} onChange={() => toggleMedicine(product.description)} style={{ marginTop: '3px', width: '16px', height: '16px', cursor: 'pointer' }} onClick={e => e.stopPropagation()} />
                               <label style={{ cursor: 'pointer', flex: 1 }}>
-                                <span style={{ fontWeight: isChecked ? 600 : 400, color: isChecked ? '#166534' : '#1e293b' }}>{product.description}</span>
+                                <span style={{ fontWeight: isChecked ? 600 : 400, color: isOos ? (isChecked ? '#92400e' : '#991b1b') : (isChecked ? '#166534' : '#1e293b') }}>
+                                  {product.description}
+                                  {isOos && <span style={{ marginLeft: '6px', fontSize: '0.7rem', fontWeight: 700, color: '#fff', background: '#dc2626', borderRadius: '4px', padding: '1px 5px' }}>OUT OF STOCK</span>}
+                                </span>
                                 <br /><small style={{ color: '#666', fontSize: '0.82rem' }}>DP: N${product.dp} · CP: N${product.cp} · BV: {product.bv}</small>
                               </label>
                             </div>
