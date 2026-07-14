@@ -9,7 +9,7 @@
  *   branch   → inventory_balances WHERE location_type = 'branch'
  *   field    → field_stock balances
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Fragment } from 'react';
 import { api } from '../lib/api';
 import { formatCurrency } from '../lib/constants';
 import { Card, CardBody, CardHeader, LoadingSpinner, Alert } from './ui';
@@ -92,7 +92,13 @@ export default function CurrentStockTab() {
 
   const toggle = (name) => setExpanded(prev => prev === name ? null : name);
 
+  const [showZero, setShowZero] = useState(false);
+
   const filtered = (data?.products || []).filter(p =>
+    !search || p.productName.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const filteredZero = (data?.zeroStockProducts || []).filter(p =>
     !search || p.productName.toLowerCase().includes(search.toLowerCase())
   );
 
@@ -530,10 +536,9 @@ ${summaryCards}
                   {filtered.map((p, idx) => {
                     const isOpen = expanded === p.productName;
                     return (
-                      <>
+                      <Fragment key={p.productName}>
                         {/* Product row */}
                         <tr
-                          key={p.productName}
                           onClick={() => toggle(p.productName)}
                           className={`cursor-pointer transition-colors ${isOpen ? 'bg-blue-50' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} hover:bg-blue-50/60`}
                         >
@@ -560,7 +565,7 @@ ${summaryCards}
 
                         {/* Expanded location breakdown */}
                         {isOpen && (
-                          <tr key={`${p.productName}-detail`}>
+                          <tr>
                             <td colSpan={6} className="px-0 py-0 bg-blue-50">
                               <div className="border-l-4 border-primary ml-4 mr-4 mb-3 mt-1 rounded-r-lg overflow-hidden shadow-sm">
                                 <div className="bg-blue-900/5 px-4 py-2 border-b border-blue-100">
@@ -601,13 +606,67 @@ ${summaryCards}
                             </td>
                           </tr>
                         )}
-                      </>
+                      </Fragment>
                     );
                   })}
                 </tbody>
               </table>
             </div>
           </Card>
+
+          {/* Zero-stock products section */}
+          {filteredZero.length > 0 && (
+            <Card>
+              <CardHeader>
+                <button
+                  onClick={() => setShowZero(v => !v)}
+                  className="w-full flex items-center justify-between gap-3 text-left"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold text-gray-500">
+                      Out of Stock — {filteredZero.length} product{filteredZero.length !== 1 ? 's' : ''}
+                    </span>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-50 text-red-600 border border-red-100">
+                      No current stock
+                    </span>
+                  </div>
+                  <span className="text-gray-400 text-xs">{showZero ? '▲ Hide' : '▼ Show'}</span>
+                </button>
+              </CardHeader>
+              {showZero && (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 border-b border-gray-100">
+                        <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-400 uppercase">Product</th>
+                        <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-400 uppercase">Unit DP (N$)</th>
+                        <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-400 uppercase">Unit CIF (N$)</th>
+                        <th className="text-center px-4 py-2.5 text-xs font-semibold text-gray-400 uppercase">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {filteredZero.map((p, idx) => (
+                        <tr key={p.productName} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}>
+                          <td className="px-4 py-2 font-medium text-gray-500">{p.productName}</td>
+                          <td className="px-4 py-2 text-right font-mono text-gray-400">
+                            {p.unitDP > 0 ? fmt(p.unitDP) : <span className="text-gray-300">—</span>}
+                          </td>
+                          <td className="px-4 py-2 text-right font-mono text-gray-400">
+                            {p.unitCIF > 0 ? fmt(p.unitCIF) : <span className="text-gray-300">—</span>}
+                          </td>
+                          <td className="px-4 py-2 text-center">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-50 text-red-500">
+                              <span className="w-1.5 h-1.5 rounded-full bg-red-400" /> Out of Stock
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Card>
+          )}
         </>
       )}
     </div>

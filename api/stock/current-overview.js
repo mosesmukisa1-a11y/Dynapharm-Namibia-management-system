@@ -102,8 +102,8 @@ export default async function handler(req, res) {
          GROUP BY product_name, officer_name, origin_location, team_name`
       ),
 
-      // ── Price lookup for fallback / field stock pricing ──
-      getMany(`SELECT description, cif, dp FROM product_prices`),
+      // ── Price lookup for fallback / field stock pricing + zero-stock product list ──
+      getMany(`SELECT description, cif, dp FROM product_prices WHERE dp > 0 OR cif > 0 ORDER BY description`),
     ]);
 
     // Price lookup keyed by lowercase product name
@@ -223,14 +223,31 @@ export default async function handler(req, res) {
       }))
       .sort((a, b) => b.totalValueDP - a.totalValueDP);
 
+    // ── Zero-stock products: all priced products not already in the stock map ──
+    const inStockKeys = new Set(Array.from(products.keys()));
+    const zeroStockProducts = priceRows
+      .filter(p => !inStockKeys.has((p.description || '').toLowerCase().trim()))
+      .map(p => ({
+        productName:    p.description,
+        totalQty:       0,
+        totalValueCIF:  0,
+        totalValueDP:   0,
+        locations:      [],
+        unitDP:         Number(p.dp  || 0),
+        unitCIF:        Number(p.cif || 0),
+      }))
+      .sort((a, b) => a.productName.localeCompare(b.productName));
+
     const summary = {
-      productCount:  productList.length,
-      totalQtyUnits: parseFloat(productList.reduce((s, p) => s + p.totalQty,      0).toFixed(2)),
-      totalValueCIF: parseFloat(productList.reduce((s, p) => s + p.totalValueCIF, 0).toFixed(2)),
-      totalValueDP:  parseFloat(productList.reduce((s, p) => s + p.totalValueDP,  0).toFixed(2)),
+      productCount:         productList.length,
+      totalQtyUnits:        parseFloat(productList.reduce((s, p) => s + p.totalQty,      0).toFixed(2)),
+      totalValueCIF:        parseFloat(productList.reduce((s, p) => s + p.totalValueCIF, 0).toFixed(2)),
+      totalValueDP:         parseFloat(productList.reduce((s, p) => s + p.totalValueDP,  0).toFixed(2)),
+      zeroStockCount:       zeroStockProducts.length,
+      totalProductsInCatalogue: productList.length + zeroStockProducts.length,
     };
 
-    res.json({ success: true, summary, products: productList });
+    res.json({ success: true, summary, products: productList, zeroStockProducts });
   } catch (err) {
     console.error('[stock/current-overview]', err);
     res.status(500).json({ success: false, error: err.message });
