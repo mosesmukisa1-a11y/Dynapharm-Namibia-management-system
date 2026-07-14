@@ -36,13 +36,12 @@ export default async function handler(req, res) {
   if (!ALLOWED.has(req.user.role)) return res.status(403).json({ success: false, error: 'Access denied' });
 
   try {
-    const [branchRows, warehouseRows, fieldRows, priceRows] = await Promise.all([
+    const [branchRows, ibRows, warehouseRows, fieldRows, priceRows] = await Promise.all([
 
-      // ── Branches: branch_inventory_batches (authoritative source) ──
-      // inventory_balances is a derived cache that can become stale when multiple
-      // batches share the same batch_no. Reading branch_inventory_batches directly
-      // always reflects the exact physical quantities in each branch.
-      // INNER JOIN branches ensures only real/registered branches appear.
+      // ── Branches primary: branch_inventory_batches (authoritative source) ──
+      // Reading branch_inventory_batches directly always reflects the exact physical
+      // quantities because every movement path (sales, write-offs, transfers, returns,
+      // dispenses) transactionally updates this table.
       getMany(
         `SELECT b.branch_id AS location_id,
                 COALESCE(br.name, b.branch_id) AS location_name,
@@ -64,6 +63,32 @@ export default async function handler(req, res) {
                ON LOWER(TRIM(p.description)) = LOWER(TRIM(b.product_name))
          WHERE b.quantity > 0
          GROUP BY b.branch_id, br.name, b.product_name`
+      ),
+
+      // ── Branches fallback: inventory_balances for products not in branch_inventory_batches ──
+      // Catches any edge case where a movement updated inventory_balances (via stockEngine
+      // recompute) but the corresponding branch_inventory_batches row is missing or was
+      // not yet created (e.g. older import paths, legacy data).
+      getMany(
+        `SELECT ib.location_id,
+                COALESCE(br.name, ib.location_id) AS location_name,
+                ib.product_name,
+                ib.closing_qty                            AS qty,
+                ib.closing_qty * COALESCE(p.dp,  0)      AS val_dp,
+                ib.closing_qty * COALESCE(p.cif, 0)      AS val_cif,
+                COALESCE(p.dp,  0)                        AS unit_dp,
+                COALESCE(p.cif, 0)                        AS unit_cif
+         FROM inventory_balances ib
+         LEFT JOIN branches br ON LOWER(TRIM(br.id)) = LOWER(TRIM(ib.location_id))
+         LEFT JOIN product_prices p ON LOWER(TRIM(p.description)) = LOWER(TRIM(ib.product_name))
+         WHERE ib.location_type = 'branch'
+           AND ib.closing_qty > 0
+           AND NOT EXISTS (
+             SELECT 1 FROM branch_inventory_batches bib
+             WHERE LOWER(REPLACE(bib.branch_id,' ','_')) = LOWER(REPLACE(ib.location_id,' ','_'))
+               AND LOWER(TRIM(bib.product_name)) = LOWER(TRIM(ib.product_name))
+               AND bib.quantity > 0
+           )`
       ),
 
       // ── Warehouses + Country Stock: stock_batches.remaining_quantity ──
@@ -153,8 +178,11 @@ export default async function handler(req, res) {
     // 'katima' alongside 'katima_mulilo', 'hochlandpark' alongside
     // 'hochland-park'). Normalize every branch_id to its canonical slug and
     // merge matching rows so each branch shows as a single row per product.
+    // inventory_balances (ibRows) fills in any product/branch combos that
+    // branch_inventory_batches missed (legacy data or edge-case movement paths).
     const branchMerged = new Map(); // key: `${canonicalId}||${productLower}`
-    for (const r of branchRows) {
+
+    function mergeBranchRow(r) {
       const canonId = normalizeBranchSlug(r.location_id) || r.location_id;
       const key     = `${canonId}||${(r.product_name || '').toLowerCase().trim()}`;
       if (!branchMerged.has(key)) {
@@ -180,6 +208,11 @@ export default async function handler(req, res) {
         agg.location_name = r.location_name;
       }
     }
+
+    // Primary: branch_inventory_batches (authoritative physical quantities)
+    for (const r of branchRows) mergeBranchRow(r);
+    // Fallback: inventory_balances for any product/branch NOT already in the primary set
+    for (const r of ibRows) mergeBranchRow(r);
 
     // ── Branch rows ──
     for (const r of branchMerged.values()) {

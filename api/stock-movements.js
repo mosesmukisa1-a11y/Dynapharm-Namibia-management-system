@@ -374,18 +374,24 @@ export default async function handler(req, res) {
              woReason, disposalStatus]
           );
           if (needsBranchMirror) {
+            // For 'return' movements: branch is the DESTINATION (customer → branch), so use destLoc.
+            // For outward types (sale, write_off, field_use): branch is the SOURCE, use srcLoc.
+            const bimBranchId = (movType === 'return' && dstLocType === 'branch' && destLoc) ? destLoc : branchId;
             const bimId = `BIM-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
             await client.query(
               `INSERT INTO branch_inventory_movements (id, branch_id, type, product_name, batch_no, quantity, reference, notes, created_by, created_at)
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
-              [bimId, branchId, movType, productName, batchNo || '', qty, referenceId, notes, createdBy]
+              [bimId, bimBranchId, movType, productName, batchNo || '', qty, referenceId, notes, createdBy]
             );
-            if (['write_off', 'sale', 'field_use'].includes(movType)) {
+
+            // ── Outward: FEFO-deduct from branch_inventory_batches (sale, write_off, field_use) ──
+            if (['write_off', 'sale', 'field_use'].includes(movType) && srcLocType === 'branch' && srcLoc) {
               // Use the full alias map so hyphenated slugs like 'hochland-park' match
               // rows stored as 'hochlandpark', and _branch-suffix variants also resolve.
-              const postBranchCandidates = branchSearchTerms(branchId);
+              // FOR UPDATE prevents concurrent transactions from reading the same rows.
+              const postBranchCandidates = branchSearchTerms(srcLoc);
               let remaining = qty;
-              // If a specific batch_no is given, deduct from it first before falling back to FIFO
+              // If a specific batch_no is given, deduct from it first before falling back to FEFO
               if (batchNo) {
                 const specificBatch = await client.query(
                   `SELECT id, quantity FROM branch_inventory_batches
@@ -393,7 +399,8 @@ export default async function handler(req, res) {
                      AND LOWER(product_name) = LOWER($2)
                      AND LOWER(COALESCE(batch_no,'')) = LOWER($3)
                      AND quantity > 0
-                   LIMIT 1`,
+                   ORDER BY expiry_date ASC NULLS LAST
+                   LIMIT 1 FOR UPDATE`,
                   [postBranchCandidates, productName, batchNo]
                 );
                 for (const b of specificBatch.rows) {
@@ -411,7 +418,8 @@ export default async function handler(req, res) {
                      AND LOWER(product_name) = LOWER($2)
                      AND quantity > 0
                      ${batchNo ? `AND LOWER(COALESCE(batch_no,'')) != LOWER($3)` : ''}
-                   ORDER BY expiry_date ASC NULLS LAST`,
+                   ORDER BY expiry_date ASC NULLS LAST
+                   FOR UPDATE`,
                   batchNo ? [postBranchCandidates, productName, batchNo] : [postBranchCandidates, productName]
                 );
                 for (const b of batches.rows) {
@@ -421,6 +429,49 @@ export default async function handler(req, res) {
                   await client.query(`DELETE FROM branch_inventory_batches WHERE id = $1 AND quantity <= 0`, [b.id]);
                   remaining -= take;
                 }
+              }
+            }
+
+            // ── Inward: ADD to branch_inventory_batches for customer→branch returns ──
+            if (movType === 'return' && dstLocType === 'branch' && destLoc) {
+              const returnBranchId = destLoc;
+              // Try to find an existing batch to add back into (prefer matching batch_no)
+              let existingBatch = null;
+              if (batchNo) {
+                const specific = await client.query(
+                  `SELECT id FROM branch_inventory_batches
+                   WHERE branch_id = $1
+                     AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))
+                     AND LOWER(COALESCE(batch_no,'')) = LOWER($3)
+                   LIMIT 1 FOR UPDATE`,
+                  [returnBranchId, productName, batchNo]
+                );
+                existingBatch = specific.rows[0] || null;
+              }
+              if (!existingBatch) {
+                const any = await client.query(
+                  `SELECT id FROM branch_inventory_batches
+                   WHERE branch_id = $1
+                     AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))
+                   ORDER BY updated_at DESC LIMIT 1 FOR UPDATE`,
+                  [returnBranchId, productName]
+                );
+                existingBatch = any.rows[0] || null;
+              }
+              if (existingBatch) {
+                await client.query(
+                  `UPDATE branch_inventory_batches SET quantity = quantity + $1, updated_at = NOW() WHERE id = $2`,
+                  [qty, existingBatch.id]
+                );
+              } else {
+                // No existing batch — create a new entry for the returned stock
+                const newBatchId = `BIB-RET-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+                await client.query(
+                  `INSERT INTO branch_inventory_batches
+                     (id, branch_id, product_name, batch_no, quantity, status, created_at, updated_at)
+                   VALUES ($1, $2, $3, $4, $5, 'in_stock', NOW(), NOW())`,
+                  [newBatchId, returnBranchId, productName, batchNo || null, qty]
+                );
               }
             }
           }
