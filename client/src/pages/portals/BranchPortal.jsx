@@ -4552,7 +4552,9 @@ function BranchStockTab() {
         if (!batch) continue;
         const pName = batch.product_name || batch.productName;
         const dp = findProductPrice(pName);
-        const dpVal = dp?.dp ? Math.round(Number(dp.dp) * Number(quantity)) : 0;
+        const unitDp  = Number(dp?.dp  || batch.unit_dp  || 0);
+        const unitCif = Number(dp?.cif || batch.unit_cif || 0);
+        const dpVal = unitDp ? Math.round(unitDp * Number(quantity)) : 0;
         totalDP += dpVal;
         const reasonLabel = reason.charAt(0).toUpperCase() + reason.slice(1);
         await api.stock.createMovement({
@@ -4561,9 +4563,12 @@ function BranchStockTab() {
           movement_type: 'write_off',
           status: 'pending_approval',
           source_location: selectedBranch || user?.branch || '',
+          source_location_type: 'branch',
           destination_location: 'written_off',
           batch_no: batch.batch_no || batch.batchNo || '',
           expiry_date: batch.expiry_date || batch.expiryDate || null,
+          unit_dp:  unitDp,
+          unit_cif: unitCif,
           reason: reasonLabel,
           write_off_reason: reasonLabel,
           notes: `Write-off: ${reason}. Batch: ${batch.batch_no || batch.batchNo || 'N/A'}. Expiry: ${batch.expiry_date || batch.expiryDate || 'N/A'}. DP Value: N$ ${dpVal}`,

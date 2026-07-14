@@ -631,12 +631,15 @@ export default async function handler(req, res) {
           let remaining = qty;
           if (batchNo) {
             // Use ANY(branchCandidates) so rows stored under any alias form are matched.
+            // FOR UPDATE locks the row to prevent race conditions under concurrent approvals.
             const specific = await client.query(
               `SELECT id, quantity FROM branch_inventory_batches
                WHERE LOWER(REPLACE(branch_id,' ','_')) = ANY($1)
                  AND LOWER(product_name) = LOWER($2)
                  AND LOWER(COALESCE(batch_no,'')) = LOWER($3)
-                 AND quantity > 0 LIMIT 1`,
+                 AND quantity > 0
+               ORDER BY expiry_date ASC NULLS LAST
+               LIMIT 1 FOR UPDATE`,
               [branchCandidates, productName, batchNo]
             );
             for (const b of specific.rows) {
@@ -647,13 +650,15 @@ export default async function handler(req, res) {
             }
           }
           if (remaining > 0) {
+            // FOR UPDATE prevents concurrent approvals from reading the same rows and over-deducting.
             const fifo = await client.query(
               `SELECT id, quantity FROM branch_inventory_batches
                WHERE LOWER(REPLACE(branch_id,' ','_')) = ANY($1)
                  AND LOWER(product_name) = LOWER($2)
                  AND quantity > 0
                  ${batchNo ? `AND LOWER(COALESCE(batch_no,'')) != LOWER($3)` : ''}
-               ORDER BY expiry_date ASC NULLS LAST`,
+               ORDER BY expiry_date ASC NULLS LAST
+               FOR UPDATE`,
               batchNo ? [branchCandidates, productName, batchNo] : [branchCandidates, productName]
             );
             for (const b of fifo.rows) {
