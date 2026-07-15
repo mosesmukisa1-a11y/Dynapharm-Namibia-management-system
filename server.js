@@ -681,10 +681,18 @@ app.post('/api/stock-adjustments', async (req, res) => {
 app.patch('/api/stock-adjustments/:id/approve', async (req, res) => {
   try {
     const { query, getOne } = await import('./api/db.js');
+    const { recomputeLocationBalances } = await import('./api/services/stockEngine.js');
     const adjId = req.params.id;
     const gm_notes = req.body?.gm_notes || '';
+
+    // E: Role guard — only GM, admin, or superadmin may approve stock edits.
+    const callerRole = (req.user?.role || '').toLowerCase();
+    if (!['gm', 'admin', 'superadmin', 'super_admin'].includes(callerRole)) {
+      return res.status(403).json({ error: 'GM or admin access required to approve stock adjustments' });
+    }
+
     const approved_by = req.user?.sub || req.user?.username || 'gm';
-    const approved_by_name = req.user?.name || approved_by;
+    const approved_by_name = req.user?.fullName || req.user?.full_name || req.user?.name || approved_by;
 
     const adj = await getOne('SELECT * FROM stock_adjustments WHERE id = $1', [adjId]);
     if (!adj) return res.status(404).json({ error: 'Adjustment not found' });
@@ -705,20 +713,34 @@ app.patch('/api/stock-adjustments/:id/approve', async (req, res) => {
       notes: 'notes',
     };
 
+    // Helper: map target_type → location_type string used by stockEngine
+    const toLocType = (tt) => {
+      if (tt === 'warehouse') return 'warehouse';
+      if (tt === 'import' || tt === 'country_stock') return 'country';
+      if (tt === 'branch') return 'branch';
+      return tt;
+    };
+
+    let recomputeNeeded = null; // { locType, location }
+
     if (target_id && field_to_adjust) {
-      if (['import', 'country_stock', 'warehouse'].includes(target_type)) {
+      if (['import', 'country_stock', 'warehouse', 'branch'].includes(target_type)) {
         const dbCol = batchColumnMap[field_to_adjust];
         if (!dbCol) return res.status(400).json({ error: `Field '${field_to_adjust}' is not adjustable` });
 
         const qtyDelta = field_to_adjust === 'quantity' ? Number(new_value) - Number(adj.old_value || 0) : 0;
+
+        // Fetch current batch for audit trail (batch_no, expiry_date, location)
+        const batchRow = await getOne('SELECT batch_no, expiry_date, location, warehouse_id FROM stock_batches WHERE id = $1', [target_id]);
 
         if (field_to_adjust === 'quantity') {
           // Update both remaining_quantity AND quantity (by the same delta) so the
           // invariant  remaining = quantity - dispatched_quantity  always holds.
           // Without bumping quantity, the startup reconciliation detects
           // remaining > (quantity - dispatched) and reverts the approved edit on
-          // every server restart.  'positive_adjustment' is already in the
-          // reconciliation exclusion list, so the audit movement won't re-trigger it.
+          // every server restart.  'positive_adjustment'/'negative_adjustment' are
+          // already in the reconciliation exclusion list, so the audit movement
+          // won't re-trigger it.
           await query(
             `UPDATE stock_batches
              SET remaining_quantity = $1,
@@ -727,50 +749,78 @@ app.patch('/api/stock-adjustments/:id/approve', async (req, res) => {
              WHERE id = $3`,
             [Number(new_value), qtyDelta, target_id]
           );
-        } else {
-          await query(`UPDATE stock_batches SET ${dbCol} = $1, updated_at = NOW() WHERE id = $2`, [new_value, target_id]);
-        }
 
-        // Log to stock_movements (no ON CONFLICT — use unique movement id)
-        // Use 'positive_adjustment' (excluded from the startup reconciliation query)
-        // so the audit entry never re-triggers a recalculation of remaining_quantity.
-        const movId = 'MOV-ADJ-' + Date.now() + '-' + Math.floor(Math.random() * 9999);
-        try {
-          await query(
-            `INSERT INTO stock_movements (id, product_name, quantity, movement_type, source_location, destination_location, reference_id, notes, created_by, created_at, updated_at)
-             VALUES ($1,$2,$3,'positive_adjustment',$4,$4,$5,$6,$7,NOW(),NOW())`,
-            [movId, adj.product_name || 'Unknown', qtyDelta, adj.location || target_type, adjId,
-             `Approved correction: ${field_to_adjust} changed from ${adj.old_value} to ${new_value}`, approved_by]
-          );
-        } catch (movErr) {
-          console.warn('stock_movements insert skipped:', movErr.message);
-        }
-
-      } else if (target_type === 'distribution') {
-        // stock_transfers has no quantity/expiry/batch columns — those are in stock_request_items
-        if (field_to_adjust === 'quantity') {
-          // Update quantity in stock_request_items linked to this transfer
-          const transfer = await getOne('SELECT request_id FROM stock_transfers WHERE id = $1', [target_id]);
-          if (transfer?.request_id) {
-            await query(
-              `UPDATE stock_request_items SET quantity = $1 WHERE request_id = $2 AND product_name = $3`,
-              [Number(new_value), transfer.request_id, adj.product_name]
-            );
-          }
-        } else if (field_to_adjust === 'notes') {
-          await query(`UPDATE stock_transfers SET dispatch_notes = $1, updated_at = NOW() WHERE id = $2`, [new_value, target_id]);
-        }
-        // Log movement for distribution quantity changes
-        if (field_to_adjust === 'quantity') {
+          // B/C: Only insert a movement for quantity changes (not for metadata edits).
+          // F: Use positive_adjustment vs negative_adjustment based on delta direction.
+          // C: Include status='posted', location_type, batch_no, expiry_date.
+          const movType = qtyDelta >= 0 ? 'positive_adjustment' : 'negative_adjustment';
+          const movQty = Math.abs(qtyDelta);
+          const batchLoc = batchRow?.location || adj.location || target_type;
+          const batchLocType = toLocType(target_type);
           const movId = 'MOV-ADJ-' + Date.now() + '-' + Math.floor(Math.random() * 9999);
           try {
             await query(
-              `INSERT INTO stock_movements (id, product_name, quantity, movement_type, source_location, destination_location, reference_id, notes, created_by, created_at, updated_at)
-               VALUES ($1,$2,$3,'adjustment',$4,$4,$5,$6,$7,NOW(),NOW())`,
+              `INSERT INTO stock_movements
+                 (id, product_name, batch_no, expiry_date, quantity, movement_type,
+                  source_location, source_location_type,
+                  destination_location, destination_location_type,
+                  reference_id, notes, created_by, status, created_at, updated_at)
+               VALUES ($1,$2,$3,$4::date,$5,$6,$7,$8,$7,$8,$9,$10,$11,'posted',NOW(),NOW())`,
               [movId, adj.product_name || 'Unknown',
-               Number(new_value) - Number(adj.old_value || 0),
-               adj.location || 'distribution', adjId,
-               `Approved distribution correction: quantity changed from ${adj.old_value} to ${new_value}`, approved_by]
+               batchRow?.batch_no || null, batchRow?.expiry_date || null,
+               movQty, movType,
+               batchLoc, batchLocType,
+               adjId,
+               `Approved correction: ${field_to_adjust} changed from ${adj.old_value} to ${new_value}. Ref: ${adj.adj_number}`,
+               approved_by]
+            );
+          } catch (movErr) {
+            console.warn('stock_movements insert skipped:', movErr.message);
+          }
+        } else {
+          await query(`UPDATE stock_batches SET ${dbCol} = $1, updated_at = NOW() WHERE id = $2`, [new_value, target_id]);
+          // B: No movement for non-quantity field changes (expiry_date, batch_no, unit_price, notes).
+          // These are metadata corrections and don't represent stock flow.
+        }
+
+        // A: Recompute inventory_balances cache after any stock_batches change.
+        const batchLoc = batchRow?.location || adj.location || target_type;
+        recomputeNeeded = { locType: toLocType(target_type), location: batchLoc };
+
+      } else if (target_type === 'distribution') {
+        // D: Update stock_transfer_items (the actual transfer line items) — NOT stock_request_items.
+        // The linked stock_request_items represent the original request; the transfer items
+        // drive what was actually dispatched and received.
+        if (field_to_adjust === 'quantity') {
+          await query(
+            `UPDATE stock_transfer_items
+             SET quantity_approved = $1, updated_at = NOW()
+             WHERE transfer_id = $2 AND LOWER(TRIM(product_name)) = LOWER(TRIM($3))`,
+            [Number(new_value), target_id, adj.product_name || '']
+          );
+        } else if (field_to_adjust === 'notes') {
+          await query(`UPDATE stock_transfers SET dispatch_notes = $1, updated_at = NOW() WHERE id = $2`, [new_value, target_id]);
+        }
+
+        // Log movement for distribution quantity changes only.
+        if (field_to_adjust === 'quantity') {
+          const qtyDelta = Number(new_value) - Number(adj.old_value || 0);
+          const movType = qtyDelta >= 0 ? 'positive_adjustment' : 'negative_adjustment';
+          const movId = 'MOV-ADJ-' + Date.now() + '-' + Math.floor(Math.random() * 9999);
+          try {
+            await query(
+              `INSERT INTO stock_movements
+                 (id, product_name, quantity, movement_type,
+                  source_location, source_location_type,
+                  destination_location, destination_location_type,
+                  reference_id, notes, created_by, status, created_at, updated_at)
+               VALUES ($1,$2,$3,$4,$5,'warehouse',$5,'warehouse',$6,$7,$8,'posted',NOW(),NOW())`,
+              [movId, adj.product_name || 'Unknown',
+               Math.abs(qtyDelta), movType,
+               adj.location || 'distribution',
+               adjId,
+               `Approved distribution correction: ${field_to_adjust} changed from ${adj.old_value} to ${new_value}. Ref: ${adj.adj_number}`,
+               approved_by]
             );
           } catch (movErr) {
             console.warn('stock_movements insert skipped:', movErr.message);
@@ -783,6 +833,13 @@ app.patch('/api/stock-adjustments/:id/approve', async (req, res) => {
       `UPDATE stock_adjustments SET status='approved', gm_notes=$1, approved_by=$2, approved_by_name=$3, approved_at=NOW(), updated_at=NOW() WHERE id=$4`,
       [gm_notes, approved_by, approved_by_name, adjId]
     );
+
+    // A: Fire-and-forget recompute so inventory_balances reflects the approved change.
+    if (recomputeNeeded) {
+      recomputeLocationBalances(recomputeNeeded.locType, recomputeNeeded.location)
+        .catch(e => console.warn('[stock-adj approve] recompute error:', e.message));
+    }
+
     res.json({ success: true, message: 'Adjustment approved and applied' });
   } catch (err) {
     console.error('stock-adjustments approve:', err);
@@ -795,8 +852,15 @@ app.patch('/api/stock-adjustments/:id/reject', async (req, res) => {
     const { query } = await import('./api/db.js');
     const adjId = req.params.id;
     const gm_notes = req.body?.gm_notes || '';
+
+    // E: Role guard — only GM, admin, or superadmin may reject stock edits.
+    const callerRole = (req.user?.role || '').toLowerCase();
+    if (!['gm', 'admin', 'superadmin', 'super_admin'].includes(callerRole)) {
+      return res.status(403).json({ error: 'GM or admin access required to reject stock adjustments' });
+    }
+
     const approved_by = req.user?.sub || req.user?.username || 'gm';
-    const approved_by_name = req.user?.name || approved_by;
+    const approved_by_name = req.user?.fullName || req.user?.full_name || req.user?.name || approved_by;
     await query(
       `UPDATE stock_adjustments SET status='rejected', gm_notes=$1, approved_by=$2, approved_by_name=$3, approved_at=NOW(), updated_at=NOW() WHERE id=$4`,
       [gm_notes, approved_by, approved_by_name, adjId]
