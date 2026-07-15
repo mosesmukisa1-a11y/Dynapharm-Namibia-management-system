@@ -155,17 +155,19 @@ export default async function handler(req, res) {
         // Look up unit_dp and unit_cif from the source warehouse batch for accurate value tracking.
         let unitDP = Number(item.unitDP || item.unit_dp || 0);
         let unitCIF = Number(item.unitCIF || item.unit_cif || 0);
-        if (sourceLocation && (!unitDP || !unitCIF)) {
+        // #10 Batch traceability: always look up source_batch_id for full recall tracing
+        let sourceBatchId = null;
+        if (sourceLocation) {
           const batchVal = await client.query(
-            `SELECT dpc_unit_value, cif_unit_cost FROM stock_batches
+            `SELECT id, dpc_unit_value, cif_unit_cost FROM stock_batches
              WHERE location = $1
                AND LOWER(TRIM(description)) = LOWER(TRIM($2))
                AND COALESCE(batch_no, '') = $3
-               AND remaining_quantity > 0
              ORDER BY import_date ASC, created_at ASC LIMIT 1`,
             [sourceLocation, productName, batchNo]
           );
           if (batchVal.rows.length > 0) {
+            sourceBatchId = batchVal.rows[0].id || null;
             if (!unitDP) unitDP = Number(batchVal.rows[0].dpc_unit_value || 0);
             if (!unitCIF) unitCIF = Number(batchVal.rows[0].cif_unit_cost || 0);
           }
@@ -195,17 +197,19 @@ export default async function handler(req, res) {
         // the full audit trail of the physical movement.
 
         // 3. Upsert into branch_inventory_batches (carry unit_price for DP value tracking)
+        // source_batch_id (#10) links this row back to the exact stock_batch for recall tracing.
         const batchId = generateId('BIB');
         await client.query(
-          `INSERT INTO branch_inventory_batches (id, branch_id, product_name, batch_no, expiry_date, quantity, unit_price, source_warehouse, status, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5::date, $6, $7, $8, 'in_stock', NOW(), NOW())
+          `INSERT INTO branch_inventory_batches (id, branch_id, product_name, batch_no, expiry_date, quantity, unit_price, source_warehouse, source_batch_id, status, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5::date, $6, $7, $8, $9, 'in_stock', NOW(), NOW())
            ON CONFLICT (branch_id, product_name, batch_no, expiry_date) DO UPDATE
              SET quantity = branch_inventory_batches.quantity + EXCLUDED.quantity,
                  unit_price = COALESCE(EXCLUDED.unit_price, branch_inventory_batches.unit_price),
                  source_warehouse = COALESCE(EXCLUDED.source_warehouse, branch_inventory_batches.source_warehouse),
+                 source_batch_id = COALESCE(EXCLUDED.source_batch_id, branch_inventory_batches.source_batch_id),
                  updated_at = NOW()`,
           [batchId, branchId, productName, batchNo, expirySqlDate, qtyReceived,
-           unitDP || null, sourceLocation || null]
+           unitDP || null, sourceLocation || null, sourceBatchId]
         );
 
         // 4. Insert into branch_inventory_movements
@@ -232,6 +236,66 @@ export default async function handler(req, res) {
         `UPDATE stock_transfers SET status = 'received', updated_at = NOW() WHERE id = $1`,
         [resolvedTransfer.id]
       );
+
+      // ── #11: Dispatch note auto-close ────────────────────────────────────────
+      // Mark the linked dispatch note 'completed' once the transfer is fully received.
+      await client.query(
+        `UPDATE dispatch_notes SET status='completed', updated_at=NOW()
+         WHERE transfer_id=$1 OR id=$2 OR barcode=$2`,
+        [resolvedTransfer.id, dispatchNoteId]
+      ).catch(e => console.warn('[confirm-receipt] dispatch-note close warning:', e.message));
+
+      // ── #4: Short-delivery discrepancy detection ─────────────────────────────
+      // Compare received qty per item vs the qty recorded in stock_transfer_items.
+      // Any shortfall is logged in stock_transfer_discrepancies and notifies the stock manager.
+      try {
+        const transferItemsRes = await client.query(
+          `SELECT product_name, COALESCE(quantity_approved, quantity) AS dispatched_qty
+           FROM stock_transfer_items WHERE transfer_id=$1`,
+          [resolvedTransfer.id]
+        );
+        const dispatchedMap = new Map();
+        for (const ti of transferItemsRes.rows) {
+          dispatchedMap.set((ti.product_name || '').toLowerCase().trim(), Number(ti.dispatched_qty || 0));
+        }
+
+        let discrepancyCount = 0;
+        for (const item of items) {
+          const pName = (item.productName || item.product_name || '').trim();
+          const received   = Number(item.qtyReceived || 0);
+          const dispatched = dispatchedMap.get(pName.toLowerCase()) || 0;
+          if (dispatched > 0 && received < dispatched) {
+            const shortfall = dispatched - received;
+            const discrepId = `DISC-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+            await client.query(
+              `INSERT INTO stock_transfer_discrepancies
+                 (id, transfer_id, dispatch_note_id, branch_id, product_name, batch_no,
+                  dispatched_qty, received_qty, shortfall_qty, notes, created_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())
+               ON CONFLICT DO NOTHING`,
+              [discrepId, resolvedTransfer.id, dispatchNoteId, branchId, pName,
+               item.batchNo || null, dispatched, received, shortfall,
+               item.discrepancyNote || `Short delivery: dispatched ${dispatched}, received ${received}`]
+            );
+            discrepancyCount++;
+          }
+        }
+
+        if (discrepancyCount > 0) {
+          const notifId = `NOTIF-DISC-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+          await client.query(
+            `INSERT INTO notifications (id, recipient_type, recipient_id, title, message, type, is_read, created_at)
+             VALUES ($1,'staff','stock',$2,$3,'warning',false,NOW()) ON CONFLICT DO NOTHING`,
+            [notifId,
+             `⚠️ Short Delivery — ${branchId.replace(/_/g, ' ')}`,
+             `Transfer ${resolvedTransfer.id} from ${(sourceLocation || 'warehouse').replace(/_/g, ' ')} was received at ${branchId.replace(/_/g, ' ')} with ${discrepancyCount} short-delivered item(s). Please investigate and reconcile with the dispatch note.`]
+          );
+          console.warn(`[confirm-receipt] ${discrepancyCount} discrepancy(ies) recorded for transfer ${resolvedTransfer.id}`);
+        }
+      } catch (discrepErr) {
+        console.warn('[confirm-receipt] discrepancy check error:', discrepErr.message);
+      }
+      // ── End discrepancy detection ─────────────────────────────────────────────
 
       return result;
     });

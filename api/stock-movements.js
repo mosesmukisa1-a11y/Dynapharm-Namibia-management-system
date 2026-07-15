@@ -858,6 +858,39 @@ export default async function handler(req, res) {
           if (action === 'approve') result = await approve(client, id);
           else await reject(client, id);
         });
+
+        // ── #12 Write-Off Financial Impact Digest ────────────────────────────────
+        // Notify Finance portal with the DP value of approved write-offs.
+        if (action === 'approve' && result) {
+          try {
+            const woRow = await getOne(
+              `SELECT product_name, quantity, unit_dp, batch_no, expiry_date, write_off_reason, source_location
+               FROM stock_movements WHERE id=$1`,
+              [id]
+            );
+            if (woRow) {
+              const dpValue = Number(woRow.unit_dp || 0) * Number(woRow.quantity || 0);
+              if (dpValue > 0 || Number(woRow.quantity || 0) > 0) {
+                const notifId = `NOTIF-WO-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+                await query(
+                  `INSERT INTO notifications (id, recipient_type, recipient_id, title, message, type, is_read, created_at)
+                   VALUES ($1,'staff','finance',$2,$3,'warning',false,NOW()) ON CONFLICT DO NOTHING`,
+                  [notifId,
+                   `💸 Write-Off Approved — N$${dpValue.toFixed(2)} DP Loss`,
+                   `GM ${gmName} approved a write-off: ${woRow.quantity} units of "${woRow.product_name}"` +
+                   ` (Batch: ${woRow.batch_no || 'N/A'}, Expiry: ${woRow.expiry_date ? String(woRow.expiry_date).slice(0,10) : 'N/A'}).` +
+                   ` Branch: ${(woRow.source_location || '').replace(/_/g,' ')}.` +
+                   ` Reason: ${woRow.write_off_reason || 'N/A'}.` +
+                   ` DP value: N$${dpValue.toFixed(2)}.`]
+                );
+              }
+            }
+          } catch (finErr) {
+            console.warn('[stock-movements] write-off finance notification error:', finErr.message);
+          }
+        }
+        // ── End financial impact digest ───────────────────────────────────────────
+
         // Await synchronously so inventory_balances is up-to-date before the
         // client receives the success response and re-fetches inventory.
         // Recompute for BOTH branch-id variants (e.g. 'ondangwa' AND 'ondangwa_branch')

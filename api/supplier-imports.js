@@ -144,6 +144,45 @@ export default async function handler(req, res) {
         });
       }
 
+      // ── #7 Supplier Import → Open Request Matching ────────────────────────
+      // After importing new stock, scan open stock_requests for this product
+      // at any branch/warehouse and notify stock manager + requester.
+      if (productName && qty > 0) {
+        try {
+          const matchingRequests = await getMany(
+            `SELECT id, requesting_branch, requested_by, items, priority
+             FROM stock_requests
+             WHERE status IN ('pending','approved')
+               AND items::text ILIKE $1
+               AND created_at > NOW() - INTERVAL '30 days'
+             ORDER BY priority DESC, created_at ASC
+             LIMIT 10`,
+            [`%${productName.replace(/'/g, "''")}%`]
+          );
+
+          if (matchingRequests.length > 0) {
+            const wh = body.destination_warehouse || 'country_stock';
+            const batchRef = body.batch_no || body.batchNo || 'N/A';
+            for (const req of matchingRequests) {
+              const branchLabel = (req.requesting_branch || '').replace(/_/g, ' ');
+              const notifId = `NOTIF-IMP-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+              await query(
+                `INSERT INTO notifications (id, recipient_type, recipient_id, title, message, type, is_read, created_at)
+                 VALUES ($1,'staff','stock',$2,$3,'info',false,NOW())
+                 ON CONFLICT DO NOTHING`,
+                [notifId,
+                 `📦 Stock Available — Pending Request Match`,
+                 `${qty} units of "${productName}" (Batch: ${batchRef}) have arrived at ${wh.replace(/_/g, ' ')}. This fulfils open stock request #${req.id} from ${branchLabel} (${req.priority || 'normal'} priority). Please dispatch.`]
+              );
+            }
+            console.log(`[supplier-imports] matched ${matchingRequests.length} open request(s) for "${productName}"`);
+          }
+        } catch (matchErr) {
+          console.warn('[supplier-imports] request-match error:', matchErr.message);
+        }
+      }
+      // ── End request matching ───────────────────────────────────────────────
+
       return res.status(201).json(importRecord.rows[0]);
     }
 

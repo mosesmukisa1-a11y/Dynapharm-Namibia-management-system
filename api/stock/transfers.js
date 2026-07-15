@@ -1201,6 +1201,85 @@ export default async function handler(req, res) {
             }
           }
 
+          // ── #2: Cancelled/Rejected Transfer — Restore Reserved Stock ──────────────
+          // When a transfer is cancelled or rejected AFTER being approved, the
+          // stock_batches.dispatched_quantity was already incremented during approval.
+          // We must restore it here to avoid phantom reservation locks.
+          if (
+            (transfer.status === 'cancelled' || transfer.status === 'rejected') &&
+            (previousStatus === 'approved' || previousStatus === 'dispatched')
+          ) {
+            const sourceWarehouse = oldTransfer?.from_warehouse || null;
+            const isCountryToWarehouse = sourceWarehouse === 'country_stock';
+            const cancSrcType = inferLocationType(sourceWarehouse) || 'warehouse';
+
+            if (sourceWarehouse && !isCountryToWarehouse) {
+              for (const item of transferItems) {
+                const qty = Number(item.quantity_approved ?? item.quantity ?? 0);
+                if (qty <= 0) continue;
+                const productName = item.product_name || 'Unknown';
+
+                if (cancSrcType === 'branch') {
+                  // Restore branch_inventory_batches
+                  const batchNo = item.batch_no || null;
+                  const expiryDate = item.expiry_date || null;
+                  if (batchNo && expiryDate) {
+                    const restoreBibId = `BIB-RST-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+                    await client.query(
+                      `INSERT INTO branch_inventory_batches (id, branch_id, product_name, batch_no, expiry_date, quantity, status, created_at, updated_at)
+                       VALUES ($1,$2,$3,$4,$5::date,$6,'in_stock',NOW(),NOW())
+                       ON CONFLICT (branch_id, product_name, batch_no, expiry_date)
+                       DO UPDATE SET quantity = branch_inventory_batches.quantity + EXCLUDED.quantity, updated_at=NOW()`,
+                      [restoreBibId, sourceWarehouse, productName, batchNo, expiryDate, qty]
+                    );
+                  }
+                } else {
+                  // Restore stock_batches (warehouse): reverse FEFO deduction in same order
+                  let rem = qty;
+                  const batchesToRestore = await client.query(
+                    `SELECT id, dispatched_quantity FROM stock_batches
+                     WHERE (location=$1 OR warehouse_id=$1)
+                       AND LOWER(TRIM(description))=LOWER(TRIM($2))
+                       AND dispatched_quantity > 0
+                     ORDER BY expiry_date ASC NULLS LAST FOR UPDATE`,
+                    [sourceWarehouse, productName]
+                  );
+                  for (const b of batchesToRestore.rows) {
+                    if (rem <= 0) break;
+                    const restore = Math.min(rem, Number(b.dispatched_quantity));
+                    await client.query(
+                      `UPDATE stock_batches
+                       SET remaining_quantity = remaining_quantity + $1,
+                           dispatched_quantity = GREATEST(dispatched_quantity - $1, 0),
+                           updated_at = NOW()
+                       WHERE id=$2`,
+                      [restore, b.id]
+                    );
+                    rem -= restore;
+                  }
+
+                  // Restore warehouse_inventory quantity
+                  await client.query(
+                    `UPDATE warehouse_inventory
+                     SET quantity = quantity + $1, updated_at=NOW()
+                     WHERE warehouse_id=$2 AND LOWER(TRIM(product_name))=LOWER(TRIM($3))`,
+                    [qty, sourceWarehouse, productName]
+                  );
+                }
+              }
+
+              // Void the 'reserved' stock_movements written at approval time
+              await client.query(
+                `UPDATE stock_movements SET status='cancelled', updated_at=NOW()
+                 WHERE reference_id=$1 AND movement_type='reserved' AND status='posted'`,
+                [id]
+              );
+
+              console.log(`[transfers] stock reservation restored for ${transfer.status} transfer ${id} (was ${previousStatus})`);
+            }
+          }
+          // ── End cancel/reject stock restore ──────────────────────────────────────
+
           // Guard: only write branch inventory on the FIRST receipt event.
           // Covers both the BranchPortal path (delivered/partially_received) and the
           // confirm-receipt.js barcode path (received).  If any prior receipt status is

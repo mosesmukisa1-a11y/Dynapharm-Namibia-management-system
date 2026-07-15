@@ -2590,6 +2590,28 @@ server.on('error', (error) => {
        )`,
       `CREATE INDEX IF NOT EXISTS idx_sal_type_branch ON stock_automation_log (automation_type, branch_id)`,
       `CREATE INDEX IF NOT EXISTS idx_sal_created    ON stock_automation_log (created_at DESC)`,
+      // ── #10 Batch traceability: link branch batches back to source stock_batch ──
+      `ALTER TABLE branch_inventory_batches ADD COLUMN IF NOT EXISTS source_batch_id TEXT`,
+      // ── #4 Short-delivery discrepancy records ────────────────────────────────
+      `CREATE TABLE IF NOT EXISTS stock_transfer_discrepancies (
+         id               TEXT PRIMARY KEY,
+         transfer_id      TEXT NOT NULL,
+         dispatch_note_id TEXT,
+         branch_id        TEXT NOT NULL,
+         product_name     TEXT NOT NULL,
+         batch_no         TEXT,
+         dispatched_qty   NUMERIC NOT NULL DEFAULT 0,
+         received_qty     NUMERIC NOT NULL DEFAULT 0,
+         shortfall_qty    NUMERIC NOT NULL DEFAULT 0,
+         notes            TEXT,
+         resolved         BOOLEAN DEFAULT FALSE,
+         resolved_by      TEXT,
+         resolved_at      TIMESTAMPTZ,
+         created_at       TIMESTAMPTZ DEFAULT NOW()
+       )`,
+      `CREATE INDEX IF NOT EXISTS idx_std_transfer   ON stock_transfer_discrepancies (transfer_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_std_branch      ON stock_transfer_discrepancies (branch_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_std_unresolved  ON stock_transfer_discrepancies (resolved) WHERE resolved = FALSE`,
     ];
     let schemaSynced = 0;
     for (const sql of schemaSyncs) {
@@ -2612,6 +2634,20 @@ server.on('error', (error) => {
         ['stock_request_min_qty',       '5',                 'Global minimum stock qty before auto stock request is raised'],
         ['stock_request_reorder_qty',   '20',                'Global default reorder quantity per product in auto stock requests'],
         ['preferred_warehouse',         'windhoek_warehouse','Default warehouse for auto-generated stock requests'],
+        // ── New automation config keys ────────────────────────────────────────────
+        ['stuck_approval_enabled',       'true',              'Enable stuck-approval cleanup alerts for approved transfers not dispatched'],
+        ['stuck_approval_hours',         '8',                 'Hours an approved transfer can sit undispatched before alert is triggered'],
+        ['stuck_approval_auto_revert',   'false',             'Auto-revert stuck approved transfers to pending_approval (restores stock)'],
+        ['pending_escalation_enabled',   'true',              'Enable escalation notifications for transfers awaiting GM approval too long'],
+        ['pending_escalation_hours',     '4',                 'Hours before pending-approval transfer triggers escalation alert to GM'],
+        ['drift_repair_enabled',         'true',              'Enable nightly inventory balance drift repair between cache and stock_movements'],
+        ['drift_tolerance_units',        '1',                 'Units of difference allowed before drift repair recomputes a location'],
+        ['warehouse_reorder_enabled',    'true',              'Enable auto-reorder requests when warehouse stock falls below minimum'],
+        ['warehouse_min_qty',            '20',                'Warehouse minimum qty below which a reorder request is auto-raised'],
+        ['warehouse_reorder_qty',        '50',                'Default reorder quantity for warehouse reorder requests from country stock'],
+        ['inter_branch_redistrib_enabled','true',             'Enable inter-branch surplus redistribution suggestions sent to GM'],
+        ['inter_branch_surplus_ratio',   '2',                 'Branch is surplus when its qty > avgQty * this ratio'],
+        ['health_digest_enabled',        'true',              'Enable nightly stock health digest sent to GM and stock manager at 06:00'],
       ];
       for (const [key, value, description] of defaultAutomationConfig) {
         await query(

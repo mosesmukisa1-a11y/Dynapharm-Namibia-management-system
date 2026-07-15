@@ -19,6 +19,12 @@ import {
   runAutoWriteOff,
   runAutoStockRequest,
   runAutoReceiveDispatched,
+  runPendingApprovalEscalation,
+  runStuckApprovalCleanup,
+  runInventoryDriftRepair,
+  runWarehouseReorderCheck,
+  runInterBranchRedistribution,
+  runNightlyStockHealthDigest,
 } from './stockAutomation.js';
 
 let schedulerStarted = false;
@@ -433,6 +439,38 @@ async function tick() {
 
   // ── Automation job 3: auto-receive stale dispatches (every tick) ─────────
   await runAutoReceiveDispatched().catch(e => console.error('[scheduler] auto-receive error:', e.message));
+
+  // ── Automation job 5: pending-approval escalation (every 4h during business hours) ──
+  if (hh >= 8 && hh <= 20 && mm === 30 && (hh % 4 === 0)) {
+    await runPendingApprovalEscalation().catch(e => console.error('[scheduler] escalation error:', e.message));
+  }
+
+  // ── Automation job 1: stuck-approval cleanup (every hour, 06:00–20:00) ────
+  if (hh >= 6 && hh <= 20 && mm === 0) {
+    await runStuckApprovalCleanup().catch(e => console.error('[scheduler] stuck-approval error:', e.message));
+  }
+
+  // ── Automation job 3b: inventory drift repair (nightly at 01:00) ──────────
+  if (hh === 1 && mm === 0) {
+    console.log('[scheduler] Running inventory drift repair...');
+    await runInventoryDriftRepair().catch(e => console.error('[scheduler] drift-repair error:', e.message));
+  }
+
+  // ── Automation job 6: warehouse reorder check (daily at 00:30) ───────────
+  if (hh === 0 && mm === 30) {
+    await runWarehouseReorderCheck().catch(e => console.error('[scheduler] warehouse-reorder error:', e.message));
+  }
+
+  // ── Automation job 8: inter-branch redistribution (daily at 01:05) ───────
+  if (hh === 1 && mm === 5) {
+    await runInterBranchRedistribution().catch(e => console.error('[scheduler] inter-branch error:', e.message));
+  }
+
+  // ── Automation job 15: nightly stock health digest (daily at 06:00) ───────
+  if (hh === 6 && mm === 0) {
+    console.log('[scheduler] Sending morning stock health digest...');
+    await runNightlyStockHealthDigest().catch(e => console.error('[scheduler] health-digest error:', e.message));
+  }
 }
 
 // ── Startup backfill: compute any missing periods since last run ──────────────

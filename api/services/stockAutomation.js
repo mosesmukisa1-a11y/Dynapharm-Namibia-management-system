@@ -545,3 +545,419 @@ export async function checkAutoApproveTransfer(transferId, totalQty, fromWarehou
     return false;
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 5. PENDING-APPROVAL ESCALATION: alert GM when transfers wait too long
+// ─────────────────────────────────────────────────────────────────────────────
+export async function runPendingApprovalEscalation() {
+  const enabled = await getConfig('pending_escalation_enabled', 'true');
+  if (enabled !== 'true') return;
+
+  const hours = Number(await getConfig('pending_escalation_hours', '4'));
+
+  const pending = await getMany(
+    `SELECT id, from_warehouse, to_branch, priority, created_at
+     FROM stock_transfers
+     WHERE status IN ('pending_approval','pending')
+       AND updated_at < NOW() - ($1 || ' hours')::INTERVAL
+       AND created_at > NOW() - INTERVAL '7 days'`,
+    [String(hours)]
+  );
+
+  if (pending.length === 0) return;
+
+  const highPriority = pending.filter(t => (t.priority || '').toLowerCase() === 'high');
+
+  await notify(
+    'gm_alert', 'gm',
+    `⏰ ${pending.length} Transfer${pending.length !== 1 ? 's' : ''} Awaiting GM Approval`,
+    `${pending.length} dispatch request${pending.length !== 1 ? 's have' : ' has'} been waiting for GM approval for over ${hours} hours` +
+    `${highPriority.length > 0 ? ` — ${highPriority.length} are HIGH priority` : ''}. Please review in the GM Portal → Dispatches.`,
+    highPriority.length > 0 ? 'warning' : 'info'
+  );
+
+  for (const t of pending) {
+    await logAction('pending_escalation', t.to_branch, null, null,
+      { transferId: t.id, hours, priority: t.priority });
+  }
+
+  console.log(`[automation] escalation: ${pending.length} pending-approval transfer(s) escalated to GM`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 1. STUCK-APPROVAL CLEANUP: detect & optionally revert stale approved transfers
+// ─────────────────────────────────────────────────────────────────────────────
+export async function runStuckApprovalCleanup() {
+  const enabled = await getConfig('stuck_approval_enabled', 'true');
+  if (enabled !== 'true') return;
+
+  const hours      = Number(await getConfig('stuck_approval_hours', '8'));
+  const autoRevert = await getConfig('stuck_approval_auto_revert', 'false');
+
+  const stuck = await getMany(
+    `SELECT id, from_warehouse, to_branch, created_by
+     FROM stock_transfers
+     WHERE status = 'approved'
+       AND updated_at < NOW() - ($1 || ' hours')::INTERVAL`,
+    [String(hours)]
+  );
+
+  if (stuck.length === 0) return;
+
+  for (const t of stuck) {
+    try {
+      await notify(
+        'gm_alert', 'gm',
+        `⚠️ Transfer Stuck in Approved State`,
+        `Transfer ${t.id} (${(t.from_warehouse || '').replace(/_/g, ' ')} → ${(t.to_branch || '').replace(/_/g, ' ')}) has been approved but not dispatched for over ${hours} hours. Stock is still reserved. Please dispatch or cancel.`,
+        'warning'
+      );
+
+      if (autoRevert === 'true') {
+        await query(
+          `UPDATE stock_transfers SET status='pending_approval', updated_at=NOW() WHERE id=$1 AND status='approved'`,
+          [t.id]
+        );
+
+        // Restore dispatched_quantity back to remaining_quantity (FEFO reverse order)
+        const items = await getMany(
+          'SELECT product_name, quantity FROM stock_transfer_items WHERE transfer_id=$1',
+          [t.id]
+        );
+        for (const item of items) {
+          const qty = Number(item.quantity || 0);
+          if (qty <= 0 || !t.from_warehouse) continue;
+          const batches = await getMany(
+            `SELECT id, dispatched_quantity FROM stock_batches
+             WHERE (location=$1 OR warehouse_id=$1)
+               AND LOWER(TRIM(description))=LOWER(TRIM($2))
+               AND dispatched_quantity > 0
+             ORDER BY expiry_date ASC NULLS LAST`,
+            [t.from_warehouse, item.product_name]
+          );
+          let rem = qty;
+          for (const b of batches) {
+            if (rem <= 0) break;
+            const restore = Math.min(rem, Number(b.dispatched_quantity));
+            await query(
+              `UPDATE stock_batches
+               SET remaining_quantity = remaining_quantity + $1,
+                   dispatched_quantity = GREATEST(dispatched_quantity - $1, 0),
+                   updated_at = NOW()
+               WHERE id=$2`,
+              [restore, b.id]
+            );
+            rem -= restore;
+          }
+        }
+
+        await query(
+          `UPDATE stock_movements SET status='cancelled', updated_at=NOW()
+           WHERE reference_id=$1 AND movement_type='reserved' AND status='posted'`,
+          [t.id]
+        );
+
+        await logAction('stuck_approval_revert', t.to_branch, null, null, { transferId: t.id, hours });
+        console.log(`[automation] stuck-approval: reverted transfer ${t.id} to pending_approval`);
+      } else {
+        await logAction('stuck_approval_alert', t.to_branch, null, null, { transferId: t.id, hours });
+      }
+    } catch (err) {
+      console.error('[automation] stuck-approval error for transfer', t.id, ':', err.message);
+    }
+  }
+
+  console.log(`[automation] stuck-approval: flagged ${stuck.length} stuck transfer(s)`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3. INVENTORY BALANCE DRIFT REPAIR: nightly reconciliation of cache vs truth
+// ─────────────────────────────────────────────────────────────────────────────
+export async function runInventoryDriftRepair() {
+  const enabled = await getConfig('drift_repair_enabled', 'true');
+  if (enabled !== 'true') return;
+
+  const tolerance = Number(await getConfig('drift_tolerance_units', '1'));
+
+  const locations = await getMany(
+    `SELECT DISTINCT location_type, location_id FROM inventory_balances WHERE closing_qty >= 0`
+  );
+
+  const INWARD  = ['supplier_import_receipt','warehouse_receipt','branch_receipt','transfer_in','received','return_in','positive_adjustment'];
+  const OUTWARD = ['walkin_sale','walkin_member_sale','walkin_non_member_sale','walk_in_member_sale','walk_in_non_member_sale','sale','online_order_fulfilment','prescription_dispense','write_off','field_use','transfer_out','negative_adjustment'];
+
+  let repaired = 0;
+
+  for (const loc of locations) {
+    try {
+      const liveRows = await getMany(
+        `SELECT product_name, COALESCE(batch_no,'') AS batch_no,
+                SUM(CASE WHEN movement_type = ANY($2::text[]) THEN quantity ELSE 0 END) -
+                SUM(CASE WHEN movement_type = ANY($3::text[]) THEN quantity ELSE 0 END) AS live_qty
+         FROM stock_movements
+         WHERE (source_location = $1 OR destination_location = $1)
+           AND status IN ('posted','completed','approved')
+         GROUP BY product_name, COALESCE(batch_no,'')`,
+        [loc.location_id, INWARD, OUTWARD]
+      );
+
+      let needsRecompute = false;
+      for (const row of liveRows) {
+        const liveQty = Number(row.live_qty || 0);
+        const cached  = await getOne(
+          `SELECT closing_qty FROM inventory_balances
+           WHERE location_type=$1
+             AND LOWER(REPLACE(location_id,' ','_'))=LOWER(REPLACE($2,' ','_'))
+             AND LOWER(TRIM(product_name))=LOWER(TRIM($3))
+             AND COALESCE(batch_no,'')=$4`,
+          [loc.location_type, loc.location_id, row.product_name, row.batch_no]
+        );
+        if (!cached) continue;
+        const drift = Math.abs(liveQty - Number(cached.closing_qty || 0));
+        if (drift > tolerance) {
+          await logAction('drift_repair', loc.location_id, row.product_name, drift, {
+            cached: Number(cached.closing_qty || 0), live: liveQty, locationType: loc.location_type,
+          });
+          needsRecompute = true;
+          break;
+        }
+      }
+
+      if (needsRecompute) {
+        recomputeLocationBalances(loc.location_type, loc.location_id).catch(() => {});
+        repaired++;
+      }
+    } catch (err) {
+      console.warn('[automation] drift-repair error for', loc.location_id, ':', err.message);
+    }
+  }
+
+  if (repaired > 0) {
+    console.log(`[automation] drift-repair: triggered recompute for ${repaired} location(s)`);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 6. WAREHOUSE REORDER FROM COUNTRY STOCK
+// ─────────────────────────────────────────────────────────────────────────────
+export async function runWarehouseReorderCheck() {
+  const enabled = await getConfig('warehouse_reorder_enabled', 'true');
+  if (enabled !== 'true') return;
+
+  const minQty     = Number(await getConfig('warehouse_min_qty', '20'));
+  const reorderQty = Number(await getConfig('warehouse_reorder_qty', '50'));
+
+  const lowWarehouse = await getMany(
+    `SELECT location_id, product_name, closing_qty
+     FROM inventory_balances
+     WHERE location_type='warehouse' AND closing_qty >= 0 AND closing_qty < $1
+     ORDER BY closing_qty ASC`,
+    [minQty]
+  );
+
+  if (lowWarehouse.length === 0) return;
+
+  // Skip products that already have an open warehouse reorder request (last 3 days)
+  const openReqs = await getMany(
+    `SELECT requesting_branch, items FROM stock_requests
+     WHERE status IN ('pending','approved')
+       AND notes ILIKE '%warehouse reorder%'
+       AND created_at > NOW() - INTERVAL '3 days'`
+  );
+  const openKeys = new Set();
+  for (const req of openReqs) {
+    let items = [];
+    try { items = typeof req.items === 'string' ? JSON.parse(req.items || '[]') : (req.items || []); } catch {}
+    const br = normalizeBranchSlug(req.requesting_branch) || req.requesting_branch;
+    for (const item of items) openKeys.add(`${br}||${(item.product_name || '').toLowerCase().trim()}`);
+  }
+
+  const byWarehouse = new Map();
+  for (const row of lowWarehouse) {
+    const brNorm = normalizeBranchSlug(row.location_id) || row.location_id;
+    const key = `${brNorm}||${row.product_name.toLowerCase().trim()}`;
+    if (openKeys.has(key)) continue;
+    if (!byWarehouse.has(row.location_id)) byWarehouse.set(row.location_id, []);
+    byWarehouse.get(row.location_id).push(row);
+  }
+
+  let created = 0;
+  for (const [warehouseId, rows] of byWarehouse.entries()) {
+    try {
+      const id = genId('ORD');
+      await query(
+        `INSERT INTO stock_requests (id, requesting_branch, requested_by, priority, notes, items, status, created_at, updated_at)
+         VALUES ($1,$2,'system','high',$3,$4,'pending',NOW(),NOW())`,
+        [id, warehouseId,
+         `Warehouse reorder: ${rows.length} product${rows.length !== 1 ? 's' : ''} below minimum (${minQty} units) — warehouse reorder from country stock`,
+         JSON.stringify(rows.map(r => ({
+           product_name: r.product_name, productName: r.product_name,
+           quantity: reorderQty, unit: 'units', current_qty: Number(r.closing_qty || 0),
+         })))]
+      );
+
+      const wLabel = warehouseId.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      await notify('gm_alert', 'gm',
+        `🏭 Warehouse Reorder Required — ${wLabel}`,
+        `${rows.length} product${rows.length !== 1 ? 's' : ''} at ${wLabel} fell below minimum (${minQty} units). A reorder request from Country Stock has been raised. Request #${id}.`,
+        'warning'
+      );
+
+      for (const row of rows) {
+        await logAction('warehouse_reorder', warehouseId, row.product_name, Number(row.closing_qty || 0),
+          { requestId: id, minQty, reorderQty });
+      }
+      created++;
+    } catch (err) {
+      console.error('[automation] warehouse-reorder error for', warehouseId, ':', err.message);
+    }
+  }
+
+  if (created > 0) console.log(`[automation] warehouse-reorder: raised ${created} reorder request(s)`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 8. INTER-BRANCH SURPLUS REDISTRIBUTION SUGGESTIONS
+// ─────────────────────────────────────────────────────────────────────────────
+export async function runInterBranchRedistribution() {
+  const enabled = await getConfig('inter_branch_redistrib_enabled', 'true');
+  if (enabled !== 'true') return;
+
+  const surplusRatio = Number(await getConfig('inter_branch_surplus_ratio', '2'));
+  const minThreshold = Number(await getConfig('stock_request_min_qty', '5'));
+
+  const branchStocks = await getMany(
+    `SELECT location_id AS branch_id, product_name, closing_qty
+     FROM inventory_balances
+     WHERE location_type='branch' AND closing_qty >= 0`
+  );
+
+  const productMap = new Map();
+  for (const row of branchStocks) {
+    if (!productMap.has(row.product_name)) productMap.set(row.product_name, []);
+    productMap.get(row.product_name).push({ branchId: row.branch_id, qty: Number(row.closing_qty || 0) });
+  }
+
+  const suggestions = [];
+
+  for (const [product, branches] of productMap.entries()) {
+    if (branches.length < 2) continue;
+    const totalQty = branches.reduce((s, b) => s + b.qty, 0);
+    const avgQty   = totalQty / branches.length;
+    if (avgQty < 2) continue;
+
+    const surplus  = branches.filter(b => b.qty > avgQty * surplusRatio && b.qty > minThreshold * 2);
+    const deficits = branches.filter(b => b.qty < minThreshold && b.qty < avgQty * 0.5);
+
+    for (const src of surplus) {
+      for (const dst of deficits) {
+        const suggestQty = Math.floor((src.qty - avgQty) / 2);
+        if (suggestQty <= 0) continue;
+        suggestions.push({
+          product, avgQty: Math.round(avgQty),
+          from: src.branchId, fromQty: src.qty,
+          to:   dst.branchId, toQty:   dst.qty,
+          suggestQty,
+        });
+      }
+    }
+  }
+
+  if (suggestions.length === 0) return;
+
+  const topN  = suggestions.slice(0, 10);
+  const lines = topN.map(s =>
+    `• ${s.product}: transfer ~${s.suggestQty} units from ${s.from.replace(/_/g, ' ')} (${s.fromQty}) → ${s.to.replace(/_/g, ' ')} (${s.toQty})`
+  ).join('\n');
+
+  await notify('gm_alert', 'gm',
+    `🔄 ${suggestions.length} Inter-Branch Redistribution Suggestion${suggestions.length !== 1 ? 's' : ''}`,
+    `Stock imbalances detected across branches. Suggested moves:\n${lines}${suggestions.length > 10 ? `\n…and ${suggestions.length - 10} more.` : '\nReview branch inventory and create transfers as needed.'}`,
+    'info'
+  );
+
+  await logAction('inter_branch_redistrib', null, null, null,
+    { suggestionCount: suggestions.length, topSuggestions: topN });
+
+  console.log(`[automation] inter-branch: ${suggestions.length} redistribution suggestion(s) sent to GM`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 15. NIGHTLY STOCK HEALTH DIGEST
+// ─────────────────────────────────────────────────────────────────────────────
+export async function runNightlyStockHealthDigest() {
+  const enabled = await getConfig('health_digest_enabled', 'true');
+  if (enabled !== 'true') return;
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  const [expiredRows, lowStockRows, stuckRows, pendingRows, inTransitRows, writeOffRows] = await Promise.all([
+    getMany(
+      `SELECT COUNT(*) AS cnt, COALESCE(SUM(quantity),0) AS qty FROM branch_inventory_batches
+       WHERE quantity > 0 AND expiry_date IS NOT NULL AND expiry_date::date < $1::date`, [today]
+    ),
+    getMany(
+      `SELECT COUNT(DISTINCT location_id) AS cnt FROM inventory_balances
+       WHERE location_type='branch' AND closing_qty > 0 AND closing_qty < 10`
+    ),
+    getMany(
+      `SELECT COUNT(*) AS cnt FROM stock_transfers
+       WHERE status='approved' AND updated_at < NOW() - INTERVAL '8 hours'`
+    ),
+    getMany(
+      `SELECT COUNT(*) AS cnt FROM stock_transfers
+       WHERE status IN ('pending_approval','pending') AND created_at > NOW() - INTERVAL '7 days'`
+    ),
+    getMany(
+      `SELECT COUNT(*) AS cnt, COALESCE(SUM(sti.quantity),0) AS total_qty
+       FROM stock_transfers st
+       JOIN stock_transfer_items sti ON sti.transfer_id = st.id
+       WHERE st.status = 'dispatched'`
+    ),
+    getMany(
+      `SELECT COALESCE(SUM(sm.quantity * COALESCE(pp.distributor_price,0)),0) AS value
+       FROM stock_movements sm
+       LEFT JOIN product_prices pp ON LOWER(TRIM(pp.product_name))=LOWER(TRIM(sm.product_name))
+       WHERE sm.movement_type='write_off' AND sm.status='pending_approval'`
+    ),
+  ]);
+
+  const expiredBatches = Number(expiredRows[0]?.cnt || 0);
+  const expiredQty     = Number(expiredRows[0]?.qty || 0);
+  const lowStockCount  = Number(lowStockRows[0]?.cnt || 0);
+  const stuckCount     = Number(stuckRows[0]?.cnt || 0);
+  const pendingCount   = Number(pendingRows[0]?.cnt || 0);
+  const inTransitCount = Number(inTransitRows[0]?.cnt || 0);
+  const inTransitQty   = Number(inTransitRows[0]?.total_qty || 0);
+  const writeOffValue  = parseFloat(Number(writeOffRows[0]?.value || 0).toFixed(2));
+
+  const digest = [
+    `📅 Stock Health Digest — ${today}`,
+    ``,
+    expiredBatches > 0
+      ? `🔴 ${expiredBatches} expired batch(es) | ${expiredQty} units | pending GM write-off approval`
+      : `✅ No expired batches awaiting write-off`,
+    lowStockCount > 0
+      ? `🟡 ${lowStockCount} branch(es) with critically low stock (< 10 units per product)`
+      : `✅ All branches above critical stock threshold`,
+    stuckCount > 0
+      ? `⚠️  ${stuckCount} transfer(s) approved but not dispatched for > 8 hours — stock is reserved`
+      : `✅ No stuck approved transfers`,
+    pendingCount > 0
+      ? `⏳ ${pendingCount} transfer(s) awaiting GM approval`
+      : `✅ No transfers pending approval`,
+    `📦 ${inTransitCount} transfer(s) in transit (${inTransitQty} units on the road)`,
+    writeOffValue > 0
+      ? `💰 Write-off exposure: N$${writeOffValue.toLocaleString()} DP value pending approval`
+      : null,
+  ].filter(Boolean).join('\n');
+
+  await notify('gm_alert',    'gm',    '📊 Morning Stock Health Digest', digest, 'info');
+  await notify('stock_alert', 'stock', '📊 Morning Stock Health Digest', digest, 'info');
+
+  await logAction('health_digest', null, null, null, {
+    expiredBatches, expiredQty, lowStockCount, stuckCount, pendingCount, inTransitCount, inTransitQty, writeOffValue,
+  });
+
+  console.log(`[automation] health-digest: sent (expired=${expiredBatches}, lowStock=${lowStockCount}, stuck=${stuckCount}, inTransit=${inTransitCount})`);
+}
