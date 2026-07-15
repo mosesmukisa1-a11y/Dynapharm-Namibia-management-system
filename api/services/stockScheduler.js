@@ -15,6 +15,11 @@
  *   be referenced in ON CONFLICT clauses without a matching explicit index.
  */
 import { query, getMany, getOne } from '../db.js';
+import {
+  runAutoWriteOff,
+  runAutoStockRequest,
+  runAutoReceiveDispatched,
+} from './stockAutomation.js';
 
 let schedulerStarted = false;
 let schedulerInterval = null;
@@ -413,6 +418,21 @@ async function tick() {
     console.log('[scheduler] Running monthly stock summary for:', lastMonth.getFullYear(), lastMonth.getMonth() + 1);
     await computeMonthlySummary(lastMonth.getFullYear(), lastMonth.getMonth() + 1);
   }
+
+  // ── Automation job 1: auto write-off expired batches (daily at 00:20) ──────
+  if (hh === 0 && mm === 20) {
+    console.log('[scheduler] Running auto write-off scan...');
+    await runAutoWriteOff().catch(e => console.error('[scheduler] auto write-off error:', e.message));
+  }
+
+  // ── Automation job 2: auto stock request for low stock (daily at 00:25) ────
+  if (hh === 0 && mm === 25) {
+    console.log('[scheduler] Running auto stock-request scan...');
+    await runAutoStockRequest().catch(e => console.error('[scheduler] auto stock-request error:', e.message));
+  }
+
+  // ── Automation job 3: auto-receive stale dispatches (every tick) ─────────
+  await runAutoReceiveDispatched().catch(e => console.error('[scheduler] auto-receive error:', e.message));
 }
 
 // ── Startup backfill: compute any missing periods since last run ──────────────

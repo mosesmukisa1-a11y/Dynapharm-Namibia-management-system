@@ -2558,6 +2558,38 @@ server.on('error', (error) => {
       // QR code field on stock_batches (separate from Code128 barcode)
       `ALTER TABLE stock_batches ADD COLUMN IF NOT EXISTS qr_code VARCHAR(200)`,
       `CREATE UNIQUE INDEX IF NOT EXISTS idx_stock_batches_qr_code ON stock_batches(qr_code) WHERE qr_code IS NOT NULL`,
+      // ── Stock Automation tables ──────────────────────────────────────────────
+      `CREATE TABLE IF NOT EXISTS stock_automation_config (
+         key         TEXT PRIMARY KEY,
+         value       TEXT NOT NULL,
+         description TEXT,
+         updated_at  TIMESTAMPTZ DEFAULT NOW()
+       )`,
+      `CREATE TABLE IF NOT EXISTS stock_reorder_rules (
+         id                  TEXT PRIMARY KEY,
+         branch_id           TEXT NOT NULL,
+         product_name        TEXT NOT NULL,
+         min_qty             NUMERIC NOT NULL DEFAULT 5,
+         reorder_qty         NUMERIC NOT NULL DEFAULT 20,
+         preferred_warehouse TEXT DEFAULT 'windhoek_warehouse',
+         active              BOOLEAN DEFAULT TRUE,
+         created_at          TIMESTAMPTZ DEFAULT NOW(),
+         updated_at          TIMESTAMPTZ DEFAULT NOW(),
+         UNIQUE (branch_id, product_name)
+       )`,
+      `CREATE TABLE IF NOT EXISTS stock_automation_log (
+         id              TEXT PRIMARY KEY,
+         automation_type TEXT NOT NULL,
+         branch_id       TEXT,
+         product_name    TEXT,
+         quantity        NUMERIC,
+         details         JSONB,
+         status          TEXT DEFAULT 'success',
+         error_message   TEXT,
+         created_at      TIMESTAMPTZ DEFAULT NOW()
+       )`,
+      `CREATE INDEX IF NOT EXISTS idx_sal_type_branch ON stock_automation_log (automation_type, branch_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_sal_created    ON stock_automation_log (created_at DESC)`,
     ];
     let schemaSynced = 0;
     for (const sql of schemaSyncs) {
@@ -2567,6 +2599,33 @@ server.on('error', (error) => {
       console.log(`Schema sync: applied ${schemaSynced} column additions`);
     }
     // ────────────────────────────────────────────────────────────────────────
+
+    // ── Seed default stock automation config (idempotent ON CONFLICT DO NOTHING) ──
+    try {
+      const defaultAutomationConfig = [
+        ['auto_writeoff_enabled',       'true',              'Enable nightly auto write-off submission for expired batches'],
+        ['auto_stock_request_enabled',  'true',              'Enable auto stock requests when branch stock falls below minimum'],
+        ['auto_receive_enabled',        'true',              'Enable auto-receive for dispatches idle longer than threshold hours'],
+        ['auto_receive_hours',          '24',                'Hours before a dispatched transfer is auto-received'],
+        ['small_transfer_auto_approve', 'true',              'Enable auto-dispatch for small transfers at or below the threshold'],
+        ['small_transfer_threshold',    '5',                 'Max total units for a transfer to qualify for auto-dispatch (skip GM)'],
+        ['stock_request_min_qty',       '5',                 'Global minimum stock qty before auto stock request is raised'],
+        ['stock_request_reorder_qty',   '20',                'Global default reorder quantity per product in auto stock requests'],
+        ['preferred_warehouse',         'windhoek_warehouse','Default warehouse for auto-generated stock requests'],
+      ];
+      for (const [key, value, description] of defaultAutomationConfig) {
+        await query(
+          `INSERT INTO stock_automation_config (key, value, description, updated_at)
+           VALUES ($1, $2, $3, NOW())
+           ON CONFLICT (key) DO NOTHING`,
+          [key, value, description]
+        );
+      }
+      console.log('[automation] Default automation config seeded');
+    } catch (acErr) {
+      console.warn('[automation] Config seed warning:', acErr.message);
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     // ── Campaign participation and winners tables ─────────────────────────────
     try {

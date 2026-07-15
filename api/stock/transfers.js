@@ -3,6 +3,7 @@ import { query, getMany, getOne, insert, update, remove, publishRealtimeEvent, w
 import { recomputeLocationBalances, inferLocationType } from '../services/stockEngine.js';
 import { broadcastStockEvent } from '../services/stockEvents.js';
 import { branchSearchTerms, normalizeBranchSlug } from '../_lib/branchUtils.js';
+import { checkAutoApproveTransfer } from '../services/stockAutomation.js';
 
 async function fefoDeductStockBatches(client, locationFilter, productName, totalQty) {
   const batches = await client.query(
@@ -738,6 +739,25 @@ export default async function handler(req, res) {
         finalItems = [{ productId: productName, productName, quantity, unit: 'units', batchNo: null, metadata: null }];
       }
       await replaceTransferItems(transfer.id, finalItems, fromLocation);
+
+      // ── Auto-approve small transfers (qty ≤ threshold) ──────────────────────
+      // If the transfer total quantity is at or below the configured threshold,
+      // skip GM approval entirely and advance straight to 'dispatched'.
+      // Only applies to pending_approval transfers created by non-GM roles.
+      const currentStatus = transfer.status || transferData.status || 'pending_approval';
+      if (currentStatus === 'pending_approval' || currentStatus === 'pending') {
+        const totalItemQty = finalItems.reduce((s, i) => s + Number(i.quantity ?? 0), 0);
+        const actorName = preparedByName || req.user?.fullName || req.user?.username || 'system';
+        const autoApproved = await checkAutoApproveTransfer(
+          transfer.id, totalItemQty, fromLocation, toLocation, actorName
+        ).catch(() => false);
+        if (autoApproved) {
+          // Reload transfer so returned JSON reflects auto-dispatched status
+          const refreshed = await getOne('SELECT * FROM stock_transfers WHERE id=$1', [transfer.id]);
+          if (refreshed) Object.assign(transfer, refreshed);
+        }
+      }
+      // ────────────────────────────────────────────────────────────────────────
 
       let dispatchNote = null;
       if (transfer.status === 'dispatched') {
