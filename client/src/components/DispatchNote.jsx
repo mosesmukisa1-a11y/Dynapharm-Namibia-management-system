@@ -192,6 +192,16 @@ const PRINT_CSS = `
   .doc-footer { text-align: center; margin-top: 16px; padding-top: 8px; border-top: 1px solid #e5e7eb; font-size: 10px; color: #b0b0b0; }
   .variance-neg { color: #dc2626; font-weight: 700; }
   .variance-pos { color: #16a34a; font-weight: 700; }
+  /* #57 Expiry-soon must survive browser print colour stripping */
+  .expiring-soon { color: #dc2626 !important; font-weight: 700 !important; }
+  /* #58 Shortfall acknowledgement notice */
+  .shortfall-notice { background: #fffbeb; border: 1.5px solid #f59e0b; border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; }
+  .shortfall-notice-title { color: #b45309; font-weight: 700; font-size: 12px; }
+  .shortfall-notice-detail { color: #92400e; font-size: 11px; margin-top: 3px; }
+  /* #76 Amendment banner */
+  .amendment-banner { background: #fef3c7; border: 2px solid #f59e0b; border-radius: 6px; padding: 10px 14px; margin-bottom: 14px; }
+  .amendment-banner-title { color: #92400e; font-weight: 800; font-size: 13px; letter-spacing: 0.3px; }
+  .amendment-banner-detail { color: #b45309; font-size: 11px; margin-top: 3px; }
   .no-print { }
   @media print { body { padding: 12px; } .no-print { display: none !important; } }
 `;
@@ -206,6 +216,8 @@ export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
   // printed dispatch note always shows correct batch and expiry information.
   const [movementItems, setMovementItems] = useState(null);
   const [fetchingBatches, setFetchingBatches] = useState(false);
+  // #63 Track whether the batch-data lookup finished without finding any data
+  const [batchDataMissing, setBatchDataMissing] = useState(false);
 
   useEffect(() => {
     if (!transfer) return;
@@ -223,6 +235,7 @@ export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
       ? `transfer_id=${encodeURIComponent(transferId)}`
       : `request_id=${encodeURIComponent(requestId)}`;
 
+    setBatchDataMissing(false);
     let cancelled = false;
     setFetchingBatches(true);
     fetch(`/api/stock/request-batches?${qs}`, { credentials: 'include' })
@@ -232,6 +245,7 @@ export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
         const movements = data?.movements || [];
         if (movements.length === 0 || !movements.some(m => m.batch_no)) {
           setMovementItems(null);
+          setBatchDataMissing(true); // #63 track that we looked but found nothing
           return;
         }
         const origByName = new Map();
@@ -265,7 +279,7 @@ export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
         });
         setMovementItems(enriched);
       })
-      .catch(() => { if (!cancelled) setMovementItems(null); })
+      .catch(() => { if (!cancelled) { setMovementItems(null); setBatchDataMissing(true); } })
       .finally(() => { if (!cancelled) setFetchingBatches(false); });
     return () => { cancelled = true; };
   }, [transfer?.id, transfer?.requestId, transfer?.request_id]);
@@ -411,6 +425,17 @@ export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
         </div>
       </div>
 
+      {/* #76 Amendment banner — shown on screen AND prints with the document */}
+      {isAmended && (
+        <div className="amendment-banner" style={{ background: '#fef3c7', border: '2px solid #f59e0b', borderRadius: 8, padding: '10px 14px', marginBottom: 14 }}>
+          <div className="amendment-banner-title" style={{ fontWeight: 800, color: '#92400e', fontSize: 13, letterSpacing: 0.3 }}>⚠️ AMENDED BY GM — REPACK REQUIRED</div>
+          <div className="amendment-banner-detail" style={{ fontSize: 11, color: '#b45309', marginTop: 3 }}>
+            This dispatch was amended by GM {gmApprovedBy || approvedBy || '—'} on {fmtDateTime(amendedAt || gmApprovedAt || updatedAt)}.
+            Quantities may differ from the originally requested amounts — verify the items table below before packing.
+          </div>
+        </div>
+      )}
+
       {/* === B. SOURCE AND DESTINATION === */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
         <div style={sectionBox}>
@@ -465,6 +490,12 @@ export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
               Loading batch details…
             </span>
           )}
+          {/* #63 Warn when no batch data could be found after lookup */}
+          {!fetchingBatches && batchDataMissing && !hasBatchSplits && (
+            <span className="no-print" style={{ fontSize: 10, color: '#d97706', fontWeight: 600, marginLeft: 8 }}>
+              ⚠️ No batch data found in records — verify batch &amp; expiry info before packing
+            </span>
+          )}
           {movementItems && (
             <span className="no-print" style={{ fontSize: 10, color: '#2563eb', fontWeight: 600, marginLeft: 8 }}>
               ✓ Batch details loaded from stock movements
@@ -513,7 +544,7 @@ export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
                     ) : (
                       <>
                         <TD style={{ fontFamily: 'monospace', fontWeight: 700 }}>{singleBatch.batchNo || '—'}</TD>
-                        <TD style={{ color: singleExpiringSoon ? '#dc2626' : singleExpiry ? '#333' : '#9ca3af', fontWeight: singleExpiringSoon ? 700 : 400 }}>
+                        <TD className={singleExpiringSoon ? 'expiring-soon' : ''} style={{ color: singleExpiringSoon ? '#dc2626' : singleExpiry ? '#333' : '#9ca3af', fontWeight: singleExpiringSoon ? 700 : 400 }}>
                           {singleExpiry ? fmtDate(singleExpiry) : (singleBatch.batchNo ? 'N/A' : '—')}
                         </TD>
                       </>
@@ -545,7 +576,8 @@ export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
                       </td>
                       <td style={{ padding: '4px 8px', borderBottom: '1px solid #dbeafe' }}></td>
                       <td style={{ padding: '4px 8px', borderBottom: '1px solid #dbeafe', fontFamily: 'monospace', fontWeight: 700, fontSize: 11 }}>{b.batchNo || '—'}</td>
-                      <td style={{ padding: '4px 8px', borderBottom: '1px solid #dbeafe', fontSize: 11, color: expiringSoon ? '#dc2626' : b.expiryDate ? '#333' : '#9ca3af', fontWeight: expiringSoon ? 700 : 400 }}>
+                      {/* #57 expiring-soon class ensures colour survives print colour stripping */}
+                      <td className={expiringSoon ? 'expiring-soon' : ''} style={{ padding: '4px 8px', borderBottom: '1px solid #dbeafe', fontSize: 11, color: expiringSoon ? '#dc2626' : b.expiryDate ? '#333' : '#9ca3af', fontWeight: expiringSoon ? 700 : 400 }}>
                         {b.expiryDate ? fmtDate(b.expiryDate) : 'N/A'}
                       </td>
                       <td style={{ padding: '4px 8px', borderBottom: '1px solid #dbeafe', fontSize: 10, color: '#9ca3af' }}>{g.unit}</td>
@@ -577,7 +609,7 @@ export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
                     <TD style={{ fontWeight: 600 }}>{item.productName || item.product_name || item.productId || '—'}</TD>
                     <TD style={{ fontFamily: 'monospace', fontSize: 10 }}>{item.productCode || item.product_code || item.sku || '—'}</TD>
                     <TD style={{ fontFamily: 'monospace', fontWeight: 600 }}>{item.batchNo || item.batch_no || '—'}</TD>
-                    <TD style={{ color: isExpiringSoon ? '#dc2626' : expiryDate ? '#333' : '#9ca3af', fontWeight: isExpiringSoon ? 700 : 400 }}>
+                    <TD className={isExpiringSoon ? 'expiring-soon' : ''} style={{ color: isExpiringSoon ? '#dc2626' : expiryDate ? '#333' : '#9ca3af', fontWeight: isExpiringSoon ? 700 : 400 }}>
                       {expiryDate ? fmtDate(expiryDate) : (item.batchNo || item.batch_no ? 'N/A' : '—')}
                     </TD>
                     <TD>{item.unit || 'units'}</TD>
@@ -631,6 +663,17 @@ export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
           }
         </div>
       </div>
+
+      {/* #58 Shortfall acknowledgement notice — visible when dispatcher accepted reduced-stock dispatch */}
+      {(meta.shortfall_acknowledged || meta.shortfallAcknowledged) && (
+        <div className="shortfall-notice" style={{ background: '#fffbeb', border: '1.5px solid #f59e0b', borderRadius: 8, padding: '10px 14px', marginBottom: 14 }}>
+          <div className="shortfall-notice-title" style={{ fontWeight: 700, color: '#b45309', fontSize: 12 }}>⚠️ Partial Dispatch — Shortfall Acknowledged</div>
+          <div className="shortfall-notice-detail" style={{ fontSize: 11, color: '#92400e', marginTop: 3 }}>
+            Stock quantities were insufficient at dispatch time. This is an intentional partial dispatch — the shortfall was acknowledged by the dispatcher.
+            Receiving branch must verify actual quantities on arrival and report any further discrepancies.
+          </div>
+        </div>
+      )}
 
       {/* === E. GM APPROVAL SECTION === */}
       <div style={{ marginBottom: 14 }}>

@@ -4435,18 +4435,22 @@ function BranchStockTab() {
     try {
       const itemsToReceive = receiveItems.filter(item => Number(item.received_qty) > 0);
       const safeLabel = (v) => (v && v !== 'undefined' && v !== 'null') ? v : null;
+      // #72 Collect ALL validation errors before returning so the user can fix
+      // every missing field in one pass instead of discovering them one by one.
+      const validationErrors = [];
       for (const item of itemsToReceive) {
         const label = safeLabel(item.product_name) || safeLabel(item.productName) || safeLabel(item.productId) || 'this item';
         if (!item.batch_no || !item.batch_no.trim()) {
-          setReceiveFormMsg({ type: 'error', text: `Batch number is required for "${label}"` });
-          setSubmitting(false);
-          return;
+          validationErrors.push(`Batch number is required for "${label}"`);
         }
         if (!item.expiry_date) {
-          setReceiveFormMsg({ type: 'error', text: `Expiry date is required for "${label}"` });
-          setSubmitting(false);
-          return;
+          validationErrors.push(`Expiry date is required for "${label}"`);
         }
+      }
+      if (validationErrors.length > 0) {
+        setReceiveFormMsg({ type: 'error', text: validationErrors.join(' · ') });
+        setSubmitting(false);
+        return;
       }
       // Single atomic call — locks the request row, inserts all movements and
       // inventory records, and flips status to 'received' in one transaction.
@@ -5498,7 +5502,10 @@ function BranchStockTab() {
                             className="px-3 py-2 rounded-lg text-xs font-bold cursor-pointer" style={{ background: '#fef2f2', color: '#991b1b', border: '1.5px solid #fca5a5' }}>
                             🚫 Reject
                           </button>
-                          <button onClick={() => openReceiveForm(req)} className="px-4 py-2 rounded-lg text-sm font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>📥 Receive</button>
+                          {/* #68 Only show Receive if not already received/delivered */}
+                          {!['received','partially_received','delivered','completed'].includes(req.status) && (
+                            <button onClick={() => openReceiveForm(req)} className="px-4 py-2 rounded-lg text-sm font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>📥 Receive</button>
+                          )}
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-2">
@@ -5810,8 +5817,9 @@ function BranchStockTab() {
                             )}
                           </td>
                           <td style={{ padding: '8px 12px' }}>
-                            {flagged && (
-                              <input type="text" placeholder="Reason for discrepancy (required)"
+                            {/* #66 Auto-show reason field when qty differs from dispatched, not just when explicitly flagged */}
+                            {(flagged || (it.quantityReceived !== '' && Number(it.quantityReceived) !== Number(it.quantitySent))) && (
+                              <input type="text" placeholder="Reason for difference (required)"
                                 value={it.discrepancyNote || ''}
                                 onChange={e => setReceiveItems(prev => prev.map((p, j) => j === i ? { ...p, discrepancyNote: e.target.value } : p))}
                                 style={{ width: '100%', padding: '6px 10px', border: '1px solid #fca5a5', borderRadius: 6, fontSize: 12 }} />

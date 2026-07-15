@@ -1004,6 +1004,70 @@ export default async function handler(req, res) {
         }
       }
 
+      // ── #69 Idempotency guard: block duplicate receipt operations ─────────────
+      // ── #70 Audit every blocked duplicate for ops visibility ──────────────────
+      const RECEIPT_TERMINAL = new Set(['received', 'partially_received', 'delivered', 'completed']);
+      if (targetStatus && RECEIPT_TERMINAL.has(targetStatus) && oldTransfer && RECEIPT_TERMINAL.has(oldTransfer.status)) {
+        try {
+          await query(
+            `INSERT INTO stock_automation_log (id, automation_type, result_summary, branch_id, status, error_message, created_at)
+             VALUES ($1,'duplicate_receipt_block',$2,$3,'error',$4,NOW())`,
+            [
+              `DAL-DUP-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              `Blocked duplicate receipt on transfer ${id} — already '${oldTransfer.status}'`,
+              oldTransfer.to_branch || 'unknown',
+              `Actor: ${currentUser?.username || 'unknown'}; attempted status: ${targetStatus}`,
+            ]
+          );
+        } catch {}
+        return res.status(409).json({
+          success: false,
+          error: `Transfer ${id} has already been received (current status: ${oldTransfer.status}). Duplicate receipt blocked.`,
+        });
+      }
+
+      // ── #71 Pre-deduction availability guard for approval-time FEFO deductions ──
+      // Runs before the update so we can return a clean 422 without partial writes.
+      // The CHECK constraints on stock_batches.remaining_quantity serve as the hard
+      // database-level guard; this is a soft, user-friendly pre-check.
+      if (targetStatus === 'approved' && previousStatus !== 'approved' && previousStatus !== 'dispatched') {
+        const srcWh = oldTransfer?.from_warehouse || null;
+        const isCtryToWh = srcWh === 'country_stock';
+        const srcType = inferLocationType(srcWh) || 'warehouse';
+        if (srcWh && !isCtryToWh && srcType !== 'branch') {
+          const itemsToGuard = await getMany(
+            `SELECT product_name, COALESCE(quantity_approved, quantity)::numeric AS qty
+             FROM stock_transfer_items WHERE transfer_id = $1`,
+            [id]
+          );
+          const guardShortfalls = [];
+          for (const item of itemsToGuard) {
+            const needed = Number(item.qty ?? 0);
+            if (needed <= 0) continue;
+            const pName = item.product_name || 'Unknown';
+            const availRow = await getOne(
+              `SELECT COALESCE(SUM(remaining_quantity), 0)::numeric AS avail
+               FROM stock_batches
+               WHERE location = $1
+                 AND LOWER(TRIM(description)) = LOWER(TRIM($2))
+                 AND remaining_quantity > 0`,
+              [srcWh, pName]
+            );
+            const avail = Number(availRow?.avail ?? 0);
+            if (needed > avail) {
+              guardShortfalls.push(`${pName}: need ${needed}, available ${avail}`);
+            }
+          }
+          if (guardShortfalls.length > 0) {
+            return res.status(422).json({
+              success: false,
+              error: `Insufficient warehouse stock for GM approval. ${guardShortfalls.join('; ')}. Check stock levels or amend quantities before approving.`,
+              shortfalls: guardShortfalls,
+            });
+          }
+        }
+      }
+
       const transfer = await update('stock_transfers', id, updatePayload, 'id');
       if (!transfer) {
         return res.status(404).json({ success: false, error: 'Transfer not found or was already modified by another user. Please refresh and try again.' });
@@ -1199,6 +1263,25 @@ export default async function handler(req, res) {
                  `Dispatched to ${transfer.to_branch || 'branch'} — transfer ${id}`, actorName]
               );
             }
+
+            // ── #62 Stamp batch snapshot into transfer metadata at dispatch time ──────
+            // Captures the exact batch/expiry at the moment of physical dispatch so the
+            // Dispatch Note can always show accurate batch data even after stock_batches changes.
+            try {
+              const batchSnapshot = transferItems.map(it => ({
+                productName: it.product_name || it.product_id || 'Unknown',
+                batchNo: it.batch_no || null,
+                expiryDate: it.expiry_date || null,
+                qty: Number(it.quantity_approved ?? it.quantity ?? 0),
+                unit: it.unit || 'units',
+              }));
+              await client.query(
+                `UPDATE stock_transfers
+                 SET metadata = COALESCE(metadata, '{}'::jsonb) || $1::jsonb
+                 WHERE id = $2`,
+                [JSON.stringify({ batchSnapshot, batchSnapshotAt: new Date().toISOString() }), id]
+              );
+            } catch {}
           }
 
           // ── #2: Cancelled/Rejected Transfer — Restore Reserved Stock ──────────────

@@ -181,7 +181,8 @@ export default async function handler(req, res) {
       }
     }
 
-    // ── Primary: warehouse_dispatch movements by effective request_id ─────────
+    // ── Primary: warehouse_dispatch / country_release movements by effective request_id ───
+    // country_release is used for country-stock → warehouse transfers (#64)
     if (effectiveRequestId) {
       const rows = await getMany(
         `SELECT
@@ -189,7 +190,7 @@ export default async function handler(req, res) {
            source_location, destination_location, reference_id, created_at
          FROM stock_movements
          WHERE reference_id = $1
-           AND movement_type = 'warehouse_dispatch'
+           AND movement_type IN ('warehouse_dispatch', 'country_release')
          ORDER BY created_at ASC`,
         [effectiveRequestId]
       );
@@ -203,7 +204,7 @@ export default async function handler(req, res) {
       }
     }
 
-    // ── Secondary: warehouse_dispatch movements by transfer_id directly ───────
+    // ── Secondary: warehouse_dispatch / country_release movements by transfer_id ──────────
     if (transferId && transferId !== effectiveRequestId) {
       const rows2 = await getMany(
         `SELECT
@@ -211,7 +212,7 @@ export default async function handler(req, res) {
            source_location, destination_location, reference_id, created_at
          FROM stock_movements
          WHERE reference_id = $1
-           AND movement_type = 'warehouse_dispatch'
+           AND movement_type IN ('warehouse_dispatch', 'country_release')
          ORDER BY created_at ASC`,
         [transferId]
       );

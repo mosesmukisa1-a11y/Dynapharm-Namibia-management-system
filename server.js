@@ -2612,6 +2612,12 @@ server.on('error', (error) => {
       `CREATE INDEX IF NOT EXISTS idx_std_transfer   ON stock_transfer_discrepancies (transfer_id)`,
       `CREATE INDEX IF NOT EXISTS idx_std_branch      ON stock_transfer_discrepancies (branch_id)`,
       `CREATE INDEX IF NOT EXISTS idx_std_unresolved  ON stock_transfer_discrepancies (resolved) WHERE resolved = FALSE`,
+      // ── #73 Prevent negative stock at database level ──────────────────────────
+      // These constraints serve as the last line of defence after application-layer guards.
+      `ALTER TABLE stock_batches ADD CONSTRAINT IF NOT EXISTS chk_sb_remaining_qty_gte_zero CHECK (remaining_quantity >= 0)`,
+      `ALTER TABLE stock_batches ADD CONSTRAINT IF NOT EXISTS chk_sb_dispatched_qty_gte_zero CHECK (dispatched_quantity >= 0)`,
+      `ALTER TABLE warehouse_inventory ADD CONSTRAINT IF NOT EXISTS chk_wi_qty_gte_zero CHECK (quantity >= 0)`,
+      `ALTER TABLE branch_inventory_batches ADD CONSTRAINT IF NOT EXISTS chk_bib_qty_gte_zero CHECK (quantity >= 0)`,
     ];
     let schemaSynced = 0;
     for (const sql of schemaSyncs) {

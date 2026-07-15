@@ -5213,6 +5213,9 @@ function BranchRequestsPanel() {
   const [shortfallMode, setShortfallMode]         = useState('block');
   const [shortfallAcknowledged, setShortfallAcknowledged] = useState(false);
   const [adjustedQtys, setAdjustedQtys]           = useState({});
+  const [notifs, setNotifs]                       = useState([]);       // #77
+  const [notifOpen, setNotifOpen]                 = useState(false);    // #77
+  const [stockBadgeMap, setStockBadgeMap]         = useState({});       // #61
 
   const load = useCallback(() => {
     setLoading(true);
@@ -5261,6 +5264,42 @@ function BranchRequestsPanel() {
       lookupFefoBatches(dispatchReq, dispatchWH);
     }
   }, [dispatchReq, dispatchWH, lookupFefoBatches]);
+
+  // #77 Fetch unread notifications for the current stock manager
+  useEffect(() => {
+    if (!user?.username) return;
+    const rid = encodeURIComponent((user.username || '').toLowerCase().trim());
+    fetch(`/api/notifications?recipient_type=staff&recipient_id=${rid}&limit=30`)
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setNotifs(Array.isArray(d) ? d : d.notifications || []))
+      .catch(() => {});
+  }, [user]);
+
+  // #61 Preload stock-level badges for all approved requests against the default warehouse
+  useEffect(() => {
+    const approved = requests.filter(r => r.status === 'approved');
+    if (approved.length === 0) { setStockBadgeMap({}); return; }
+    const defaultWH = 'windhoek_warehouse';
+    const badges = {};
+    let cancelled = false;
+    Promise.all(approved.map(async (r) => {
+      const items = Array.isArray(r.items) ? r.items : [];
+      if (items.length === 0) { badges[r.id] = 'unknown'; return; }
+      let anyShortfall = false, anyOut = false;
+      for (const it of items) {
+        const n = it.productName || it.product_name || it.productId || '';
+        const qty = Number(it.quantity || 0);
+        if (!n || qty <= 0) continue;
+        try {
+          const resp = await api.stock.fefoBatches({ product: n, location: defaultWH, qty });
+          if ((resp.shortfall || 0) >= qty) anyOut = true;
+          else if ((resp.shortfall || 0) > 0) anyShortfall = true;
+        } catch { anyShortfall = true; }
+      }
+      badges[r.id] = anyOut ? 'out' : anyShortfall ? 'partial' : 'ok';
+    })).then(() => { if (!cancelled) setStockBadgeMap({ ...badges }); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [requests]);
 
   // When a shortfall exists, probe all other warehouses for the affected products
   // so the stock manager can see where stock is available without switching manually.
@@ -5504,7 +5543,7 @@ function BranchRequestsPanel() {
             </span>
           )}
         </div>
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           {[['approved','✅ Approved'], ['pending','⏳ Pending GM'], ['recent','📁 Recent']].map(([v, l]) => (
             <button key={v} onClick={() => setStatusFilter(v)}
               style={{ padding: '5px 14px', borderRadius: 99, fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', border: '1.5px solid', borderColor: statusFilter === v ? '#c41e3a' : '#e2e8f0', background: statusFilter === v ? '#fff0f3' : '#f8fafc', color: statusFilter === v ? '#c41e3a' : '#64748b' }}>
@@ -5512,6 +5551,36 @@ function BranchRequestsPanel() {
             </button>
           ))}
           <button onClick={load} style={{ padding: '5px 12px', borderRadius: 99, fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', border: '1.5px solid #e2e8f0', background: '#f8fafc', color: '#64748b' }}>↺</button>
+          {/* #77 Notification bell for amendment alerts */}
+          {(() => {
+            const unread = notifs.filter(n => !n.is_read).length;
+            return (
+              <div style={{ position: 'relative' }}>
+                <button onClick={() => setNotifOpen(v => !v)}
+                  style={{ position: 'relative', padding: '5px 10px', borderRadius: 99, fontSize: '0.88rem', fontWeight: 700, cursor: 'pointer', border: '1.5px solid', borderColor: unread > 0 ? '#fca5a5' : '#e2e8f0', background: notifOpen ? '#fff0f3' : unread > 0 ? '#fff0f3' : '#f8fafc', color: unread > 0 ? '#c41e3a' : '#64748b' }}>
+                  🔔
+                  {unread > 0 && <span style={{ position: 'absolute', top: -5, right: -5, background: '#c41e3a', color: '#fff', borderRadius: 99, fontSize: '0.6rem', fontWeight: 900, padding: '1px 5px', minWidth: 16, textAlign: 'center', lineHeight: '1.5', pointerEvents: 'none' }}>{unread}</span>}
+                </button>
+                {notifOpen && (
+                  <div style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,0.14)', zIndex: 9999, width: 330, maxHeight: 400, overflowY: 'auto' }}>
+                    <div style={{ padding: '10px 14px', borderBottom: '1px solid #f0f0f0', fontWeight: 800, fontSize: '0.83rem', color: '#1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: '#fff' }}>
+                      <span>🔔 Notifications{unread > 0 ? ` · ${unread} unread` : ''}</span>
+                      <button onClick={() => setNotifOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: '1.1rem', lineHeight: 1 }}>✕</button>
+                    </div>
+                    {notifs.length === 0 ? (
+                      <div style={{ padding: '20px 14px', textAlign: 'center', color: '#94a3b8', fontSize: '0.82rem' }}>No notifications</div>
+                    ) : notifs.slice(0, 15).map((n, i) => (
+                      <div key={n.id || i} style={{ padding: '10px 14px', borderBottom: '1px solid #f8f8f8', background: n.is_read ? '#fff' : '#fffbeb' }}>
+                        <div style={{ fontWeight: n.is_read ? 600 : 800, fontSize: '0.82rem', color: n.type === 'warning' ? '#92400e' : '#1e293b', marginBottom: 2 }}>{n.title}</div>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b', lineHeight: 1.4 }}>{n.message}</div>
+                        <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: 3 }}>{n.created_at ? new Date(n.created_at).toLocaleString() : ''}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
       </div>
 
@@ -5535,6 +5604,21 @@ function BranchRequestsPanel() {
                     AWAITING DISPATCH
                   </div>
                 )}
+                {/* #61 Stock-level badge (windhoek_warehouse availability) */}
+                {(() => {
+                  const badge = stockBadgeMap[r.id];
+                  if (!badge || badge === 'unknown') return null;
+                  const cfg = badge === 'ok'
+                    ? { bg: '#dcfce7', color: '#166534', label: '✅ In Stock' }
+                    : badge === 'partial'
+                    ? { bg: '#fef3c7', color: '#92400e', label: '⚠️ Partial Stock' }
+                    : { bg: '#fee2e2', color: '#991b1b', label: '❌ Out of Stock' };
+                  return (
+                    <div style={{ position: 'absolute', top: -1, left: 16, background: cfg.bg, color: cfg.color, fontSize: '0.68rem', fontWeight: 800, padding: '2px 10px', borderRadius: '0 0 8px 8px', letterSpacing: '0.04em' }}>
+                      {cfg.label}
+                    </div>
+                  );
+                })()}
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 10 }}>
                   <div>

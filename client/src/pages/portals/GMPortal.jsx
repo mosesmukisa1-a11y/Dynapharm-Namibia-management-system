@@ -52,6 +52,7 @@ export default function GMPortal() {
     { id: 'staff', label: 'Staff Services', icon: '👤' },
     { id: 'messages', label: 'My Messages', icon: '📨' },
     { id: 'distributors', label: 'Distributor Performance', icon: '👥' },
+    { id: 'discrepancies', label: 'Discrepancy Inbox', icon: '⚠️' },
   ];
 
   return (
@@ -82,7 +83,133 @@ export default function GMPortal() {
         {activeTab === 'staff' && <StaffTab key={tabVisits.staff || 0} />}
         {activeTab === 'messages' && <StaffMessagesTab key={tabVisits.messages || 0} accentColor="#7c3aed" />}
         {activeTab === 'distributors' && <DistributorPerformanceTab key={tabVisits.distributors || 0} title="Distributor Performance — All Branches" />}
+        {activeTab === 'discrepancies' && <DiscrepancyInboxTab key={tabVisits.discrepancies || 0} />}
       </div>
+    </div>
+  );
+}
+
+// ── #65 Discrepancy Inbox Tab ─────────────────────────────────────────────────
+// Shows all stock transfers where discrepancy_flag = true so GM can review
+// short-receipt incidents reported by branches.
+function DiscrepancyInboxTab() {
+  const [rows, setRows]     = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState(null);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    api.stock.discrepancies({ limit: 100 })
+      .then(d => setRows(Array.isArray(d) ? d : d.discrepancies || []))
+      .catch(() => setRows([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const fmtDate = v => v ? new Date(v).toLocaleString('en-NA', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
+  const fmtLoc  = v => (v || '—').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="font-bold text-lg text-gray-900">⚠️ Discrepancy Inbox</h3>
+          <p className="text-sm text-gray-500 mt-0.5">Stock transfers where the branch reported a quantity difference on receipt</p>
+        </div>
+        <button onClick={load} className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm font-semibold text-gray-600 hover:bg-gray-50">↺ Refresh</button>
+      </div>
+
+      {loading ? (
+        <div className="text-center py-12 text-gray-400">Loading discrepancy records…</div>
+      ) : rows.length === 0 ? (
+        <div className="bg-green-50 border border-green-200 rounded-xl p-8 text-center">
+          <div className="text-3xl mb-2">✅</div>
+          <div className="font-bold text-green-800">No discrepancies on record</div>
+          <div className="text-sm text-green-600 mt-1">All received transfers matched their dispatched quantities.</div>
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-gray-200">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Transfer #</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">From</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Branch</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Received By</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Note</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Items</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 bg-white">
+              {rows.map(r => {
+                const items = Array.isArray(r.discrepancy_items) ? r.discrepancy_items : [];
+                const isOpen = expanded === r.id;
+                return (
+                  <>
+                    <tr key={r.id} className="hover:bg-amber-50 cursor-pointer" onClick={() => setExpanded(isOpen ? null : r.id)}>
+                      <td className="px-4 py-3 font-mono font-bold text-gray-800">{r.request_number || r.id}</td>
+                      <td className="px-4 py-3 text-gray-600">{fmtLoc(r.from_warehouse)}</td>
+                      <td className="px-4 py-3 font-semibold text-blue-700">{fmtLoc(r.to_branch)}</td>
+                      <td className="px-4 py-3 text-gray-600">{r.received_by || '—'}</td>
+                      <td className="px-4 py-3 text-gray-500 text-xs">{fmtDate(r.updated_at)}</td>
+                      <td className="px-4 py-3 text-amber-700 text-xs max-w-xs truncate">{r.discrepancy_note || '—'}</td>
+                      <td className="px-4 py-3 text-gray-400 text-xs">
+                        {items.length > 0 ? (
+                          <span className="bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full">
+                            {items.length} item{items.length !== 1 ? 's' : ''} {isOpen ? '▲' : '▼'}
+                          </span>
+                        ) : <span className="text-gray-300">—</span>}
+                      </td>
+                    </tr>
+                    {isOpen && items.length > 0 && (
+                      <tr key={`${r.id}-detail`}>
+                        <td colSpan={7} className="px-6 py-3 bg-amber-50 border-t border-amber-100">
+                          <table className="w-full text-xs border-collapse">
+                            <thead>
+                              <tr className="text-gray-500 uppercase tracking-wide">
+                                <th className="py-1.5 pr-4 text-left font-semibold">Product</th>
+                                <th className="py-1.5 pr-4 text-center font-semibold">Dispatched</th>
+                                <th className="py-1.5 pr-4 text-center font-semibold">Received</th>
+                                <th className="py-1.5 pr-4 text-center font-semibold">Difference</th>
+                                <th className="py-1.5 pr-4 text-left font-semibold">Batch</th>
+                                <th className="py-1.5 text-left font-semibold">Note</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {items.map((it, i) => {
+                                const disp = Number(it.quantityDispatched || 0);
+                                const recv = Number(it.quantityReceived || 0);
+                                const diff = recv - disp;
+                                return (
+                                  <tr key={i} className="border-t border-amber-100">
+                                    <td className="py-1.5 pr-4 font-semibold text-gray-800">{it.productName || '—'}</td>
+                                    <td className="py-1.5 pr-4 text-center text-gray-600">{disp}</td>
+                                    <td className="py-1.5 pr-4 text-center font-bold" style={{ color: recv < disp ? '#dc2626' : recv > disp ? '#16a34a' : '#374151' }}>{recv}</td>
+                                    <td className="py-1.5 pr-4 text-center font-bold" style={{ color: diff < 0 ? '#dc2626' : diff > 0 ? '#16a34a' : '#94a3b8' }}>
+                                      {diff > 0 ? `+${diff}` : diff === 0 ? '—' : diff}
+                                    </td>
+                                    <td className="py-1.5 pr-4 font-mono text-gray-500">{it.batchNo || '—'}</td>
+                                    <td className="py-1.5 text-amber-700">{it.discrepancyNote || '—'}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </td>
+                      </tr>
+                    )}
+                  </>
+                );
+              })}
+            </tbody>
+          </table>
+          <div className="px-4 py-2 bg-gray-50 border-t border-gray-200 text-xs text-gray-400">
+            {rows.length} discrepancy record{rows.length !== 1 ? 's' : ''} — sorted by most recent
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1218,17 +1345,56 @@ function ApprovalsTab() {
                             </tr>
                           </thead>
                           <tbody>
-                            {items.length > 0 ? items.map((it, i) => (
-                              <tr key={i} className={i % 2 === 0 ? '' : 'bg-gray-50'}>
-                                <td className="py-1.5 px-2 border-b font-medium">{it.productName || it.productId}</td>
-                                <td className="py-1.5 px-2 border-b text-gray-600">{it.batchNo || '—'}</td>
-                                <td className="py-1.5 px-2 border-b" style={{ color: it.expiryDate && new Date(it.expiryDate) < new Date(Date.now() + 90*86400000) ? '#dc2626' : it.expiryDate ? '#666' : '#9ca3af' }}>
-                                  {it.expiryDate ? fmtDate(it.expiryDate) : (it.batchNo ? 'N/A' : '—')}
-                                </td>
-                                <td className="py-1.5 px-2 border-b text-right font-bold">{it.quantity}</td>
-                                <td className="py-1.5 px-2 border-b text-gray-600">{it.unit || 'units'}</td>
-                              </tr>
-                            )) : (
+                            {items.length > 0 ? (() => {
+                              // #56 Group by product name → show batch split sub-rows for FEFO-split products
+                              const groups = [];
+                              const seen = new Map();
+                              items.forEach(it => {
+                                const key = (it.productName || it.productId || '').toLowerCase().trim();
+                                if (!seen.has(key)) { seen.set(key, groups.length); groups.push({ name: it.productName || it.productId, batches: [], unit: it.unit || 'units' }); }
+                                groups[seen.get(key)].batches.push(it);
+                              });
+                              return groups.flatMap((g, gi) => {
+                                const isMulti = g.batches.length > 1;
+                                const totalQtyG = g.batches.reduce((s, b) => s + Number(b.quantity || 0), 0);
+                                const headerRow = (
+                                  <tr key={`hdr-${gi}`} className={gi % 2 === 0 ? '' : 'bg-gray-50'}>
+                                    <td className="py-1.5 px-2 border-b font-semibold">{g.name}</td>
+                                    {isMulti ? (
+                                      <td colSpan={2} className="py-1.5 px-2 border-b text-blue-600 font-semibold" style={{ fontSize: 10 }}>
+                                        {g.batches.length} batch splits — see below
+                                      </td>
+                                    ) : (
+                                      <>
+                                        <td className="py-1.5 px-2 border-b text-gray-600 font-mono text-xs">{g.batches[0].batchNo || '—'}</td>
+                                        <td className="py-1.5 px-2 border-b" style={{ color: g.batches[0].expiryDate && new Date(g.batches[0].expiryDate) < new Date(Date.now() + 90*86400000) ? '#dc2626' : g.batches[0].expiryDate ? '#666' : '#9ca3af' }}>
+                                          {g.batches[0].expiryDate ? fmtDate(g.batches[0].expiryDate) : (g.batches[0].batchNo ? 'N/A' : '—')}
+                                        </td>
+                                      </>
+                                    )}
+                                    <td className="py-1.5 px-2 border-b text-right font-bold">{totalQtyG}</td>
+                                    <td className="py-1.5 px-2 border-b text-gray-600">{g.unit}</td>
+                                  </tr>
+                                );
+                                if (!isMulti) return [headerRow];
+                                const subRows = g.batches.map((b, bi) => {
+                                  const expSoon = b.expiryDate && new Date(b.expiryDate) < new Date(Date.now() + 90*86400000);
+                                  return (
+                                    <tr key={`sub-${gi}-${bi}`} style={{ background: '#eff6ff', borderLeft: '3px solid #93c5fd' }}>
+                                      <td className="py-1 px-2 border-b text-xs text-gray-400 italic pl-5">↳ Split {bi+1}/{g.batches.length}</td>
+                                      <td className="py-1 px-2 border-b font-mono text-xs text-gray-700">{b.batchNo || '—'}</td>
+                                      <td className="py-1 px-2 border-b text-xs" style={{ color: expSoon ? '#dc2626' : b.expiryDate ? '#555' : '#9ca3af', fontWeight: expSoon ? 700 : 400 }}>
+                                        {b.expiryDate ? fmtDate(b.expiryDate) : 'N/A'}
+                                        {expSoon && <span className="ml-1 text-xs px-1 rounded" style={{ background: '#fee2e2', color: '#dc2626' }}>soon</span>}
+                                      </td>
+                                      <td className="py-1 px-2 border-b text-right font-bold text-xs">{b.quantity}</td>
+                                      <td className="py-1 px-2 border-b text-gray-400 text-xs">{g.unit}</td>
+                                    </tr>
+                                  );
+                                });
+                                return [headerRow, ...subRows];
+                              });
+                            })() : (
                               <tr>
                                 <td className="py-1.5 px-2 border-b font-medium">{t.product_name || '—'}</td>
                                 <td className="py-1.5 px-2 border-b text-gray-500">—</td>
@@ -1247,6 +1413,17 @@ function ApprovalsTab() {
 
                         {t.dispatchNotes && <p className="text-xs text-gray-500 italic mb-3">Notes: {t.dispatchNotes}</p>}
                         {t.dispatchNote?.barcode && <p className="text-xs text-gray-400 mb-3">Barcode: <span className="font-mono">{t.dispatchNote.barcode}</span></p>}
+
+                        {/* #59 Shortfall warning — shown when dispatcher acknowledged a stock shortfall */}
+                        {(t.metadata?.shortfall_acknowledged || t.metadata?.shortfallAcknowledged) && (
+                          <div style={{ background: '#fffbeb', border: '1.5px solid #f59e0b', borderRadius: 8, padding: '9px 13px', marginBottom: 12 }}>
+                            <div style={{ fontWeight: 700, color: '#b45309', fontSize: 12 }}>⚠️ Partial Dispatch — Shortfall Acknowledged</div>
+                            <div style={{ fontSize: 11, color: '#92400e', marginTop: 2 }}>
+                              The dispatcher acknowledged insufficient stock at dispatch time. Some quantities may be below what was requested.
+                              Consider amending this note to reflect what can actually be fulfilled.
+                            </div>
+                          </div>
+                        )}
 
                         <div className="flex gap-2 flex-wrap">
                           <button onClick={() => setViewDispatch(t)}

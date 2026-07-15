@@ -189,6 +189,7 @@ export const api = {
     warehouseIncoming: (wh) => api.get(`/stock/warehouses/${wh}/incoming`),
     warehouseOutbound: (wh) => api.get(`/stock/warehouses/${wh}/outbound`),
     warehouseMovements: (wh) => api.get(`/stock/warehouses/${wh}/movements`),
+    discrepancies: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/stock/discrepancies${qs ? '?' + qs : ''}`); },
     warehouseReturns: (wh) => api.get(`/stock/warehouses/${wh}/returns`),
     reportsSummary: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/stock/reports/summary${qs ? '?' + qs : ''}`); },
     reportsBranchStock: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/stock/reports/branch-stock${qs ? '?' + qs : ''}`); },
