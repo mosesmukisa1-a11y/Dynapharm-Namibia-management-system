@@ -480,6 +480,7 @@ function normalizeTransfer(row, itemsMap, notesMap) {
     signatureName: row.signature_name || null,
     branchReceiptNote: row.branch_receipt_note || null,
     discrepancyFlag: row.discrepancy_flag || false,
+    discrepancyNote: row.discrepancy_note || null,
     receiptStatus: row.receipt_status || null,
     preparedById: row.prepared_by_id || null,
     preparedByRole: row.prepared_by_role || null,
@@ -863,6 +864,10 @@ export default async function handler(req, res) {
             updatePayload.delivered_at = body.deliveredAt || nowIso;
             updatePayload.delivered_by =
               body.deliveredBy || currentUser?.fullName || currentUser?.username || updatePayload.delivered_by || null;
+            // B3: A 'delivered' status means the branch confirmed clean receipt — stamp received_at/received_by too.
+            updatePayload.received_at = body.receivedAt || updatePayload.received_at || nowIso;
+            updatePayload.received_by =
+              body.receivedBy || updatePayload.received_by || currentUser?.fullName || currentUser?.username || null;
             break;
           case 'received':
             updatePayload.received_at = body.receivedAt || nowIso;
@@ -906,6 +911,25 @@ export default async function handler(req, res) {
       if (updatePayload.discrepancyFlag !== undefined || updatePayload.discrepancy_flag !== undefined) {
         updatePayload.discrepancy_flag = updatePayload.discrepancyFlag ?? updatePayload.discrepancy_flag ?? false;
         delete updatePayload.discrepancyFlag;
+        // B5: Auto-generate a transfer-level discrepancy_note from per-item notes when flag is set.
+        // Only overwrite if the client didn't send an explicit transfer-level note.
+        if (updatePayload.discrepancy_flag && !updatePayload.discrepancy_note) {
+          const rawItems = body.items || body.itemsArray || [];
+          const discrepItems = Array.isArray(rawItems)
+            ? rawItems.filter(it => it.discrepancyNote || it.discrepancy_note)
+            : [];
+          if (discrepItems.length > 0) {
+            updatePayload.discrepancy_note = discrepItems
+              .map(it => {
+                const name = it.productName || it.product_name || it.productId || 'item';
+                const note = it.discrepancyNote || it.discrepancy_note || '';
+                const sent = it.quantitySent ?? it.quantity_approved ?? it.quantity ?? '';
+                const rcvd = it.quantityReceived ?? it.quantity_received ?? '';
+                return `${name}: dispatched ${sent}, received ${rcvd}${note ? ` — ${note}` : ''}`;
+              })
+              .join('; ');
+          }
+        }
       }
       if (updatePayload.receiptStatus !== undefined) {
         updatePayload.receipt_status = updatePayload.receiptStatus ?? updatePayload.receipt_status ?? null;
@@ -1378,7 +1402,8 @@ export default async function handler(req, res) {
             const branchId = normalizeBranchSlug(transfer.to_branch) || transfer.to_branch || null;
             const sourceWarehouse = transfer.from_warehouse || null;
             for (const item of transferItems) {
-              const qtyReceived = Number(item.quantity_received ?? item.quantity ?? 0);
+              // B2: Fall back to quantity_approved (GM-approved qty) before the original request qty.
+              const qtyReceived = Number(item.quantity_received ?? item.quantity_approved ?? item.quantity ?? 0);
               if (qtyReceived <= 0) continue;
               const productName = item.product_name || item.product_id || 'Unknown';
               const batchNo = item.batch_no || null;
@@ -1446,7 +1471,8 @@ export default async function handler(req, res) {
               );
 
               const movId = `MOV-BRC-${Date.now()}-${Math.floor(Math.random() * 9999)}`;
-              const srcLocType = (transfer.from_warehouse || '').includes('warehouse') ? 'warehouse' : 'country';
+              // B1: Use inferLocationType() — string-contains check would mislabel branch-sourced transfers.
+              const srcLocType = inferLocationType(transfer.from_warehouse) || 'warehouse';
               await client.query(
                 `INSERT INTO stock_movements (id, product_name, batch_no, expiry_date, quantity, movement_type, source_location, source_location_type, destination_location, destination_location_type, reference_id, notes, created_by, status, created_at, updated_at)
                  VALUES ($1, $2, $3, $4, $5, 'transfer_in', $6, $7, $8, 'branch', $9, $10, $11, 'posted', NOW(), NOW())`,
@@ -1485,7 +1511,11 @@ export default async function handler(req, res) {
       if (transfer.status === 'dispatched') {
         dispatchNote = await createDispatchNote(transfer, transfer.dispatched_by, body.dispatchMeta || {});
       }
-      if (transfer.status === 'received') {
+      // B4: Mark dispatch note as received for all terminal-receipt statuses.
+      // BranchPortal uses 'delivered' for clean receipts and 'partially_received' for
+      // discrepant ones — 'received' is only used by direct API callers. All three must
+      // close the dispatch note so it doesn't remain open indefinitely.
+      if (['received', 'delivered', 'partially_received'].includes(transfer.status)) {
         await query(
           `
             UPDATE dispatch_notes

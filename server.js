@@ -2461,6 +2461,7 @@ server.on('error', (error) => {
       `ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS signature_name VARCHAR(255)`,
       `ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS branch_receipt_note TEXT`,
       `ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS discrepancy_flag BOOLEAN DEFAULT FALSE`,
+      `ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS discrepancy_note TEXT`,
       `ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS receipt_status VARCHAR(50)`,
       `ALTER TABLE stock_transfer_items ADD COLUMN IF NOT EXISTS expiry_date DATE`,
       `ALTER TABLE stock_transfer_items ADD COLUMN IF NOT EXISTS quantity_approved NUMERIC(14,2)`,

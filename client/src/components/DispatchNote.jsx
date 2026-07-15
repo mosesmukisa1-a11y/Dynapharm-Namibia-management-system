@@ -225,6 +225,44 @@ export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
     const alreadyHasBatch = rawItems.some(it => it.batchNo || it.batch_no);
     if (alreadyHasBatch) { setMovementItems(null); return; }
 
+    // B6: Prefer the batchSnapshot captured at dispatch time (stored in metadata by
+    // the server when the transfer was dispatched). This is more reliable than
+    // re-fetching stock movements because: (a) no extra network round-trip, (b) it
+    // reflects exactly what was packed and dispatched, and (c) it survives even if
+    // the underlying movement records are later amended or cleaned up.
+    const snapshot = transfer.metadata?.batchSnapshot;
+    if (Array.isArray(snapshot) && snapshot.length > 0 && snapshot.some(s => s.batchNo || s.batch_no)) {
+      const origByName = new Map();
+      rawItems.forEach(it => {
+        const nm = (it.productName || it.product_name || '').toLowerCase().trim();
+        if (nm && !origByName.has(nm)) origByName.set(nm, it);
+      });
+      const enriched = snapshot.map(s => {
+        const nm = (s.productName || s.product_name || '').toLowerCase().trim();
+        const orig = origByName.get(nm) || {};
+        return {
+          productName: s.productName || s.product_name,
+          product_name: s.productName || s.product_name,
+          productId: s.productId || s.product_id || orig.productId || orig.product_id || null,
+          productCode: s.productCode || s.product_code || orig.productCode || orig.product_code || null,
+          batchNo: s.batchNo || s.batch_no || null,
+          batch_no: s.batchNo || s.batch_no || null,
+          expiryDate: s.expiryDate || s.expiry_date || null,
+          expiry_date: s.expiryDate || s.expiry_date || null,
+          quantity: Number(s.quantity || s.quantityApproved || 0),
+          quantityApproved: s.quantityApproved ?? orig.quantityApproved ?? orig.quantity_approved ?? null,
+          quantity_approved: s.quantityApproved ?? orig.quantityApproved ?? orig.quantity_approved ?? null,
+          quantityReceived: orig.quantityReceived ?? orig.quantity_received ?? null,
+          quantity_received: orig.quantityReceived ?? orig.quantity_received ?? null,
+          unit: s.unit || orig.unit || 'units',
+          discrepancyNote: orig.discrepancyNote || orig.discrepancy_note || null,
+        };
+      });
+      setMovementItems(enriched);
+      setBatchDataMissing(false);
+      return;
+    }
+
     const requestId  = transfer.requestId  || transfer.request_id  || null;
     const transferId = transfer.id || null;
     if (!requestId && !transferId) return;
