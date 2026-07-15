@@ -70,7 +70,9 @@ export default async function handler(req, res) {
     // Load items for all in-transit transfers
     const transferIds = transfers.map(t => t.id);
     const allItems = await getMany(
-      `SELECT transfer_id, product_name, quantity, batch_no, expiry_date
+      `SELECT transfer_id, product_name,
+              COALESCE(quantity_approved, quantity) AS quantity,
+              batch_no, expiry_date
        FROM stock_transfer_items
        WHERE transfer_id = ANY($1::text[])`,
       [transferIds]

@@ -10,7 +10,7 @@
  *   - country_stock is shown in its own card but excluded from operational totals.
  */
 import { applyAuthCors } from '../_lib/auth.js';
-import { getMany } from '../db.js';
+import { getMany, getOne } from '../db.js';
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
@@ -18,7 +18,7 @@ export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ success: false, error: 'Method not allowed' });
 
   try {
-    const [batches, branchBatches, branchNames, transfers] = await Promise.all([
+    const [batches, branchBatches, branchNames, pendingRow, inTransitRow] = await Promise.all([
       // Live warehouse + country stock quantities
       getMany(
         `SELECT location, description, remaining_quantity, cif_unit_cost, dpc_unit_value, unit_price
@@ -38,10 +38,14 @@ export default async function handler(req, res) {
          ORDER BY branch_id, product_name`
       ),
       getMany(`SELECT id, name FROM branches WHERE status = 'active'`),
-      getMany(
-        `SELECT id, status, from_warehouse, to_branch
-         FROM stock_transfers
-         ORDER BY created_at DESC LIMIT 500`
+      // Direct COUNT queries — no LIMIT so all transfers are counted correctly
+      getOne(
+        `SELECT COUNT(*) AS cnt FROM stock_transfers
+         WHERE status IN ('pending','submitted','pending_approval','requested')`
+      ),
+      getOne(
+        `SELECT COUNT(*) AS cnt FROM stock_transfers
+         WHERE status IN ('in_transit','dispatched')`
       ),
     ]);
 
@@ -68,8 +72,8 @@ export default async function handler(req, res) {
     const stockValueCIF   = warehouseCIF;
     const stockValueDPC   = warehouseDPC;   // branch DPC omitted (no price in branch_inventory_batches without JOIN)
 
-    const pendingCount   = transfers.filter(t => ['pending', 'submitted', 'pending_approval', 'requested'].includes(t.status)).length;
-    const inTransitCount = transfers.filter(t => ['in_transit', 'dispatched'].includes(t.status)).length;
+    const pendingCount   = Number(pendingRow?.cnt   || 0);
+    const inTransitCount = Number(inTransitRow?.cnt || 0);
 
     // Build per-branch summary grouped by branch_id
     const branchGroups = {};

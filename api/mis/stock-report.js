@@ -124,7 +124,7 @@ export default async function handler(req, res) {
       else if (type === 'transfer_out') { prod.transfers_out += qty; branches[b].totals.transfers_out += qty; }
       else if (type === 'write_off' || type === 'field_use') { prod.write_offs += qty; branches[b].totals.write_offs += qty; }
       else if (type === 'adjustment' || type === 'adjust' || type === 'positive_adjustment') { prod.adjustments += qty; branches[b].totals.adjustments += qty; }
-      else if (type === 'negative_adjustment') { prod.write_offs += qty; branches[b].totals.write_offs += qty; }
+      else if (type === 'negative_adjustment') { prod.adjustments -= qty; branches[b].totals.adjustments -= qty; }
       else if (
         type === 'sale' || type === 'sold' ||
         type === 'walk_in_member_sale' || type === 'walk_in_non_member_sale' ||

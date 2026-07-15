@@ -40,7 +40,12 @@ export default async function handler(req, res) {
     if (from) { params.push(from);               dateFilter += ` AND created_at >= $${params.length}`; }
     if (to)   { params.push(to + 'T23:59:59');   dateFilter += ` AND created_at <= $${params.length}`; }
 
-    const [batches, branchInv, sales, movements] = await Promise.all([
+    // Sales and movement aggregates are computed in SQL to avoid LIMIT-truncation
+    // issues when there are large numbers of transactions in the period.
+    const salesParams2  = [...params];
+    const movParams2    = [...params];
+
+    const [batches, branchInv, salesAgg, movAgg] = await Promise.all([
       // Only fetch batches with stock remaining — avoids the 0||quantity fallback bug.
       // Country stock excluded: it is a staging/holding area, not active operations.
       getMany(`SELECT location, remaining_quantity, cif_unit_cost, dpc_unit_value, unit_price
@@ -48,9 +53,32 @@ export default async function handler(req, res) {
                WHERE remaining_quantity > 0
                  AND COALESCE(status, '') != 'expired'
                  AND location != 'country_stock'`),
-      getMany("SELECT location_id, closing_qty, unit_dp, stock_value_dp FROM inventory_balances WHERE location_type = 'branch'"),
-      getMany(`SELECT branch_id, total, customer_type FROM branch_walkin_sales WHERE 1=1${dateFilter} LIMIT 5000`, params),
-      getMany(`SELECT movement_type, quantity FROM stock_movements WHERE 1=1${dateFilter} LIMIT 5000`, params),
+      getMany(`SELECT bib.branch_id AS location_id,
+                      SUM(bib.quantity)                        AS closing_qty,
+                      MAX(COALESCE(p.dp,  0))                  AS unit_dp,
+                      SUM(bib.quantity * COALESCE(p.dp,  0))   AS stock_value_dp
+               FROM branch_inventory_batches bib
+               LEFT JOIN product_prices p
+                      ON LOWER(TRIM(p.description)) = LOWER(TRIM(bib.product_name))
+               WHERE bib.quantity > 0
+               GROUP BY bib.branch_id`),
+      // Aggregate in SQL — no row-count cap
+      getMany(
+        `SELECT customer_type,
+                COUNT(*)       AS tx_count,
+                SUM(total)     AS total_revenue
+         FROM branch_walkin_sales
+         WHERE 1=1${dateFilter}
+         GROUP BY customer_type`,
+        salesParams2
+      ),
+      getMany(
+        `SELECT movement_type, SUM(quantity) AS total_qty
+         FROM stock_movements
+         WHERE 1=1${dateFilter}
+         GROUP BY movement_type`,
+        movParams2
+      ),
     ]);
 
     const warehouseQty = batches.reduce((s, b) => s + Number(b.remaining_quantity || 0), 0);
@@ -59,10 +87,15 @@ export default async function handler(req, res) {
     const branchQty    = branchInv.reduce((s, b) => s + Number(b.closing_qty || 0), 0);
     const branchDPC    = branchInv.reduce((s, b) => s + Number(b.stock_value_dp || Number(b.closing_qty || 0) * Number(b.unit_dp || 0)), 0);
 
-    const totalRevenue  = sales.reduce((s, r) => s + Number(r.total || 0), 0);
+    const totalRevenue       = salesAgg.reduce((s, r) => s + Number(r.total_revenue || 0), 0);
+    const transactionCount   = salesAgg.reduce((s, r) => s + Number(r.tx_count || 0), 0);
+    const memberRevenue      = salesAgg.filter(r => ['member','walk_in_member_sale','walkin_member_sale'].includes(r.customer_type)).reduce((s, r) => s + Number(r.total_revenue || 0), 0);
+    const nonMemberRevenue   = salesAgg.filter(r => !['member','walk_in_member_sale','walkin_member_sale'].includes(r.customer_type)).reduce((s, r) => s + Number(r.total_revenue || 0), 0);
 
-    const receiptUnits  = movements.filter(m => ['received', 'receive', 'stock_receipt'].includes(m.movement_type)).reduce((s, m) => s + Number(m.quantity || 0), 0);
-    const dispenseUnits = movements.filter(m => ['dispense', 'sale', 'walkin', 'walkin_non_member_sale', 'walkin_member_sale'].includes(m.movement_type)).reduce((s, m) => s + Number(m.quantity || 0), 0);
+    const receiptTypes   = new Set(['received','receive','stock_receipt']);
+    const dispenseTypes  = new Set(['dispense','sale','walkin','walkin_non_member_sale','walkin_member_sale']);
+    const receiptUnits   = movAgg.filter(m => receiptTypes.has(m.movement_type)).reduce((s, m) => s + Number(m.total_qty || 0), 0);
+    const dispenseUnits  = movAgg.filter(m => dispenseTypes.has(m.movement_type)).reduce((s, m) => s + Number(m.total_qty || 0), 0);
 
     res.status(200).json({
       success: true,
@@ -77,10 +110,10 @@ export default async function handler(req, res) {
         totalValueDPC:  parseFloat((warehouseDPC + branchDPC).toFixed(2)),
       },
       sales: {
-        totalRevenue:    parseFloat(totalRevenue.toFixed(2)),
-        transactionCount: sales.length,
-        memberRevenue:   parseFloat(sales.filter(s => ['member', 'walk_in_member_sale', 'walkin_member_sale'].includes(s.customer_type)).reduce((sum, s) => sum + Number(s.total || 0), 0).toFixed(2)),
-        nonMemberRevenue: parseFloat(sales.filter(s => !['member', 'walk_in_member_sale', 'walkin_member_sale'].includes(s.customer_type)).reduce((sum, s) => sum + Number(s.total || 0), 0).toFixed(2)),
+        totalRevenue:     parseFloat(totalRevenue.toFixed(2)),
+        transactionCount,
+        memberRevenue:    parseFloat(memberRevenue.toFixed(2)),
+        nonMemberRevenue: parseFloat(nonMemberRevenue.toFixed(2)),
       },
       movements: {
         receiptUnits,
