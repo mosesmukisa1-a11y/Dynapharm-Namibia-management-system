@@ -223,6 +223,8 @@ function StockAdjustmentsTab({ onCountChange }) {
   const [gmNotes, setGmNotes] = useState('');
   const [processing, setProcessing] = useState(false);
   const [message, setMessage] = useState(null);
+  const [bulkProcessing, setBulkProcessing] = useState(false);
+  const [bulkConfirm, setBulkConfirm] = useState(null);
 
   const load = () => {
     setLoading(true);
@@ -257,6 +259,28 @@ function StockAdjustmentsTab({ onCountChange }) {
     }
   };
 
+  const handleBulkAction = async (action) => {
+    const pending = adjustments.filter(a => a.status === 'pending');
+    if (pending.length === 0) return;
+    setBulkConfirm(null);
+    setBulkProcessing(true);
+    let done = 0; let failed = 0;
+    for (const adj of pending) {
+      try {
+        await api.patch(`/stock-adjustments/${adj.id}/${action}`, { gm_notes: `Bulk ${action} by GM` });
+        done++;
+      } catch {
+        failed++;
+      }
+    }
+    setMessage({
+      type: failed === 0 ? 'success' : 'error',
+      text: `${action === 'approve' ? '✅ Approved' : '❌ Rejected'} ${done} request${done !== 1 ? 's' : ''}${failed > 0 ? ` — ${failed} failed, please review` : '.'}`,
+    });
+    setBulkProcessing(false);
+    load();
+  };
+
   const statusBadge = (s) => {
     if (s === 'pending') return <Badge variant="warning"><Clock size={11} className="inline mr-1" />Pending</Badge>;
     if (s === 'approved') return <Badge variant="success"><CheckCircle size={11} className="inline mr-1" />Approved</Badge>;
@@ -284,11 +308,47 @@ function StockAdjustmentsTab({ onCountChange }) {
               ⏳ {pendingCount} Awaiting Your Decision
             </span>
           )}
+          {pendingCount > 0 && (
+            <>
+              <button
+                onClick={() => setBulkConfirm('approve')}
+                disabled={bulkProcessing}
+                style={{ padding: '7px 16px', background: 'rgba(134,239,172,0.25)', color: '#dcfce7', border: '1px solid rgba(134,239,172,0.5)', borderRadius: 99, fontSize: '0.82rem', fontWeight: 700, cursor: bulkProcessing ? 'not-allowed' : 'pointer', opacity: bulkProcessing ? 0.6 : 1 }}>
+                ✓ Approve All
+              </button>
+              <button
+                onClick={() => setBulkConfirm('reject')}
+                disabled={bulkProcessing}
+                style={{ padding: '7px 16px', background: 'rgba(252,165,165,0.25)', color: '#fee2e2', border: '1px solid rgba(252,165,165,0.5)', borderRadius: 99, fontSize: '0.82rem', fontWeight: 700, cursor: bulkProcessing ? 'not-allowed' : 'pointer', opacity: bulkProcessing ? 0.6 : 1 }}>
+                ✕ Reject All
+              </button>
+            </>
+          )}
           <button onClick={load} style={{ padding: '7px 16px', background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 99, fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer' }}>
             🔄 Refresh
           </button>
         </div>
       </div>
+
+      {bulkConfirm && (
+        <div style={{ background: bulkConfirm === 'approve' ? '#f0fdf4' : '#fef2f2', border: `1px solid ${bulkConfirm === 'approve' ? '#86efac' : '#fca5a5'}`, borderRadius: 10, padding: '12px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '0.9rem', fontWeight: 600, color: bulkConfirm === 'approve' ? '#166534' : '#991b1b' }}>
+            {bulkConfirm === 'approve' ? '✓' : '✕'} {bulkConfirm === 'approve' ? 'Approve' : 'Reject'} all <strong>{pendingCount}</strong> pending request{pendingCount !== 1 ? 's' : ''}?
+            {bulkConfirm === 'approve' && <span style={{ fontWeight: 400, color: '#166534', marginLeft: 8 }}>Changes will be applied to stock immediately.</span>}
+          </span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={() => setBulkConfirm(null)} style={{ padding: '6px 16px', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff', color: '#374151', fontWeight: 600, fontSize: '0.82rem', cursor: 'pointer' }}>
+              Cancel
+            </button>
+            <button
+              onClick={() => handleBulkAction(bulkConfirm)}
+              disabled={bulkProcessing}
+              style={{ padding: '6px 18px', borderRadius: 8, border: 'none', background: bulkConfirm === 'approve' ? '#16a34a' : '#dc2626', color: '#fff', fontWeight: 700, fontSize: '0.82rem', cursor: bulkProcessing ? 'not-allowed' : 'pointer', opacity: bulkProcessing ? 0.65 : 1 }}>
+              {bulkProcessing ? 'Processing…' : `Yes, ${bulkConfirm === 'approve' ? 'Approve' : 'Reject'} All`}
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="flex gap-2 flex-wrap">
         {['pending','approved','rejected','all'].map(s => (
