@@ -71,9 +71,10 @@ export default async function handler(req, res) {
     });
   }
 
-  // Load items
+  // Load items — use GM-approved quantity when set, fall back to original requested qty
   const itemRows = await getMany(
-    `SELECT product_name, batch_no, expiry_date, quantity
+    `SELECT product_name, batch_no, expiry_date,
+            COALESCE(quantity_approved, quantity) AS quantity
      FROM stock_transfer_items WHERE transfer_id = $1`,
     [transferId]
   );

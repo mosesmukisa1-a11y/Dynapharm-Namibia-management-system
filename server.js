@@ -1839,7 +1839,7 @@ app.patch('/api/consultations/:id/report-preference', async (req, res) => {
 // POST /api/prescriptions/:id/dispense  (partial/full dispensing with batch+expiry)
 app.post('/api/prescriptions/:id/dispense', async (req, res) => {
   try {
-    const { query: dbQuery, getMany } = await import('./api/db.js');
+    const { query: dbQuery, getMany, withTransaction: dbTransaction } = await import('./api/db.js');
     const { recomputeLocationBalances } = await import('./api/services/stockEngine.js');
     const prescriptionId = req.params.id;
     let body = req.body || {};
@@ -1862,38 +1862,40 @@ app.post('/api/prescriptions/:id/dispense', async (req, res) => {
     const dispenseRef = `DISP-${ts}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
     const posted = [];
 
-    for (const item of items) {
-      const productName = item.productName || item.product_name || '';
-      if (!productName) continue;
-      const qty = Number(item.dispenseQty);
-      const unitDP = Number(item.unitDP || 0);
+    await dbTransaction(async (client) => {
+      for (const item of items) {
+        const productName = item.productName || item.product_name || '';
+        if (!productName) continue;
+        const qty = Number(item.dispenseQty);
+        const unitDP = Number(item.unitDP || 0);
 
-      // Update branch_inventory_batches if exists
-      await dbQuery(
-        `UPDATE branch_inventory_batches SET quantity = quantity - $1, updated_at = NOW()
-         WHERE branch_id = $2 AND LOWER(TRIM(product_name)) = LOWER(TRIM($3))
-           AND (batch_no = $4 OR batch_no IS NULL) AND quantity >= $1`,
-        [qty, branchId, productName, item.batchNo]
-      ).catch(() => {});
+        // Deduct from branch_inventory_batches (WHERE quantity >= $1 prevents negative stock)
+        await client.query(
+          `UPDATE branch_inventory_batches SET quantity = quantity - $1, updated_at = NOW()
+           WHERE branch_id = $2 AND LOWER(TRIM(product_name)) = LOWER(TRIM($3))
+             AND (batch_no = $4 OR batch_no IS NULL) AND quantity >= $1`,
+          [qty, branchId, productName, item.batchNo]
+        );
 
-      // Insert movement record
-      const movId = `BIM-${ts}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
-      await dbQuery(
-        `INSERT INTO branch_inventory_movements (id, branch_id, type, product_name, batch_no, quantity, reference, notes, created_by, created_at)
-         VALUES ($1,$2,'prescription_dispense',$3,$4,$5,$6,$7,$8,NOW())`,
-        [movId, branchId, productName, item.batchNo, qty, prescriptionId, `Partial dispense ref ${prescriptionId}`, dispensedBy || 'system']
-      );
+        // Insert branch_inventory_movements record
+        const movId = `BIM-${ts}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+        await client.query(
+          `INSERT INTO branch_inventory_movements (id, branch_id, type, product_name, batch_no, quantity, reference, notes, created_by, created_at)
+           VALUES ($1,$2,'prescription_dispense',$3,$4,$5,$6,$7,$8,NOW())`,
+          [movId, branchId, productName, item.batchNo, qty, prescriptionId, `Partial dispense ref ${prescriptionId}`, dispensedBy || 'system']
+        );
 
-      // Post to stock_movements
-      const smId = `MOV-${ts}-${Math.random().toString(36).slice(2, 6)}`;
-      await dbQuery(
-        `INSERT INTO stock_movements (id, product_name, batch_no, expiry_date, quantity, movement_type, source_location, source_location_type, destination_location, reference_id, notes, status, unit_dp, movement_date, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,'prescription_dispense',$6,'branch','patient',$7,$8,'posted',$9,NOW(),NOW(),NOW())`,
-        [smId, productName, item.batchNo, item.expiryDate, qty, branchId, prescriptionId, `Prescription dispense ${prescriptionId}`, unitDP]
-      );
+        // Post to stock_movements
+        const smId = `MOV-${ts}-${Math.random().toString(36).slice(2, 6)}`;
+        await client.query(
+          `INSERT INTO stock_movements (id, product_name, batch_no, expiry_date, quantity, movement_type, source_location, source_location_type, destination_location, reference_id, notes, status, unit_dp, movement_date, created_at, updated_at)
+           VALUES ($1,$2,$3,$4,$5,'prescription_dispense',$6,'branch','patient',$7,$8,'posted',$9,NOW(),NOW(),NOW())`,
+          [smId, productName, item.batchNo, item.expiryDate, qty, branchId, prescriptionId, `Prescription dispense ${prescriptionId}`, unitDP]
+        );
 
-      posted.push({ productName, batchNo: item.batchNo, dispenseQty: qty, dispenseRef });
-    }
+        posted.push({ productName, batchNo: item.batchNo, dispenseQty: qty, dispenseRef });
+      }
+    });
 
     recomputeLocationBalances('branch', branchId).catch(() => {});
 

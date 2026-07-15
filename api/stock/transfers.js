@@ -1180,7 +1180,7 @@ export default async function handler(req, res) {
           if (transfer.status === 'received' && previousStatus !== 'received') {
             const destWarehouse = transfer.to_branch || transfer.from_warehouse || null;
             for (const item of transferItems) {
-              const qty = Number(item.quantity || 0);
+              const qty = Number(item.quantity_approved ?? item.quantity ?? 0);
               if (qty <= 0) continue;
               const productName = item.product_name || item.product_id || 'Unknown';
               const batchNo = item.batch_no || null;
@@ -1263,7 +1263,7 @@ export default async function handler(req, res) {
             const alreadyDeducted = previousStatus === 'approved';
             const dspSrcType = inferLocationType(sourceWarehouse) || 'warehouse';
             for (const item of transferItems) {
-              const qty = Number(item.quantity || 0);
+              const qty = Number(item.quantity_approved ?? item.quantity ?? 0);
               if (qty <= 0) continue;
               const productName = item.product_name || item.product_id || 'Unknown';
 
