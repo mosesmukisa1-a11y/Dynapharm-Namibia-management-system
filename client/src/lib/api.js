@@ -346,6 +346,7 @@ export const api = {
     updateLeave: (id, data) => api.put(`/hr/leaves?id=${id}`, data),
     records: (type) => api.get(`/hr/records${type ? '?type=' + type : ''}`),
     createRecord: (data) => api.post('/hr/records', data),
+    updateRecord: (id, data) => api.patch(`/hr/records?id=${id}`, data),
     salaryLedger: {
       list: () => api.get('/hr/salary-ledger'),
       add: (data) => api.post('/hr/salary-ledger', data),

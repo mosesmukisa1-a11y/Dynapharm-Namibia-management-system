@@ -9,8 +9,9 @@ import StaffMessagesTab from '../../components/StaffMessagesTab';
 import { generateWarningLetter, generateTerminationLetter, generateTransferLetter } from '../../lib/labourLetter';
 
 export default function HRPortal() {
-  const [activeTab, setActiveTab] = useState('employees');
+  const [activeTab, setActiveTab] = useState('dashboard');
   const tabs = [
+    { id: 'dashboard', label: 'Dashboard', icon: '📋' },
     { id: 'employees', label: 'Employees', icon: '👥' },
     { id: 'salary', label: 'Salary Ledger', icon: '💼' },
     { id: 'leave', label: 'Leave', icon: '📅' },
@@ -30,6 +31,7 @@ export default function HRPortal() {
       </div>
       <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
       <div className="mt-6">
+        {activeTab === 'dashboard' && <HRDashboardTab />}
         {activeTab === 'employees' && <EmployeesTab />}
         {activeTab === 'salary' && <SalaryLedgerTab role="hr" />}
         {activeTab === 'leave' && <LeaveTab />}
@@ -40,6 +42,188 @@ export default function HRPortal() {
         {activeTab === 'services' && <StaffServicesTab />}
         {activeTab === 'messages' && <StaffMessagesTab accentColor="#dc2626" />}
       </div>
+    </div>
+  );
+}
+
+function HRDashboardTab() {
+  const [employees, setEmployees] = useState([]);
+  const [leaves, setLeaves] = useState([]);
+  const [attendance, setAttendance] = useState([]);
+  const [warnings, setWarnings] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      api.employees.list().then(d => Array.isArray(d) ? d : d.employees || []).catch(() => []),
+      api.hr.leaves().then(d => Array.isArray(d) ? d : d.leaves || []).catch(() => []),
+      api.hr.records('attendance').then(d => Array.isArray(d) ? d : d.records || []).catch(() => []),
+      api.hr.records('warning').then(d => Array.isArray(d) ? d : d.records || []).catch(() => []),
+    ]).then(([emps, lvs, att, warns]) => {
+      setEmployees(emps); setLeaves(lvs); setAttendance(att); setWarnings(warns);
+    }).finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <LoadingSpinner />;
+
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+  const weekAgo = new Date(now - 7 * 86400000).toISOString().slice(0, 10);
+  const monthPfx = today.slice(0, 7);
+
+  const active = employees.filter(e => e.employment_status !== 'inactive');
+  const pendingLeave = leaves.filter(l => l.status === 'pending');
+  const onLeaveToday = leaves.filter(l => l.status === 'approved' && l.start_date <= today && l.end_date >= today);
+  const att7 = attendance.filter(a => a.date >= weekAgo);
+  const lateThisWeek = att7.filter(a => (a.subtype || a.status) === 'Late');
+  const warningsMonth = warnings.filter(w => (w.date || w.created_at || '').startsWith(monthPfx));
+  const staleLeave = pendingLeave.filter(l => (now - new Date(l.created_at || 0)) > 48 * 3600000);
+
+  const anniversaries = active.filter(e => {
+    if (!e.hire_date) return false;
+    const h = new Date(e.hire_date);
+    const ann = new Date(now.getFullYear(), h.getMonth(), h.getDate());
+    if (ann < now) ann.setFullYear(now.getFullYear() + 1);
+    const d = Math.ceil((ann - now) / 86400000);
+    return d >= 0 && d <= 14;
+  }).map(e => {
+    const h = new Date(e.hire_date);
+    const ann = new Date(now.getFullYear(), h.getMonth(), h.getDate());
+    if (ann < now) ann.setFullYear(now.getFullYear() + 1);
+    return { ...e, years: ann.getFullYear() - h.getFullYear(), daysUntil: Math.ceil((ann - now) / 86400000) };
+  });
+
+  const probation = active.filter(e => {
+    if (!e.hire_date) return false;
+    const end = new Date(new Date(e.hire_date).getTime() + 90 * 86400000);
+    const d = Math.ceil((end - now) / 86400000);
+    return d >= 0 && d <= 30;
+  }).map(e => {
+    const end = new Date(new Date(e.hire_date).getTime() + 90 * 86400000);
+    return { ...e, daysLeft: Math.ceil((end - now) / 86400000) };
+  });
+
+  const onTime7 = att7.filter(a => (a.subtype || a.status) === 'Present').length;
+  const late7 = lateThisWeek.length;
+  const total7 = onTime7 + late7;
+  const lateMap = lateThisWeek.reduce((acc, r) => { acc[r.employee_name] = (acc[r.employee_name] || 0) + 1; return acc; }, {});
+
+  const STATS = [
+    { label: 'Active Staff', value: active.length, icon: '👥', color: '#3b82f6', bg: '#eff6ff' },
+    { label: 'On Leave Today', value: onLeaveToday.length, icon: '🌴', color: '#f59e0b', bg: '#fffbeb' },
+    { label: 'Late This Week', value: lateThisWeek.length, icon: '⚠️', color: '#ef4444', bg: '#fef2f2' },
+    { label: 'Warnings (Month)', value: warningsMonth.length, icon: '📋', color: '#8b5cf6', bg: '#f5f3ff' },
+    { label: 'Pending Leave', value: pendingLeave.length, icon: '🕐', color: pendingLeave.length ? '#dc2626' : '#16a34a', bg: pendingLeave.length ? '#fef2f2' : '#f0fdf4' },
+  ];
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        {STATS.map(s => (
+          <div key={s.label} style={{ background: s.bg, border: `1.5px solid ${s.color}30`, borderRadius: 12, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: '1.5rem' }}>{s.icon}</span>
+            <div>
+              <div style={{ fontSize: '1.8rem', fontWeight: 900, color: s.color, lineHeight: 1 }}>{s.value}</div>
+              <div style={{ fontSize: '0.68rem', color: s.color, fontWeight: 600, marginTop: 2, lineHeight: 1.2 }}>{s.label}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {staleLeave.length > 0 && (
+        <div style={{ background: '#fef3c7', border: '1.5px solid #f59e0b', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: '1.3rem' }}>⏰</span>
+          <div>
+            <p style={{ fontWeight: 700, color: '#92400e', fontSize: '0.85rem', margin: 0 }}>
+              {staleLeave.length} leave request{staleLeave.length > 1 ? 's' : ''} pending for over 48 hours
+            </p>
+            <p style={{ fontSize: '0.78rem', color: '#b45309', margin: 0 }}>
+              {staleLeave.map(l => l.employee_name || l.full_name || '?').join(', ')} — review in the Leave tab
+            </p>
+          </div>
+        </div>
+      )}
+
+      <div className="grid md:grid-cols-3 gap-4">
+        <Card>
+          <CardHeader><h3 style={{ fontWeight: 700, fontSize: '0.88rem', color: '#374151' }}>📊 Attendance (7 Days)</h3></CardHeader>
+          <CardBody>
+            {total7 === 0 ? <p style={{ fontSize: '0.85rem', color: '#9ca3af' }}>No records this week</p> : (
+              <div className="space-y-3">
+                {[{ label: 'On Time', count: onTime7, color: '#16a34a' }, { label: 'Late', count: late7, color: '#b45309' }].map(row => (
+                  <div key={row.label}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', fontWeight: 700, color: row.color, marginBottom: 3 }}>
+                      <span>{row.label}</span><span>{row.count}</span>
+                    </div>
+                    <div style={{ background: '#f1f5f9', borderRadius: 4, height: 8, overflow: 'hidden' }}>
+                      <div style={{ width: `${(row.count / total7) * 100}%`, background: row.color, height: '100%', borderRadius: 4, transition: 'width 0.4s' }} />
+                    </div>
+                  </div>
+                ))}
+                <p style={{ fontSize: '0.73rem', color: '#9ca3af' }}>{total7} logins recorded this week</p>
+              </div>
+            )}
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader><h3 style={{ fontWeight: 700, fontSize: '0.88rem', color: '#374151' }}>🎂 Upcoming Anniversaries</h3></CardHeader>
+          <CardBody>
+            {anniversaries.length === 0 ? <p style={{ fontSize: '0.85rem', color: '#9ca3af' }}>None in the next 14 days</p> : (
+              <div className="space-y-2">
+                {anniversaries.map(e => (
+                  <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <p style={{ fontWeight: 600, fontSize: '0.85rem', color: '#1f2937', margin: 0 }}>{e.full_name}</p>
+                      <p style={{ fontSize: '0.73rem', color: '#6b7280', margin: 0 }}>{e.years} yr{e.years !== 1 ? 's' : ''} · {e.position || '—'}</p>
+                    </div>
+                    <span style={{ background: e.daysUntil === 0 ? '#fef3c7' : '#eff6ff', color: e.daysUntil === 0 ? '#b45309' : '#1d4ed8', fontSize: '0.72rem', fontWeight: 700, padding: '2px 7px', borderRadius: 6 }}>
+                      {e.daysUntil === 0 ? '🎉 Today' : `${e.daysUntil}d`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader><h3 style={{ fontWeight: 700, fontSize: '0.88rem', color: '#374151' }}>⏳ Probation Ending (30 days)</h3></CardHeader>
+          <CardBody>
+            {probation.length === 0 ? <p style={{ fontSize: '0.85rem', color: '#9ca3af' }}>None ending soon</p> : (
+              <div className="space-y-2">
+                {probation.map(e => (
+                  <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <p style={{ fontWeight: 600, fontSize: '0.85rem', color: '#1f2937', margin: 0 }}>{e.full_name}</p>
+                      <p style={{ fontSize: '0.73rem', color: '#6b7280', margin: 0 }}>{e.position || '—'} · {e.branch || '—'}</p>
+                    </div>
+                    <span style={{ background: e.daysLeft <= 7 ? '#fef2f2' : '#fefce8', color: e.daysLeft <= 7 ? '#dc2626' : '#a16207', fontSize: '0.72rem', fontWeight: 700, padding: '2px 7px', borderRadius: 6 }}>
+                      {e.daysLeft === 0 ? 'Today' : `${e.daysLeft}d`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardBody>
+        </Card>
+      </div>
+
+      {Object.keys(lateMap).length > 0 && (
+        <Card>
+          <CardHeader><h3 style={{ fontWeight: 700, fontSize: '0.88rem', color: '#374151' }}>⚠️ Late Arrivals This Week</h3></CardHeader>
+          <CardBody>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {Object.entries(lateMap).sort((a, b) => b[1] - a[1]).map(([name, count]) => (
+                <span key={name} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 8, padding: '4px 10px' }}>
+                  <span style={{ fontWeight: 700, color: '#92400e', fontSize: '0.82rem' }}>{name}</span>
+                  <span style={{ background: '#f59e0b', color: '#fff', borderRadius: 4, fontSize: '0.7rem', fontWeight: 800, padding: '1px 5px' }}>{count}×</span>
+                </span>
+              ))}
+            </div>
+          </CardBody>
+        </Card>
+      )}
     </div>
   );
 }
@@ -68,6 +252,10 @@ function EmployeesTab() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [search, setSearch] = useState('');
+  const [profileEmp, setProfileEmp] = useState(null);
+  const [profileData, setProfileData] = useState({ attendance: [], leaves: [], warnings: [], reviews: [] });
+  const [profileLoading, setProfileLoading] = useState(false);
 
   const loadData = () => {
     setLoading(true);
@@ -119,6 +307,40 @@ function EmployeesTab() {
     finally { setSubmitting(false); }
   };
 
+  const openProfile = async (emp) => {
+    setProfileEmp(emp);
+    setProfileLoading(true);
+    try {
+      const [att, lvs, warns, perf] = await Promise.all([
+        api.hr.records('attendance').then(d => (Array.isArray(d) ? d : d.records || []).filter(r => r.employee_name === emp.full_name)).catch(() => []),
+        api.hr.leaves().then(d => (Array.isArray(d) ? d : d.leaves || []).filter(l => l.employee_name === emp.full_name)).catch(() => []),
+        api.hr.records('warning').then(d => (Array.isArray(d) ? d : d.records || []).filter(r => r.employee_name === emp.full_name)).catch(() => []),
+        api.hr.records('performance').then(d => (Array.isArray(d) ? d : d.records || []).filter(r => r.employee_name === emp.full_name)).catch(() => []),
+      ]);
+      setProfileData({ attendance: att, leaves: lvs, warnings: warns, reviews: perf });
+    } finally { setProfileLoading(false); }
+  };
+
+  const getTenure = (hire_date) => {
+    if (!hire_date) return null;
+    const h = new Date(hire_date);
+    const n = new Date();
+    const totalM = (n.getFullYear() - h.getFullYear()) * 12 + (n.getMonth() - h.getMonth());
+    if (totalM < 1) return { text: 'New hire', alert: false };
+    if (totalM < 12) return { text: `${totalM}mo`, alert: false };
+    const yrs = Math.floor(totalM / 12); const mo = totalM % 12;
+    const ann = new Date(n.getFullYear(), h.getMonth(), h.getDate());
+    if (ann < n) ann.setFullYear(n.getFullYear() + 1);
+    const daysToAnn = Math.ceil((ann - n) / 86400000);
+    return { text: `${yrs}yr${mo > 0 ? ' ' + mo + 'mo' : ''}`, alert: daysToAnn <= 14 };
+  };
+
+  const filtered = employees.filter(emp => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    return ['full_name', 'position', 'department', 'branch'].some(k => (emp[k] || '').toLowerCase().includes(q));
+  });
+
   const pending = changeRequests.filter(r => r.status === 'pending');
   const history = changeRequests.filter(r => r.status !== 'pending');
 
@@ -136,17 +358,38 @@ function EmployeesTab() {
         </div>
       </div>
 
-      <div className="flex justify-between items-center">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
         <h3 className="font-semibold text-gray-800">Employee Directory ({employees.filter(e => e.employment_status !== 'inactive').length} active)</h3>
-        <Button size="sm" onClick={() => { setShowAddModal(true); setError(''); }}>
-          <Plus size={14} className="mr-1" /> Request to Add Employee
-        </Button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <input
+            type="text" placeholder="🔍 Search name, position, dept, branch…" value={search}
+            onChange={e => setSearch(e.target.value)}
+            style={{ padding: '6px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: '0.85rem', outline: 'none', minWidth: 240 }}
+          />
+          <Button size="sm" onClick={() => { setShowAddModal(true); setError(''); }}>
+            <Plus size={14} className="mr-1" /> Add Employee
+          </Button>
+        </div>
       </div>
 
       <Card>
         <Table
           columns={[
-            { header: 'Name', key: 'full_name' },
+            { header: 'Name', render: r => {
+              const t = getTenure(r.hire_date);
+              return (
+                <div>
+                  <button onClick={() => openProfile(r)} style={{ fontWeight: 700, color: '#1e3a5f', fontSize: '0.88rem', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left', textDecoration: 'underline dotted' }}>
+                    {r.full_name}
+                  </button>
+                  {t && (
+                    <span style={{ marginLeft: 6, fontSize: '0.68rem', fontWeight: 700, padding: '1px 6px', borderRadius: 6, background: t.alert ? '#fef3c7' : '#f1f5f9', color: t.alert ? '#b45309' : '#6b7280' }}>
+                      {t.text}{t.alert ? ' 🎂' : ''}
+                    </span>
+                  )}
+                </div>
+              );
+            }},
             { header: 'Position', key: 'position' },
             { header: 'Department', key: 'department' },
             { header: 'Branch', key: 'branch' },
@@ -157,14 +400,17 @@ function EmployeesTab() {
               </Badge>
             )},
             { header: 'Joined', render: r => formatDate(r.hire_date || r.created_at) },
-            { header: 'Actions', render: r => r.employment_status !== 'inactive' ? (
-              <Button size="sm" variant="danger" onClick={() => { setRemoveTarget(r); setRemoveReason(''); setError(''); }}>
-                Request Removal
-              </Button>
-            ) : null },
+            { header: 'Actions', render: r => (
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                <Button size="sm" variant="secondary" onClick={() => openProfile(r)}>👁 Profile</Button>
+                {r.employment_status !== 'inactive' && (
+                  <Button size="sm" variant="danger" onClick={() => { setRemoveTarget(r); setRemoveReason(''); setError(''); }}>Remove</Button>
+                )}
+              </div>
+            )},
           ]}
-          data={employees}
-          emptyMessage="No employees found"
+          data={filtered}
+          emptyMessage={search ? 'No employees match your search' : 'No employees found'}
         />
       </Card>
 
@@ -269,6 +515,86 @@ function EmployeesTab() {
             </div>
           </div>
         </Modal>
+
+      {profileEmp && (
+        <Modal open={!!profileEmp} title={`👤 ${profileEmp.full_name}`} onClose={() => setProfileEmp(null)}>
+          <div style={{ padding: '0 24px 24px' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginBottom: 16, paddingBottom: 14, borderBottom: '1px solid #f1f5f9' }}>
+              {[
+                { label: 'Position', value: profileEmp.position || '—' },
+                { label: 'Department', value: profileEmp.department || '—' },
+                { label: 'Branch', value: profileEmp.branch || '—' },
+                { label: 'Phone', value: profileEmp.phone || '—' },
+                { label: 'Tenure', value: (() => { const t = getTenure(profileEmp.hire_date); return t ? t.text : '—'; })() },
+                { label: 'Joined', value: profileEmp.hire_date ? formatDate(profileEmp.hire_date) : '—' },
+              ].map(item => (
+                <div key={item.label} style={{ minWidth: 110 }}>
+                  <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.05em' }}>{item.label}</div>
+                  <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#1f2937' }}>{item.value}</div>
+                </div>
+              ))}
+            </div>
+            {profileLoading ? <LoadingSpinner /> : (
+              <div className="space-y-5">
+                <div>
+                  <p style={{ fontWeight: 700, fontSize: '0.83rem', color: '#374151', marginBottom: 6 }}>📅 Leave History ({profileData.leaves.length})</p>
+                  {profileData.leaves.length === 0 ? <p style={{ fontSize: '0.82rem', color: '#9ca3af' }}>No leave records</p> : (
+                    <div style={{ maxHeight: 130, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {profileData.leaves.map((l, i) => (
+                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', padding: '4px 8px', background: '#f9fafb', borderRadius: 6 }}>
+                          <span><Badge variant={LEAVE_TYPE_COLORS[l.leave_type] || 'info'}>{l.leave_type}</Badge> {formatDate(l.start_date)} → {formatDate(l.end_date)} ({l.working_days ?? '?'}d)</span>
+                          <Badge variant={l.status === 'approved' ? 'success' : l.status === 'rejected' ? 'danger' : 'warning'}>{l.status}</Badge>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <p style={{ fontWeight: 700, fontSize: '0.83rem', color: '#374151', marginBottom: 6 }}>⚠️ Warnings ({profileData.warnings.length})</p>
+                  {profileData.warnings.length === 0 ? <p style={{ fontSize: '0.82rem', color: '#9ca3af' }}>No warnings on record</p> : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {profileData.warnings.map((w, i) => (
+                        <div key={i} style={{ fontSize: '0.8rem', padding: '5px 8px', background: '#fef2f2', borderRadius: 6, color: '#991b1b' }}>
+                          <strong>{w.subtype || 'Warning'}</strong> — {formatDate(w.date || w.created_at)}: {w.reason || w.notes || '—'}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <p style={{ fontWeight: 700, fontSize: '0.83rem', color: '#374151', marginBottom: 6 }}>⭐ Performance Reviews ({profileData.reviews.length})</p>
+                  {profileData.reviews.length === 0 ? <p style={{ fontSize: '0.82rem', color: '#9ca3af' }}>No reviews yet</p> : (
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {profileData.reviews.map((rev, i) => (
+                        <div key={i} style={{ background: '#fefce8', border: '1px solid #fde047', borderRadius: 8, padding: '6px 12px', textAlign: 'center', minWidth: 56 }}>
+                          <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#ca8a04' }}>{rev.rating}</div>
+                          <div style={{ fontSize: '0.68rem', color: '#a16207' }}>{formatDate(rev.created_at)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <p style={{ fontWeight: 700, fontSize: '0.83rem', color: '#374151', marginBottom: 6 }}>🕐 Recent Attendance ({profileData.attendance.length} records)</p>
+                  {profileData.attendance.length === 0 ? <p style={{ fontSize: '0.82rem', color: '#9ca3af' }}>No attendance records</p> : (
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      {profileData.attendance.slice(-20).map((a, i) => {
+                        const isLate = (a.subtype || a.status) === 'Late';
+                        return (
+                          <div key={i} title={`${a.date}: in ${a.clock_in || '?'} out ${a.clock_out || '?'}`}
+                            style={{ width: 30, height: 30, borderRadius: 6, background: isLate ? '#fef3c7' : '#dcfce7', border: `1.5px solid ${isLate ? '#fde68a' : '#86efac'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700, color: isLate ? '#b45309' : '#15803d', cursor: 'default' }}>
+                            {isLate ? '⚠' : '✓'}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -425,6 +751,8 @@ function LeaveTab() {
   const [rejectTarget, setRejectTarget] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
   const [rejectSubmitting, setRejectSubmitting] = useState(false);
+  const [leaveView, setLeaveView] = useState('list');
+  const [leaveMonth, setLeaveMonth] = useState(new Date().toISOString().slice(0, 7));
 
   const loadData = () => {
     Promise.all([
@@ -488,15 +816,61 @@ function LeaveTab() {
     }
   };
 
+  const LEAVE_ENTITLEMENTS = { Annual: 24, Sick: 10, Personal: 3, Maternity: 84, Paternity: 5 };
+  const currentYear = new Date().getFullYear().toString();
+
+  const leaveBalances = employees.reduce((acc, emp) => {
+    const used = {};
+    leaves.filter(l => l.status === 'approved' && l.employee_name === emp.full_name && (l.start_date || '').startsWith(currentYear))
+      .forEach(l => { used[l.leave_type] = (used[l.leave_type] || 0) + (l.working_days || 0); });
+    acc[emp.full_name] = used;
+    return acc;
+  }, {});
+
+  const checkConflict = (empName, startDate, endDate) => {
+    if (!empName || !startDate || !endDate) return '';
+    const emp = employees.find(e => e.full_name === empName);
+    const branch = emp?.branch;
+    if (!branch) return '';
+    const overlap = leaves.filter(l =>
+      l.status !== 'rejected' && l.employee_name !== empName &&
+      (employees.find(e2 => e2.full_name === l.employee_name)?.branch === branch) &&
+      !(l.end_date < startDate || l.start_date > endDate)
+    );
+    if (!overlap.length) return '';
+    return `⚠️ ${overlap.length} staff member(s) at ${branch} also have leave during this period: ${overlap.map(l => l.employee_name).slice(0, 3).join(', ')}`;
+  };
+
+  const formConflict = checkConflict(form.employee_name, form.start_date, form.end_date);
+
   const pending = leaves.filter(l => l.status === 'pending');
   const history = leaves.filter(l => l.status !== 'pending');
+
+  const calDays = (() => {
+    const [y, m] = leaveMonth.split('-').map(Number);
+    const first = new Date(y, m - 1, 1).getDay();
+    const total = new Date(y, m, 0).getDate();
+    return { first, total, y, m };
+  })();
+  const approvedLeaves = leaves.filter(l => l.status === 'approved');
 
   if (loading) return <LoadingSpinner />;
 
   return (
     <div className="space-y-6">
       <Card>
-        <CardHeader><h3 className="font-bold text-gray-800">New Leave Request</h3></CardHeader>
+        <CardHeader>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+            <h3 className="font-bold text-gray-800">New Leave Request</h3>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {['list','calendar','balances'].map(v => (
+                <button key={v} onClick={() => setLeaveView(v)} style={{ padding: '5px 14px', fontSize: '0.78rem', fontWeight: 700, borderRadius: 20, border: '1.5px solid', borderColor: leaveView === v ? '#1e3a5f' : '#e2e8f0', background: leaveView === v ? '#1e3a5f' : '#fff', color: leaveView === v ? '#fff' : '#6b7280', cursor: 'pointer', transition: 'all 0.15s' }}>
+                  {v === 'list' ? '📋 List' : v === 'calendar' ? '📅 Calendar' : '⚖️ Balances'}
+                </button>
+              ))}
+            </div>
+          </div>
+        </CardHeader>
         <CardBody>
           {success && <Alert type="success" className="mb-4">{success}</Alert>}
           {error && <Alert type="error" className="mb-4">{error}</Alert>}
@@ -531,6 +905,11 @@ function LeaveTab() {
             <div className="md:col-span-2">
               <Textarea label="Reason" value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))} />
             </div>
+            {formConflict && (
+              <div className="md:col-span-2">
+                <div style={{ background: '#fef3c7', border: '1.5px solid #f59e0b', borderRadius: 8, padding: '8px 12px', fontSize: '0.83rem', color: '#92400e' }}>{formConflict}</div>
+              </div>
+            )}
             <div className="md:col-span-2 flex items-center justify-between">
               <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
                 <input type="checkbox" checked={form.urgent} onChange={e => setForm(f => ({ ...f, urgent: e.target.checked }))}
@@ -542,6 +921,89 @@ function LeaveTab() {
           </form>
         </CardBody>
       </Card>
+
+      {leaveView === 'calendar' && (
+        <Card>
+          <CardHeader>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 className="font-bold text-gray-800">Leave Calendar</h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button onClick={() => { const [y,m] = leaveMonth.split('-').map(Number); setLeaveMonth(new Date(y, m-2, 1).toISOString().slice(0,7)); }} style={{ background: 'none', border: '1px solid #e2e8f0', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: '0.9rem' }}>‹</button>
+                <span style={{ fontWeight: 700, color: '#1f2937', fontSize: '0.88rem' }}>{new Date(leaveMonth + '-15').toLocaleString('default', { month: 'long', year: 'numeric' })}</span>
+                <button onClick={() => { const [y,m] = leaveMonth.split('-').map(Number); setLeaveMonth(new Date(y, m, 1).toISOString().slice(0,7)); }} style={{ background: 'none', border: '1px solid #e2e8f0', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: '0.9rem' }}>›</button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardBody>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2, marginBottom: 4 }}>
+              {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
+                <div key={d} style={{ textAlign: 'center', fontSize: '0.72rem', fontWeight: 700, color: '#9ca3af', padding: '4px 0' }}>{d}</div>
+              ))}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2 }}>
+              {Array.from({ length: calDays.first }, (_, i) => <div key={'e'+i} />)}
+              {Array.from({ length: calDays.total }, (_, i) => {
+                const day = i + 1;
+                const ds = `${calDays.y}-${String(calDays.m).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+                const onLeave = approvedLeaves.filter(l => l.start_date <= ds && l.end_date >= ds);
+                const isToday = ds === new Date().toISOString().slice(0,10);
+                return (
+                  <div key={day} title={onLeave.map(l => `${l.employee_name} (${l.leave_type})`).join('\n')}
+                    style={{ minHeight: 54, padding: '3px 4px', border: `1.5px solid ${isToday ? '#3b82f6' : '#f1f5f9'}`, borderRadius: 6, background: onLeave.length ? '#fffbeb' : (isToday ? '#eff6ff' : '#fff') }}>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: isToday ? '#3b82f6' : '#374151' }}>{day}</div>
+                    {onLeave.slice(0,2).map((l, idx) => (
+                      <div key={idx} style={{ fontSize: '0.62rem', background: '#f59e0b', color: '#fff', borderRadius: 3, padding: '0 3px', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {l.employee_name?.split(' ')[0]}
+                      </div>
+                    ))}
+                    {onLeave.length > 2 && <div style={{ fontSize: '0.6rem', color: '#9ca3af' }}>+{onLeave.length - 2}</div>}
+                  </div>
+                );
+              })}
+            </div>
+            <p style={{ fontSize: '0.73rem', color: '#9ca3af', marginTop: 8 }}>Hover over a day to see who is on leave. 🟡 = approved leave · 🔵 = today</p>
+          </CardBody>
+        </Card>
+      )}
+
+      {leaveView === 'balances' && (
+        <Card>
+          <CardHeader><h3 className="font-bold text-gray-800">⚖️ Leave Balances — {currentYear}</h3></CardHeader>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
+              <thead>
+                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                  <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700, color: '#374151', position: 'sticky', left: 0, background: '#f8fafc' }}>Employee</th>
+                  {Object.keys(LEAVE_ENTITLEMENTS).map(t => (
+                    <th key={t} style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 700, color: '#374151', minWidth: 90 }}>{t}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {employees.filter(e => e.employment_status !== 'inactive').map(emp => (
+                  <tr key={emp.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '7px 12px', fontWeight: 600, color: '#1f2937', whiteSpace: 'nowrap' }}>{emp.full_name}</td>
+                    {Object.entries(LEAVE_ENTITLEMENTS).map(([type, max]) => {
+                      const used = leaveBalances[emp.full_name]?.[type] || 0;
+                      const remaining = Math.max(0, max - used);
+                      const pct = max > 0 ? Math.min(100, (used / max) * 100) : 0;
+                      return (
+                        <td key={type} style={{ padding: '7px 12px', textAlign: 'center' }}>
+                          <div style={{ fontSize: '0.8rem', fontWeight: 700, color: remaining === 0 ? '#dc2626' : remaining <= 3 ? '#b45309' : '#15803d' }}>{remaining}d left</div>
+                          <div style={{ background: '#f1f5f9', borderRadius: 3, height: 5, margin: '2px auto', overflow: 'hidden', maxWidth: 60 }}>
+                            <div style={{ width: `${pct}%`, background: pct >= 100 ? '#dc2626' : pct >= 75 ? '#f59e0b' : '#22c55e', height: '100%' }} />
+                          </div>
+                          <div style={{ fontSize: '0.68rem', color: '#9ca3af' }}>{used}/{max}d</div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
 
       <div>
         <h3 className="text-base font-bold text-gray-800 mb-3 flex items-center gap-2">
@@ -967,6 +1429,13 @@ function AttendanceTab() {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [filterDate, setFilterDate] = useState(new Date().toISOString().slice(0, 10));
+  const [attView, setAttView] = useState('list');
+  const [weekStart, setWeekStart] = useState(() => {
+    const d = new Date(); d.setDate(d.getDate() - d.getDay()); return d.toISOString().slice(0, 10);
+  });
+  const [editRecord, setEditRecord] = useState(null);
+  const [editForm, setEditForm] = useState({ clock_in: '', clock_out: '' });
+  const [editSubmitting, setEditSubmitting] = useState(false);
 
   const getNow = () => new Date().toTimeString().slice(0, 5);
 
@@ -1004,6 +1473,46 @@ function AttendanceTab() {
   const lateCount = todayRecords.filter(r => (r.subtype || r.status) === 'Late').length;
   const presentCount = todayRecords.filter(r => (r.subtype || r.status) === 'Present').length;
   const absentCount = Math.max(0, employees.length - todayRecords.length);
+
+  const exportCSV = () => {
+    const rows = filterDate ? records.filter(r => (r.date || '').startsWith(filterDate)) : records;
+    if (!rows.length) return;
+    const headers = ['Employee','Date','Clock In','Clock Out','Hours','Status'];
+    const data = rows.map(r => {
+      let hrs = '';
+      if (r.clock_in && r.clock_out) {
+        const [ih,im] = r.clock_in.split(':').map(Number);
+        const [oh,om] = r.clock_out.split(':').map(Number);
+        const mins = (oh*60+om) - (ih*60+im);
+        if (mins > 0) hrs = `${Math.floor(mins/60)}h${mins%60}m`;
+      }
+      return [r.employee_name||'', r.date||'', r.clock_in||'', r.clock_out||'', hrs, r.subtype||r.status||''];
+    });
+    const csv = [headers,...data].map(row=>row.map(c=>`"${c}"`).join(',')).join('\n');
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([csv],{type:'text/csv'})), download:`attendance_${filterDate||'all'}.csv` });
+    a.click();
+  };
+
+  const handleEditSave = async () => {
+    if (!editRecord) return;
+    setEditSubmitting(true);
+    try {
+      await api.hr.updateRecord(editRecord.id, { clock_in: editForm.clock_in||undefined, clock_out: editForm.clock_out||undefined });
+      setEditRecord(null); loadData();
+    } catch(err) { alert(err.message||'Failed to update'); }
+    finally { setEditSubmitting(false); }
+  };
+
+  const thirtyAgo = new Date(Date.now()-30*86400000).toISOString().slice(0,10);
+  const lateOffenders = Object.entries(
+    records.filter(r => (r.subtype||r.status)==='Late' && r.date>=thirtyAgo)
+      .reduce((acc,r)=>{ acc[r.employee_name]=(acc[r.employee_name]||0)+1; return acc; },{})
+  ).filter(([,c])=>c>=2).sort((a,b)=>b[1]-a[1]);
+
+  const weekDays = Array.from({length:7},(_,i)=>{ const d=new Date(weekStart); d.setDate(d.getDate()+i); return d.toISOString().slice(0,10); });
+  const weekRecordsMap = {};
+  records.filter(r=>weekDays.includes(r.date)).forEach(r=>{ weekRecordsMap[`${r.employee_name}__${r.date}`]=r; });
+  const weekEmployees = [...new Set(records.filter(r=>weekDays.includes(r.date)).map(r=>r.employee_name))];
 
   if (loading) return <LoadingSpinner />;
 
@@ -1094,75 +1603,165 @@ function AttendanceTab() {
         <CardHeader>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
             <h3 className="font-bold text-gray-800">Attendance Records</h3>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>Filter by date:</span>
               <input type="date" value={filterDate} onChange={e => setFilterDate(e.target.value)}
                 style={{ padding: '4px 10px', border: '1.5px solid #d1d5db', borderRadius: 8, fontSize: '0.85rem', color: '#374151' }} />
-              <button onClick={() => setFilterDate('')} style={{ fontSize: '0.78rem', color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer' }}>Show all</button>
+              <button onClick={() => setFilterDate('')} style={{ fontSize: '0.78rem', color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer' }}>All</button>
+              <button onClick={exportCSV} style={{ fontSize: '0.78rem', fontWeight: 700, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', color: '#374151' }}>⬇ CSV</button>
+              <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: 8, padding: 2, gap: 2 }}>
+                {[['list','📋 List'],['weekly','📅 Week']].map(([v,label]) => (
+                  <button key={v} onClick={() => setAttView(v)} style={{ padding: '4px 10px', borderRadius: 6, fontSize: '0.78rem', fontWeight: 700, background: attView===v ? '#1e3a5f' : 'transparent', color: attView===v ? '#fff' : '#6b7280', border: 'none', cursor: 'pointer', transition: 'all 0.15s' }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </CardHeader>
-        <Table
-          columns={[
-            { header: 'Employee', key: 'employee_name' },
-            { header: 'Date', render: r => formatDate(r.date) },
-            { header: 'Clock In', render: r => {
-              if (!r.clock_in) return <span style={{ color: '#9ca3af' }}>—</span>;
-              const s = r.subtype || r.status || '';
-              const isLate = s === 'Late';
-              return (
-                <span style={{
-                  fontWeight: 700, fontSize: '0.88rem',
-                  color: isLate ? '#b45309' : '#15803d',
-                  background: isLate ? '#fef3c7' : '#dcfce7',
-                  padding: '2px 8px', borderRadius: 6,
-                  border: `1px solid ${isLate ? '#fde68a' : '#86efac'}`
-                }}>
-                  {isLate ? '⚠ ' : '✓ '}{r.clock_in}
-                </span>
-              );
-            }},
-            { header: 'Clock Out', render: r => {
-              if (!r.clock_out) return <span style={{ color: '#9ca3af' }}>—</span>;
-              return <span style={{ fontWeight: 600, color: '#374151' }}>{r.clock_out}</span>;
-            }},
-            { header: 'Hours', render: r => {
-              if (!r.clock_in || !r.clock_out) return <span style={{ color: '#9ca3af' }}>—</span>;
-              const [ih, im] = r.clock_in.split(':').map(Number);
-              const [oh, om] = r.clock_out.split(':').map(Number);
-              const mins = (oh * 60 + om) - (ih * 60 + im);
-              if (mins <= 0) return <span style={{ color: '#9ca3af' }}>—</span>;
-              const hh = Math.floor(mins / 60), mm = mins % 60;
-              const under = mins < 8 * 60;
-              return (
-                <span style={{ fontWeight: 700, color: under ? '#b45309' : '#15803d', fontSize: '0.85rem' }}>
-                  {hh}h {mm}m{under ? ' ⚠' : ''}
-                </span>
-              );
-            }},
-            { header: 'Status', render: r => {
-              const s = r.subtype || r.status || 'Present';
-              return <Badge variant={s === 'Late' ? 'warning' : s === 'Present' ? 'success' : s === 'Absent' ? 'danger' : 'info'}>{s}</Badge>;
-            }},
-            { header: 'Source', render: r => {
-              const isAuto = (r.notes || '').toLowerCase().includes('auto-logged') || r.created_by === 'system';
-              return (
-                <span style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 4,
-                  fontSize: '0.75rem', fontWeight: 700, padding: '2px 8px', borderRadius: 12,
-                  background: isAuto ? '#eff6ff' : '#f0fdf4',
-                  color: isAuto ? '#1d4ed8' : '#15803d',
-                  border: `1px solid ${isAuto ? '#93c5fd' : '#86efac'}`
-                }}>
-                  {isAuto ? '🤖 Auto' : '✏️ Manual'}
-                </span>
-              );
-            }},
-          ]}
-          data={filterDate ? records.filter(r => (r.date || '').startsWith(filterDate)) : records}
-          emptyMessage="No attendance records"
-        />
+
+        {attView === 'list' && (
+          <Table
+            columns={[
+              { header: 'Employee', key: 'employee_name' },
+              { header: 'Date', render: r => formatDate(r.date) },
+              { header: 'Clock In', render: r => {
+                if (!r.clock_in) return <span style={{ color: '#9ca3af' }}>—</span>;
+                const s = r.subtype || r.status || '';
+                const isLate = s === 'Late';
+                return (
+                  <span style={{ fontWeight: 700, fontSize: '0.88rem', color: isLate ? '#b45309' : '#15803d', background: isLate ? '#fef3c7' : '#dcfce7', padding: '2px 8px', borderRadius: 6, border: `1px solid ${isLate ? '#fde68a' : '#86efac'}` }}>
+                    {isLate ? '⚠ ' : '✓ '}{r.clock_in}
+                  </span>
+                );
+              }},
+              { header: 'Clock Out', render: r => r.clock_out ? <span style={{ fontWeight: 600, color: '#374151' }}>{r.clock_out}</span> : <span style={{ color: '#9ca3af' }}>—</span> },
+              { header: 'Hours', render: r => {
+                if (!r.clock_in || !r.clock_out) return <span style={{ color: '#9ca3af' }}>—</span>;
+                const [ih,im] = r.clock_in.split(':').map(Number), [oh,om] = r.clock_out.split(':').map(Number);
+                const mins = (oh*60+om)-(ih*60+im);
+                if (mins <= 0) return <span style={{ color: '#9ca3af' }}>—</span>;
+                const under = mins < 8*60;
+                return <span style={{ fontWeight: 700, color: under ? '#b45309' : '#15803d' }}>{Math.floor(mins/60)}h {mins%60}m{under ? ' ⚠' : ''}</span>;
+              }},
+              { header: 'Status', render: r => {
+                const s = r.subtype || r.status || 'Present';
+                return <Badge variant={s==='Late'?'warning':s==='Present'?'success':s==='Absent'?'danger':'info'}>{s}</Badge>;
+              }},
+              { header: 'Actions', render: r => (
+                <button onClick={() => { setEditRecord(r); setEditForm({ clock_in: r.clock_in||'', clock_out: r.clock_out||'' }); }}
+                  style={{ fontSize: '0.78rem', fontWeight: 700, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', color: '#374151' }}>
+                  ✏️ Edit
+                </button>
+              )},
+            ]}
+            data={filterDate ? records.filter(r=>(r.date||'').startsWith(filterDate)) : records}
+            emptyMessage="No attendance records"
+          />
+        )}
+
+        {attView === 'weekly' && (
+          <CardBody>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+              <button onClick={() => { const d=new Date(weekStart); d.setDate(d.getDate()-7); setWeekStart(d.toISOString().slice(0,10)); }}
+                style={{ padding: '4px 12px', border: '1px solid #e2e8f0', borderRadius: 6, background: '#fff', cursor: 'pointer', fontSize: '0.9rem' }}>‹ Prev</button>
+              <span style={{ fontWeight: 700, color: '#1f2937', fontSize: '0.88rem' }}>Week of {new Date(weekStart+'T12:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}</span>
+              <button onClick={() => { const d=new Date(weekStart); d.setDate(d.getDate()+7); setWeekStart(d.toISOString().slice(0,10)); }}
+                style={{ padding: '4px 12px', border: '1px solid #e2e8f0', borderRadius: 6, background: '#fff', cursor: 'pointer', fontSize: '0.9rem' }}>Next ›</button>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                <thead>
+                  <tr>
+                    <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#6b7280', borderBottom: '2px solid #e2e8f0', minWidth: 130 }}>Employee</th>
+                    {weekDays.map(d => {
+                      const dt = new Date(d+'T12:00:00');
+                      const isToday = d === new Date().toISOString().slice(0,10);
+                      return (
+                        <th key={d} style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 700, color: isToday ? '#3b82f6' : '#6b7280', borderBottom: '2px solid #e2e8f0', minWidth: 80, background: isToday ? '#eff6ff' : undefined }}>
+                          <div>{dt.toLocaleDateString('en-GB',{weekday:'short'})}</div>
+                          <div style={{ fontSize: '0.68rem' }}>{dt.toLocaleDateString('en-GB',{day:'numeric',month:'short'})}</div>
+                        </th>
+                      );
+                    })}
+                  </tr>
+                </thead>
+                <tbody>
+                  {(weekEmployees.length ? weekEmployees : employees.slice(0,20).map(e=>e.full_name)).map(emp => (
+                    <tr key={emp} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '6px 10px', fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>{emp}</td>
+                      {weekDays.map(d => {
+                        const rec = weekRecordsMap[`${emp}__${d}`];
+                        const dt = new Date(d+'T12:00:00');
+                        const isWeekend = dt.getDay()===0 || dt.getDay()===6;
+                        if (!rec) return <td key={d} style={{ padding: '5px 6px', textAlign: 'center', background: isWeekend ? '#f8fafc' : undefined }}><span style={{ fontSize: '0.72rem', color: '#d1d5db' }}>—</span></td>;
+                        const s = rec.subtype||rec.status;
+                        const [bg, col] = s==='Late' ? ['#fef3c7','#b45309'] : s==='Absent' ? ['#fef2f2','#dc2626'] : ['#dcfce7','#15803d'];
+                        return (
+                          <td key={d} style={{ padding: '4px 5px', textAlign: 'center' }}>
+                            <div style={{ background: bg, borderRadius: 6, padding: '3px 4px' }}>
+                              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: col }}>{s}</div>
+                              {rec.clock_in && <div style={{ fontSize: '0.65rem', color: '#6b7280' }}>{rec.clock_in}</div>}
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ display: 'flex', gap: 10, marginTop: 10, fontSize: '0.73rem' }}>
+              {[['#dcfce7','#15803d','Present'],['#fef3c7','#b45309','Late'],['#fef2f2','#dc2626','Absent']].map(([bg,col,label]) => (
+                <span key={label} style={{ background: bg, color: col, borderRadius: 4, padding: '1px 8px', fontWeight: 700 }}>{label}</span>
+              ))}
+            </div>
+          </CardBody>
+        )}
       </Card>
+
+      {lateOffenders.length > 0 && (
+        <Card>
+          <CardHeader><h3 className="font-bold text-gray-800">⚠️ Late Arrival Report — Last 30 Days</h3></CardHeader>
+          <CardBody>
+            <p style={{ fontSize: '0.8rem', color: '#6b7280', marginBottom: 10 }}>Staff with 2+ late arrivals in the past 30 days.</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {lateOffenders.map(([name, count]) => (
+                <div key={name} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: count>=5 ? '#fef2f2' : '#fef3c7', border: `1px solid ${count>=5 ? '#fca5a5' : '#fde68a'}`, borderRadius: 8, padding: '7px 12px' }}>
+                  <span style={{ fontWeight: 700, fontSize: '0.85rem', color: count>=5 ? '#dc2626' : '#92400e' }}>{name}</span>
+                  <span style={{ background: count>=5 ? '#dc2626' : '#f59e0b', color: '#fff', borderRadius: 4, fontSize: '0.73rem', fontWeight: 800, padding: '1px 6px' }}>{count}×</span>
+                </div>
+              ))}
+            </div>
+          </CardBody>
+        </Card>
+      )}
+
+      {editRecord && (
+        <Modal open={!!editRecord} title={`✏️ Override: ${editRecord.employee_name} — ${formatDate(editRecord.date)}`} onClose={() => setEditRecord(null)}>
+          <div style={{ padding: '16px 24px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ background: '#f8fafc', borderRadius: 8, padding: '10px 14px', fontSize: '0.83rem', color: '#374151' }}>
+              Current: Clock In <strong>{editRecord.clock_in||'—'}</strong> · Clock Out <strong>{editRecord.clock_out||'—'}</strong> · Status <strong>{editRecord.subtype||editRecord.status}</strong>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4 }}>Clock In</label>
+                <input type="time" value={editForm.clock_in} onChange={e => setEditForm(f=>({...f,clock_in:e.target.value}))}
+                  style={{ width: '100%', padding: '7px 10px', border: '1.5px solid #e2e8f0', borderRadius: 7, fontSize: '0.9rem' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4 }}>Clock Out</label>
+                <input type="time" value={editForm.clock_out} onChange={e => setEditForm(f=>({...f,clock_out:e.target.value}))}
+                  style={{ width: '100%', padding: '7px 10px', border: '1.5px solid #e2e8f0', borderRadius: 7, fontSize: '0.9rem' }} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <Button variant="secondary" onClick={() => setEditRecord(null)}>Cancel</Button>
+              <Button onClick={handleEditSave} disabled={editSubmitting}>{editSubmitting ? 'Saving…' : 'Save Override'}</Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -1208,6 +1807,24 @@ function PerformanceTab() {
       setSubmitting(false);
     }
   };
+
+  const empTrends = reviews.reduce((acc, r) => {
+    if (!acc[r.employee_name]) acc[r.employee_name] = [];
+    acc[r.employee_name].push({ rating: Number(r.rating), date: r.created_at });
+    return acc;
+  }, {});
+  Object.values(empTrends).forEach(arr => arr.sort((a, b) => new Date(a.date) - new Date(b.date)));
+
+  const deptAverages = employees.reduce((acc, emp) => {
+    const dept = emp.department || 'Unassigned';
+    const empRevs = empTrends[emp.full_name] || [];
+    if (empRevs.length > 0) {
+      const avg = empRevs.reduce((s, r) => s + r.rating, 0) / empRevs.length;
+      if (!acc[dept]) acc[dept] = { total: 0, count: 0 };
+      acc[dept].total += avg; acc[dept].count += 1;
+    }
+    return acc;
+  }, {});
 
   if (loading) return <LoadingSpinner />;
 
@@ -1272,6 +1889,61 @@ function PerformanceTab() {
           emptyMessage="No reviews recorded"
         />
       </Card>
+
+      {Object.keys(empTrends).length > 0 && (
+        <Card>
+          <CardHeader><h3 className="font-bold text-gray-800">📈 Per-Employee Rating Trends</h3></CardHeader>
+          <CardBody>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {Object.entries(empTrends).map(([name, arr]) => {
+                const avg = (arr.reduce((s,r)=>s+r.rating,0)/arr.length).toFixed(1);
+                const first = arr[0]?.rating, last = arr[arr.length-1]?.rating;
+                const trend = arr.length > 1 ? (last > first ? '↑' : last < first ? '↓' : '→') : '→';
+                const tColor = trend === '↑' ? '#15803d' : trend === '↓' ? '#dc2626' : '#6b7280';
+                return (
+                  <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{ minWidth: 140, fontWeight: 600, fontSize: '0.85rem', color: '#374151' }}>{name}</div>
+                    <div style={{ display: 'flex', gap: 3, alignItems: 'flex-end', height: 32 }}>
+                      {arr.map((r, i) => (
+                        <div key={i} title={`${formatDate(r.date)}: ${r.rating}/5`}
+                          style={{ width: 18, background: r.rating >= 4 ? '#22c55e' : r.rating >= 3 ? '#f59e0b' : '#ef4444', borderRadius: '3px 3px 0 0', height: `${(r.rating/5)*100}%`, minHeight: 6, transition: 'height 0.3s' }} />
+                      ))}
+                    </div>
+                    <div style={{ minWidth: 36, fontWeight: 900, fontSize: '1rem', color: tColor }}>{trend}</div>
+                    <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1f2937' }}>avg {avg}</div>
+                    <div style={{ display: 'flex' }}>{ratingStars(Math.round(parseFloat(avg)))}</div>
+                  </div>
+                );
+              })}
+            </div>
+            <p style={{ fontSize: '0.73rem', color: '#9ca3af', marginTop: 10 }}>Each bar = one review. Height = rating (1–5). Trend arrow = first vs latest.</p>
+          </CardBody>
+        </Card>
+      )}
+
+      {Object.keys(deptAverages).length > 0 && (
+        <Card>
+          <CardHeader><h3 className="font-bold text-gray-800">🏢 Department Average Ratings</h3></CardHeader>
+          <CardBody>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {Object.entries(deptAverages).sort((a,b)=>(b[1].total/b[1].count)-(a[1].total/a[1].count)).map(([dept, {total, count}]) => {
+                const avg = total / count;
+                const pct = (avg / 5) * 100;
+                return (
+                  <div key={dept} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{ minWidth: 140, fontWeight: 700, fontSize: '0.85rem', color: '#374151' }}>{dept}</div>
+                    <div style={{ flex: 1, background: '#f1f5f9', borderRadius: 6, height: 14, overflow: 'hidden', maxWidth: 240 }}>
+                      <div style={{ width: `${pct}%`, height: '100%', background: avg >= 4 ? '#22c55e' : avg >= 3 ? '#f59e0b' : '#ef4444', borderRadius: 6, transition: 'width 0.4s' }} />
+                    </div>
+                    <div style={{ fontWeight: 900, fontSize: '0.95rem', color: avg>=4 ? '#15803d' : avg>=3 ? '#b45309' : '#dc2626', minWidth: 32 }}>{avg.toFixed(1)}</div>
+                    <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>{count} staff reviewed</div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardBody>
+        </Card>
+      )}
     </div>
   );
 }

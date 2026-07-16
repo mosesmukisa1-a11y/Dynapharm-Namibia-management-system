@@ -239,9 +239,14 @@ export default async function handler(req, res) {
       if (!id) return res.status(400).json({ success: false, error: 'id is required' });
       const body = req.body || {};
       const result = await query(
-        `UPDATE hr_records SET status = COALESCE($1, status), notes = COALESCE($2, notes), updated_at = NOW()
-         WHERE id = $3 RETURNING *`,
-        [body.status || null, body.notes || null, id]
+        `UPDATE hr_records SET
+           status    = COALESCE($1, status),
+           notes     = COALESCE($2, notes),
+           clock_in  = COALESCE($3, clock_in),
+           clock_out = COALESCE($4, clock_out),
+           updated_at = NOW()
+         WHERE id = $5 RETURNING *`,
+        [body.status || null, body.notes || null, body.clock_in || null, body.clock_out || null, id]
       );
       if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Record not found' });
       return res.json({ success: true, record: result.rows[0] });
