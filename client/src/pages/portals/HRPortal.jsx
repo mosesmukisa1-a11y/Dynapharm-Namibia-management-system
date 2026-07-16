@@ -1082,6 +1082,14 @@ function AttendanceTab() {
         </CardBody>
       </Card>
 
+      <div style={{ background: 'linear-gradient(90deg,#eff6ff,#dbeafe)', border: '1.5px solid #93c5fd', borderRadius: 10, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span style={{ fontSize: '1.2rem' }}>🤖</span>
+        <div>
+          <p style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1d4ed8', margin: 0 }}>Auto-Attendance Active</p>
+          <p style={{ fontSize: '0.78rem', color: '#3b82f6', margin: 0 }}>Staff clock-in is recorded automatically on first login of the day. Clock-out updates on logout.</p>
+        </div>
+      </div>
+
       <Card>
         <CardHeader>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
@@ -1098,11 +1106,57 @@ function AttendanceTab() {
           columns={[
             { header: 'Employee', key: 'employee_name' },
             { header: 'Date', render: r => formatDate(r.date) },
-            { header: 'Clock In', render: r => r.clock_in || '—' },
-            { header: 'Clock Out', render: r => r.clock_out || '—' },
+            { header: 'Clock In', render: r => {
+              if (!r.clock_in) return <span style={{ color: '#9ca3af' }}>—</span>;
+              const s = r.subtype || r.status || '';
+              const isLate = s === 'Late';
+              return (
+                <span style={{
+                  fontWeight: 700, fontSize: '0.88rem',
+                  color: isLate ? '#b45309' : '#15803d',
+                  background: isLate ? '#fef3c7' : '#dcfce7',
+                  padding: '2px 8px', borderRadius: 6,
+                  border: `1px solid ${isLate ? '#fde68a' : '#86efac'}`
+                }}>
+                  {isLate ? '⚠ ' : '✓ '}{r.clock_in}
+                </span>
+              );
+            }},
+            { header: 'Clock Out', render: r => {
+              if (!r.clock_out) return <span style={{ color: '#9ca3af' }}>—</span>;
+              return <span style={{ fontWeight: 600, color: '#374151' }}>{r.clock_out}</span>;
+            }},
+            { header: 'Hours', render: r => {
+              if (!r.clock_in || !r.clock_out) return <span style={{ color: '#9ca3af' }}>—</span>;
+              const [ih, im] = r.clock_in.split(':').map(Number);
+              const [oh, om] = r.clock_out.split(':').map(Number);
+              const mins = (oh * 60 + om) - (ih * 60 + im);
+              if (mins <= 0) return <span style={{ color: '#9ca3af' }}>—</span>;
+              const hh = Math.floor(mins / 60), mm = mins % 60;
+              const under = mins < 8 * 60;
+              return (
+                <span style={{ fontWeight: 700, color: under ? '#b45309' : '#15803d', fontSize: '0.85rem' }}>
+                  {hh}h {mm}m{under ? ' ⚠' : ''}
+                </span>
+              );
+            }},
             { header: 'Status', render: r => {
               const s = r.subtype || r.status || 'Present';
               return <Badge variant={s === 'Late' ? 'warning' : s === 'Present' ? 'success' : s === 'Absent' ? 'danger' : 'info'}>{s}</Badge>;
+            }},
+            { header: 'Source', render: r => {
+              const isAuto = (r.notes || '').toLowerCase().includes('auto-logged') || r.created_by === 'system';
+              return (
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                  fontSize: '0.75rem', fontWeight: 700, padding: '2px 8px', borderRadius: 12,
+                  background: isAuto ? '#eff6ff' : '#f0fdf4',
+                  color: isAuto ? '#1d4ed8' : '#15803d',
+                  border: `1px solid ${isAuto ? '#93c5fd' : '#86efac'}`
+                }}>
+                  {isAuto ? '🤖 Auto' : '✏️ Manual'}
+                </span>
+              );
             }},
           ]}
           data={filterDate ? records.filter(r => (r.date || '').startsWith(filterDate)) : records}

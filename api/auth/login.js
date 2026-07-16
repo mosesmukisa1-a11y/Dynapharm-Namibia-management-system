@@ -8,6 +8,36 @@ import {
 } from '../_lib/auth.js';
 import { normalizeBranchSlug } from '../_lib/branchUtils.js';
 
+async function autoClockIn(user) {
+  const role = (user.role || '').toLowerCase();
+  if (role === 'distributor' || role === 'guest') return;
+  const now = new Date();
+  const dateStr = now.toISOString().slice(0, 10);
+  const timeStr = now.toTimeString().slice(0, 5);
+  const fullName = user.full_name || user.username;
+  try {
+    const existing = await getOne(
+      `SELECT id, clock_in FROM hr_records WHERE type='attendance' AND employee_name=$1 AND date=$2 ORDER BY created_at ASC LIMIT 1`,
+      [fullName, dateStr]
+    );
+    if (!existing) {
+      const dow = now.getDay();
+      if (dow === 0) return;
+      const [h, m] = timeStr.split(':').map(Number);
+      const mins = h * 60 + m;
+      const shiftStart = dow === 6 ? 8 * 60 + 10 : 8 * 60 + 30;
+      const subtype = mins > shiftStart ? 'Late' : 'Present';
+      await query(
+        `INSERT INTO hr_records (type, employee_name, employee_id, subtype, notes, date, clock_in, status, created_by, created_at, updated_at)
+         VALUES ('attendance',$1,$2,$3,'Auto-logged via system login',$4,$5,$3,'system',NOW(),NOW())`,
+        [fullName, String(user.id || ''), subtype, dateStr, timeStr]
+      );
+    }
+  } catch (e) {
+    console.warn('[auto-attendance] clock-in failed:', e.message);
+  }
+}
+
 async function parseRequestBody(req) {
   if (req.body) {
     if (typeof req.body === 'string') {
@@ -107,6 +137,8 @@ export default async function handler(req, res) {
 
     const previousLastLogin = user.last_login || null;
     await query('UPDATE users SET last_login = NOW(), updated_at = NOW() WHERE id = $1', [user.id]);
+
+    autoClockIn(user).catch(() => {});
 
     const sanitized = sanitizeUser(user);
     sanitized.previousLastLogin = previousLastLogin;
