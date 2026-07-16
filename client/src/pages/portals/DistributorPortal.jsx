@@ -3357,6 +3357,184 @@ function CampaignsTab() {
     return diff;
   };
 
+  const downloadDiscountPoster = (camp) => {
+    const conditions = safeJson(camp.conditions);
+    const discountPct = Number(camp.discount_percentage || 0);
+
+    let campProductNames = [];
+    if (Array.isArray(conditions.products) && conditions.products.length > 0) {
+      campProductNames = conditions.products;
+    } else if (conditions.products_text) {
+      campProductNames = conditions.products_text.split(',').map(s => s.trim()).filter(Boolean);
+    }
+
+    const resolvedProducts = campProductNames.map(name => {
+      const match = products.find(p =>
+        (p.name || p.description || '').toLowerCase().trim() === name.toLowerCase().trim() ||
+        (p.name || p.description || '').toLowerCase().includes(name.toLowerCase()) ||
+        name.toLowerCase().includes((p.name || p.description || '').toLowerCase())
+      );
+      const dp = Number(match?.dp || 0);
+      const nowPrice = dp > 0 ? dp * (1 - discountPct / 100) : 0;
+      return { name, wasPrice: dp, nowPrice, hasPrices: dp > 0 };
+    });
+
+    const hasProducts = resolvedProducts.length > 0;
+    const W = 800;
+    const HEADER_H = 280;
+    const BADGE_H = 180;
+    const PRODUCTS_H = hasProducts ? resolvedProducts.length * 95 + 60 : 0;
+    const FOOTER_H = 110;
+    const H = HEADER_H + BADGE_H + PRODUCTS_H + FOOTER_H;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext('2d');
+
+    // Background gradient
+    const bg = ctx.createLinearGradient(0, 0, W, H);
+    bg.addColorStop(0, '#0d0005');
+    bg.addColorStop(0.35, '#7b0d1e');
+    bg.addColorStop(0.75, '#c41e3a');
+    bg.addColorStop(1, '#e63950');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+    // Decorative ghost circles
+    ctx.globalAlpha = 0.07;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(W - 60, 70, 220, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(70, H - 70, 160, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(W / 2, H / 2, 300, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // Gold horizontal lines accent
+    const goldGrad = ctx.createLinearGradient(0, 0, W, 0);
+    goldGrad.addColorStop(0, '#b8860b'); goldGrad.addColorStop(0.5, '#ffd700'); goldGrad.addColorStop(1, '#b8860b');
+    ctx.fillStyle = goldGrad;
+    ctx.fillRect(0, 0, W, 7);
+
+    // Header band
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillRect(0, 7, W, 60);
+    ctx.fillStyle = '#ffd700';
+    ctx.font = 'bold 20px Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('✦  DYNAPHARM NAMIBIA  ✦', W / 2, 48);
+
+    // Campaign name
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 46px Arial, sans-serif';
+    ctx.textAlign = 'center';
+    const campNameUpper = (camp.name || '').toUpperCase();
+    const maxW = W - 80;
+    const words = campNameUpper.split(' ');
+    let line = ''; const lines = [];
+    for (const word of words) {
+      const test = line ? line + ' ' + word : word;
+      if (ctx.measureText(test).width > maxW && line) { lines.push(line); line = word; } else { line = test; }
+    }
+    if (line) lines.push(line);
+    let nameY = 120;
+    lines.forEach(l => { ctx.fillText(l, W / 2, nameY); nameY += 54; });
+
+    // Description
+    if (camp.description) {
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.font = '19px Arial, sans-serif';
+      const desc = camp.description.length > 60 ? camp.description.slice(0, 58) + '…' : camp.description;
+      ctx.fillText(desc.toUpperCase(), W / 2, Math.max(nameY + 8, 218));
+    }
+
+    // Gold separator
+    ctx.fillStyle = goldGrad;
+    ctx.fillRect(120, HEADER_H - 18, W - 240, 3);
+
+    // ── Discount badge ───────────────────────────────────────
+    const bCx = W / 2, bCy = HEADER_H + 90, bR = 105;
+    const glow = ctx.createRadialGradient(bCx, bCy, 0, bCx, bCy, bR + 30);
+    glow.addColorStop(0, 'rgba(255,215,0,0.45)'); glow.addColorStop(1, 'rgba(255,215,0,0)');
+    ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(bCx, bCy, bR + 30, 0, Math.PI * 2); ctx.fill();
+
+    const badgeFill = ctx.createRadialGradient(bCx - 22, bCy - 22, 0, bCx, bCy, bR);
+    badgeFill.addColorStop(0, '#ffe566'); badgeFill.addColorStop(0.55, '#f59e0b'); badgeFill.addColorStop(1, '#92400e');
+    ctx.fillStyle = badgeFill; ctx.beginPath(); ctx.arc(bCx, bCy, bR, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(bCx, bCy, bR - 3, 0, Math.PI * 2); ctx.stroke();
+
+    ctx.fillStyle = '#1a0000'; ctx.textAlign = 'center';
+    ctx.font = `bold ${discountPct >= 100 ? 40 : 56}px Arial, sans-serif`;
+    ctx.fillText(`${discountPct}%`, bCx, bCy + 6);
+    ctx.font = 'bold 26px Arial, sans-serif';
+    ctx.fillText('OFF', bCx, bCy + 38);
+
+    // Scope
+    const scopeLabel = (camp.scope === 'countrywide' || camp.scope === 'nationwide')
+      ? 'COUNTRYWIDE  ·  All Participating Branches'
+      : (camp.scope || 'All Branches').toUpperCase();
+    ctx.fillStyle = 'rgba(255,255,255,0.65)';
+    ctx.font = '15px Arial, sans-serif';
+    ctx.fillText(scopeLabel, W / 2, HEADER_H + BADGE_H - 20);
+
+    // ── Products ─────────────────────────────────────────────
+    if (hasProducts) {
+      let py = HEADER_H + BADGE_H;
+      ctx.fillStyle = goldGrad; ctx.fillRect(40, py, W - 80, 2); py += 16;
+      ctx.fillStyle = 'rgba(255,215,0,0.88)';
+      ctx.font = 'bold 13px Arial, sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('PARTICIPATING PRODUCTS', W / 2, py + 14);
+      ctx.fillStyle = goldGrad; ctx.fillRect(40, py + 22, W - 80, 2); py += 36;
+
+      resolvedProducts.forEach((prod, i) => {
+        if (i % 2 === 0) {
+          ctx.fillStyle = 'rgba(255,255,255,0.06)';
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(40, py, W - 80, 83, 8); else ctx.rect(40, py, W - 80, 83);
+          ctx.fill();
+        }
+
+        // Product name
+        ctx.fillStyle = '#ffffff'; ctx.font = 'bold 18px Arial, sans-serif'; ctx.textAlign = 'left';
+        const dName = prod.name.length > 38 ? prod.name.slice(0, 36) + '…' : prod.name;
+        ctx.fillText(dName, 60, py + 30);
+
+        if (prod.hasPrices) {
+          // WAS price with strikethrough
+          ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.font = '15px Arial, sans-serif'; ctx.textAlign = 'right';
+          const wasStr = `WAS  N$${prod.wasPrice.toFixed(2)}`;
+          ctx.fillText(wasStr, W - 56, py + 30);
+          const wasW = ctx.measureText(wasStr).width;
+          ctx.strokeStyle = '#ff6b6b'; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.moveTo(W - 56 - wasW, py + 23); ctx.lineTo(W - 56, py + 23); ctx.stroke();
+
+          // NOW price
+          const nowGrad2 = ctx.createLinearGradient(W - 220, 0, W - 56, 0);
+          nowGrad2.addColorStop(0, '#ffd700'); nowGrad2.addColorStop(1, '#f59e0b');
+          ctx.fillStyle = nowGrad2; ctx.font = 'bold 28px Arial, sans-serif'; ctx.textAlign = 'right';
+          ctx.fillText(`NOW  N$${prod.nowPrice.toFixed(2)}`, W - 56, py + 66);
+        } else {
+          ctx.fillStyle = '#ffd700'; ctx.font = 'bold 17px Arial, sans-serif'; ctx.textAlign = 'right';
+          ctx.fillText(`${discountPct}% DISCOUNT APPLIES`, W - 56, py + 50);
+        }
+        py += 95;
+      });
+    }
+
+    // ── Footer ───────────────────────────────────────────────
+    const fy = H - FOOTER_H;
+    ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.fillRect(0, fy, W, FOOTER_H);
+    const fmtD = d => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.font = '17px Arial, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(`\uD83D\uDCC5  ${fmtD(camp.start_date)}   \u2192   ${fmtD(camp.end_date)}`, W / 2, fy + 36);
+    ctx.fillStyle = '#ffd700'; ctx.font = 'bold 14px Arial, sans-serif';
+    ctx.fillText('DYNAPHARM NAMIBIA  |  dynapharmnamibia.net', W / 2, fy + 68);
+    ctx.fillStyle = goldGrad; ctx.fillRect(0, H - 7, W, 7);
+
+    const link = document.createElement('a');
+    link.download = `dynapharm-sale-${(camp.name || 'campaign').replace(/\s+/g, '-').toLowerCase()}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  };
+
   if (loading) return <LoadingSpinner />;
 
   const displayed = subTab === 'active' ? activeCampaigns : completedCampaigns;
@@ -3468,10 +3646,64 @@ function CampaignsTab() {
                   })()}
 
                   {camp.campaign_type === 'discount' && (
-                    <div className="mb-3 p-3 bg-orange-50 rounded-lg border border-orange-200 text-sm">
-                      <p className="font-bold text-orange-800 flex items-center gap-1"><Tag size={14} /> Discount Offer</p>
-                      <p className="text-2xl font-black text-orange-600">{camp.discount_percentage}% OFF</p>
-                      <p className="text-xs text-gray-500 mt-1">On distributor price (DP) at participating branches</p>
+                    <div className="mb-3 rounded-xl overflow-hidden border border-orange-200 shadow-sm">
+                      <div style={{ background: 'linear-gradient(135deg,#7b0d1e,#c41e3a)', padding: '14px 16px' }}>
+                        <div className="flex items-center justify-between flex-wrap gap-3">
+                          <div>
+                            <p className="text-xs font-bold text-orange-200 flex items-center gap-1 mb-1"><Tag size={12} /> DISCOUNT OFFER</p>
+                            <p style={{ fontSize: '2.4rem', fontWeight: 900, color: '#ffd700', lineHeight: 1, textShadow: '0 2px 8px rgba(0,0,0,0.4)' }}>{camp.discount_percentage}% OFF</p>
+                            <p className="text-xs text-white/70 mt-1">On distributor price (DP) at participating branches</p>
+                          </div>
+                          <div className="flex flex-col gap-2 items-end">
+                            <div style={{ background: 'rgba(255,215,0,0.15)', border: '1px solid rgba(255,215,0,0.4)', borderRadius: 8, padding: '4px 12px', textAlign: 'center' }}>
+                              <p className="text-xs text-yellow-300 font-semibold">
+                                {(camp.scope === 'countrywide' || camp.scope === 'nationwide') ? '🌍 Countrywide' : (camp.scope || 'All Branches')}
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => downloadDiscountPoster(camp)}
+                              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', background: 'linear-gradient(135deg,#ffd700,#f59e0b)', color: '#1a0000', border: 'none', borderRadius: 8, fontWeight: 800, fontSize: '0.82rem', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.3)', whiteSpace: 'nowrap' }}>
+                              <Download size={14} /> Download Poster
+                            </button>
+                          </div>
+                        </div>
+                        {(() => {
+                          const cond = safeJson(camp.conditions);
+                          const names = Array.isArray(cond.products) && cond.products.length > 0
+                            ? cond.products
+                            : cond.products_text ? cond.products_text.split(',').map(s => s.trim()).filter(Boolean) : [];
+                          if (names.length === 0) return null;
+                          const discPct = Number(camp.discount_percentage || 0);
+                          return (
+                            <div className="mt-3 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.15)' }}>
+                              <p className="text-xs font-bold text-yellow-300 mb-2">Participating Products</p>
+                              <div className="space-y-1.5">
+                                {names.map((pName, pi) => {
+                                  const match = products.find(p =>
+                                    (p.name || p.description || '').toLowerCase().trim() === pName.toLowerCase().trim() ||
+                                    (p.name || p.description || '').toLowerCase().includes(pName.toLowerCase())
+                                  );
+                                  const dp = Number(match?.dp || 0);
+                                  const nowP = dp > 0 ? dp * (1 - discPct / 100) : 0;
+                                  return (
+                                    <div key={pi} className="flex items-center justify-between">
+                                      <span className="text-white text-xs font-medium">{pName}</span>
+                                      {dp > 0 ? (
+                                        <span className="flex items-center gap-2 text-xs">
+                                          <span style={{ color: 'rgba(255,255,255,0.5)', textDecoration: 'line-through' }}>N${dp.toFixed(2)}</span>
+                                          <span style={{ color: '#ffd700', fontWeight: 800 }}>N${nowP.toFixed(2)}</span>
+                                        </span>
+                                      ) : (
+                                        <span style={{ color: '#ffd700', fontSize: '0.75rem', fontWeight: 700 }}>{discPct}% off</span>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
                     </div>
                   )}
 
