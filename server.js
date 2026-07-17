@@ -2702,6 +2702,30 @@ server.on('error', (error) => {
       `ALTER TABLE users ADD COLUMN IF NOT EXISTS gender VARCHAR(20)`,
       `ALTER TABLE users ADD COLUMN IF NOT EXISTS bank_name TEXT`,
       `ALTER TABLE users ADD COLUMN IF NOT EXISTS bank_account_no TEXT`,
+      // ── Extended personal / qualification fields on users ─────────────────────
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS marital_status VARCHAR(30)`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS nationality TEXT`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS home_language TEXT`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS next_of_kin_name TEXT`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS next_of_kin_relationship TEXT`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS next_of_kin_phone TEXT`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS highest_qualification TEXT`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS institution_name TEXT`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS graduation_year VARCHAR(10)`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS field_of_study TEXT`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS professional_certifications TEXT`,
+      // ── staff_documents table ─────────────────────────────────────────────────
+      `CREATE TABLE IF NOT EXISTS staff_documents (
+         id           SERIAL PRIMARY KEY,
+         user_id      TEXT NOT NULL,
+         doc_type     TEXT NOT NULL,
+         doc_name     TEXT,
+         file_url     TEXT NOT NULL,
+         file_size    INTEGER,
+         uploaded_at  TIMESTAMPTZ DEFAULT NOW(),
+         uploaded_by  TEXT
+       )`,
+      `CREATE INDEX IF NOT EXISTS idx_staff_docs_user ON staff_documents (user_id)`,
       // ── profile_update support in hr_staff_change_requests ───────────────────
       `ALTER TABLE hr_staff_change_requests ADD COLUMN IF NOT EXISTS profile_changes JSONB`,
       `ALTER TABLE hr_staff_change_requests ADD COLUMN IF NOT EXISTS user_id TEXT`,

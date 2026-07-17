@@ -366,6 +366,11 @@ export const api = {
     getProfile: () => api.get('/staff/profile'),
     updateContact: (data) => api.put('/staff/profile', { action: 'update_contact', ...data }),
     requestSensitive: (data) => api.put('/staff/profile', { action: 'request_sensitive', ...data }),
+    documents: {
+      list: () => api.get('/staff/documents'),
+      upload: (formData) => fetch('/api/staff/documents', { method: 'POST', credentials: 'include', body: formData }).then(r => r.json()),
+      remove: (id) => api.delete(`/staff/documents?id=${id}`),
+    },
   },
 
   director: {
