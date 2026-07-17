@@ -1772,23 +1772,90 @@ function AttendanceTab() {
 function PerformanceTab() {
   const [employees, setEmployees] = useState([]);
   const [reviews, setReviews] = useState([]);
+  const [attendance, setAttendance] = useState([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({ employee_name: '', rating: '3', strengths: '', improvements: '', goals: '' });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [autoInfo, setAutoInfo] = useState(null);
 
   const loadData = () => {
     Promise.all([
       api.employees.list().then(d => Array.isArray(d) ? d : d.employees || []).catch(() => []),
       api.hr.records('performance').then(d => Array.isArray(d) ? d : d.records || []).catch(() => []),
-    ]).then(([emps, recs]) => {
-      setEmployees(emps);
+      api.hr.records('attendance').then(d => Array.isArray(d) ? d : d.records || []).catch(() => []),
+    ]).then(([emps, recs, att]) => {
+      setEmployees(emps.filter(e => e.employment_status !== 'inactive'));
       setReviews(recs);
+      setAttendance(att);
     }).finally(() => setLoading(false));
   };
 
   useEffect(() => { loadData(); }, []);
+
+  const handleAutoGenerate = () => {
+    const empName = form.employee_name;
+    if (!empName) { setError('Select an employee first'); return; }
+    setError('');
+    const now = new Date();
+    const cutoff = new Date(now - 90 * 86400000);
+    const empAtt = attendance.filter(a =>
+      a.employee_name === empName && a.date && new Date(a.date) >= cutoff
+    );
+    const total = empAtt.length;
+    const late = empAtt.filter(a => (a.status || '').toLowerCase() === 'late').length;
+    const absent = empAtt.filter(a => (a.status || '').toLowerCase() === 'absent').length;
+    const present = total - late - absent;
+    const empPrior = reviews.filter(r => r.employee_name === empName);
+    const avgPrior = empPrior.length
+      ? empPrior.reduce((s, r) => s + Number(r.rating), 0) / empPrior.length
+      : null;
+
+    let score = 3;
+    if (total > 0) {
+      const presentRate = present / total;
+      const lateRate = late / total;
+      if (presentRate >= 0.9) score += 1;
+      else if (presentRate < 0.7) score -= 1;
+      if (lateRate >= 0.2) score -= 0.5;
+    }
+    if (avgPrior !== null) {
+      if (avgPrior >= 4) score += 0.5;
+      else if (avgPrior <= 2) score -= 0.5;
+    }
+    score = Math.round(Math.max(1, Math.min(5, score)));
+
+    const strengths = [];
+    if (total > 0 && present / total >= 0.9) strengths.push('Excellent attendance record in the past 90 days');
+    if (late === 0 && total > 0) strengths.push('Perfect punctuality — no late arrivals recorded');
+    if (avgPrior !== null && avgPrior >= 4) strengths.push('Consistently strong prior performance reviews');
+    if (score === 5) strengths.push('Outstanding overall contribution to the team');
+    if (strengths.length === 0) strengths.push('Meets role expectations and basic performance standards');
+
+    const improvements = [];
+    if (late > 0) improvements.push(`Punctuality: ${late} late arrival(s) recorded in past 90 days`);
+    if (absent > 0) improvements.push(`Attendance: ${absent} unexcused absence(s) recorded`);
+    if (score <= 2) improvements.push('Requires a structured performance improvement plan');
+    if (improvements.length === 0) improvements.push('Continue maintaining current standards of performance');
+
+    const goalMap = {
+      5: 'Explore mentoring opportunities and leadership development to prepare for advancement.',
+      4: 'Continue current trajectory; take on stretch assignments and cross-functional projects.',
+      3: 'Focus on consistency, complete outstanding professional development goals this quarter.',
+      2: 'Work closely with direct supervisor to identify and address specific performance gaps.',
+      1: 'Engage immediately in a formal performance improvement plan with clear milestones.',
+    };
+
+    setForm(f => ({
+      ...f,
+      rating: String(score),
+      strengths: strengths.join('. '),
+      improvements: improvements.join('. '),
+      goals: goalMap[score],
+    }));
+    setAutoInfo({ total, late, absent, present, avgPrior, score });
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -1802,6 +1869,7 @@ function PerformanceTab() {
       await api.hr.createRecord({ type: 'performance', employee_name: form.employee_name, rating: Number(form.rating), strengths: form.strengths, improvements: form.improvements, goals: form.goals });
       setSuccess('Performance review saved');
       setForm({ employee_name: '', rating: '3', strengths: '', improvements: '', goals: '' });
+      setAutoInfo(null);
       setTimeout(() => setSuccess(''), 3000);
       loadData();
     } catch (err) {
@@ -1844,16 +1912,50 @@ function PerformanceTab() {
         <CardBody>
           {success && <Alert type="success" className="mb-4">{success}</Alert>}
           {error && <Alert type="error" className="mb-4">{error}</Alert>}
+          {autoInfo && (
+            <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 flex gap-3 items-start">
+              <span className="text-blue-500 text-lg mt-0.5">⚡</span>
+              <div className="flex-1 text-sm text-blue-800">
+                <p className="font-semibold mb-1">Auto-generated from data (last 90 days)</p>
+                <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs">
+                  <span>📋 <strong>{autoInfo.total}</strong> attendance records</span>
+                  <span>✅ <strong>{autoInfo.present}</strong> present</span>
+                  <span>⏰ <strong>{autoInfo.late}</strong> late</span>
+                  <span>❌ <strong>{autoInfo.absent}</strong> absent</span>
+                  {autoInfo.avgPrior !== null && (
+                    <span>⭐ Prior avg: <strong>{autoInfo.avgPrior.toFixed(1)}</strong></span>
+                  )}
+                  <span>→ Suggested score: <strong>{autoInfo.score}/5</strong></span>
+                </div>
+                <p className="text-xs text-blue-600 mt-1">You can still edit any field before saving.</p>
+              </div>
+              <button onClick={() => setAutoInfo(null)} className="text-blue-400 hover:text-blue-600 text-lg leading-none">×</button>
+            </div>
+          )}
           <form onSubmit={handleSubmit} className="grid md:grid-cols-2 gap-4">
-            <Select
-              label="Employee"
-              value={form.employee_name}
-              onChange={e => setForm(f => ({ ...f, employee_name: e.target.value }))}
-              options={[
-                { value: '', label: 'Select Employee' },
-                ...employees.map(emp => ({ value: emp.full_name, label: emp.full_name })),
-              ]}
-            />
+            <div className="flex gap-2 items-end">
+              <div className="flex-1">
+                <Select
+                  label="Employee"
+                  value={form.employee_name}
+                  onChange={e => { setForm(f => ({ ...f, employee_name: e.target.value })); setAutoInfo(null); }}
+                  options={[
+                    { value: '', label: 'Select Employee' },
+                    ...employees.map(emp => ({ value: emp.full_name, label: emp.full_name })),
+                  ]}
+                />
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={handleAutoGenerate}
+                title="Auto-generate review from attendance & history"
+                style={{ whiteSpace: 'nowrap', marginBottom: 1 }}
+              >
+                ⚡ Auto-Generate
+              </Button>
+            </div>
             <Select
               label="Rating (1-5)"
               value={form.rating}
@@ -1872,7 +1974,7 @@ function PerformanceTab() {
               <Textarea label="Goals" value={form.goals} onChange={e => setForm(f => ({ ...f, goals: e.target.value }))} />
             </div>
             <div className="md:col-span-2 flex justify-end">
-              <Button type="submit">Save Review</Button>
+              <Button type="submit" disabled={submitting}>{submitting ? 'Saving…' : 'Save Review'}</Button>
             </div>
           </form>
         </CardBody>
@@ -2262,6 +2364,8 @@ function CommunicationTab() {
 function DataTab() {
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewSearch, setPreviewSearch] = useState('');
 
   useEffect(() => {
     api.employees.list()
@@ -2270,14 +2374,16 @@ function DataTab() {
       .finally(() => setLoading(false));
   }, []);
 
+  const activeEmps = employees.filter(e => e.employment_status !== 'inactive');
+
   const exportCSV = () => {
-    if (employees.length === 0) return;
+    if (activeEmps.length === 0) return;
     const headers = ['Name', 'Position', 'Department', 'Branch', 'Phone', 'Email', 'Status', 'Hire Date'];
-    const rows = employees.map(e => [
+    const rows = activeEmps.map(e => [
       e.full_name || '', e.position || '', e.department || '', e.branch || '',
-      e.phone || '', e.email || '', e.status || 'active', e.hire_date || '',
+      e.phone || '', e.email || '', e.employment_status || 'active', e.hire_date || '',
     ]);
-    const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+    const csv = [headers, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -2291,28 +2397,40 @@ function DataTab() {
 
   const deptCounts = {};
   const branchCounts = {};
-  employees.forEach(e => {
+  activeEmps.forEach(e => {
     deptCounts[e.department || 'Unassigned'] = (deptCounts[e.department || 'Unassigned'] || 0) + 1;
     branchCounts[e.branch || 'Unassigned'] = (branchCounts[e.branch || 'Unassigned'] || 0) + 1;
   });
+
+  const previewRows = previewSearch.trim()
+    ? activeEmps.filter(e => {
+        const q = previewSearch.toLowerCase();
+        return ['full_name','position','department','branch','email'].some(k => (e[k]||'').toLowerCase().includes(q));
+      })
+    : activeEmps;
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h3 className="font-semibold text-gray-800">Employee Data Summary</h3>
-        <Button size="sm" onClick={exportCSV}><Database size={14} /> Export CSV</Button>
+        <div className="flex gap-2">
+          <Button size="sm" variant="secondary" onClick={() => { setShowPreview(v => !v); setPreviewSearch(''); }}>
+            {showPreview ? '🙈 Hide Preview' : '👁 Preview Data'}
+          </Button>
+          <Button size="sm" onClick={exportCSV}><Database size={14} /> Export CSV</Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
           <CardBody className="text-center">
-            <p className="text-2xl font-bold text-primary">{employees.length}</p>
-            <p className="text-xs text-gray-500">Total Employees</p>
+            <p className="text-2xl font-bold text-primary">{activeEmps.length}</p>
+            <p className="text-xs text-gray-500">Active Employees</p>
           </CardBody>
         </Card>
         <Card>
           <CardBody className="text-center">
-            <p className="text-2xl font-bold text-green-600">{employees.filter(e => e.status === 'active' || !e.status).length}</p>
+            <p className="text-2xl font-bold text-green-600">{activeEmps.filter(e => (e.employment_status || 'active') === 'active').length}</p>
             <p className="text-xs text-gray-500">Active</p>
           </CardBody>
         </Card>
@@ -2329,6 +2447,61 @@ function DataTab() {
           </CardBody>
         </Card>
       </div>
+
+      {showPreview && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between gap-4">
+              <h3 className="font-bold text-gray-800">Data Preview <span className="text-sm font-normal text-gray-500 ml-2">{previewRows.length} of {activeEmps.length} records</span></h3>
+              <input
+                type="text"
+                placeholder="Filter preview…"
+                value={previewSearch}
+                onChange={e => setPreviewSearch(e.target.value)}
+                className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary w-48"
+              />
+            </div>
+          </CardHeader>
+          <CardBody style={{ padding: 0 }}>
+            <div style={{ overflowX: 'auto', maxHeight: 420, overflowY: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', position: 'sticky', top: 0, zIndex: 1 }}>
+                    {['#', 'Name', 'Position', 'Department', 'Branch', 'Phone', 'Email', 'Status', 'Hire Date'].map(h => (
+                      <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, color: '#374151', borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {previewRows.length === 0 ? (
+                    <tr><td colSpan={9} style={{ padding: '24px', textAlign: 'center', color: '#9ca3af' }}>No records match your filter</td></tr>
+                  ) : previewRows.map((e, i) => (
+                    <tr key={e.id || i} style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
+                      <td style={{ padding: '7px 12px', color: '#9ca3af', fontVariantNumeric: 'tabular-nums' }}>{i + 1}</td>
+                      <td style={{ padding: '7px 12px', fontWeight: 600, color: '#1f2937', whiteSpace: 'nowrap' }}>{e.full_name || '—'}</td>
+                      <td style={{ padding: '7px 12px', color: '#374151' }}>{e.position || '—'}</td>
+                      <td style={{ padding: '7px 12px', color: '#374151' }}>{e.department || '—'}</td>
+                      <td style={{ padding: '7px 12px', color: '#374151' }}>{e.branch || '—'}</td>
+                      <td style={{ padding: '7px 12px', color: '#6b7280', fontVariantNumeric: 'tabular-nums' }}>{e.phone || '—'}</td>
+                      <td style={{ padding: '7px 12px', color: '#6b7280' }}>{e.email || '—'}</td>
+                      <td style={{ padding: '7px 12px' }}>
+                        <span style={{ padding: '2px 8px', borderRadius: 99, fontSize: '0.72rem', fontWeight: 700, background: (e.employment_status||'active') === 'active' ? '#dcfce7' : '#fee2e2', color: (e.employment_status||'active') === 'active' ? '#15803d' : '#dc2626' }}>
+                          {e.employment_status || 'active'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '7px 12px', color: '#6b7280', whiteSpace: 'nowrap' }}>{e.hire_date ? new Date(e.hire_date).toLocaleDateString() : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ padding: '8px 16px', background: '#f8fafc', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>This is the exact data that will be exported to CSV.</span>
+              <Button size="sm" onClick={exportCSV}><Database size={12} /> Export CSV</Button>
+            </div>
+          </CardBody>
+        </Card>
+      )}
 
       <div className="grid md:grid-cols-2 gap-6">
         <Card>
