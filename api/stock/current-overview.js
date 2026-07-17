@@ -209,10 +209,29 @@ export default async function handler(req, res) {
       }
     }
 
-    // Primary: branch_inventory_batches (authoritative physical quantities)
-    for (const r of branchRows) mergeBranchRow(r);
-    // Fallback: inventory_balances for any product/branch NOT already in the primary set
-    for (const r of ibRows) mergeBranchRow(r);
+    // Primary: branch_inventory_batches (authoritative physical quantities).
+    // Track which canonical (branch, product) pairs are already covered by BIB
+    // so the inventory_balances fallback below never double-counts for branches
+    // stored under alias IDs (e.g. 'oshakati' vs 'oshakati_branch', 'katima'
+    // vs 'katima_mulilo'). The NOT EXISTS guard in the ibRows SQL query only
+    // does a simple space→underscore normalisation and misses these aliases —
+    // the JS-side guard here handles all variants via normalizeBranchSlug.
+    const bibCoveredKeys = new Set();
+    for (const r of branchRows) {
+      mergeBranchRow(r);
+      const canonId = normalizeBranchSlug(r.location_id) || r.location_id;
+      bibCoveredKeys.add(`${canonId}||${(r.product_name || '').toLowerCase().trim()}`);
+    }
+
+    // Fallback: inventory_balances ONLY for (branch, product) combos that
+    // branch_inventory_batches does NOT already cover under ANY alias variant.
+    for (const r of ibRows) {
+      const canonId = normalizeBranchSlug(r.location_id) || r.location_id;
+      const key     = `${canonId}||${(r.product_name || '').toLowerCase().trim()}`;
+      if (!bibCoveredKeys.has(key)) {
+        mergeBranchRow(r);
+      }
+    }
 
     // ── Branch rows ──
     for (const r of branchMerged.values()) {
