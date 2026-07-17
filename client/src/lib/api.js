@@ -362,6 +362,12 @@ export const api = {
     },
   },
 
+  staff: {
+    getProfile: () => api.get('/staff/profile'),
+    updateContact: (data) => api.put('/staff/profile', { action: 'update_contact', ...data }),
+    requestSensitive: (data) => api.put('/staff/profile', { action: 'request_sensitive', ...data }),
+  },
+
   director: {
     summary: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/director/summary${qs ? '?' + qs : ''}`); },
     profitLoss: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/director/profit-loss${qs ? '?' + qs : ''}`); },

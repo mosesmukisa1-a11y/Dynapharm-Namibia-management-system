@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { api } from '../lib/api';
 import { Card, CardBody, CardHeader, Alert } from './ui';
 
@@ -109,6 +109,239 @@ function CashModal({ open, onClose, onSubmit, submitting }) {
   );
 }
 
+const inp = { width: '100%', padding: '10px 12px', border: '1.5px solid #e2e8f0', borderRadius: 9, fontSize: '0.88rem', outline: 'none', boxSizing: 'border-box', background: '#fff' };
+const lbl = { fontSize: '0.78rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.03em' };
+
+function MyProfileTab({ accentColor }) {
+  const [profile, setProfile] = useState(null);
+  const [pendingSensitive, setPendingSensitive] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [alert, setAlert] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [sensitiveSubmitting, setSensitiveSubmitting] = useState(false);
+
+  const [contact, setContact] = useState({ phone: '', email: '', address: '', date_of_birth: '', gender: '', emergency_contact_name: '', emergency_contact_phone: '' });
+  const [sensitive, setSensitive] = useState({ national_id: '', bank_name: '', bank_account_no: '' });
+  const [showSensitive, setShowSensitive] = useState(false);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    api.staff.getProfile()
+      .then(d => {
+        if (d.profile) {
+          setProfile(d.profile);
+          setContact({
+            phone: d.profile.phone || '',
+            email: d.profile.email || '',
+            address: d.profile.address || '',
+            date_of_birth: d.profile.date_of_birth ? d.profile.date_of_birth.split('T')[0] : '',
+            gender: d.profile.gender || '',
+            emergency_contact_name: d.profile.emergency_contact_name || '',
+            emergency_contact_phone: d.profile.emergency_contact_phone || '',
+          });
+          setSensitive({
+            national_id: d.profile.national_id || '',
+            bank_name: d.profile.bank_name || '',
+            bank_account_no: d.profile.bank_account_no || '',
+          });
+        }
+        setPendingSensitive(d.pendingSensitive || []);
+      })
+      .catch(() => setAlert({ type: 'error', message: 'Failed to load profile' }))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const saveContact = async () => {
+    setSaving(true);
+    setAlert(null);
+    try {
+      const d = await api.staff.updateContact(contact);
+      if (d.profile) setProfile(d.profile);
+      setAlert({ type: 'success', message: 'Contact information updated successfully.' });
+    } catch (err) {
+      setAlert({ type: 'error', message: err.message || 'Failed to save changes' });
+    } finally { setSaving(false); }
+  };
+
+  const submitSensitive = async () => {
+    const hasValues = Object.values(sensitive).some(v => v.trim());
+    if (!hasValues) { setAlert({ type: 'error', message: 'Please fill in at least one field' }); return; }
+    setSensitiveSubmitting(true);
+    setAlert(null);
+    try {
+      await api.staff.requestSensitive(sensitive);
+      setAlert({ type: 'success', message: 'Request submitted — HR will review and apply your update.' });
+      setShowSensitive(false);
+      setSensitive({ national_id: '', bank_name: '', bank_account_no: '' });
+      load();
+    } catch (err) {
+      setAlert({ type: 'error', message: err.message || 'Failed to submit request' });
+    } finally { setSensitiveSubmitting(false); }
+  };
+
+  if (loading) return <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>Loading profile…</div>;
+
+  const row2 = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 };
+  const fmtRole = (r) => (r || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {alert && (
+        <div style={{ padding: '10px 16px', borderRadius: 10, fontSize: '0.87rem', fontWeight: 600,
+          background: alert.type === 'success' ? '#f0fdf4' : '#fef2f2',
+          color: alert.type === 'success' ? '#166534' : '#991b1b',
+          border: `1px solid ${alert.type === 'success' ? '#86efac' : '#fca5a5'}` }}>
+          {alert.message}
+        </div>
+      )}
+
+      {/* Identity card */}
+      {profile && (
+        <div style={{ background: `linear-gradient(135deg,${accentColor}dd,${accentColor}99)`, borderRadius: 16, padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap' }}>
+          <div style={{ width: 60, height: 60, borderRadius: '50%', background: 'rgba(255,255,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.8rem', flexShrink: 0 }}>
+            {(profile.full_name || 'U')[0].toUpperCase()}
+          </div>
+          <div>
+            <div style={{ color: '#fff', fontWeight: 800, fontSize: '1.1rem', lineHeight: 1.2 }}>{profile.full_name || profile.username}</div>
+            <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.85rem', marginTop: 3 }}>{fmtRole(profile.role)}{profile.branch ? ` · ${profile.branch.replace(/_/g,' ').replace(/\b\w/g, c=>c.toUpperCase())}` : ''}</div>
+            <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: '0.78rem', marginTop: 2 }}>@{profile.username}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Contact & Personal Info */}
+      <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+        <div style={{ padding: '14px 20px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '0.95rem' }}>📋 Contact & Personal Info</div>
+            <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 2 }}>Changes save immediately</div>
+          </div>
+        </div>
+        <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={row2}>
+            <div>
+              <label style={lbl}>Phone Number</label>
+              <input style={inp} type="tel" value={contact.phone} onChange={e => setContact(c => ({ ...c, phone: e.target.value }))} placeholder="e.g. +264 81 123 4567" />
+            </div>
+            <div>
+              <label style={lbl}>Email Address</label>
+              <input style={inp} type="email" value={contact.email} onChange={e => setContact(c => ({ ...c, email: e.target.value }))} placeholder="your@email.com" />
+            </div>
+          </div>
+          <div>
+            <label style={lbl}>Home Address</label>
+            <input style={inp} value={contact.address} onChange={e => setContact(c => ({ ...c, address: e.target.value }))} placeholder="Street, suburb, city" />
+          </div>
+          <div style={row2}>
+            <div>
+              <label style={lbl}>Date of Birth</label>
+              <input style={inp} type="date" value={contact.date_of_birth} onChange={e => setContact(c => ({ ...c, date_of_birth: e.target.value }))} />
+            </div>
+            <div>
+              <label style={lbl}>Gender</label>
+              <select style={{ ...inp, cursor: 'pointer' }} value={contact.gender} onChange={e => setContact(c => ({ ...c, gender: e.target.value }))}>
+                <option value="">— Select —</option>
+                {['Male','Female','Non-binary','Prefer not to say'].map(g => <option key={g} value={g}>{g}</option>)}
+              </select>
+            </div>
+          </div>
+          <div style={{ padding: '12px 16px', background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0' }}>
+            <div style={{ fontWeight: 700, color: '#374151', fontSize: '0.82rem', marginBottom: 10 }}>🚨 Emergency Contact</div>
+            <div style={row2}>
+              <div>
+                <label style={lbl}>Contact Name</label>
+                <input style={inp} value={contact.emergency_contact_name} onChange={e => setContact(c => ({ ...c, emergency_contact_name: e.target.value }))} placeholder="Full name" />
+              </div>
+              <div>
+                <label style={lbl}>Contact Phone</label>
+                <input style={inp} type="tel" value={contact.emergency_contact_phone} onChange={e => setContact(c => ({ ...c, emergency_contact_phone: e.target.value }))} placeholder="+264 81 …" />
+              </div>
+            </div>
+          </div>
+          <button onClick={saveContact} disabled={saving} style={{ alignSelf: 'flex-start', padding: '10px 28px', borderRadius: 10, border: 'none', background: accentColor, color: '#fff', fontWeight: 800, fontSize: '0.88rem', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.65 : 1 }}>
+            {saving ? '⏳ Saving…' : '💾 Save Contact Info'}
+          </button>
+        </div>
+      </div>
+
+      {/* Sensitive / Payroll Info */}
+      <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+        <div style={{ padding: '14px 20px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '0.95rem' }}>🔒 Sensitive Information</div>
+            <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 2 }}>National ID & banking details · Changes require HR approval</div>
+          </div>
+          {pendingSensitive.length === 0 && (
+            <button onClick={() => setShowSensitive(s => !s)} style={{ padding: '8px 18px', borderRadius: 20, border: `1.5px solid ${accentColor}`, background: showSensitive ? accentColor : '#fff', color: showSensitive ? '#fff' : accentColor, fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}>
+              {showSensitive ? '✕ Cancel' : '✏️ Request Update'}
+            </button>
+          )}
+        </div>
+
+        {/* Show current values (masked) */}
+        <div style={{ padding: '16px 20px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
+          {[
+            { label: 'National ID', value: profile?.national_id },
+            { label: 'Bank Name', value: profile?.bank_name },
+            { label: 'Account Number', value: profile?.bank_account_no },
+          ].map(({ label, value }) => (
+            <div key={label}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>{label}</div>
+              <div style={{ fontWeight: 600, color: value ? '#1e293b' : '#cbd5e1', fontSize: '0.9rem' }}>
+                {value ? (label === 'Account Number' ? '•••• ' + value.slice(-4) : value) : '— not set —'}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Pending requests banner */}
+        {pendingSensitive.length > 0 && (
+          <div style={{ margin: '0 20px 16px', padding: '12px 16px', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+            <span style={{ fontSize: '1.1rem' }}>⏳</span>
+            <div>
+              <div style={{ fontWeight: 700, color: '#92400e', fontSize: '0.85rem' }}>Update request pending HR review</div>
+              <div style={{ fontSize: '0.78rem', color: '#b45309', marginTop: 3 }}>
+                Submitted {new Date(pendingSensitive[0].requested_at).toLocaleDateString('en-NA')} · Changes will be applied once HR approves
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Sensitive update form */}
+        {showSensitive && pendingSensitive.length === 0 && (
+          <div style={{ padding: '0 20px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ padding: '10px 14px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 9, fontSize: '0.8rem', color: '#1e40af' }}>
+              ℹ️ These changes will be sent to HR for review before taking effect. Please only submit accurate information.
+            </div>
+            <div style={row2}>
+              <div>
+                <label style={lbl}>National ID Number</label>
+                <input style={inp} value={sensitive.national_id} onChange={e => setSensitive(s => ({ ...s, national_id: e.target.value }))} placeholder="e.g. 00-123456-7-089-12" />
+              </div>
+              <div>
+                <label style={lbl}>Bank Name</label>
+                <input style={inp} value={sensitive.bank_name} onChange={e => setSensitive(s => ({ ...s, bank_name: e.target.value }))} placeholder="e.g. FNB Namibia" />
+              </div>
+            </div>
+            <div>
+              <label style={lbl}>Bank Account Number</label>
+              <input style={inp} value={sensitive.bank_account_no} onChange={e => setSensitive(s => ({ ...s, bank_account_no: e.target.value }))} placeholder="Account number" />
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setShowSensitive(false)} style={{ flex: 1, padding: '10px', borderRadius: 10, border: '1.5px solid #e2e8f0', background: '#fff', color: '#64748b', fontWeight: 600, cursor: 'pointer', fontSize: '0.87rem' }}>Cancel</button>
+              <button onClick={submitSensitive} disabled={sensitiveSubmitting} style={{ flex: 2, padding: '10px', borderRadius: 10, border: 'none', background: '#1e3a5f', color: '#fff', fontWeight: 800, cursor: sensitiveSubmitting ? 'not-allowed' : 'pointer', opacity: sensitiveSubmitting ? 0.65 : 1, fontSize: '0.87rem' }}>
+                {sensitiveSubmitting ? '⏳ Submitting…' : '📨 Submit for HR Approval'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function StaffServicesTab({ accentColor = '#c41e3a' }) {
   const [subTab, setSubTab] = useState('leave');
   const [alert, setAlert] = useState(null);
@@ -163,30 +396,40 @@ export default function StaffServicesTab({ accentColor = '#c41e3a' }) {
     } finally { setCashSubmitting(false); }
   };
 
+  const TABS = [
+    { id: 'leave',   label: `📅 Leave (${leaveRequests.length})` },
+    { id: 'cash',    label: `💵 Cash (${cashRequests.length})` },
+    { id: 'profile', label: '👤 My Profile' },
+  ];
+
   return (
     <div>
       <div className="rounded-xl p-5 mb-5 flex justify-between items-center flex-wrap gap-3" style={{ background: `linear-gradient(135deg,${accentColor},${accentColor}bb)`, boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>
         <div>
           <p className="text-white/60 text-xs font-bold uppercase tracking-widest mb-1 m-0">Staff Services</p>
-          <h3 className="text-white text-lg font-bold m-0">👤 Leave & Cash Advance (CAS)</h3>
-          <p className="text-white/70 text-sm mt-1 m-0">Submit and track leave requests and cash advances</p>
+          <h3 className="text-white text-lg font-bold m-0">👤 Leave, CAS & My Profile</h3>
+          <p className="text-white/70 text-sm mt-1 m-0">Manage your leave, cash advances and personal HR information</p>
         </div>
-        <div className="flex gap-2 flex-wrap">
-          <button onClick={() => { setShowLeaveForm(true); setAlert(null); }} className="px-4 py-2 rounded-full font-semibold text-sm cursor-pointer" style={{ background: '#fff', color: accentColor, border: 'none', fontWeight: 700 }}>📅 Request Leave</button>
-          <button onClick={() => { setShowCashForm(true); setAlert(null); }} className="px-4 py-2 rounded-full font-semibold text-sm cursor-pointer text-white" style={{ background: 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.3)' }}>💵 Cash Advance</button>
-        </div>
+        {subTab === 'leave' && (
+          <div className="flex gap-2 flex-wrap">
+            <button onClick={() => { setShowLeaveForm(true); setAlert(null); }} className="px-4 py-2 rounded-full font-semibold text-sm cursor-pointer" style={{ background: '#fff', color: accentColor, border: 'none', fontWeight: 700 }}>📅 Request Leave</button>
+            <button onClick={() => { setShowCashForm(true); setAlert(null); }} className="px-4 py-2 rounded-full font-semibold text-sm cursor-pointer text-white" style={{ background: 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.3)' }}>💵 Cash Advance</button>
+          </div>
+        )}
       </div>
 
       {alert && <div className="mb-4 p-3 rounded-lg text-sm" style={{ background: alert.type === 'success' ? '#f0fdf4' : '#fef2f2', color: alert.type === 'success' ? '#166534' : '#991b1b', border: `1px solid ${alert.type === 'success' ? '#86efac' : '#fca5a5'}` }}>{alert.message}</div>}
 
-      <div className="flex gap-2 mb-5">
-        {[{ id: 'leave', label: `📅 Leave (${leaveRequests.length})` }, { id: 'cash', label: `💵 Cash Advances (${cashRequests.length})` }].map(t => (
-          <button key={t.id} onClick={() => setSubTab(t.id)}
+      <div className="flex gap-2 mb-5" style={{ flexWrap: 'wrap' }}>
+        {TABS.map(t => (
+          <button key={t.id} onClick={() => { setSubTab(t.id); setAlert(null); }}
             style={{ padding: '8px 20px', borderRadius: 20, fontSize: '0.85rem', fontWeight: 600, border: 'none', cursor: 'pointer', background: subTab === t.id ? accentColor : '#f1f5f9', color: subTab === t.id ? '#fff' : '#64748b', transition: 'all 0.2s' }}>
             {t.label}
           </button>
         ))}
-        <button onClick={refresh} style={{ marginLeft: 'auto', padding: '8px 14px', borderRadius: 20, fontSize: '0.8rem', fontWeight: 600, border: '1px solid #e2e8f0', cursor: 'pointer', background: '#fff', color: '#64748b' }}>🔄</button>
+        {subTab !== 'profile' && (
+          <button onClick={refresh} style={{ marginLeft: 'auto', padding: '8px 14px', borderRadius: 20, fontSize: '0.8rem', fontWeight: 600, border: '1px solid #e2e8f0', cursor: 'pointer', background: '#fff', color: '#64748b' }}>🔄</button>
+        )}
       </div>
 
       {subTab === 'leave' && (
@@ -253,6 +496,8 @@ export default function StaffServicesTab({ accentColor = '#c41e3a' }) {
           )}
         </Card>
       )}
+
+      {subTab === 'profile' && <MyProfileTab accentColor={accentColor} />}
 
       <LeaveModal open={showLeaveForm} onClose={() => setShowLeaveForm(false)} onSubmit={submitLeave} submitting={leaveSubmitting} />
       <CashModal open={showCashForm} onClose={() => setShowCashForm(false)} onSubmit={submitCash} submitting={cashSubmitting} />

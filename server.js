@@ -2693,6 +2693,18 @@ server.on('error', (error) => {
       `DO $$ BEGIN ALTER TABLE branch_inventory_batches ADD CONSTRAINT chk_bib_qty_gte_zero CHECK (quantity >= 0); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
       // ── priority column on stock_transfers (used by escalation scheduler) ────
       `ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS priority VARCHAR(50) DEFAULT 'normal'`,
+      // ── Extended HR profile fields on users ──────────────────────────────────
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS address TEXT`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_contact_name TEXT`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_contact_phone TEXT`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS national_id TEXT`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS date_of_birth DATE`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS gender VARCHAR(20)`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS bank_name TEXT`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS bank_account_no TEXT`,
+      // ── profile_update support in hr_staff_change_requests ───────────────────
+      `ALTER TABLE hr_staff_change_requests ADD COLUMN IF NOT EXISTS profile_changes JSONB`,
+      `ALTER TABLE hr_staff_change_requests ADD COLUMN IF NOT EXISTS user_id TEXT`,
     ];
     let schemaSynced = 0;
     for (const sql of schemaSyncs) {

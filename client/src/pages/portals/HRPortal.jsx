@@ -435,26 +435,54 @@ function EmployeesTab() {
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
-              <h3 className="font-bold text-gray-800">Pending GM Approval</h3>
+              <h3 className="font-bold text-gray-800">Pending Approval</h3>
               <span className="bg-amber-100 text-amber-700 text-xs font-bold px-2 py-0.5 rounded-full">{pending.length}</span>
             </div>
           </CardHeader>
           <Table
             columns={[
-              { header: 'Type', render: r => (
-                <Badge variant={r.request_type === 'add' ? 'success' : 'danger'}>
-                  {r.request_type === 'add' ? '+ Add' : '− Remove'}
-                </Badge>
-              )},
-              { header: 'Employee', render: r => (
+              { header: 'Type', render: r => {
+                if (r.request_type === 'profile_update') return <Badge variant="info">👤 Profile Update</Badge>;
+                return <Badge variant={r.request_type === 'add' ? 'success' : 'danger'}>{r.request_type === 'add' ? '+ Add' : '− Remove'}</Badge>;
+              }},
+              { header: 'Staff', render: r => (
                 <div>
                   <p className="font-semibold text-sm text-gray-800">{r.full_name}</p>
-                  <p className="text-xs text-gray-400">{r.position}{r.branch ? ` · ${r.branch}` : ''}</p>
+                  {r.request_type === 'profile_update'
+                    ? <p className="text-xs text-gray-400">{Object.keys(r.profile_changes || {}).map(k => k.replace(/_/g,' ')).join(', ')}</p>
+                    : <p className="text-xs text-gray-400">{r.position}{r.branch ? ` · ${r.branch}` : ''}</p>}
                 </div>
               )},
-              { header: 'Reason', render: r => <span className="text-xs text-gray-600">{r.reason || '—'}</span> },
+              { header: 'Details', render: r => {
+                if (r.request_type === 'profile_update') {
+                  const changes = r.profile_changes || {};
+                  return (
+                    <div className="text-xs text-gray-600 space-y-0.5">
+                      {Object.entries(changes).map(([k, v]) => (
+                        <div key={k}><span className="font-semibold capitalize">{k.replace(/_/g,' ')}:</span> {k === 'bank_account_no' ? '••••' + String(v).slice(-4) : v}</div>
+                      ))}
+                    </div>
+                  );
+                }
+                return <span className="text-xs text-gray-600">{r.reason || '—'}</span>;
+              }},
               { header: 'Requested', render: r => formatDate(r.requested_at) },
-              { header: 'Status', render: () => <Badge variant="warning">Awaiting GM</Badge> },
+              { header: 'Approver', render: r => (
+                <Badge variant="warning">{r.request_type === 'profile_update' ? 'HR Approval' : 'Awaiting GM'}</Badge>
+              )},
+              { header: 'Action', render: r => r.request_type === 'profile_update' ? (
+                <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                  <Button size="sm" variant="success" onClick={async () => {
+                    try { await api.hr.staffChangeRequests.review(r.id, 'approved', ''); loadData(); setSuccess('Profile update applied.'); setTimeout(() => setSuccess(''), 5000); }
+                    catch (e) { setError(e.message || 'Failed'); }
+                  }}>✓ Apply</Button>
+                  <Button size="sm" variant="danger" onClick={async () => {
+                    try { await api.hr.staffChangeRequests.review(r.id, 'rejected', ''); loadData(); }
+                    catch (e) { setError(e.message || 'Failed'); }
+                  }}>✕ Reject</Button>
+                </div>
+              ) : <span className="text-xs text-gray-400">GM only</span>,
+              },
             ]}
             data={pending}
             emptyMessage=""
@@ -467,10 +495,13 @@ function EmployeesTab() {
           <CardHeader><h3 className="font-bold text-gray-800">Request History</h3></CardHeader>
           <Table
             columns={[
-              { header: 'Type', render: r => <Badge variant={r.request_type === 'add' ? 'success' : 'danger'}>{r.request_type === 'add' ? '+ Add' : '− Remove'}</Badge> },
-              { header: 'Employee', key: 'full_name' },
+              { header: 'Type', render: r => {
+                if (r.request_type === 'profile_update') return <Badge variant="info">👤 Profile</Badge>;
+                return <Badge variant={r.request_type === 'add' ? 'success' : 'danger'}>{r.request_type === 'add' ? '+ Add' : '− Remove'}</Badge>;
+              }},
+              { header: 'Staff', key: 'full_name' },
               { header: 'Status', render: r => <Badge variant={r.status === 'approved' ? 'success' : 'danger'}>{r.status}</Badge> },
-              { header: 'GM Note', render: r => <span className="text-xs text-gray-500">{r.gm_note || '—'}</span> },
+              { header: 'Note', render: r => <span className="text-xs text-gray-500">{r.gm_note || '—'}</span> },
               { header: 'Reviewed By', render: r => <span className="text-xs">{r.reviewed_by || '—'}</span> },
               { header: 'Date', render: r => formatDate(r.reviewed_at || r.requested_at) },
             ]}
