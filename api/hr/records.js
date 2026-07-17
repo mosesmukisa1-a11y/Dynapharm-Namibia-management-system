@@ -1,7 +1,7 @@
 import { applyAuthCors } from '../_lib/auth.js';
 import { query, getOne, insert } from '../db.js';
 
-const VALID_TYPES = ['warning', 'termination', 'attendance', 'performance', 'transfer'];
+const VALID_TYPES = ['warning', 'termination', 'attendance', 'performance', 'transfer', 'onboarding', 'document', 'certification', 'disciplinary', 'offboarding'];
 
 const NAMIBIAN_PUBLIC_HOLIDAYS = new Set([
   '2025-01-01',

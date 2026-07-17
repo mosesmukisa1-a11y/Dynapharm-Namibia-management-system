@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { api } from '../../lib/api';
 import { formatDate, formatDateTime, BRANCH_DETAILS, BRANCHES } from '../../lib/constants';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
-import { Users, Calendar, AlertTriangle, UserX, Clock, Star, MessageSquare, Database, ClipboardList, Plus, CheckCircle2, XCircle, UserCheck, Building2, AlertCircle, Info, Briefcase } from 'lucide-react';
+import { Users, Calendar, AlertTriangle, UserX, Clock, Star, MessageSquare, Database, ClipboardList, Plus, CheckCircle2, XCircle, UserCheck, Building2, AlertCircle, Info, Briefcase, FileText, Upload, Award, BarChart3, Shield, LogOut, ChevronLeft, ChevronRight, TrendingUp } from 'lucide-react';
 import SalaryLedgerTab from '../../components/SalaryLedgerTab';
 import StaffServicesTab from '../../components/StaffServicesTab';
 import StaffMessagesTab from '../../components/StaffMessagesTab';
@@ -18,7 +18,15 @@ export default function HRPortal() {
     { id: 'attendance', label: 'Attendance', icon: '🕐' },
     { id: 'performance', label: 'Performance', icon: '⭐' },
     { id: 'staff', label: 'Staff', icon: '👤' },
-    { id: 'data', label: 'Data Collection', icon: '📊' },
+    { id: 'onboarding', label: 'Onboarding', icon: '📋' },
+    { id: 'offboarding', label: 'Offboarding', icon: '🚪' },
+    { id: 'documents', label: 'Documents', icon: '📁' },
+    { id: 'skills', label: 'Skills & Certs', icon: '🎓' },
+    { id: 'disciplinary', label: 'Disciplinary', icon: '⚖️' },
+    { id: 'calendar', label: 'Team Calendar', icon: '📅' },
+    { id: 'celebrations', label: 'Celebrations', icon: '🎂' },
+    { id: 'analytics', label: 'HR Analytics', icon: '📊' },
+    { id: 'data', label: 'Data Collection', icon: '🗃️' },
     { id: 'services', label: 'My Services', icon: '🛎️' },
     { id: 'messages', label: 'My Messages', icon: '📨' },
   ];
@@ -38,6 +46,14 @@ export default function HRPortal() {
         {activeTab === 'attendance' && <AttendanceTab />}
         {activeTab === 'performance' && <PerformanceTab />}
         {activeTab === 'staff' && <StaffActionsTab />}
+        {activeTab === 'onboarding' && <OnboardingTab />}
+        {activeTab === 'offboarding' && <OffboardingTab />}
+        {activeTab === 'documents' && <DocumentVaultTab />}
+        {activeTab === 'skills' && <SkillsTab />}
+        {activeTab === 'disciplinary' && <DisciplinaryTab />}
+        {activeTab === 'calendar' && <TeamCalendarTab />}
+        {activeTab === 'celebrations' && <CelebrationsTab />}
+        {activeTab === 'analytics' && <HRAnalyticsTab />}
         {activeTab === 'data' && <DataTab />}
         {activeTab === 'services' && <StaffServicesTab />}
         {activeTab === 'messages' && <StaffMessagesTab accentColor="#dc2626" />}
@@ -2357,6 +2373,978 @@ function CommunicationTab() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// ONBOARDING TAB
+// ═══════════════════════════════════════════════════════════
+const ONBOARDING_ITEMS = [
+  { id: 'contract', label: 'Employment Contract Signed' },
+  { id: 'id_docs', label: 'ID / Passport Copy Submitted' },
+  { id: 'bank', label: 'Bank Account Details Captured' },
+  { id: 'nhi', label: 'NHI Registration Number Obtained' },
+  { id: 'tax', label: 'Income Tax Registration Submitted' },
+  { id: 'medical', label: 'Medical Aid / Benefits Enrolled' },
+  { id: 'it_access', label: 'System & IT Access Created' },
+  { id: 'equipment', label: 'Equipment / Uniform Issued' },
+  { id: 'orientation', label: 'Company Orientation Completed' },
+  { id: 'checkin', label: 'First Week Manager Check-in Done' },
+];
+
+function OnboardingTab() {
+  const [employees, setEmployees] = useState([]);
+  const [records, setRecords] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [success, setSuccess] = useState('');
+  const [error, setError] = useState('');
+
+  const loadData = () => {
+    Promise.all([
+      api.employees.list().then(d => (Array.isArray(d) ? d : d.employees || []).filter(e => e.employment_status !== 'inactive')).catch(() => []),
+      api.hr.records('onboarding').then(d => Array.isArray(d) ? d : d.records || []).catch(() => []),
+    ]).then(([emps, recs]) => { setEmployees(emps); setRecords(recs); }).finally(() => setLoading(false));
+  };
+  useEffect(() => { loadData(); }, []);
+
+  const parseItems = (rec) => {
+    try { return JSON.parse(rec.notes || '{}').items || ONBOARDING_ITEMS.map(i => ({ ...i, done: false })); }
+    catch { return ONBOARDING_ITEMS.map(i => ({ ...i, done: false })); }
+  };
+
+  const startOnboarding = async (emp) => {
+    setSubmitting(true); setError('');
+    try {
+      await api.hr.createRecord({ type: 'onboarding', employee_name: emp.full_name, status: 'in_progress', notes: JSON.stringify({ items: ONBOARDING_ITEMS.map(i => ({ ...i, done: false })) }) });
+      setSuccess(`Onboarding started for ${emp.full_name}`);
+      setTimeout(() => setSuccess(''), 3000);
+      loadData();
+    } catch (err) { setError(err.message); } finally { setSubmitting(false); }
+  };
+
+  const toggleItem = async (rec, itemId) => {
+    setError('');
+    const items = parseItems(rec).map(i => i.id === itemId ? { ...i, done: !i.done } : i);
+    const allDone = items.every(i => i.done);
+    try {
+      await api.hr.updateRecord(rec.id, { notes: JSON.stringify({ items }), status: allDone ? 'complete' : 'in_progress' });
+      loadData();
+      if (allDone) { setSuccess(`🎉 ${rec.employee_name} onboarding complete!`); setTimeout(() => setSuccess(''), 4000); }
+    } catch (err) { setError(err.message); }
+  };
+
+  if (loading) return <LoadingSpinner />;
+  const onboardedNames = new Set(records.map(r => r.employee_name));
+  const needsOnboarding = employees.filter(e => !onboardedNames.has(e.full_name));
+  const active = records.filter(r => r.status !== 'complete');
+  const completed = records.filter(r => r.status === 'complete');
+
+  return (
+    <div className="space-y-6">
+      {success && <Alert type="success" className="mb-2">{success}</Alert>}
+      {error && <Alert type="error" className="mb-2">{error}</Alert>}
+      {needsOnboarding.length > 0 && (
+        <Card>
+          <CardHeader><h3 className="font-bold text-gray-800 flex items-center gap-2"><Plus size={16} className="text-primary" /> Not Yet Started ({needsOnboarding.length})</h3></CardHeader>
+          <CardBody>
+            <div className="divide-y divide-gray-100">
+              {needsOnboarding.map(emp => (
+                <div key={emp.id} className="flex items-center justify-between py-2.5">
+                  <div>
+                    <p className="font-semibold text-gray-800 text-sm">{emp.full_name}</p>
+                    <p className="text-xs text-gray-500">{emp.position || '—'} · {emp.branch || '—'} · Joined {emp.hire_date ? new Date(emp.hire_date).toLocaleDateString() : '?'}</p>
+                  </div>
+                  <Button size="sm" onClick={() => startOnboarding(emp)} disabled={submitting}><Plus size={13} /> Start Onboarding</Button>
+                </div>
+              ))}
+            </div>
+          </CardBody>
+        </Card>
+      )}
+      {active.length > 0 && (
+        <div>
+          <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2"><Clock size={16} className="text-amber-500" /> In Progress ({active.length})</h3>
+          <div className="space-y-4">
+            {active.map(rec => {
+              const items = parseItems(rec);
+              const done = items.filter(i => i.done).length;
+              const pct = items.length ? Math.round((done / items.length) * 100) : 0;
+              return (
+                <Card key={rec.id}>
+                  <CardHeader>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <p style={{ fontWeight: 800, fontSize: '0.95rem', color: '#1f2937', margin: 0 }}>{rec.employee_name}</p>
+                        <p style={{ fontSize: '0.73rem', color: '#6b7280', margin: '2px 0 0' }}>Started {formatDate(rec.created_at)} · {done}/{items.length} tasks done</p>
+                      </div>
+                      <span style={{ fontWeight: 900, fontSize: '1.1rem', color: pct === 100 ? '#16a34a' : '#3b82f6' }}>{pct}%</span>
+                    </div>
+                    <div style={{ background: '#e5e7eb', borderRadius: 99, height: 6, overflow: 'hidden', marginTop: 8 }}>
+                      <div style={{ width: `${pct}%`, background: pct === 100 ? '#16a34a' : '#3b82f6', height: '100%', borderRadius: 99, transition: 'width 0.4s' }} />
+                    </div>
+                  </CardHeader>
+                  <CardBody>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-1">
+                      {items.map(item => (
+                        <label key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 8px', borderRadius: 8, cursor: 'pointer', background: item.done ? '#f0fdf4' : 'transparent' }}>
+                          <input type="checkbox" checked={!!item.done} onChange={() => toggleItem(rec, item.id)} style={{ width: 16, height: 16, accentColor: '#16a34a', cursor: 'pointer' }} />
+                          <span style={{ fontSize: '0.83rem', color: item.done ? '#9ca3af' : '#374151', textDecoration: item.done ? 'line-through' : 'none' }}>{item.label}</span>
+                          {item.done && <CheckCircle2 size={13} style={{ color: '#16a34a', marginLeft: 'auto', flexShrink: 0 }} />}
+                        </label>
+                      ))}
+                    </div>
+                  </CardBody>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      {completed.length > 0 && (
+        <Card>
+          <CardHeader><h3 className="font-bold text-gray-800 flex items-center gap-2"><CheckCircle2 size={16} className="text-green-500" /> Completed ({completed.length})</h3></CardHeader>
+          <Table columns={[{ header: 'Employee', key: 'employee_name' }, { header: 'Started', render: r => formatDate(r.created_at) }, { header: 'Status', render: () => <Badge variant="success">Complete ✓</Badge> }]} data={completed} emptyMessage="" />
+        </Card>
+      )}
+      {records.length === 0 && needsOnboarding.length === 0 && (
+        <EmptyState icon={<CheckCircle2 size={40} className="text-green-400" />} title="All employees onboarded" description="Every active employee has completed onboarding." />
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// OFFBOARDING TAB
+// ═══════════════════════════════════════════════════════════
+const OFFBOARDING_ITEMS = [
+  { id: 'exit_interview', label: 'Exit Interview Conducted' },
+  { id: 'handover', label: 'Job Handover / Knowledge Transfer Completed' },
+  { id: 'equipment', label: 'Company Equipment Returned (laptop, phone, uniform)' },
+  { id: 'access', label: 'System & IT Access Revoked' },
+  { id: 'final_pay', label: 'Final Paycheck Processed' },
+  { id: 'leave_payout', label: 'Outstanding Leave Balance Paid Out' },
+  { id: 'reference', label: 'Reference / Certificate of Service Issued' },
+  { id: 'id_card', label: 'Company ID Card Collected' },
+];
+
+function OffboardingTab() {
+  const [employees, setEmployees] = useState([]);
+  const [records, setRecords] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState({ employee_name: '', reason: '', last_day: '' });
+  const [submitting, setSubmitting] = useState(false);
+  const [success, setSuccess] = useState('');
+  const [error, setError] = useState('');
+  const REASONS = ['Resignation', 'Termination', 'Retirement', 'Contract End', 'Retrenchment', 'Other'];
+
+  const loadData = () => {
+    Promise.all([
+      api.employees.list().then(d => Array.isArray(d) ? d : d.employees || []).catch(() => []),
+      api.hr.records('offboarding').then(d => Array.isArray(d) ? d : d.records || []).catch(() => []),
+    ]).then(([emps, recs]) => { setEmployees(emps); setRecords(recs); }).finally(() => setLoading(false));
+  };
+  useEffect(() => { loadData(); }, []);
+
+  const parseOff = (rec) => {
+    try { const p = JSON.parse(rec.notes || '{}'); return { items: p.items || OFFBOARDING_ITEMS.map(i => ({ ...i, done: false })), last_day: p.last_day || rec.effective_date || '', reason: p.reason || rec.subtype || '' }; }
+    catch { return { items: OFFBOARDING_ITEMS.map(i => ({ ...i, done: false })), last_day: rec.effective_date || '', reason: rec.subtype || '' }; }
+  };
+
+  const startOffboarding = async (e) => {
+    e.preventDefault();
+    if (!form.employee_name || !form.reason || !form.last_day) { setError('All three fields are required'); return; }
+    setError(''); setSubmitting(true);
+    try {
+      await api.hr.createRecord({ type: 'offboarding', employee_name: form.employee_name, subtype: form.reason, effective_date: form.last_day, status: 'in_progress', notes: JSON.stringify({ items: OFFBOARDING_ITEMS.map(i => ({ ...i, done: false })), last_day: form.last_day, reason: form.reason }) });
+      setSuccess(`Offboarding started for ${form.employee_name}`);
+      setForm({ employee_name: '', reason: '', last_day: '' });
+      setTimeout(() => setSuccess(''), 3000);
+      loadData();
+    } catch (err) { setError(err.message); } finally { setSubmitting(false); }
+  };
+
+  const toggleItem = async (rec, itemId) => {
+    const parsed = parseOff(rec);
+    const items = parsed.items.map(i => i.id === itemId ? { ...i, done: !i.done } : i);
+    const allDone = items.every(i => i.done);
+    try {
+      await api.hr.updateRecord(rec.id, { notes: JSON.stringify({ ...parsed, items }), status: allDone ? 'complete' : 'in_progress' });
+      loadData();
+      if (allDone) { setSuccess(`${rec.employee_name} offboarding fully complete`); setTimeout(() => setSuccess(''), 4000); }
+    } catch (err) { setError(err.message); }
+  };
+
+  if (loading) return <LoadingSpinner />;
+  const active = records.filter(r => r.status !== 'complete');
+  const completed = records.filter(r => r.status === 'complete');
+
+  return (
+    <div className="space-y-6">
+      {success && <Alert type="success" className="mb-2">{success}</Alert>}
+      {error && <Alert type="error" className="mb-2">{error}</Alert>}
+      <Card>
+        <CardHeader><h3 className="font-bold text-gray-800 flex items-center gap-2"><LogOut size={16} className="text-red-500" /> Start Offboarding</h3></CardHeader>
+        <CardBody>
+          <form onSubmit={startOffboarding} className="grid md:grid-cols-3 gap-4">
+            <Select label="Employee" value={form.employee_name} onChange={e => setForm(f => ({ ...f, employee_name: e.target.value }))} options={[{ value: '', label: 'Select Employee' }, ...employees.map(e => ({ value: e.full_name, label: e.full_name }))]} />
+            <Select label="Reason for Leaving" value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))} options={[{ value: '', label: 'Select Reason' }, ...REASONS.map(r => ({ value: r, label: r }))]} />
+            <Input label="Last Working Day" type="date" value={form.last_day} onChange={e => setForm(f => ({ ...f, last_day: e.target.value }))} />
+            <div className="md:col-span-3 flex justify-end">
+              <Button type="submit" disabled={submitting}>{submitting ? 'Starting…' : '🚪 Start Offboarding'}</Button>
+            </div>
+          </form>
+        </CardBody>
+      </Card>
+      {active.length > 0 && (
+        <div>
+          <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2"><Clock size={16} className="text-amber-500" /> In Progress ({active.length})</h3>
+          <div className="space-y-4">
+            {active.map(rec => {
+              const { items, last_day, reason } = parseOff(rec);
+              const done = items.filter(i => i.done).length;
+              const pct = items.length ? Math.round((done / items.length) * 100) : 0;
+              return (
+                <Card key={rec.id}>
+                  <CardHeader>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <p style={{ fontWeight: 800, fontSize: '0.95rem', color: '#1f2937', margin: 0 }}>{rec.employee_name}</p>
+                        <p style={{ fontSize: '0.73rem', color: '#6b7280', margin: '2px 0 0' }}>{reason} · Last day: {last_day ? formatDate(last_day) : '—'} · {done}/{items.length} tasks</p>
+                      </div>
+                      <span style={{ fontWeight: 900, fontSize: '1.1rem', color: pct === 100 ? '#16a34a' : '#ef4444' }}>{pct}%</span>
+                    </div>
+                    <div style={{ background: '#e5e7eb', borderRadius: 99, height: 6, overflow: 'hidden', marginTop: 8 }}>
+                      <div style={{ width: `${pct}%`, background: pct === 100 ? '#16a34a' : '#ef4444', height: '100%', borderRadius: 99, transition: 'width 0.4s' }} />
+                    </div>
+                  </CardHeader>
+                  <CardBody>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-1">
+                      {items.map(item => (
+                        <label key={item.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '6px 8px', borderRadius: 8, cursor: 'pointer', background: item.done ? '#f0fdf4' : 'transparent' }}>
+                          <input type="checkbox" checked={!!item.done} onChange={() => toggleItem(rec, item.id)} style={{ width: 16, height: 16, marginTop: 2, accentColor: '#16a34a', cursor: 'pointer', flexShrink: 0 }} />
+                          <span style={{ fontSize: '0.82rem', color: item.done ? '#9ca3af' : '#374151', textDecoration: item.done ? 'line-through' : 'none' }}>{item.label}</span>
+                          {item.done && <CheckCircle2 size={13} style={{ color: '#16a34a', marginLeft: 'auto', flexShrink: 0, marginTop: 2 }} />}
+                        </label>
+                      ))}
+                    </div>
+                  </CardBody>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      {completed.length > 0 && (
+        <Card>
+          <CardHeader><h3 className="font-bold text-gray-800">Completed ({completed.length})</h3></CardHeader>
+          <Table columns={[{ header: 'Employee', key: 'employee_name' }, { header: 'Reason', key: 'subtype' }, { header: 'Last Day', render: r => { try { return formatDate(JSON.parse(r.notes || '{}').last_day || r.effective_date); } catch { return formatDate(r.effective_date); } } }, { header: 'Status', render: () => <Badge variant="success">Complete ✓</Badge> }]} data={completed} emptyMessage="" />
+        </Card>
+      )}
+      {records.length === 0 && <EmptyState icon={<LogOut size={40} className="text-red-300" />} title="No offboarding in progress" description="Start an offboarding process when an employee is leaving." />}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// DOCUMENT VAULT TAB
+// ═══════════════════════════════════════════════════════════
+const DOC_TYPES = ['Employment Contract', 'ID / Passport', 'NHI Certificate', 'Tax Certificate', 'Medical Aid', 'Qualification / Degree', 'Professional License', 'Bank Confirmation', 'Performance Review', 'Warning Letter', 'Other'];
+
+function DocumentVaultTab() {
+  const [employees, setEmployees] = useState([]);
+  const [docs, setDocs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [filterEmp, setFilterEmp] = useState('');
+  const [form, setForm] = useState({ employee_name: '', doc_type: '', description: '' });
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [fileKey, setFileKey] = useState(0);
+  const [success, setSuccess] = useState('');
+  const [error, setError] = useState('');
+
+  const loadData = () => {
+    Promise.all([
+      api.employees.list().then(d => (Array.isArray(d) ? d : d.employees || []).filter(e => e.employment_status !== 'inactive')).catch(() => []),
+      api.hr.records('document').then(d => Array.isArray(d) ? d : d.records || []).catch(() => []),
+    ]).then(([emps, recs]) => { setEmployees(emps); setDocs(recs.filter(r => r.status !== 'deleted')); }).finally(() => setLoading(false));
+  };
+  useEffect(() => { loadData(); }, []);
+
+  const handleUpload = async (e) => {
+    e.preventDefault();
+    if (!form.employee_name || !form.doc_type) { setError('Employee and document type are required'); return; }
+    if (!selectedFile) { setError('Please select a file'); return; }
+    setError(''); setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', selectedFile);
+      const uploadRes = await api.upload(fd);
+      const fileUrl = uploadRes?.url || uploadRes?.file_url || uploadRes?.path || uploadRes?.publicUrl || '';
+      if (!fileUrl) throw new Error('Upload failed — server did not return a file URL');
+      await api.hr.createRecord({ type: 'document', employee_name: form.employee_name, subtype: form.doc_type, reason: form.description, notes: fileUrl, metadata: { file_name: selectedFile.name, file_size: selectedFile.size, doc_type: form.doc_type } });
+      setSuccess('Document uploaded successfully');
+      setForm({ employee_name: '', doc_type: '', description: '' });
+      setSelectedFile(null);
+      setFileKey(k => k + 1);
+      setTimeout(() => setSuccess(''), 3000);
+      loadData();
+    } catch (err) { setError(err.message || 'Upload failed'); } finally { setUploading(false); }
+  };
+
+  const handleDelete = async (doc) => {
+    if (!window.confirm(`Delete this ${doc.subtype || 'document'} for ${doc.employee_name}?`)) return;
+    try { await api.hr.updateRecord(doc.id, { status: 'deleted' }); setDocs(prev => prev.filter(d => d.id !== doc.id)); }
+    catch (err) { setError(err.message); }
+  };
+
+  if (loading) return <LoadingSpinner />;
+  const displayed = filterEmp ? docs.filter(d => d.employee_name === filterEmp) : docs;
+  const getMeta = (rec) => { try { return typeof rec.metadata === 'object' && rec.metadata ? rec.metadata : JSON.parse(rec.metadata || '{}'); } catch { return {}; } };
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader><h3 className="font-bold text-gray-800 flex items-center gap-2"><Upload size={16} className="text-primary" /> Upload Document</h3></CardHeader>
+        <CardBody>
+          {success && <Alert type="success" className="mb-4">{success}</Alert>}
+          {error && <Alert type="error" className="mb-4">{error}</Alert>}
+          <form onSubmit={handleUpload} className="grid md:grid-cols-2 gap-4">
+            <Select label="Employee" value={form.employee_name} onChange={e => setForm(f => ({ ...f, employee_name: e.target.value }))} options={[{ value: '', label: 'Select Employee' }, ...employees.map(e => ({ value: e.full_name, label: e.full_name }))]} />
+            <Select label="Document Type" value={form.doc_type} onChange={e => setForm(f => ({ ...f, doc_type: e.target.value }))} options={[{ value: '', label: 'Select Type' }, ...DOC_TYPES.map(t => ({ value: t, label: t }))]} />
+            <div className="md:col-span-2">
+              <Input label="Description (optional)" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="e.g. Signed contract dated March 2024" />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-semibold text-gray-700 mb-1">File</label>
+              <input key={fileKey} type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.xlsx,.xls" onChange={e => setSelectedFile(e.target.files?.[0] || null)} className="block w-full text-sm text-gray-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-white hover:file:opacity-90 cursor-pointer" />
+              <p className="text-xs text-gray-400 mt-1">PDF, Word, Excel, or image files · {selectedFile ? `Selected: ${selectedFile.name}` : 'No file chosen'}</p>
+            </div>
+            <div className="md:col-span-2 flex justify-end">
+              <Button type="submit" disabled={uploading}>{uploading ? 'Uploading…' : '📤 Upload Document'}</Button>
+            </div>
+          </form>
+        </CardBody>
+      </Card>
+      <Card>
+        <CardHeader>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+            <h3 className="font-bold text-gray-800">Document Library <span style={{ fontWeight: 400, fontSize: '0.85rem', color: '#6b7280' }}>({displayed.length})</span></h3>
+            <Select value={filterEmp} onChange={e => setFilterEmp(e.target.value)} options={[{ value: '', label: 'All Employees' }, ...employees.map(e => ({ value: e.full_name, label: e.full_name }))]} />
+          </div>
+        </CardHeader>
+        <CardBody style={{ padding: 0 }}>
+          {displayed.length === 0 ? (
+            <div style={{ padding: 32, textAlign: 'center', color: '#9ca3af' }}><FileText size={36} style={{ margin: '0 auto 8px', opacity: 0.3 }} /><p style={{ fontSize: '0.85rem' }}>No documents found</p></div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                <thead><tr style={{ background: '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
+                  {['Employee', 'Type', 'File', 'Description', 'Uploaded', ''].map(h => (
+                    <th key={h} style={{ padding: '8px 14px', textAlign: 'left', fontWeight: 700, color: '#374151', whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {displayed.map((doc, i) => {
+                    const meta = getMeta(doc);
+                    return (
+                      <tr key={doc.id} style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
+                        <td style={{ padding: '8px 14px', fontWeight: 600, color: '#1f2937' }}>{doc.employee_name}</td>
+                        <td style={{ padding: '8px 14px' }}><span style={{ background: '#eff6ff', color: '#1d4ed8', fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99 }}>{doc.subtype || '—'}</span></td>
+                        <td style={{ padding: '8px 14px' }}>
+                          {doc.notes ? (
+                            <a href={doc.notes} target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb', display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.8rem' }}>
+                              <FileText size={13} /> {meta.file_name || 'Open File'}
+                            </a>
+                          ) : <span style={{ color: '#9ca3af' }}>—</span>}
+                        </td>
+                        <td style={{ padding: '8px 14px', color: '#6b7280', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.reason || '—'}</td>
+                        <td style={{ padding: '8px 14px', color: '#9ca3af', whiteSpace: 'nowrap' }}>{formatDate(doc.created_at)}</td>
+                        <td style={{ padding: '8px 14px' }}><button onClick={() => handleDelete(doc)} style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', borderRadius: 6, padding: '3px 10px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}>Delete</button></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardBody>
+      </Card>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// SKILLS & CERTIFICATIONS TAB
+// ═══════════════════════════════════════════════════════════
+function SkillsTab() {
+  const CERT_TYPES = ['Pharmacy Assistant License', 'Dispensing License', 'First Aid Certificate', 'Fire Safety', 'Health & Safety', 'Pharmaceutical Compliance', 'Sales Certification', 'IT / System Training', 'Management Certificate', 'University Degree / Diploma', 'Other'];
+  const [employees, setEmployees] = useState([]);
+  const [certs, setCerts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState({ employee_name: '', cert_name: '', issuing_body: '', date_obtained: '', expiry_date: '', cert_number: '' });
+  const [success, setSuccess] = useState('');
+  const [error, setError] = useState('');
+  const [filterEmp, setFilterEmp] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const loadData = () => {
+    Promise.all([
+      api.employees.list().then(d => (Array.isArray(d) ? d : d.employees || []).filter(e => e.employment_status !== 'inactive')).catch(() => []),
+      api.hr.records('certification').then(d => (Array.isArray(d) ? d : d.records || []).filter(r => r.subtype !== 'birthday' && r.status !== 'deleted')).catch(() => []),
+    ]).then(([emps, recs]) => { setEmployees(emps); setCerts(recs); }).finally(() => setLoading(false));
+  };
+  useEffect(() => { loadData(); }, []);
+
+  const parseMeta = (rec) => { try { return JSON.parse(rec.notes || '{}'); } catch { return {}; } };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.employee_name || !form.cert_name) { setError('Employee and certification name required'); return; }
+    setError(''); setSubmitting(true);
+    try {
+      await api.hr.createRecord({ type: 'certification', employee_name: form.employee_name, subtype: form.cert_name, notes: JSON.stringify({ issuing_body: form.issuing_body, cert_number: form.cert_number, expiry_date: form.expiry_date }), date: form.date_obtained || undefined, effective_date: form.expiry_date || undefined });
+      setSuccess('Certification saved');
+      setForm({ employee_name: '', cert_name: '', issuing_body: '', date_obtained: '', expiry_date: '', cert_number: '' });
+      setTimeout(() => setSuccess(''), 3000);
+      loadData();
+    } catch (err) { setError(err.message); } finally { setSubmitting(false); }
+  };
+
+  const handleRemove = async (id) => {
+    try { await api.hr.updateRecord(id, { status: 'deleted' }); loadData(); } catch (err) { setError(err.message); }
+  };
+
+  if (loading) return <LoadingSpinner />;
+  const now = new Date();
+  const displayed = filterEmp ? certs.filter(c => c.employee_name === filterEmp) : certs;
+  const expired = displayed.filter(c => { const m = parseMeta(c); return m.expiry_date && new Date(m.expiry_date) < now; });
+  const expiringSoon = displayed.filter(c => { const m = parseMeta(c); if (!m.expiry_date) return false; const d = new Date(m.expiry_date); return d >= now && (d - now) < 30 * 86400000; });
+
+  return (
+    <div className="space-y-6">
+      {(expired.length > 0 || expiringSoon.length > 0) && (
+        <div className="space-y-2">
+          {expired.length > 0 && <div style={{ background: '#fef2f2', border: '1.5px solid #fca5a5', borderRadius: 10, padding: '10px 16px', display: 'flex', gap: 10, alignItems: 'center' }}><AlertTriangle size={18} style={{ color: '#dc2626', flexShrink: 0 }} /><div><p style={{ fontWeight: 700, color: '#991b1b', fontSize: '0.85rem', margin: 0 }}>{expired.length} certification{expired.length > 1 ? 's' : ''} expired</p><p style={{ fontSize: '0.78rem', color: '#b91c1c', margin: 0 }}>{expired.map(c => `${c.employee_name} — ${c.subtype}`).join('; ')}</p></div></div>}
+          {expiringSoon.length > 0 && <div style={{ background: '#fffbeb', border: '1.5px solid #fde68a', borderRadius: 10, padding: '10px 16px', display: 'flex', gap: 10, alignItems: 'center' }}><Clock size={18} style={{ color: '#b45309', flexShrink: 0 }} /><div><p style={{ fontWeight: 700, color: '#92400e', fontSize: '0.85rem', margin: 0 }}>{expiringSoon.length} certification{expiringSoon.length > 1 ? 's' : ''} expiring within 30 days</p><p style={{ fontSize: '0.78rem', color: '#b45309', margin: 0 }}>{expiringSoon.map(c => `${c.employee_name} — ${c.subtype}`).join('; ')}</p></div></div>}
+        </div>
+      )}
+      <Card>
+        <CardHeader><h3 className="font-bold text-gray-800 flex items-center gap-2"><Award size={16} className="text-primary" /> Add Certification / Skill</h3></CardHeader>
+        <CardBody>
+          {success && <Alert type="success" className="mb-4">{success}</Alert>}
+          {error && <Alert type="error" className="mb-4">{error}</Alert>}
+          <form onSubmit={handleSubmit} className="grid md:grid-cols-2 gap-4">
+            <Select label="Employee" value={form.employee_name} onChange={e => setForm(f => ({ ...f, employee_name: e.target.value }))} options={[{ value: '', label: 'Select Employee' }, ...employees.map(e => ({ value: e.full_name, label: e.full_name }))]} />
+            <Select label="Certification / Skill" value={form.cert_name} onChange={e => setForm(f => ({ ...f, cert_name: e.target.value }))} options={[{ value: '', label: 'Select Type' }, ...CERT_TYPES.map(t => ({ value: t, label: t }))]} />
+            <Input label="Issuing Body" value={form.issuing_body} onChange={e => setForm(f => ({ ...f, issuing_body: e.target.value }))} placeholder="e.g. Pharmacy Council of Namibia" />
+            <Input label="Certificate / License Number" value={form.cert_number} onChange={e => setForm(f => ({ ...f, cert_number: e.target.value }))} placeholder="Optional" />
+            <Input label="Date Obtained" type="date" value={form.date_obtained} onChange={e => setForm(f => ({ ...f, date_obtained: e.target.value }))} />
+            <Input label="Expiry Date (if applicable)" type="date" value={form.expiry_date} onChange={e => setForm(f => ({ ...f, expiry_date: e.target.value }))} />
+            <div className="md:col-span-2 flex justify-end"><Button type="submit" disabled={submitting}>{submitting ? 'Saving…' : 'Save Certification'}</Button></div>
+          </form>
+        </CardBody>
+      </Card>
+      <Card>
+        <CardHeader>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+            <h3 className="font-bold text-gray-800">Certifications & Skills <span style={{ fontWeight: 400, fontSize: '0.85rem', color: '#6b7280' }}>({displayed.length})</span></h3>
+            <Select value={filterEmp} onChange={e => setFilterEmp(e.target.value)} options={[{ value: '', label: 'All Employees' }, ...employees.map(e => ({ value: e.full_name, label: e.full_name }))]} />
+          </div>
+        </CardHeader>
+        <CardBody style={{ padding: 0 }}>
+          {displayed.length === 0 ? <div style={{ padding: 32, textAlign: 'center', color: '#9ca3af', fontSize: '0.85rem' }}>No certifications on record{filterEmp ? ' for this employee' : ''}.</div> : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+              <thead><tr style={{ background: '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
+                {['Employee', 'Certification', 'Issuing Body', 'Cert #', 'Obtained', 'Expires', ''].map(h => <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, color: '#374151', whiteSpace: 'nowrap' }}>{h}</th>)}
+              </tr></thead>
+              <tbody>
+                {displayed.map((cert, i) => {
+                  const meta = parseMeta(cert);
+                  const isExpired = meta.expiry_date && new Date(meta.expiry_date) < now;
+                  const isSoon = meta.expiry_date && !isExpired && (new Date(meta.expiry_date) - now) < 30 * 86400000;
+                  return (
+                    <tr key={cert.id} style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
+                      <td style={{ padding: '8px 12px', fontWeight: 600, color: '#1f2937' }}>{cert.employee_name}</td>
+                      <td style={{ padding: '8px 12px', color: '#374151' }}>{cert.subtype || '—'}</td>
+                      <td style={{ padding: '8px 12px', color: '#6b7280' }}>{meta.issuing_body || '—'}</td>
+                      <td style={{ padding: '8px 12px', color: '#6b7280', fontFamily: 'monospace', fontSize: '0.78rem' }}>{meta.cert_number || '—'}</td>
+                      <td style={{ padding: '8px 12px', color: '#6b7280', whiteSpace: 'nowrap' }}>{cert.date ? formatDate(cert.date) : '—'}</td>
+                      <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
+                        {meta.expiry_date ? <span style={{ fontWeight: 700, color: isExpired ? '#dc2626' : isSoon ? '#b45309' : '#16a34a', background: isExpired ? '#fef2f2' : isSoon ? '#fffbeb' : '#f0fdf4', padding: '2px 8px', borderRadius: 99, fontSize: '0.73rem' }}>{isExpired ? '⚠ Expired' : isSoon ? '⏰ Expiring soon' : '✓'} {formatDate(meta.expiry_date)}</span> : <span style={{ color: '#9ca3af' }}>No expiry</span>}
+                      </td>
+                      <td style={{ padding: '8px 12px' }}><button onClick={() => handleRemove(cert.id)} style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', borderRadius: 6, padding: '2px 8px', fontSize: '0.73rem', fontWeight: 600, cursor: 'pointer' }}>Remove</button></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </CardBody>
+      </Card>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// DISCIPLINARY CASES TAB
+// ═══════════════════════════════════════════════════════════
+function DisciplinaryTab() {
+  const SEVERITY_LEVELS = ['Verbal Warning', 'Written Warning', 'Final Written Warning', 'Suspension', 'Dismissal'];
+  const SEVERITY_STYLE = { 'Verbal Warning': { bg: '#fef3c7', color: '#b45309' }, 'Written Warning': { bg: '#fee2e2', color: '#dc2626' }, 'Final Written Warning': { bg: '#fecdd3', color: '#be123c' }, 'Suspension': { bg: '#ede9fe', color: '#7c3aed' }, 'Dismissal': { bg: '#111827', color: '#f9fafb' } };
+  const [employees, setEmployees] = useState([]);
+  const [cases, setCases] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState({ employee_name: '', severity: '', incident_date: '', incident_desc: '', hearing_date: '', outcome: '' });
+  const [success, setSuccess] = useState('');
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const loadData = () => {
+    Promise.all([
+      api.employees.list().then(d => (Array.isArray(d) ? d : d.employees || []).filter(e => e.employment_status !== 'inactive')).catch(() => []),
+      api.hr.records('disciplinary').then(d => Array.isArray(d) ? d : d.records || []).catch(() => []),
+    ]).then(([emps, recs]) => { setEmployees(emps); setCases(recs); }).finally(() => setLoading(false));
+  };
+  useEffect(() => { loadData(); }, []);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.employee_name || !form.severity || !form.incident_date || !form.incident_desc) { setError('Employee, severity, incident date, and description are required'); return; }
+    setError(''); setSubmitting(true);
+    try {
+      await api.hr.createRecord({ type: 'disciplinary', employee_name: form.employee_name, subtype: form.severity, date: form.incident_date, notes: form.incident_desc, reason: form.outcome || '', effective_date: form.hearing_date || undefined, status: 'open' });
+      setSuccess('Disciplinary case logged');
+      setForm({ employee_name: '', severity: '', incident_date: '', incident_desc: '', hearing_date: '', outcome: '' });
+      setTimeout(() => setSuccess(''), 3000);
+      loadData();
+    } catch (err) { setError(err.message); } finally { setSubmitting(false); }
+  };
+
+  const closeCase = async (id) => {
+    try { await api.hr.updateRecord(id, { status: 'closed' }); loadData(); } catch (err) { setError(err.message); }
+  };
+
+  if (loading) return <LoadingSpinner />;
+  const openCases = cases.filter(c => c.status !== 'closed');
+  const closedCases = cases.filter(c => c.status === 'closed');
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader><h3 className="font-bold text-gray-800 flex items-center gap-2"><Shield size={16} className="text-red-500" /> Log Disciplinary Case</h3></CardHeader>
+        <CardBody>
+          {success && <Alert type="success" className="mb-4">{success}</Alert>}
+          {error && <Alert type="error" className="mb-4">{error}</Alert>}
+          <form onSubmit={handleSubmit} className="grid md:grid-cols-2 gap-4">
+            <Select label="Employee" value={form.employee_name} onChange={e => setForm(f => ({ ...f, employee_name: e.target.value }))} options={[{ value: '', label: 'Select Employee' }, ...employees.map(e => ({ value: e.full_name, label: e.full_name }))]} />
+            <Select label="Severity Level" value={form.severity} onChange={e => setForm(f => ({ ...f, severity: e.target.value }))} options={[{ value: '', label: 'Select Severity' }, ...SEVERITY_LEVELS.map(s => ({ value: s, label: s }))]} />
+            <Input label="Incident Date" type="date" value={form.incident_date} onChange={e => setForm(f => ({ ...f, incident_date: e.target.value }))} />
+            <Input label="Hearing Date (optional)" type="date" value={form.hearing_date} onChange={e => setForm(f => ({ ...f, hearing_date: e.target.value }))} />
+            <div className="md:col-span-2"><Textarea label="Incident Description" value={form.incident_desc} onChange={e => setForm(f => ({ ...f, incident_desc: e.target.value }))} rows={3} placeholder="Describe the incident clearly and objectively…" /></div>
+            <div className="md:col-span-2"><Textarea label="Outcome / Resolution (optional)" value={form.outcome} onChange={e => setForm(f => ({ ...f, outcome: e.target.value }))} rows={2} placeholder="What action was taken or agreed upon…" /></div>
+            <div className="md:col-span-2 flex justify-end"><Button type="submit" disabled={submitting}>{submitting ? 'Saving…' : '⚖️ Log Case'}</Button></div>
+          </form>
+        </CardBody>
+      </Card>
+      {openCases.length > 0 && (
+        <div>
+          <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2"><AlertCircle size={16} className="text-red-500" /> Open Cases ({openCases.length})</h3>
+          <div className="space-y-3">
+            {openCases.map(c => {
+              const sc = SEVERITY_STYLE[c.subtype] || { bg: '#f3f4f6', color: '#374151' };
+              return (
+                <Card key={c.id}>
+                  <CardBody>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
+                          <span style={{ fontWeight: 800, fontSize: '0.92rem', color: '#1f2937' }}>{c.employee_name}</span>
+                          <span style={{ background: sc.bg, color: sc.color, fontWeight: 700, fontSize: '0.73rem', padding: '2px 10px', borderRadius: 99 }}>{c.subtype}</span>
+                        </div>
+                        <p style={{ fontSize: '0.83rem', color: '#374151', margin: '0 0 4px' }}>{c.notes}</p>
+                        {c.reason && <p style={{ fontSize: '0.78rem', color: '#6b7280', margin: 0 }}>Outcome: {c.reason}</p>}
+                        <div style={{ display: 'flex', gap: 16, marginTop: 6, fontSize: '0.73rem', color: '#9ca3af', flexWrap: 'wrap' }}>
+                          <span>📅 Incident: {formatDate(c.date || c.created_at)}</span>
+                          {c.effective_date && <span>⚖️ Hearing: {formatDate(c.effective_date)}</span>}
+                        </div>
+                      </div>
+                      <Button size="sm" variant="secondary" onClick={() => closeCase(c.id)}>Mark Closed</Button>
+                    </div>
+                  </CardBody>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      {closedCases.length > 0 && (
+        <Card>
+          <CardHeader><h3 className="font-bold text-gray-800">Closed Cases ({closedCases.length})</h3></CardHeader>
+          <Table columns={[{ header: 'Employee', key: 'employee_name' }, { header: 'Severity', render: r => { const sc = SEVERITY_STYLE[r.subtype] || { bg: '#f3f4f6', color: '#374151' }; return <span style={{ background: sc.bg, color: sc.color, fontWeight: 700, fontSize: '0.73rem', padding: '2px 8px', borderRadius: 99 }}>{r.subtype || '—'}</span>; } }, { header: 'Incident', render: r => formatDate(r.date || r.created_at) }, { header: 'Outcome', render: r => <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>{r.reason || '—'}</span> }, { header: 'Status', render: () => <Badge variant="success">Closed</Badge> }]} data={closedCases} emptyMessage="" />
+        </Card>
+      )}
+      {cases.length === 0 && <EmptyState icon={<CheckCircle2 size={40} className="text-green-400" />} title="No disciplinary cases" description="No cases have been logged yet." />}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// TEAM CALENDAR TAB
+// ═══════════════════════════════════════════════════════════
+function TeamCalendarTab() {
+  const [employees, setEmployees] = useState([]);
+  const [leaves, setLeaves] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [month, setMonth] = useState(() => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), 1); });
+
+  useEffect(() => {
+    Promise.all([
+      api.employees.list().then(d => (Array.isArray(d) ? d : d.employees || []).filter(e => e.employment_status !== 'inactive')).catch(() => []),
+      api.hr.leaves().then(d => (Array.isArray(d) ? d : d.leaves || []).filter(l => l.status === 'approved')).catch(() => []),
+    ]).then(([emps, lvs]) => { setEmployees(emps); setLeaves(lvs); }).finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <LoadingSpinner />;
+
+  const year = month.getFullYear();
+  const mon = month.getMonth();
+  const daysInMonth = new Date(year, mon + 1, 0).getDate();
+  const firstDay = (new Date(year, mon, 1).getDay() + 6) % 7;
+  const monthStr = `${year}-${String(mon + 1).padStart(2, '0')}`;
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  const dayData = {};
+  for (let d = 1; d <= daysInMonth; d++) {
+    const ds = `${year}-${String(mon + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    dayData[ds] = { onLeave: [], anniversaries: [] };
+  }
+  leaves.forEach(l => {
+    const s = l.start_date?.slice(0, 10), e = l.end_date?.slice(0, 10);
+    if (!s || !e) return;
+    Object.keys(dayData).forEach(ds => { if (ds >= s && ds <= e) dayData[ds].onLeave.push(l.employee_name || '?'); });
+  });
+  employees.forEach(e => {
+    if (!e.hire_date) return;
+    const h = new Date(e.hire_date);
+    const ds = `${year}-${String(h.getMonth() + 1).padStart(2, '0')}-${String(h.getDate()).padStart(2, '0')}`;
+    if (dayData[ds]) dayData[ds].anniversaries.push(e.full_name);
+  });
+
+  const thisMonthLeave = leaves.filter(l => {
+    const s = l.start_date?.slice(0, 7), e = l.end_date?.slice(0, 7);
+    return s === monthStr || e === monthStr || (s < monthStr && e > monthStr);
+  });
+
+  return (
+    <div className="space-y-4">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+        <div>
+          <h3 style={{ fontWeight: 800, fontSize: '1.1rem', color: '#1f2937', margin: 0 }}>{month.toLocaleString('default', { month: 'long', year: 'numeric' })}</h3>
+          <p style={{ fontSize: '0.73rem', color: '#9ca3af', margin: '2px 0 0' }}>{employees.length} active staff · {thisMonthLeave.length} on leave this month</p>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Button size="sm" variant="secondary" onClick={() => setMonth(m => new Date(m.getFullYear(), m.getMonth() - 1, 1))}><ChevronLeft size={14} /> Prev</Button>
+          <Button size="sm" variant="secondary" onClick={() => setMonth(new Date(new Date().getFullYear(), new Date().getMonth(), 1))}>Today</Button>
+          <Button size="sm" variant="secondary" onClick={() => setMonth(m => new Date(m.getFullYear(), m.getMonth() + 1, 1))}>Next <ChevronRight size={14} /></Button>
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+        {[{ color: '#3b82f6', label: 'On Approved Leave' }, { color: '#f59e0b', label: 'Work Anniversary' }].map(l => (
+          <span key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.75rem', color: '#6b7280' }}>
+            <span style={{ width: 10, height: 10, borderRadius: 3, background: l.color, display: 'inline-block' }} />{l.label}
+          </span>
+        ))}
+      </div>
+      <Card>
+        <CardBody style={{ padding: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2, marginBottom: 4 }}>
+            {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => (
+              <div key={d} style={{ textAlign: 'center', fontWeight: 700, fontSize: '0.72rem', color: '#9ca3af', padding: '4px 0' }}>{d}</div>
+            ))}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2 }}>
+            {Array.from({ length: firstDay }, (_, i) => <div key={`e${i}`} />)}
+            {Array.from({ length: daysInMonth }, (_, i) => {
+              const d = i + 1;
+              const ds = `${year}-${String(mon + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+              const data = dayData[ds] || { onLeave: [], anniversaries: [] };
+              const isToday = ds === todayStr;
+              const isWeekend = (new Date(ds).getDay() + 6) % 7 >= 5;
+              return (
+                <div key={d} style={{ border: `1.5px solid ${isToday ? '#3b82f6' : '#e5e7eb'}`, borderRadius: 8, padding: '4px 5px', minHeight: 58, background: isToday ? '#eff6ff' : isWeekend ? '#fafafa' : '#fff' }}>
+                  <span style={{ fontWeight: isToday ? 900 : 600, fontSize: '0.82rem', color: isToday ? '#1d4ed8' : isWeekend ? '#9ca3af' : '#374151' }}>{d}</span>
+                  <div style={{ marginTop: 3, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    {data.onLeave.slice(0, 2).map((name, j) => (
+                      <span key={j} style={{ background: '#3b82f6', color: '#fff', borderRadius: 3, fontSize: '0.58rem', padding: '1px 4px', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={name}>{name.split(' ')[0]}</span>
+                    ))}
+                    {data.onLeave.length > 2 && <span style={{ fontSize: '0.58rem', color: '#3b82f6', fontWeight: 700 }}>+{data.onLeave.length - 2}</span>}
+                    {data.anniversaries.map((name, j) => (
+                      <span key={`a${j}`} style={{ background: '#fef3c7', color: '#b45309', borderRadius: 3, fontSize: '0.58rem', padding: '1px 4px', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={`${name} anniversary`}>🏆 {name.split(' ')[0]}</span>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </CardBody>
+      </Card>
+      {thisMonthLeave.length > 0 && (
+        <Card>
+          <CardHeader><h3 className="font-bold text-gray-800">Leave This Month ({thisMonthLeave.length})</h3></CardHeader>
+          <Table columns={[{ header: 'Employee', render: r => <span style={{ fontWeight: 600, color: '#1f2937' }}>{r.employee_name || r.full_name || '—'}</span> }, { header: 'Type', render: r => <Badge variant="info">{r.leave_type || '—'}</Badge> }, { header: 'From', render: r => formatDate(r.start_date) }, { header: 'To', render: r => formatDate(r.end_date) }, { header: 'Days', render: r => <span style={{ fontWeight: 700 }}>{r.working_days ?? '—'}</span> }]} data={thisMonthLeave} emptyMessage="" />
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// CELEBRATIONS TAB
+// ═══════════════════════════════════════════════════════════
+function CelebrationsTab() {
+  const [employees, setEmployees] = useState([]);
+  const [bdayRecords, setBdayRecords] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState({ employee_name: '', bday: '' });
+  const [success, setSuccess] = useState('');
+  const [error, setError] = useState('');
+
+  const loadData = () => {
+    Promise.all([
+      api.employees.list().then(d => (Array.isArray(d) ? d : d.employees || []).filter(e => e.employment_status !== 'inactive')).catch(() => []),
+      api.hr.records('certification').then(d => (Array.isArray(d) ? d : d.records || []).filter(r => r.subtype === 'birthday')).catch(() => []),
+    ]).then(([emps, recs]) => { setEmployees(emps); setBdayRecords(recs); }).finally(() => setLoading(false));
+  };
+  useEffect(() => { loadData(); }, []);
+
+  const saveBirthday = async (e) => {
+    e.preventDefault();
+    if (!form.employee_name || !form.bday) { setError('Both fields required'); return; }
+    setError('');
+    try {
+      await api.hr.createRecord({ type: 'certification', employee_name: form.employee_name, subtype: 'birthday', date: form.bday, notes: form.bday });
+      setSuccess('Birthday saved!');
+      setForm({ employee_name: '', bday: '' });
+      setTimeout(() => setSuccess(''), 3000);
+      loadData();
+    } catch (err) { setError(err.message); }
+  };
+
+  if (loading) return <LoadingSpinner />;
+
+  const now = new Date();
+  const year = now.getFullYear();
+  const bdayMap = {};
+  bdayRecords.forEach(r => { if (r.employee_name) bdayMap[r.employee_name] = r.date || r.notes; });
+
+  const upcoming = [];
+  employees.forEach(emp => {
+    if (emp.hire_date) {
+      const h = new Date(emp.hire_date);
+      let ann = new Date(year, h.getMonth(), h.getDate());
+      if (ann < now) ann = new Date(year + 1, h.getMonth(), h.getDate());
+      const days = Math.ceil((ann - now) / 86400000);
+      if (days <= 30) upcoming.push({ type: 'anniversary', name: emp.full_name, position: emp.position || '—', days, label: `${ann.getFullYear() - h.getFullYear()} year anniversary` });
+    }
+    if (bdayMap[emp.full_name]) {
+      const bd = new Date(bdayMap[emp.full_name]);
+      let next = new Date(year, bd.getMonth(), bd.getDate());
+      if (next < now) next = new Date(year + 1, bd.getMonth(), bd.getDate());
+      const days = Math.ceil((next - now) / 86400000);
+      if (days <= 30) upcoming.push({ type: 'birthday', name: emp.full_name, position: emp.position || '—', days, label: `Turns ${next.getFullYear() - bd.getFullYear()}` });
+    }
+  });
+  upcoming.sort((a, b) => a.days - b.days);
+  const todayCelebrations = upcoming.filter(e => e.days === 0);
+
+  return (
+    <div className="space-y-6">
+      {todayCelebrations.length > 0 && (
+        <div style={{ background: 'linear-gradient(135deg, #fef3c7, #fde68a)', border: '2px solid #f59e0b', borderRadius: 14, padding: '16px 20px' }}>
+          <p style={{ fontWeight: 800, color: '#92400e', fontSize: '1rem', marginBottom: 8 }}>🎉 Celebrating Today!</p>
+          {todayCelebrations.map((e, i) => <p key={i} style={{ fontWeight: 600, color: '#78350f', fontSize: '0.88rem', margin: '2px 0' }}>{e.type === 'birthday' ? '🎂' : '🏆'} {e.name} — {e.label}</p>)}
+        </div>
+      )}
+      <div className="grid md:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader><h3 className="font-bold text-gray-800">📅 Upcoming Events (30 Days)</h3></CardHeader>
+          <CardBody>
+            {upcoming.length === 0 ? <p style={{ fontSize: '0.85rem', color: '#9ca3af' }}>No upcoming events in the next 30 days.</p> : (
+              <div className="space-y-2">
+                {upcoming.map((ev, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '7px 10px', borderRadius: 10, background: ev.days <= 3 ? '#fef3c7' : '#f8fafc', border: `1px solid ${ev.days <= 3 ? '#fde68a' : '#e5e7eb'}` }}>
+                    <span style={{ fontSize: '1.3rem' }}>{ev.type === 'birthday' ? '🎂' : '🏆'}</span>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ fontWeight: 700, fontSize: '0.83rem', color: '#1f2937', margin: 0 }}>{ev.name}</p>
+                      <p style={{ fontSize: '0.73rem', color: '#6b7280', margin: 0 }}>{ev.label} · {ev.position}</p>
+                    </div>
+                    <span style={{ background: ev.days === 0 ? '#fef3c7' : '#eff6ff', color: ev.days === 0 ? '#b45309' : '#1d4ed8', fontWeight: 800, fontSize: '0.73rem', padding: '2px 8px', borderRadius: 8, whiteSpace: 'nowrap' }}>{ev.days === 0 ? '🎉 Today' : `in ${ev.days}d`}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardBody>
+        </Card>
+        <Card>
+          <CardHeader><h3 className="font-bold text-gray-800">🎂 Register Employee Birthday</h3></CardHeader>
+          <CardBody>
+            {success && <Alert type="success" className="mb-3">{success}</Alert>}
+            {error && <Alert type="error" className="mb-3">{error}</Alert>}
+            <form onSubmit={saveBirthday} className="space-y-3">
+              <Select label="Employee" value={form.employee_name} onChange={e => setForm(f => ({ ...f, employee_name: e.target.value }))} options={[{ value: '', label: 'Select Employee' }, ...employees.map(e => ({ value: e.full_name, label: e.full_name }))]} />
+              <Input label="Date of Birth" type="date" value={form.bday} onChange={e => setForm(f => ({ ...f, bday: e.target.value }))} />
+              <div className="flex justify-end"><Button type="submit" size="sm">Save Birthday</Button></div>
+            </form>
+            {Object.keys(bdayMap).length > 0 && (
+              <div className="mt-4 space-y-1.5 border-t border-gray-100 pt-3">
+                <p style={{ fontSize: '0.73rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Registered Birthdays</p>
+                {Object.entries(bdayMap).map(([name, date]) => (
+                  <div key={name} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#374151' }}>
+                    <span style={{ fontWeight: 600 }}>{name}</span>
+                    <span style={{ color: '#6b7280' }}>{date ? new Date(date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' }) : '—'}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardBody>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// HR ANALYTICS TAB
+// ═══════════════════════════════════════════════════════════
+function HRAnalyticsTab() {
+  const [employees, setEmployees] = useState([]);
+  const [attendance, setAttendance] = useState([]);
+  const [leaves, setLeaves] = useState([]);
+  const [warnings, setWarnings] = useState([]);
+  const [reviews, setReviews] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      api.employees.list().then(d => Array.isArray(d) ? d : d.employees || []).catch(() => []),
+      api.hr.records('attendance').then(d => Array.isArray(d) ? d : d.records || []).catch(() => []),
+      api.hr.leaves().then(d => Array.isArray(d) ? d : d.leaves || []).catch(() => []),
+      api.hr.records('warning').then(d => Array.isArray(d) ? d : d.records || []).catch(() => []),
+      api.hr.records('performance').then(d => Array.isArray(d) ? d : d.records || []).catch(() => []),
+    ]).then(([emps, att, lvs, warns, revs]) => { setEmployees(emps); setAttendance(att); setLeaves(lvs); setWarnings(warns); setReviews(revs); }).finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <LoadingSpinner />;
+
+  const active = employees.filter(e => e.employment_status !== 'inactive');
+  const byDept = {}, byBranch = {}, leaveTypes = {};
+  active.forEach(e => {
+    const d = e.department || 'Unassigned'; byDept[d] = (byDept[d] || 0) + 1;
+    const b = e.branch || 'Unassigned'; byBranch[b] = (byBranch[b] || 0) + 1;
+  });
+  leaves.forEach(l => { const t = l.leave_type || 'Other'; leaveTypes[t] = (leaveTypes[t] || 0) + 1; });
+
+  const cutoff = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const recent = attendance.filter(a => (a.date || '') >= cutoff);
+  const lateAtt = recent.filter(a => (a.status || a.subtype || '').toLowerCase() === 'late').length;
+  const lateMap = {};
+  recent.filter(a => (a.status || a.subtype || '').toLowerCase() === 'late').forEach(a => { lateMap[a.employee_name] = (lateMap[a.employee_name] || 0) + 1; });
+  const topLate = Object.entries(lateMap).sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+  const deptPerf = {};
+  reviews.forEach(r => {
+    const emp = active.find(e => e.full_name === r.employee_name);
+    const dept = emp?.department || 'Unassigned';
+    if (!deptPerf[dept]) deptPerf[dept] = { sum: 0, count: 0 };
+    deptPerf[dept].sum += Number(r.rating || 0);
+    deptPerf[dept].count++;
+  });
+
+  const now2 = new Date();
+  const monthlyHires = {};
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now2.getFullYear(), now2.getMonth() - i, 1);
+    monthlyHires[d.toISOString().slice(0, 7)] = 0;
+  }
+  active.forEach(e => { if (e.hire_date) { const k = e.hire_date.slice(0, 7); if (k in monthlyHires) monthlyHires[k]++; } });
+  const maxHires = Math.max(...Object.values(monthlyHires), 1);
+
+  const StatBar = ({ label, value, max, color }) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 7 }}>
+      <span style={{ minWidth: 150, fontSize: '0.8rem', color: '#374151', fontWeight: 500 }}>{label}</span>
+      <div style={{ flex: 1, background: '#f1f5f9', borderRadius: 4, height: 12, overflow: 'hidden', maxWidth: 200 }}>
+        <div style={{ width: `${(value / max) * 100}%`, height: '100%', background: color, borderRadius: 4, transition: 'width 0.4s' }} />
+      </div>
+      <span style={{ minWidth: 28, fontSize: '0.8rem', fontWeight: 800, color }}>{value}</span>
+    </div>
+  );
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        {[{ label: 'Active Staff', value: active.length, color: '#3b82f6', bg: '#eff6ff' }, { label: 'Leave Requests', value: leaves.length, color: '#f59e0b', bg: '#fffbeb' }, { label: 'Attendance (30d)', value: recent.length, color: '#10b981', bg: '#f0fdf4' }, { label: 'Late (30d)', value: lateAtt, color: '#ef4444', bg: '#fef2f2' }, { label: 'Total Warnings', value: warnings.length, color: '#8b5cf6', bg: '#f5f3ff' }].map(s => (
+          <div key={s.label} style={{ background: s.bg, borderRadius: 12, padding: '14px 16px', textAlign: 'center' }}>
+            <div style={{ fontSize: '1.8rem', fontWeight: 900, color: s.color }}>{s.value}</div>
+            <div style={{ fontSize: '0.69rem', color: s.color, fontWeight: 600, marginTop: 2, lineHeight: 1.2 }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+      <div className="grid md:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader><h3 className="font-bold text-gray-800">👥 Headcount by Department</h3></CardHeader>
+          <CardBody>{Object.entries(byDept).sort((a, b) => b[1] - a[1]).map(([dept, count]) => <StatBar key={dept} label={dept} value={count} max={Math.max(...Object.values(byDept), 1)} color="#3b82f6" />)}</CardBody>
+        </Card>
+        <Card>
+          <CardHeader><h3 className="font-bold text-gray-800">🏢 Headcount by Branch</h3></CardHeader>
+          <CardBody>{Object.entries(byBranch).sort((a, b) => b[1] - a[1]).map(([branch, count]) => <StatBar key={branch} label={branch} value={count} max={Math.max(...Object.values(byBranch), 1)} color="#10b981" />)}</CardBody>
+        </Card>
+        <Card>
+          <CardHeader><h3 className="font-bold text-gray-800">🌴 Leave Requests by Type</h3></CardHeader>
+          <CardBody>{Object.keys(leaveTypes).length === 0 ? <p style={{ fontSize: '0.85rem', color: '#9ca3af' }}>No leave data yet</p> : Object.entries(leaveTypes).sort((a, b) => b[1] - a[1]).map(([type, count]) => <StatBar key={type} label={type} value={count} max={Math.max(...Object.values(leaveTypes), 1)} color="#f59e0b" />)}</CardBody>
+        </Card>
+        <Card>
+          <CardHeader><h3 className="font-bold text-gray-800">⏰ Top Late Arrivals (30 Days)</h3></CardHeader>
+          <CardBody>{topLate.length === 0 ? <p style={{ fontSize: '0.85rem', color: '#9ca3af' }}>No late arrivals in the past 30 days</p> : topLate.map(([name, count]) => <StatBar key={name} label={name} value={count} max={topLate[0][1]} color="#ef4444" />)}</CardBody>
+        </Card>
+        {Object.keys(deptPerf).length > 0 && (
+          <Card>
+            <CardHeader><h3 className="font-bold text-gray-800">⭐ Avg Performance Rating by Dept</h3></CardHeader>
+            <CardBody>
+              {Object.entries(deptPerf).sort((a, b) => (b[1].sum / b[1].count) - (a[1].sum / a[1].count)).map(([dept, { sum, count }]) => {
+                const avg = sum / count;
+                return (
+                  <div key={dept} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 7 }}>
+                    <span style={{ minWidth: 150, fontSize: '0.8rem', color: '#374151', fontWeight: 500 }}>{dept}</span>
+                    <div style={{ flex: 1, background: '#f1f5f9', borderRadius: 4, height: 12, overflow: 'hidden', maxWidth: 200 }}>
+                      <div style={{ width: `${(avg / 5) * 100}%`, height: '100%', background: avg >= 4 ? '#16a34a' : avg >= 3 ? '#f59e0b' : '#dc2626', borderRadius: 4 }} />
+                    </div>
+                    <span style={{ minWidth: 42, fontSize: '0.8rem', fontWeight: 800, color: avg >= 4 ? '#15803d' : avg >= 3 ? '#b45309' : '#dc2626' }}>{avg.toFixed(1)}/5</span>
+                  </div>
+                );
+              })}
+            </CardBody>
+          </Card>
+        )}
+        <Card>
+          <CardHeader><h3 className="font-bold text-gray-800">📈 Monthly Hires (12 Months)</h3></CardHeader>
+          <CardBody>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 80 }}>
+              {Object.entries(monthlyHires).map(([month, count]) => (
+                <div key={month} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+                  <span style={{ fontSize: '0.65rem', fontWeight: 800, color: '#3b82f6' }}>{count > 0 ? count : ''}</span>
+                  <div style={{ width: '100%', height: `${count > 0 ? Math.max((count / maxHires) * 64, 8) : 4}px`, background: count > 0 ? '#3b82f6' : '#e5e7eb', borderRadius: '3px 3px 0 0', transition: 'height 0.4s', cursor: 'default' }} title={`${month}: ${count} hire${count !== 1 ? 's' : ''}`} />
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+              {Object.keys(monthlyHires).filter((_, i) => i % 3 === 0).map(m => <span key={m} style={{ fontSize: '0.63rem', color: '#9ca3af' }}>{m.slice(2)}</span>)}
+            </div>
+            <p style={{ fontSize: '0.73rem', color: '#9ca3af', marginTop: 6 }}>Based on hire dates of currently active employees</p>
+          </CardBody>
+        </Card>
+      </div>
     </div>
   );
 }
