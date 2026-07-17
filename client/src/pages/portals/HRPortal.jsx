@@ -336,6 +336,7 @@ function EmployeesTab() {
   };
 
   const filtered = employees.filter(emp => {
+    if (emp.employment_status === 'inactive') return false;
     if (!search.trim()) return true;
     const q = search.toLowerCase();
     return ['full_name', 'position', 'department', 'branch'].some(k => (emp[k] || '').toLowerCase().includes(q));
@@ -791,6 +792,8 @@ function LeaveTab() {
   const handleApprove = async (id) => {
     try {
       await api.hr.updateLeave(id, { status: 'approved' });
+      setSuccess('Leave request approved.');
+      setTimeout(() => setSuccess(''), 3000);
       loadData();
     } catch (err) {
       setError(err.message || 'Failed to approve leave');
@@ -1052,7 +1055,7 @@ function LeaveTab() {
       </Card>
 
       {rejectTarget && (
-        <Modal title="Reject Leave Request" onClose={() => setRejectTarget(null)}>
+        <Modal open={!!rejectTarget} title="Reject Leave Request" onClose={() => setRejectTarget(null)}>
           <div className="space-y-4">
             <div className="bg-gray-50 rounded-lg px-4 py-3 border border-gray-200">
               <p className="text-sm font-semibold text-gray-800">{resolveDisplayName(rejectTarget)}</p>
