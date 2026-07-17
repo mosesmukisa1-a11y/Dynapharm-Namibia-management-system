@@ -1239,7 +1239,10 @@ export default async function handler(req, res) {
 
                 // Physically reserve from source — deduct the right table depending on source type.
                 if (aprSrcType === 'branch') {
-                  await fefoDeductBranchInventoryBatches(client, normalizedSrc, productName, qtyToReserve);
+                  const deducted = await fefoDeductBranchInventoryBatches(client, normalizedSrc, productName, qtyToReserve);
+                  if (deducted < qtyToReserve) {
+                    console.warn(`[transfers] approval shortfall: ${productName} at ${normalizedSrc} — requested ${qtyToReserve}, deducted ${deducted}. Transfer approved with partial stock.`);
+                  }
                 } else {
                   await fefoDeductStockBatches(client, sourceWarehouse, productName, qtyToReserve);
                   await fefoDeductWarehouseInventory(client, sourceWarehouse, productName, qtyToReserve);
@@ -1270,7 +1273,10 @@ export default async function handler(req, res) {
               if (!alreadyDeducted && sourceWarehouse) {
                 const normalizedSrc = normalizeBranchSlug(sourceWarehouse) || sourceWarehouse;
                 if (dspSrcType === 'branch') {
-                  await fefoDeductBranchInventoryBatches(client, normalizedSrc, productName, qty);
+                  const deducted = await fefoDeductBranchInventoryBatches(client, normalizedSrc, productName, qty);
+                  if (deducted < qty) {
+                    console.warn(`[transfers] dispatch shortfall: ${productName} at ${normalizedSrc} — requested ${qty}, deducted ${deducted}. Dispatched with partial stock.`);
+                  }
                 } else {
                   await fefoDeductStockBatches(client, sourceWarehouse, productName, qty);
                   await fefoDeductWarehouseInventory(client, sourceWarehouse, productName, qty);

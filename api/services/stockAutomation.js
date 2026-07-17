@@ -556,7 +556,7 @@ export async function runPendingApprovalEscalation() {
   const hours = Number(await getConfig('pending_escalation_hours', '4'));
 
   const pending = await getMany(
-    `SELECT id, from_warehouse, to_branch, priority, created_at
+    `SELECT id, from_warehouse, to_branch, COALESCE(priority, 'normal') AS priority, created_at
      FROM stock_transfers
      WHERE status IN ('pending_approval','pending')
        AND updated_at < NOW() - ($1 || ' hours')::INTERVAL

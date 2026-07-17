@@ -2613,8 +2613,13 @@ server.on('error', (error) => {
       `ALTER TABLE stock_adjustments ADD COLUMN IF NOT EXISTS approved_by       VARCHAR(255)`,
       `ALTER TABLE stock_adjustments ADD COLUMN IF NOT EXISTS approved_by_name  VARCHAR(255)`,
       `ALTER TABLE stock_adjustments ADD COLUMN IF NOT EXISTS approved_at       TIMESTAMPTZ`,
-      // Back-fill field_to_adjust from old field_name column (safe no-op if column doesn't exist yet)
-      `UPDATE stock_adjustments SET field_to_adjust = field_name WHERE field_to_adjust IS NULL AND field_name IS NOT NULL`,
+      // Back-fill field_to_adjust from old field_name column — wrapped in DO block so it
+      // silently succeeds even when the legacy field_name column never existed.
+      `DO $$ BEGIN
+         UPDATE stock_adjustments SET field_to_adjust = field_name
+         WHERE field_to_adjust IS NULL AND field_name IS NOT NULL;
+       EXCEPTION WHEN undefined_column THEN NULL;
+       END $$`,
       // Product codes and CIF breakdown columns
       `ALTER TABLE product_prices ADD COLUMN IF NOT EXISTS product_code VARCHAR(30)`,
       `ALTER TABLE product_prices ADD COLUMN IF NOT EXISTS original_cif NUMERIC(10,2)`,
@@ -2681,10 +2686,13 @@ server.on('error', (error) => {
       `CREATE INDEX IF NOT EXISTS idx_std_unresolved  ON stock_transfer_discrepancies (resolved) WHERE resolved = FALSE`,
       // ── #73 Prevent negative stock at database level ──────────────────────────
       // These constraints serve as the last line of defence after application-layer guards.
-      `ALTER TABLE stock_batches ADD CONSTRAINT IF NOT EXISTS chk_sb_remaining_qty_gte_zero CHECK (remaining_quantity >= 0)`,
-      `ALTER TABLE stock_batches ADD CONSTRAINT IF NOT EXISTS chk_sb_dispatched_qty_gte_zero CHECK (dispatched_quantity >= 0)`,
-      `ALTER TABLE warehouse_inventory ADD CONSTRAINT IF NOT EXISTS chk_wi_qty_gte_zero CHECK (quantity >= 0)`,
-      `ALTER TABLE branch_inventory_batches ADD CONSTRAINT IF NOT EXISTS chk_bib_qty_gte_zero CHECK (quantity >= 0)`,
+      // PostgreSQL does not support "ADD CONSTRAINT IF NOT EXISTS" — use DO blocks instead.
+      `DO $$ BEGIN ALTER TABLE stock_batches ADD CONSTRAINT chk_sb_remaining_qty_gte_zero CHECK (remaining_quantity >= 0); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+      `DO $$ BEGIN ALTER TABLE stock_batches ADD CONSTRAINT chk_sb_dispatched_qty_gte_zero CHECK (dispatched_quantity >= 0); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+      `DO $$ BEGIN ALTER TABLE warehouse_inventory ADD CONSTRAINT chk_wi_qty_gte_zero CHECK (quantity >= 0); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+      `DO $$ BEGIN ALTER TABLE branch_inventory_batches ADD CONSTRAINT chk_bib_qty_gte_zero CHECK (quantity >= 0); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+      // ── priority column on stock_transfers (used by escalation scheduler) ────
+      `ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS priority VARCHAR(50) DEFAULT 'normal'`,
     ];
     let schemaSynced = 0;
     for (const sql of schemaSyncs) {
