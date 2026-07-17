@@ -7041,6 +7041,13 @@ function BranchStockTab() {
 
       {showWriteOffForm && (() => {
         const woInv = inventory.filter(i => Number(i.quantity || 0) > 0);
+        // Build a map of product name → total qty across all batches so the
+        // "Available" column can show both the batch qty and the product total.
+        const productTotalMap = {};
+        woInv.forEach(i => {
+          const key = (i.product_name || i.productName || '').toLowerCase().trim();
+          productTotalMap[key] = (productTotalMap[key] || 0) + Number(i.quantity || 0);
+        });
         const woSearchLc = writeOffSearch.toLowerCase();
         const woFiltered = writeOffSearch
           ? woInv.filter(i => (i.product_name || i.productName || '').toLowerCase().includes(woSearchLc) || (i.batch_no || i.batchNo || '').toLowerCase().includes(woSearchLc))
@@ -7131,6 +7138,9 @@ function BranchStockTab() {
                       const isExp = expRaw ? new Date(expRaw) < new Date() : false;
                       const rowBg = isChecked ? '#fff5f5' : idx % 2 === 0 ? '#fff' : '#fafafa';
                       const overQty = isChecked && woQty > Number(item.quantity || 0);
+                      const batchQty = Number(item.quantity || 0);
+                      const productTotal = productTotalMap[(pName || '').toLowerCase().trim()] || batchQty;
+                      const hasMultiBatches = productTotal > batchQty;
                       return (
                         <tr key={id} style={{ background: rowBg, borderBottom: '1px solid #f1f5f9', transition: 'background 0.15s' }}>
                           <td style={{ padding: '8px 12px', textAlign: 'center' }}>
@@ -7146,8 +7156,13 @@ function BranchStockTab() {
                             {expRaw ? formatDate(expRaw) : <span style={{ color: '#cbd5e1' }}>N/A</span>}
                             {isExp && <span style={{ marginLeft: 4, fontSize: '0.7rem', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 4, padding: '1px 4px', color: '#dc2626' }}>EXP</span>}
                           </td>
-                          <td style={{ padding: '8px 8px', textAlign: 'right', fontWeight: 700, color: '#1e293b' }}>
-                            {Number(item.quantity || 0).toLocaleString('en-ZA')}
+                          <td style={{ padding: '8px 8px', textAlign: 'right' }}>
+                            <span style={{ fontWeight: 700, color: '#1e293b' }}>{batchQty.toLocaleString('en-ZA')}</span>
+                            {hasMultiBatches && (
+                              <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: 1 }}>
+                                {productTotal.toLocaleString('en-ZA')} total
+                              </div>
+                            )}
                           </td>
                           <td style={{ padding: '6px 8px', textAlign: 'center' }}>
                             {isChecked ? (
