@@ -1397,6 +1397,7 @@ function WalkInSalesTab() {
   const [refFromCache, setRefFromCache] = useState(false);
   const [scanMode, setScanMode]     = useState(false);
   const [cameraMode, setCameraMode] = useState(false);
+  const [campaigns, setCampaigns]   = useState([]); // active discount campaigns
 
   const loadSales = (branch) =>
     api.branch.walkinSales(branch ? `branch_id=${branch}` : '')
@@ -1443,6 +1444,16 @@ function WalkInSalesTab() {
       const packages = getPackagesForPOS();
       setProducts([...priceListProducts, ...packages]);
     }).finally(() => setLoading(false));
+    // Load active discount-type campaigns
+    api.get('/campaigns').then(d => {
+      const all = Array.isArray(d) ? d : (d.campaigns || []);
+      const now = new Date();
+      setCampaigns(all.filter(c =>
+        c.campaign_type === 'discount' &&
+        c.status !== 'pending_approval' && c.status !== 'rejected' &&
+        new Date(c.start_date) <= now && new Date(c.end_date) >= now
+      ));
+    }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -1506,6 +1517,30 @@ function WalkInSalesTab() {
   const selectReferral = (d) => { setSelectedReferral(normalizeDistributor(d)); setReferralResults([]); setRefFromCache(false); setReferralSearch(''); };
   const clearReferral = () => { setSelectedReferral(null); setReferralSearch(''); setRefFromCache(false); };
 
+  // Returns the best active discount campaign covering a product (null if none)
+  const getWalkinCampaignDiscount = (productName) => {
+    if (!productName || campaigns.length === 0) return null;
+    const nameLower = productName.trim().toLowerCase();
+    let best = null;
+    for (const camp of campaigns) {
+      const pct = parseFloat(camp.discount_percentage || 0);
+      if (pct <= 0) continue;
+      const cond = typeof camp.conditions === 'string'
+        ? (() => { try { return JSON.parse(camp.conditions); } catch { return {}; } })()
+        : (camp.conditions || {});
+      const productsText = cond.products_text || '';
+      const productsList = Array.isArray(cond.products) ? cond.products : [];
+      const allProducts = [...productsList, ...productsText.split(',')]
+        .map(p => (typeof p === 'string' ? p.trim().toLowerCase() : '')).filter(Boolean);
+      if (allProducts.length === 0 || allProducts.includes(nameLower)) {
+        if (!best || pct > best.pct) {
+          best = { pct, campaignId: camp.id, campaignName: camp.name };
+        }
+      }
+    }
+    return best;
+  };
+
   const toggleNoReferral = (checked) => {
     setNoReferral(checked);
     if (checked) { setSelectedReferral(DEFAULT_REFERRAL); setReferralSearch(''); setReferralResults([]); }
@@ -1548,6 +1583,20 @@ function WalkInSalesTab() {
     setCart(prev => {
       const existing = prev.find(c => c.id === product.id);
       if (existing) return prev.map(c => c.id === product.id ? { ...c, qty: c.qty + 1 } : c);
+      // Apply campaign discount to cp/dp if applicable, preserving originals for display
+      const campDisc = getWalkinCampaignDiscount(product.name || product.description);
+      if (campDisc && campDisc.pct > 0) {
+        const mult = 1 - campDisc.pct / 100;
+        return [...prev, {
+          ...product,
+          qty: 1,
+          originalCp: product.cp,
+          originalDp: product.dp,
+          cp: Math.round((product.cp || 0) * mult * 100) / 100,
+          dp: Math.round((product.dp || 0) * mult * 100) / 100,
+          campaignDiscount: campDisc,
+        }];
+      }
       return [...prev, { ...product, qty: 1 }];
     });
   };
@@ -2134,11 +2183,13 @@ function WalkInSalesTab() {
                     {filteredProducts.length === 0 ? (
                       <div style={{ color: '#c4a0a7', gridColumn: '1/-1', textAlign: 'center', padding: '40px 0', fontSize: '0.9rem' }}>No products found</div>
                     ) : filteredProducts.slice(0, 80).map(p => {
-                      const price = p.isCheckup
+                      const rawPrice = p.isCheckup
                         ? (isMember ? p.memberPrice : p.cp)
                         : (isMember ? (p.dp || p.price) : (p.cp || p.price));
+                      const campDisc = getWalkinCampaignDiscount(p.name || p.description);
+                      const price = campDisc ? Math.round((rawPrice || 0) * (1 - campDisc.pct / 100) * 100) / 100 : rawPrice;
                       const inCart = cart.find(c => c.id === p.id);
-                      const profit = !isMember ? (p.cp || 0) - (p.dp || 0) : 0;
+                      const profit = !isMember && !campDisc ? (p.cp || 0) - (p.dp || 0) : 0;
                       const accentColor = p.isCheckup ? '#0d9488' : p.isPackage ? '#3b82f6' : '#c41e3a';
                       const isAdding = addedProductId === p.id;
                       const primaryImage = p.images?.find(img => img.is_primary) || p.images?.[0];
@@ -2163,15 +2214,27 @@ function WalkInSalesTab() {
                             {p.bv > 0 && (
                               <div style={{ position: 'absolute', top: 6, right: 6, zIndex: 2, background: '#fffbeb', border: '1px solid #fcd34d', color: '#d97706', borderRadius: 8, padding: '1px 6px', fontSize: '0.6rem', fontWeight: 800 }}>{p.bv} BV</div>
                             )}
+                            {/* Discount campaign badge over image */}
+                            {campDisc && (
+                              <div style={{ position: 'absolute', top: 6, left: 6, zIndex: 2, background: '#16a34a', color: '#fff', borderRadius: 7, padding: '2px 7px', fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.02em' }}>
+                                {campDisc.pct}% OFF
+                              </div>
+                            )}
                           </div>
                           {/* Card content */}
                           <div style={{ padding: '8px 10px 8px', flex: 1, display: 'flex', flexDirection: 'column' }}>
                             <div style={{ fontWeight: 700, color: p.isCheckup ? '#0d9488' : '#1e293b', lineHeight: 1.3, fontSize: '0.78rem', marginBottom: 4, flex: 1 }}>{p.name || p.description}</div>
                             {p.isCheckup && <div style={{ fontSize: '0.6rem', color: '#0d9488', marginBottom: 2 }}>🩺 Health Check</div>}
                             {p.isPackage && !p.isCheckup && <div style={{ fontSize: '0.6rem', color: '#1d4ed8', marginBottom: 2 }}>📦 {p.components?.length || 0}-product bundle</div>}
-                            <div style={{ fontWeight: 900, color: accentColor, fontSize: '1rem', marginBottom: 4 }}>{formatCurrency(price)}</div>
+                            <div style={{ marginBottom: 4 }}>
+                              {campDisc && rawPrice > price && (
+                                <div style={{ fontSize: '0.72rem', color: '#94a3b8', textDecoration: 'line-through', lineHeight: 1 }}>{formatCurrency(rawPrice)}</div>
+                              )}
+                              <div style={{ fontWeight: 900, color: campDisc ? '#16a34a' : accentColor, fontSize: '1rem', lineHeight: 1.2 }}>{formatCurrency(price)}</div>
+                            </div>
                             {!isMember && p.isCheckup && p.cashbackPerUnit > 0 && <div style={{ fontSize: '0.6rem', color: '#166534', marginBottom: 3, fontWeight: 700 }}>N${p.cashbackPerUnit} cashback</div>}
                             {!isMember && !p.isCheckup && profit > 0 && <div style={{ fontSize: '0.6rem', color: '#0891b2', marginBottom: 3, fontWeight: 700 }}>+{formatCurrency(profit)} profit</div>}
+                            {campDisc && <div style={{ fontSize: '0.6rem', color: '#15803d', fontWeight: 700, marginBottom: 3 }}>🏷️ {campDisc.campaignName}</div>}
                             <button type="button" onClick={() => addToCart(p)}
                               style={{ width: '100%', padding: '6px 0', borderRadius: 9, border: 'none', background: inCart ? accentColor : `${accentColor}18`, color: inCart ? '#fff' : accentColor, fontWeight: 700, fontSize: '0.76rem', cursor: 'pointer', transition: 'all .15s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
                               {inCart ? (
@@ -2207,12 +2270,18 @@ function WalkInSalesTab() {
                       <div style={{ fontSize: '0.75rem', marginTop: 4, opacity: 0.7 }}>Select products from the catalog</div>
                     </div>
                   ) : cartData.items.map(item => {
-                    const lineProfit = !isMember ? ((item.cp || 0) - (item.dp || 0)) * item.qty : null;
+                    const lineProfit = !isMember && !item.campaignDiscount ? ((item.originalCp || item.cp || 0) - (item.originalDp || item.dp || 0)) * item.qty : null;
+                    const hasDiscount = item.campaignDiscount && item.campaignDiscount.pct > 0;
                     return (
                       <div key={item.id} style={{ padding: '10px 0', borderBottom: '1px solid #fdf5f5' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
                           <div style={{ flex: 1, minWidth: 0, paddingRight: 6 }}>
                             <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.82rem', lineHeight: 1.3 }}>{item.name || item.description}</div>
+                            {hasDiscount && (
+                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 2, background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 5, padding: '1px 6px' }}>
+                                <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#16a34a' }}>🏷️ {item.campaignDiscount.pct}% OFF</span>
+                              </div>
+                            )}
                             {lineProfit != null && lineProfit > 0 && <div style={{ fontSize: '0.68rem', color: '#0891b2', fontWeight: 600, marginTop: 1 }}>+{formatCurrency(lineProfit)} profit</div>}
                           </div>
                           <button type="button" onClick={() => removeFromCart(item.id)} style={{ border: 'none', background: 'transparent', color: '#d1d5db', cursor: 'pointer', width: 22, height: 22, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.9rem', flexShrink: 0, transition: 'color .15s' }} onMouseEnter={e => e.currentTarget.style.color='#ef4444'} onMouseLeave={e => e.currentTarget.style.color='#d1d5db'}>✕</button>
@@ -2327,15 +2396,24 @@ function WalkInSalesTab() {
                 <div style={{ fontSize: '0.62rem', fontWeight: 800, letterSpacing: '.12em', color: '#c41e3a', textTransform: 'uppercase', marginBottom: 10 }}>Items ({cart.length})</div>
                 <div style={{ maxHeight: 175, overflowY: 'auto' }}>
                   {cartData.items.map((item, i) => {
-                    const lineProfit = !isMember ? ((item.cp || 0) - (item.dp || 0)) * item.qty : null;
+                    const hasDiscount = item.campaignDiscount && item.campaignDiscount.pct > 0;
+                    const originalUnitPrice = isMember ? (item.originalDp ?? item.unitPrice) : (item.originalCp ?? item.unitPrice);
+                    const originalLineTotal = hasDiscount ? originalUnitPrice * item.qty : null;
+                    const lineProfit = !isMember && !hasDiscount ? ((item.originalCp || item.cp || 0) - (item.originalDp || item.dp || 0)) * item.qty : null;
                     return (
                       <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: i < cartData.items.length - 1 ? '1px solid #fdf5f5' : 'none', fontSize: '0.86rem' }}>
                         <div>
                           <span style={{ fontWeight: 700, color: '#1e293b' }}>{item.name || item.description}</span>
                           <span style={{ color: '#94a3b8', marginLeft: 5 }}>×{item.qty}</span>
+                          {hasDiscount && (
+                            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#16a34a', marginTop: 1 }}>🏷️ {item.campaignDiscount.pct}% OFF — {item.campaignDiscount.campaignName}</div>
+                          )}
                         </div>
                         <div style={{ textAlign: 'right' }}>
-                          <div style={{ fontWeight: 800, color: '#c41e3a' }}>{formatCurrency(item.lineTotal)}</div>
+                          {hasDiscount && originalLineTotal != null && (
+                            <div style={{ fontSize: '0.72rem', color: '#94a3b8', textDecoration: 'line-through' }}>{formatCurrency(originalLineTotal)}</div>
+                          )}
+                          <div style={{ fontWeight: 800, color: hasDiscount ? '#16a34a' : '#c41e3a' }}>{formatCurrency(item.lineTotal)}</div>
                           {lineProfit != null && lineProfit > 0 && <div style={{ fontSize: '0.72rem', color: '#0891b2' }}>+{formatCurrency(lineProfit)} profit</div>}
                         </div>
                       </div>
