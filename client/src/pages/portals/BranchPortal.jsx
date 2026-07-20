@@ -11992,13 +11992,13 @@ function BranchCampaignsTab() {
     setCampRefSearch(nd.nb_number && nd.name ? `${nd.nb_number} — ${nd.name}` : nd.name || nd.nb_number || '');
   };
 
-  const openSaleModal = (c) => {
+  const openSaleModal = (c, prefillProductName) => {
     setSaleModal(c);
     setLastReceipt(null);
     const cond = typeof c.conditions === 'string' ? (() => { try { return JSON.parse(c.conditions); } catch { return {}; } })() : (c.conditions || {});
     const prize = typeof c.prize === 'string' ? (() => { try { return JSON.parse(c.prize); } catch { return {}; } })() : (c.prize || {});
     const productsText = getProductsText(cond);
-    const prefillPaid = productsText.split(',')[0]?.trim() || '';
+    const prefillPaid = prefillProductName || productsText.split(',')[0]?.trim() || '';
     const prefillFree = prize.free_product || '';
     const prefillBuyQty = cond.buy_qty || 1;
     const prefillGetQty = cond.get_qty || 1;
@@ -12141,45 +12141,91 @@ function BranchCampaignsTab() {
         ))}
       </div>
 
-      {loading ? <LoadingSpinner /> : (
-        filtered.length === 0 ? (
-          <div className="text-center py-12 text-gray-400">
-            <div style={{ fontSize: 48, opacity: 0.3 }}>📢</div>
-            <div className="mt-2">No campaigns found for this filter.</div>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {filtered.map(c => {
-              const cc = BRANCH_CAMP_COLORS[c.campaign_type] || BRANCH_CAMP_COLORS.custom;
-              const live = isLiveCampaign(c);
-              const prize = typeof c.prize === 'string' ? (() => { try { return JSON.parse(c.prize); } catch { return {}; } })() : (c.prize || {});
-              const cond = typeof c.conditions === 'string' ? (() => { try { return JSON.parse(c.conditions); } catch { return {}; } })() : (c.conditions || {});
-              return (
-                <div key={c.id} className="rounded-xl border-2 overflow-hidden" style={{ borderColor: cc.border, background: cc.bg }}>
+      {loading ? <LoadingSpinner /> : (() => {
+        // Expand each campaign to individual product cards
+        const cards = [];
+        for (const c of filtered) {
+          const cc = BRANCH_CAMP_COLORS[c.campaign_type] || BRANCH_CAMP_COLORS.custom;
+          const live = isLiveCampaign(c);
+          const prize = typeof c.prize === 'string' ? (() => { try { return JSON.parse(c.prize); } catch { return {}; } })() : (c.prize || {});
+          const cond = typeof c.conditions === 'string' ? (() => { try { return JSON.parse(c.conditions); } catch { return {}; } })() : (c.conditions || {});
+          const productsList = Array.isArray(cond.products) ? cond.products : [];
+          const productsText = typeof cond.products_text === 'string' ? cond.products_text : '';
+          const productNames = [...productsList, ...productsText.split(',')]
+            .map(n => (typeof n === 'string' ? n.trim() : '')).filter(Boolean);
+          const discountPct = parseFloat(c.discount_percentage || cond.discount_pct || 0);
+          const freeProduct = prize.free_product || '';
+
+          if (productNames.length === 0) {
+            // No specific products — show a single campaign card
+            cards.push(
+              <div key={c.id} className="rounded-xl border-2 overflow-hidden" style={{ borderColor: cc.border, background: cc.bg }}>
+                <div className="p-4">
+                  <div className="flex flex-wrap justify-between items-start gap-3">
+                    <div className="flex-1">
+                      <div className="flex flex-wrap items-center gap-2 mb-1">
+                        <span className="font-bold text-gray-800">{c.name}</span>
+                        {branchCampBadge(c)}
+                        <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: '#fff', color: cc.text, border: `1px solid ${cc.border}` }}>
+                          {BRANCH_CAMP_TYPE_LABELS[c.campaign_type] || c.campaign_type}
+                        </span>
+                      </div>
+                      <div className="text-xs text-gray-500 mb-1">{formatDate(c.start_date)} → {formatDate(c.end_date)}</div>
+                      {c.description && <div className="text-sm text-gray-600 mb-1">{c.description}</div>}
+                      <div className="text-xs text-gray-600 space-y-0.5">
+                        {cond.buy_qty && cond.get_qty && <div>📌 Buy <strong>{cond.buy_qty}</strong>, get <strong>{cond.get_qty}</strong> free</div>}
+                        {discountPct > 0 && <div>📌 Discount: <strong>{discountPct}%</strong> off all products</div>}
+                        {cond.min_purchase && <div>📌 Min purchase: N${cond.min_purchase}</div>}
+                        {prize.description && <div>🏆 {prize.description}</div>}
+                        {freeProduct && <div>🎁 Free product: <strong>{freeProduct}</strong></div>}
+                        {prize.cash_reward && <div>💰 Cash reward: N${prize.cash_reward}</div>}
+                      </div>
+                    </div>
+                    {live && (
+                      <button onClick={() => openSaleModal(c)}
+                        style={{ padding: '8px 18px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 10, cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
+                        + Process Sale
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          } else {
+            // One card per product
+            productNames.forEach((pName, idx) => {
+              const isDiscount = c.campaign_type === 'discount';
+              const isBXGY = c.campaign_type === 'buy_x_get_y';
+              cards.push(
+                <div key={`${c.id}-${idx}`} className="rounded-xl border-2 overflow-hidden" style={{ borderColor: cc.border, background: cc.bg }}>
                   <div className="p-4">
                     <div className="flex flex-wrap justify-between items-start gap-3">
-                      <div className="flex-1">
+                      <div className="flex-1 min-w-0">
+                        {/* Product name — prominent */}
+                        <div className="font-bold text-gray-900 text-base mb-1 truncate">{pName}</div>
+                        {/* Campaign line */}
                         <div className="flex flex-wrap items-center gap-2 mb-1">
-                          <span className="font-bold text-gray-800">{c.name}</span>
+                          <span className="text-xs font-semibold text-gray-600">{c.name}</span>
                           {branchCampBadge(c)}
                           <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: '#fff', color: cc.text, border: `1px solid ${cc.border}` }}>
                             {BRANCH_CAMP_TYPE_LABELS[c.campaign_type] || c.campaign_type}
                           </span>
                         </div>
                         <div className="text-xs text-gray-500 mb-1">{formatDate(c.start_date)} → {formatDate(c.end_date)}</div>
-                        {c.description && <div className="text-sm text-gray-600 mb-1">{c.description}</div>}
                         <div className="text-xs text-gray-600 space-y-0.5">
-                          {cond.buy_qty && cond.get_qty && <div>📌 Buy <strong>{cond.buy_qty}</strong>, get <strong>{cond.get_qty}</strong> free</div>}
-                          {cond.discount_pct && <div>📌 Discount: <strong>{cond.discount_pct}%</strong> off</div>}
-                          {cond.min_purchase && <div>📌 Min purchase: N${cond.min_purchase}</div>}
+                          {isBXGY && cond.buy_qty && cond.get_qty && (
+                            <div>📌 Buy <strong>{cond.buy_qty}</strong>, get <strong>{cond.get_qty}</strong> free</div>
+                          )}
+                          {isBXGY && freeProduct && <div>🎁 Free: <strong>{freeProduct}</strong></div>}
+                          {isDiscount && discountPct > 0 && (
+                            <div>🏷️ <strong>{discountPct}% OFF</strong></div>
+                          )}
                           {prize.description && <div>🏆 {prize.description}</div>}
-                          {prize.free_product && <div>🎁 Free product: <strong>{prize.free_product}</strong></div>}
-                          {prize.cash_reward && <div>💰 Cash reward: N${prize.cash_reward}</div>}
                         </div>
                       </div>
                       {live && (
-                        <button onClick={() => openSaleModal(c)}
-                          style={{ padding: '8px 18px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 10, cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
+                        <button onClick={() => openSaleModal(c, pName)}
+                          style={{ padding: '8px 18px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 10, cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem', whiteSpace: 'nowrap', flexShrink: 0 }}>
                           + Process Sale
                         </button>
                       )}
@@ -12187,10 +12233,19 @@ function BranchCampaignsTab() {
                   </div>
                 </div>
               );
-            })}
+            });
+          }
+        }
+
+        return cards.length === 0 ? (
+          <div className="text-center py-12 text-gray-400">
+            <div style={{ fontSize: 48, opacity: 0.3 }}>📢</div>
+            <div className="mt-2">No campaigns found for this filter.</div>
           </div>
-        )
-      )}
+        ) : (
+          <div className="space-y-3">{cards}</div>
+        );
+      })()}
 
       {saleModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
