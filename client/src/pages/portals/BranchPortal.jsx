@@ -1561,15 +1561,12 @@ function WalkInSalesTab() {
       else if (name.includes('powder') || name.includes('protein')) cats.add('Supplements');
       else cats.add('Other');
     });
-    const base = ['All', ...Array.from(cats).sort()];
-    // Prepend Campaigns tab when at least one active discount campaign exists
-    return campaigns.length > 0 ? ['🏷️ Campaigns', ...base] : base;
-  }, [products, campaigns]);
+    return ['All', ...Array.from(cats).sort()];
+  }, [products]);
 
   const filteredProducts = products.filter(p => {
     const matchSearch = !productSearch || (p.name || p.description || '').toLowerCase().includes(productSearch.toLowerCase());
     if (!matchSearch) return false;
-    if (productCategory === '🏷️ Campaigns') return !!getWalkinCampaignDiscount(p.name || p.description);
     if (productCategory === 'All') return true;
     const name = (p.name || p.description || '').toLowerCase();
     if (productCategory === 'Checkups') return p.isCheckup;
@@ -1580,12 +1577,73 @@ function WalkInSalesTab() {
     return true;
   });
 
+  // Derives individual campaign product entries from active discount campaigns.
+  // Each covered product becomes its own card with discounted cp/dp and originals stored.
+  const campaignProducts = useMemo(() => {
+    if (campaigns.length === 0 || products.length === 0) return [];
+    const result = [];
+    for (const camp of campaigns) {
+      const pct = parseFloat(camp.discount_percentage || 0);
+      if (pct <= 0) continue;
+      const mult = 1 - pct / 100;
+      const cond = typeof camp.conditions === 'string'
+        ? (() => { try { return JSON.parse(camp.conditions); } catch { return {}; } })()
+        : (camp.conditions || {});
+      const productsText = cond.products_text || '';
+      const productsList = Array.isArray(cond.products) ? cond.products : [];
+      const campProductNames = [...productsList, ...productsText.split(',')]
+        .map(n => (typeof n === 'string' ? n.trim() : '')).filter(Boolean);
+
+      const campDisc = { pct, campaignId: camp.id, campaignName: camp.name };
+
+      if (campProductNames.length === 0) {
+        // Campaign covers ALL products
+        for (const p of products) {
+          if (p.isCheckup) continue;
+          result.push({
+            ...p,
+            id: `camp-${camp.id}-${p.id}`,
+            originalCp: p.cp,
+            originalDp: p.dp,
+            cp: Math.round((p.cp || 0) * mult * 100) / 100,
+            dp: Math.round((p.dp || 0) * mult * 100) / 100,
+            campaignDiscount: campDisc,
+            isCampaignProduct: true,
+          });
+        }
+      } else {
+        for (const pName of campProductNames) {
+          const p = products.find(pr =>
+            (pr.name || pr.description || '').toLowerCase() === pName.toLowerCase()
+          );
+          if (p) {
+            result.push({
+              ...p,
+              id: `camp-${camp.id}-${p.id}`,
+              originalCp: p.cp,
+              originalDp: p.dp,
+              cp: Math.round((p.cp || 0) * mult * 100) / 100,
+              dp: Math.round((p.dp || 0) * mult * 100) / 100,
+              campaignDiscount: campDisc,
+              isCampaignProduct: true,
+            });
+          }
+        }
+      }
+    }
+    return result;
+  }, [campaigns, products]);
+
   const addToCart = (product) => {
     setAddedProductId(product.id);
     setTimeout(() => setAddedProductId(null), 350);
     setCart(prev => {
       const existing = prev.find(c => c.id === product.id);
       if (existing) return prev.map(c => c.id === product.id ? { ...c, qty: c.qty + 1 } : c);
+      // Campaign product entries already have discounted prices — add directly
+      if (product.isCampaignProduct) {
+        return [...prev, { ...product, qty: 1 }];
+      }
       // Apply campaign discount to cp/dp if applicable, preserving originals for display
       const campDisc = getWalkinCampaignDiscount(product.name || product.description);
       if (campDisc && campDisc.pct > 0) {
@@ -1647,8 +1705,7 @@ function WalkInSalesTab() {
     setCustomerType('registered'); setRegSearch(''); setRegResults([]); setSelectedReg(null);
     setNewName(''); setNewPhone(''); setReferralSearch(''); setReferralResults([]);
     setSelectedReferral(null); setNoReferral(false); setCart([]); setProductSearch('');
-    // Default to Campaigns tab when active campaigns exist, otherwise All
-    setProductCategory(campaigns.length > 0 ? '🏷️ Campaigns' : 'All');
+    setProductCategory('All');
     setPaymentMethod('cash'); setError(''); setShowModal(true);
   };
   const closeModal = () => setShowModal(false);
@@ -2184,6 +2241,63 @@ function WalkInSalesTab() {
 
                 {/* Product grid — image-first */}
                 <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px' }}>
+
+                  {/* ── Campaign Products — individual cards per campaign product ── */}
+                  {campaignProducts.length > 0 && (
+                    <div style={{ marginBottom: 16 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                        <span style={{ fontSize: '0.65rem', fontWeight: 800, color: '#16a34a', textTransform: 'uppercase', letterSpacing: '0.1em' }}>🏷️ Campaign Prices</span>
+                        <span style={{ fontSize: '0.6rem', background: '#dcfce7', color: '#15803d', borderRadius: 10, padding: '1px 8px', fontWeight: 700 }}>{campaignProducts.length} product{campaignProducts.length !== 1 ? 's' : ''}</span>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(140px,1fr))', gap: 10 }}>
+                        {campaignProducts.map(p => {
+                          const rawPrice = isMember ? (p.originalDp || 0) : (p.originalCp || 0);
+                          const price    = isMember ? (p.dp || 0)         : (p.cp || 0);
+                          const inCart   = cart.find(c => c.id === p.id);
+                          const isAdding = addedProductId === p.id;
+                          const primaryImage = p.images?.find(img => img.is_primary) || p.images?.[0];
+                          const imageSrc = primaryImage?.image_data
+                            ? (primaryImage.image_data.startsWith('data:')
+                                ? primaryImage.image_data
+                                : `data:${primaryImage.image_type || 'image/jpeg'};base64,${primaryImage.image_data}`)
+                            : primaryImage?.image_url || null;
+                          return (
+                            <div key={p.id} style={{ position: 'relative', borderRadius: 14, overflow: 'hidden', boxShadow: inCart ? '0 4px 16px #16a34a40' : '0 1px 4px rgba(0,0,0,0.08)', border: inCart ? '2px solid #16a34a' : '2px solid #86efac', background: '#f0fdf4', display: 'flex', flexDirection: 'column', transform: isAdding ? 'scale(0.97)' : 'scale(1)', transition: 'transform 0.2s ease, box-shadow .15s' }}>
+                              <div style={{ position: 'relative', aspectRatio: '1/1', background: imageSrc ? '#f5f5f5' : '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+                                {imageSrc ? (
+                                  <img src={imageSrc} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                ) : (
+                                  <div style={{ textAlign: 'center', color: '#16a34a', opacity: 0.6 }}>
+                                    <div style={{ fontSize: '2rem' }}>🛍️</div>
+                                  </div>
+                                )}
+                                <div style={{ position: 'absolute', top: 6, left: 6, zIndex: 2, background: '#16a34a', color: '#fff', borderRadius: 7, padding: '2px 7px', fontSize: '0.62rem', fontWeight: 800 }}>
+                                  {p.campaignDiscount.pct}% OFF
+                                </div>
+                                {p.bv > 0 && (
+                                  <div style={{ position: 'absolute', top: 6, right: 6, zIndex: 2, background: '#fffbeb', border: '1px solid #fcd34d', color: '#d97706', borderRadius: 8, padding: '1px 6px', fontSize: '0.6rem', fontWeight: 800 }}>{p.bv} BV</div>
+                                )}
+                              </div>
+                              <div style={{ padding: '8px 10px 8px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+                                <div style={{ fontWeight: 700, color: '#14532d', lineHeight: 1.3, fontSize: '0.78rem', marginBottom: 4, flex: 1 }}>{p.name || p.description}</div>
+                                <div style={{ fontSize: '0.6rem', color: '#16a34a', fontWeight: 700, marginBottom: 4 }}>🏷️ {p.campaignDiscount.campaignName}</div>
+                                <div style={{ marginBottom: 6 }}>
+                                  <div style={{ fontSize: '0.72rem', color: '#94a3b8', textDecoration: 'line-through', lineHeight: 1 }}>{formatCurrency(rawPrice)}</div>
+                                  <div style={{ fontWeight: 900, color: '#16a34a', fontSize: '1rem', lineHeight: 1.2 }}>{formatCurrency(price)}</div>
+                                </div>
+                                <button type="button" onClick={() => addToCart(p)}
+                                  style={{ width: '100%', padding: '6px 0', borderRadius: 9, border: 'none', background: inCart ? '#16a34a' : '#dcfce7', color: inCart ? '#fff' : '#16a34a', fontWeight: 700, fontSize: '0.76rem', cursor: 'pointer', transition: 'all .15s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                                  {inCart ? (<><span style={{ fontWeight: 900 }}>{inCart.qty}</span> in cart</>) : '＋ Add'}
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div style={{ borderTop: '1.5px dashed #86efac', marginTop: 14, marginBottom: 14 }} />
+                    </div>
+                  )}
+
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(140px,1fr))', gap: 10 }}>
                     {filteredProducts.length === 0 ? (
                       <div style={{ color: '#c4a0a7', gridColumn: '1/-1', textAlign: 'center', padding: '40px 0', fontSize: '0.9rem' }}>No products found</div>
