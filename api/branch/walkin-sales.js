@@ -201,10 +201,10 @@ function buildSelectQuery(searchParams, scopedBranches, enforced) {
     params.push(scopedBranches);
     conditions.push(`branch_id = ANY($${params.length})`);
   } else {
-    const branch = searchParams.get('branch');
+    const branch = searchParams.get('branch') || searchParams.get('branch_id');
     if (branch) {
       params.push(branch);
-      conditions.push(`branch_id = $${params.length}`);
+      conditions.push(`LOWER(REPLACE(branch_id,' ','_')) = LOWER(REPLACE($${params.length},' ','_'))`);
     }
   }
 
@@ -263,7 +263,7 @@ function buildRxQuery(searchParams, scopedBranches, enforced) {
     const branch = searchParams.get('branch') || searchParams.get('branch_id');
     if (branch) {
       params.push(branch);
-      conditions.push(`branch_id = $${params.length}`);
+      conditions.push(`LOWER(REPLACE(branch_id,' ','_')) = LOWER(REPLACE($${params.length},' ','_'))`);
     }
   }
 
