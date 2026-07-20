@@ -3397,7 +3397,7 @@ function CampaignsTab() {
 
     const resolvedProducts = campProductNames.map(resolveProduct);
 
-    // ── Preload product images ──────────────────────────────────
+    // ── Preload all images ────────────────────────────────────
     const loadImg = (src) => new Promise(resolve => {
       if (!src) return resolve(null);
       const img = new Image();
@@ -3406,7 +3406,11 @@ function CampaignsTab() {
       img.onerror = () => resolve(null);
       img.src = src;
     });
-    const loadedImgs = await Promise.all(resolvedProducts.map(p => loadImg(p.imageSrc)));
+    const [loadedImgs, bgImg, logoImg] = await Promise.all([
+      Promise.all(resolvedProducts.map(p => loadImg(p.imageSrc))),
+      loadImg('/poster-bg.jpeg'),
+      loadImg('/dynalogo.png'),
+    ]);
 
     // ── Setup ────────────────────────────────────────────────
     const W = 1080;
@@ -3416,14 +3420,15 @@ function CampaignsTab() {
     const ctx = canvas.getContext('2d');
 
     // ── Shared helpers ───────────────────────────────────────
+    // Metallic gold gradient (horizontal)
     const mkGold = (x0, y0, x1, y1) => {
       const g = ctx.createLinearGradient(x0, y0, x1, y1);
-      g.addColorStop(0,   '#6b4c00');
-      g.addColorStop(0.2, '#c89a20');
-      g.addColorStop(0.45,'#ffd700');
-      g.addColorStop(0.55,'#ffe566');
-      g.addColorStop(0.8, '#c89a20');
-      g.addColorStop(1,   '#6b4c00');
+      g.addColorStop(0,    '#6b4c00');
+      g.addColorStop(0.18, '#c89a20');
+      g.addColorStop(0.42, '#ffd700');
+      g.addColorStop(0.58, '#ffe566');
+      g.addColorStop(0.82, '#c89a20');
+      g.addColorStop(1,    '#6b4c00');
       return g;
     };
     const wrap = (text, maxW, font) => {
@@ -3446,350 +3451,383 @@ function CampaignsTab() {
       ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y);
       ctx.closePath();
     };
+
+    // Draw the textured background covering full canvas area
+    const drawBg = (canvasH) => {
+      if (bgImg) {
+        const sc = Math.max(W / bgImg.width, canvasH / bgImg.height);
+        const dw = bgImg.width * sc, dh = bgImg.height * sc;
+        ctx.drawImage(bgImg, (W - dw) / 2, (canvasH - dh) / 2, dw, dh);
+        // Lighten slightly so it reads as soft textured paper
+        ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillRect(0, 0, W, canvasH);
+      } else {
+        ctx.fillStyle = '#f0ede8'; ctx.fillRect(0, 0, W, canvasH);
+      }
+    };
+
+    // Draw Dynapharm logo in top-left
+    const drawLogo = (x, y, size) => {
+      if (logoImg) {
+        // White circle behind logo for clarity
+        ctx.save();
+        ctx.fillStyle = '#ffffff';
+        ctx.shadowColor = 'rgba(0,0,0,0.18)'; ctx.shadowBlur = 10;
+        ctx.beginPath(); ctx.arc(x + size / 2, y + size / 2, size / 2 + 6, 0, Math.PI * 2); ctx.fill();
+        ctx.shadowBlur = 0;
+        // Logo image clipped to circle
+        ctx.beginPath(); ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2); ctx.clip();
+        const sc = Math.min(size / logoImg.width, size / logoImg.height);
+        const dw = logoImg.width * sc, dh = logoImg.height * sc;
+        ctx.drawImage(logoImg, x + (size - dw) / 2, y + (size - dh) / 2, dw, dh);
+        ctx.restore();
+        // Thin gold ring around logo
+        ctx.strokeStyle = mkGold(x, y, x + size, y + size); ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(x + size / 2, y + size / 2, size / 2 + 6, 0, Math.PI * 2); ctx.stroke();
+      }
+    };
+
+    // Crimson bar + brand name header (text right of logo)
+    const drawHeader = (logoSize, logoX, logoY, canvasH) => {
+      // Top crimson strip
+      const strip = ctx.createLinearGradient(0, 0, W, 0);
+      strip.addColorStop(0, '#6b0014'); strip.addColorStop(0.5, '#c41e3a'); strip.addColorStop(1, '#6b0014');
+      ctx.fillStyle = strip; ctx.fillRect(0, 0, W, 12);
+
+      // Brand name right of logo
+      const textX = logoX + logoSize + 28;
+      ctx.fillStyle = '#8b0014'; ctx.textAlign = 'left';
+      ctx.font = 'bold 22px Georgia, serif';
+      ctx.fillText('HEALTH  ·  WEALTH  ·  FREEDOM', textX, logoY + 26);
+      ctx.font = 'bold 38px Georgia, serif'; ctx.fillStyle = '#6b0014';
+      ctx.fillText('DYNAPHARM NAMIBIA', textX, logoY + 66);
+
+      // Red underline rule
+      ctx.fillStyle = '#c41e3a'; ctx.fillRect(0, logoY + logoSize + 18, W, 5);
+      ctx.fillStyle = mkGold(0, 0, W, 0); ctx.fillRect(0, logoY + logoSize + 23, W, 3);
+    };
+
+    // Gold-metallic discount badge
     const drawBadge = (cx, cy, r, pct) => {
-      // Outer soft glow
-      const glow = ctx.createRadialGradient(cx, cy, r * 0.3, cx, cy, r + 60);
-      glow.addColorStop(0, 'rgba(255,220,0,0.5)');
-      glow.addColorStop(0.5,'rgba(255,180,0,0.18)');
+      // Soft outer glow
+      const glow = ctx.createRadialGradient(cx, cy, r * 0.3, cx, cy, r + 65);
+      glow.addColorStop(0, 'rgba(255,210,0,0.55)');
+      glow.addColorStop(0.5,'rgba(255,170,0,0.2)');
       glow.addColorStop(1, 'rgba(255,215,0,0)');
-      ctx.fillStyle = glow;
-      ctx.beginPath(); ctx.arc(cx, cy, r + 60, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(cx, cy, r + 65, 0, Math.PI * 2); ctx.fill();
 
-      // Outer decorative dashed ring
+      // Dashed decorative ring
       ctx.save();
-      ctx.strokeStyle = 'rgba(255,215,0,0.4)'; ctx.lineWidth = 2;
-      ctx.setLineDash([12, 8]);
-      ctx.beginPath(); ctx.arc(cx, cy, r + 26, 0, Math.PI * 2); ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.restore();
+      ctx.strokeStyle = 'rgba(180,120,0,0.55)'; ctx.lineWidth = 2.5;
+      ctx.setLineDash([14, 9]);
+      ctx.beginPath(); ctx.arc(cx, cy, r + 28, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]); ctx.restore();
 
-      // Main badge circle — deep gold radial gradient
-      const fill = ctx.createRadialGradient(cx - r * 0.28, cy - r * 0.28, 4, cx, cy, r);
+      // Main circle — deep metallic gold
+      const fill = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.3, 4, cx, cy, r);
       fill.addColorStop(0,   '#fff5b0');
-      fill.addColorStop(0.18,'#ffd700');
+      fill.addColorStop(0.15,'#ffd700');
       fill.addColorStop(0.55,'#d4920a');
       fill.addColorStop(0.85,'#8b5c00');
-      fill.addColorStop(1,   '#5a3500');
-      ctx.fillStyle = fill;
-      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+      fill.addColorStop(1,   '#4a2e00');
+      ctx.fillStyle = fill; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
 
-      // Specular shine arc (top-left crescent)
+      // Specular crescent
       ctx.save();
       ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.clip();
-      const shine = ctx.createRadialGradient(cx - r * 0.35, cy - r * 0.38, 2, cx - r * 0.1, cy - r * 0.1, r * 0.85);
-      shine.addColorStop(0, 'rgba(255,255,255,0.42)');
-      shine.addColorStop(0.4,'rgba(255,255,255,0.10)');
+      const shine = ctx.createRadialGradient(cx - r * 0.32, cy - r * 0.36, 2, cx - r * 0.08, cy - r * 0.08, r * 0.8);
+      shine.addColorStop(0, 'rgba(255,255,255,0.48)');
+      shine.addColorStop(0.45,'rgba(255,255,255,0.1)');
       shine.addColorStop(1, 'rgba(255,255,255,0)');
       ctx.fillStyle = shine; ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
       ctx.restore();
 
       // Inner white ring
-      ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(cx, cy, r - 8, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 3.5;
+      ctx.beginPath(); ctx.arc(cx, cy, r - 9, 0, Math.PI * 2); ctx.stroke();
 
       // Text
       ctx.fillStyle = '#2a0a00'; ctx.textAlign = 'center';
-      const fs = pct >= 100 ? Math.round(r * 0.58) : Math.round(r * 0.72);
+      const fs = pct >= 100 ? Math.round(r * 0.56) : Math.round(r * 0.7);
       ctx.font = `900 ${fs}px Georgia, serif`;
-      ctx.shadowColor = 'rgba(0,0,0,0.25)'; ctx.shadowBlur = 8;
+      ctx.shadowColor = 'rgba(0,0,0,0.22)'; ctx.shadowBlur = 8;
       ctx.fillText(`${pct}%`, cx, cy + fs * 0.3);
       ctx.font = `bold ${Math.round(r * 0.34)}px Georgia, serif`;
-      ctx.fillText('OFF', cx, cy + fs * 0.65);
+      ctx.fillText('OFF', cx, cy + fs * 0.66);
       ctx.shadowBlur = 0;
     };
-    const drawFooter = (y) => {
-      const fBg = ctx.createLinearGradient(0, y, 0, H);
-      fBg.addColorStop(0, 'rgba(0,0,0,0)');
-      fBg.addColorStop(0.25,'rgba(0,0,0,0.55)');
-      fBg.addColorStop(1,  'rgba(0,0,0,0.82)');
-      ctx.fillStyle = fBg; ctx.fillRect(0, y, W, H - y);
 
-      ctx.fillStyle = mkGold(120, 0, W - 120, 0); ctx.fillRect(120, y + 16, W - 240, 1.5);
+    // Crimson footer strip (bottom of poster)
+    const drawFooter = (canvasH) => {
+      const FH = 150;
+      const fy = canvasH - FH;
+      const strip = ctx.createLinearGradient(0, 0, W, 0);
+      strip.addColorStop(0, '#6b0014'); strip.addColorStop(0.5, '#c41e3a'); strip.addColorStop(1, '#6b0014');
+      ctx.fillStyle = strip; ctx.fillRect(0, fy, W, FH);
+
+      // Gold top edge on footer
+      ctx.fillStyle = mkGold(0, 0, W, 0); ctx.fillRect(0, fy, W, 4);
 
       const fmtD = d => new Date(d).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' });
-      ctx.fillStyle = 'rgba(255,255,255,0.78)'; ctx.font = '28px Georgia, serif'; ctx.textAlign = 'center';
-      ctx.fillText(`${fmtD(camp.start_date)}   ›   ${fmtD(camp.end_date)}`, W / 2, y + 60);
-
-      ctx.fillStyle = mkGold(0, 0, W, 0); ctx.font = 'bold 22px Georgia, serif';
-      ctx.fillText('DYNAPHARM NAMIBIA  ·  dynapharmnamibia.net', W / 2, y + 100);
-
-      ctx.fillStyle = mkGold(0, 0, W, 0); ctx.fillRect(0, H - 10, W, 10);
+      ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.font = '28px Georgia, serif'; ctx.textAlign = 'center';
+      ctx.fillText(`${fmtD(camp.start_date)}   ›   ${fmtD(camp.end_date)}`, W / 2, fy + 52);
+      ctx.fillStyle = mkGold(0, 0, W, 0); ctx.font = 'bold 24px Georgia, serif';
+      ctx.fillText('DYNAPHARM NAMIBIA  ·  dynapharmnamibia.net', W / 2, fy + 98);
+      ctx.fillStyle = mkGold(0, 0, W, 0); ctx.fillRect(0, canvasH - 8, W, 8);
     };
-    const scopeLine = (camp.scope === 'countrywide' || camp.scope === 'nationwide')
+
+    const CRIMSON     = '#8b0014';
+    const DARK_TEXT   = '#1a0005';
+    const scopeLine   = (camp.scope === 'countrywide' || camp.scope === 'nationwide')
       ? 'COUNTRYWIDE  ·  ALL PARTICIPATING BRANCHES'
       : (camp.scope || 'All Branches').toUpperCase();
+    const LOGO_SIZE   = 110;
+    const LOGO_X      = 28;
+    const LOGO_Y      = 20;
+    const HEADER_BTM  = LOGO_Y + LOGO_SIZE + 28;   // bottom of header band
 
     // ────────────────────────────────────────────────────────────────
-    // HERO layout — single product with large photo (per-card button)
+    // HERO layout — single product (triggered per-card)
     // ────────────────────────────────────────────────────────────────
     if (resolvedProducts.length === 1) {
-      const prod   = resolvedProducts[0];
-      const imgEl  = loadedImgs[0];
-      const PHOTO_H = 680;   // top photo zone
-      const INFO_Y  = PHOTO_H;
-      const FOOTER_Y = H - 180;
+      const prod  = resolvedProducts[0];
+      const imgEl = loadedImgs[0];
 
-      // ── Solid background (shown behind photo and in bottom zone) ──
-      const bg = ctx.createLinearGradient(0, 0, 0, H);
-      bg.addColorStop(0, '#0a0003');
-      bg.addColorStop(0.3,'#5a0814');
-      bg.addColorStop(0.65,'#961528');
-      bg.addColorStop(1,   '#bf1c38');
-      ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+      // Product photo frame geometry
+      const FRAME_PAD  = 36;
+      const FRAME_W    = W - FRAME_PAD * 2;
+      const FRAME_H    = 640;
+      const FRAME_Y    = HEADER_BTM + 30;
+      const FRAME_R    = 22;
+      const BADGE_CY   = FRAME_Y + FRAME_H;          // badge sits on bottom edge of frame
+      const BADGE_R    = 130;
+      const INFO_Y     = BADGE_CY + BADGE_R + 20;
+      const FOOTER_H   = 150;
 
-      // Subtle diagonal stripe texture
-      ctx.save(); ctx.globalAlpha = 0.035; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1;
-      for (let i = -H; i < W + H; i += 28) {
-        ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i + H, H); ctx.stroke();
-      }
+      // Canvas height: info section + footer
+      const PRICE_BLOCK_H = prod.hasPrices ? 160 : 90;
+      const NAME_LINES_EST = Math.ceil(prod.name.length / 20);
+      const INFO_H = 30 + NAME_LINES_EST * 64 + PRICE_BLOCK_H + 40;
+      canvas.height = Math.max(INFO_Y + INFO_H + FOOTER_H, H);
+      const CH = canvas.height;
+
+      // ── Draw textured background ──────────────────────────────
+      drawBg(CH);
+
+      // ── Header ───────────────────────────────────────────────
+      drawLogo(LOGO_X, LOGO_Y, LOGO_SIZE);
+      drawHeader(LOGO_SIZE, LOGO_X, LOGO_Y, CH);
+
+      // ── Campaign name (below header rule) ────────────────────
+      const campLines = wrap((camp.name || '').toUpperCase(), W - 80, 'bold 64px Georgia, serif');
+      ctx.fillStyle = CRIMSON; ctx.font = 'bold 64px Georgia, serif'; ctx.textAlign = 'center';
+      let cY = HEADER_BTM + 76;
+      campLines.slice(0, 2).forEach(l => { ctx.fillText(l, W / 2, cY); cY += 72; });
+
+      // ── Product photo frame ───────────────────────────────────
+      // Shadow behind frame (gives depth)
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.30)'; ctx.shadowBlur = 30; ctx.shadowOffsetY = 8;
+      ctx.fillStyle = '#ffffff';
+      rrect(FRAME_PAD, FRAME_Y, FRAME_W, FRAME_H, FRAME_R); ctx.fill();
       ctx.restore();
 
-      // ── Photo zone ───────────────────────────────────────────
+      // White frame border
+      ctx.strokeStyle = '#e8e0d0'; ctx.lineWidth = 3;
+      rrect(FRAME_PAD, FRAME_Y, FRAME_W, FRAME_H, FRAME_R); ctx.stroke();
+
       if (imgEl) {
+        // Clip to rounded rect and draw product image (cover fit)
         ctx.save();
-        ctx.beginPath(); ctx.rect(0, 0, W, PHOTO_H); ctx.clip();
-        const sc = Math.max(W / imgEl.width, PHOTO_H / imgEl.height);
+        rrect(FRAME_PAD + 3, FRAME_Y + 3, FRAME_W - 6, FRAME_H - 6, FRAME_R - 2); ctx.clip();
+        const sc = Math.max(FRAME_W / imgEl.width, FRAME_H / imgEl.height);
         const dw = imgEl.width * sc, dh = imgEl.height * sc;
-        ctx.drawImage(imgEl, (W - dw) / 2, (PHOTO_H - dh) / 2, dw, dh);
-
-        // Top fade (brand area stays readable)
-        const topFade = ctx.createLinearGradient(0, 0, 0, 160);
-        topFade.addColorStop(0, 'rgba(5,0,2,0.82)');
-        topFade.addColorStop(1, 'rgba(5,0,2,0)');
-        ctx.fillStyle = topFade; ctx.fillRect(0, 0, W, 160);
-
-        // Bottom fade (smooth into info zone)
-        const btmFade = ctx.createLinearGradient(0, PHOTO_H - 280, 0, PHOTO_H);
-        btmFade.addColorStop(0, 'rgba(5,0,2,0)');
-        btmFade.addColorStop(1, 'rgba(5,0,2,0.97)');
-        ctx.fillStyle = btmFade; ctx.fillRect(0, PHOTO_H - 280, W, 280);
+        ctx.drawImage(imgEl, FRAME_PAD + 3 + (FRAME_W - dw) / 2, FRAME_Y + 3 + (FRAME_H - dh) / 2, dw, dh);
+        // Subtle bottom vignette to separate image from badge
+        const vgn = ctx.createLinearGradient(0, FRAME_Y + FRAME_H - 80, 0, FRAME_Y + FRAME_H);
+        vgn.addColorStop(0, 'rgba(248,244,238,0)'); vgn.addColorStop(1, 'rgba(248,244,238,0.55)');
+        ctx.fillStyle = vgn; ctx.fillRect(FRAME_PAD + 3, FRAME_Y + FRAME_H - 80, FRAME_W - 6, 80);
         ctx.restore();
       } else {
-        // No image — decorative ghost circles
-        ctx.save(); ctx.globalAlpha = 0.08; ctx.fillStyle = '#ffffff';
-        ctx.beginPath(); ctx.arc(W * 0.78, PHOTO_H * 0.38, 340, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(W * 0.18, PHOTO_H * 0.7, 200, 0, Math.PI * 2); ctx.fill();
+        // Placeholder inside frame
+        ctx.save();
+        rrect(FRAME_PAD + 3, FRAME_Y + 3, FRAME_W - 6, FRAME_H - 6, FRAME_R - 2);
+        ctx.fillStyle = '#f5f0ea'; ctx.fill();
         ctx.restore();
+        ctx.fillStyle = 'rgba(140,0,20,0.18)'; ctx.font = '100px Arial'; ctx.textAlign = 'center';
+        ctx.fillText('🛍', W / 2, FRAME_Y + FRAME_H / 2 + 34);
       }
 
-      // ── Gold top bar ─────────────────────────────────────────
-      ctx.fillStyle = mkGold(0, 0, W, 0); ctx.fillRect(0, 0, W, 10);
+      // Thin gold inner pinstripe around frame
+      ctx.strokeStyle = mkGold(FRAME_PAD, 0, FRAME_PAD + FRAME_W, 0); ctx.lineWidth = 2;
+      rrect(FRAME_PAD + 8, FRAME_Y + 8, FRAME_W - 16, FRAME_H - 16, FRAME_R - 6); ctx.stroke();
 
-      // ── Brand name at very top ────────────────────────────────
-      ctx.fillStyle = mkGold(0, 0, W, 0);
-      ctx.font = 'bold 28px Georgia, serif'; ctx.textAlign = 'center';
-      ctx.fillText('✦   DYNAPHARM  NAMIBIA   ✦', W / 2, 66);
+      // ── Discount badge ────────────────────────────────────────
+      drawBadge(W / 2, BADGE_CY, BADGE_R, discountPct);
 
-      // Thin gold rule
-      ctx.fillStyle = mkGold(200, 0, W - 200, 0);
-      ctx.fillRect(200, 80, W - 400, 1.5);
+      // ── Info section ──────────────────────────────────────────
+      // Scope line
+      ctx.fillStyle = 'rgba(100,0,15,0.55)'; ctx.font = '22px Georgia, serif'; ctx.textAlign = 'center';
+      ctx.fillText(scopeLine, W / 2, INFO_Y + 2);
 
-      // ── Campaign name (on photo, near bottom of photo zone) ──
-      const campUp = (camp.name || '').toUpperCase();
-      const campLines = wrap(campUp, W - 80, 'bold 72px Georgia, serif');
-      ctx.shadowColor = 'rgba(0,0,0,0.9)'; ctx.shadowBlur = 20;
-      ctx.fillStyle = '#ffffff'; ctx.font = 'bold 72px Georgia, serif'; ctx.textAlign = 'center';
-      let campY = PHOTO_H - 110 - (campLines.length - 1) * 78;
-      campLines.slice(0, 2).forEach(l => { ctx.fillText(l, W / 2, campY); campY += 82; });
-      ctx.shadowBlur = 0;
-
-      // ── Discount badge — straddling photo/info boundary ───────
-      const bR = 140, bCx = W / 2, bCy = INFO_Y;
-      drawBadge(bCx, bCy, bR, discountPct);
-
-      // ── Product info zone ─────────────────────────────────────
-      const textTop = INFO_Y + bR + 24;
-
-      // Campaign description / tagline
-      if (camp.description) {
-        ctx.fillStyle = 'rgba(255,215,0,0.72)'; ctx.font = 'italic 26px Georgia, serif'; ctx.textAlign = 'center';
-        const dTxt = camp.description.length > 72 ? camp.description.slice(0, 70) + '…' : camp.description;
-        ctx.fillText(dTxt.toUpperCase(), W / 2, textTop + 8);
-      }
-
-      // Scope
-      ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.font = '22px Georgia, serif'; ctx.textAlign = 'center';
-      ctx.fillText(scopeLine, W / 2, textTop + 46);
-
-      // Thin gold divider
-      ctx.fillStyle = mkGold(120, 0, W - 120, 0); ctx.fillRect(120, textTop + 66, W - 240, 1.5);
+      // Gold divider
+      ctx.fillStyle = mkGold(120, 0, W - 120, 0); ctx.fillRect(120, INFO_Y + 18, W - 240, 2);
 
       // Product name
-      const pNameLines = wrap(prod.name.toUpperCase(), W - 120, 'bold 54px Georgia, serif');
-      ctx.fillStyle = '#ffffff'; ctx.font = 'bold 54px Georgia, serif'; ctx.textAlign = 'center';
-      ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 12;
-      let pnY = textTop + 124;
-      pNameLines.slice(0, 2).forEach(l => { ctx.fillText(l, W / 2, pnY); pnY += 62; });
+      const pnLines = wrap(prod.name.toUpperCase(), W - 100, 'bold 58px Georgia, serif');
+      ctx.fillStyle = DARK_TEXT; ctx.font = 'bold 58px Georgia, serif'; ctx.textAlign = 'center';
+      ctx.shadowColor = 'rgba(0,0,0,0.08)'; ctx.shadowBlur = 4;
+      let pnY = INFO_Y + 80;
+      pnLines.slice(0, 2).forEach(l => { ctx.fillText(l, W / 2, pnY); pnY += 66; });
       ctx.shadowBlur = 0;
 
       // Pricing
       if (prod.hasPrices) {
-        const wasX = W / 2 - 20, nowX = W / 2 + 20;
-
-        // WAS — left side
-        ctx.textAlign = 'right';
-        ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.font = '28px Georgia, serif';
+        const midX = W / 2;
+        // WAS label + price (left of centre)
         const wasStr = `WAS  N$${prod.wasPrice.toFixed(2)}`;
-        ctx.fillText(wasStr, wasX, pnY + 48);
+        ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(30,0,5,0.38)'; ctx.font = '28px Georgia, serif';
+        ctx.fillText(wasStr, midX - 16, pnY + 46);
         const ww = ctx.measureText(wasStr).width;
-        ctx.strokeStyle = '#e05555'; ctx.lineWidth = 2.5;
-        ctx.beginPath(); ctx.moveTo(wasX - ww, pnY + 40); ctx.lineTo(wasX, pnY + 40); ctx.stroke();
+        ctx.strokeStyle = '#c41e3a'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(midX - 16 - ww, pnY + 38); ctx.lineTo(midX - 16, pnY + 38); ctx.stroke();
 
-        // NOW — right side
+        // NOW label + price (right of centre) — large gold
         ctx.textAlign = 'left';
-        ctx.fillStyle = mkGold(nowX, 0, nowX + 380, 0);
-        ctx.font = 'bold 56px Georgia, serif';
-        ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 12;
-        ctx.fillText(`N$${prod.nowPrice.toFixed(2)}`, nowX + 4, pnY + 56);
+        ctx.fillStyle = 'rgba(100,70,0,0.7)'; ctx.font = 'bold 22px Georgia, serif';
+        ctx.fillText('NOW', midX + 20, pnY + 28);
+        ctx.fillStyle = mkGold(midX + 18, 0, midX + 380, 0);
+        ctx.font = 'bold 62px Georgia, serif';
+        ctx.shadowColor = 'rgba(0,0,0,0.1)'; ctx.shadowBlur = 8;
+        ctx.fillText(`N$${prod.nowPrice.toFixed(2)}`, midX + 20, pnY + 86);
         ctx.shadowBlur = 0;
-        ctx.fillStyle = 'rgba(255,215,0,0.6)'; ctx.font = '22px Georgia, serif';
-        ctx.fillText('NOW', nowX + 4, pnY + 30);
-
       } else {
         ctx.textAlign = 'center';
-        ctx.fillStyle = mkGold(0, 0, W, 0); ctx.font = 'bold 44px Georgia, serif';
-        ctx.fillText(`${discountPct}% DISCOUNT APPLIES`, W / 2, pnY + 48);
+        ctx.fillStyle = mkGold(0, 0, W, 0); ctx.font = 'bold 48px Georgia, serif';
+        ctx.fillText(`${discountPct}% DISCOUNT APPLIES`, W / 2, pnY + 52);
       }
 
-      drawFooter(FOOTER_Y);
+      // Campaign description (if any)
+      if (camp.description) {
+        const dY = pnY + (prod.hasPrices ? 120 : 72);
+        ctx.fillStyle = 'rgba(80,0,10,0.55)'; ctx.font = 'italic 24px Georgia, serif'; ctx.textAlign = 'center';
+        const dTxt = camp.description.length > 72 ? camp.description.slice(0, 70) + '…' : camp.description;
+        ctx.fillText(dTxt, W / 2, dY);
+      }
+
+      drawFooter(CH);
 
     } else {
       // ────────────────────────────────────────────────────────────────
-      // MULTI-PRODUCT layout — elegant product rows with thumbnail photos
+      // MULTI-PRODUCT layout — campaign overview with product rows
       // ────────────────────────────────────────────────────────────────
-      const ROW_H    = 168;
-      const PAD      = 48;
-      const nRows    = resolvedProducts.length;
-      const LIST_Y   = 520;
-      const FOOTER_Y = Math.max(LIST_Y + nRows * (ROW_H + 16) + 40, H - 200);
-      const totalH   = FOOTER_Y + 200;
+      const ROW_H   = 170;
+      const PAD     = 44;
+      const nRows   = resolvedProducts.length;
+      const LIST_Y  = HEADER_BTM + 390;   // below header + badge area
+      const FOOTER_H_MP = 150;
+      const totalH  = Math.max(LIST_Y + nRows * (ROW_H + 14) + 60 + FOOTER_H_MP, H);
 
-      // Resize canvas for variable height
       canvas.height = totalH;
+      const CH = totalH;
 
-      // Background
-      const bg = ctx.createLinearGradient(0, 0, W * 0.5, totalH);
-      bg.addColorStop(0,   '#080002');
-      bg.addColorStop(0.3, '#570a18');
-      bg.addColorStop(0.7, '#921427');
-      bg.addColorStop(1,   '#b81c35');
-      ctx.fillStyle = bg; ctx.fillRect(0, 0, W, totalH);
+      // ── Background ───────────────────────────────────────────
+      drawBg(CH);
 
-      // Diagonal texture
-      ctx.save(); ctx.globalAlpha = 0.03; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1;
-      for (let i = -totalH; i < W + totalH; i += 28) {
-        ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i + totalH, totalH); ctx.stroke();
-      }
-      ctx.restore();
+      // ── Header ───────────────────────────────────────────────
+      drawLogo(LOGO_X, LOGO_Y, LOGO_SIZE);
+      drawHeader(LOGO_SIZE, LOGO_X, LOGO_Y, CH);
 
-      // Ghost circles
-      ctx.save(); ctx.globalAlpha = 0.06; ctx.fillStyle = '#ffffff';
-      ctx.beginPath(); ctx.arc(W * 0.9, totalH * 0.12, 360, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(W * 0.08, totalH * 0.6, 260, 0, Math.PI * 2); ctx.fill();
-      ctx.restore();
-
-      // Gold top bar
-      ctx.fillStyle = mkGold(0, 0, W, 0); ctx.fillRect(0, 0, W, 10);
-
-      // Brand
-      ctx.fillStyle = mkGold(0, 0, W, 0); ctx.font = 'bold 28px Georgia, serif'; ctx.textAlign = 'center';
-      ctx.fillText('✦   DYNAPHARM  NAMIBIA   ✦', W / 2, 68);
-      ctx.fillStyle = mkGold(200, 0, W - 200, 0); ctx.fillRect(200, 82, W - 400, 1.5);
-
-      // Campaign name
-      const campLines2 = wrap((camp.name || '').toUpperCase(), W - 80, 'bold 72px Georgia, serif');
-      ctx.fillStyle = '#ffffff'; ctx.font = 'bold 72px Georgia, serif'; ctx.textAlign = 'center';
-      ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 16;
-      let cY2 = 180;
-      campLines2.slice(0, 2).forEach(l => { ctx.fillText(l, W / 2, cY2); cY2 += 82; });
-      ctx.shadowBlur = 0;
+      // ── Campaign name ─────────────────────────────────────────
+      const campLines2 = wrap((camp.name || '').toUpperCase(), W - 80, 'bold 68px Georgia, serif');
+      ctx.fillStyle = CRIMSON; ctx.font = 'bold 68px Georgia, serif'; ctx.textAlign = 'center';
+      let cY2 = HEADER_BTM + 80;
+      campLines2.slice(0, 2).forEach(l => { ctx.fillText(l, W / 2, cY2); cY2 += 76; });
 
       // Description
       if (camp.description) {
-        ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = 'italic 28px Georgia, serif'; ctx.textAlign = 'center';
+        ctx.fillStyle = 'rgba(100,0,15,0.65)'; ctx.font = 'italic 26px Georgia, serif'; ctx.textAlign = 'center';
         const dTxt2 = camp.description.length > 72 ? camp.description.slice(0, 70) + '…' : camp.description;
-        ctx.fillText(dTxt2.toUpperCase(), W / 2, Math.max(cY2 + 8, 310));
+        ctx.fillText(dTxt2, W / 2, Math.max(cY2 + 4, HEADER_BTM + 200));
       }
 
-      // Discount badge — centred below campaign name
-      const bR2 = 120, bCx2 = W / 2, bCy2 = 430;
+      // Badge
+      const bR2 = 118, bCx2 = W / 2;
+      const bCy2 = HEADER_BTM + 300;
       drawBadge(bCx2, bCy2, bR2, discountPct);
 
       // Scope
-      ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.font = '22px Georgia, serif'; ctx.textAlign = 'center';
-      ctx.fillText(scopeLine, W / 2, bCy2 + bR2 + 30);
+      ctx.fillStyle = 'rgba(100,0,15,0.55)'; ctx.font = '22px Georgia, serif'; ctx.textAlign = 'center';
+      ctx.fillText(scopeLine, W / 2, bCy2 + bR2 + 32);
 
-      // Section label
-      ctx.fillStyle = mkGold(120, 0, W - 120, 0); ctx.fillRect(120, LIST_Y - 28, W - 240, 1.5);
-      ctx.fillStyle = 'rgba(255,215,0,0.9)'; ctx.font = 'bold 19px Georgia, serif'; ctx.textAlign = 'center';
-      ctx.fillText('P A R T I C I P A T I N G   P R O D U C T S', W / 2, LIST_Y - 6);
-      ctx.fillStyle = mkGold(120, 0, W - 120, 0); ctx.fillRect(120, LIST_Y + 10, W - 240, 1.5);
+      // Section header label
+      ctx.fillStyle = CRIMSON; ctx.font = 'bold 19px Georgia, serif'; ctx.textAlign = 'center';
+      ctx.fillText('P A R T I C I P A T I N G   P R O D U C T S', W / 2, LIST_Y - 14);
+      ctx.fillStyle = '#c41e3a'; ctx.fillRect(PAD, LIST_Y - 4, W - PAD * 2, 3);
 
       // Product rows
       resolvedProducts.forEach((prod, i) => {
         const imgEl = loadedImgs[i];
-        const ry    = LIST_Y + 30 + i * (ROW_H + 16);
+        const ry    = LIST_Y + 16 + i * (ROW_H + 14);
 
-        // Row card
+        // Row card — white with shadow
         ctx.save();
-        rrect(PAD, ry, W - PAD * 2, ROW_H, 20);
-        const rBg = ctx.createLinearGradient(PAD, ry, PAD, ry + ROW_H);
-        rBg.addColorStop(0, i % 2 === 0 ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.07)');
-        rBg.addColorStop(1, 'rgba(255,255,255,0.03)');
-        ctx.fillStyle = rBg; ctx.fill();
-        ctx.strokeStyle = 'rgba(255,215,0,0.28)'; ctx.lineWidth = 1.5; ctx.stroke();
+        ctx.shadowColor = 'rgba(0,0,0,0.12)'; ctx.shadowBlur = 14; ctx.shadowOffsetY = 4;
+        ctx.fillStyle = i % 2 === 0 ? '#ffffff' : '#fdf8f4';
+        rrect(PAD, ry, W - PAD * 2, ROW_H, 16); ctx.fill();
         ctx.restore();
+        ctx.strokeStyle = '#e0d6c8'; ctx.lineWidth = 1.5;
+        rrect(PAD, ry, W - PAD * 2, ROW_H, 16); ctx.stroke();
+        // Left crimson accent bar
+        ctx.fillStyle = CRIMSON; ctx.fillRect(PAD, ry + 16, 5, ROW_H - 32);
 
-        const imgSide = ROW_H - 20;
-        const imgX = PAD + 10, imgY = ry + 10;
+        const imgSide = ROW_H - 24;
+        const imgX = PAD + 20, imgY = ry + 12;
 
-        // Thumbnail
         if (imgEl) {
+          // Rounded thumbnail
           ctx.save();
-          rrect(imgX, imgY, imgSide, imgSide, 14);
-          ctx.clip();
+          ctx.shadowColor = 'rgba(0,0,0,0.15)'; ctx.shadowBlur = 8;
+          ctx.fillStyle = '#f5f0ea';
+          rrect(imgX, imgY, imgSide, imgSide, 12); ctx.fill();
+          ctx.shadowBlur = 0;
+          rrect(imgX, imgY, imgSide, imgSide, 12); ctx.clip();
           const sc = Math.max(imgSide / imgEl.width, imgSide / imgEl.height);
           const dw = imgEl.width * sc, dh = imgEl.height * sc;
           ctx.drawImage(imgEl, imgX + (imgSide - dw) / 2, imgY + (imgSide - dh) / 2, dw, dh);
           ctx.restore();
-          ctx.strokeStyle = 'rgba(255,215,0,0.4)'; ctx.lineWidth = 2;
-          rrect(imgX, imgY, imgSide, imgSide, 14); ctx.stroke();
+          ctx.strokeStyle = '#d8c89a'; ctx.lineWidth = 2;
+          rrect(imgX, imgY, imgSide, imgSide, 12); ctx.stroke();
         } else {
           ctx.save();
-          rrect(imgX, imgY, imgSide, imgSide, 14);
-          const noImgBg = ctx.createLinearGradient(imgX, imgY, imgX + imgSide, imgY + imgSide);
-          noImgBg.addColorStop(0, 'rgba(180,20,40,0.3)'); noImgBg.addColorStop(1, 'rgba(80,0,10,0.3)');
-          ctx.fillStyle = noImgBg; ctx.fill();
-          ctx.restore();
-          ctx.fillStyle = 'rgba(255,215,0,0.35)'; ctx.font = '44px Arial'; ctx.textAlign = 'center';
-          ctx.fillText('🛍', imgX + imgSide / 2, imgY + imgSide / 2 + 15);
+          rrect(imgX, imgY, imgSide, imgSide, 12);
+          ctx.fillStyle = '#f5ede0'; ctx.fill(); ctx.restore();
+          ctx.fillStyle = 'rgba(180,0,20,0.2)'; ctx.font = '48px Arial'; ctx.textAlign = 'center';
+          ctx.fillText('🛍', imgX + imgSide / 2, imgY + imgSide / 2 + 16);
         }
 
-        // Text area
-        const tx = imgX + imgSide + 20;
-        const tw = (W - PAD * 2) - imgSide - 40;
-        const pnLines = wrap(prod.name, tw, 'bold 30px Georgia, serif');
-        ctx.fillStyle = '#ffffff'; ctx.font = 'bold 30px Georgia, serif'; ctx.textAlign = 'left';
-        ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = 6;
-        pnLines.slice(0, 2).forEach((l, li) => ctx.fillText(l, tx, ry + 42 + li * 36));
-        ctx.shadowBlur = 0;
+        // Text
+        const tx = imgX + imgSide + 22;
+        const tw = (W - PAD * 2) - imgSide - 42;
+        const pnL = wrap(prod.name, tw, 'bold 30px Georgia, serif');
+        ctx.fillStyle = DARK_TEXT; ctx.font = 'bold 30px Georgia, serif'; ctx.textAlign = 'left';
+        pnL.slice(0, 2).forEach((l, li) => ctx.fillText(l, tx, ry + 42 + li * 36));
 
         if (prod.hasPrices) {
           const wasStr = `WAS  N$${prod.wasPrice.toFixed(2)}`;
-          ctx.fillStyle = 'rgba(255,255,255,0.38)'; ctx.font = '22px Georgia, serif';
+          ctx.fillStyle = 'rgba(0,0,0,0.32)'; ctx.font = '22px Georgia, serif';
           ctx.fillText(wasStr, tx, ry + 108);
           const ww = ctx.measureText(wasStr).width;
-          ctx.strokeStyle = '#e05555'; ctx.lineWidth = 2;
+          ctx.strokeStyle = '#c41e3a'; ctx.lineWidth = 2;
           ctx.beginPath(); ctx.moveTo(tx, ry + 101); ctx.lineTo(tx + ww, ry + 101); ctx.stroke();
           ctx.fillStyle = mkGold(tx, 0, tx + tw, 0); ctx.font = 'bold 38px Georgia, serif';
-          ctx.fillText(`NOW  N$${prod.nowPrice.toFixed(2)}`, tx, ry + 148);
+          ctx.fillText(`NOW  N$${prod.nowPrice.toFixed(2)}`, tx, ry + 150);
         } else {
-          ctx.fillStyle = mkGold(tx, 0, tx + tw, 0); ctx.font = 'bold 28px Georgia, serif';
-          ctx.fillText(`${discountPct}% DISCOUNT APPLIES`, tx, ry + 116);
+          ctx.fillStyle = CRIMSON; ctx.font = 'bold 26px Georgia, serif';
+          ctx.fillText(`${discountPct}% DISCOUNT APPLIES`, tx, ry + 118);
         }
       });
 
-      drawFooter(FOOTER_Y);
+      drawFooter(CH);
     }
 
     // ── Download ─────────────────────────────────────────────
