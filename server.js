@@ -1512,28 +1512,21 @@ app.get('/api/stock/branch/:branchId/inventory', async (req, res) => {
   try {
     const { getMany } = await import('./api/db.js');
     const branchId = req.params.branchId;
+    // Query branch_inventory_batches directly — the physical stock source of truth —
+    // rather than the derived inventory_balances cache, for accurate real-time levels.
     const rows = await getMany(
-      `SELECT *, GREATEST(closing_qty, 0) as available_qty
-       FROM inventory_balances
-       WHERE location_type = 'branch' AND location_id = $1
-       ORDER BY product_name ASC, expiry_date ASC NULLS LAST`,
+      `SELECT product_name, SUM(quantity) AS total_qty, MIN(expiry_date) AS earliest_expiry
+       FROM branch_inventory_batches
+       WHERE branch_id = $1
+       GROUP BY product_name
+       ORDER BY product_name ASC`,
       [branchId]
     );
-    const fmt = (d) => d ? (d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10)) : null;
     const inventory = rows.map(r => ({
-      id: r.id,
-      locationId: r.location_id,
       productName: r.product_name,
-      batchNo: r.batch_no,
-      expiryDate: fmt(r.expiry_date),
-      openingQty: Number(r.opening_qty || 0),
-      inwardQty: Number(r.inward_qty || 0),
-      outwardQty: Number(r.outward_qty || 0),
-      closingQty: Number(r.closing_qty || 0),
-      availableQty: Number(r.available_qty || 0),
-      unitDP: r.unit_dp ? Number(r.unit_dp) : null,
-      stockValueDP: Number(r.stock_value_dp || 0),
-      lastMovementDate: r.last_movement_date,
+      availableQty: Number(r.total_qty || 0),
+      closingQty:   Number(r.total_qty || 0),
+      expiryDate:   r.earliest_expiry ? String(r.earliest_expiry).slice(0, 10) : null,
     }));
     res.json({ success: true, branchId, inventory });
   } catch (err) {

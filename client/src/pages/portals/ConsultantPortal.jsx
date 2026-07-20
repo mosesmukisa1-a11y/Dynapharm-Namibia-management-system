@@ -481,12 +481,15 @@ function useBranchStock(branchId) {
     try {
       const data = await api.get(`/stock/branch/${encodeURIComponent(branchId)}/inventory`);
       const inv = Array.isArray(data.inventory) ? data.inventory : [];
+      // Aggregate by lowercase name so comparisons are case-insensitive.
       const qtyMap = {};
       for (const row of inv) {
-        const name = row.productName || row.product_name || '';
+        const name = (row.productName || row.product_name || '').trim().toLowerCase();
         if (!name) continue;
         qtyMap[name] = (qtyMap[name] || 0) + Number(row.availableQty ?? row.closingQty ?? 0);
       }
+      // Products with 0 or negative total qty are out of stock.
+      // Products not present in branch_inventory_batches at all are also treated as out of stock.
       setOutOfStock(new Set(Object.entries(qtyMap).filter(([, q]) => q <= 0).map(([n]) => n)));
     } catch {
       // fail silently — no indicators shown if fetch fails
@@ -605,7 +608,7 @@ function PrescriptionEditModal({ report, onClose, onSaved }) {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(270px, 1fr))', gap: '7px', maxHeight: '340px', overflowY: 'auto', marginBottom: '12px' }}>
               {visPkgs.map((pkg, idx) => {
                 const isChecked = meds.has(pkg.description);
-                const isOos = outOfStock.has(pkg.description);
+                const isOos = outOfStock.has((pkg.description || '').trim().toLowerCase());
                 const bg = isOos ? (isChecked ? '#fef3c7' : '#fee2e2') : (isChecked ? '#dcfce7' : '#e8f5e9');
                 const borderColor = isOos ? (isChecked ? '#d97706' : '#dc2626') : (isChecked ? '#16a34a' : '#27ae60');
                 return (
@@ -622,7 +625,7 @@ function PrescriptionEditModal({ report, onClose, onSaved }) {
               })}
               {visProds.map((product, idx) => {
                 const isChecked = meds.has(product.description);
-                const isOos = outOfStock.has(product.description);
+                const isOos = outOfStock.has((product.description || '').trim().toLowerCase());
                 const bg = isOos ? (isChecked ? '#fffbeb' : '#fff5f5') : (isChecked ? '#f0fdf4' : 'white');
                 const borderColor = isOos ? (isChecked ? '#fcd34d' : '#fca5a5') : (isChecked ? '#86efac' : '#f0f0f0');
                 const borderWidth = isOos ? '1.5px' : '1px';
@@ -1728,7 +1731,7 @@ ${consultantNotes ? `
                         {filteredPkgs.map((pkg, idx) => {
                           const staticEntry = PACKAGE_DATABASE[pkg.description];
                           const isChecked = selectedMedicines.has(pkg.description);
-                          const isOos = outOfStock.has(pkg.description);
+                          const isOos = outOfStock.has((pkg.description || '').trim().toLowerCase());
                           const bg = isOos ? (isChecked ? '#fef3c7' : '#fee2e2') : (isChecked ? '#dcfce7' : '#e8f5e9');
                           const borderColor = isOos ? (isChecked ? '#d97706' : '#dc2626') : (isChecked ? '#16a34a' : '#27ae60');
                           return (
@@ -1745,7 +1748,7 @@ ${consultantNotes ? `
                         })}
                         {filteredProds.map((product, idx) => {
                           const isChecked = selectedMedicines.has(product.description);
-                          const isOos = outOfStock.has(product.description);
+                          const isOos = outOfStock.has((product.description || '').trim().toLowerCase());
                           const bg = isOos ? (isChecked ? '#fffbeb' : '#fff5f5') : (isChecked ? '#f0fdf4' : 'white');
                           const borderColor = isOos ? (isChecked ? '#fcd34d' : '#fca5a5') : (isChecked ? '#86efac' : '#f0f0f0');
                           const borderWidth = isOos ? '1.5px' : '1px';
