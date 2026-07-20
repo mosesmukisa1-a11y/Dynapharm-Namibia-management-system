@@ -3527,13 +3527,22 @@ function PrescriptionsTab() {
                   {medicines.map((med, i) => {
                     const price = getEffectivePrice(med.name);
                     const regularPrice = isMember ? price.dp : price.cp;
-                    // Use the actual charged price (stored at dispense time, includes campaign discount).
-                    // Fall back to regular price for items not yet dispensed.
+                    // For pending items apply the live campaign discount (same logic as
+                    // getDisplayUnitPrice) so the card and the dispense window agree.
+                    const campDisc = !med.dispensed ? getActiveCampaignDiscount(med.name) : null;
+                    const pendingUnitPrice = campDisc
+                      ? Math.round(regularPrice * (1 - campDisc.pct / 100) * 100) / 100
+                      : regularPrice;
+                    // For dispensed items use the recorded charged price (includes any discount
+                    // that was applied at the time of dispensing).
                     const unitPrice = (med.dispensed && med.charged_unit_price != null)
                       ? Number(med.charged_unit_price)
-                      : regularPrice;
-                    const hasDiscount = med.dispensed && med.charged_unit_price != null && Number(med.charged_unit_price) < regularPrice;
-                    const discountPct = hasDiscount ? Math.round((1 - Number(med.charged_unit_price) / regularPrice) * 100) : 0;
+                      : pendingUnitPrice;
+                    const hasDiscount = (med.dispensed && med.charged_unit_price != null && Number(med.charged_unit_price) < regularPrice)
+                      || (!med.dispensed && campDisc != null && pendingUnitPrice < regularPrice);
+                    const discountPct = hasDiscount
+                      ? Math.round((1 - unitPrice / regularPrice) * 100)
+                      : 0;
                     const pkgExpanded = price.isPackage && isPackageExpanded(report.id, i);
                     return (
                       <div key={i} style={{ borderBottom: i < medicines.length - 1 ? '1px solid #f1f5f9' : 'none', background: med.dispensed ? '#f0fdf4' : '#fff' }}>
@@ -3581,6 +3590,12 @@ function PrescriptionsTab() {
                                 {hasDiscount && (
                                   <span style={{ fontSize: '0.65rem', fontWeight: 800, color: '#fff', background: '#16a34a', borderRadius: 4, padding: '1px 5px' }}>🏷️ {discountPct}% OFF</span>
                                 )}
+                              </div>
+                            )}
+                            {!med.dispensed && hasDiscount && campDisc && (
+                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 3, background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 5, padding: '2px 6px' }}>
+                                <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#16a34a' }}>🏷️ {discountPct}% OFF</span>
+                                <span style={{ fontSize: '0.58rem', color: '#15803d' }}>{campDisc.campaignName}</span>
                               </div>
                             )}
                           </div>
