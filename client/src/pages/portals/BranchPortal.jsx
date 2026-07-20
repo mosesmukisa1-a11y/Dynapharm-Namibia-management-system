@@ -1083,7 +1083,9 @@ function RefundRequestsTab() {
     setSubmitting(true);
     try {
       const productName = selectedProduct.product_name || selectedProduct.name || selectedProduct.description || '';
-      const unitPrice   = parseFloat(selectedProduct.dpPrice || selectedProduct.dp || selectedProduct.unit_price || 0);
+      // For campaign sales with discounts, unit_price is the actual charged (discounted) price;
+      // dp is the regular distributor price. Always refund what the customer actually paid.
+      const unitPrice   = parseFloat(selectedProduct.unit_price || selectedProduct.dpPrice || selectedProduct.dp || 0);
       const batchNo     = selectedProduct.batch_no || selectedProduct.batchNo || null;
       const saleRef     = selectedReceipt.saleNumber || selectedReceipt.sale_number || selectedReceipt.id || '';
       await api.branch.submitRefundRequest({
@@ -1225,17 +1227,25 @@ function RefundRequestsTab() {
                                 const isSelProd = selectedProduct === p;
                                 const pName = p.product_name || p.name || p.description || 'Unknown Product';
                                 const pQty  = Number(p.quantity || p.qty || 0);
-                                const pDp   = Number(p.dpPrice || p.dp || p.unit_price || 0);
+                                // Prefer unit_price (actual charged price, accounts for campaign discounts)
+                                // over dp (regular distributor price). For non-campaign items they are equal.
+                                const pChargedPrice = Number(p.unit_price || p.dpPrice || p.dp || 0);
+                                const pRegularDp    = Number(p.dpPrice || p.dp || 0);
+                                const hasDisc = pChargedPrice > 0 && pRegularDp > 0 && pChargedPrice < pRegularDp;
                                 return (
                                   <div key={i} onClick={e => { e.stopPropagation(); handleSelectProduct(p); }}
                                     style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderRadius: 8, border: `2px solid ${isSelProd ? '#c41e3a' : '#f0e8ea'}`, background: isSelProd ? '#fff0f3' : '#fdf7f8', cursor: 'pointer' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                       <span style={{ fontSize: '1rem' }}>{isSelProd ? '🔴' : '⭕'}</span>
                                       <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>{pName}</span>
+                                      {hasDisc && <span style={{ fontSize: '0.65rem', fontWeight: 800, color: '#fff', background: '#16a34a', borderRadius: 4, padding: '1px 5px' }}>🏷️ Campaign</span>}
                                     </div>
                                     <div style={{ textAlign: 'right', fontSize: '0.82rem', color: '#475569' }}>
                                       <span style={{ fontWeight: 700 }}>Qty: {pQty}</span>
-                                      <span style={{ marginLeft: 10 }}>{fmtN(pDp)} DP</span>
+                                      {hasDisc
+                                        ? <span style={{ marginLeft: 10 }}><span style={{ textDecoration: 'line-through', color: '#94a3b8' }}>{fmtN(pRegularDp)}</span> <span style={{ color: '#16a34a', fontWeight: 800 }}>{fmtN(pChargedPrice)}</span></span>
+                                        : <span style={{ marginLeft: 10 }}>{fmtN(pChargedPrice)}</span>
+                                      }
                                     </div>
                                   </div>
                                 );
@@ -1263,11 +1273,24 @@ function RefundRequestsTab() {
                 <div style={{ fontWeight: 800, fontSize: '0.88rem', color: '#8b0000', marginBottom: 4 }}>
                   {selectedProduct.product_name || selectedProduct.name || selectedProduct.description}
                 </div>
-                <div style={{ fontSize: '0.8rem', color: '#475569', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-                  <span>Receipt: <strong>{selectedReceipt.saleNumber || selectedReceipt.id}</strong></span>
-                  <span>DP Price: <strong>{fmtN(selectedProduct.dpPrice || selectedProduct.dp || selectedProduct.unit_price)}</strong></span>
-                  <span>Max Qty: <strong>{Number(selectedProduct.quantity || selectedProduct.qty || 0)}</strong></span>
-                </div>
+                {(() => {
+                  const chargedPr = Number(selectedProduct.unit_price || selectedProduct.dpPrice || selectedProduct.dp || 0);
+                  const regDp     = Number(selectedProduct.dpPrice || selectedProduct.dp || 0);
+                  const isDisc    = chargedPr > 0 && regDp > 0 && chargedPr < regDp;
+                  return (
+                    <div style={{ fontSize: '0.8rem', color: '#475569', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                      <span>Receipt: <strong>{selectedReceipt.saleNumber || selectedReceipt.id}</strong></span>
+                      <span>
+                        Charged Price:{' '}
+                        <strong style={{ color: isDisc ? '#16a34a' : undefined }}>
+                          {fmtN(chargedPr)}
+                        </strong>
+                        {isDisc && <span style={{ marginLeft: 6, color: '#94a3b8', textDecoration: 'line-through', fontWeight: 400 }}>{fmtN(regDp)}</span>}
+                      </span>
+                      <span>Max Qty: <strong>{Number(selectedProduct.quantity || selectedProduct.qty || 0)}</strong></span>
+                    </div>
+                  );
+                })()}
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr', gap: 12, alignItems: 'flex-start', marginBottom: 12 }}>
@@ -1287,7 +1310,7 @@ function RefundRequestsTab() {
 
               {refundQty && reason.trim() && (
                 <div style={{ padding: '10px 16px', background: '#fff0f3', border: '1.5px solid #fecaca', borderRadius: 8, fontWeight: 800, color: '#c41e3a', marginBottom: 12, fontSize: '0.9rem' }}>
-                  Refund Total: {fmtN(parseFloat(refundQty || 0) * parseFloat(selectedProduct.dpPrice || selectedProduct.dp || selectedProduct.unit_price || 0))}
+                  Refund Total: {fmtN(parseFloat(refundQty || 0) * parseFloat(selectedProduct.unit_price || selectedProduct.dpPrice || selectedProduct.dp || 0))}
                 </div>
               )}
 

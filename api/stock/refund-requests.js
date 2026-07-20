@@ -59,6 +59,10 @@ export default async function handler(req, res) {
 
         await withTransaction(async (client) => {
           // ── 1. branch_inventory_movements — financial refund record ──────────
+          // Records the refund for audit and daily-report deduction (refundMovements
+          // query in daily.js sums all refund_return movements by date).
+          // NOTE: returned items are NOT restored to branch sellable stock —
+          // they are held separately (damaged / returned to supplier).
           await client.query(
             `INSERT INTO branch_inventory_movements
                (id, branch_id, type, product_name, batch_no, quantity, unit_price,
@@ -68,62 +72,7 @@ export default async function handler(req, res) {
              refund.id, `Refund approved — ${refund.reason}`, approver]
           );
 
-          // ── 2. branch_inventory_batches — restore physical stock ─────────────
-          // Find the batch first (match branch + product + batch_no if available)
-          let batchRow = null;
-          if (batchNo) {
-            batchRow = await client.query(
-              `SELECT id FROM branch_inventory_batches
-               WHERE branch_id = $1
-                 AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))
-                 AND COALESCE(batch_no,'') = $3
-               LIMIT 1`,
-              [branchId, product, batchNo]
-            ).then(r => r.rows[0] || null);
-          }
-          if (!batchRow) {
-            // Fall back to any batch for this product in this branch
-            batchRow = await client.query(
-              `SELECT id FROM branch_inventory_batches
-               WHERE branch_id = $1
-                 AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))
-               ORDER BY updated_at DESC LIMIT 1`,
-              [branchId, product]
-            ).then(r => r.rows[0] || null);
-          }
-          if (batchRow) {
-            await client.query(
-              `UPDATE branch_inventory_batches
-               SET quantity = quantity + $1, updated_at = NOW()
-               WHERE id = $2`,
-              [qty, batchRow.id]
-            );
-          } else {
-            // Create a new batch entry for the returned stock
-            const newBatchId = `BIB-RFND-${Date.now()}-${Math.random().toString(36).slice(2,6).toUpperCase()}`;
-            await client.query(
-              `INSERT INTO branch_inventory_batches
-                 (id, branch_id, product_name, batch_no, quantity, unit_cost, created_at, updated_at)
-               VALUES ($1,$2,$3,$4,$5,$6,NOW(),NOW())`,
-              [newBatchId, branchId, product, batchNo || null, qty, unitDp]
-            );
-          }
-
-          // ── 3. stock_movements — return_in for stockEngine / inventory_balances
-          await client.query(
-            `INSERT INTO stock_movements
-               (id, product_name, batch_no, expiry_date, quantity, movement_type,
-                source_location, source_location_type,
-                destination_location, destination_location_type,
-                reference_id, notes, status, unit_dp, movement_date, created_at, updated_at)
-             VALUES ($1,$2,$3,NULL,$4,'return_in',
-                     'customer',NULL,$5,'branch',
-                     $6,$7,'posted',$8,NOW(),NOW(),NOW())`,
-            [smId, product, batchNo || null, qty, branchId,
-             refund.id, `Refund return — ${refund.reason}`, unitDp]
-          );
-
-          // ── 4. branch_activity_transactions — reversal record ────────────────
+          // ── 2. branch_activity_transactions — reversal record ────────────────
           // Posts a negative-value row so daily.js and summary.js totals reflect
           // the deduction automatically when they sum grand_total / product_total_dp.
           await client.query(
@@ -157,12 +106,9 @@ export default async function handler(req, res) {
           );
         });
 
-        // ── 6. Recompute inventory_balances (async, non-blocking) ────────────
-        recomputeLocationBalances('branch', branchId).catch(e =>
-          console.error('[refundApproval] inventory recompute error:', e.message)
-        );
-
-        // ── 7. Reverse distributor profit if any (best-effort) ───────────────
+        // ── 6. Reverse distributor profit if any (best-effort) ───────────────
+        // (Stock is NOT restored to branch inventory — returned items are held
+        //  separately or returned to supplier, so no inventory recompute needed.)
         if (refund.sale_reference) {
           query(
             `UPDATE branch_distributor_profit
@@ -178,7 +124,7 @@ export default async function handler(req, res) {
         return res.json({
           success: true,
           movement_id: movId,
-          message: `Refund approved — ${qty} × ${product} returned to ${branchId} stock. All sales figures and stock balances have been adjusted.`,
+          message: `Refund approved — ${qty} × ${product}. Sales figures adjusted; returned items held separately (not restored to sellable stock).`,
         });
       }
 
