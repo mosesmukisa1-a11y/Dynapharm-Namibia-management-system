@@ -3358,6 +3358,7 @@ function CampaignsTab() {
   };
 
   const downloadDiscountPoster = async (camp, singleProductName = null) => {
+    try {
     const conditions = safeJson(camp.conditions);
     const discountPct = Number(camp.discount_percentage || 0);
 
@@ -3804,10 +3805,39 @@ function CampaignsTab() {
     // ── Download ─────────────────────────────────────────────
     const slug = (singleProductName || camp.name || 'campaign')
       .replace(/\s+/g, '-').replace(/[^a-z0-9-]/gi, '').toLowerCase();
-    const link = document.createElement('a');
-    link.download = `dynapharm-${slug}.png`;
-    link.href = canvas.toDataURL('image/png', 1.0);
-    link.click();
+    const filename = `dynapharm-${slug}.png`;
+    const dataUrl = canvas.toDataURL('image/png', 1.0);
+
+    // iOS Safari loses user-gesture context after await, so link.click()
+    // is silently ignored. Open in a new tab as primary method; fall back
+    // to the anchor-click approach for desktop browsers.
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    if (isIOS) {
+      // Open the image in a new tab — user can long-press → Save Image
+      const win = window.open();
+      if (win) {
+        win.document.write(
+          `<html><head><title>${filename}</title></head><body style="margin:0;background:#111">` +
+          `<img src="${dataUrl}" style="max-width:100%;display:block;margin:auto">` +
+          `<p style="color:#fff;text-align:center;font-family:sans-serif;font-size:14px;margin-top:8px">` +
+          `Long-press the image and choose <strong>Save to Photos</strong></p></body></html>`
+        );
+        win.document.close();
+      } else {
+        alert('Pop-up blocked. Please allow pop-ups for this site to download the poster.');
+      }
+    } else {
+      const link = document.createElement('a');
+      link.download = filename;
+      link.href = dataUrl;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+    } catch (err) {
+      console.error('[downloadDiscountPoster] error:', err);
+      alert('Could not generate poster: ' + (err?.message || String(err)));
+    }
   };
 
   if (loading) return <LoadingSpinner />;
