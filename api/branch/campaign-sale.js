@@ -474,7 +474,7 @@ export default async function handler(req, res) {
         activity_type:      actType,
         workflow_source:    'branch_portal',
         form_reference_id:  saleId,
-        product_total_dp:   Math.round(paidDp * paid_qty * 100) / 100,
+        product_total_dp:   Math.round(paidUnitPrice * paid_qty * 100) / 100,
         product_total_cp:   paidTotal,
         total_qty:          paid_qty,
         grand_total:        paidTotal,

@@ -143,6 +143,13 @@ export default async function handler(req, res) {
                 SUM(ABS(quantity))                            AS total_qty,
                 SUM(ABS(quantity) *
                   CASE WHEN type = 'campaign_free_item' THEN 0
+                       -- For member campaign_sale, unit_price holds the actual sold price
+                       -- (may be discounted for discount-type campaigns).  Prefer it over
+                       -- pp.dp (list DP) so the report reflects what was charged.
+                       -- For non-member walk-in rows inside a campaign, pp.dp is the cost
+                       -- basis and is still the correct DP reference.
+                       WHEN type = 'campaign_sale'
+                         THEN COALESCE(NULLIF(unit_price, 0), NULLIF(pp.dp, 0), 0)
                        ELSE COALESCE(NULLIF(pp.dp, 0), NULLIF(unit_price, 0), 0)
                   END)                                        AS total_dp
          FROM branch_inventory_movements
