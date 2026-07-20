@@ -1561,12 +1561,15 @@ function WalkInSalesTab() {
       else if (name.includes('powder') || name.includes('protein')) cats.add('Supplements');
       else cats.add('Other');
     });
-    return ['All', ...Array.from(cats).sort()];
-  }, [products]);
+    const base = ['All', ...Array.from(cats).sort()];
+    // Prepend Campaigns tab when at least one active discount campaign exists
+    return campaigns.length > 0 ? ['🏷️ Campaigns', ...base] : base;
+  }, [products, campaigns]);
 
   const filteredProducts = products.filter(p => {
     const matchSearch = !productSearch || (p.name || p.description || '').toLowerCase().includes(productSearch.toLowerCase());
     if (!matchSearch) return false;
+    if (productCategory === '🏷️ Campaigns') return !!getWalkinCampaignDiscount(p.name || p.description);
     if (productCategory === 'All') return true;
     const name = (p.name || p.description || '').toLowerCase();
     if (productCategory === 'Checkups') return p.isCheckup;
@@ -1644,7 +1647,9 @@ function WalkInSalesTab() {
     setCustomerType('registered'); setRegSearch(''); setRegResults([]); setSelectedReg(null);
     setNewName(''); setNewPhone(''); setReferralSearch(''); setReferralResults([]);
     setSelectedReferral(null); setNoReferral(false); setCart([]); setProductSearch('');
-    setProductCategory('All'); setPaymentMethod('cash'); setError(''); setShowModal(true);
+    // Default to Campaigns tab when active campaigns exist, otherwise All
+    setProductCategory(campaigns.length > 0 ? '🏷️ Campaigns' : 'All');
+    setPaymentMethod('cash'); setError(''); setShowModal(true);
   };
   const closeModal = () => setShowModal(false);
 
