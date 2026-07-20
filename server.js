@@ -1511,24 +1511,56 @@ app.get('/api/stock/branch/:branchId/card', async (req, res) => {
 app.get('/api/stock/branch/:branchId/inventory', async (req, res) => {
   try {
     const { getMany } = await import('./api/db.js');
-    const branchId = req.params.branchId;
-    // Query branch_inventory_batches directly — the physical stock source of truth —
-    // rather than the derived inventory_balances cache, for accurate real-time levels.
+    const { normalizeBranchSlug } = await import('./api/_lib/branchUtils.js');
+    const rawId = req.params.branchId;
+
+    // Build a comprehensive candidate list so any alias variant stored in the DB matches.
+    const canonical = normalizeBranchSlug(rawId) || rawId.trim().toLowerCase();
+    const raw_lc   = rawId.trim().toLowerCase();
+    const candidateSet = new Set([canonical, raw_lc]);
+    // _branch suffix variants
+    if (canonical.endsWith('_branch')) candidateSet.add(canonical.replace(/_branch$/, ''));
+    else                                candidateSet.add(canonical + '_branch');
+    if (raw_lc.endsWith('_branch'))    candidateSet.add(raw_lc.replace(/_branch$/, ''));
+    else                                candidateSet.add(raw_lc + '_branch');
+    // Known alias pairs
+    if (['townshop','windhoek_cbd','windhoek'].includes(canonical)) {
+      ['townshop','windhoek_cbd','windhoek'].forEach(a => candidateSet.add(a));
+    }
+    if (['katima_mulilo','katima','katima-mulilo'].includes(canonical)) {
+      ['katima_mulilo','katima','katima-mulilo','katima_branch','katima_mulilo_branch'].forEach(a => candidateSet.add(a));
+    }
+    if (['oshakati_branch','oshakati'].includes(canonical)) {
+      ['oshakati_branch','oshakati'].forEach(a => candidateSet.add(a));
+    }
+    if (['hochland-park','hochlandpark','hochland_park'].includes(canonical)) {
+      ['hochland-park','hochlandpark','hochland_park'].forEach(a => candidateSet.add(a));
+    }
+    if (['walvisbay','walvis_bay'].includes(canonical)) {
+      ['walvisbay','walvis_bay','walvis bay'].forEach(a => candidateSet.add(a));
+    }
+
+    const candidates = [...candidateSet].filter(Boolean);
+
+    // Query branch_inventory_batches — physical stock source of truth.
+    // Use LOWER(TRIM()) on the stored branch_id so historical alias rows are found
+    // regardless of how they were originally written (e.g. 'Gobabis' vs 'gobabis').
     const rows = await getMany(
       `SELECT product_name, SUM(quantity) AS total_qty, MIN(expiry_date) AS earliest_expiry
        FROM branch_inventory_batches
-       WHERE branch_id = $1
+       WHERE LOWER(TRIM(branch_id)) = ANY($1::text[])
        GROUP BY product_name
        ORDER BY product_name ASC`,
-      [branchId]
+      [candidates]
     );
+
     const inventory = rows.map(r => ({
       productName: r.product_name,
       availableQty: Number(r.total_qty || 0),
       closingQty:   Number(r.total_qty || 0),
       expiryDate:   r.earliest_expiry ? String(r.earliest_expiry).slice(0, 10) : null,
     }));
-    res.json({ success: true, branchId, inventory });
+    res.json({ success: true, branchId: rawId, inventory });
   } catch (err) {
     console.error('[stock/branch/inventory]', err);
     res.status(500).json({ success: false, error: err.message });

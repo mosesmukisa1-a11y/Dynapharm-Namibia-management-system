@@ -475,37 +475,45 @@ function generateRecommendations(client) {
 }
 
 function useBranchStock(branchId) {
-  const [outOfStock, setOutOfStock] = useState(new Set());
+  // inStock = Set of lowercase product names confirmed to have qty > 0 at this branch.
+  // loaded  = true once we've received at least one successful response.
+  // When loaded=true, any product NOT in inStock is considered out of stock.
+  const [stockState, setStockState] = useState({ inStock: new Set(), loaded: false });
+
   const fetchStock = useCallback(async () => {
     if (!branchId) return;
     try {
       const data = await api.get(`/stock/branch/${encodeURIComponent(branchId)}/inventory`);
       const inv = Array.isArray(data.inventory) ? data.inventory : [];
-      // Aggregate by lowercase name so comparisons are case-insensitive.
+      // Aggregate by lowercase name so name-casing variations don't cause duplicates.
       const qtyMap = {};
       for (const row of inv) {
         const name = (row.productName || row.product_name || '').trim().toLowerCase();
         if (!name) continue;
         qtyMap[name] = (qtyMap[name] || 0) + Number(row.availableQty ?? row.closingQty ?? 0);
       }
-      // Products with 0 or negative total qty are out of stock.
-      // Products not present in branch_inventory_batches at all are also treated as out of stock.
-      setOutOfStock(new Set(Object.entries(qtyMap).filter(([, q]) => q <= 0).map(([n]) => n)));
+      // Products with qty > 0 are confirmed in stock; everything else (q<=0 or absent) is OOS.
+      const inStockNames = new Set(
+        Object.entries(qtyMap).filter(([, q]) => q > 0).map(([n]) => n)
+      );
+      setStockState({ inStock: inStockNames, loaded: true });
     } catch {
-      // fail silently — no indicators shown if fetch fails
+      // fail silently — keep loaded:false so no OOS markers are shown on network error
     }
   }, [branchId]);
+
   useEffect(() => {
     fetchStock();
     const id = setInterval(fetchStock, 30000);
     return () => clearInterval(id);
   }, [fetchStock]);
-  return outOfStock;
+
+  return stockState;
 }
 
 function PrescriptionEditModal({ report, onClose, onSaved }) {
   const { user } = useAuth();
-  const outOfStock = useBranchStock(user?.branch || '');
+  const { inStock: branchInStock, loaded: stockLoaded } = useBranchStock(user?.branch || '');
   const [meds, setMeds] = useState(() => {
     const existing = Array.isArray(report.prescriptions)
       ? report.prescriptions.map(p => typeof p === 'string' ? p : (p.product || p.name || ''))
@@ -600,7 +608,7 @@ function PrescriptionEditModal({ report, onClose, onSaved }) {
             </div>
             <input type="text" placeholder="Search products…" value={medSearch} onChange={e => setMedSearch(e.target.value)}
               style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '0.9rem', marginBottom: '8px', boxSizing: 'border-box' }} />
-            {outOfStock.size > 0 && (
+            {stockLoaded && (
               <div style={{ fontSize: '0.78rem', color: '#991b1b', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', padding: '5px 10px', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <span>🔴</span> <span><strong>Red items</strong> are currently out of stock at your branch. You can still prescribe them — the branch will source stock before dispensing.</span>
               </div>
@@ -608,7 +616,7 @@ function PrescriptionEditModal({ report, onClose, onSaved }) {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(270px, 1fr))', gap: '7px', maxHeight: '340px', overflowY: 'auto', marginBottom: '12px' }}>
               {visPkgs.map((pkg, idx) => {
                 const isChecked = meds.has(pkg.description);
-                const isOos = outOfStock.has((pkg.description || '').trim().toLowerCase());
+                const isOos = stockLoaded && !branchInStock.has((pkg.description || '').trim().toLowerCase());
                 const bg = isOos ? (isChecked ? '#fef3c7' : '#fee2e2') : (isChecked ? '#dcfce7' : '#e8f5e9');
                 const borderColor = isOos ? (isChecked ? '#d97706' : '#dc2626') : (isChecked ? '#16a34a' : '#27ae60');
                 return (
@@ -625,7 +633,7 @@ function PrescriptionEditModal({ report, onClose, onSaved }) {
               })}
               {visProds.map((product, idx) => {
                 const isChecked = meds.has(product.description);
-                const isOos = outOfStock.has((product.description || '').trim().toLowerCase());
+                const isOos = stockLoaded && !branchInStock.has((product.description || '').trim().toLowerCase());
                 const bg = isOos ? (isChecked ? '#fffbeb' : '#fff5f5') : (isChecked ? '#f0fdf4' : 'white');
                 const borderColor = isOos ? (isChecked ? '#fcd34d' : '#fca5a5') : (isChecked ? '#86efac' : '#f0f0f0');
                 const borderWidth = isOos ? '1.5px' : '1px';
@@ -701,7 +709,7 @@ function CheckupsSection() {
   const [reportRequired, setReportRequired] = useState(true);
   const [editPrescLoadingId, setEditPrescLoadingId] = useState(null);
   const [editPrescReport, setEditPrescReport] = useState(null);
-  const outOfStock = useBranchStock(user?.branch || '');
+  const { inStock: branchInStock, loaded: stockLoaded } = useBranchStock(user?.branch || '');
   const [branchViewFilter, setBranchViewFilter] = useState('');
   const [showBooking, setShowBooking] = useState(false);
   const [bookingForm, setBookingForm] = useState({ full_name: '', phone: '', dob: '', height: '', weight: '', date: '', time: '', branch: '', notes: '', membershipStatus: 'referred', referralName: '', referralNbNumber: '', nbNumber: '' });
@@ -1722,7 +1730,7 @@ ${consultantNotes ? `
                         onChange={e => setMedSearch(e.target.value)}
                         style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '0.9rem', marginBottom: '8px', boxSizing: 'border-box' }}
                       />
-                      {outOfStock.size > 0 && (
+                      {stockLoaded && (
                         <div style={{ fontSize: '0.78rem', color: '#991b1b', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', padding: '5px 10px', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <span>🔴</span> <span><strong>Red items</strong> are currently out of stock at your branch. You can still prescribe them — the branch will source stock before dispensing.</span>
                         </div>
@@ -1731,7 +1739,7 @@ ${consultantNotes ? `
                         {filteredPkgs.map((pkg, idx) => {
                           const staticEntry = PACKAGE_DATABASE[pkg.description];
                           const isChecked = selectedMedicines.has(pkg.description);
-                          const isOos = outOfStock.has((pkg.description || '').trim().toLowerCase());
+                          const isOos = stockLoaded && !branchInStock.has((pkg.description || '').trim().toLowerCase());
                           const bg = isOos ? (isChecked ? '#fef3c7' : '#fee2e2') : (isChecked ? '#dcfce7' : '#e8f5e9');
                           const borderColor = isOos ? (isChecked ? '#d97706' : '#dc2626') : (isChecked ? '#16a34a' : '#27ae60');
                           return (
@@ -1748,7 +1756,7 @@ ${consultantNotes ? `
                         })}
                         {filteredProds.map((product, idx) => {
                           const isChecked = selectedMedicines.has(product.description);
-                          const isOos = outOfStock.has((product.description || '').trim().toLowerCase());
+                          const isOos = stockLoaded && !branchInStock.has((product.description || '').trim().toLowerCase());
                           const bg = isOos ? (isChecked ? '#fffbeb' : '#fff5f5') : (isChecked ? '#f0fdf4' : 'white');
                           const borderColor = isOos ? (isChecked ? '#fcd34d' : '#fca5a5') : (isChecked ? '#86efac' : '#f0f0f0');
                           const borderWidth = isOos ? '1.5px' : '1px';
