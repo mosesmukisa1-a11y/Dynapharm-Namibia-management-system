@@ -23,7 +23,15 @@ export default async function handler(req, res) {
   try {
     if (req.method === 'POST') {
       const body = await parseJsonBody(req);
-      const { reportId, branchId, items, createdBy, customerType, paymentMethod, patientName, consultationFee, consultMode, nbNumber, referralNb, dispenseType } = body;
+      const { reportId, branchId, items, createdBy, customerType, paymentMethod, patientName, consultationFee, consultMode, nbNumber, referralNb, dispenseType, campaignDiscounts } = body;
+      // Normalise campaign discount map: productName (lower) → { pct }
+      const campDiscMap = {};
+      if (campaignDiscounts && typeof campaignDiscounts === 'object') {
+        for (const [name, disc] of Object.entries(campaignDiscounts)) {
+          const pct = Number(disc?.pct || 0);
+          if (pct > 0) campDiscMap[name.toLowerCase()] = pct;
+        }
+      }
 
       if (!reportId || !branchId || !Array.isArray(items) || items.length === 0) {
         return res.status(400).json({ success: false, error: 'reportId, branchId, and items are required' });
@@ -54,11 +62,14 @@ export default async function handler(req, res) {
             const cp = livePrice ? Number(livePrice.cp) || comp.cp : comp.cp;
             const bv = livePrice ? Number(livePrice.bv) || 0 : 0;
             const cif = livePrice ? Number(livePrice.cif) || 0 : 0;
+            const compDiscPct = campDiscMap[comp.name.toLowerCase()] || 0;
+            const compDiscMult = compDiscPct > 0 ? (1 - compDiscPct / 100) : 1;
+            const baseCharge = isMember ? dp : cp;
             resolvedItems.push({
               product_name: comp.name,
               quantity: Math.round(Number(comp.quantity || 1) * qty),
-              unit_price: dp,                      // BIM stock valuation always uses DP (cost basis)
-              charge_unit: isMember ? dp : cp,     // what the patient is actually charged
+              unit_price: dp,                                                    // BIM stock valuation always uses DP (cost basis)
+              charge_unit: Math.round(baseCharge * compDiscMult * 100) / 100,   // what the patient is actually charged (with discount)
               bv_unit: bv,
               cif_unit: cif,
               from_package: productName,
@@ -75,13 +86,14 @@ export default async function handler(req, res) {
           // Frontend now sends explicit dp/cp fields — use as fallback when live lookup fails
           const passedDP = Number(item.dp || item.dp_price || 0);
           const passedCP = Number(item.cp || item.cp_price || 0);
+          const baseChargeUnit = isMem ? (dpPrice || passedDP || null) : (cpPrice || passedCP || null);
+          const itemDiscPct = campDiscMap[productName.toLowerCase()] || 0;
+          const itemDiscMult = itemDiscPct > 0 ? (1 - itemDiscPct / 100) : 1;
           resolvedItems.push({
             product_name: productName,
             quantity: qty,
-            unit_price: dpPrice || passedDP || null,           // BIM: stock valuation at DP
-            charge_unit: isMem                                 // patient charge
-              ? (dpPrice || passedDP || null)
-              : (cpPrice || passedCP || null),
+            unit_price: dpPrice || passedDP || null,                                                   // BIM: stock valuation at DP
+            charge_unit: baseChargeUnit != null ? Math.round(baseChargeUnit * itemDiscMult * 100) / 100 : null,  // patient charge with discount
             bv_unit: livePrice ? Number(livePrice.bv) || 0 : 0,
             cif_unit: livePrice ? Number(livePrice.cif) || 0 : 0,
             from_package: item.from_package || null,

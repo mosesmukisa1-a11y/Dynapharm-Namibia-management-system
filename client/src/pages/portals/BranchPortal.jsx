@@ -2413,6 +2413,7 @@ function PrescriptionsTab() {
   const [rxItemSelected, setRxItemSelected] = useState({}); // { [pendingItemIndex]: boolean } — true = selected for dispense
   const [expandedPackages, setExpandedPackages] = useState({});
   const [dispenseCameraMode, setDispenseCameraMode] = useState(false);
+  const [prescCampaigns, setPrescCampaigns] = useState([]); // active discount campaigns
 
   const CHECKUP_FEE_OPTIONS = {
     standard:        { label: 'Full Body Check Up',              fee: 200, cashback: 50, consultantEarns: 150 },
@@ -2431,6 +2432,16 @@ function PrescriptionsTab() {
       .then(d => setReports(Array.isArray(d) ? d : d.reports || []))
       .catch(() => {})
       .finally(() => setLoading(false));
+    // Load active discount-type campaigns for this branch
+    api.get('/campaigns').then(d => {
+      const all = Array.isArray(d) ? d : (d.campaigns || []);
+      const now = new Date();
+      setPrescCampaigns(all.filter(c =>
+        c.campaign_type === 'discount' &&
+        c.status !== 'pending_approval' && c.status !== 'rejected' &&
+        new Date(c.start_date) <= now && new Date(c.end_date) >= now
+      ));
+    }).catch(() => {});
   }, [effectiveBranch]);
 
   useEffect(() => {
@@ -2538,29 +2549,38 @@ function PrescriptionsTab() {
 
     const items = meds.map((m, medIdx) => {
       const p = getEffectivePrice(m.name);
+      const campDisc = getActiveCampaignDiscount(m.name);
+      const discMult = campDisc ? (1 - campDisc.pct / 100) : 1;
+      const effectiveDp = Math.round(p.dp * discMult * 100) / 100;
+      const effectiveCp = Math.round(p.cp * discMult * 100) / 100;
       const expanded = isPackageExpanded(report.id, medIdx);
       const alreadyDispensedComps = Array.isArray(m.dispensed_components) ? new Set(m.dispensed_components) : new Set();
       if (p.isPackage && expanded && p.products) {
         const compState = getExpandedComponentState(report.id, medIdx);
         const components = p.products.map((comp, ci) => {
           const cp = getComponentPrice(comp.name);
+          const cDisc = getActiveCampaignDiscount(comp.name);
+          const cMult = cDisc ? (1 - cDisc.pct / 100) : 1;
           return {
             name: comp.name,
             quantity: Number(comp.quantity || 1),
             dp: cp.dp,
             cp: cp.cp,
+            effectiveDp: Math.round(cp.dp * cMult * 100) / 100,
+            effectiveCp: Math.round(cp.cp * cMult * 100) / 100,
+            campaignDiscount: cDisc || null,
             bv: cp.bv,
             fromPackage: m.name,
             selectedForDispense: !!compState[ci],
             alreadyDispensed: alreadyDispensedComps.has(comp.name),
           };
         });
-        return { name: m.name, quantity: 1, fullQty: 1, alreadyDispensedQty: 0, dp: p.dp, cp: p.cp, bv: p.bv, isPackage: true, dispensed: !!m.dispensed, products: p.products, expandedIndividually: true, components, alreadyDispensedComps };
+        return { name: m.name, quantity: 1, fullQty: 1, alreadyDispensedQty: 0, dp: p.dp, cp: p.cp, effectiveDp, effectiveCp, campaignDiscount: campDisc || null, bv: p.bv, isPackage: true, dispensed: !!m.dispensed, products: p.products, expandedIndividually: true, components, alreadyDispensedComps };
       }
       const fullQty = m.quantity || 1;
       const alreadyQty = m.dispensed_qty || 0;
       const remainingQty = Math.max(1, fullQty - alreadyQty);
-      return { name: m.name, quantity: remainingQty, fullQty, alreadyDispensedQty: alreadyQty, dp: p.dp, cp: p.cp, bv: p.bv, isPackage: !!p.isPackage, dispensed: !!m.dispensed, products: p.products, expandedIndividually: false, alreadyDispensedComps };
+      return { name: m.name, quantity: remainingQty, fullQty, alreadyDispensedQty: alreadyQty, dp: p.dp, cp: p.cp, effectiveDp, effectiveCp, campaignDiscount: campDisc || null, bv: p.bv, isPackage: !!p.isPackage, dispensed: !!m.dispensed, products: p.products, expandedIndividually: false, alreadyDispensedComps };
     });
 
     const pendingItems = [];
@@ -2665,23 +2685,35 @@ function PrescriptionsTab() {
           ? Math.max(1, Math.min(rxItemQtys[pi] || item.quantity, item.quantity))
           : item.quantity;
         if (item.isComponent) {
-          const price = isMember ? item.dp : item.cp;
-          dispenseItems.push({ product_name: item.name, quantity: item.quantity, dp: item.dp || null, cp: item.cp || null, unit_price: price || null, from_package: item.fromPackage || null });
+          const price = isMember ? (item.effectiveDp ?? item.dp) : (item.effectiveCp ?? item.cp);
+          dispenseItems.push({ product_name: item.name, quantity: item.quantity, dp: item.dp || null, cp: item.cp || null, unit_price: price || null, from_package: item.fromPackage || null, campaign_discount: item.campaignDiscount || null });
         } else if (item.isPackage && item.products) {
           const hasPartialHistory = item.alreadyDispensedComps && item.alreadyDispensedComps.size > 0;
           if (hasPartialHistory) {
             for (const comp of item.products) {
               const cp = getComponentPrice(comp.name);
-              const compPrice = isMember ? cp.dp : cp.cp;
-              dispenseItems.push({ product_name: comp.name, quantity: Number(comp.quantity || 1) * (item.quantity || 1), dp: cp.dp || null, cp: cp.cp || null, unit_price: compPrice || null, from_package: item.name });
+              const cDisc = getActiveCampaignDiscount(comp.name);
+              const cMult = cDisc ? (1 - cDisc.pct / 100) : 1;
+              const compPrice = isMember ? Math.round(cp.dp * cMult * 100) / 100 : Math.round(cp.cp * cMult * 100) / 100;
+              dispenseItems.push({ product_name: comp.name, quantity: Number(comp.quantity || 1) * (item.quantity || 1), dp: cp.dp || null, cp: cp.cp || null, unit_price: compPrice || null, from_package: item.name, campaign_discount: cDisc || null });
             }
           } else {
-            dispenseItems.push({ product_name: item.name, quantity: item.quantity || 1, dp: item.dp || null, cp: item.cp || null, unit_price: isMember ? (item.dp || null) : (item.cp || null) });
+            const effPrice = isMember ? (item.effectiveDp ?? item.dp) : (item.effectiveCp ?? item.cp);
+            dispenseItems.push({ product_name: item.name, quantity: item.quantity || 1, dp: item.dp || null, cp: item.cp || null, unit_price: effPrice || null, campaign_discount: item.campaignDiscount || null });
           }
         } else {
-          dispenseItems.push({ product_name: item.name, quantity: selectedQty, dp: item.dp || null, cp: item.cp || null, unit_price: isMember ? (item.dp || null) : (item.cp || null) });
+          const effPrice = isMember ? (item.effectiveDp ?? item.dp) : (item.effectiveCp ?? item.cp);
+          dispenseItems.push({ product_name: item.name, quantity: selectedQty, dp: item.dp || null, cp: item.cp || null, unit_price: effPrice || null, campaign_discount: item.campaignDiscount || null });
         }
       }
+
+      // Build campaignDiscounts map for backend: { productName → { pct, campaignId, campaignName } }
+      const campaignDiscounts = {};
+      for (const pi of selectedIndices) {
+        const item = pendingItems[pi];
+        if (item.campaignDiscount) campaignDiscounts[item.name] = item.campaignDiscount;
+      }
+
       // Full dispense = every pending item was selected AND all selected quantities are at full prescribed qty
       const undispensedCountBefore = dispensePreview.items.filter(i => !i.dispensed).length;
       const anyPartialQty = selectedIndices.some((pi) => {
@@ -2697,6 +2729,7 @@ function PrescriptionsTab() {
         items: dispenseItems,
         createdBy: user?.full_name || user?.username || '',
         customerType: isMember ? 'member' : 'non_member',
+        campaignDiscounts: Object.keys(campaignDiscounts).length > 0 ? campaignDiscounts : undefined,
         paymentMethod: rxDispensePayment,
         patientName: report.client_name || report.full_name || report.patient_name || 'Patient',
         consultationFee: dispensePreview.consultFee?.total || 0,
@@ -2803,6 +2836,30 @@ function PrescriptionsTab() {
     const p = findProductPrice(compName);
     if (p) return { dp: p.dp, cp: p.cp, bv: p.bv || 0 };
     return { dp: 0, cp: 0, bv: 0 };
+  };
+
+  // Returns the best active discount campaign for a product (null if none)
+  const getActiveCampaignDiscount = (productName) => {
+    if (!productName || prescCampaigns.length === 0) return null;
+    const nameLower = productName.trim().toLowerCase();
+    let best = null;
+    for (const camp of prescCampaigns) {
+      const pct = parseFloat(camp.discount_percentage || 0);
+      if (pct <= 0) continue;
+      const cond = typeof camp.conditions === 'string'
+        ? (() => { try { return JSON.parse(camp.conditions); } catch { return {}; } })()
+        : (camp.conditions || {});
+      const productsText = cond.products_text || '';
+      const productsList = Array.isArray(cond.products) ? cond.products : [];
+      const allProducts = [...productsList, ...productsText.split(',')]
+        .map(p => (typeof p === 'string' ? p.trim().toLowerCase() : '')).filter(Boolean);
+      if (allProducts.length === 0 || allProducts.includes(nameLower)) {
+        if (!best || pct > best.pct) {
+          best = { pct, campaignId: camp.id, campaignName: camp.name };
+        }
+      }
+    }
+    return best;
   };
 
   const getPkgKey = (reportId, medIndex) => `${reportId}::${medIndex}`;
@@ -3052,11 +3109,13 @@ function PrescriptionsTab() {
         }, 0);
       })()
     : 0;
-  // Dynamic subtotal — only sums ticked items, reflects qty steppers
+  // Dynamic subtotal — only sums ticked items, reflects qty steppers and campaign discounts
   const dpMedSubtotal = dpModal
     ? dpModal.pendingItems.reduce((s, item, i) => {
         if (rxItemSelected[i] !== true) return s; // skip unselected
-        const unitPrice = dpModal.isMember ? (item.dp || 0) : (item.cp || 0);
+        const unitPrice = dpModal.isMember
+          ? (item.effectiveDp ?? item.dp ?? 0)
+          : (item.effectiveCp ?? item.cp ?? 0);
         const qty = (!item.isComponent && !item.isPackage)
           ? Math.max(1, Math.min(rxItemQtys[i] || item.quantity || 1, item.quantity || 1))
           : (item.quantity || 1);
@@ -3611,7 +3670,11 @@ function PrescriptionsTab() {
                 <tbody>
                   {dpModal.pendingItems.map((item, i) => {
                     const isChecked = rxItemSelected[i] === true;
-                    const unitPrice = dpModal.isMember ? (item.dp || 0) : (item.cp || 0);
+                    const rawPrice = dpModal.isMember ? (item.dp || 0) : (item.cp || 0);
+                    const unitPrice = dpModal.isMember
+                      ? (item.effectiveDp ?? item.dp ?? 0)
+                      : (item.effectiveCp ?? item.cp ?? 0);
+                    const hasDiscount = item.campaignDiscount && item.campaignDiscount.pct > 0 && unitPrice < rawPrice;
                     const dispQty = (!item.isComponent && !item.isPackage)
                       ? Math.max(1, Math.min(rxItemQtys[i] || item.quantity || 1, item.quantity || 1))
                       : (item.quantity || 1);
@@ -3631,6 +3694,12 @@ function PrescriptionsTab() {
                           {item.isComponent && item.fromPackage && (
                             <div style={{ fontSize: '0.66rem', color: '#3b82f6', fontWeight: 500, marginTop: 1 }}>from {item.fromPackage}</div>
                           )}
+                          {hasDiscount && (
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 3, background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 5, padding: '2px 6px' }}>
+                              <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#16a34a' }}>🏷️ {item.campaignDiscount.pct}% OFF</span>
+                              <span style={{ fontSize: '0.58rem', color: '#15803d' }}>{item.campaignDiscount.campaignName}</span>
+                            </div>
+                          )}
                         </td>
                         <td style={{ padding: '8px 10px', textAlign: 'center', color: '#64748b' }}>
                           {(isChecked && !item.isComponent && !item.isPackage && item.quantity > 1) ? (
@@ -3647,7 +3716,14 @@ function PrescriptionsTab() {
                           ) : item.quantity}
                         </td>
                         <td style={{ padding: '8px 10px', textAlign: 'right', color: '#475569' }}>
-                          {isChecked ? `N$ ${Math.round(unitPrice).toLocaleString("en-ZA")}` : '—'}
+                          {isChecked ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
+                              {hasDiscount && (
+                                <span style={{ fontSize: '0.68rem', color: '#94a3b8', textDecoration: 'line-through' }}>N$ {Math.round(rawPrice).toLocaleString("en-ZA")}</span>
+                              )}
+                              <span style={{ color: hasDiscount ? '#16a34a' : '#475569', fontWeight: hasDiscount ? 700 : 400 }}>N$ {Math.round(unitPrice).toLocaleString("en-ZA")}</span>
+                            </div>
+                          ) : '—'}
                         </td>
                         <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: isChecked ? '#1e293b' : '#94a3b8' }}>
                           {isChecked ? `N$ ${Math.round(lineTotal).toLocaleString("en-ZA")}` : <span style={{ fontSize: '0.72rem', color: '#cbd5e1' }}>skipped</span>}
