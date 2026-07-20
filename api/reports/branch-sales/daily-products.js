@@ -45,17 +45,30 @@ export default async function handler(req, res) {
             ELSE                                      'regular'
           END                                                               AS sale_type,
           SUM(ABS(bim.quantity))                                            AS total_qty,
-          -- Use product_prices.dp (GM price list) as the authoritative DP source.
-          -- bim.unit_price stores CP for non-member walk-in sales, so it cannot be
-          -- used directly. Free items (campaign_free_item) are always 0.
+          -- dp_amount: revenue at DP level for each movement type.
+          --   campaign_sale (member paid): use bim.unit_price which now stores the actual
+          --     discounted DP the member paid (paidUnitPrice). For bxgy campaigns this equals
+          --     pp.dp; for discount campaigns it is pp.dp × (1-disc%). Falls back to pp.dp
+          --     for older records that stored the full list DP.
+          --   walk_in_non_member_sale (regular & campaign non-member): bim.unit_price stores
+          --     CP, so always use pp.dp (the company's cost/DP basis).
+          --   campaign_free_item: always 0 (free, no revenue).
+          --   All other types: pp.dp is the authoritative source; unit_price fallback.
           SUM(
             ABS(bim.quantity) *
-            CASE WHEN bim.type = 'campaign_free_item' THEN 0
+            CASE WHEN bim.type = 'campaign_free_item'   THEN 0
+                 WHEN bim.type = 'campaign_sale'
+                   THEN COALESCE(NULLIF(bim.unit_price, 0), NULLIF(pp.dp, 0), 0)
                  ELSE COALESCE(NULLIF(pp.dp, 0), NULLIF(bim.unit_price, 0), 0)
             END
           )                                                                 AS dp_amount,
+          -- bv_total: only member-type movements earn BV.
+          --   walk_in_non_member_sale (regular & campaign non-member) → 0 BV.
+          --   campaign_free_item → 0 BV (free items never earn BV).
+          --   All others (member sales, prescriptions) → pp.bv × qty.
           COALESCE(MAX(pp.bv), 0) * SUM(
-            CASE WHEN bim.type = 'campaign_free_item' THEN 0 ELSE ABS(bim.quantity) END
+            CASE WHEN bim.type IN ('campaign_free_item', 'walk_in_non_member_sale') THEN 0
+                 ELSE ABS(bim.quantity) END
           )                                                                 AS bv_total
         FROM branch_inventory_movements bim
         LEFT JOIN product_prices pp
