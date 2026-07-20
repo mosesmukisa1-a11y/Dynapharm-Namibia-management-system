@@ -3357,18 +3357,23 @@ function CampaignsTab() {
     return diff;
   };
 
-  const downloadDiscountPoster = async (camp) => {
+  const downloadDiscountPoster = async (camp, singleProductName = null) => {
     const conditions = safeJson(camp.conditions);
     const discountPct = Number(camp.discount_percentage || 0);
 
+    // Build full product name list from campaign conditions
     let campProductNames = [];
     if (Array.isArray(conditions.products) && conditions.products.length > 0) {
       campProductNames = conditions.products;
     } else if (conditions.products_text) {
       campProductNames = conditions.products_text.split(',').map(s => s.trim()).filter(Boolean);
     }
+    // If a single product was requested (per-card button), restrict to it
+    if (singleProductName) {
+      campProductNames = [singleProductName];
+    }
 
-    const resolvedProducts = campProductNames.map(name => {
+    const resolveProduct = (name) => {
       const match = products.find(p =>
         (p.name || p.description || '').toLowerCase().trim() === name.toLowerCase().trim() ||
         (p.name || p.description || '').toLowerCase().includes(name.toLowerCase()) ||
@@ -3376,7 +3381,6 @@ function CampaignsTab() {
       );
       const dp = Number(match?.dp || 0);
       const nowPrice = dp > 0 ? dp * (1 - discountPct / 100) : 0;
-      // Resolve image source from matched product
       let imageSrc = null;
       if (match?.images && match.images.length > 0) {
         const pri = match.images.find(img => img.is_primary) || match.images[0];
@@ -3389,7 +3393,9 @@ function CampaignsTab() {
         }
       }
       return { name, wasPrice: dp, nowPrice, hasPrices: dp > 0, imageSrc };
-    });
+    };
+
+    const resolvedProducts = campProductNames.map(resolveProduct);
 
     // ── Preload product images ──────────────────────────────────
     const loadImg = (src) => new Promise(resolve => {
@@ -3402,43 +3408,36 @@ function CampaignsTab() {
     });
     const loadedImgs = await Promise.all(resolvedProducts.map(p => loadImg(p.imageSrc)));
 
-    // ── Canvas dimensions ────────────────────────────────────
-    const hasProducts = resolvedProducts.length > 0;
+    // ── Setup ────────────────────────────────────────────────
     const W = 1080;
-    const useGrid = hasProducts && resolvedProducts.length <= 4;
-    const COLS = useGrid && resolvedProducts.length >= 2 ? 2 : 1;
-    const CARD_H = useGrid ? 300 : 160;
-    const ROWS = useGrid ? Math.ceil(resolvedProducts.length / COLS) : resolvedProducts.length;
-    const HEADER_H = 360;
-    const BADGE_SECTION_H = 280;
-    const PRODUCTS_H = hasProducts ? (ROWS * (CARD_H + 16) + 80) : 0;
-    const FOOTER_H = 130;
-    const H = HEADER_H + BADGE_SECTION_H + PRODUCTS_H + FOOTER_H;
-
+    const H = 1350;
     const canvas = document.createElement('canvas');
     canvas.width = W; canvas.height = H;
     const ctx = canvas.getContext('2d');
 
-    // ── Helpers ───────────────────────────────────────────────
-    const gold = (x0, y0, x1, y1) => {
+    // ── Shared helpers ───────────────────────────────────────
+    const mkGold = (x0, y0, x1, y1) => {
       const g = ctx.createLinearGradient(x0, y0, x1, y1);
-      g.addColorStop(0, '#8b6914'); g.addColorStop(0.3, '#d4a017');
-      g.addColorStop(0.5, '#ffd700'); g.addColorStop(0.7, '#d4a017');
-      g.addColorStop(1, '#8b6914');
+      g.addColorStop(0,   '#6b4c00');
+      g.addColorStop(0.2, '#c89a20');
+      g.addColorStop(0.45,'#ffd700');
+      g.addColorStop(0.55,'#ffe566');
+      g.addColorStop(0.8, '#c89a20');
+      g.addColorStop(1,   '#6b4c00');
       return g;
     };
-    const wrapText = (text, maxWidth, font) => {
+    const wrap = (text, maxW, font) => {
       ctx.font = font;
-      const words = text.split(' ');
+      const words = (text || '').split(' ');
       const lines = []; let cur = '';
       for (const w of words) {
-        const test = cur ? cur + ' ' + w : w;
-        if (ctx.measureText(test).width > maxWidth && cur) { lines.push(cur); cur = w; } else cur = test;
+        const t = cur ? cur + ' ' + w : w;
+        if (ctx.measureText(t).width > maxW && cur) { lines.push(cur); cur = w; } else cur = t;
       }
       if (cur) lines.push(cur);
       return lines;
     };
-    const roundRect = (x, y, w, h, r) => {
+    const rrect = (x, y, w, h, r) => {
       ctx.beginPath();
       ctx.moveTo(x + r, y);
       ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r);
@@ -3447,306 +3446,357 @@ function CampaignsTab() {
       ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y);
       ctx.closePath();
     };
-    const clipCircle = (cx, cy, r) => {
+    const drawBadge = (cx, cy, r, pct) => {
+      // Outer soft glow
+      const glow = ctx.createRadialGradient(cx, cy, r * 0.3, cx, cy, r + 60);
+      glow.addColorStop(0, 'rgba(255,220,0,0.5)');
+      glow.addColorStop(0.5,'rgba(255,180,0,0.18)');
+      glow.addColorStop(1, 'rgba(255,215,0,0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath(); ctx.arc(cx, cy, r + 60, 0, Math.PI * 2); ctx.fill();
+
+      // Outer decorative dashed ring
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,215,0,0.4)'; ctx.lineWidth = 2;
+      ctx.setLineDash([12, 8]);
+      ctx.beginPath(); ctx.arc(cx, cy, r + 26, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+
+      // Main badge circle — deep gold radial gradient
+      const fill = ctx.createRadialGradient(cx - r * 0.28, cy - r * 0.28, 4, cx, cy, r);
+      fill.addColorStop(0,   '#fff5b0');
+      fill.addColorStop(0.18,'#ffd700');
+      fill.addColorStop(0.55,'#d4920a');
+      fill.addColorStop(0.85,'#8b5c00');
+      fill.addColorStop(1,   '#5a3500');
+      ctx.fillStyle = fill;
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+
+      // Specular shine arc (top-left crescent)
+      ctx.save();
       ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.clip();
+      const shine = ctx.createRadialGradient(cx - r * 0.35, cy - r * 0.38, 2, cx - r * 0.1, cy - r * 0.1, r * 0.85);
+      shine.addColorStop(0, 'rgba(255,255,255,0.42)');
+      shine.addColorStop(0.4,'rgba(255,255,255,0.10)');
+      shine.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = shine; ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+      ctx.restore();
+
+      // Inner white ring
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(cx, cy, r - 8, 0, Math.PI * 2); ctx.stroke();
+
+      // Text
+      ctx.fillStyle = '#2a0a00'; ctx.textAlign = 'center';
+      const fs = pct >= 100 ? Math.round(r * 0.58) : Math.round(r * 0.72);
+      ctx.font = `900 ${fs}px Georgia, serif`;
+      ctx.shadowColor = 'rgba(0,0,0,0.25)'; ctx.shadowBlur = 8;
+      ctx.fillText(`${pct}%`, cx, cy + fs * 0.3);
+      ctx.font = `bold ${Math.round(r * 0.34)}px Georgia, serif`;
+      ctx.fillText('OFF', cx, cy + fs * 0.65);
+      ctx.shadowBlur = 0;
     };
+    const drawFooter = (y) => {
+      const fBg = ctx.createLinearGradient(0, y, 0, H);
+      fBg.addColorStop(0, 'rgba(0,0,0,0)');
+      fBg.addColorStop(0.25,'rgba(0,0,0,0.55)');
+      fBg.addColorStop(1,  'rgba(0,0,0,0.82)');
+      ctx.fillStyle = fBg; ctx.fillRect(0, y, W, H - y);
 
-    // ── Background ───────────────────────────────────────────
-    const bg = ctx.createLinearGradient(0, 0, W * 0.6, H);
-    bg.addColorStop(0, '#0a0003');
-    bg.addColorStop(0.25, '#5c0818');
-    bg.addColorStop(0.6, '#96152a');
-    bg.addColorStop(1, '#c41e3a');
-    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = mkGold(120, 0, W - 120, 0); ctx.fillRect(120, y + 16, W - 240, 1.5);
 
-    // Subtle radial vignette overlay for depth
-    const vig = ctx.createRadialGradient(W / 2, H * 0.35, 0, W / 2, H * 0.35, W * 0.85);
-    vig.addColorStop(0, 'rgba(180,20,40,0.18)');
-    vig.addColorStop(1, 'rgba(0,0,0,0.55)');
-    ctx.fillStyle = vig; ctx.fillRect(0, 0, W, H);
+      const fmtD = d => new Date(d).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' });
+      ctx.fillStyle = 'rgba(255,255,255,0.78)'; ctx.font = '28px Georgia, serif'; ctx.textAlign = 'center';
+      ctx.fillText(`${fmtD(camp.start_date)}   ›   ${fmtD(camp.end_date)}`, W / 2, y + 60);
 
-    // Large ghost circle top-right
-    ctx.save(); ctx.globalAlpha = 0.06; ctx.fillStyle = '#ffffff';
-    ctx.beginPath(); ctx.arc(W + 80, -80, 480, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(-80, H * 0.65, 320, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(W * 0.5, H * 0.42, 520, 0, Math.PI * 2); ctx.fill();
-    ctx.restore();
+      ctx.fillStyle = mkGold(0, 0, W, 0); ctx.font = 'bold 22px Georgia, serif';
+      ctx.fillText('DYNAPHARM NAMIBIA  ·  dynapharmnamibia.net', W / 2, y + 100);
 
-    // ── Gold top bar ──────────────────────────────────────────
-    ctx.fillStyle = gold(0, 0, W, 0); ctx.fillRect(0, 0, W, 9);
-
-    // ── Brand header band ────────────────────────────────────
-    const hBand = ctx.createLinearGradient(0, 9, 0, 85);
-    hBand.addColorStop(0, 'rgba(0,0,0,0.55)'); hBand.addColorStop(1, 'rgba(0,0,0,0.0)');
-    ctx.fillStyle = hBand; ctx.fillRect(0, 9, W, 76);
-
-    ctx.fillStyle = gold(0, 0, W, 0);
-    ctx.font = 'bold 26px Georgia, serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('✦   DYNAPHARM  NAMIBIA   ✦', W / 2, 62);
-
-    // Thin gold rule under brand text
-    ctx.fillStyle = gold(120, 0, W - 120, 0); ctx.fillRect(180, 76, W - 360, 1.5);
-
-    // ── Campaign name ────────────────────────────────────────
-    const campNameUpper = (camp.name || '').toUpperCase();
-    const nameFont = 'bold 68px Georgia, serif';
-    const nameLines = wrapText(campNameUpper, W - 100, nameFont);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = nameFont;
-    ctx.textAlign = 'center';
-    let nameY = 160;
-    nameLines.slice(0, 3).forEach(l => { ctx.fillText(l, W / 2, nameY); nameY += 76; });
-
-    // ── Tagline / description ────────────────────────────────
-    if (camp.description) {
-      ctx.fillStyle = 'rgba(255,255,255,0.62)';
-      ctx.font = '28px Georgia, serif';
-      const desc = camp.description.length > 70 ? camp.description.slice(0, 68) + '…' : camp.description;
-      ctx.fillText(desc.toUpperCase(), W / 2, Math.max(nameY + 14, 310));
-    }
-
-    // ── Gold separator ───────────────────────────────────────
-    ctx.fillStyle = gold(160, 0, W - 160, 0);
-    ctx.fillRect(160, HEADER_H - 16, W - 320, 2);
-
-    // ── Discount badge ───────────────────────────────────────
-    const bCx = W / 2, bCy = HEADER_H + 128, bR = 128;
-
-    // Outer glow ring
-    const glow = ctx.createRadialGradient(bCx, bCy, bR * 0.4, bCx, bCy, bR + 55);
-    glow.addColorStop(0, 'rgba(255,215,0,0.38)');
-    glow.addColorStop(0.6, 'rgba(255,180,0,0.12)');
-    glow.addColorStop(1, 'rgba(255,215,0,0)');
-    ctx.fillStyle = glow;
-    ctx.beginPath(); ctx.arc(bCx, bCy, bR + 55, 0, Math.PI * 2); ctx.fill();
-
-    // Outer decorative ring (thin gold circle)
-    ctx.strokeStyle = 'rgba(255,215,0,0.35)'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(bCx, bCy, bR + 24, 0, Math.PI * 2); ctx.stroke();
-
-    // Badge fill (metallic gold radial)
-    const badgeFill = ctx.createRadialGradient(bCx - 30, bCy - 30, 8, bCx, bCy, bR);
-    badgeFill.addColorStop(0, '#fff0a0');
-    badgeFill.addColorStop(0.25, '#ffd700');
-    badgeFill.addColorStop(0.6, '#e8a000');
-    badgeFill.addColorStop(1, '#7a4a00');
-    ctx.fillStyle = badgeFill;
-    ctx.beginPath(); ctx.arc(bCx, bCy, bR, 0, Math.PI * 2); ctx.fill();
-
-    // Inner highlight shine
-    ctx.save();
-    clipCircle(bCx, bCy, bR);
-    const shine = ctx.createLinearGradient(bCx - bR, bCy - bR, bCx, bCy);
-    shine.addColorStop(0, 'rgba(255,255,255,0.28)');
-    shine.addColorStop(0.5, 'rgba(255,255,255,0)');
-    ctx.fillStyle = shine; ctx.fillRect(bCx - bR, bCy - bR, bR * 1.4, bR * 1.4);
-    ctx.restore();
-
-    // Inner border ring
-    ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 3.5;
-    ctx.beginPath(); ctx.arc(bCx, bCy, bR - 6, 0, Math.PI * 2); ctx.stroke();
-
-    // Badge text
-    ctx.fillStyle = '#1a0000'; ctx.textAlign = 'center';
-    const pctFontSize = discountPct >= 100 ? 62 : 76;
-    ctx.font = `bold ${pctFontSize}px Georgia, serif`;
-    ctx.shadowColor = 'rgba(0,0,0,0.18)'; ctx.shadowBlur = 6;
-    ctx.fillText(`${discountPct}%`, bCx, bCy + 14);
-    ctx.font = 'bold 36px Georgia, serif';
-    ctx.fillText('OFF', bCx, bCy + 54);
-    ctx.shadowBlur = 0;
-
-    // Scope label
-    const scopeLabel = (camp.scope === 'countrywide' || camp.scope === 'nationwide')
-      ? 'COUNTRYWIDE  ·  All Participating Branches'
+      ctx.fillStyle = mkGold(0, 0, W, 0); ctx.fillRect(0, H - 10, W, 10);
+    };
+    const scopeLine = (camp.scope === 'countrywide' || camp.scope === 'nationwide')
+      ? 'COUNTRYWIDE  ·  ALL PARTICIPATING BRANCHES'
       : (camp.scope || 'All Branches').toUpperCase();
-    ctx.fillStyle = 'rgba(255,255,255,0.60)';
-    ctx.font = '22px Georgia, serif';
-    ctx.fillText(scopeLabel, W / 2, HEADER_H + BADGE_SECTION_H - 22);
 
-    // ── Products section ─────────────────────────────────────
-    if (hasProducts) {
-      let py = HEADER_H + BADGE_SECTION_H;
+    // ────────────────────────────────────────────────────────────────
+    // HERO layout — single product with large photo (per-card button)
+    // ────────────────────────────────────────────────────────────────
+    if (resolvedProducts.length === 1) {
+      const prod   = resolvedProducts[0];
+      const imgEl  = loadedImgs[0];
+      const PHOTO_H = 680;   // top photo zone
+      const INFO_Y  = PHOTO_H;
+      const FOOTER_Y = H - 180;
 
-      // Section header
-      ctx.fillStyle = gold(160, 0, W - 160, 0); ctx.fillRect(160, py, W - 320, 1.5); py += 18;
-      ctx.fillStyle = 'rgba(255,215,0,0.92)';
-      ctx.font = 'bold 20px Georgia, serif'; ctx.textAlign = 'center';
-      ctx.fillText('P A R T I C I P A T I N G   P R O D U C T S', W / 2, py + 20);
-      ctx.fillStyle = gold(160, 0, W - 160, 0); ctx.fillRect(160, py + 30, W - 320, 1.5); py += 50;
+      // ── Solid background (shown behind photo and in bottom zone) ──
+      const bg = ctx.createLinearGradient(0, 0, 0, H);
+      bg.addColorStop(0, '#0a0003');
+      bg.addColorStop(0.3,'#5a0814');
+      bg.addColorStop(0.65,'#961528');
+      bg.addColorStop(1,   '#bf1c38');
+      ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
 
-      const GUTTER = 24;
-      const PAD_X = 44;
-      const colWidth = useGrid && COLS === 2
-        ? (W - PAD_X * 2 - GUTTER) / 2
-        : W - PAD_X * 2;
+      // Subtle diagonal stripe texture
+      ctx.save(); ctx.globalAlpha = 0.035; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1;
+      for (let i = -H; i < W + H; i += 28) {
+        ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i + H, H); ctx.stroke();
+      }
+      ctx.restore();
 
-      resolvedProducts.forEach((prod, i) => {
-        const col = useGrid && COLS === 2 ? i % 2 : 0;
-        const row = useGrid && COLS === 2 ? Math.floor(i / 2) : i;
-        const cx = PAD_X + col * (colWidth + GUTTER);
-        const cy = py + row * (CARD_H + 16);
-        const cardH = CARD_H;
-        const imgEl = loadedImgs[i];
-        const hasImg = !!imgEl;
-
-        // Card background
+      // ── Photo zone ───────────────────────────────────────────
+      if (imgEl) {
         ctx.save();
-        roundRect(cx, cy, colWidth, cardH, 18);
-        const cardBg = ctx.createLinearGradient(cx, cy, cx + colWidth, cy + cardH);
-        cardBg.addColorStop(0, 'rgba(255,255,255,0.11)');
-        cardBg.addColorStop(1, 'rgba(255,255,255,0.04)');
-        ctx.fillStyle = cardBg; ctx.fill();
-        ctx.strokeStyle = 'rgba(255,215,0,0.22)'; ctx.lineWidth = 1.5; ctx.stroke();
+        ctx.beginPath(); ctx.rect(0, 0, W, PHOTO_H); ctx.clip();
+        const sc = Math.max(W / imgEl.width, PHOTO_H / imgEl.height);
+        const dw = imgEl.width * sc, dh = imgEl.height * sc;
+        ctx.drawImage(imgEl, (W - dw) / 2, (PHOTO_H - dh) / 2, dw, dh);
+
+        // Top fade (brand area stays readable)
+        const topFade = ctx.createLinearGradient(0, 0, 0, 160);
+        topFade.addColorStop(0, 'rgba(5,0,2,0.82)');
+        topFade.addColorStop(1, 'rgba(5,0,2,0)');
+        ctx.fillStyle = topFade; ctx.fillRect(0, 0, W, 160);
+
+        // Bottom fade (smooth into info zone)
+        const btmFade = ctx.createLinearGradient(0, PHOTO_H - 280, 0, PHOTO_H);
+        btmFade.addColorStop(0, 'rgba(5,0,2,0)');
+        btmFade.addColorStop(1, 'rgba(5,0,2,0.97)');
+        ctx.fillStyle = btmFade; ctx.fillRect(0, PHOTO_H - 280, W, 280);
+        ctx.restore();
+      } else {
+        // No image — decorative ghost circles
+        ctx.save(); ctx.globalAlpha = 0.08; ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.arc(W * 0.78, PHOTO_H * 0.38, 340, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(W * 0.18, PHOTO_H * 0.7, 200, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
+
+      // ── Gold top bar ─────────────────────────────────────────
+      ctx.fillStyle = mkGold(0, 0, W, 0); ctx.fillRect(0, 0, W, 10);
+
+      // ── Brand name at very top ────────────────────────────────
+      ctx.fillStyle = mkGold(0, 0, W, 0);
+      ctx.font = 'bold 28px Georgia, serif'; ctx.textAlign = 'center';
+      ctx.fillText('✦   DYNAPHARM  NAMIBIA   ✦', W / 2, 66);
+
+      // Thin gold rule
+      ctx.fillStyle = mkGold(200, 0, W - 200, 0);
+      ctx.fillRect(200, 80, W - 400, 1.5);
+
+      // ── Campaign name (on photo, near bottom of photo zone) ──
+      const campUp = (camp.name || '').toUpperCase();
+      const campLines = wrap(campUp, W - 80, 'bold 72px Georgia, serif');
+      ctx.shadowColor = 'rgba(0,0,0,0.9)'; ctx.shadowBlur = 20;
+      ctx.fillStyle = '#ffffff'; ctx.font = 'bold 72px Georgia, serif'; ctx.textAlign = 'center';
+      let campY = PHOTO_H - 110 - (campLines.length - 1) * 78;
+      campLines.slice(0, 2).forEach(l => { ctx.fillText(l, W / 2, campY); campY += 82; });
+      ctx.shadowBlur = 0;
+
+      // ── Discount badge — straddling photo/info boundary ───────
+      const bR = 140, bCx = W / 2, bCy = INFO_Y;
+      drawBadge(bCx, bCy, bR, discountPct);
+
+      // ── Product info zone ─────────────────────────────────────
+      const textTop = INFO_Y + bR + 24;
+
+      // Campaign description / tagline
+      if (camp.description) {
+        ctx.fillStyle = 'rgba(255,215,0,0.72)'; ctx.font = 'italic 26px Georgia, serif'; ctx.textAlign = 'center';
+        const dTxt = camp.description.length > 72 ? camp.description.slice(0, 70) + '…' : camp.description;
+        ctx.fillText(dTxt.toUpperCase(), W / 2, textTop + 8);
+      }
+
+      // Scope
+      ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.font = '22px Georgia, serif'; ctx.textAlign = 'center';
+      ctx.fillText(scopeLine, W / 2, textTop + 46);
+
+      // Thin gold divider
+      ctx.fillStyle = mkGold(120, 0, W - 120, 0); ctx.fillRect(120, textTop + 66, W - 240, 1.5);
+
+      // Product name
+      const pNameLines = wrap(prod.name.toUpperCase(), W - 120, 'bold 54px Georgia, serif');
+      ctx.fillStyle = '#ffffff'; ctx.font = 'bold 54px Georgia, serif'; ctx.textAlign = 'center';
+      ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 12;
+      let pnY = textTop + 124;
+      pNameLines.slice(0, 2).forEach(l => { ctx.fillText(l, W / 2, pnY); pnY += 62; });
+      ctx.shadowBlur = 0;
+
+      // Pricing
+      if (prod.hasPrices) {
+        const wasX = W / 2 - 20, nowX = W / 2 + 20;
+
+        // WAS — left side
+        ctx.textAlign = 'right';
+        ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.font = '28px Georgia, serif';
+        const wasStr = `WAS  N$${prod.wasPrice.toFixed(2)}`;
+        ctx.fillText(wasStr, wasX, pnY + 48);
+        const ww = ctx.measureText(wasStr).width;
+        ctx.strokeStyle = '#e05555'; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(wasX - ww, pnY + 40); ctx.lineTo(wasX, pnY + 40); ctx.stroke();
+
+        // NOW — right side
+        ctx.textAlign = 'left';
+        ctx.fillStyle = mkGold(nowX, 0, nowX + 380, 0);
+        ctx.font = 'bold 56px Georgia, serif';
+        ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 12;
+        ctx.fillText(`N$${prod.nowPrice.toFixed(2)}`, nowX + 4, pnY + 56);
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = 'rgba(255,215,0,0.6)'; ctx.font = '22px Georgia, serif';
+        ctx.fillText('NOW', nowX + 4, pnY + 30);
+
+      } else {
+        ctx.textAlign = 'center';
+        ctx.fillStyle = mkGold(0, 0, W, 0); ctx.font = 'bold 44px Georgia, serif';
+        ctx.fillText(`${discountPct}% DISCOUNT APPLIES`, W / 2, pnY + 48);
+      }
+
+      drawFooter(FOOTER_Y);
+
+    } else {
+      // ────────────────────────────────────────────────────────────────
+      // MULTI-PRODUCT layout — elegant product rows with thumbnail photos
+      // ────────────────────────────────────────────────────────────────
+      const ROW_H    = 168;
+      const PAD      = 48;
+      const nRows    = resolvedProducts.length;
+      const LIST_Y   = 520;
+      const FOOTER_Y = Math.max(LIST_Y + nRows * (ROW_H + 16) + 40, H - 200);
+      const totalH   = FOOTER_Y + 200;
+
+      // Resize canvas for variable height
+      canvas.height = totalH;
+
+      // Background
+      const bg = ctx.createLinearGradient(0, 0, W * 0.5, totalH);
+      bg.addColorStop(0,   '#080002');
+      bg.addColorStop(0.3, '#570a18');
+      bg.addColorStop(0.7, '#921427');
+      bg.addColorStop(1,   '#b81c35');
+      ctx.fillStyle = bg; ctx.fillRect(0, 0, W, totalH);
+
+      // Diagonal texture
+      ctx.save(); ctx.globalAlpha = 0.03; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1;
+      for (let i = -totalH; i < W + totalH; i += 28) {
+        ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i + totalH, totalH); ctx.stroke();
+      }
+      ctx.restore();
+
+      // Ghost circles
+      ctx.save(); ctx.globalAlpha = 0.06; ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); ctx.arc(W * 0.9, totalH * 0.12, 360, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(W * 0.08, totalH * 0.6, 260, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+
+      // Gold top bar
+      ctx.fillStyle = mkGold(0, 0, W, 0); ctx.fillRect(0, 0, W, 10);
+
+      // Brand
+      ctx.fillStyle = mkGold(0, 0, W, 0); ctx.font = 'bold 28px Georgia, serif'; ctx.textAlign = 'center';
+      ctx.fillText('✦   DYNAPHARM  NAMIBIA   ✦', W / 2, 68);
+      ctx.fillStyle = mkGold(200, 0, W - 200, 0); ctx.fillRect(200, 82, W - 400, 1.5);
+
+      // Campaign name
+      const campLines2 = wrap((camp.name || '').toUpperCase(), W - 80, 'bold 72px Georgia, serif');
+      ctx.fillStyle = '#ffffff'; ctx.font = 'bold 72px Georgia, serif'; ctx.textAlign = 'center';
+      ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 16;
+      let cY2 = 180;
+      campLines2.slice(0, 2).forEach(l => { ctx.fillText(l, W / 2, cY2); cY2 += 82; });
+      ctx.shadowBlur = 0;
+
+      // Description
+      if (camp.description) {
+        ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = 'italic 28px Georgia, serif'; ctx.textAlign = 'center';
+        const dTxt2 = camp.description.length > 72 ? camp.description.slice(0, 70) + '…' : camp.description;
+        ctx.fillText(dTxt2.toUpperCase(), W / 2, Math.max(cY2 + 8, 310));
+      }
+
+      // Discount badge — centred below campaign name
+      const bR2 = 120, bCx2 = W / 2, bCy2 = 430;
+      drawBadge(bCx2, bCy2, bR2, discountPct);
+
+      // Scope
+      ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.font = '22px Georgia, serif'; ctx.textAlign = 'center';
+      ctx.fillText(scopeLine, W / 2, bCy2 + bR2 + 30);
+
+      // Section label
+      ctx.fillStyle = mkGold(120, 0, W - 120, 0); ctx.fillRect(120, LIST_Y - 28, W - 240, 1.5);
+      ctx.fillStyle = 'rgba(255,215,0,0.9)'; ctx.font = 'bold 19px Georgia, serif'; ctx.textAlign = 'center';
+      ctx.fillText('P A R T I C I P A T I N G   P R O D U C T S', W / 2, LIST_Y - 6);
+      ctx.fillStyle = mkGold(120, 0, W - 120, 0); ctx.fillRect(120, LIST_Y + 10, W - 240, 1.5);
+
+      // Product rows
+      resolvedProducts.forEach((prod, i) => {
+        const imgEl = loadedImgs[i];
+        const ry    = LIST_Y + 30 + i * (ROW_H + 16);
+
+        // Row card
+        ctx.save();
+        rrect(PAD, ry, W - PAD * 2, ROW_H, 20);
+        const rBg = ctx.createLinearGradient(PAD, ry, PAD, ry + ROW_H);
+        rBg.addColorStop(0, i % 2 === 0 ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.07)');
+        rBg.addColorStop(1, 'rgba(255,255,255,0.03)');
+        ctx.fillStyle = rBg; ctx.fill();
+        ctx.strokeStyle = 'rgba(255,215,0,0.28)'; ctx.lineWidth = 1.5; ctx.stroke();
         ctx.restore();
 
-        if (useGrid) {
-          // ── Grid card layout (image on top, text below) ──────
-          const imgAreaH = cardH - 110;
-          const imgAreaW = colWidth;
+        const imgSide = ROW_H - 20;
+        const imgX = PAD + 10, imgY = ry + 10;
 
-          if (hasImg) {
-            ctx.save();
-            roundRect(cx, cy, imgAreaW, imgAreaH, 18);
-            ctx.clip();
-            // Draw image covering area
-            const scale = Math.max(imgAreaW / imgEl.width, imgAreaH / imgEl.height);
-            const dw = imgEl.width * scale, dh = imgEl.height * scale;
-            const dx = cx + (imgAreaW - dw) / 2, dy = cy + (imgAreaH - dh) / 2;
-            ctx.drawImage(imgEl, dx, dy, dw, dh);
-            // Gradient overlay at bottom of image
-            const imgOverlay = ctx.createLinearGradient(cx, cy + imgAreaH - 60, cx, cy + imgAreaH);
-            imgOverlay.addColorStop(0, 'rgba(0,0,0,0)');
-            imgOverlay.addColorStop(1, 'rgba(10,0,5,0.75)');
-            ctx.fillStyle = imgOverlay; ctx.fillRect(cx, cy, imgAreaW, imgAreaH);
-            ctx.restore();
-          } else {
-            // Placeholder
-            ctx.save();
-            roundRect(cx, cy, imgAreaW, imgAreaH, [18, 18, 0, 0]);
-            ctx.fillStyle = 'rgba(255,255,255,0.04)'; ctx.fill();
-            ctx.fillStyle = 'rgba(255,215,0,0.2)';
-            ctx.font = '48px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText('🛍', cx + imgAreaW / 2, cy + imgAreaH / 2 + 16);
-            ctx.restore();
-          }
-
-          // Discount badge on image (top-left corner of card)
-          const bx = cx + 14, by = cy + 14;
+        // Thumbnail
+        if (imgEl) {
           ctx.save();
-          roundRect(bx, by, 90, 36, 10);
-          ctx.fillStyle = 'rgba(0,0,0,0.72)'; ctx.fill();
+          rrect(imgX, imgY, imgSide, imgSide, 14);
+          ctx.clip();
+          const sc = Math.max(imgSide / imgEl.width, imgSide / imgEl.height);
+          const dw = imgEl.width * sc, dh = imgEl.height * sc;
+          ctx.drawImage(imgEl, imgX + (imgSide - dw) / 2, imgY + (imgSide - dh) / 2, dw, dh);
           ctx.restore();
-          ctx.fillStyle = '#ffd700';
-          ctx.font = 'bold 18px Georgia, serif'; ctx.textAlign = 'center';
-          ctx.fillText(`${discountPct}% OFF`, bx + 45, by + 24);
-
-          // Text area below image
-          const textY = cy + imgAreaH + 14;
-          const textMaxW = colWidth - 32;
-          const nameLines2 = wrapText(prod.name, textMaxW, 'bold 22px Georgia, serif');
-          ctx.fillStyle = '#ffffff'; ctx.font = 'bold 22px Georgia, serif'; ctx.textAlign = 'left';
-          nameLines2.slice(0, 2).forEach((l, li) => ctx.fillText(l, cx + 16, textY + li * 26));
-
-          if (prod.hasPrices) {
-            const wasStr = `N$${prod.wasPrice.toFixed(2)}`;
-            const nowStr = `N$${prod.nowPrice.toFixed(2)}`;
-            ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.font = '18px Georgia, serif'; ctx.textAlign = 'right';
-            ctx.fillText(wasStr, cx + colWidth - 16, textY + 6);
-            const ww = ctx.measureText(wasStr).width;
-            ctx.strokeStyle = '#ff6b6b'; ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.moveTo(cx + colWidth - 16 - ww, textY - 1); ctx.lineTo(cx + colWidth - 16, textY - 1); ctx.stroke();
-            ctx.fillStyle = gold(cx, 0, cx + colWidth, 0);
-            ctx.font = 'bold 28px Georgia, serif'; ctx.textAlign = 'right';
-            ctx.fillText(`NOW ${nowStr}`, cx + colWidth - 16, textY + 36);
-          } else {
-            ctx.fillStyle = gold(cx, 0, cx + colWidth, 0);
-            ctx.font = 'bold 20px Georgia, serif'; ctx.textAlign = 'right';
-            ctx.fillText(`${discountPct}% OFF`, cx + colWidth - 16, textY + 30);
-          }
-
+          ctx.strokeStyle = 'rgba(255,215,0,0.4)'; ctx.lineWidth = 2;
+          rrect(imgX, imgY, imgSide, imgSide, 14); ctx.stroke();
         } else {
-          // ── List card layout (image left, text right) ────────
-          const imgSide = cardH - 20;
-          const imgX = cx + 10, imgY = cy + 10;
+          ctx.save();
+          rrect(imgX, imgY, imgSide, imgSide, 14);
+          const noImgBg = ctx.createLinearGradient(imgX, imgY, imgX + imgSide, imgY + imgSide);
+          noImgBg.addColorStop(0, 'rgba(180,20,40,0.3)'); noImgBg.addColorStop(1, 'rgba(80,0,10,0.3)');
+          ctx.fillStyle = noImgBg; ctx.fill();
+          ctx.restore();
+          ctx.fillStyle = 'rgba(255,215,0,0.35)'; ctx.font = '44px Arial'; ctx.textAlign = 'center';
+          ctx.fillText('🛍', imgX + imgSide / 2, imgY + imgSide / 2 + 15);
+        }
 
-          if (hasImg) {
-            ctx.save();
-            const cr = 14;
-            ctx.beginPath();
-            ctx.moveTo(imgX + cr, imgY);
-            ctx.lineTo(imgX + imgSide - cr, imgY); ctx.quadraticCurveTo(imgX + imgSide, imgY, imgX + imgSide, imgY + cr);
-            ctx.lineTo(imgX + imgSide, imgY + imgSide - cr); ctx.quadraticCurveTo(imgX + imgSide, imgY + imgSide, imgX + imgSide - cr, imgY + imgSide);
-            ctx.lineTo(imgX + cr, imgY + imgSide); ctx.quadraticCurveTo(imgX, imgY + imgSide, imgX, imgY + imgSide - cr);
-            ctx.lineTo(imgX, imgY + cr); ctx.quadraticCurveTo(imgX, imgY, imgX + cr, imgY);
-            ctx.closePath();
-            ctx.clip();
-            const scale = Math.max(imgSide / imgEl.width, imgSide / imgEl.height);
-            const dw = imgEl.width * scale, dh = imgEl.height * scale;
-            ctx.drawImage(imgEl, imgX + (imgSide - dw) / 2, imgY + (imgSide - dh) / 2, dw, dh);
-            ctx.restore();
-            // Border ring around image
-            ctx.strokeStyle = 'rgba(255,215,0,0.35)'; ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.roundRect ? ctx.roundRect(imgX, imgY, imgSide, imgSide, 14) : ctx.rect(imgX, imgY, imgSide, imgSide); ctx.stroke();
-          } else {
-            ctx.save();
-            roundRect(imgX, imgY, imgSide, imgSide, 14);
-            ctx.fillStyle = 'rgba(255,255,255,0.05)'; ctx.fill();
-            ctx.fillStyle = 'rgba(255,215,0,0.25)'; ctx.font = '40px Arial'; ctx.textAlign = 'center';
-            ctx.fillText('🛍', imgX + imgSide / 2, imgY + imgSide / 2 + 14);
-            ctx.restore();
-          }
+        // Text area
+        const tx = imgX + imgSide + 20;
+        const tw = (W - PAD * 2) - imgSide - 40;
+        const pnLines = wrap(prod.name, tw, 'bold 30px Georgia, serif');
+        ctx.fillStyle = '#ffffff'; ctx.font = 'bold 30px Georgia, serif'; ctx.textAlign = 'left';
+        ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = 6;
+        pnLines.slice(0, 2).forEach((l, li) => ctx.fillText(l, tx, ry + 42 + li * 36));
+        ctx.shadowBlur = 0;
 
-          // Text right of image
-          const tx = imgX + imgSide + 20;
-          const tw = colWidth - imgSide - 40;
-          const nameLines3 = wrapText(prod.name, tw, 'bold 28px Georgia, serif');
-          ctx.fillStyle = '#ffffff'; ctx.font = 'bold 28px Georgia, serif'; ctx.textAlign = 'left';
-          nameLines3.slice(0, 2).forEach((l, li) => ctx.fillText(l, tx, cy + 46 + li * 34));
-
-          if (prod.hasPrices) {
-            const wasStr = `WAS  N$${prod.wasPrice.toFixed(2)}`;
-            ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.font = '22px Georgia, serif';
-            ctx.fillText(wasStr, tx, cy + 96);
-            const ww = ctx.measureText(wasStr).width;
-            ctx.strokeStyle = '#ff6b6b'; ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.moveTo(tx, cy + 89); ctx.lineTo(tx + ww, cy + 89); ctx.stroke();
-            ctx.fillStyle = gold(tx, 0, tx + tw, 0);
-            ctx.font = 'bold 38px Georgia, serif';
-            ctx.fillText(`NOW  N$${prod.nowPrice.toFixed(2)}`, tx, cy + 138);
-          } else {
-            ctx.fillStyle = gold(tx, 0, tx + tw, 0);
-            ctx.font = 'bold 28px Georgia, serif';
-            ctx.fillText(`${discountPct}% DISCOUNT APPLIES`, tx, cy + 104);
-          }
+        if (prod.hasPrices) {
+          const wasStr = `WAS  N$${prod.wasPrice.toFixed(2)}`;
+          ctx.fillStyle = 'rgba(255,255,255,0.38)'; ctx.font = '22px Georgia, serif';
+          ctx.fillText(wasStr, tx, ry + 108);
+          const ww = ctx.measureText(wasStr).width;
+          ctx.strokeStyle = '#e05555'; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.moveTo(tx, ry + 101); ctx.lineTo(tx + ww, ry + 101); ctx.stroke();
+          ctx.fillStyle = mkGold(tx, 0, tx + tw, 0); ctx.font = 'bold 38px Georgia, serif';
+          ctx.fillText(`NOW  N$${prod.nowPrice.toFixed(2)}`, tx, ry + 148);
+        } else {
+          ctx.fillStyle = mkGold(tx, 0, tx + tw, 0); ctx.font = 'bold 28px Georgia, serif';
+          ctx.fillText(`${discountPct}% DISCOUNT APPLIES`, tx, ry + 116);
         }
       });
+
+      drawFooter(FOOTER_Y);
     }
 
-    // ── Footer ────────────────────────────────────────────────
-    const fy = H - FOOTER_H;
-    const footerBg = ctx.createLinearGradient(0, fy, 0, H);
-    footerBg.addColorStop(0, 'rgba(0,0,0,0.0)');
-    footerBg.addColorStop(0.3, 'rgba(0,0,0,0.5)');
-    footerBg.addColorStop(1, 'rgba(0,0,0,0.72)');
-    ctx.fillStyle = footerBg; ctx.fillRect(0, fy, W, FOOTER_H);
-
-    ctx.fillStyle = gold(160, 0, W - 160, 0); ctx.fillRect(160, fy + 8, W - 320, 1.5);
-
-    const fmtD = d => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-    ctx.fillStyle = 'rgba(255,255,255,0.82)'; ctx.font = '26px Georgia, serif'; ctx.textAlign = 'center';
-    ctx.fillText(`${fmtD(camp.start_date)}   →   ${fmtD(camp.end_date)}`, W / 2, fy + 50);
-    ctx.fillStyle = gold(160, 0, W - 160, 0);
-    ctx.font = 'bold 20px Georgia, serif';
-    ctx.fillText('DYNAPHARM NAMIBIA  |  dynapharmnamibia.net', W / 2, fy + 88);
-
-    ctx.fillStyle = gold(0, 0, W, 0); ctx.fillRect(0, H - 9, W, 9);
-
-    // ── Download ──────────────────────────────────────────────
+    // ── Download ─────────────────────────────────────────────
+    const slug = (singleProductName || camp.name || 'campaign')
+      .replace(/\s+/g, '-').replace(/[^a-z0-9-]/gi, '').toLowerCase();
     const link = document.createElement('a');
-    link.download = `dynapharm-${(camp.name || 'campaign').replace(/\s+/g, '-').toLowerCase()}.png`;
+    link.download = `dynapharm-${slug}.png`;
     link.href = canvas.toDataURL('image/png', 1.0);
     link.click();
   };
@@ -3891,11 +3941,11 @@ function CampaignsTab() {
                           </div>
                         )}
 
-                        {/* Download poster for discount campaigns */}
+                        {/* Download poster for discount campaigns — per product */}
                         {camp.campaign_type === 'discount' && active && (
-                          <button onClick={() => downloadDiscountPoster(camp)}
+                          <button onClick={() => downloadDiscountPoster(camp, pName)}
                             className="mt-3 w-full flex items-center justify-center gap-2"
-                            style={{ padding: '8px 16px', background: 'linear-gradient(135deg,#ffd700,#f59e0b)', color: '#1a0000', border: 'none', borderRadius: 8, fontWeight: 800, fontSize: '0.82rem', cursor: 'pointer' }}>
+                            style={{ padding: '10px 16px', background: 'linear-gradient(135deg,#ffd700,#d4920a)', color: '#1a0000', border: 'none', borderRadius: 10, fontWeight: 800, fontSize: '0.82rem', cursor: 'pointer', boxShadow: '0 2px 12px rgba(212,146,10,0.4)' }}>
                             <Download size={14} /> Download Poster
                           </button>
                         )}
