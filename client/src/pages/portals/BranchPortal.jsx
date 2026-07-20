@@ -2647,7 +2647,7 @@ function PrescriptionsTab() {
       const all = Array.isArray(d) ? d : (d.campaigns || []);
       const now = new Date();
       setPrescCampaigns(all.filter(c =>
-        c.campaign_type === 'discount' &&
+        (c.campaign_type === 'discount' || c.campaign_type === 'buy_x_get_y' || c.campaign_type === 'free_item') &&
         c.status !== 'pending_approval' && c.status !== 'rejected' &&
         new Date(c.start_date) <= now && new Date(c.end_date) >= now
       ));
@@ -2809,6 +2809,28 @@ function PrescriptionsTab() {
         }
       } else {
         pendingItems.push(item);
+        // If a buy-X-get-Y campaign applies, append a free-item companion row.
+        const bxgy = getActiveBxgyCampaign(item.name);
+        if (bxgy) {
+          const paidQty = item.quantity || 1;
+          const freeQty = Math.floor(paidQty / bxgy.buyQty) * bxgy.getQty;
+          if (freeQty > 0) {
+            const freeProdName = bxgy.freeProduct || item.name;
+            pendingItems.push({
+              name: freeProdName,
+              quantity: freeQty,
+              fullQty: freeQty,
+              dp: 0, cp: 0,
+              effectiveDp: 0, effectiveCp: 0,
+              campaignDiscount: null,
+              bv: 0,
+              isPackage: false,
+              dispensed: false,
+              is_free: true,
+              campaignBxgy: { ...bxgy, paidProduct: item.name, paidQty },
+            });
+          }
+        }
       }
     }
 
@@ -2894,7 +2916,10 @@ function PrescriptionsTab() {
         const selectedQty = (!item.isComponent && !item.isPackage)
           ? Math.max(1, Math.min(rxItemQtys[pi] || item.quantity, item.quantity))
           : item.quantity;
-        if (item.isComponent) {
+        if (item.is_free) {
+          // Free item from a buy-X-get-Y campaign: stock is deducted at zero charge.
+          dispenseItems.push({ product_name: item.name, quantity: item.quantity, dp: 0, cp: 0, unit_price: 0, is_free: true, campaign_free: true, campaign_bxgy: item.campaignBxgy || null });
+        } else if (item.isComponent) {
           const price = isMember ? (item.effectiveDp ?? item.dp) : (item.effectiveCp ?? item.cp);
           dispenseItems.push({ product_name: item.name, quantity: item.quantity, dp: item.dp || null, cp: item.cp || null, unit_price: price || null, from_package: item.fromPackage || null, campaign_discount: item.campaignDiscount || null });
         } else if (item.isPackage && item.products) {
@@ -3083,6 +3108,29 @@ function PrescriptionsTab() {
       }
     }
     return best;
+  };
+
+  const getActiveBxgyCampaign = (productName) => {
+    if (!productName || prescCampaigns.length === 0) return null;
+    const nameLower = productName.trim().toLowerCase();
+    for (const camp of prescCampaigns) {
+      if (camp.campaign_type !== 'buy_x_get_y' && camp.campaign_type !== 'free_item') continue;
+      const cond = typeof camp.conditions === 'string'
+        ? (() => { try { return JSON.parse(camp.conditions); } catch { return {}; } })()
+        : (camp.conditions || {});
+      const prize = typeof camp.prize === 'string'
+        ? (() => { try { return JSON.parse(camp.prize); } catch { return {}; } })()
+        : (camp.prize || {});
+      const rawProds = Array.isArray(cond.products) ? cond.products : (cond.products_text || '').split(',');
+      const allProducts = [...new Set(rawProds.map(p => (typeof p === 'string' ? p.trim().toLowerCase() : '')).filter(Boolean))];
+      if (allProducts.length === 0 || allProducts.includes(nameLower)) {
+        const buyQty = Number(cond.buy_qty || 1);
+        const getQty = Number(cond.get_qty || 1);
+        const freeProduct = prize.free_product || null;
+        return { campId: camp.id, campaignName: camp.name, campaignType: camp.campaign_type, buyQty, getQty, freeProduct };
+      }
+    }
+    return null;
   };
 
   const getPkgKey = (reportId, medIndex) => `${reportId}::${medIndex}`;
@@ -3598,6 +3646,17 @@ function PrescriptionsTab() {
                                 <span style={{ fontSize: '0.58rem', color: '#15803d' }}>{campDisc.campaignName}</span>
                               </div>
                             )}
+                            {!med.dispensed && (() => {
+                              const bxgy = getActiveBxgyCampaign(med.name);
+                              if (!bxgy) return null;
+                              const freeQty = Math.floor((med.quantity || 1) / bxgy.buyQty) * bxgy.getQty;
+                              if (freeQty <= 0) return null;
+                              return (
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 3, background: '#fdf4ff', border: '1px solid #d8b4fe', borderRadius: 5, padding: '2px 6px' }}>
+                                  <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#7c3aed' }}>🎁 Buy {bxgy.buyQty} Get {bxgy.getQty}: +{freeQty} free</span>
+                                </div>
+                              );
+                            })()}
                           </div>
                           <div style={{ textAlign: 'right', paddingTop: 1, whiteSpace: 'nowrap' }}>
                             {hasDiscount && (
@@ -3928,6 +3987,34 @@ function PrescriptionsTab() {
                 <tbody>
                   {dpModal.pendingItems.map((item, i) => {
                     const isChecked = rxItemSelected[i] === true;
+
+                    // ── Free item (buy-X-get-Y companion) ─────────────────────
+                    if (item.is_free) {
+                      return (
+                        <tr key={i} style={{ borderBottom: '1px solid #f1f5f9', background: isChecked ? '#fdf4ff' : '#f8fafc', opacity: isChecked ? 1 : 0.45, transition: 'opacity .15s' }}>
+                          <td style={{ padding: '8px 6px', textAlign: 'center' }}>
+                            <input type="checkbox" checked={isChecked}
+                              onChange={() => setRxItemSelected(prev => ({ ...prev, [i]: !isChecked }))}
+                              style={{ width: 16, height: 16, cursor: 'pointer', accentColor: '#7c3aed' }}
+                            />
+                          </td>
+                          <td style={{ padding: '8px 10px', fontWeight: 600, color: isChecked ? '#6d28d9' : '#94a3b8' }}>
+                            <div>{item.name}</div>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 3, background: '#fdf4ff', border: '1px solid #d8b4fe', borderRadius: 5, padding: '2px 6px' }}>
+                              <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#7c3aed' }}>🎁 FREE · {item.campaignBxgy?.campaignName}</span>
+                            </div>
+                          </td>
+                          <td style={{ padding: '8px 10px', textAlign: 'center', color: '#7c3aed', fontWeight: 700 }}>{item.quantity}</td>
+                          <td style={{ padding: '8px 10px', textAlign: 'right', color: '#16a34a', fontWeight: 700 }}>N$ 0</td>
+                          <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700 }}>
+                            {isChecked
+                              ? <span style={{ fontSize: '0.75rem', fontWeight: 800, background: '#fdf4ff', border: '1px solid #d8b4fe', borderRadius: 5, padding: '1px 7px', color: '#7c3aed' }}>FREE</span>
+                              : <span style={{ fontSize: '0.72rem', color: '#cbd5e1' }}>skipped</span>}
+                          </td>
+                        </tr>
+                      );
+                    }
+
                     const rawPrice = dpModal.isMember ? (item.dp || 0) : (item.cp || 0);
                     const unitPrice = dpModal.isMember
                       ? (item.effectiveDp ?? item.dp ?? 0)

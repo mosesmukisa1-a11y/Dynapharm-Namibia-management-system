@@ -53,6 +53,22 @@ export default async function handler(req, res) {
         const qty = Number(item.quantity || 1);
         if (!productName || qty <= 0) continue;
 
+        // Free items (buy-X-get-Y companion) bypass normal pricing and go out at zero charge.
+        if (item.is_free || item.campaign_free) {
+          const livePrice = livePriceMap[productName.toLowerCase()] || livePriceMap[productName.toLowerCase().trim()];
+          resolvedItems.push({
+            product_name: productName,
+            quantity: qty,
+            unit_price: livePrice ? Number(livePrice.dp) || 0 : 0,
+            charge_unit: 0,
+            bv_unit: 0,
+            cif_unit: 0,
+            from_package: null,
+            is_free: true,
+          });
+          continue;
+        }
+
         const pkg = getPackageComponents(productName);
         if (pkg) {
           const isMember = customerType === 'member';
@@ -73,6 +89,7 @@ export default async function handler(req, res) {
               bv_unit: bv,
               cif_unit: cif,
               from_package: productName,
+              is_free: false,
             });
           }
         } else {
@@ -97,6 +114,7 @@ export default async function handler(req, res) {
             bv_unit: livePrice ? Number(livePrice.bv) || 0 : 0,
             cif_unit: livePrice ? Number(livePrice.cif) || 0 : 0,
             from_package: item.from_package || null,
+            is_free: false,
           });
         }
       }
@@ -111,11 +129,16 @@ export default async function handler(req, res) {
           const unitPrice = item.unit_price;   // DP (cost basis) — used in BIM / stock_movements
           const chargeUnit = item.charge_unit; // CP for non-members, DP for members — patient charge
           const fromPackage = item.from_package;
+          const isFreeItem = !!item.is_free;
           if (!productName || qty <= 0) continue;
 
-          const dispenseNote = fromPackage
-            ? `Prescription dispense (individual from ${fromPackage})`
-            : 'Prescription dispense';
+          // Free items use campaign_free_item movement type; regular dispense uses prescription_dispense.
+          const itemMovType = isFreeItem ? 'campaign_free_item' : movType;
+          const dispenseNote = isFreeItem
+            ? 'Campaign free item (prescription dispensing)'
+            : fromPackage
+              ? `Prescription dispense (individual from ${fromPackage})`
+              : 'Prescription dispense';
 
           let remaining = qty;
           const batches = (await client.query(
@@ -148,7 +171,7 @@ export default async function handler(req, res) {
             await client.query(
               `INSERT INTO branch_inventory_movements (id, branch_id, type, product_name, batch_no, quantity, unit_price, charge_unit, reference, notes, created_by, created_at)
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())`,
-              [bimId, branchId, movType, batch.product_name, batch.batch_no || '', take, unitPrice, chargeUnit, reportId, dispenseNote, createdBy || '']
+              [bimId, branchId, itemMovType, batch.product_name, batch.batch_no || '', take, unitPrice, chargeUnit, reportId, dispenseNote, createdBy || '']
             );
 
             const smId = 'MOV-' + ts + '-' + Math.random().toString(36).slice(2, 6);
@@ -158,10 +181,10 @@ export default async function handler(req, res) {
                   source_location, source_location_type, destination_location, destination_location_type,
                   reference_id, notes, status, unit_dp, movement_date, created_at, updated_at)
                VALUES ($1,$2,$3,$4,$5,$6,$7,'branch','patient',NULL,$8,$9,'posted',$10,NOW(),NOW(),NOW())`,
-              [smId, batch.product_name, batch.batch_no || '', batch.expiry_date || null, take, movType, branchId, reportId, dispenseNote, unitPrice]
+              [smId, batch.product_name, batch.batch_no || '', batch.expiry_date || null, take, itemMovType, branchId, reportId, dispenseNote, unitPrice]
             );
 
-            deductions.push({ product_name: batch.product_name, batch_no: batch.batch_no, quantity: take, unit_price: unitPrice, charge_unit: chargeUnit, bv_unit: item.bv_unit || 0, from_package: fromPackage });
+            deductions.push({ product_name: batch.product_name, batch_no: batch.batch_no, quantity: take, unit_price: unitPrice, charge_unit: chargeUnit, bv_unit: item.bv_unit || 0, from_package: fromPackage, is_free: isFreeItem });
             remaining -= take;
           }
 
@@ -185,9 +208,11 @@ export default async function handler(req, res) {
       const totalDispensedQty = deductions.reduce((s, d) => s + Number(d.quantity || 0), 0);
       // DP total = stock cost basis (branch_inventory_movements.unit_price is always DP).
       const totalDispensedDP = parseFloat(deductions.reduce((s, d) => s + (Number(d.quantity || 0) * Number(d.unit_price || 0)), 0).toFixed(2));
-      // Charge total = what the patient actually pays (CP for non-members, DP for members).
-      const totalChargeToPatient = parseFloat(deductions.reduce((s, d) => s + (Number(d.quantity || 0) * Number(d.charge_unit != null ? d.charge_unit : (d.unit_price || 0))), 0).toFixed(2));
-      const totalDispensedBV = deductions.reduce((s, d) => s + (Number(d.quantity || 0) * Number(d.bv_unit || 0)), 0);
+      // Charge total = what the patient actually pays. Free campaign items are excluded (charge = 0).
+      const totalChargeToPatient = parseFloat(deductions
+        .filter(d => !d.is_free)
+        .reduce((s, d) => s + (Number(d.quantity || 0) * Number(d.charge_unit != null ? d.charge_unit : (d.unit_price || 0))), 0).toFixed(2));
+      const totalDispensedBV = deductions.filter(d => !d.is_free).reduce((s, d) => s + (Number(d.quantity || 0) * Number(d.bv_unit || 0)), 0);
       const now = new Date();
       const serviceDate = now.toISOString().slice(0, 10);
       const serviceTime = now.toTimeString().slice(0, 8);
