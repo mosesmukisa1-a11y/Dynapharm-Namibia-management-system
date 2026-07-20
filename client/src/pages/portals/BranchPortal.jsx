@@ -1577,8 +1577,9 @@ function WalkInSalesTab() {
     return true;
   });
 
-  // Derives individual campaign product entries from active discount campaigns.
-  // Each covered product becomes its own card with discounted cp/dp and originals stored.
+  // Individual campaign product cards — only products explicitly set by the GM.
+  // If a campaign has no specific products configured it shows nothing here
+  // (the badge still appears on the regular product cards via getWalkinCampaignDiscount).
   const campaignProducts = useMemo(() => {
     if (campaigns.length === 0 || products.length === 0) return [];
     const result = [];
@@ -1589,17 +1590,22 @@ function WalkInSalesTab() {
       const cond = typeof camp.conditions === 'string'
         ? (() => { try { return JSON.parse(camp.conditions); } catch { return {}; } })()
         : (camp.conditions || {});
-      const productsText = cond.products_text || '';
       const productsList = Array.isArray(cond.products) ? cond.products : [];
+      const productsText = typeof cond.products_text === 'string' ? cond.products_text : '';
       const campProductNames = [...productsList, ...productsText.split(',')]
         .map(n => (typeof n === 'string' ? n.trim() : '')).filter(Boolean);
 
+      // Only show individual cards for explicitly configured products.
+      // Campaigns with no product list are "all products" — badges handled elsewhere.
+      if (campProductNames.length === 0) continue;
+
       const campDisc = { pct, campaignId: camp.id, campaignName: camp.name };
 
-      if (campProductNames.length === 0) {
-        // Campaign covers ALL products
-        for (const p of products) {
-          if (p.isCheckup) continue;
+      for (const pName of campProductNames) {
+        const p = products.find(pr =>
+          (pr.name || pr.description || '').trim().toLowerCase() === pName.toLowerCase()
+        );
+        if (p) {
           result.push({
             ...p,
             id: `camp-${camp.id}-${p.id}`,
@@ -1610,24 +1616,6 @@ function WalkInSalesTab() {
             campaignDiscount: campDisc,
             isCampaignProduct: true,
           });
-        }
-      } else {
-        for (const pName of campProductNames) {
-          const p = products.find(pr =>
-            (pr.name || pr.description || '').toLowerCase() === pName.toLowerCase()
-          );
-          if (p) {
-            result.push({
-              ...p,
-              id: `camp-${camp.id}-${p.id}`,
-              originalCp: p.cp,
-              originalDp: p.dp,
-              cp: Math.round((p.cp || 0) * mult * 100) / 100,
-              dp: Math.round((p.dp || 0) * mult * 100) / 100,
-              campaignDiscount: campDisc,
-              isCampaignProduct: true,
-            });
-          }
         }
       }
     }
