@@ -3406,10 +3406,11 @@ function CampaignsTab() {
       img.onerror = () => resolve(null);
       img.src = src;
     });
-    const [loadedImgs, bgImg, logoImg] = await Promise.all([
+    // The official posta background already contains the Dynapharm Namibia
+    // letterhead (logo, company name, stripe lines) — no separate logo load needed.
+    const [loadedImgs, bgImg] = await Promise.all([
       Promise.all(resolvedProducts.map(p => loadImg(p.imageSrc))),
-      loadImg('/poster-bg.jpeg'),
-      loadImg('/dynalogo.png'),
+      loadImg('/campaign-bg.png'),
     ]);
 
     // ── Setup ────────────────────────────────────────────────
@@ -3452,58 +3453,16 @@ function CampaignsTab() {
       ctx.closePath();
     };
 
-    // Draw the textured background covering full canvas area
+    // Draw the official posta background — scale to cover canvas, no overlay
+    // (background already contains the letterhead, logo, and stripe lines)
     const drawBg = (canvasH) => {
       if (bgImg) {
         const sc = Math.max(W / bgImg.width, canvasH / bgImg.height);
         const dw = bgImg.width * sc, dh = bgImg.height * sc;
         ctx.drawImage(bgImg, (W - dw) / 2, (canvasH - dh) / 2, dw, dh);
-        // Lighten slightly so it reads as soft textured paper
-        ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillRect(0, 0, W, canvasH);
       } else {
-        ctx.fillStyle = '#f0ede8'; ctx.fillRect(0, 0, W, canvasH);
+        ctx.fillStyle = '#f8f6f3'; ctx.fillRect(0, 0, W, canvasH);
       }
-    };
-
-    // Draw Dynapharm logo in top-left
-    const drawLogo = (x, y, size) => {
-      if (logoImg) {
-        // White circle behind logo for clarity
-        ctx.save();
-        ctx.fillStyle = '#ffffff';
-        ctx.shadowColor = 'rgba(0,0,0,0.18)'; ctx.shadowBlur = 10;
-        ctx.beginPath(); ctx.arc(x + size / 2, y + size / 2, size / 2 + 6, 0, Math.PI * 2); ctx.fill();
-        ctx.shadowBlur = 0;
-        // Logo image clipped to circle
-        ctx.beginPath(); ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2); ctx.clip();
-        const sc = Math.min(size / logoImg.width, size / logoImg.height);
-        const dw = logoImg.width * sc, dh = logoImg.height * sc;
-        ctx.drawImage(logoImg, x + (size - dw) / 2, y + (size - dh) / 2, dw, dh);
-        ctx.restore();
-        // Thin gold ring around logo
-        ctx.strokeStyle = mkGold(x, y, x + size, y + size); ctx.lineWidth = 3;
-        ctx.beginPath(); ctx.arc(x + size / 2, y + size / 2, size / 2 + 6, 0, Math.PI * 2); ctx.stroke();
-      }
-    };
-
-    // Crimson bar + brand name header (text right of logo)
-    const drawHeader = (logoSize, logoX, logoY, canvasH) => {
-      // Top crimson strip
-      const strip = ctx.createLinearGradient(0, 0, W, 0);
-      strip.addColorStop(0, '#6b0014'); strip.addColorStop(0.5, '#c41e3a'); strip.addColorStop(1, '#6b0014');
-      ctx.fillStyle = strip; ctx.fillRect(0, 0, W, 12);
-
-      // Brand name right of logo
-      const textX = logoX + logoSize + 28;
-      ctx.fillStyle = '#8b0014'; ctx.textAlign = 'left';
-      ctx.font = 'bold 22px Georgia, serif';
-      ctx.fillText('HEALTH  ·  WEALTH  ·  FREEDOM', textX, logoY + 26);
-      ctx.font = 'bold 38px Georgia, serif'; ctx.fillStyle = '#6b0014';
-      ctx.fillText('DYNAPHARM NAMIBIA', textX, logoY + 66);
-
-      // Red underline rule
-      ctx.fillStyle = '#c41e3a'; ctx.fillRect(0, logoY + logoSize + 18, W, 5);
-      ctx.fillStyle = mkGold(0, 0, W, 0); ctx.fillRect(0, logoY + logoSize + 23, W, 3);
     };
 
     // Gold-metallic discount badge
@@ -3580,10 +3539,9 @@ function CampaignsTab() {
     const scopeLine   = (camp.scope === 'countrywide' || camp.scope === 'nationwide')
       ? 'COUNTRYWIDE  ·  ALL PARTICIPATING BRANCHES'
       : (camp.scope || 'All Branches').toUpperCase();
-    const LOGO_SIZE   = 110;
-    const LOGO_X      = 28;
-    const LOGO_Y      = 20;
-    const HEADER_BTM  = LOGO_Y + LOGO_SIZE + 28;   // bottom of header band
+    // The posta background letterhead (logo + stripe lines) occupies the top
+    // ~260px of a 1350px canvas — all campaign content sits below this boundary.
+    const HEADER_BTM  = 260;
 
     // ────────────────────────────────────────────────────────────────
     // HERO layout — single product (triggered per-card)
@@ -3592,59 +3550,64 @@ function CampaignsTab() {
       const prod  = resolvedProducts[0];
       const imgEl = loadedImgs[0];
 
-      // Product photo frame geometry
-      const FRAME_PAD  = 36;
-      const FRAME_W    = W - FRAME_PAD * 2;
-      const FRAME_H    = 640;
-      const FRAME_Y    = HEADER_BTM + 30;
-      const FRAME_R    = 22;
-      const BADGE_CY   = FRAME_Y + FRAME_H;          // badge sits on bottom edge of frame
-      const BADGE_R    = 130;
-      const INFO_Y     = BADGE_CY + BADGE_R + 20;
-      const FOOTER_H   = 150;
+      const FRAME_PAD = 36;
+      const FRAME_W   = W - FRAME_PAD * 2;
+      const FRAME_H   = 560;
+      const FRAME_R   = 20;
+      const BADGE_R   = 125;
+      const FOOTER_H  = 140;
 
-      // Canvas height: info section + footer
-      const PRICE_BLOCK_H = prod.hasPrices ? 160 : 90;
-      const NAME_LINES_EST = Math.ceil(prod.name.length / 20);
-      const INFO_H = 30 + NAME_LINES_EST * 64 + PRICE_BLOCK_H + 40;
+      // Pre-measure campaign name lines so FRAME_Y can be placed below them
+      const campLines = wrap((camp.name || '').toUpperCase(), W - 100, 'bold 60px Georgia, serif');
+      const nCampLines = Math.min(campLines.length, 2);
+      // Campaign name baseline starts at HEADER_BTM + 56; each line is 68px tall
+      const CAMP_NAME_BOTTOM = HEADER_BTM + 56 + nCampLines * 68;
+
+      // Frame sits 24px below campaign name + gold rule (2px + 18px gap)
+      const FRAME_Y  = CAMP_NAME_BOTTOM + 44;
+      const BADGE_CY = FRAME_Y + FRAME_H;
+      const INFO_Y   = BADGE_CY + BADGE_R + 22;
+
+      const PRICE_H    = prod.hasPrices ? 155 : 80;
+      const pnLinesEst = wrap(prod.name.toUpperCase(), W - 100, 'bold 54px Georgia, serif');
+      const NAME_H     = Math.min(pnLinesEst.length, 2) * 60;
+      const INFO_H     = 46 + NAME_H + PRICE_H + 40;
+
       canvas.height = Math.max(INFO_Y + INFO_H + FOOTER_H, H);
       const CH = canvas.height;
 
-      // ── Draw textured background ──────────────────────────────
+      // ── Background (official posta letterhead) ────────────────
       drawBg(CH);
 
-      // ── Header ───────────────────────────────────────────────
-      drawLogo(LOGO_X, LOGO_Y, LOGO_SIZE);
-      drawHeader(LOGO_SIZE, LOGO_X, LOGO_Y, CH);
+      // ── Campaign name (below posta stripe lines) ──────────────
+      ctx.fillStyle = CRIMSON; ctx.font = 'bold 60px Georgia, serif'; ctx.textAlign = 'center';
+      ctx.shadowColor = 'rgba(0,0,0,0.08)'; ctx.shadowBlur = 4;
+      let cY = HEADER_BTM + 56;
+      campLines.slice(0, 2).forEach(l => { ctx.fillText(l, W / 2, cY); cY += 68; });
+      ctx.shadowBlur = 0;
 
-      // ── Campaign name (below header rule) ────────────────────
-      const campLines = wrap((camp.name || '').toUpperCase(), W - 80, 'bold 64px Georgia, serif');
-      ctx.fillStyle = CRIMSON; ctx.font = 'bold 64px Georgia, serif'; ctx.textAlign = 'center';
-      let cY = HEADER_BTM + 76;
-      campLines.slice(0, 2).forEach(l => { ctx.fillText(l, W / 2, cY); cY += 72; });
+      // Gold rule below campaign name
+      ctx.fillStyle = mkGold(80, 0, W - 80, 0);
+      ctx.fillRect(80, cY + 6, W - 160, 2);
 
-      // ── Product photo frame ───────────────────────────────────
-      // Shadow behind frame (gives depth)
+      // ── Product photo frame (starts below campaign name) ──────
       ctx.save();
-      ctx.shadowColor = 'rgba(0,0,0,0.30)'; ctx.shadowBlur = 30; ctx.shadowOffsetY = 8;
+      ctx.shadowColor = 'rgba(0,0,0,0.28)'; ctx.shadowBlur = 28; ctx.shadowOffsetY = 7;
       ctx.fillStyle = '#ffffff';
       rrect(FRAME_PAD, FRAME_Y, FRAME_W, FRAME_H, FRAME_R); ctx.fill();
       ctx.restore();
 
-      // White frame border
       ctx.strokeStyle = '#e8e0d0'; ctx.lineWidth = 3;
       rrect(FRAME_PAD, FRAME_Y, FRAME_W, FRAME_H, FRAME_R); ctx.stroke();
 
       if (imgEl) {
-        // Clip to rounded rect and draw product image (cover fit)
         ctx.save();
         rrect(FRAME_PAD + 3, FRAME_Y + 3, FRAME_W - 6, FRAME_H - 6, FRAME_R - 2); ctx.clip();
         const sc = Math.max(FRAME_W / imgEl.width, FRAME_H / imgEl.height);
         const dw = imgEl.width * sc, dh = imgEl.height * sc;
         ctx.drawImage(imgEl, FRAME_PAD + 3 + (FRAME_W - dw) / 2, FRAME_Y + 3 + (FRAME_H - dh) / 2, dw, dh);
-        // Subtle bottom vignette to separate image from badge
         const vgn = ctx.createLinearGradient(0, FRAME_Y + FRAME_H - 80, 0, FRAME_Y + FRAME_H);
-        vgn.addColorStop(0, 'rgba(248,244,238,0)'); vgn.addColorStop(1, 'rgba(248,244,238,0.55)');
+        vgn.addColorStop(0, 'rgba(248,244,238,0)'); vgn.addColorStop(1, 'rgba(248,244,238,0.5)');
         ctx.fillStyle = vgn; ctx.fillRect(FRAME_PAD + 3, FRAME_Y + FRAME_H - 80, FRAME_W - 6, 80);
         ctx.restore();
       } else {
@@ -3720,46 +3683,54 @@ function CampaignsTab() {
       // ────────────────────────────────────────────────────────────────
       // MULTI-PRODUCT layout — campaign overview with product rows
       // ────────────────────────────────────────────────────────────────
-      const ROW_H   = 170;
-      const PAD     = 44;
-      const nRows   = resolvedProducts.length;
-      const LIST_Y  = HEADER_BTM + 390;   // below header + badge area
-      const FOOTER_H_MP = 150;
-      const totalH  = Math.max(LIST_Y + nRows * (ROW_H + 14) + 60 + FOOTER_H_MP, H);
+      const ROW_H      = 170;
+      const PAD        = 44;
+      const nRows      = resolvedProducts.length;
+      const FOOTER_H_MP = 140;
+      const bR2        = 112;
 
+      // Measure campaign name to compute badge/list positions dynamically
+      const campLines2 = wrap((camp.name || '').toUpperCase(), W - 80, 'bold 64px Georgia, serif');
+      const nCampLines2 = Math.min(campLines2.length, 2);
+      const CAMP_END2   = HEADER_BTM + 56 + nCampLines2 * 72;    // baseline of last name line
+      const DESC_H2     = camp.description ? 50 : 0;
+      const BADGE_CY2   = CAMP_END2 + DESC_H2 + 140;             // badge centre
+      const SCOPE_Y2    = BADGE_CY2 + bR2 + 38;
+      const LIST_Y      = SCOPE_Y2 + 62;
+
+      const totalH  = Math.max(LIST_Y + nRows * (ROW_H + 14) + 60 + FOOTER_H_MP, H);
       canvas.height = totalH;
       const CH = totalH;
 
-      // ── Background ───────────────────────────────────────────
+      // ── Background (official posta letterhead) ────────────────
       drawBg(CH);
 
-      // ── Header ───────────────────────────────────────────────
-      drawLogo(LOGO_X, LOGO_Y, LOGO_SIZE);
-      drawHeader(LOGO_SIZE, LOGO_X, LOGO_Y, CH);
-
-      // ── Campaign name ─────────────────────────────────────────
-      const campLines2 = wrap((camp.name || '').toUpperCase(), W - 80, 'bold 68px Georgia, serif');
-      ctx.fillStyle = CRIMSON; ctx.font = 'bold 68px Georgia, serif'; ctx.textAlign = 'center';
-      let cY2 = HEADER_BTM + 80;
-      campLines2.slice(0, 2).forEach(l => { ctx.fillText(l, W / 2, cY2); cY2 += 76; });
+      // ── Campaign name (below posta stripe lines) ──────────────
+      ctx.fillStyle = CRIMSON; ctx.font = 'bold 64px Georgia, serif'; ctx.textAlign = 'center';
+      ctx.shadowColor = 'rgba(0,0,0,0.08)'; ctx.shadowBlur = 4;
+      let cY2 = HEADER_BTM + 56;
+      campLines2.slice(0, 2).forEach(l => { ctx.fillText(l, W / 2, cY2); cY2 += 72; });
+      ctx.shadowBlur = 0;
 
       // Description
       if (camp.description) {
         ctx.fillStyle = 'rgba(100,0,15,0.65)'; ctx.font = 'italic 26px Georgia, serif'; ctx.textAlign = 'center';
         const dTxt2 = camp.description.length > 72 ? camp.description.slice(0, 70) + '…' : camp.description;
-        ctx.fillText(dTxt2, W / 2, Math.max(cY2 + 4, HEADER_BTM + 200));
+        ctx.fillText(dTxt2, W / 2, cY2 + 20);
       }
 
-      // Badge
-      const bR2 = 118, bCx2 = W / 2;
-      const bCy2 = HEADER_BTM + 300;
-      drawBadge(bCx2, bCy2, bR2, discountPct);
+      // ── Badge (below campaign name + description) ─────────────
+      drawBadge(W / 2, BADGE_CY2, bR2, discountPct);
 
-      // Scope
+      // ── Scope line ────────────────────────────────────────────
       ctx.fillStyle = 'rgba(100,0,15,0.55)'; ctx.font = '22px Georgia, serif'; ctx.textAlign = 'center';
-      ctx.fillText(scopeLine, W / 2, bCy2 + bR2 + 32);
+      ctx.fillText(scopeLine, W / 2, SCOPE_Y2);
 
-      // Section header label
+      // Gold rule
+      ctx.fillStyle = mkGold(PAD, 0, W - PAD, 0);
+      ctx.fillRect(PAD, SCOPE_Y2 + 14, W - PAD * 2, 2);
+
+      // ── Section header label ──────────────────────────────────
       ctx.fillStyle = CRIMSON; ctx.font = 'bold 19px Georgia, serif'; ctx.textAlign = 'center';
       ctx.fillText('P A R T I C I P A T I N G   P R O D U C T S', W / 2, LIST_Y - 14);
       ctx.fillStyle = '#c41e3a'; ctx.fillRect(PAD, LIST_Y - 4, W - PAD * 2, 3);
