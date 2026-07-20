@@ -3579,177 +3579,217 @@ function CampaignsTab() {
         />
       ) : (
         <div className="space-y-4">
-          {displayed.map(camp => {
-            const type = campaignTypeLabel(camp.campaign_type);
-            const conditions = safeJson(camp.conditions);
-            const prize = safeJson(camp.prize);
-            const active = isActive(camp);
-            const days = daysRemaining(camp);
-            const canOrder = isSaleCampaign(camp) && active;
-            const isUpcoming = !active && camp.status === 'upcoming';
+          {(() => {
+            // Expand discount/buy_x_get_y campaigns that have specific products into one card
+            // per product (matching BranchCampaignsTab layout). Other campaign types (BV
+            // achievement, elite bingo, custom) keep one card per campaign.
+            const cards = [];
+            for (const camp of displayed) {
+              const type = campaignTypeLabel(camp.campaign_type);
+              const conditions = safeJson(camp.conditions);
+              const prize = safeJson(camp.prize);
+              const active = isActive(camp);
+              const days = daysRemaining(camp);
+              const canOrder = isSaleCampaign(camp) && active;
+              const isUpcoming = !active && camp.status === 'upcoming';
+              const discountPct = Number(camp.discount_percentage || conditions.discount_pct || 0);
 
-            return (
-              <Card key={camp.id} className={`overflow-hidden border-2 transition-all ${active ? 'border-green-200' : isUpcoming ? 'border-amber-200' : 'border-gray-100'}`}>
-                {/* Campaign header strip */}
-                <div className={`px-4 py-3 flex items-center justify-between ${active ? 'bg-green-50' : isUpcoming ? 'bg-amber-50' : 'bg-gray-50'}`}>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full ${type.color}`}>
-                      {type.icon} {type.label}
-                    </span>
-                    {active && <span className="inline-flex items-center gap-1 text-xs font-bold bg-green-600 text-white px-2 py-0.5 rounded-full"><CheckCircle size={10} /> Active</span>}
-                    {isUpcoming && <span className="inline-flex items-center gap-1 text-xs font-bold bg-amber-500 text-white px-2 py-0.5 rounded-full"><Clock size={10} /> Upcoming</span>}
-                    {camp.status === 'completed' && <span className="inline-flex items-center gap-1 text-xs font-bold bg-gray-400 text-white px-2 py-0.5 rounded-full"><CheckCircle size={10} /> Completed</span>}
-                    {camp.scope && camp.scope !== 'countrywide' && camp.scope !== 'nationwide' && (
-                      <span className="text-xs text-gray-500 font-medium">{camp.scope}</span>
-                    )}
-                    {(camp.scope === 'countrywide' || camp.scope === 'nationwide') && (
-                      <span className="text-xs text-blue-600 font-semibold">Countrywide</span>
-                    )}
-                  </div>
+              const isSale = camp.campaign_type === 'discount' || camp.campaign_type === 'buy_x_get_y';
+
+              // Build deduplicated product name list (prefer array, fall back to text)
+              const productsList = Array.isArray(conditions.products) ? conditions.products : [];
+              const productsText = typeof conditions.products_text === 'string' ? conditions.products_text : '';
+              const rawNames = productsList.length > 0 ? productsList : productsText.split(',');
+              const productNames = [...new Set(
+                rawNames.map(n => (typeof n === 'string' ? n.trim() : '')).filter(Boolean)
+              )];
+
+              const statusBadge = (
+                <span className="flex items-center gap-2 flex-wrap">
+                  {active && <span className="inline-flex items-center gap-1 text-xs font-bold bg-green-600 text-white px-2 py-0.5 rounded-full"><CheckCircle size={10} /> Active</span>}
+                  {isUpcoming && <span className="inline-flex items-center gap-1 text-xs font-bold bg-amber-500 text-white px-2 py-0.5 rounded-full"><Clock size={10} /> Upcoming</span>}
+                  {camp.status === 'completed' && <span className="inline-flex items-center gap-1 text-xs font-bold bg-gray-400 text-white px-2 py-0.5 rounded-full"><CheckCircle size={10} /> Completed</span>}
+                  <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full ${type.color}`}>{type.icon} {type.label}</span>
                   {active && days > 0 && (
                     <span className={`text-xs font-bold ${days <= 3 ? 'text-red-600' : 'text-green-700'}`}>
-                      {days} day{days !== 1 ? 's' : ''} left
+                      {days}d left
                     </span>
                   )}
+                </span>
+              );
+
+              const dateRow = (
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <span>{new Date(camp.start_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                  <ChevronRight size={10} />
+                  <span>{new Date(camp.end_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
                 </div>
+              );
 
-                <CardBody>
-                  <h3 className="font-bold text-gray-900 text-base mb-1">{camp.name}</h3>
-                  {camp.description && <p className="text-sm text-gray-500 mb-3">{camp.description}</p>}
+              if (isSale && productNames.length > 0) {
+                // One card per product
+                productNames.forEach((pName, idx) => {
+                  const match = products.find(p =>
+                    (p.name || p.description || '').toLowerCase().trim() === pName.toLowerCase().trim() ||
+                    (p.name || p.description || '').toLowerCase().includes(pName.toLowerCase())
+                  );
+                  const dp = Number(match?.dp || 0);
+                  const nowP = dp > 0 ? dp * (1 - discountPct / 100) : 0;
 
-                  {/* Dates */}
-                  <div className="flex items-center gap-4 text-xs text-gray-500 mb-3">
-                    <span className="flex items-center gap-1"><Calendar size={12} /> {new Date(camp.start_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                    <ChevronRight size={12} />
-                    <span className="flex items-center gap-1"><Calendar size={12} /> {new Date(camp.end_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                  </div>
-
-                  {/* Campaign-type specific details */}
-                  {camp.campaign_type === 'buy_x_get_y' && (() => {
-                    const productsDisplay = conditions.products_text
-                      ? conditions.products_text
-                      : Array.isArray(conditions.products) && conditions.products.length > 0
-                        ? conditions.products.join(', ')
-                        : '';
-                    return (
-                      <div className="mb-3 p-3 bg-green-50 rounded-lg border border-green-200 text-sm space-y-1">
-                        <p className="font-bold text-green-800 flex items-center gap-1"><Gift size={14} /> Buy & Get Free Deal</p>
-                        <p className="text-green-700">Buy <strong>{conditions.buy_qty || 1}</strong> unit{(conditions.buy_qty || 1) > 1 ? 's' : ''}, get <strong>{conditions.get_qty || 1}</strong> free</p>
-                        {productsDisplay && (
-                          <p className="text-xs text-gray-600">Eligible products: <strong>{productsDisplay}</strong></p>
-                        )}
-                        {prize.free_product && (
-                          <p className="text-xs text-gray-600">Free item: <strong>{prize.free_product}</strong></p>
-                        )}
+                  cards.push(
+                    <Card key={`${camp.id}-${idx}`} className={`overflow-hidden border-2 transition-all ${active ? 'border-orange-200' : isUpcoming ? 'border-amber-200' : 'border-gray-100'}`}>
+                      <div className={`px-4 py-2.5 flex items-center justify-between gap-2 ${active ? 'bg-orange-50' : isUpcoming ? 'bg-amber-50' : 'bg-gray-50'}`}>
+                        {statusBadge}
                       </div>
-                    );
-                  })()}
+                      <CardBody>
+                        {/* Product name — headline */}
+                        <h3 className="font-bold text-gray-900 text-base mb-0.5">{pName}</h3>
+                        {/* Campaign name secondary */}
+                        <p className="text-xs text-gray-500 font-medium mb-2">{camp.name}</p>
+                        {dateRow}
 
-                  {camp.campaign_type === 'discount' && (
-                    <div className="mb-3 rounded-xl overflow-hidden border border-orange-200 shadow-sm">
-                      <div style={{ background: 'linear-gradient(135deg,#7b0d1e,#c41e3a)', padding: '14px 16px' }}>
-                        <div className="flex items-center justify-between flex-wrap gap-3">
-                          <div>
-                            <p className="text-xs font-bold text-orange-200 flex items-center gap-1 mb-1"><Tag size={12} /> DISCOUNT OFFER</p>
-                            <p style={{ fontSize: '2.4rem', fontWeight: 900, color: '#ffd700', lineHeight: 1, textShadow: '0 2px 8px rgba(0,0,0,0.4)' }}>{camp.discount_percentage}% OFF</p>
-                            <p className="text-xs text-white/70 mt-1">On distributor price (DP) at participating branches</p>
-                          </div>
-                          <div className="flex flex-col gap-2 items-end">
-                            <div style={{ background: 'rgba(255,215,0,0.15)', border: '1px solid rgba(255,215,0,0.4)', borderRadius: 8, padding: '4px 12px', textAlign: 'center' }}>
-                              <p className="text-xs text-yellow-300 font-semibold">
-                                {(camp.scope === 'countrywide' || camp.scope === 'nationwide') ? '🌍 Countrywide' : (camp.scope || 'All Branches')}
-                              </p>
+                        {/* Discount highlight */}
+                        {camp.campaign_type === 'discount' && discountPct > 0 && (
+                          <div className="mt-3 flex items-center justify-between rounded-lg px-3 py-2" style={{ background: 'linear-gradient(135deg,#7b0d1e,#c41e3a)' }}>
+                            <div>
+                              <p className="text-xs text-orange-200 font-bold mb-0.5">🏷️ DISCOUNT</p>
+                              <p style={{ fontSize: '1.6rem', fontWeight: 900, color: '#ffd700', lineHeight: 1 }}>{discountPct}% OFF</p>
                             </div>
-                            <button
-                              onClick={() => downloadDiscountPoster(camp)}
-                              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', background: 'linear-gradient(135deg,#ffd700,#f59e0b)', color: '#1a0000', border: 'none', borderRadius: 8, fontWeight: 800, fontSize: '0.82rem', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.3)', whiteSpace: 'nowrap' }}>
-                              <Download size={14} /> Download Poster
-                            </button>
-                          </div>
-                        </div>
-                        {(() => {
-                          const cond = safeJson(camp.conditions);
-                          const names = Array.isArray(cond.products) && cond.products.length > 0
-                            ? cond.products
-                            : cond.products_text ? cond.products_text.split(',').map(s => s.trim()).filter(Boolean) : [];
-                          if (names.length === 0) return null;
-                          const discPct = Number(camp.discount_percentage || 0);
-                          return (
-                            <div className="mt-3 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.15)' }}>
-                              <p className="text-xs font-bold text-yellow-300 mb-2">Participating Products</p>
-                              <div className="space-y-1.5">
-                                {names.map((pName, pi) => {
-                                  const match = products.find(p =>
-                                    (p.name || p.description || '').toLowerCase().trim() === pName.toLowerCase().trim() ||
-                                    (p.name || p.description || '').toLowerCase().includes(pName.toLowerCase())
-                                  );
-                                  const dp = Number(match?.dp || 0);
-                                  const nowP = dp > 0 ? dp * (1 - discPct / 100) : 0;
-                                  return (
-                                    <div key={pi} className="flex items-center justify-between">
-                                      <span className="text-white text-xs font-medium">{pName}</span>
-                                      {dp > 0 ? (
-                                        <span className="flex items-center gap-2 text-xs">
-                                          <span style={{ color: 'rgba(255,255,255,0.5)', textDecoration: 'line-through' }}>N${dp.toFixed(2)}</span>
-                                          <span style={{ color: '#ffd700', fontWeight: 800 }}>N${nowP.toFixed(2)}</span>
-                                        </span>
-                                      ) : (
-                                        <span style={{ color: '#ffd700', fontSize: '0.75rem', fontWeight: 700 }}>{discPct}% off</span>
-                                      )}
-                                    </div>
-                                  );
-                                })}
+                            {dp > 0 ? (
+                              <div className="text-right">
+                                <p className="text-xs" style={{ color: 'rgba(255,255,255,0.5)', textDecoration: 'line-through' }}>N${dp.toFixed(2)}</p>
+                                <p className="text-lg font-black" style={{ color: '#ffd700' }}>N${nowP.toFixed(2)}</p>
                               </div>
-                            </div>
-                          );
-                        })()}
-                      </div>
-                    </div>
-                  )}
-
-                  {camp.campaign_type === 'bv_achievement' && prize.tiers && (
-                    <div className="mb-3 p-3 bg-blue-50 rounded-lg border border-blue-200 text-sm space-y-2">
-                      <p className="font-bold text-blue-800 flex items-center gap-1"><Trophy size={14} /> Prize Tiers</p>
-                      {(Array.isArray(prize.tiers) ? prize.tiers : []).sort((a, b) => Number(a.bv_required) - Number(b.bv_required)).map((tier, i) => (
-                        <div key={i} className="flex justify-between items-center py-1 border-b border-blue-100 last:border-0">
-                          <span className="text-blue-700 font-medium">{tier.prize || tier.label}</span>
-                          <span className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded-full">{Number(tier.bv_required).toLocaleString()} BV</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {camp.campaign_type === 'elite_bingo' && (
-                    <div className="mb-3 p-3 bg-purple-50 rounded-lg border border-purple-200 text-sm">
-                      <p className="font-bold text-purple-800 flex items-center gap-1"><Zap size={14} /> Elite Bingo Requirements</p>
-                      <div className="mt-2 space-y-1">
-                        <p className="text-purple-700">Min BV: <strong>{Number(conditions.min_bv || 3000).toLocaleString()}</strong></p>
-                        <p className="text-purple-700">Min Recruits: <strong>{conditions.min_recruits || 2}</strong></p>
-                        {(prize.cash_reward || prize.description) && (
-                          <p className="text-green-700 font-semibold">Reward: {prize.cash_reward || prize.description}</p>
+                            ) : (
+                              <p className="text-sm font-bold text-yellow-300">{discountPct}% off DP</p>
+                            )}
+                          </div>
                         )}
-                      </div>
-                    </div>
-                  )}
 
-                  {/* Action button */}
-                  {canOrder ? (
-                    <Button variant="success" onClick={() => setPurchaseCampaign(camp)} className="w-full mt-2">
-                      <ShoppingCart size={15} /> Place Campaign Order
-                    </Button>
-                  ) : active && !isSaleCampaign(camp) ? (
-                    <div className="mt-2 p-2 bg-blue-50 rounded-lg text-xs text-blue-700 text-center font-medium">
-                      Accumulate BV through your regular sales to qualify for this campaign's prize.
+                        {/* Buy X Get Y highlight */}
+                        {camp.campaign_type === 'buy_x_get_y' && (
+                          <div className="mt-3 p-3 bg-green-50 rounded-lg border border-green-200 text-sm space-y-1">
+                            <p className="font-bold text-green-800 flex items-center gap-1"><Gift size={13} /> Buy & Get Free</p>
+                            <p className="text-green-700 text-xs">Buy <strong>{conditions.buy_qty || 1}</strong>, get <strong>{conditions.get_qty || 1}</strong> free</p>
+                            {prize.free_product && <p className="text-xs text-gray-600">Free item: <strong>{prize.free_product}</strong></p>}
+                          </div>
+                        )}
+
+                        {/* Download poster for discount campaigns */}
+                        {camp.campaign_type === 'discount' && active && (
+                          <button onClick={() => downloadDiscountPoster(camp)}
+                            className="mt-3 w-full flex items-center justify-center gap-2"
+                            style={{ padding: '8px 16px', background: 'linear-gradient(135deg,#ffd700,#f59e0b)', color: '#1a0000', border: 'none', borderRadius: 8, fontWeight: 800, fontSize: '0.82rem', cursor: 'pointer' }}>
+                            <Download size={14} /> Download Poster
+                          </button>
+                        )}
+
+                        {/* Place order button for buy_x_get_y */}
+                        {camp.campaign_type === 'buy_x_get_y' && canOrder && (
+                          <Button variant="success" onClick={() => setPurchaseCampaign(camp)} className="w-full mt-3">
+                            <ShoppingCart size={15} /> Place Campaign Order
+                          </Button>
+                        )}
+
+                        {isUpcoming && (
+                          <div className="mt-3 p-2 bg-amber-50 rounded-lg text-xs text-amber-700 text-center font-medium flex items-center justify-center gap-1">
+                            <Clock size={12} /> Starts {new Date(camp.start_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                          </div>
+                        )}
+                      </CardBody>
+                    </Card>
+                  );
+                });
+              } else {
+                // Single card for this campaign (no specific products, or non-sale type)
+                cards.push(
+                  <Card key={camp.id} className={`overflow-hidden border-2 transition-all ${active ? 'border-green-200' : isUpcoming ? 'border-amber-200' : 'border-gray-100'}`}>
+                    <div className={`px-4 py-2.5 flex items-center justify-between gap-2 ${active ? 'bg-green-50' : isUpcoming ? 'bg-amber-50' : 'bg-gray-50'}`}>
+                      {statusBadge}
                     </div>
-                  ) : isUpcoming ? (
-                    <div className="mt-2 p-2 bg-amber-50 rounded-lg text-xs text-amber-700 text-center font-medium flex items-center justify-center gap-1">
-                      <Clock size={12} /> Starts {new Date(camp.start_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-                    </div>
-                  ) : null}
-                </CardBody>
-              </Card>
-            );
-          })}
+                    <CardBody>
+                      <h3 className="font-bold text-gray-900 text-base mb-1">{camp.name}</h3>
+                      {camp.description && <p className="text-sm text-gray-500 mb-2">{camp.description}</p>}
+                      {dateRow}
+
+                      {/* Buy X Get Y (no specific product) */}
+                      {camp.campaign_type === 'buy_x_get_y' && (
+                        <div className="mt-3 p-3 bg-green-50 rounded-lg border border-green-200 text-sm space-y-1">
+                          <p className="font-bold text-green-800 flex items-center gap-1"><Gift size={14} /> Buy & Get Free Deal</p>
+                          <p className="text-green-700">Buy <strong>{conditions.buy_qty || 1}</strong>, get <strong>{conditions.get_qty || 1}</strong> free</p>
+                          {prize.free_product && <p className="text-xs text-gray-600">Free item: <strong>{prize.free_product}</strong></p>}
+                        </div>
+                      )}
+
+                      {/* Discount (all products) */}
+                      {camp.campaign_type === 'discount' && (
+                        <div className="mt-3 rounded-xl overflow-hidden border border-orange-200">
+                          <div style={{ background: 'linear-gradient(135deg,#7b0d1e,#c41e3a)', padding: '14px 16px' }}>
+                            <div className="flex items-center justify-between flex-wrap gap-3">
+                              <div>
+                                <p className="text-xs font-bold text-orange-200 mb-1"><Tag size={12} className="inline mr-1" />DISCOUNT OFFER</p>
+                                <p style={{ fontSize: '2.2rem', fontWeight: 900, color: '#ffd700', lineHeight: 1 }}>{discountPct}% OFF</p>
+                                <p className="text-xs text-white/70 mt-1">On all eligible products</p>
+                              </div>
+                              {active && (
+                                <button onClick={() => downloadDiscountPoster(camp)}
+                                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', background: 'linear-gradient(135deg,#ffd700,#f59e0b)', color: '#1a0000', border: 'none', borderRadius: 8, fontWeight: 800, fontSize: '0.82rem', cursor: 'pointer' }}>
+                                  <Download size={14} /> Download Poster
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* BV Achievement tiers */}
+                      {camp.campaign_type === 'bv_achievement' && prize.tiers && (
+                        <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200 text-sm space-y-2">
+                          <p className="font-bold text-blue-800 flex items-center gap-1"><Trophy size={14} /> Prize Tiers</p>
+                          {(Array.isArray(prize.tiers) ? prize.tiers : []).sort((a, b) => Number(a.bv_required) - Number(b.bv_required)).map((tier, i) => (
+                            <div key={i} className="flex justify-between items-center py-1 border-b border-blue-100 last:border-0">
+                              <span className="text-blue-700 font-medium">{tier.prize || tier.label}</span>
+                              <span className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded-full">{Number(tier.bv_required).toLocaleString()} BV</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Elite Bingo */}
+                      {camp.campaign_type === 'elite_bingo' && (
+                        <div className="mt-3 p-3 bg-purple-50 rounded-lg border border-purple-200 text-sm">
+                          <p className="font-bold text-purple-800 flex items-center gap-1"><Zap size={14} /> Elite Bingo Requirements</p>
+                          <div className="mt-2 space-y-1">
+                            <p className="text-purple-700">Min BV: <strong>{Number(conditions.min_bv || 3000).toLocaleString()}</strong></p>
+                            <p className="text-purple-700">Min Recruits: <strong>{conditions.min_recruits || 2}</strong></p>
+                            {(prize.cash_reward || prize.description) && (
+                              <p className="text-green-700 font-semibold">Reward: {prize.cash_reward || prize.description}</p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Action buttons */}
+                      {canOrder ? (
+                        <Button variant="success" onClick={() => setPurchaseCampaign(camp)} className="w-full mt-3">
+                          <ShoppingCart size={15} /> Place Campaign Order
+                        </Button>
+                      ) : active && !isSaleCampaign(camp) ? (
+                        <div className="mt-3 p-2 bg-blue-50 rounded-lg text-xs text-blue-700 text-center font-medium">
+                          Accumulate BV through your regular sales to qualify for this campaign's prize.
+                        </div>
+                      ) : isUpcoming ? (
+                        <div className="mt-3 p-2 bg-amber-50 rounded-lg text-xs text-amber-700 text-center font-medium flex items-center justify-center gap-1">
+                          <Clock size={12} /> Starts {new Date(camp.start_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                        </div>
+                      ) : null}
+                    </CardBody>
+                  </Card>
+                );
+              }
+            }
+            return cards;
+          })()}
         </div>
       )}
 

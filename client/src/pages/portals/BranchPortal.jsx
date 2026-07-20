@@ -12151,8 +12151,14 @@ function BranchCampaignsTab() {
           const cond = typeof c.conditions === 'string' ? (() => { try { return JSON.parse(c.conditions); } catch { return {}; } })() : (c.conditions || {});
           const productsList = Array.isArray(cond.products) ? cond.products : [];
           const productsText = typeof cond.products_text === 'string' ? cond.products_text : '';
-          const productNames = [...productsList, ...productsText.split(',')]
-            .map(n => (typeof n === 'string' ? n.trim() : '')).filter(Boolean);
+          // Prefer the products array; fall back to products_text string. Deduplicate so
+          // campaigns that store both fields don't show the same product card twice.
+          const rawNames = productsList.length > 0
+            ? productsList
+            : productsText.split(',');
+          const productNames = [...new Set(
+            rawNames.map(n => (typeof n === 'string' ? n.trim() : '')).filter(Boolean)
+          )];
           const discountPct = parseFloat(c.discount_percentage || cond.discount_pct || 0);
           const freeProduct = prize.free_product || '';
 
