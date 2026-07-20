@@ -1528,10 +1528,12 @@ function WalkInSalesTab() {
       const cond = typeof camp.conditions === 'string'
         ? (() => { try { return JSON.parse(camp.conditions); } catch { return {}; } })()
         : (camp.conditions || {});
-      const productsText = cond.products_text || '';
       const productsList = Array.isArray(cond.products) ? cond.products : [];
-      const allProducts = [...productsList, ...productsText.split(',')]
-        .map(p => (typeof p === 'string' ? p.trim().toLowerCase() : '')).filter(Boolean);
+      const productsText = cond.products_text || '';
+      const rawProds = productsList.length > 0 ? productsList : productsText.split(',');
+      const allProducts = [...new Set(
+        rawProds.map(p => (typeof p === 'string' ? p.trim().toLowerCase() : '')).filter(Boolean)
+      )];
       if (allProducts.length === 0 || allProducts.includes(nameLower)) {
         if (!best || pct > best.pct) {
           best = { pct, campaignId: camp.id, campaignName: camp.name };
@@ -2954,14 +2956,25 @@ function PrescriptionsTab() {
         }
       }
 
+      // Build a map: product name → actual unit price charged (with any campaign discount applied).
+      // dispenseItems already carries the correct unit_price (effectiveDp/Cp with discount mult).
+      const chargedPriceMap = {};
+      for (const di of dispenseItems) {
+        if (di.unit_price != null && di.product_name) {
+          chargedPriceMap[di.product_name] = di.unit_price;
+        }
+      }
+
       const updatedMeds = getMedicines(report).map((m, medIdx) => {
         if (pendingQtyMap[m.name] !== undefined) {
           const dispensedNow = pendingQtyMap[m.name];
           const newDispensedQty = (m.dispensed_qty || 0) + dispensedNow;
           const totalQty = m.quantity || 1;
-          return { ...m, dispensed_qty: newDispensedQty, dispensed: newDispensedQty >= totalQty };
+          // Preserve charged_unit_price from this session; keep previously stored value if re-dispensing partial
+          const chargedUnitPrice = chargedPriceMap[m.name] ?? m.charged_unit_price ?? null;
+          return { ...m, dispensed_qty: newDispensedQty, dispensed: newDispensedQty >= totalQty, charged_unit_price: chargedUnitPrice };
         }
-        if (fullPackageNames.has(m.name)) return { ...m, dispensed: true, dispensed_qty: m.quantity || 1 };
+        if (fullPackageNames.has(m.name)) return { ...m, dispensed: true, dispensed_qty: m.quantity || 1, charged_unit_price: chargedPriceMap[m.name] ?? m.charged_unit_price ?? null };
         if (componentsByPackage[m.name]) {
           const p = getEffectivePrice(m.name);
           const allComponents = p.products || [];
@@ -3034,10 +3047,12 @@ function PrescriptionsTab() {
       const cond = typeof camp.conditions === 'string'
         ? (() => { try { return JSON.parse(camp.conditions); } catch { return {}; } })()
         : (camp.conditions || {});
-      const productsText = cond.products_text || '';
       const productsList = Array.isArray(cond.products) ? cond.products : [];
-      const allProducts = [...productsList, ...productsText.split(',')]
-        .map(p => (typeof p === 'string' ? p.trim().toLowerCase() : '')).filter(Boolean);
+      const productsText = cond.products_text || '';
+      const rawProds = productsList.length > 0 ? productsList : productsText.split(',');
+      const allProducts = [...new Set(
+        rawProds.map(p => (typeof p === 'string' ? p.trim().toLowerCase() : '')).filter(Boolean)
+      )];
       if (allProducts.length === 0 || allProducts.includes(nameLower)) {
         if (!best || pct > best.pct) {
           best = { pct, campaignId: camp.id, campaignName: camp.name };
@@ -3407,15 +3422,18 @@ function PrescriptionsTab() {
         const checkupTotal = checkupOpt ? checkupOpt.fee : 0;
         const grandTotal = medTotal + checkupTotal + (isInclusive ? consultFee.total : 0);
         const allDispensed = pendingCount === 0 && total > 0;
-        // Quote / Dispensed / Remaining amounts at the patient's effective price
-        const quoteTotalAmt = medicines.reduce((s, m) => {
+        // Quote / Dispensed / Remaining amounts at the patient's effective price.
+        // For dispensed medicines: use charged_unit_price (actual price including campaign
+        // discount) if stored during dispensing. For pending: use regular price + live campaign.
+        const getDisplayUnitPrice = (m) => {
+          if (m.charged_unit_price != null) return Number(m.charged_unit_price);
           const p = getEffectivePrice(m.name);
-          return s + (isMember ? (p.dp || 0) : (p.cp || 0)) * (m.quantity || 1);
-        }, 0);
-        const dispensedAmt = medicines.filter(m => m.dispensed).reduce((s, m) => {
-          const p = getEffectivePrice(m.name);
-          return s + (isMember ? (p.dp || 0) : (p.cp || 0)) * (m.quantity || 1);
-        }, 0);
+          const base = isMember ? (p.dp || 0) : (p.cp || 0);
+          const camp = getActiveCampaignDiscount(m.name);
+          return camp ? Math.round(base * (1 - camp.pct / 100) * 100) / 100 : base;
+        };
+        const quoteTotalAmt = medicines.reduce((s, m) => s + getDisplayUnitPrice(m) * (m.quantity || 1), 0);
+        const dispensedAmt = medicines.filter(m => m.dispensed).reduce((s, m) => s + getDisplayUnitPrice(m) * (m.quantity || 1), 0);
         const remainingAmt = Math.max(0, quoteTotalAmt - dispensedAmt);
         const headerGradient = allDispensed
           ? 'linear-gradient(135deg,#166534,#16a34a)'
@@ -3485,7 +3503,14 @@ function PrescriptionsTab() {
                   </div>
                   {medicines.map((med, i) => {
                     const price = getEffectivePrice(med.name);
-                    const unitPrice = isMember ? price.dp : price.cp;
+                    const regularPrice = isMember ? price.dp : price.cp;
+                    // Use the actual charged price (stored at dispense time, includes campaign discount).
+                    // Fall back to regular price for items not yet dispensed.
+                    const unitPrice = (med.dispensed && med.charged_unit_price != null)
+                      ? Number(med.charged_unit_price)
+                      : regularPrice;
+                    const hasDiscount = med.dispensed && med.charged_unit_price != null && Number(med.charged_unit_price) < regularPrice;
+                    const discountPct = hasDiscount ? Math.round((1 - Number(med.charged_unit_price) / regularPrice) * 100) : 0;
                     const pkgExpanded = price.isPackage && isPackageExpanded(report.id, i);
                     return (
                       <div key={i} style={{ borderBottom: i < medicines.length - 1 ? '1px solid #f1f5f9' : 'none', background: med.dispensed ? '#f0fdf4' : '#fff' }}>
@@ -3528,10 +3553,20 @@ function PrescriptionsTab() {
                               </div>
                             )}
                             {med.dispensed && (
-                              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#16a34a', marginTop: 3 }}>✓ Dispensed</div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 3 }}>
+                                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#16a34a' }}>✓ Dispensed</span>
+                                {hasDiscount && (
+                                  <span style={{ fontSize: '0.65rem', fontWeight: 800, color: '#fff', background: '#16a34a', borderRadius: 4, padding: '1px 5px' }}>🏷️ {discountPct}% OFF</span>
+                                )}
+                              </div>
                             )}
                           </div>
-                          <div style={{ textAlign: 'right', fontWeight: 700, fontSize: '0.85rem', color: med.dispensed ? '#16a34a' : '#1e293b', paddingTop: 1, whiteSpace: 'nowrap' }}>N$ {unitPrice}</div>
+                          <div style={{ textAlign: 'right', paddingTop: 1, whiteSpace: 'nowrap' }}>
+                            {hasDiscount && (
+                              <div style={{ fontSize: '0.68rem', color: '#94a3b8', textDecoration: 'line-through', fontWeight: 500 }}>N$ {regularPrice}</div>
+                            )}
+                            <div style={{ fontWeight: 700, fontSize: '0.85rem', color: med.dispensed ? '#16a34a' : '#1e293b' }}>N$ {unitPrice}</div>
+                          </div>
                         </div>
                       </div>
                     );
