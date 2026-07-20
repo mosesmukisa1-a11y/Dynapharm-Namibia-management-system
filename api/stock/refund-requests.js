@@ -2,6 +2,7 @@ import { applyAuthCors } from '../_lib/auth.js';
 import { getMany, getOne, query, withTransaction } from '../db.js';
 import { generateBatId } from '../_lib/activityCapture.js';
 import { recomputeLocationBalances } from '../services/stockEngine.js';
+import { normalizeBranchSlug } from '../_lib/branchUtils.js';
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
@@ -59,10 +60,6 @@ export default async function handler(req, res) {
 
         await withTransaction(async (client) => {
           // ── 1. branch_inventory_movements — financial refund record ──────────
-          // Records the refund for audit and daily-report deduction (refundMovements
-          // query in daily.js sums all refund_return movements by date).
-          // NOTE: returned items are NOT restored to branch sellable stock —
-          // they are held separately (damaged / returned to supplier).
           await client.query(
             `INSERT INTO branch_inventory_movements
                (id, branch_id, type, product_name, batch_no, quantity, unit_price,
@@ -73,8 +70,6 @@ export default async function handler(req, res) {
           );
 
           // ── 2. branch_activity_transactions — reversal record ────────────────
-          // Posts a negative-value row so daily.js and summary.js totals reflect
-          // the deduction automatically when they sum grand_total / product_total_dp.
           await client.query(
             `INSERT INTO branch_activity_transactions
                (id, branch_id, branch_name, client_name, client_type,
@@ -97,6 +92,52 @@ export default async function handler(req, res) {
              approver]
           );
 
+          // ── 3. branch_inventory_batches — restore stock to branch ────────────
+          // Returned items go back into sellable branch inventory.
+          // ON CONFLICT cannot reliably target NULL keys (btree treats each NULL as
+          // distinct), so we use IS NOT DISTINCT FROM in an explicit UPDATE first,
+          // then INSERT only if no existing row was found.
+          const resolvedBatchNo = batchNo || null;
+          const bibUpd = await client.query(
+            `UPDATE branch_inventory_batches
+             SET quantity   = quantity + $1,
+                 status     = 'in_stock',
+                 updated_at = NOW()
+             WHERE branch_id = $2
+               AND LOWER(TRIM(product_name)) = LOWER(TRIM($3))
+               AND batch_no    IS NOT DISTINCT FROM $4
+               AND expiry_date IS NULL`,
+            [qty, branchId, product, resolvedBatchNo]
+          );
+          if (bibUpd.rowCount === 0) {
+            const bibRestoreId = `BIB-RFND-${Date.now()}-${Math.random().toString(36).slice(2,6).toUpperCase()}`;
+            await client.query(
+              `INSERT INTO branch_inventory_batches
+                 (id, branch_id, product_name, batch_no, expiry_date,
+                  quantity, unit_price, source_warehouse, status, created_at, updated_at)
+               VALUES ($1,$2,$3,$4,NULL,$5,$6,NULL,'in_stock',NOW(),NOW())`,
+              [bibRestoreId, branchId, product, resolvedBatchNo, qty, unitDp]
+            );
+          }
+
+          // ── 4. stock_movements — audit entry for stock engine ────────────────
+          const canonicalBranch = normalizeBranchSlug(branchId) || branchId;
+          await client.query(
+            `INSERT INTO stock_movements
+               (id, product_name, batch_no, expiry_date, quantity, movement_type,
+                source_location, source_location_type,
+                destination_location, destination_location_type,
+                reference_id, notes, created_by, status,
+                movement_date, created_at, updated_at)
+             VALUES ($1,$2,$3,NULL,$4,'refund_return',
+                     'customer','external',
+                     $5,'branch',
+                     $6,$7,$8,'posted',NOW(),NOW(),NOW())`,
+            [smId, product, batchNo || null, qty,
+             canonicalBranch,
+             refund.id, `Refund approved — ${refund.reason}`, approver]
+          );
+
           // ── 5. branch_refund_requests — mark approved ────────────────────────
           await client.query(
             `UPDATE branch_refund_requests
@@ -106,9 +147,13 @@ export default async function handler(req, res) {
           );
         });
 
-        // ── 6. Reverse distributor profit if any (best-effort) ───────────────
-        // (Stock is NOT restored to branch inventory — returned items are held
-        //  separately or returned to supplier, so no inventory recompute needed.)
+        // ── 6. Recompute inventory_balances for the branch (best-effort) ─────
+        const canonicalBranchForRecompute = normalizeBranchSlug(branchId) || branchId;
+        recomputeLocationBalances(canonicalBranchForRecompute, 'branch').catch(e =>
+          console.error('[refundApproval] recomputeLocationBalances error:', e.message)
+        );
+
+        // ── 7. Reverse distributor profit if any (best-effort) ───────────────
         if (refund.sale_reference) {
           query(
             `UPDATE branch_distributor_profit

@@ -105,26 +105,87 @@ export default async function handler(req, res) {
     // paid_qty excludes free items so the sales count is accurate.
     // Aggregate refund totals — each product row has the same refund_qty (from the LEFT JOIN),
     // so deduplicate by product name before summing refunds.
-    const seenRefundKeys = new Set();
-    let totalRefundQty = 0;
-    let totalRefundDp  = 0;
+    // Distribute refunded qty/dp across rows for the same product (by sale_type priority:
+    // regular first, then campaign_paid, then campaign_free).
+    // Strategy: for each product key, apply the refund amount against its rows in order
+    // so the "regular" row is reduced first, then campaign rows if needed.
+    const refundByKey = new Map();
     for (const r of rows) {
       const pkey = (r.product_name || '').toLowerCase().trim();
+      if (!refundByKey.has(pkey)) {
+        refundByKey.set(pkey, {
+          qty: Number(r.refund_qty || 0),
+          dp:  Number(r.refund_dp  || 0),
+        });
+      }
+    }
+
+    // Build net product rows: subtract refund from sold qty/dp, keep only net_qty > 0.
+    const netProducts = [];
+    let totalRefundQty = 0;
+    let totalRefundDp  = 0;
+    const seenRefundKeys = new Set();
+
+    // Sort so 'regular' rows come before campaign rows per product (refund applied to regular first).
+    const sortedRows = [...rows].sort((a, b) => {
+      const order = { regular: 0, campaign_paid: 1, campaign_free: 2 };
+      return (order[a.sale_type] ?? 9) - (order[b.sale_type] ?? 9);
+    });
+
+    // Track remaining refund budget per product key as we iterate.
+    const remainingRefund = new Map();
+    for (const [pkey, ref] of refundByKey) {
+      remainingRefund.set(pkey, { qty: ref.qty, dp: ref.dp });
       if (!seenRefundKeys.has(pkey)) {
         seenRefundKeys.add(pkey);
-        totalRefundQty += Number(r.refund_qty || 0);
-        totalRefundDp  += Number(r.refund_dp  || 0);
+        totalRefundQty += ref.qty;
+        totalRefundDp  += ref.dp;
+      }
+    }
+
+    for (const r of sortedRows) {
+      const pkey    = (r.product_name || '').toLowerCase().trim();
+      const soldQty = Number(r.total_qty  || 0);
+      const soldDp  = Number(r.dp_amount  || 0);
+      const soldBv  = Number(r.bv_total   || 0);
+      const ref     = remainingRefund.get(pkey) || { qty: 0, dp: 0 };
+
+      // Deduct as much refund as this row covers.
+      const deductQty = Math.min(ref.qty, soldQty);
+      const deductDp  = soldQty > 0 ? (deductQty / soldQty) * soldDp : 0;
+
+      const netQty = soldQty - deductQty;
+      const netDp  = soldDp  - deductDp;
+      const netBv  = soldQty > 0 ? soldBv * (netQty / soldQty) : 0;
+
+      // Update remaining refund budget for subsequent rows of the same product.
+      remainingRefund.set(pkey, {
+        qty: ref.qty - deductQty,
+        dp:  ref.dp  - deductDp,
+      });
+
+      // Only include rows where net qty is positive after refund netting.
+      if (netQty > 0) {
+        netProducts.push({
+          product_name: r.product_name,
+          sale_type:    r.sale_type,
+          total_qty:    parseFloat(netQty.toFixed(4)),
+          dp_amount:    parseFloat(netDp.toFixed(2)),
+          bv_total:     parseFloat(netBv.toFixed(2)),
+          refund_qty:   Number(r.refund_qty || 0),
+          refund_dp:    parseFloat(Number(r.refund_dp  || 0).toFixed(2)),
+        });
       }
     }
 
     const totals = {
-      total_qty:  rows.reduce((s, r) => s + Number(r.total_qty  || 0), 0),
-      paid_qty:   rows.filter(r => r.sale_type !== 'campaign_free')
-                      .reduce((s, r) => s + Number(r.total_qty  || 0), 0),
-      dp_amount:  parseFloat(rows.reduce((s, r) => s + Number(r.dp_amount  || 0), 0).toFixed(2)),
-      bv_total:   parseFloat(rows.reduce((s, r) => s + Number(r.bv_total   || 0), 0).toFixed(2)),
-      campaign_free_qty: rows.filter(r => r.sale_type === 'campaign_free')
-                             .reduce((s, r) => s + Number(r.total_qty || 0), 0),
+      total_qty:  netProducts.reduce((s, r) => s + r.total_qty,  0),
+      paid_qty:   netProducts.filter(r => r.sale_type !== 'campaign_free')
+                             .reduce((s, r) => s + r.total_qty, 0),
+      dp_amount:  parseFloat(netProducts.reduce((s, r) => s + r.dp_amount,  0).toFixed(2)),
+      bv_total:   parseFloat(netProducts.reduce((s, r) => s + r.bv_total,   0).toFixed(2)),
+      campaign_free_qty: netProducts.filter(r => r.sale_type === 'campaign_free')
+                                    .reduce((s, r) => s + r.total_qty, 0),
       refund_qty: totalRefundQty,
       refund_dp:  parseFloat(totalRefundDp.toFixed(2)),
     };
@@ -133,15 +194,7 @@ export default async function handler(req, res) {
       success: true,
       date,
       branch_id: branchId || 'all',
-      products: rows.map(r => ({
-        product_name: r.product_name,
-        sale_type:    r.sale_type,
-        total_qty:    Number(r.total_qty  || 0),
-        dp_amount:    parseFloat(Number(r.dp_amount  || 0).toFixed(2)),
-        bv_total:     parseFloat(Number(r.bv_total   || 0).toFixed(2)),
-        refund_qty:   Number(r.refund_qty || 0),
-        refund_dp:    parseFloat(Number(r.refund_dp  || 0).toFixed(2)),
-      })),
+      products: netProducts,
       totals,
     });
   } catch (err) {
