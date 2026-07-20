@@ -1878,7 +1878,7 @@ function WalkInSalesTab() {
             <div>
               <h3 className="text-xl font-bold m-0">Walk-in Sales</h3>
               <p className="text-sm m-0" style={{ color: 'rgba(255,255,255,0.6)' }}>
-                {user?.branch ? `${getBranchDisplayName(user.branch)} Branch · Point of Sale` : 'Branch Point of Sale'}
+                {effectiveBranch ? `${getBranchDisplayName(effectiveBranch)} Branch · Point of Sale` : 'Branch Point of Sale'}
               </p>
             </div>
           </div>
