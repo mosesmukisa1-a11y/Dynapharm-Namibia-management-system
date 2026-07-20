@@ -321,13 +321,22 @@ export default async function handler(req, res) {
       const paidCp     = Number(paidPrice?.cp || paidPrice?.dp || 0);  // fallback to dp if no cp
       const paidBv     = Number(paidPrice?.bv || 0);
 
-      // Member pays DP; non-member pays CP (customer / retail price)
-      const paidUnitPrice = isMember ? paidDp : paidCp;
+      // Resolve discount for discount-type campaigns
+      // discount_percentage lives in the campaigns table column; discount_pct may also be in conditions JSON
+      const isDiscountCampaign = campaign.campaign_type === 'discount';
+      const discountPct = isDiscountCampaign
+        ? Math.max(0, Math.min(100, Number(campaign.discount_percentage || campConditions.discount_pct || 0)))
+        : 0;
+      const discountMult = discountPct > 0 ? (1 - discountPct / 100) : 1;
+
+      // Member pays DP (with any campaign discount); non-member pays CP (with any campaign discount)
+      const basePrice     = isMember ? paidDp : paidCp;
+      const paidUnitPrice = Math.round(basePrice * discountMult * 100) / 100;
       const paidTotal     = Math.round(paidUnitPrice * paid_qty * 100) / 100;
-      // BV credited only for member sales
+      // BV credited only for member sales (on the discounted unit price)
       const paidBvTotal   = isMember ? Math.round(paidBv * paid_qty * 100) / 100 : 0;
-      // Profit = retail margin earned on non-member sales (cp - dp) × qty
-      const profitAmount  = !isMember ? Math.max(0, Math.round((paidCp - paidDp) * paid_qty * 100) / 100) : 0;
+      // Profit = selling price minus DP cost (discount reduces both selling price and margin)
+      const profitAmount  = !isMember ? Math.max(0, Math.round((paidUnitPrice - paidDp) * paid_qty * 100) / 100) : 0;
 
       const itemsArray = [
         {
@@ -390,19 +399,26 @@ export default async function handler(req, res) {
           throw new Error(`Insufficient stock for: ${insufficientItems.map(i => `${i.product_name} (short by ${i.short})`).join(', ')}`);
         }
 
+        // Discount amount saved in the discount column for reporting
+        const discountAmount = isDiscountCampaign && discountPct > 0
+          ? Math.round((basePrice - paidUnitPrice) * paid_qty * 100) / 100
+          : 0;
+
         // Insert into branch_walkin_sales with correct member/non-member totals
         await client.query(
           `INSERT INTO branch_walkin_sales
              (id, branch_id, sale_number, sale_date, customer_name, customer_type,
               payment_method, subtotal, discount, tax, total, total_bv, status,
               items, data, metadata, created_by, distributor_nb, referral_nb, updated_at)
-           VALUES ($1,$2,$3,NOW(),$4,$5,'cash',$6,0,0,$6,$7,'completed',$8,$9,$10,$11,$12,$13,NOW())`,
+           VALUES ($1,$2,$3,NOW(),$4,$5,'cash',$6,$7,0,$8,$9,'completed',$10,$11,$12,$13,$14,$15,NOW())`,
           [
             saleId,
             branch,
             saleNumber,
             customer_name || (isMember ? distributor_nb : referral_nb) || 'Campaign Customer',
             customer_type,
+            Math.round(basePrice * paid_qty * 100) / 100,  // subtotal = pre-discount
+            discountAmount,
             paidTotal,
             paidBvTotal,
             JSON.stringify(itemsArray),
@@ -418,15 +434,18 @@ export default async function handler(req, res) {
               nbNumber:       distributor_nb || null,
               paid_product,
               paid_qty,
-              paid_unit_price: paidUnitPrice,
-              paid_dp:         paidDp,
-              paid_cp:         paidCp,
-              paid_bv:         isMember ? paidBv : 0,
-              total_amount:    paidTotal,
-              total_bv:        paidBvTotal,
-              profit_amount:   profitAmount,
-              free_product:    free_product || null,
-              free_qty:        free_qty || 0,
+              paid_unit_price:  paidUnitPrice,
+              paid_base_price:  basePrice,
+              discount_pct:     discountPct,
+              discount_amount:  discountAmount,
+              paid_dp:          paidDp,
+              paid_cp:          paidCp,
+              paid_bv:          isMember ? paidBv : 0,
+              total_amount:     paidTotal,
+              total_bv:         paidBvTotal,
+              profit_amount:    profitAmount,
+              free_product:     free_product || null,
+              free_qty:         free_qty || 0,
               notes,
             }),
             JSON.stringify({ campaign_id, campaign_name: campaign.name }),

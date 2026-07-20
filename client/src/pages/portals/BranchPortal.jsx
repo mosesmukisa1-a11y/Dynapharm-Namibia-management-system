@@ -12174,16 +12174,34 @@ function BranchCampaignsTab() {
                 const bv  = parseFloat(row.bv)  || 0;
                 const qty = parseInt(saleForm.paid_qty, 10) || 1;
                 const isMem = campMemberType === 'member';
-                const unitPrice   = isMem ? dp : cp;
+
+                // Resolve discount % for discount-type campaigns
+                const isDiscountCamp = saleModal?.campaign_type === 'discount';
+                const campCond = saleModal ? (typeof saleModal.conditions === 'string' ? (() => { try { return JSON.parse(saleModal.conditions); } catch { return {}; } })() : (saleModal.conditions || {})) : {};
+                const discountPct = isDiscountCamp
+                  ? (parseFloat(saleModal?.discount_percentage || campCond.discount_pct || 0))
+                  : 0;
+                const discountMult = discountPct > 0 ? (1 - discountPct / 100) : 1;
+
+                const basePrice   = isMem ? dp : cp;
+                const unitPrice   = Math.round(basePrice * discountMult * 100) / 100;
                 const lineTotal   = Math.round(unitPrice * qty * 100) / 100;
                 const lineBv      = isMem ? Math.round(bv * qty * 100) / 100 : 0;
-                const profit      = isMem ? 0 : Math.round((cp - dp) * qty * 100) / 100;
+                const profit      = isMem ? 0 : Math.round((unitPrice - dp) * qty * 100) / 100;
                 return (
                   <div style={{ background: isMem ? '#eff6ff' : '#fefce8', border: `1px solid ${isMem ? '#bfdbfe' : '#fde68a'}`, borderRadius: 10, padding: '10px 14px', fontSize: '0.82rem' }}>
                     <div style={{ fontWeight: 700, color: isMem ? '#1d4ed8' : '#92400e', marginBottom: 6 }}>
                       {isMem ? '🔵 Member Price Breakdown' : '🟡 Non-Member Price Breakdown'}
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 18px', color: '#374151' }}>
+                      {isDiscountCamp && discountPct > 0 && (
+                        <>
+                          <span>Original ({isMem ? 'DP' : 'CP'}):</span>
+                          <span style={{ textDecoration: 'line-through', color: '#94a3b8' }}>N$ {basePrice.toFixed(2)}</span>
+                          <span>Discount ({discountPct}% off):</span>
+                          <span style={{ fontWeight: 700, color: '#16a34a' }}>− N$ {(basePrice - unitPrice).toFixed(2)}</span>
+                        </>
+                      )}
                       <span>Unit price ({isMem ? 'DP' : 'CP'}):</span>
                       <span style={{ fontWeight: 600 }}>N$ {unitPrice.toFixed(2)}</span>
                       {isMem && <><span>BV per unit:</span><span style={{ fontWeight: 600 }}>{bv.toFixed(2)} pts</span></>}
