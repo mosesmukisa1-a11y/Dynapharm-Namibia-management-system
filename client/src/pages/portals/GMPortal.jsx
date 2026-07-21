@@ -2941,7 +2941,11 @@ function CampaignAnalyticsView({ data, loading, onRefresh }) {
       + cd.map(c => {
           const parts = Array.isArray(c.participants) ? c.participants : [];
           const wins  = Array.isArray(c.winners)      ? c.winners      : [];
-          return '<h3>' + c.name + ' (' + c.status + ')</h3>'
+          const discPct = Number(c.discount_percentage || 0);
+          const discBadge = (c.campaign_type === 'discount' && discPct > 0)
+            ? ' <span style="background:#fee2e2;color:#991b1b;border-radius:4px;padding:1px 7px;font-size:9px;font-weight:700">' + discPct + '% OFF</span>'
+            : '';
+          return '<h3>' + c.name + discBadge + ' <span style="color:#94a3b8;font-weight:400;font-size:10px">(' + c.status + ')</span></h3>'
             + '<table><thead><tr><th>#</th><th>Distributor</th><th>NB Code</th><th>Branch</th><th>BV</th><th>Recruits</th></tr></thead><tbody>'
             + (parts.length ? parts.map((p,i) => '<tr><td>' + (i+1) + '</td><td>' + (p.name||p.code) + '</td><td>' + p.code + '</td><td>' + (p.branch||'-') + '</td><td>' + fN(p.bv) + '</td><td>' + (p.recruits||0) + '</td></tr>').join('') : '<tr><td colspan="6" style="color:#94a3b8">No participants</td></tr>')
             + '</tbody></table>'
@@ -2957,6 +2961,14 @@ function CampaignAnalyticsView({ data, loading, onRefresh }) {
       + '<table><thead><tr><th>#</th><th>Branch</th><th>Participants</th><th>Campaigns</th><th>Total BV</th></tr></thead><tbody>'
       + (br.length ? br.map((b,i) => '<tr><td>' + (i+1) + '</td><td>' + b.branch + '</td><td>' + b.participants + '</td><td>' + b.campaigns + '</td><td>' + fN(b.total_bv) + '</td></tr>').join('') : '<tr><td colspan="5" style="color:#94a3b8">No data</td></tr>')
       + '</tbody></table>'
+      + (() => {
+          const cp2 = data.campaignProducts || [];
+          if (!cp2.length) return '';
+          return '<h2>Products Sold via Campaign Sales</h2>'
+            + '<table><thead><tr><th>#</th><th>Product</th><th>Units Sold</th><th>DP Value (N$)</th></tr></thead><tbody>'
+            + cp2.map((p, i) => '<tr><td>' + (i+1) + '</td><td>' + (p.product_name || '—') + '</td><td style="text-align:right;font-weight:700;color:#1d4ed8">' + fN(p.total_qty) + '</td><td style="text-align:right;font-weight:700;color:#15803d">' + fC(p.dp_value) + '</td></tr>').join('')
+            + '</tbody></table>';
+        })()
       + '<div class="footer">Dynapharm Namibia Health Management System | Campaigns Analytics | ' + now + '</div></body></html>';
     const win = window.open('', '_blank'); win.document.write(html); win.document.close(); setTimeout(() => win.print(), 400);
   };
@@ -3045,6 +3057,9 @@ function CampaignAnalyticsView({ data, loading, onRefresh }) {
                   <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#1e293b' }}>{c.name}</div>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 3 }}>
                     <span style={{ background: TYPE_BG[c.campaign_type] || '#f8fafc', color: TYPE_TEXT[c.campaign_type] || '#374151', borderRadius: 99, padding: '1px 8px', fontSize: '0.7rem', fontWeight: 700 }}>{TYPE_LABELS[c.campaign_type] || c.campaign_type}</span>
+                    {c.campaign_type === 'discount' && Number(c.discount_percentage || 0) > 0 && (
+                      <span style={{ background: '#fee2e2', color: '#991b1b', borderRadius: 99, padding: '1px 8px', fontSize: '0.7rem', fontWeight: 700 }}>{Number(c.discount_percentage)}% OFF</span>
+                    )}
                     {statusBadge(c.status)}
                     {c.start_date && <span style={{ color: '#94a3b8', fontSize: '0.7rem' }}>{new Date(c.start_date).toLocaleDateString('en-NA')} – {c.end_date ? new Date(c.end_date).toLocaleDateString('en-NA') : 'ongoing'}</span>}
                   </div>
