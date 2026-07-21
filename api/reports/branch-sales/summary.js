@@ -280,18 +280,80 @@ export default async function handler(req, res) {
       ? `AND LOWER(REPLACE(branch_id, ' ', '_')) = LOWER(REPLACE($${refParams.push(branch)}, ' ', '_'))`
       : '';
     const refundRows = await getMany(
-      `SELECT branch_id,
-              COUNT(*)::int                                                         AS refund_count,
-              COALESCE(SUM(ABS(quantity) * COALESCE(unit_price, 0)), 0)::numeric   AS refund_total
-       FROM branch_inventory_movements
-       WHERE type = 'refund_return'
-         AND DATE(created_at) >= $1 AND DATE(created_at) <= $2
-         ${refBranchClause}
-       GROUP BY branch_id`,
+      `SELECT bim.branch_id,
+              COUNT(*)::int AS refund_count,
+              COALESCE(SUM(
+                ABS(bim.quantity) *
+                COALESCE(NULLIF(pp.dp, 0), NULLIF(bim.unit_price, 0), 0)
+              ), 0)::numeric AS refund_total
+       FROM branch_inventory_movements bim
+       LEFT JOIN product_prices pp
+              ON LOWER(TRIM(pp.description)) = LOWER(TRIM(bim.product_name))
+       WHERE bim.type = 'refund_return'
+         AND DATE(bim.created_at) >= $1 AND DATE(bim.created_at) <= $2
+         ${refBranchClause.replace(/branch_id/g, 'bim.branch_id')}
+       GROUP BY bim.branch_id`,
       refParams
     );
     const refundMap = {};
     for (const r of refundRows) refundMap[r.branch_id?.toLowerCase()] = r;
+
+    // ── 3c. BIM-based walk-in DP ─────────────────────────────────────────────
+    // Authoritative source for walk-in DP — identical logic to daily-products.js.
+    // Replaces BAT member_total/non_member_total as the walk-in figure so both
+    // the Sales Review and the Product Sales Report always agree.
+    const bimWiParams = [from, to];
+    const bimWiBranchClause = branch
+      ? `AND LOWER(REPLACE(bim.branch_id,' ','_'))=LOWER(REPLACE($${bimWiParams.push(branch)},' ','_'))`
+      : '';
+    const bimWiSubClause = branch
+      ? `AND LOWER(REPLACE(branch_id,' ','_'))=LOWER(REPLACE($3,' ','_'))`
+      : '';
+    const bimWalkinRows = await getMany(
+      `SELECT
+         bim.branch_id,
+         -- total walk-in DP (member + non-member, discount applied where applicable)
+         SUM(
+           ABS(bim.quantity) *
+           CASE
+             WHEN bim.type='walk_in_non_member_sale' AND COALESCE(cr.discount_pct,0)>0
+               THEN COALESCE(NULLIF(ROUND(pp.dp*(1-cr.discount_pct/100),2),0),NULLIF(pp.dp,0),0)
+             WHEN bim.type='walk_in_non_member_sale'
+               THEN COALESCE(NULLIF(pp.dp,0),0)
+             ELSE COALESCE(NULLIF(pp.dp,0),NULLIF(bim.unit_price,0),0)
+           END
+         ) AS walkin_dp,
+         -- member portion (walk_in_member_sale + generic 'sale')
+         SUM(CASE WHEN bim.type IN ('walk_in_member_sale','sale')
+               THEN ABS(bim.quantity)*COALESCE(NULLIF(pp.dp,0),NULLIF(bim.unit_price,0),0)
+               ELSE 0 END) AS member_dp,
+         -- non-member portion (walk_in_non_member_sale, discount applied)
+         SUM(CASE WHEN bim.type='walk_in_non_member_sale'
+               THEN ABS(bim.quantity)*COALESCE(
+                 CASE WHEN COALESCE(cr.discount_pct,0)>0
+                   THEN NULLIF(ROUND(pp.dp*(1-cr.discount_pct/100),2),0)
+                   ELSE NULLIF(pp.dp,0) END, 0)
+               ELSE 0 END) AS non_member_dp
+       FROM branch_inventory_movements bim
+       LEFT JOIN product_prices pp
+              ON LOWER(TRIM(pp.description))=LOWER(TRIM(bim.product_name))
+       LEFT JOIN (
+         SELECT id, (data->>'discount_pct')::numeric AS discount_pct
+         FROM branch_walkin_sales
+         WHERE sale_date::date >= $1 AND sale_date::date <= $2
+           ${bimWiSubClause}
+           AND data->>'sale_type'='campaign_sale'
+       ) cr ON cr.id=bim.reference
+       WHERE DATE(bim.created_at) >= $1 AND DATE(bim.created_at) <= $2
+         AND bim.type IN ('walk_in_member_sale','walk_in_non_member_sale','sale')
+         -- campaign non-member walk-ins are already in campaign_total; exclude them here
+         AND NOT (bim.type='walk_in_non_member_sale' AND cr.id IS NOT NULL)
+         ${bimWiBranchClause}
+       GROUP BY bim.branch_id`,
+      bimWiParams
+    );
+    const bimWalkinMap = {};
+    for (const r of bimWalkinRows) bimWalkinMap[r.branch_id?.toLowerCase()] = r;
 
     // ── 4. Merge all sources into BAT rows ───────────────────────────────────
     const supplementMap = {};
@@ -302,6 +364,8 @@ export default async function handler(req, res) {
       const camp = campaignMap[row.branch_id];
       const ref  = refundMap[row.branch_id?.toLowerCase()];
       const wi   = walkinSupplementMap[row.branch_id] || walkinSupplementMap[row.branch_id?.toLowerCase()] || {};
+      // BIM-based walk-in: authoritative source matching the Product Sales Report
+      const bimWi = bimWalkinMap[row.branch_id?.toLowerCase()] || {};
 
       const campTotal    = parseFloat(camp?.campaign_total || 0);
       const campTx       = parseInt(camp?.campaign_transactions || 0);
@@ -310,10 +374,10 @@ export default async function handler(req, res) {
       // suppExtra: only Rx supplement — consultation fees are NOT part of DP sales total
       const suppExtra    = parseFloat(s?.supplement_rx_total || 0);
       const refundTotal  = parseFloat(ref?.refund_total || 0);
-      const wiMemberDp   = parseFloat(wi.member_dp    || 0);
-      const wiNonMemberDp= parseFloat(wi.non_member_dp|| 0);
-      const wiSupplementDp = wiMemberDp + wiNonMemberDp;
-      const wiTx         = parseInt(wi.transactions || 0);
+      // BIM walk-in DP totals (same source as Product Sales Report)
+      const bimMemberDp    = parseFloat(bimWi.member_dp    || 0);
+      const bimNonMemberDp = parseFloat(bimWi.non_member_dp|| 0);
+      const wiTx           = parseInt(wi.transactions || 0);
       // Rx non-member distributor profit: CP-DP margin from prescription dispensing
       const rxNmCpTotal  = parseFloat(row.rx_nm_cp_total || 0);
       const rxNmDpTotal  = parseFloat(row.rx_nm_dp_total || 0);
@@ -321,8 +385,9 @@ export default async function handler(req, res) {
 
       return {
         ...row,
-        member_total:         (parseFloat(row.member_total)      + wiMemberDp).toFixed(2),
-        non_member_total:     (parseFloat(row.non_member_total)  + wiNonMemberDp).toFixed(2),
+        // Use BIM-sourced walk-in DP so Sales Review matches Product Report exactly
+        member_total:         bimMemberDp.toFixed(2),
+        non_member_total:     bimNonMemberDp.toFixed(2),
         rx_total:             rxTotal.toFixed(2),
         rx_nm_cp_total:       rxNmCpTotal.toFixed(2),
         rx_nm_dp_total:       rxNmDpTotal.toFixed(2),
@@ -330,7 +395,8 @@ export default async function handler(req, res) {
         consult_total:        consultTotal.toFixed(2),
         campaign_total:       campTotal.toFixed(2),
         refund_deductions:    refundTotal.toFixed(2),
-        total_revenue:        (parseFloat(row.total_revenue) + suppExtra + campTotal + wiSupplementDp - refundTotal).toFixed(2),
+        // total_revenue: BIM walk-in + BAT rx (+ supplement) + BIM campaign – BIM refunds
+        total_revenue:        (bimMemberDp + bimNonMemberDp + rxTotal + campTotal - refundTotal).toFixed(2),
         transactions:         row.transactions + (s?.supplement_rx_count || 0) + campTx + wiTx,
       };
     });
@@ -338,24 +404,34 @@ export default async function handler(req, res) {
     // Add supplement rows for branches not yet in BAT at all
     const allBranchIds = new Set(batRows.map(r => r.branch_id));
 
-    // Walk-in-only branches (not in BAT)
-    for (const [brId, wi] of Object.entries(walkinSupplementMap)) {
+    // Walk-in-only or BIM-only branches (not in BAT)
+    // Combine walkinSupplementMap keys and bimWalkinMap keys so no branch is missed
+    const noBATPossibleBranches = new Set([
+      ...Object.keys(walkinSupplementMap),
+      ...Object.keys(bimWalkinMap),
+    ]);
+    for (const brId of noBATPossibleBranches) {
       if (allBranchIds.has(brId)) continue;
       const camp      = campaignMap[brId];
       const campTotal = parseFloat(camp?.campaign_total || 0);
       const s         = supplementMap[brId];
-      const wiDp      = parseFloat(wi.member_dp || 0) + parseFloat(wi.non_member_dp || 0);
-      // suppExtra: only Rx supplement — consultation fees are NOT part of DP sales total
       const suppExtra = parseFloat(s?.supplement_rx_total || 0);
       const ref       = refundMap[brId?.toLowerCase()];
       const refundTotal = parseFloat(ref?.refund_total || 0);
+      const wi        = walkinSupplementMap[brId] || {};
+      const bimWi     = bimWalkinMap[brId] || {};
+      // BIM is authoritative for walk-in DP; fall back to branch_walkin_sales supplement
+      const bimMemberDp    = parseFloat(bimWi.member_dp    || 0);
+      const bimNonMemberDp = parseFloat(bimWi.non_member_dp|| 0);
+      const wiDp = bimMemberDp + bimNonMemberDp ||
+                   parseFloat(wi.member_dp || 0) + parseFloat(wi.non_member_dp || 0);
       merged.push({
         branch_id:          brId,
-        transactions:       wi.transactions + parseInt(camp?.campaign_transactions || 0) + (s?.supplement_rx_count || 0),
+        transactions:       (wi.transactions || 0) + parseInt(camp?.campaign_transactions || 0) + (s?.supplement_rx_count || 0),
         total_revenue:      (wiDp + campTotal + suppExtra - refundTotal).toFixed(2),
         days_active:        1,
-        member_total:       parseFloat(wi.member_dp    || 0).toFixed(2),
-        non_member_total:   parseFloat(wi.non_member_dp|| 0).toFixed(2),
+        member_total:       bimMemberDp > 0 ? bimMemberDp.toFixed(2) : parseFloat(wi.member_dp    || 0).toFixed(2),
+        non_member_total:   bimNonMemberDp > 0 ? bimNonMemberDp.toFixed(2) : parseFloat(wi.non_member_dp|| 0).toFixed(2),
         non_member_cp_total:'0.00',
         rx_total:           parseFloat(s?.supplement_rx_total    || 0).toFixed(2),
         consult_total:      parseFloat(s?.supplement_consult_total || 0).toFixed(2),
