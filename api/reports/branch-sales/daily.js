@@ -155,7 +155,14 @@ export default async function handler(req, res) {
                        WHEN type = 'campaign_sale'
                          THEN COALESCE(NULLIF(unit_price, 0), NULLIF(pp.dp, 0), 0)
                        ELSE COALESCE(NULLIF(pp.dp, 0), 0)
-                  END)                                        AS total_dp
+                  END)                                        AS total_dp,
+                -- Per-unit sold price for campaign_sale rows (actual charged price, may be
+                -- discounted).  NULL for free-item and non-member rows (CP, not DP).
+                MIN(CASE WHEN type = 'campaign_sale' THEN unit_price ELSE NULL END)
+                                                              AS sold_unit_price,
+                -- List DP from product_prices — used as the "before discount" base price for
+                -- every non-free product in a mixed-price campaign sale.
+                MAX(pp.dp)                                    AS list_dp
          FROM branch_inventory_movements
          LEFT JOIN product_prices pp ON LOWER(TRIM(pp.description)) = LOWER(TRIM(product_name))
          WHERE ${movConds.join(' AND ')}
@@ -341,25 +348,33 @@ export default async function handler(req, res) {
 
     // Build per-product map and per-reference aggregates from campaign movements.
     // Each campaign sale may span multiple product rows; aggregate into one synthetic row per reference.
+    // base_price and unit_price are now derived directly from the SQL columns (list_dp and
+    // sold_unit_price) so every paid product in a mixed-price sale gets correct pricing info,
+    // not just the one product whose name happened to match the sale-level paid_product field.
     const campaignProductMap = {};
     const campaignRefAgg = {};
     for (const c of campaignMovements) {
-      const ref      = c.reference;
-      const isFree   = c.type === 'campaign_free_item';
-      const saleData = campaignSaleDataMap[ref] || {};
-      // Use historical base/unit prices from the sale record when the product name matches
-      // (case-insensitive). Falls back to 0 so the UI skips the strikethrough rather than
-      // showing a wrong value.
-      const nameMatch = saleData.paid_product
-        && (c.product_name || '').trim().toLowerCase() === saleData.paid_product.trim().toLowerCase();
+      const ref    = c.reference;
+      const isFree = c.type === 'campaign_free_item';
+      // list_dp: the current list DP price from product_prices (undiscounted base price).
+      // If the product is absent from product_prices, list_dp is NULL → 0 after coercion.
+      const listDp = Number(c.list_dp || 0);
+      // sold_unit_price: the actual per-unit price charged on campaign_sale movements.
+      // NULL for free items and non-member walk-in rows (those use CP, not DP).
+      const soldUnitPrice = Number(c.sold_unit_price || 0);
+      // For campaign_sale rows use the actual sold price; for all other paid movement types
+      // (walk_in_non_member_sale inside a campaign) fall back to list_dp because their
+      // unit_price is the consumer price (CP), not DP.
+      const unitPriceForDisplay = isFree ? 0
+        : (c.type === 'campaign_sale' && soldUnitPrice > 0 ? soldUnitPrice : listDp);
       if (!campaignProductMap[ref]) campaignProductMap[ref] = [];
       campaignProductMap[ref].push({
         product_name: c.product_name,
         qty:        Number(c.total_qty || 0),
         dp_value:   parseFloat(Number(c.total_dp || 0).toFixed(2)),
         is_free:    isFree,
-        base_price: isFree || !nameMatch ? 0 : saleData.paid_base_price,   // list price/unit before discount
-        unit_price: isFree || !nameMatch ? 0 : saleData.paid_unit_price,   // discounted price/unit charged
+        base_price: isFree ? 0 : listDp,           // list DP — "before discount" reference price
+        unit_price: unitPriceForDisplay,             // actual charged price (may be discounted)
       });
       if (!campaignRefAgg[ref]) campaignRefAgg[ref] = { reference: ref, branch_id: c.branch_id, total_qty: 0, total_dp: 0 };
       campaignRefAgg[ref].total_qty += Number(c.total_qty || 0);

@@ -6635,7 +6635,9 @@ function BranchStockTab() {
                   const freeBadge = isFree ? `<span style="background:#d97706;color:#fff;border-radius:3px;padding:0 4px;font-size:7px;font-weight:700;margin-left:4px">FREE</span>` : '';
                   const basePerUnit = Number(p.base_price || 0);
                   const soldPerUnit = Number(p.unit_price || 0);
-                  const hasDiscount = !isFree && discPct > 0 && basePerUnit > 0 && soldPerUnit > 0 && soldPerUnit < basePerUnit;
+                  // Allow a half-cent floating-point tolerance so minor rounding differences
+                  // in stored unit prices don't suppress the strikethrough for real discounts.
+                  const hasDiscount = !isFree && discPct > 0 && basePerUnit > 0 && soldPerUnit > 0 && soldPerUnit < basePerUnit - 0.005;
                   const priceDisplay = isFree
                     ? `<em style="color:#d97706;font-style:normal">FREE</em>`
                     : hasDiscount

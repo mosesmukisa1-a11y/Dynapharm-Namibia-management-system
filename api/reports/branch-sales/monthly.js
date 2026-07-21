@@ -133,7 +133,13 @@ export default async function handler(req, res) {
                 SUM(ABS(quantity) *
                   CASE WHEN type = 'campaign_free_item' THEN 0
                        ELSE COALESCE(NULLIF(unit_price, 0), NULLIF(pp.dp, 0), 0)
-                  END)                                        AS total_dp
+                  END)                                        AS total_dp,
+                -- Per-unit sold price for campaign_sale rows (actual charged price, may be
+                -- discounted).  NULL for free-item rows.
+                MIN(CASE WHEN type = 'campaign_sale' THEN unit_price ELSE NULL END)
+                                                              AS sold_unit_price,
+                -- List DP from product_prices — used as the "before discount" base price.
+                MAX(pp.dp)                                    AS list_dp
          FROM branch_inventory_movements
          LEFT JOIN product_prices pp ON LOWER(TRIM(pp.description)) = LOWER(TRIM(product_name))
          WHERE ${movConds.join(' AND ')} AND type IN ('campaign_sale', 'campaign_free_item')
@@ -293,14 +299,18 @@ export default async function handler(req, res) {
     }
 
     // Build per-product map and per-reference aggregates from campaign movements.
+    // base_price and unit_price are derived directly from SQL columns (list_dp / sold_unit_price)
+    // so every paid product in a mixed-price sale gets correct pricing — not just the single
+    // product whose name matched the sale-level paid_product field.
     const campaignProductMap = {};
     const campaignRefAgg = {};
     for (const c of campaignMovements) {
       const ref    = c.reference;
       const isFree = c.type === 'campaign_free_item';
-      const saleData = campaignSaleDataMap[ref] || {};
-      const nameMatch = saleData.paid_product
-        && (c.product_name || '').trim().toLowerCase() === saleData.paid_product.trim().toLowerCase();
+      const listDp        = Number(c.list_dp || 0);
+      const soldUnitPrice = Number(c.sold_unit_price || 0);
+      const unitPriceForDisplay = isFree ? 0
+        : (c.type === 'campaign_sale' && soldUnitPrice > 0 ? soldUnitPrice : listDp);
       if (!campaignProductMap[ref]) campaignProductMap[ref] = [];
       campaignProductMap[ref].push({
         product_name: c.product_name,
@@ -308,8 +318,8 @@ export default async function handler(req, res) {
         qty: Number(c.total_qty || 0),
         dp_value: parseFloat(Number(c.total_dp || 0).toFixed(2)),
         is_free:    isFree,
-        base_price: isFree || !nameMatch ? 0 : saleData.paid_base_price,
-        unit_price: isFree || !nameMatch ? 0 : saleData.paid_unit_price,
+        base_price: isFree ? 0 : listDp,
+        unit_price: unitPriceForDisplay,
       });
       if (!campaignRefAgg[ref]) campaignRefAgg[ref] = { reference: ref, branch_id: c.branch_id, total_qty: 0, total_dp: 0 };
       campaignRefAgg[ref].total_qty += Number(c.total_qty || 0);
