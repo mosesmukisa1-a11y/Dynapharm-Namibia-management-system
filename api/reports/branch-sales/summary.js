@@ -114,10 +114,11 @@ export default async function handler(req, res) {
     );
     const normBranch = branch ? branch.toLowerCase().replace(/ /g, '_') : null;
     const wiSalesRows = await getMany(
-      `SELECT id, sale_number, branch_id, customer_type, total, items
+      `SELECT id, sale_number, branch_id, customer_type, total, items, data
        FROM branch_walkin_sales
        WHERE sale_date::date >= $1 AND sale_date::date <= $2
          AND (status IS NULL OR status NOT IN ('cancelled','voided'))
+         AND (data->>'sale_type' IS NULL OR data->>'sale_type' != 'campaign_sale')
          ${normBranch ? `AND LOWER(REPLACE(branch_id,' ','_')) = $3` : ''}`,
       normBranch ? [from, to, normBranch] : [from, to]
     );
@@ -128,8 +129,14 @@ export default async function handler(req, res) {
       if (alreadyCapturedWalkinIds.has(s.id) || alreadyCapturedWalkinIds.has(s.sale_number)) continue;
       let items = [];
       try { items = typeof s.items === 'string' ? JSON.parse(s.items) : (Array.isArray(s.items) ? s.items : []); } catch {}
-      const dpTotal = items.reduce((acc, i) =>
-        acc + Number(i.dpPrice || i.dp || i.unit_price || 0) * Number(i.quantity || i.qty || 1), 0);
+      let saleData = {};
+      try { saleData = typeof s.data === 'string' ? JSON.parse(s.data || '{}') : (s.data || {}); } catch {}
+      const discountPct = Number(saleData.discount_pct || 0);
+      const dpTotal = items.reduce((acc, i) => {
+        const dp = Number(i.dpPrice || i.dp || i.unit_price || 0);
+        const discountedDp = discountPct > 0 ? dp * (1 - discountPct / 100) : dp;
+        return acc + discountedDp * Number(i.quantity || i.qty || 1);
+      }, 0);
       const brId = s.branch_id || 'unknown';
       const ct   = (s.customer_type || '').toLowerCase();
       if (!walkinSupplementMap[brId]) walkinSupplementMap[brId] = { transactions: 0, member_dp: 0, non_member_dp: 0 };
@@ -241,9 +248,9 @@ export default async function handler(req, res) {
            pm.branch_id,
            pm.membership_status,
            pm.qty * COALESCE(
-             (SELECT pp.cp FROM product_prices pp
+             (SELECT pp.dp FROM product_prices pp
               WHERE LOWER(TRIM(pp.description)) = LOWER(TRIM(pm.med_name)) LIMIT 1), 0
-           ) AS line_cp
+           ) AS line_dp
          FROM paid_meds pm
        ),
        report_totals AS (
@@ -251,14 +258,14 @@ export default async function handler(req, res) {
            branch_id,
            report_id,
            membership_status,
-           SUM(line_cp) AS rx_cp
+           SUM(line_dp) AS rx_dp
          FROM priced
          GROUP BY branch_id, report_id, membership_status
        )
        SELECT
          branch_id,
          COUNT(DISTINCT report_id)::int                AS supplement_rx_count,
-         COALESCE(SUM(rx_cp), 0)::numeric             AS supplement_rx_total,
+         COALESCE(SUM(rx_dp), 0)::numeric             AS supplement_rx_total,
          COALESCE(SUM(
            CASE WHEN membership_status = 'member' THEN 150 ELSE 200 END
          ), 0)::numeric                               AS supplement_consult_total
