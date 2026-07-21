@@ -50,15 +50,22 @@ export default async function handler(req, res) {
           --     discounted DP the member paid (paidUnitPrice). For bxgy campaigns this equals
           --     pp.dp; for discount campaigns it is pp.dp × (1-disc%). Falls back to pp.dp
           --     for older records that stored the full list DP.
-          --   walk_in_non_member_sale (regular & campaign non-member): bim.unit_price stores
-          --     CP, so always use pp.dp (the company's cost/DP basis).
+          --   walk_in_non_member_sale (regular OR campaign non-member): bim.unit_price always
+          --     stores the selling CP, never DP. An explicit branch here ensures we never fall
+          --     back to bim.unit_price and accidentally use CP as the DP figure — for both
+          --     regular rows (where it was always CP) and campaign rows (where it is the
+          --     discounted CP after the non-member BIM unit_price fix).
           --   campaign_free_item: always 0 (free, no revenue).
-          --   All other types: pp.dp is the authoritative source; unit_price fallback.
+          --   All other types: pp.dp is authoritative; bim.unit_price as last resort fallback.
           SUM(
             ABS(bim.quantity) *
-            CASE WHEN bim.type = 'campaign_free_item'   THEN 0
+            CASE WHEN bim.type = 'campaign_free_item'      THEN 0
                  WHEN bim.type = 'campaign_sale'
                    THEN COALESCE(NULLIF(bim.unit_price, 0), NULLIF(pp.dp, 0), 0)
+                 WHEN bim.type = 'walk_in_non_member_sale'
+                   -- bim.unit_price is CP (not DP) for all non-member rows; never use it
+                   -- as a DP fallback regardless of whether the row is campaign or regular.
+                   THEN COALESCE(NULLIF(pp.dp, 0), 0)
                  ELSE COALESCE(NULLIF(pp.dp, 0), NULLIF(bim.unit_price, 0), 0)
             END
           )                                                                 AS dp_amount,
