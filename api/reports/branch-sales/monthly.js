@@ -122,20 +122,22 @@ export default async function handler(req, res) {
           )
       `, rpParams),
       // Campaign sales from inventory movements — per-product rows for detail map.
-      // Only captures type='campaign_sale' (member paid rows); non-member walk-in rows
-      // inside campaigns are not present in the monthly snapshot and are not needed here.
-      // For campaign_sale rows, unit_price holds the actual sold price (may be discounted
-      // for discount-type campaigns); prefer it over pp.dp so the report reflects what was
-      // charged.  If unit_price is also 0/NULL the product has no price record — return 0
-      // rather than falling back to any other field that could be CP.
+      // Includes both campaign_sale (paid) and campaign_free_item rows so free-item
+      // badges can be displayed on the monthly report alongside discount info.
+      // type is included in SELECT/GROUP BY to preserve the free-item distinction.
+      // Free items must produce 0 total_dp — the pp.dp fallback is suppressed via CASE
+      // (same guard used in daily.js) so product-level dp_value is never inflated.
       getMany(
-        `SELECT reference, branch_id, product_name, batch_no,
+        `SELECT reference, branch_id, product_name, batch_no, type,
                 SUM(ABS(quantity))                            AS total_qty,
-                SUM(ABS(quantity) * COALESCE(NULLIF(unit_price, 0), NULLIF(pp.dp, 0), 0)) AS total_dp
+                SUM(ABS(quantity) *
+                  CASE WHEN type = 'campaign_free_item' THEN 0
+                       ELSE COALESCE(NULLIF(unit_price, 0), NULLIF(pp.dp, 0), 0)
+                  END)                                        AS total_dp
          FROM branch_inventory_movements
          LEFT JOIN product_prices pp ON LOWER(TRIM(pp.description)) = LOWER(TRIM(product_name))
-         WHERE ${movConds.join(' AND ')} AND type = 'campaign_sale'
-         GROUP BY reference, branch_id, product_name, batch_no`,
+         WHERE ${movConds.join(' AND ')} AND type IN ('campaign_sale', 'campaign_free_item')
+         GROUP BY reference, branch_id, product_name, batch_no, type`,
         movParams
       ),
       // Approved refund return movements — deducted from sales totals
@@ -272,21 +274,46 @@ export default async function handler(req, res) {
     }
     const walkinProducts = Object.values(walkinProductAgg).sort((a, b) => b.dp_value - a.dp_value);
 
+    // Build per-sale pricing/discount data from branch_walkin_sales.data for campaign sales.
+    // data stores: paid_product, paid_base_price (list price before discount),
+    // paid_unit_price (discounted price charged), discount_pct, discount_amount.
+    const campaignSaleDataMap = {};
+    for (const s of walkinSalesRows) {
+      let sData = {};
+      try { sData = typeof s.data === 'string' ? JSON.parse(s.data) : (s.data || {}); } catch {}
+      if (sData.sale_type === 'campaign_sale') {
+        campaignSaleDataMap[s.id] = {
+          paid_product:     sData.paid_product || '',
+          paid_base_price:  parseFloat(Number(sData.paid_base_price  || 0).toFixed(2)),
+          paid_unit_price:  parseFloat(Number(sData.paid_unit_price  || 0).toFixed(2)),
+          discount_pct:     Number(sData.discount_pct    || 0),
+          discount_amount:  parseFloat(Number(sData.discount_amount  || 0).toFixed(2)),
+        };
+      }
+    }
+
     // Build per-product map and per-reference aggregates from campaign movements.
     const campaignProductMap = {};
     const campaignRefAgg = {};
     for (const c of campaignMovements) {
-      const ref = c.reference;
+      const ref    = c.reference;
+      const isFree = c.type === 'campaign_free_item';
+      const saleData = campaignSaleDataMap[ref] || {};
+      const nameMatch = saleData.paid_product
+        && (c.product_name || '').trim().toLowerCase() === saleData.paid_product.trim().toLowerCase();
       if (!campaignProductMap[ref]) campaignProductMap[ref] = [];
       campaignProductMap[ref].push({
         product_name: c.product_name,
         batch_no: c.batch_no,
         qty: Number(c.total_qty || 0),
         dp_value: parseFloat(Number(c.total_dp || 0).toFixed(2)),
+        is_free:    isFree,
+        base_price: isFree || !nameMatch ? 0 : saleData.paid_base_price,
+        unit_price: isFree || !nameMatch ? 0 : saleData.paid_unit_price,
       });
       if (!campaignRefAgg[ref]) campaignRefAgg[ref] = { reference: ref, branch_id: c.branch_id, total_qty: 0, total_dp: 0 };
       campaignRefAgg[ref].total_qty += Number(c.total_qty || 0);
-      campaignRefAgg[ref].total_dp  += Number(c.total_dp  || 0);
+      if (!isFree) campaignRefAgg[ref].total_dp += Number(c.total_dp || 0);
     }
 
     // Detect campaign products with stock deducted but no DP value (missing price list entry).
@@ -401,14 +428,17 @@ export default async function handler(req, res) {
     const buildCampaignWithDetail = (rows) => {
       const base = build(rows);
       const line_items = rows.map(r => {
-        const products = campaignProductMap[r.form_reference_id] || [];
+        const products  = campaignProductMap[r.form_reference_id] || [];
+        const saleData  = campaignSaleDataMap[r.form_reference_id] || {};
         return {
-          reference_id: r.form_reference_id,
-          date: r.service_date,
-          total_qty: Number(r.total_qty || 0),
-          total_dp_value: parseFloat(Number(r.grand_total || 0).toFixed(2)),
-          payment_method: r.payment_method || 'cash',
-          payment_status: r.payment_status,
+          reference_id:    r.form_reference_id,
+          date:            r.service_date,
+          total_qty:       Number(r.total_qty || 0),
+          total_dp_value:  parseFloat(Number(r.grand_total || 0).toFixed(2)),
+          payment_method:  r.payment_method || 'cash',
+          payment_status:  r.payment_status,
+          discount_pct:    Number(saleData.discount_pct    || 0),
+          discount_amount: parseFloat(Number(saleData.discount_amount || 0).toFixed(2)),
           products,
         };
       });
