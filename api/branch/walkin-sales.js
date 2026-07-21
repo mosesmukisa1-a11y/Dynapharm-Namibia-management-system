@@ -141,6 +141,18 @@ function buildSaleRecord(payload, existing = {}) {
 
   const products = Array.isArray(payload.products) ? payload.products : Array.isArray(payload.items) ? payload.items : [];
 
+  // Determine if any items are campaign-tagged — used to stamp sale_type in data JSON
+  // so daily-products.js campaign_refs CTE can identify campaign walk-in sales.
+  const campaignItems = products.filter(p => p.isCampaignSale);
+  const hasCampaignItems = campaignItems.length > 0;
+  // Build per-item data enrichment: stamp sale_type + discount_pct on campaign items
+  const enrichedProducts = products.map(p => {
+    if (p.isCampaignSale && p.campaign_discount_pct > 0) {
+      return { ...p, sale_type: 'campaign_sale', discount_pct: p.campaign_discount_pct };
+    }
+    return p;
+  });
+
   return {
     id,
     branch_id: branchId,
@@ -157,8 +169,23 @@ function buildSaleRecord(payload, existing = {}) {
     total,
     total_bv: totalBV,
     status: payload.status || existing.status || 'completed',
-    items: JSON.stringify(products),
-    data: JSON.stringify({ ...payload, id }),
+    items: JSON.stringify(enrichedProducts),
+    // Stamp sale_type:'campaign_sale' + discount_pct on the top-level data JSON when applicable.
+    // The report's campaign_refs CTE queries: data->>'sale_type' = 'campaign_sale'
+    // and reads discount_pct from: (data->>'discount_pct')::numeric
+    // For mixed receipts (some campaign, some regular) we still flag the whole record as campaign_sale
+    // because the per-item isCampaignSale flag on each product row lets the report split them correctly.
+    data: JSON.stringify({
+      ...payload,
+      id,
+      items: enrichedProducts,
+      ...(hasCampaignItems ? {
+        sale_type: 'campaign_sale',
+        // Use the highest discount_pct among campaign items for the top-level record
+        // (per-item discount_pct on each enrichedProduct is the authoritative per-item figure)
+        discount_pct: Math.max(...campaignItems.map(p => Number(p.campaign_discount_pct || 0))),
+      } : {}),
+    }),
     referral_nb: (
       payload.referral_nb ||
       payload.referralNB ||

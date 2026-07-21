@@ -1510,6 +1510,7 @@ function WalkInSalesTab() {
   const [scanMode, setScanMode]     = useState(false);
   const [cameraMode, setCameraMode] = useState(false);
   const [campaigns, setCampaigns]   = useState([]); // active discount campaigns
+  const [isCampaignSale, setIsCampaignSale] = useState(false); // Campaign Sale toggle in walk-in POS
 
   const loadSales = (branch) =>
     api.branch.walkinSales(branch ? `branch_id=${branch}` : '')
@@ -1742,22 +1743,36 @@ function WalkInSalesTab() {
     setCart(prev => {
       const existing = prev.find(c => c.id === product.id);
       if (existing) return prev.map(c => c.id === product.id ? { ...c, qty: c.qty + 1 } : c);
-      // Campaign product entries already have discounted prices — add directly
-      if (product.isCampaignProduct) {
-        return [...prev, { ...product, qty: 1 }];
+      // When Campaign Sale toggle is ON, apply discount for campaign products
+      if (isCampaignSale) {
+        // Campaign product cards already carry discounted prices
+        if (product.isCampaignProduct) {
+          return [...prev, { ...product, qty: 1 }];
+        }
+        // Regular product card — check if it's in an active campaign
+        const campDisc = getWalkinCampaignDiscount(product.name || product.description);
+        if (campDisc && campDisc.pct > 0) {
+          const mult = 1 - campDisc.pct / 100;
+          return [...prev, {
+            ...product,
+            qty: 1,
+            originalCp: product.cp,
+            originalDp: product.dp,
+            cp: Math.round((product.cp || 0) * mult * 100) / 100,
+            dp: Math.round((product.dp || 0) * mult * 100) / 100,
+            campaignDiscount: campDisc,
+          }];
+        }
       }
-      // Apply campaign discount to cp/dp if applicable, preserving originals for display
-      const campDisc = getWalkinCampaignDiscount(product.name || product.description);
-      if (campDisc && campDisc.pct > 0) {
-        const mult = 1 - campDisc.pct / 100;
+      // Campaign toggle is OFF — add at full price regardless
+      // (If this was a campaign card, restore original prices)
+      if (product.isCampaignProduct) {
         return [...prev, {
           ...product,
           qty: 1,
-          originalCp: product.cp,
-          originalDp: product.dp,
-          cp: Math.round((product.cp || 0) * mult * 100) / 100,
-          dp: Math.round((product.dp || 0) * mult * 100) / 100,
-          campaignDiscount: campDisc,
+          cp: product.originalCp ?? product.cp,
+          dp: product.originalDp ?? product.dp,
+          campaignDiscount: null,
         }];
       }
       return [...prev, { ...product, qty: 1 }];
@@ -1808,9 +1823,9 @@ function WalkInSalesTab() {
     setNewName(''); setNewPhone(''); setReferralSearch(''); setReferralResults([]);
     setSelectedReferral(null); setNoReferral(false); setCart([]); setProductSearch('');
     setProductCategory('All');
-    setPaymentMethod('cash'); setError(''); setShowModal(true);
+    setPaymentMethod('cash'); setError(''); setIsCampaignSale(false); setShowModal(true);
   };
-  const closeModal = () => setShowModal(false);
+  const closeModal = () => { setIsCampaignSale(false); setShowModal(false); };
 
   const wiSetCustomerType = (type) => {
     setCustomerType(type);
@@ -1866,6 +1881,11 @@ function WalkInSalesTab() {
         checkupType: item.checkupType || null,
         cashbackPerUnit: !isMember && item.isCheckup ? (item.cashbackPerUnit || 0) : 0,
         consultantEarns: item.consultantEarns || null,
+        // Campaign sale tagging — only when toggle is ON and this item has a campaign discount
+        isCampaignSale: !!(isCampaignSale && item.campaignDiscount),
+        campaign_discount_pct: (isCampaignSale && item.campaignDiscount) ? item.campaignDiscount.pct : undefined,
+        campaign_id: (isCampaignSale && item.campaignDiscount) ? item.campaignDiscount.campaignId : undefined,
+        campaign_name: (isCampaignSale && item.campaignDiscount) ? item.campaignDiscount.campaignName : undefined,
       }));
 
       const saleData = {
@@ -2254,6 +2274,31 @@ function WalkInSalesTab() {
                         No referral — direct walk-in
                       </label>
                     </div>
+                  </div>
+                )}
+
+                {/* Campaign Sale Toggle */}
+                {campaigns.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: '0.62rem', fontWeight: 800, letterSpacing: '.12em', color: '#c41e3a', textTransform: 'uppercase', marginBottom: 8 }}>Campaign Sale</div>
+                    <label
+                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 13px', borderRadius: 12, border: isCampaignSale ? '2px solid #b45309' : '1.5px solid #e5e7eb', background: isCampaignSale ? '#fffbeb' : '#fafafa', cursor: 'pointer', userSelect: 'none', transition: 'all .15s' }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isCampaignSale}
+                        onChange={e => {
+                          setIsCampaignSale(e.target.checked);
+                          // Clear cart so prices are re-applied correctly
+                          setCart([]);
+                        }}
+                        style={{ width: 16, height: 16, accentColor: '#b45309', flexShrink: 0 }}
+                      />
+                      <div>
+                        <div style={{ fontSize: '0.82rem', fontWeight: 800, color: isCampaignSale ? '#92400e' : '#374151' }}>🎁 This is a Campaign Sale</div>
+                        <div style={{ fontSize: '0.68rem', color: isCampaignSale ? '#b45309' : '#94a3b8', marginTop: 2 }}>Campaign discounts will be applied &amp; reported</div>
+                      </div>
+                    </label>
                   </div>
                 )}
 
@@ -2713,6 +2758,7 @@ function PrescriptionsTab() {
   const [expandedPackages, setExpandedPackages] = useState({});
   const [dispenseCameraMode, setDispenseCameraMode] = useState(false);
   const [prescCampaigns, setPrescCampaigns] = useState([]); // active discount campaigns
+  const [rxIsCampaignSale, setRxIsCampaignSale] = useState(false); // Campaign Sale toggle in prescription dispense
 
   const CHECKUP_FEE_OPTIONS = {
     standard:        { label: 'Full Body Check Up',              fee: 200, cashback: 50, consultantEarns: 150 },
@@ -3032,10 +3078,13 @@ function PrescriptionsTab() {
       }
 
       // Build campaignDiscounts map for backend: { productName → { pct, campaignId, campaignName } }
+      // Only populated when the Campaign Sale toggle is ON — otherwise dispense is recorded as regular Rx.
       const campaignDiscounts = {};
-      for (const pi of selectedIndices) {
-        const item = pendingItems[pi];
-        if (item.campaignDiscount) campaignDiscounts[item.name] = item.campaignDiscount;
+      if (rxIsCampaignSale) {
+        for (const pi of selectedIndices) {
+          const item = pendingItems[pi];
+          if (item.campaignDiscount) campaignDiscounts[item.name] = item.campaignDiscount;
+        }
       }
 
       // Full dispense = every pending item was selected AND all selected quantities are at full prescribed qty
@@ -3951,7 +4000,7 @@ function PrescriptionsTab() {
 
       {dispensePreview && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(2px)' }}
-          onClick={() => !dispensing && setDispensePreview(null)}>
+          onClick={() => { if (!dispensing) { setDispensePreview(null); setRxIsCampaignSale(false); } }}>
           <div style={{ background: '#fff', borderRadius: 18, width: '95%', maxWidth: 620, maxHeight: '92vh', overflow: 'auto', boxShadow: '0 24px 80px rgba(0,0,0,0.35)' }}
             onClick={e => e.stopPropagation()}>
             <div style={{ padding: '22px 26px 18px', background: dpIsFullDispense ? 'linear-gradient(135deg,#166534,#16a34a)' : 'linear-gradient(135deg,#92400e,#d97706)', borderRadius: '18px 18px 0 0', color: '#fff' }}>
@@ -4199,6 +4248,19 @@ function PrescriptionsTab() {
                   </div>
                 </div>
               </div>
+
+              {prescCampaigns.length > 0 && (
+                <div style={{ padding: '10px 14px', background: rxIsCampaignSale ? '#fffbeb' : '#f8fafc', borderRadius: 10, border: rxIsCampaignSale ? '2px solid #b45309' : '1px solid #e2e8f0', marginBottom: 10 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', userSelect: 'none' }}>
+                    <input type="checkbox" checked={rxIsCampaignSale} onChange={e => setRxIsCampaignSale(e.target.checked)}
+                      style={{ width: 15, height: 15, accentColor: '#b45309', flexShrink: 0 }} />
+                    <div>
+                      <div style={{ fontSize: '0.82rem', fontWeight: 800, color: rxIsCampaignSale ? '#92400e' : '#374151' }}>🎁 This is a Campaign Sale</div>
+                      <div style={{ fontSize: '0.68rem', color: rxIsCampaignSale ? '#b45309' : '#94a3b8', marginTop: 1 }}>Campaign discounts will be applied to eligible medicines &amp; reported under Campaign Sales</div>
+                    </div>
+                  </label>
+                </div>
+              )}
 
               <div style={{ padding: '12px 14px', background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0', marginBottom: 10 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: rxDispensePayment === 'cash' ? 10 : 0 }}>
