@@ -64,7 +64,14 @@ export default async function handler(req, res) {
           SUM(ABS(bim.quantity))       AS total_qty,
           SUM(
             ABS(bim.quantity) *
-            CASE WHEN bim.type = 'campaign_free_item' THEN 0
+            -- dp_amount guard: bim.unit_price stores CP (not DP) for walk_in_non_member_sale
+            -- rows (both regular and campaign non-member). Never use it as a DP fallback for
+            -- those rows or the product-range report will show inflated DP figures. Mirror of
+            -- the same guard in daily-products.js.
+            CASE WHEN bim.type = 'campaign_free_item'      THEN 0
+                 WHEN bim.type = 'walk_in_non_member_sale'
+                   -- bim.unit_price is CP for all non-member rows; never use it as a DP fallback.
+                   THEN COALESCE(NULLIF(pp.dp, 0), 0)
                  ELSE COALESCE(NULLIF(pp.dp, 0), NULLIF(bim.unit_price, 0), 0)
             END
           )                            AS dp_amount
