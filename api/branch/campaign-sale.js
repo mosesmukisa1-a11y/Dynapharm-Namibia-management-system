@@ -522,6 +522,8 @@ export default async function handler(req, res) {
           campaign_type:  campaign.campaign_type,
           items:          itemsArray,
           unit_price:     paidUnitPrice,
+          base_price:     basePrice,
+          discount_pct:   discountPct,
           dp:             paidDp,
           cp:             paidCp,
           bv_per_unit:    isMember ? paidBv : 0,

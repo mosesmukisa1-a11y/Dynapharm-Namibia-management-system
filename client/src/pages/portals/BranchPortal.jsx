@@ -12124,24 +12124,43 @@ function printCampaignReceipt(receipt, branchDisplayName) {
 
   // Map campaign items to the format expected by generateReceiptHTML
   // Free items show as N$0 with 🎁 label appended to name — customer/dist/branch copies all see them
-  const mappedItems = rawItems.map(it => ({
-    product_name: it.is_free ? `${it.product_name} 🎁 (FREE)` : it.product_name,
-    name:         it.is_free ? `${it.product_name} 🎁 (FREE)` : it.product_name,
-    quantity:     it.quantity || 1,
-    qty:          it.quantity || 1,
-    // Customer copy uses cpPrice (or unit_price as fallback)
-    cpPrice:      it.is_free ? 0 : Number(it.cp || 0),
-    unit_price:   it.is_free ? 0 : Number(it.cp || it.unit_price || 0),
-    unitPrice:    it.is_free ? 0 : Number(it.cp || it.unit_price || 0),
-    // Distributor/Branch copies use dpPrice
-    dpPrice:      it.is_free ? 0 : Number(it.dp || 0),
-    // BV fields
-    bv:           it.is_free ? 0 : Number(it.bv || 0),
-    lineBV:       it.is_free ? 0 : Number(it.total_bv || 0),
-    // Line totals
-    line_total:   it.is_free ? 0 : Number(it.total_cp || it.total || 0),
-    lineTotal:    it.is_free ? 0 : Number(it.total_cp || it.total || 0),
-  }));
+  const discountPct = receipt.discount_pct || 0;
+  const mappedItems = rawItems.map(it => {
+    if (it.is_free) {
+      return {
+        product_name: `${it.product_name} 🎁 (FREE)`,
+        name:         `${it.product_name} 🎁 (FREE)`,
+        quantity: it.quantity || 1,
+        qty:      it.quantity || 1,
+        cpPrice: 0, unit_price: 0, unitPrice: 0, dpPrice: 0,
+        bv: 0, lineBV: 0, line_total: 0, lineTotal: 0,
+      };
+    }
+    // unit_price on the item is the actual charged (discounted) price — use it as the primary
+    const chargedPrice = Number(it.unit_price || 0);
+    const originalBase = isMember ? Number(it.dp || 0) : Number(it.cp || 0);
+    const hasDiscount  = discountPct > 0 && chargedPrice < originalBase;
+    const displayName  = hasDiscount
+      ? `${it.product_name} 🏷️ (-${discountPct}% OFF, was N$${originalBase.toFixed(2)})`
+      : it.product_name;
+    return {
+      product_name: displayName,
+      name:         displayName,
+      quantity:     it.quantity || 1,
+      qty:          it.quantity || 1,
+      // All receipt copies show the actual discounted price paid
+      cpPrice:    chargedPrice,
+      unit_price: chargedPrice,
+      unitPrice:  chargedPrice,
+      dpPrice:    isMember ? chargedPrice : Number(it.dp || 0),
+      // BV fields
+      bv:     Number(it.bv || 0),
+      lineBV: Number(it.total_bv || 0),
+      // Line totals — use it.total (discounted total), not it.total_cp (full CP total)
+      line_total: Number(it.total || 0),
+      lineTotal:  Number(it.total || 0),
+    };
+  });
 
   const campaignBanner = `<div style="background:#9b1c2e;color:#fff;text-align:center;padding:5px 10px;border-radius:6px;font-weight:700;font-size:11px;margin-bottom:6px;">🎁 Campaign: ${receipt.campaign_name || 'Campaign Sale'}</div>`;
 
@@ -12590,10 +12609,61 @@ function BranchCampaignsTab() {
             {alertMsg && <Alert type={alertMsg.type} className="mb-4" onClose={() => setAlertMsg(null)}>{alertMsg.msg}</Alert>}
 
             {lastReceipt && (
-              <div style={{ background: '#f0fdf4', border: '2px solid #86efac', borderRadius: 12, padding: 16, marginBottom: 16, textAlign: 'center' }}>
-                <div style={{ fontSize: 32 }}>✅</div>
-                <div style={{ fontWeight: 700, color: '#15803d', marginBottom: 6 }}>Sale Processed Successfully!</div>
-                <div style={{ fontSize: 12, color: '#64748b', marginBottom: 12 }}>Receipt #{lastReceipt.sale_number}</div>
+              <div style={{ background: '#f0fdf4', border: '2px solid #86efac', borderRadius: 12, padding: 16, marginBottom: 16 }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 32 }}>✅</div>
+                  <div style={{ fontWeight: 700, color: '#15803d', marginBottom: 4 }}>Sale Processed Successfully!</div>
+                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 10 }}>Receipt #{lastReceipt.sale_number} · 🎁 {lastReceipt.campaign_name}</div>
+                </div>
+                {/* Item pricing summary */}
+                {Array.isArray(lastReceipt.items) && lastReceipt.items.length > 0 && (() => {
+                  const rcptDiscount = Number(lastReceipt.discount_pct || 0);
+                  const rcptMember   = lastReceipt.customer_type === 'member';
+                  return (
+                    <div style={{ borderTop: '1px solid #bbf7d0', paddingTop: 10, marginBottom: 10 }}>
+                      {lastReceipt.items.map((it, idx) => {
+                        if (it.is_free) {
+                          return (
+                            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, padding: '4px 0' }}>
+                              <span style={{ color: '#374151' }}>{it.product_name} <span style={{ color: '#64748b' }}>× {it.quantity}</span></span>
+                              <span style={{ background: '#16a34a', color: '#fff', borderRadius: 4, padding: '1px 7px', fontSize: 10, fontWeight: 700 }}>🎁 FREE</span>
+                            </div>
+                          );
+                        }
+                        const chargedPrice  = Number(it.unit_price || 0);
+                        const originalPrice = rcptMember ? Number(it.dp || 0) : Number(it.cp || 0);
+                        const hasDiscount   = rcptDiscount > 0 && chargedPrice < originalPrice;
+                        return (
+                          <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, padding: '4px 0', gap: 8 }}>
+                            <div>
+                              <span style={{ fontWeight: 600, color: '#1e293b' }}>{it.product_name}</span>
+                              <span style={{ color: '#64748b' }}> × {it.quantity}</span>
+                              {hasDiscount && (
+                                <span style={{ background: '#dc2626', color: '#fff', borderRadius: 3, padding: '1px 5px', fontSize: 10, fontWeight: 700, marginLeft: 5 }}>
+                                  -{rcptDiscount}% OFF
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                              {hasDiscount && (
+                                <div style={{ textDecoration: 'line-through', color: '#94a3b8', fontSize: 10 }}>
+                                  N${originalPrice.toFixed(2)}/unit
+                                </div>
+                              )}
+                              <div style={{ fontWeight: 700, color: hasDiscount ? '#dc2626' : '#15803d', fontSize: 13 }}>
+                                N${chargedPrice.toFixed(2)}/unit
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <div style={{ borderTop: '1px solid #bbf7d0', marginTop: 6, paddingTop: 6, display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: 13 }}>
+                        <span style={{ color: '#374151' }}>Total Charged</span>
+                        <span style={{ color: '#15803d' }}>N${Number(lastReceipt.total || 0).toFixed(2)}</span>
+                      </div>
+                    </div>
+                  );
+                })()}
                 <div className="flex gap-2 justify-center">
                   <button type="button" onClick={() => printCampaignReceipt(lastReceipt, effectiveBranch)}
                     style={{ padding: '8px 20px', background: '#9b1c2e', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>
