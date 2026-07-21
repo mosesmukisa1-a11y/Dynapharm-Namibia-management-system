@@ -102,11 +102,14 @@ function SalesReviewTab() {
     const rows = products.map((p, i) => {
       const isFree   = p.sale_type === 'campaign_free';
       const isCamp   = p.sale_type === 'campaign_paid';
-      const rowBg    = isFree ? '#fffbeb' : isCamp ? '#fef9ec' : i % 2 === 0 ? '#fff' : '#fdf7f8';
+      const isRx     = p.sale_type === 'prescription';
+      const rowBg    = isFree ? '#fffbeb' : isCamp ? '#fef9ec' : isRx ? '#f0fdf4' : i % 2 === 0 ? '#fff' : '#fdf7f8';
       const badge    = isFree
         ? `<span style="background:#d97706;color:#fff;border-radius:3px;padding:1px 5px;font-size:8px;font-weight:700;margin-left:5px">FREE</span>`
         : isCamp
         ? `<span style="background:#b45309;color:#fff;border-radius:3px;padding:1px 5px;font-size:8px;font-weight:700;margin-left:5px">CAMPAIGN</span>`
+        : isRx
+        ? `<span style="background:#15803d;color:#fff;border-radius:3px;padding:1px 5px;font-size:8px;font-weight:700;margin-left:5px">Rx</span>`
         : '';
       const listDp   = Number(p.list_dp     || 0);
       const discPct  = Number(p.discount_pct || 0);
@@ -175,7 +178,30 @@ function SalesReviewTab() {
         </tr>
       </tfoot>
     </table>
-    <div style="font-size:9px;color:#94a3b8;text-align:center;margin-top:8px">DP = Distributor Price &nbsp;·&nbsp; BV = Business Volume &nbsp;·&nbsp; <span style="color:#d97706">Amber rows = Campaign FREE items (zero DP value)</span> &nbsp;·&nbsp; <span style="color:#dc2626">% Disc = campaign discount applied to Normal DP</span></div>
+    ${(totals.walkin_dp > 0 || totals.rx_dp > 0 || totals.campaign_dp > 0 || totals.refund_dp > 0) ? `
+    <table style="width:100%;border-collapse:collapse;margin-top:10px">
+      <thead>
+        <tr style="background:#1e293b;color:#fff">
+          <th style="padding:7px 10px;font-size:9px;text-align:left;font-weight:800" colspan="2">DP SALES BREAKDOWN</th>
+          <th style="padding:7px 10px;font-size:9px;text-align:right;background:#1d6fa4">Walk-in Sales</th>
+          <th style="padding:7px 10px;font-size:9px;text-align:right;background:#15803d">Prescription</th>
+          <th style="padding:7px 10px;font-size:9px;text-align:right;background:#b45309">Campaign</th>
+          <th style="padding:7px 10px;font-size:9px;text-align:right;background:#dc2626">Refunds</th>
+          <th style="padding:7px 10px;font-size:9px;text-align:right;background:#8b0000">Net Total DP</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="background:#f8fafc">
+          <td colspan="2" style="padding:8px 10px;font-size:9px;color:#64748b;font-style:italic">Matches the Sales Review tab totals for this date</td>
+          <td style="padding:8px 10px;font-size:10px;text-align:right;font-weight:700;color:#1d6fa4">${fmtC(totals.walkin_dp || 0)}</td>
+          <td style="padding:8px 10px;font-size:10px;text-align:right;font-weight:700;color:#15803d">${fmtC(totals.rx_dp || 0)}</td>
+          <td style="padding:8px 10px;font-size:10px;text-align:right;font-weight:700;color:#b45309">${fmtC(totals.campaign_dp || 0)}</td>
+          <td style="padding:8px 10px;font-size:10px;text-align:right;font-weight:700;color:#dc2626">${totals.refund_dp > 0 ? '− ' + fmtC(totals.refund_dp) : '—'}</td>
+          <td style="padding:8px 10px;font-size:10px;text-align:right;font-weight:900;color:#8b0000">${fmtC(totals.dp_amount)}</td>
+        </tr>
+      </tbody>
+    </table>` : ''}
+    <div style="font-size:9px;color:#94a3b8;text-align:center;margin-top:8px">DP = Distributor Price &nbsp;·&nbsp; BV = Business Volume &nbsp;·&nbsp; <span style="color:#d97706">Amber = Campaign FREE items</span> &nbsp;·&nbsp; <span style="color:#15803d">Green = Prescription</span> &nbsp;·&nbsp; <span style="color:#dc2626">% Disc = campaign discount on Normal DP</span></div>
     </body></html>`);
     win.document.close();
   };
@@ -382,7 +408,8 @@ function SalesReviewTab() {
                           {productData.products.map((p, i) => {
                             const isFree   = p.sale_type === 'campaign_free';
                             const isCamp   = p.sale_type === 'campaign_paid';
-                            const rowBg    = isFree ? '#fffbeb' : isCamp ? '#fef9ec' : i % 2 === 0 ? '#fff' : '#fdf7f8';
+                            const isRx     = p.sale_type === 'prescription';
+                            const rowBg    = isFree ? '#fffbeb' : isCamp ? '#fef9ec' : isRx ? '#f0fdf4' : i % 2 === 0 ? '#fff' : '#fdf7f8';
                             const listDp   = Number(p.list_dp     || 0);
                             const discPct  = Number(p.discount_pct || 0);
                             return (
@@ -392,15 +419,16 @@ function SalesReviewTab() {
                                   {p.product_name}
                                   {isFree && <span style={{ background: '#d97706', color: '#fff', borderRadius: 3, padding: '1px 5px', fontSize: '0.68rem', fontWeight: 800, marginLeft: 6 }}>FREE</span>}
                                   {isCamp && <span style={{ background: '#b45309', color: '#fff', borderRadius: 3, padding: '1px 5px', fontSize: '0.68rem', fontWeight: 800, marginLeft: 6 }}>CAMPAIGN</span>}
+                                  {isRx  && <span style={{ background: '#15803d', color: '#fff', borderRadius: 3, padding: '1px 5px', fontSize: '0.68rem', fontWeight: 800, marginLeft: 6 }}>Rx</span>}
                                 </td>
                                 <td style={{ ...tdR }}>{Number(p.total_qty).toLocaleString()}</td>
-                                <td style={{ ...tdR, color: isFree ? '#d97706' : '#7c3aed', fontWeight: 700 }}>
+                                <td style={{ ...tdR, color: isFree ? '#d97706' : isRx ? '#15803d' : '#7c3aed', fontWeight: 700 }}>
                                   {isFree ? <em style={{ fontStyle: 'normal', fontWeight: 700 }}>FREE</em> : fmtN(listDp)}
                                 </td>
                                 <td style={{ ...tdR, textAlign: 'center', fontWeight: 800, color: discPct > 0 ? '#dc2626' : '#94a3b8' }}>
                                   {discPct > 0 ? `${discPct % 1 === 0 ? discPct.toFixed(0) : discPct.toFixed(1)}%` : '—'}
                                 </td>
-                                <td style={{ ...tdR, color: isFree ? '#d97706' : '#166534', fontWeight: 700 }}>
+                                <td style={{ ...tdR, color: isFree ? '#d97706' : isRx ? '#15803d' : '#166534', fontWeight: 700 }}>
                                   {isFree ? <em style={{ fontStyle: 'normal', fontWeight: 700 }}>FREE</em> : fmtN(p.dp_amount)}
                                 </td>
                                 <td style={{ ...tdR, color: '#1d4ed8' }}>{fmtBV(p.bv_total)}</td>
@@ -429,6 +457,37 @@ function SalesReviewTab() {
                           )}
                         </tfoot>
                       </table>
+
+                      {/* DP Sales Breakdown — matches the Sales Review tab columns */}
+                      {(() => {
+                        const t = productData.totals || {};
+                        const hasBreakdown = (t.walkin_dp > 0 || t.rx_dp > 0 || t.campaign_dp > 0 || t.refund_dp > 0);
+                        if (!hasBreakdown) return null;
+                        const netTotal = (t.walkin_dp || 0) + (t.rx_dp || 0) + (t.campaign_dp || 0) - (t.refund_dp || 0);
+                        return (
+                          <div style={{ marginTop: 10, borderRadius: 8, border: '1.5px solid #e2e8f0', overflow: 'hidden' }}>
+                            <div style={{ background: '#1e293b', color: '#fff', padding: '7px 14px', fontSize: '0.78rem', fontWeight: 800, letterSpacing: '0.06em' }}>
+                              📊 DP SALES BREAKDOWN  <span style={{ fontWeight: 400, color: '#94a3b8', marginLeft: 8, fontSize: '0.72rem' }}>Aligns with Sales Review tab totals for this date</span>
+                            </div>
+                            <div style={{ display: 'flex', background: '#f8fafc' }}>
+                              {[
+                                { label: 'Walk-in Sales (DP)', value: t.walkin_dp || 0, color: '#1d6fa4', bg: '#eff6ff' },
+                                { label: 'Prescription (DP)', value: t.rx_dp || 0, color: '#15803d', bg: '#f0fdf4' },
+                                { label: 'Campaign Sales (DP)', value: t.campaign_dp || 0, color: '#b45309', bg: '#fef9ec' },
+                                { label: 'Refund Deductions', value: -(t.refund_dp || 0), color: '#dc2626', bg: '#fff1f2' },
+                                { label: 'Net Total DP', value: netTotal, color: '#7c3aed', bg: '#faf5ff', bold: true },
+                              ].map(({ label, value, color, bg, bold }) => (
+                                <div key={label} style={{ flex: 1, textAlign: 'center', padding: '10px 8px', background: bg, borderRight: '1px solid #e2e8f0' }}>
+                                  <div style={{ fontSize: '0.68rem', color: '#64748b', marginBottom: 3, fontWeight: 600 }}>{label}</div>
+                                  <div style={{ fontSize: '0.92rem', color, fontWeight: bold ? 900 : 700 }}>
+                                    {value < 0 ? `− N$ ${Math.abs(value).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `N$ ${value.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
                 </>

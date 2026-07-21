@@ -161,21 +161,27 @@ export default async function handler(req, res) {
          -- Count distinct paid references only (free items share the same reference)
          COUNT(DISTINCT CASE WHEN bim.type != 'campaign_free_item' THEN bim.reference END)::int
                                                                          AS campaign_transactions,
-         -- Sum DP value using same CASE logic as daily.js:
+         -- Sum DP value — mirrors daily-products.js logic exactly:
          --   campaign_free_item → 0 (free, no revenue)
-         --   campaign_sale (member paid) → unit_price (actual sold/discounted DP) else pp.dp
-         --   non-member walk_in rows inside a campaign → pp.dp (cost basis; unit_price = CP)
+         --   campaign_sale (member paid) → bim.unit_price (actual discounted DP) else pp.dp
+         --   non-member walk_in discount campaign → pp.dp × (1 - discount_pct/100)
+         --   non-member walk_in bxgy (no discount) → pp.dp
          COALESCE(SUM(
            ABS(bim.quantity) *
            CASE WHEN bim.type = 'campaign_free_item' THEN 0
                 WHEN bim.type = 'campaign_sale'
                   THEN COALESCE(NULLIF(bim.unit_price, 0), NULLIF(pp.dp, 0), 0)
+                WHEN COALESCE(NULLIF((bws.data->>'discount_pct')::numeric, 0), 0) > 0
+                  THEN COALESCE(
+                    NULLIF(ROUND(pp.dp * (1 - (bws.data->>'discount_pct')::numeric / 100), 2), 0),
+                    NULLIF(pp.dp, 0), 0)
                 ELSE COALESCE(NULLIF(pp.dp, 0), NULLIF(bim.unit_price, 0), 0)
            END
          ), 0)::numeric                                                  AS campaign_total
        FROM branch_inventory_movements bim
        LEFT JOIN product_prices pp
               ON LOWER(TRIM(pp.description)) = LOWER(TRIM(bim.product_name))
+       LEFT JOIN branch_walkin_sales bws ON bws.id = bim.reference
        WHERE (
            bim.type IN ('campaign_sale', 'campaign_free_item')
            OR (

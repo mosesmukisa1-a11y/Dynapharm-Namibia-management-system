@@ -122,10 +122,11 @@ export default async function handler(req, res) {
         GROUP BY
           LOWER(TRIM(bim.product_name)),
           CASE
-            WHEN bim.type = 'campaign_free_item' THEN 'campaign_free'
-            WHEN bim.type = 'campaign_sale'      THEN 'campaign_paid'
-            WHEN cr.id   IS NOT NULL             THEN 'campaign_paid'
-            ELSE                                      'regular'
+            WHEN bim.type = 'campaign_free_item'                        THEN 'campaign_free'
+            WHEN bim.type = 'campaign_sale'                             THEN 'campaign_paid'
+            WHEN cr.id   IS NOT NULL                                    THEN 'campaign_paid'
+            WHEN bim.type IN ('prescription_dispense', 'dispense')      THEN 'prescription'
+            ELSE                                                              'regular'
           END
       ),
       -- Approved refunds on this date (recognised on approval date)
@@ -147,7 +148,12 @@ export default async function handler(req, res) {
       FROM agg a
       LEFT JOIN refund_agg r ON r.pkey = LOWER(TRIM(a.product_name))
       ORDER BY
-        CASE a.sale_type WHEN 'regular' THEN 0 WHEN 'campaign_paid' THEN 1 ELSE 2 END,
+        CASE a.sale_type
+          WHEN 'regular'      THEN 0
+          WHEN 'prescription' THEN 1
+          WHEN 'campaign_paid' THEN 2
+          ELSE 3
+        END,
         a.dp_amount DESC
     `, params);
 
@@ -177,9 +183,9 @@ export default async function handler(req, res) {
     let totalRefundDp  = 0;
     const seenRefundKeys = new Set();
 
-    // Sort so 'regular' rows come before campaign rows per product (refund applied to regular first).
+    // Sort so 'regular' rows come before prescription, then campaign rows per product.
     const sortedRows = [...rows].sort((a, b) => {
-      const order = { regular: 0, campaign_paid: 1, campaign_free: 2 };
+      const order = { regular: 0, prescription: 1, campaign_paid: 2, campaign_free: 3 };
       return (order[a.sale_type] ?? 9) - (order[b.sale_type] ?? 9);
     });
 
@@ -238,6 +244,13 @@ export default async function handler(req, res) {
                              .reduce((s, r) => s + r.total_qty, 0),
       dp_amount:  parseFloat(netProducts.reduce((s, r) => s + r.dp_amount,  0).toFixed(2)),
       bv_total:   parseFloat(netProducts.reduce((s, r) => s + r.bv_total,   0).toFixed(2)),
+      // Breakdown totals — mirror the Sales Review columns
+      walkin_dp:  parseFloat(netProducts.filter(r => r.sale_type === 'regular')
+                                        .reduce((s, r) => s + r.dp_amount, 0).toFixed(2)),
+      rx_dp:      parseFloat(netProducts.filter(r => r.sale_type === 'prescription')
+                                        .reduce((s, r) => s + r.dp_amount, 0).toFixed(2)),
+      campaign_dp:parseFloat(netProducts.filter(r => r.sale_type === 'campaign_paid')
+                                        .reduce((s, r) => s + r.dp_amount, 0).toFixed(2)),
       campaign_free_qty: netProducts.filter(r => r.sale_type === 'campaign_free')
                                     .reduce((s, r) => s + r.total_qty, 0),
       refund_qty: totalRefundQty,
