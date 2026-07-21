@@ -370,19 +370,18 @@ export default async function handler(req, res) {
 
       await withTransaction(async (client) => {
         // Deduct paid stock.
-        // unit_price in BIM:
-        //   Member campaign_sale   → paidUnitPrice (actual discounted DP the member paid).
-        //     For bxgy campaigns discountMult=1, so paidUnitPrice = paidDp (no change).
-        //     For discount campaigns paidUnitPrice = paidDp × (1-disc%), reflecting the
-        //     actual DP revenue received (used by daily-products report dp_amount column).
-        //   Non-member walk_in_non_member_sale → paidDp (full DP, the company's cost basis).
-        //     The excess (CP–DP) goes to branch_distributor_profit and must NOT inflate
-        //     the inventory DP figure. CP is captured in branch_walkin_sales and BAT.
+        // unit_price in BIM = paidUnitPrice for both member and non-member:
+        //   Member campaign_sale   → paidUnitPrice = paidDp × discountMult
+        //     (actual discounted DP the member paid; for bxgy discountMult=1 so equals paidDp).
+        //   Non-member walk_in_non_member_sale → paidUnitPrice = paidCp × discountMult
+        //     (discounted CP selling price; reflects actual cash received from the customer).
+        //     The gross CP (pre-discount) is stored in branch_walkin_sales and BAT.
+        //     BAT product_total_dp = paidDp × qty (full DP cost basis for GM/MIS reports).
         const paidResult = await deductStock(
           client, branch, paid_product, paid_qty,
           isMember ? 'campaign_sale' : 'walk_in_non_member_sale',
           `Campaign: ${campaign.name} — paid item`,
-          saleId, isMember ? (paidUnitPrice || null) : (paidDp || null), processed_by
+          saleId, paidUnitPrice || null, processed_by
         );
         allDeductions.push(...paidResult.deductions);
         if (paidResult.short > 0) insufficientItems.push({ product_name: paid_product, short: paidResult.short });
@@ -474,8 +473,8 @@ export default async function handler(req, res) {
         activity_type:      actType,
         workflow_source:    'branch_portal',
         form_reference_id:  saleId,
-        product_total_dp:   Math.round(paidUnitPrice * paid_qty * 100) / 100,
-        product_total_cp:   paidTotal,
+        product_total_dp:   Math.round(paidDp * paid_qty * 100) / 100,
+        product_total_cp:   Math.round(paidCp * paid_qty * 100) / 100,
         total_qty:          paid_qty,
         grand_total:        paidTotal,
         payment_status:     'paid',

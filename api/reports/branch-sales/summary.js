@@ -149,7 +149,7 @@ export default async function handler(req, res) {
     // References for non-member paid items are identified via branch_walkin_sales.data->>'sale_type'.
     const campParams = [from, to];
     const campBranchClause = branch
-      ? `AND LOWER(REPLACE(branch_id, ' ', '_')) = LOWER(REPLACE($${campParams.push(branch)}, ' ', '_'))`
+      ? `AND LOWER(REPLACE(bim.branch_id, ' ', '_')) = LOWER(REPLACE($${campParams.push(branch)}, ' ', '_'))`
       : '';
     // Reuse the same branch param ($3 if set) inside the sub-select
     const campSubBranchClause = branch
@@ -157,22 +157,30 @@ export default async function handler(req, res) {
       : '';
     const campaignRows = await getMany(
       `SELECT
-         branch_id,
+         bim.branch_id,
          -- Count distinct paid references only (free items share the same reference)
-         COUNT(DISTINCT CASE WHEN type != 'campaign_free_item' THEN reference END)::int
+         COUNT(DISTINCT CASE WHEN bim.type != 'campaign_free_item' THEN bim.reference END)::int
                                                                          AS campaign_transactions,
-         -- Sum DP value; free items have unit_price = NULL so COALESCE gives 0 (excluded)
+         -- Sum DP value using same CASE logic as daily.js:
+         --   campaign_free_item → 0 (free, no revenue)
+         --   campaign_sale (member paid) → unit_price (actual sold/discounted DP) else pp.dp
+         --   non-member walk_in rows inside a campaign → pp.dp (cost basis; unit_price = CP)
          COALESCE(SUM(
-           CASE WHEN type = 'campaign_free_item' THEN 0
-                ELSE ABS(quantity) * COALESCE(unit_price, 0)
+           ABS(bim.quantity) *
+           CASE WHEN bim.type = 'campaign_free_item' THEN 0
+                WHEN bim.type = 'campaign_sale'
+                  THEN COALESCE(NULLIF(bim.unit_price, 0), NULLIF(pp.dp, 0), 0)
+                ELSE COALESCE(NULLIF(pp.dp, 0), NULLIF(bim.unit_price, 0), 0)
            END
          ), 0)::numeric                                                  AS campaign_total
-       FROM branch_inventory_movements
+       FROM branch_inventory_movements bim
+       LEFT JOIN product_prices pp
+              ON LOWER(TRIM(pp.description)) = LOWER(TRIM(bim.product_name))
        WHERE (
-           type IN ('campaign_sale', 'campaign_free_item')
+           bim.type IN ('campaign_sale', 'campaign_free_item')
            OR (
-             type = 'walk_in_non_member_sale'
-             AND reference IN (
+             bim.type = 'walk_in_non_member_sale'
+             AND bim.reference IN (
                SELECT id FROM branch_walkin_sales
                WHERE sale_date::date >= $1 AND sale_date::date <= $2
                  ${campSubBranchClause}
@@ -180,9 +188,9 @@ export default async function handler(req, res) {
              )
            )
          )
-         AND DATE(created_at) >= $1 AND DATE(created_at) <= $2
+         AND DATE(bim.created_at) >= $1 AND DATE(bim.created_at) <= $2
          ${campBranchClause}
-       GROUP BY branch_id`,
+       GROUP BY bim.branch_id`,
       campParams
     );
     const campaignMap = {};
