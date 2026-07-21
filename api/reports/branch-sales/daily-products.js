@@ -69,6 +69,22 @@ export default async function handler(req, res) {
                  ELSE COALESCE(NULLIF(pp.dp, 0), NULLIF(bim.unit_price, 0), 0)
             END
           )                                                                 AS dp_amount,
+          -- unit_dp: per-unit DP price for display in the price column.
+          --   campaign_sale: bim.unit_price (actual discounted/charged price).
+          --   campaign_free_item: 0 (free, no charge).
+          --   walk_in_non_member_sale: pp.dp only (bim.unit_price is CP, not DP).
+          --   All others: pp.dp authoritative; bim.unit_price as fallback.
+          MIN(
+            CASE WHEN bim.type = 'campaign_free_item'      THEN 0
+                 WHEN bim.type = 'campaign_sale'
+                   THEN COALESCE(NULLIF(bim.unit_price, 0), NULLIF(pp.dp, 0), 0)
+                 WHEN bim.type = 'walk_in_non_member_sale'
+                   THEN COALESCE(NULLIF(pp.dp, 0), 0)
+                 ELSE COALESCE(NULLIF(pp.dp, 0), NULLIF(bim.unit_price, 0), 0)
+            END
+          )                                                                 AS unit_dp,
+          -- list_dp: product price list DP (shown as "before" price when discounted).
+          COALESCE(MAX(pp.dp), 0)                                           AS list_dp,
           -- bv_total: only member-type movements earn BV.
           --   walk_in_non_member_sale (regular & campaign non-member) → 0 BV.
           --   campaign_free_item → 0 BV (free items never earn BV).
@@ -110,7 +126,7 @@ export default async function handler(req, res) {
           ${branchClause}
         GROUP BY LOWER(TRIM(bim.product_name))
       )
-      SELECT a.product_name, a.sale_type, a.total_qty, a.dp_amount, a.bv_total,
+      SELECT a.product_name, a.sale_type, a.total_qty, a.dp_amount, a.unit_dp, a.list_dp, a.bv_total,
              COALESCE(r.refund_qty, 0) AS refund_qty,
              COALESCE(r.refund_dp,  0) AS refund_dp
       FROM agg a
@@ -191,6 +207,8 @@ export default async function handler(req, res) {
           sale_type:    r.sale_type,
           total_qty:    parseFloat(netQty.toFixed(4)),
           dp_amount:    parseFloat(netDp.toFixed(2)),
+          unit_dp:      parseFloat(Number(r.unit_dp  || 0).toFixed(2)),
+          list_dp:      parseFloat(Number(r.list_dp  || 0).toFixed(2)),
           bv_total:     parseFloat(netBv.toFixed(2)),
           refund_qty:   Number(r.refund_qty || 0),
           refund_dp:    parseFloat(Number(r.refund_dp  || 0).toFixed(2)),
