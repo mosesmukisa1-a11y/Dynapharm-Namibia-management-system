@@ -108,23 +108,26 @@ function SalesReviewTab() {
         : isCamp
         ? `<span style="background:#b45309;color:#fff;border-radius:3px;padding:1px 5px;font-size:8px;font-weight:700;margin-left:5px">CAMPAIGN</span>`
         : '';
-      const unitDp  = Number(p.unit_dp  || 0);
-      const listDp  = Number(p.list_dp  || 0);
-      const hasDisc = isCamp && unitDp > 0 && listDp > 0 && unitDp < listDp - 0.005;
-      const priceCell = isFree
+      const listDp   = Number(p.list_dp     || 0);
+      const discPct  = Number(p.discount_pct || 0);
+      const normalDpCell  = isFree
         ? `<em style="color:#d97706;font-style:normal;font-weight:700">FREE</em>`
-        : hasDisc
-          ? `<span style="text-decoration:line-through;color:#94a3b8;font-size:8px">${fmtC(listDp)}</span> <span style="color:#dc2626;font-weight:700">${fmtC(unitDp)}</span>`
-          : `<span style="color:#7c3aed;font-weight:700">${fmtC(unitDp || listDp)}</span>`;
-      const dpCell   = isFree
+        : `<span style="color:#7c3aed;font-weight:700">${fmtC(listDp)}</span>`;
+      const discCell = isFree
+        ? `<span style="color:#d97706">—</span>`
+        : discPct > 0
+          ? `<span style="color:#dc2626;font-weight:800">${discPct % 1 === 0 ? discPct.toFixed(0) : discPct.toFixed(1)}%</span>`
+          : `<span style="color:#94a3b8">—</span>`;
+      const actualCell = isFree
         ? `<em style="color:#d97706;font-style:normal;font-weight:700">FREE (N$ 0.00)</em>`
-        : fmtC(p.dp_amount);
+        : `<span style="color:#166534;font-weight:700">${fmtC(p.dp_amount)}</span>`;
       return `<tr style="background:${rowBg}">
         <td style="padding:7px 10px;border-bottom:1px solid #f0e8ea;font-size:10px">${i + 1}</td>
         <td style="padding:7px 10px;border-bottom:1px solid #f0e8ea;font-size:10px;font-weight:600">${p.product_name || '—'}${badge}</td>
         <td style="padding:7px 10px;border-bottom:1px solid #f0e8ea;font-size:10px;text-align:right;font-weight:700">${Number(p.total_qty).toLocaleString()}</td>
-        <td style="padding:7px 10px;border-bottom:1px solid #f0e8ea;font-size:10px;text-align:right">${priceCell}</td>
-        <td style="padding:7px 10px;border-bottom:1px solid #f0e8ea;font-size:10px;text-align:right;font-weight:700;color:${isFree ? '#d97706' : '#166534'}">${dpCell}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid #f0e8ea;font-size:10px;text-align:right">${normalDpCell}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid #f0e8ea;font-size:10px;text-align:center">${discCell}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid #f0e8ea;font-size:10px;text-align:right;font-weight:700;color:${isFree ? '#d97706' : '#166534'}">${actualCell}</td>
         <td style="padding:7px 10px;border-bottom:1px solid #f0e8ea;font-size:10px;text-align:right;font-weight:700;color:#1d4ed8">${Number(p.bv_total).toFixed(1)}</td>
       </tr>`;
     }).join('');
@@ -152,25 +155,27 @@ function SalesReviewTab() {
       <thead>
         <tr style="background:#c41e3a;color:#fff">
           <th style="padding:8px 10px;font-size:10px;text-align:left">#</th>
-          <th style="padding:8px 10px;font-size:10px;text-align:left">Product Name</th>
-          <th style="padding:8px 10px;font-size:10px;text-align:right">Qty Moved</th>
-          <th style="padding:8px 10px;font-size:10px;text-align:right;background:#7c3aed">Unit Price</th>
-          <th style="padding:8px 10px;font-size:10px;text-align:right">DP Amount</th>
-          <th style="padding:8px 10px;font-size:10px;text-align:right">BV Total</th>
+          <th style="padding:8px 10px;font-size:10px;text-align:left">Product</th>
+          <th style="padding:8px 10px;font-size:10px;text-align:right">Qty</th>
+          <th style="padding:8px 10px;font-size:10px;text-align:right;background:#7c3aed">Normal DP</th>
+          <th style="padding:8px 10px;font-size:10px;text-align:center;background:#dc2626">% Disc</th>
+          <th style="padding:8px 10px;font-size:10px;text-align:right;background:#166534">Actual Figure</th>
+          <th style="padding:8px 10px;font-size:10px;text-align:right;background:#1d4ed8">BVs</th>
         </tr>
       </thead>
-      <tbody>${rows || '<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:20px">No products sold</td></tr>'}</tbody>
+      <tbody>${rows || '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:20px">No products sold</td></tr>'}</tbody>
       <tfoot>
         <tr style="background:#1e293b;color:#fff">
           <td colspan="2" style="padding:10px;font-size:11px;font-weight:800">TOTAL (paid sales)</td>
           <td style="padding:10px;text-align:right;font-size:11px;font-weight:800">${Number(totals.paid_qty || totals.total_qty || 0).toLocaleString()}</td>
           <td style="padding:10px;text-align:right;font-size:11px;color:#94a3b8">—</td>
+          <td style="padding:10px;text-align:center;font-size:11px;color:#94a3b8">—</td>
           <td style="padding:10px;text-align:right;font-size:11px;font-weight:900;color:#fbbf24">${fmtC(totals.dp_amount)}</td>
           <td style="padding:10px;text-align:right;font-size:11px;font-weight:900;color:#93c5fd">${Number(totals.bv_total || 0).toFixed(1)}</td>
         </tr>
       </tfoot>
     </table>
-    <div style="font-size:9px;color:#94a3b8;text-align:center;margin-top:8px">DP = Distributor Price &nbsp;·&nbsp; BV = Business Volume &nbsp;·&nbsp; <span style="color:#d97706">Amber rows = Campaign items (FREE = zero DP value)</span></div>
+    <div style="font-size:9px;color:#94a3b8;text-align:center;margin-top:8px">DP = Distributor Price &nbsp;·&nbsp; BV = Business Volume &nbsp;·&nbsp; <span style="color:#d97706">Amber rows = Campaign FREE items (zero DP value)</span> &nbsp;·&nbsp; <span style="color:#dc2626">% Disc = campaign discount applied to Normal DP</span></div>
     </body></html>`);
     win.document.close();
   };
@@ -365,26 +370,21 @@ function SalesReviewTab() {
                         <thead>
                           <tr>
                             <th style={{ ...thS, width: 32 }}>#</th>
-                            <th style={thS}>Product Name</th>
-                            <th style={thR}>Qty Sold</th>
-                            <th style={{ ...thR, background: '#7c3aed' }}>Unit Price</th>
-                            <th style={{ ...thR, background: '#166534' }}>DP Amount</th>
-                            <th style={{ ...thR, background: '#1d4ed8' }}>BV Total</th>
+                            <th style={thS}>Product</th>
+                            <th style={thR}>Qty</th>
+                            <th style={{ ...thR, background: '#7c3aed' }}>Normal DP</th>
+                            <th style={{ ...thR, background: '#dc2626' }}>% Disc</th>
+                            <th style={{ ...thR, background: '#166534' }}>Actual Figure</th>
+                            <th style={{ ...thR, background: '#1d4ed8' }}>BVs</th>
                           </tr>
                         </thead>
                         <tbody>
                           {productData.products.map((p, i) => {
-                            const isFree = p.sale_type === 'campaign_free';
-                            const isCamp = p.sale_type === 'campaign_paid';
-                            const rowBg  = isFree ? '#fffbeb' : isCamp ? '#fef9ec' : i % 2 === 0 ? '#fff' : '#fdf7f8';
-                            const unitDp   = Number(p.unit_dp  || 0);
-                            const listDp   = Number(p.list_dp  || 0);
-                            const hasDiscount = isCamp && unitDp > 0 && listDp > 0 && unitDp < listDp - 0.005;
-                            const unitPriceCell = isFree
-                              ? <em style={{ fontStyle: 'normal', fontWeight: 700, color: '#d97706' }}>FREE</em>
-                              : hasDiscount
-                                ? <><s style={{ color: '#94a3b8', fontSize: '0.75rem', marginRight: 4 }}>{fmtN(listDp)}</s><span style={{ color: '#dc2626', fontWeight: 800 }}>{fmtN(unitDp)}</span></>
-                                : <span style={{ color: '#7c3aed' }}>{fmtN(unitDp || listDp)}</span>;
+                            const isFree   = p.sale_type === 'campaign_free';
+                            const isCamp   = p.sale_type === 'campaign_paid';
+                            const rowBg    = isFree ? '#fffbeb' : isCamp ? '#fef9ec' : i % 2 === 0 ? '#fff' : '#fdf7f8';
+                            const listDp   = Number(p.list_dp     || 0);
+                            const discPct  = Number(p.discount_pct || 0);
                             return (
                               <tr key={i} style={{ background: rowBg }}>
                                 <td style={{ ...tdS, color: '#94a3b8', fontSize: '0.78rem' }}>{i + 1}</td>
@@ -394,8 +394,13 @@ function SalesReviewTab() {
                                   {isCamp && <span style={{ background: '#b45309', color: '#fff', borderRadius: 3, padding: '1px 5px', fontSize: '0.68rem', fontWeight: 800, marginLeft: 6 }}>CAMPAIGN</span>}
                                 </td>
                                 <td style={{ ...tdR }}>{Number(p.total_qty).toLocaleString()}</td>
-                                <td style={{ ...tdR }}>{unitPriceCell}</td>
-                                <td style={{ ...tdR, color: isFree ? '#d97706' : '#166534' }}>
+                                <td style={{ ...tdR, color: isFree ? '#d97706' : '#7c3aed', fontWeight: 700 }}>
+                                  {isFree ? <em style={{ fontStyle: 'normal', fontWeight: 700 }}>FREE</em> : fmtN(listDp)}
+                                </td>
+                                <td style={{ ...tdR, textAlign: 'center', fontWeight: 800, color: discPct > 0 ? '#dc2626' : '#94a3b8' }}>
+                                  {discPct > 0 ? `${discPct % 1 === 0 ? discPct.toFixed(0) : discPct.toFixed(1)}%` : '—'}
+                                </td>
+                                <td style={{ ...tdR, color: isFree ? '#d97706' : '#166534', fontWeight: 700 }}>
                                   {isFree ? <em style={{ fontStyle: 'normal', fontWeight: 700 }}>FREE</em> : fmtN(p.dp_amount)}
                                 </td>
                                 <td style={{ ...tdR, color: '#1d4ed8' }}>{fmtBV(p.bv_total)}</td>
@@ -408,6 +413,7 @@ function SalesReviewTab() {
                             <td colSpan={2} style={{ ...tdS, color: '#fff', fontWeight: 800, background: 'transparent' }}>TOTAL (paid sales)</td>
                             <td style={{ ...tdR, color: '#fff', fontWeight: 900, background: 'transparent' }}>{Number(productData.totals?.paid_qty || productData.totals?.total_qty || 0).toLocaleString()}</td>
                             <td style={{ ...tdR, color: '#94a3b8', background: 'transparent' }}>—</td>
+                            <td style={{ ...tdR, color: '#94a3b8', background: 'transparent' }}>—</td>
                             <td style={{ ...tdR, color: '#fbbf24', fontWeight: 900, fontSize: '0.95rem', background: 'transparent' }}>{fmtN(productData.totals?.dp_amount)}</td>
                             <td style={{ ...tdR, color: '#93c5fd', fontWeight: 900, background: 'transparent' }}>{fmtBV(productData.totals?.bv_total)}</td>
                           </tr>
@@ -416,6 +422,7 @@ function SalesReviewTab() {
                               <td colSpan={2} style={{ ...tdS, color: '#d97706', fontWeight: 700, background: 'transparent', fontSize: '0.78rem' }}>🎁 Campaign free items (stock deducted, not counted in sales)</td>
                               <td style={{ ...tdR, color: '#d97706', fontWeight: 800, background: 'transparent' }}>{Number(productData.totals.campaign_free_qty).toLocaleString()}</td>
                               <td style={{ ...tdR, color: '#d97706', background: 'transparent' }}>FREE</td>
+                              <td style={{ ...tdR, color: '#d97706', background: 'transparent' }}>—</td>
                               <td style={{ ...tdR, color: '#d97706', background: 'transparent' }}>N$ 0.00</td>
                               <td style={{ ...tdR, color: '#d97706', background: 'transparent' }}>—</td>
                             </tr>

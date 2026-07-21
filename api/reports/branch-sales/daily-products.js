@@ -58,15 +58,18 @@ export default async function handler(req, res) {
           --     regular rows (where it was always CP) and campaign rows (where it is the
           --     discounted CP after the non-member BIM unit_price fix).
           --   campaign_free_item: always 0 (free, no revenue).
+          --   walk_in_non_member_sale (discount campaign): pp.dp × (1-discount_pct/100)
+          --     so "Actual Figure" reflects the real discounted DP charged.
+          --   walk_in_non_member_sale (regular/bxgy): pp.dp only.
           --   All other types: pp.dp is authoritative; bim.unit_price as last resort fallback.
           SUM(
             ABS(bim.quantity) *
             CASE WHEN bim.type = 'campaign_free_item'      THEN 0
                  WHEN bim.type = 'campaign_sale'
                    THEN COALESCE(NULLIF(bim.unit_price, 0), NULLIF(pp.dp, 0), 0)
+                 WHEN bim.type = 'walk_in_non_member_sale' AND cr.id IS NOT NULL AND COALESCE(cr.discount_pct, 0) > 0
+                   THEN COALESCE(NULLIF(ROUND(pp.dp * (1 - cr.discount_pct / 100), 2), 0), NULLIF(pp.dp, 0), 0)
                  WHEN bim.type = 'walk_in_non_member_sale'
-                   -- bim.unit_price is CP (not DP) for all non-member rows; never use it
-                   -- as a DP fallback regardless of whether the row is campaign or regular.
                    THEN COALESCE(NULLIF(pp.dp, 0), 0)
                  ELSE COALESCE(NULLIF(pp.dp, 0), NULLIF(bim.unit_price, 0), 0)
             END
@@ -93,8 +96,10 @@ export default async function handler(req, res) {
                  ELSE COALESCE(NULLIF(pp.dp, 0), NULLIF(bim.unit_price, 0), 0)
             END
           )                                                                 AS unit_dp,
-          -- list_dp: product price list DP (shown as "before" price when discounted).
+          -- list_dp: product price list DP (the "Normal DP" / full list price).
           COALESCE(MAX(pp.dp), 0)                                           AS list_dp,
+          -- discount_pct: campaign discount percentage (0 for regular / bxgy sales).
+          MAX(COALESCE(cr.discount_pct, 0))                                 AS discount_pct,
           -- bv_total: only member-type movements earn BV.
           --   walk_in_non_member_sale (regular & campaign non-member) → 0 BV.
           --   campaign_free_item → 0 BV (free items never earn BV).
@@ -136,7 +141,7 @@ export default async function handler(req, res) {
           ${branchClause}
         GROUP BY LOWER(TRIM(bim.product_name))
       )
-      SELECT a.product_name, a.sale_type, a.total_qty, a.dp_amount, a.unit_dp, a.list_dp, a.bv_total,
+      SELECT a.product_name, a.sale_type, a.total_qty, a.dp_amount, a.unit_dp, a.list_dp, a.discount_pct, a.bv_total,
              COALESCE(r.refund_qty, 0) AS refund_qty,
              COALESCE(r.refund_dp,  0) AS refund_dp
       FROM agg a
@@ -213,15 +218,16 @@ export default async function handler(req, res) {
       // Only include rows where net qty is positive after refund netting.
       if (netQty > 0) {
         netProducts.push({
-          product_name: r.product_name,
-          sale_type:    r.sale_type,
-          total_qty:    parseFloat(netQty.toFixed(4)),
-          dp_amount:    parseFloat(netDp.toFixed(2)),
-          unit_dp:      parseFloat(Number(r.unit_dp  || 0).toFixed(2)),
-          list_dp:      parseFloat(Number(r.list_dp  || 0).toFixed(2)),
-          bv_total:     parseFloat(netBv.toFixed(2)),
-          refund_qty:   Number(r.refund_qty || 0),
-          refund_dp:    parseFloat(Number(r.refund_dp  || 0).toFixed(2)),
+          product_name:  r.product_name,
+          sale_type:     r.sale_type,
+          total_qty:     parseFloat(netQty.toFixed(4)),
+          dp_amount:     parseFloat(netDp.toFixed(2)),
+          unit_dp:       parseFloat(Number(r.unit_dp      || 0).toFixed(2)),
+          list_dp:       parseFloat(Number(r.list_dp      || 0).toFixed(2)),
+          discount_pct:  parseFloat(Number(r.discount_pct || 0).toFixed(2)),
+          bv_total:      parseFloat(netBv.toFixed(2)),
+          refund_qty:    Number(r.refund_qty || 0),
+          refund_dp:     parseFloat(Number(r.refund_dp    || 0).toFixed(2)),
         });
       }
     }
