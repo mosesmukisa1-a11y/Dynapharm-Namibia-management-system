@@ -30,7 +30,9 @@ export default async function handler(req, res) {
     // The outer SELECT can then ORDER BY sale_type as a plain column.
     const rows = await getMany(`
       WITH campaign_refs AS (
-        SELECT id FROM branch_walkin_sales
+        SELECT id,
+               COALESCE(NULLIF((data->>'discount_pct')::numeric, 0), 0) AS discount_pct
+        FROM branch_walkin_sales
         WHERE DATE(sale_date) = $1::date
           ${campSubBranchClause}
           AND data->>'sale_type' = 'campaign_sale'
@@ -72,12 +74,20 @@ export default async function handler(req, res) {
           -- unit_dp: per-unit DP price for display in the price column.
           --   campaign_sale: bim.unit_price (actual discounted/charged price).
           --   campaign_free_item: 0 (free, no charge).
-          --   walk_in_non_member_sale: pp.dp only (bim.unit_price is CP, not DP).
+          --   walk_in_non_member_sale (campaign, discounted): pp.dp × (1-discount_pct/100)
+          --     so the report shows the discounted DP equivalent (for strikethrough display).
+          --   walk_in_non_member_sale (regular/bxgy no discount): pp.dp only.
           --   All others: pp.dp authoritative; bim.unit_price as fallback.
           MIN(
             CASE WHEN bim.type = 'campaign_free_item'      THEN 0
                  WHEN bim.type = 'campaign_sale'
                    THEN COALESCE(NULLIF(bim.unit_price, 0), NULLIF(pp.dp, 0), 0)
+                 WHEN bim.type = 'walk_in_non_member_sale' AND cr.id IS NOT NULL AND COALESCE(cr.discount_pct, 0) > 0
+                   -- Non-member discount campaign: apply discount_pct to list DP for display.
+                   -- dp_amount remains pp.dp × qty (company cost basis unchanged).
+                   THEN COALESCE(
+                     NULLIF(ROUND(pp.dp * (1 - cr.discount_pct / 100), 2), 0),
+                     NULLIF(pp.dp, 0), 0)
                  WHEN bim.type = 'walk_in_non_member_sale'
                    THEN COALESCE(NULLIF(pp.dp, 0), 0)
                  ELSE COALESCE(NULLIF(pp.dp, 0), NULLIF(bim.unit_price, 0), 0)
