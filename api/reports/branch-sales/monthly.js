@@ -122,27 +122,51 @@ export default async function handler(req, res) {
           )
       `, rpParams),
       // Campaign sales from inventory movements — per-product rows for detail map.
-      // Includes both campaign_sale (paid) and campaign_free_item rows so free-item
-      // badges can be displayed on the monthly report alongside discount info.
-      // type is included in SELECT/GROUP BY to preserve the free-item distinction.
-      // Free items must produce 0 total_dp — the pp.dp fallback is suppressed via CASE
-      // (same guard used in daily.js) so product-level dp_value is never inflated.
+      // Captures all three movement types a campaign sale generates (mirrors daily.js):
+      //   campaign_sale           — member paid item (unit_price = actual sold/discounted DP)
+      //   walk_in_non_member_sale — non-member paid item (unit_price = discounted CP, NOT DP)
+      //   campaign_free_item      — free item (unit_price = NULL → 0 DP)
+      // The subquery identifies non-member campaign references via
+      // branch_walkin_sales.data->>'sale_type' = 'campaign_sale'.
+      // type is included in SELECT/GROUP BY to preserve the per-type distinction so the
+      // JS-level unitPriceForDisplay logic can handle each type correctly.
+      // total_dp CASE guards:
+      //   free items    → always 0
+      //   campaign_sale → unit_price (actual sold price) preferred; pp.dp as fallback
+      //   non-member    → pp.dp only (unit_price is CP, never DP — do not use as fallback)
       getMany(
         `SELECT reference, branch_id, product_name, batch_no, type,
                 SUM(ABS(quantity))                            AS total_qty,
                 SUM(ABS(quantity) *
-                  CASE WHEN type = 'campaign_free_item' THEN 0
-                       ELSE COALESCE(NULLIF(unit_price, 0), NULLIF(pp.dp, 0), 0)
+                  CASE WHEN type = 'campaign_free_item'          THEN 0
+                       -- Member paid item: unit_price is the actual sold/discounted price.
+                       WHEN type = 'campaign_sale'
+                         THEN COALESCE(NULLIF(unit_price, 0), NULLIF(pp.dp, 0), 0)
+                       -- Non-member paid item: unit_price is discounted CP, NOT list DP.
+                       -- Never fall back to unit_price here or the DP column is overstated.
+                       ELSE COALESCE(NULLIF(pp.dp, 0), 0)
                   END)                                        AS total_dp,
-                -- Per-unit sold price for campaign_sale rows (actual charged price, may be
-                -- discounted).  NULL for free-item rows.
+                -- Per-unit sold price for campaign_sale rows (actual charged/discounted price).
+                -- NULL for free-item and non-member rows (their unit_price is CP, not DP).
                 MIN(CASE WHEN type = 'campaign_sale' THEN unit_price ELSE NULL END)
                                                               AS sold_unit_price,
                 -- List DP from product_prices — used as the "before discount" base price.
                 MAX(pp.dp)                                    AS list_dp
          FROM branch_inventory_movements
          LEFT JOIN product_prices pp ON LOWER(TRIM(pp.description)) = LOWER(TRIM(product_name))
-         WHERE ${movConds.join(' AND ')} AND type IN ('campaign_sale', 'campaign_free_item')
+         WHERE ${movConds.join(' AND ')}
+           AND (
+             type IN ('campaign_sale', 'campaign_free_item')
+             OR (
+               type = 'walk_in_non_member_sale'
+               AND reference IN (
+                 SELECT id FROM branch_walkin_sales
+                 WHERE sale_date >= $1 AND sale_date < $2
+                   ${normBranchId ? `AND LOWER(REPLACE(branch_id, ' ', '_')) = $3` : ''}
+                   AND data->>'sale_type' = 'campaign_sale'
+               )
+             )
+           )
          GROUP BY reference, branch_id, product_name, batch_no, type`,
         movParams
       ),
