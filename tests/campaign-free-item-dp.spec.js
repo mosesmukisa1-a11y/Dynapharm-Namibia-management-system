@@ -204,6 +204,17 @@ describe('monthly branch-sales report — campaign free-item DP guard (DB-backed
   });
 
   /**
+   * Layer 2 warning guard: free items must NOT appear in campaign_missing_price_warnings
+   * even though their dp_value=0. Both products have valid price-list entries, so the
+   * warnings array must be empty.
+   */
+  it('campaign_missing_price_warnings is empty when all products have price-list entries', async () => {
+    const res = await runHandler();
+    expect(res._body.campaign_missing_price_warnings).toBeDefined();
+    expect(res._body.campaign_missing_price_warnings).toHaveLength(0);
+  });
+
+  /**
    * Paid product sanity check: correct qty and dp_value in the detail list.
    */
   it('paid product in campaign line_items has qty=2 and dp_value=N$100', async () => {

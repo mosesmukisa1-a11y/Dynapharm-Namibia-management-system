@@ -356,7 +356,7 @@ export default async function handler(req, res) {
     const campaignMissingPriceWarnings = [];
     for (const [ref, products] of Object.entries(campaignProductMap)) {
       for (const p of products) {
-        if (p.qty > 0 && p.dp_value === 0) {
+        if (p.qty > 0 && p.dp_value === 0 && !p.is_free) {
           campaignMissingPriceWarnings.push({
             reference: ref,
             product_name: p.product_name,
