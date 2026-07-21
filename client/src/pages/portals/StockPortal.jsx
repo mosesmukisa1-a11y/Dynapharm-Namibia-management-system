@@ -5215,6 +5215,7 @@ function BranchRequestsPanel() {
   const [adjustedQtys, setAdjustedQtys]           = useState({});
   const [notifs, setNotifs]                       = useState([]);       // #77
   const [notifOpen, setNotifOpen]                 = useState(false);    // #77
+  const [linkedTransfer, setLinkedTransfer]       = useState(null);     // #77
   const [stockBadgeMap, setStockBadgeMap]         = useState({});       // #61
 
   const load = useCallback(() => {
@@ -5265,13 +5266,16 @@ function BranchRequestsPanel() {
     }
   }, [dispatchReq, dispatchWH, lookupFefoBatches]);
 
-  // #77 Fetch unread notifications for the current stock manager
+  // #77 Fetch warning notifications for the current stock manager
   useEffect(() => {
     if (!user?.username) return;
     const rid = encodeURIComponent((user.username || '').toLowerCase().trim());
-    fetch(`/api/notifications?recipient_type=staff&recipient_id=${rid}&limit=30`)
+    fetch(`/api/notifications?recipient_type=staff&recipient_id=${rid}&type=warning&limit=30`)
       .then(r => r.ok ? r.json() : [])
-      .then(d => setNotifs(Array.isArray(d) ? d : d.notifications || []))
+      .then(d => {
+        const all = Array.isArray(d) ? d : (d.notifications || []);
+        setNotifs(all.filter(n => n.type === 'warning'));
+      })
       .catch(() => {});
   }, [user]);
 
@@ -5565,17 +5569,51 @@ function BranchRequestsPanel() {
                   <div style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,0.14)', zIndex: 9999, width: 330, maxHeight: 400, overflowY: 'auto' }}>
                     <div style={{ padding: '10px 14px', borderBottom: '1px solid #f0f0f0', fontWeight: 800, fontSize: '0.83rem', color: '#1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: '#fff' }}>
                       <span>🔔 Notifications{unread > 0 ? ` · ${unread} unread` : ''}</span>
-                      <button onClick={() => setNotifOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: '1.1rem', lineHeight: 1 }}>✕</button>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        {unread > 0 && (
+                          <button onClick={() => {
+                            api.notifications.markAllRead((user?.username || '').toLowerCase().trim())
+                              .then(() => setNotifs(prev => prev.map(x => ({ ...x, is_read: true }))))
+                              .catch(() => {});
+                          }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2563eb', fontSize: '0.72rem', fontWeight: 700, textDecoration: 'underline', padding: 0 }}>Mark all read</button>
+                        )}
+                        <button onClick={() => setNotifOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: '1.1rem', lineHeight: 1 }}>✕</button>
+                      </div>
                     </div>
                     {notifs.length === 0 ? (
                       <div style={{ padding: '20px 14px', textAlign: 'center', color: '#94a3b8', fontSize: '0.82rem' }}>No notifications</div>
-                    ) : notifs.slice(0, 15).map((n, i) => (
-                      <div key={n.id || i} style={{ padding: '10px 14px', borderBottom: '1px solid #f8f8f8', background: n.is_read ? '#fff' : '#fffbeb' }}>
+                    ) : notifs.slice(0, 15).map((n, i) => {
+                      const hasLink = !!n.reference_id;
+                      const handleNotifClick = () => {
+                        if (!n.is_read) {
+                          api.notifications.markRead(n.id, (user?.username || '').toLowerCase().trim())
+                            .then(() => setNotifs(prev => prev.map(x => x.id === n.id ? { ...x, is_read: true } : x)))
+                            .catch(() => {});
+                        }
+                        if (hasLink) {
+                          api.stock.transfers(`id=${encodeURIComponent(n.reference_id)}`)
+                            .then(d => {
+                              const list = Array.isArray(d) ? d : (d.transfers || []);
+                              const found = list.find(t => String(t.id) === String(n.reference_id));
+                              if (found) setLinkedTransfer(found);
+                            })
+                            .catch(() => {});
+                        }
+                      };
+                      return (
+                      <div key={n.id || i} onClick={handleNotifClick}
+                        style={{ padding: '10px 14px', borderBottom: '1px solid #f8f8f8', background: n.is_read ? '#fff' : '#fffbeb', cursor: hasLink ? 'pointer' : 'default', transition: 'background 0.12s' }}
+                        onMouseEnter={e => { if (hasLink) e.currentTarget.style.background = '#f0f9ff'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = n.is_read ? '#fff' : '#fffbeb'; }}>
                         <div style={{ fontWeight: n.is_read ? 600 : 800, fontSize: '0.82rem', color: n.type === 'warning' ? '#92400e' : '#1e293b', marginBottom: 2 }}>{n.title}</div>
                         <div style={{ fontSize: '0.75rem', color: '#64748b', lineHeight: 1.4 }}>{n.message}</div>
-                        <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: 3 }}>{n.created_at ? new Date(n.created_at).toLocaleString() : ''}</div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 3 }}>
+                          <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{n.created_at ? new Date(n.created_at).toLocaleString() : ''}</span>
+                          {hasLink && <span style={{ fontSize: '0.68rem', color: '#2563eb', fontWeight: 700 }}>View transfer →</span>}
+                        </div>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -5583,6 +5621,63 @@ function BranchRequestsPanel() {
           })()}
         </div>
       </div>
+
+      {/* #77 Transfer detail modal opened from notification click */}
+      {linkedTransfer && (
+        <Modal open={!!linkedTransfer} onClose={() => setLinkedTransfer(null)} title={`Transfer #${linkedTransfer.id} — Amended by GM`} size="md">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '4px 0' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div style={{ background: '#f8fafc', borderRadius: 8, padding: '10px 14px' }}>
+                <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>From</div>
+                <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>{fmtLocation(linkedTransfer.from_location || linkedTransfer.from_warehouse || '—')}</div>
+              </div>
+              <div style={{ background: '#f8fafc', borderRadius: 8, padding: '10px 14px' }}>
+                <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>To</div>
+                <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>{fmtLocation(linkedTransfer.to_location || linkedTransfer.to_branch || '—')}</div>
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div style={{ background: '#fef3c7', borderRadius: 8, padding: '10px 14px' }}>
+                <div style={{ fontSize: '0.7rem', color: '#92400e', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>Status</div>
+                <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#92400e' }}>{linkedTransfer.status || '—'}</div>
+              </div>
+              {linkedTransfer.amendedByGm && (
+                <div style={{ background: '#fff0f3', borderRadius: 8, padding: '10px 14px' }}>
+                  <div style={{ fontSize: '0.7rem', color: '#9f1239', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>Amended By</div>
+                  <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#9f1239' }}>{linkedTransfer.amendedByGm}</div>
+                </div>
+              )}
+            </div>
+            {Array.isArray(linkedTransfer.items) && linkedTransfer.items.length > 0 && (
+              <div>
+                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', marginBottom: 6, textTransform: 'uppercase' }}>Items</div>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc' }}>
+                      <th style={{ textAlign: 'left', padding: '6px 10px', color: '#64748b', fontWeight: 700, borderBottom: '1px solid #e2e8f0' }}>Product</th>
+                      <th style={{ textAlign: 'right', padding: '6px 10px', color: '#64748b', fontWeight: 700, borderBottom: '1px solid #e2e8f0' }}>Qty</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {linkedTransfer.items.map((it, idx) => (
+                      <tr key={idx} style={{ borderBottom: '1px solid #f0f0f0' }}>
+                        <td style={{ padding: '6px 10px', color: '#1e293b' }}>{it.productName || it.product_name || it.description || '—'}</td>
+                        <td style={{ padding: '6px 10px', color: '#1e293b', textAlign: 'right', fontWeight: 700 }}>{it.quantity ?? it.qty ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {linkedTransfer.gmNotes && (
+              <div style={{ background: '#fffbeb', borderRadius: 8, padding: '10px 14px', border: '1px solid #fde68a' }}>
+                <div style={{ fontSize: '0.7rem', color: '#92400e', fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>GM Notes</div>
+                <div style={{ fontSize: '0.82rem', color: '#78350f' }}>{linkedTransfer.gmNotes}</div>
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
 
       {loading ? (
         <div style={{ textAlign: 'center', padding: 24, color: '#94a3b8', fontSize: '0.85rem' }}>Loading requests…</div>
