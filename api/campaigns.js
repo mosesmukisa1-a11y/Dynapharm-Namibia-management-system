@@ -176,15 +176,18 @@ export default async function handler(req, res) {
           LIMIT  30
         `),
 
-        // 8. Campaign-tagged stock movements (product-level sales)
+        // 8. Campaign-tagged stock movements (product-level sales) with discount %
         getMany(`
           SELECT
-            product_name,
-            SUM(ABS(quantity))                          AS total_qty,
-            SUM(ABS(quantity) * COALESCE(unit_dp, 0))   AS dp_value
-          FROM stock_movements
-          WHERE movement_type = 'campaign_sale'
-          GROUP BY product_name
+            sm.product_name,
+            COALESCE(c.discount_percentage, 0)                        AS discount_percentage,
+            SUM(ABS(sm.quantity))                                     AS total_qty,
+            SUM(ABS(sm.quantity) * COALESCE(sm.unit_dp, 0))          AS dp_value
+          FROM stock_movements sm
+          LEFT JOIN branch_walkin_sales bws ON bws.id = sm.reference_id
+          LEFT JOIN campaigns c ON c.id = (bws.data->>'campaign_id')
+          WHERE sm.movement_type = 'campaign_sale'
+          GROUP BY sm.product_name, c.discount_percentage
           ORDER BY total_qty DESC
           LIMIT 15
         `),

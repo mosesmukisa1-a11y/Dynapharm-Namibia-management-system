@@ -2965,8 +2965,8 @@ function CampaignAnalyticsView({ data, loading, onRefresh }) {
           const cp2 = data.campaignProducts || [];
           if (!cp2.length) return '';
           return '<h2>Products Sold via Campaign Sales</h2>'
-            + '<table><thead><tr><th>#</th><th>Product</th><th>Units Sold</th><th>DP Value (N$)</th></tr></thead><tbody>'
-            + cp2.map((p, i) => '<tr><td>' + (i+1) + '</td><td>' + (p.product_name || '—') + '</td><td style="text-align:right;font-weight:700;color:#1d4ed8">' + fN(p.total_qty) + '</td><td style="text-align:right;font-weight:700;color:#15803d">' + fC(p.dp_value) + '</td></tr>').join('')
+            + '<table><thead><tr><th>#</th><th>Product</th><th>Units Sold</th><th>DP Value (N$)</th><th>Discount %</th></tr></thead><tbody>'
+            + cp2.map((p, i) => '<tr><td>' + (i+1) + '</td><td>' + (p.product_name || '—') + '</td><td style="text-align:right;font-weight:700;color:#1d4ed8">' + fN(p.total_qty) + '</td><td style="text-align:right;font-weight:700;color:#15803d">' + fC(p.dp_value) + '</td><td style="text-align:center;font-weight:700;color:' + (Number(p.discount_percentage) > 0 ? '#dc2626' : '#94a3b8') + '">' + (Number(p.discount_percentage) > 0 ? Number(p.discount_percentage) + '%' : '—') + '</td></tr>').join('')
             + '</tbody></table>';
         })()
       + '<div class="footer">Dynapharm Namibia Health Management System | Campaigns Analytics | ' + now + '</div></body></html>';
@@ -3209,16 +3209,19 @@ function CampaignAnalyticsView({ data, loading, onRefresh }) {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
               <thead>
                 <tr style={{ background: '#f8fafc' }}>
-                  {['#', 'Product', 'Units Sold', 'DP Value (N$)'].map(h => <th key={h} style={thStyle}>{h}</th>)}
+                  {['#', 'Product', 'Units Sold', 'DP Value (N$)', 'Discount %'].map(h => <th key={h} style={thStyle}>{h}</th>)}
                 </tr>
               </thead>
               <tbody>
                 {cp.map((p, i) => (
-                  <tr key={p.product_name} style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
+                  <tr key={p.product_name + '_' + (p.discount_percentage || 0)} style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
                     <td style={{ padding: '6px 10px', color: '#94a3b8', fontWeight: 700 }}>{i + 1}</td>
                     <td style={{ padding: '6px 10px', fontWeight: 600, color: '#1e293b' }}>{p.product_name}</td>
                     <td style={{ padding: '6px 10px', fontWeight: 900, color: '#1d4ed8' }}>{fmtN(p.total_qty)}</td>
                     <td style={{ padding: '6px 10px', fontWeight: 700, color: '#15803d' }}>{fmt(p.dp_value)}</td>
+                    <td style={{ padding: '6px 10px', fontWeight: 700, color: Number(p.discount_percentage) > 0 ? '#dc2626' : '#94a3b8', textAlign: 'center' }}>
+                      {Number(p.discount_percentage) > 0 ? `${Number(p.discount_percentage)}%` : '—'}
+                    </td>
                   </tr>
                 ))}
               </tbody>
