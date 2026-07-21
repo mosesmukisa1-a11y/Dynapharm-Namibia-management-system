@@ -6652,7 +6652,11 @@ function BranchStockTab() {
             const refShort = (li.reference_id || '').slice(-8).toUpperCase();
             return `<tr style="background:${idx % 2 === 0 ? '#fff' : '#fafaf8'}"><td style="padding:4px 8px;font-size:10px;color:#92400e;font-family:monospace">${refShort}</td><td style="padding:4px 8px;font-size:10px;text-align:center">${discBadge}</td><td style="padding:4px 8px;font-size:10px;text-align:center">${li.total_qty || 0}</td><td style="padding:4px 8px;font-size:10px;text-align:right;font-weight:700;color:#b45309">${fmtC(li.total_dp_value || 0)}</td></tr>${productRows}`;
           }).join('');
-          return `<table style="width:100%;border-collapse:collapse;margin-top:4px;border-radius:6px;overflow:hidden"><thead><tr style="background:#b45309;color:#fff"><th style="padding:4px 8px;font-size:9px;text-align:left">Sale Ref</th><th style="padding:4px 8px;font-size:9px;text-align:center">Discount</th><th style="padding:4px 8px;font-size:9px;text-align:center">Qty</th><th style="padding:4px 8px;font-size:9px;text-align:right">DP Value</th></tr></thead><tbody>${rows}</tbody></table>`;
+          const hasFreeInPrint = lineItems.some(li => Array.isArray(li.products) && li.products.some(p => p.is_free === true));
+          const freeNote = hasFreeInPrint
+            ? `<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:7px 12px;margin-bottom:6px;font-size:9px;color:#92400e;font-weight:600">🎁 Amber rows marked FREE = campaign free items. They deduct stock but carry N$ 0.00 DP value and do NOT affect the campaign DP sales total.</div>`
+            : '';
+          return freeNote + `<table style="width:100%;border-collapse:collapse;margin-top:4px;border-radius:6px;overflow:hidden"><thead><tr style="background:#b45309;color:#fff"><th style="padding:4px 8px;font-size:9px;text-align:left">Sale Ref</th><th style="padding:4px 8px;font-size:9px;text-align:center">Discount</th><th style="padding:4px 8px;font-size:9px;text-align:center">Qty</th><th style="padding:4px 8px;font-size:9px;text-align:right">DP Value</th></tr></thead><tbody>${rows}</tbody></table>`;
         };
 
         const printDPSalesReportFromData = (data, period) => {
