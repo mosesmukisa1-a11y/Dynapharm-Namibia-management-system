@@ -6698,6 +6698,14 @@ function BranchStockTab() {
           const nmDp = bs.nm_dp_total || nm.value || 0;
           const campDp = camp.value || bs.campaign_total || 0;
           const refundTotal = data.refund_deductions?.total_amount || bs.refund_deductions || 0;
+          const missingPriceWarnings = Array.isArray(data.campaign_missing_price_warnings) ? data.campaign_missing_price_warnings : [];
+          const missingPriceBannerHTML = missingPriceWarnings.length > 0
+            ? `<div style="background:#fffbeb;border:2px solid #f59e0b;border-radius:8px;padding:12px 16px;margin-bottom:16px">
+                <div style="font-size:11px;font-weight:800;color:#92400e;margin-bottom:6px">⚠️ Campaign Total May Be Under-reported</div>
+                <div style="font-size:10px;color:#78350f;margin-bottom:6px">The following campaign product(s) are missing from the price list and have been counted as N$0.00. Please notify Head Office to add them:</div>
+                <ul style="margin:0;padding-left:18px">${missingPriceWarnings.map(name => `<li style="font-size:10px;font-weight:700;color:#92400e;margin-bottom:2px">${name}</li>`).join('')}</ul>
+              </div>`
+            : '';
 
           // ── Build unified "Products Sold" aggregate from all sources ──────────────
           const allProductsMap = {};
@@ -6802,6 +6810,7 @@ function BranchStockTab() {
 
           printStockDocument(`DP Sales Report — ${period}`, `
             <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:11px;color:#166534;font-weight:600">DP = Distributor Price &nbsp;·&nbsp; CP = Consumer Price (shown for Non-member Walk-in Sales only)</div>
+            ${missingPriceBannerHTML}
 
             <h3 style="font-size:12px;color:#c41e3a;margin:16px 0 8px;border-bottom:1px solid #fecaca;padding-bottom:4px">SALES BY CATEGORY</h3>
             <table style="width:100%;border-collapse:collapse;font-size:11px">
