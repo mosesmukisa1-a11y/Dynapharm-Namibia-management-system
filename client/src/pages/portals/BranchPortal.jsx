@@ -12127,6 +12127,12 @@ function BranchCampaignsTab() {
   const campRefTimer = useRef(null);
 
   useEffect(() => {
+    api.get('/prices').then(d => {
+      setPrices(Array.isArray(d) ? d : (d.prices || d.products || []));
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
     setLoading(true);
     api.get('/campaigns').then(d => {
       const all = Array.isArray(d) ? d : (d.campaigns || []);
@@ -12382,10 +12388,19 @@ function BranchCampaignsTab() {
                       {c.description && <div className="text-sm text-gray-600 mb-1">{c.description}</div>}
                       <div className="text-xs text-gray-600 space-y-0.5">
                         {cond.buy_qty && cond.get_qty && <div>📌 Buy <strong>{cond.buy_qty}</strong>, get <strong>{cond.get_qty}</strong> free</div>}
-                        {discountPct > 0 && <div>📌 Discount: <strong>{discountPct}%</strong> off all products</div>}
+                        {discountPct > 0 && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
+                            <span style={{ background: '#dc2626', color: '#fff', borderRadius: 5, padding: '2px 8px', fontWeight: 800, fontSize: '0.72rem', letterSpacing: '0.02em' }}>🏷️ {discountPct}% OFF</span>
+                          </div>
+                        )}
                         {cond.min_purchase && <div>📌 Min purchase: N${cond.min_purchase}</div>}
                         {prize.description && <div>🏆 {prize.description}</div>}
-                        {freeProduct && <div>🎁 Free product: <strong>{freeProduct}</strong></div>}
+                        {freeProduct && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
+                            <span>🎁 Free: <strong>{freeProduct}</strong></span>
+                            <span style={{ background: '#d97706', color: '#fff', borderRadius: 4, padding: '1px 6px', fontWeight: 800, fontSize: '0.68rem' }}>FREE</span>
+                          </div>
+                        )}
                         {prize.cash_reward && <div>💰 Cash reward: N${prize.cash_reward}</div>}
                       </div>
                     </div>
@@ -12424,10 +12439,28 @@ function BranchCampaignsTab() {
                           {isBXGY && cond.buy_qty && cond.get_qty && (
                             <div>📌 Buy <strong>{cond.buy_qty}</strong>, get <strong>{cond.get_qty}</strong> free</div>
                           )}
-                          {isBXGY && freeProduct && <div>🎁 Free: <strong>{freeProduct}</strong></div>}
-                          {isDiscount && discountPct > 0 && (
-                            <div>🏷️ <strong>{discountPct}% OFF</strong></div>
+                          {isBXGY && freeProduct && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
+                              <span>🎁 Free: <strong>{freeProduct}</strong></span>
+                              <span style={{ background: '#d97706', color: '#fff', borderRadius: 4, padding: '1px 6px', fontWeight: 800, fontSize: '0.68rem' }}>FREE</span>
+                            </div>
                           )}
+                          {isDiscount && discountPct > 0 && (() => {
+                            const priceRow = prices.find(p => (p.description || p.name || '').trim().toLowerCase() === pName.trim().toLowerCase());
+                            const baseDP = priceRow ? parseFloat(priceRow.dp || 0) : 0;
+                            const discountedDP = baseDP > 0 ? Math.round(baseDP * (1 - discountPct / 100) * 100) / 100 : 0;
+                            return (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+                                <span style={{ background: '#dc2626', color: '#fff', borderRadius: 5, padding: '2px 8px', fontWeight: 800, fontSize: '0.72rem', letterSpacing: '0.02em' }}>🏷️ {discountPct}% OFF</span>
+                                {baseDP > 0 && (
+                                  <>
+                                    <span style={{ textDecoration: 'line-through', color: '#94a3b8', fontSize: '0.75rem' }}>N$ {baseDP.toFixed(2)}</span>
+                                    <span style={{ fontWeight: 700, color: '#b45309', fontSize: '0.82rem' }}>N$ {discountedDP.toFixed(2)}</span>
+                                  </>
+                                )}
+                              </div>
+                            );
+                          })()}
                           {prize.description && <div>🏆 {prize.description}</div>}
                         </div>
                       </div>
