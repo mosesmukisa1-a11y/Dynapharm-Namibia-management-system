@@ -12458,14 +12458,28 @@ function BranchCampaignsTab() {
                             const priceRow = prices.find(p => (p.description || p.name || '').trim().toLowerCase() === pName.trim().toLowerCase());
                             const baseDP = priceRow ? parseFloat(priceRow.dp || 0) : 0;
                             const discountedDP = baseDP > 0 ? Math.round(baseDP * (1 - discountPct / 100) * 100) / 100 : 0;
+                            const baseCP = priceRow ? parseFloat(priceRow.cp || 0) : 0;
+                            const discountedCP = baseCP > 0 ? Math.round(baseCP * (1 - discountPct / 100) * 100) / 100 : 0;
                             return (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
-                                <span style={{ background: '#dc2626', color: '#fff', borderRadius: 5, padding: '2px 8px', fontWeight: 800, fontSize: '0.72rem', letterSpacing: '0.02em' }}>🏷️ {discountPct}% OFF</span>
+                              <div style={{ marginTop: 4 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 3 }}>
+                                  <span style={{ background: '#dc2626', color: '#fff', borderRadius: 5, padding: '2px 8px', fontWeight: 800, fontSize: '0.72rem', letterSpacing: '0.02em' }}>🏷️ {discountPct}% OFF</span>
+                                </div>
                                 {baseDP > 0 && (
-                                  <>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', marginBottom: 2 }}>
+                                    <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#6366f1', background: '#ede9fe', borderRadius: 3, padding: '1px 5px' }}>Member DP</span>
                                     <span style={{ textDecoration: 'line-through', color: '#94a3b8', fontSize: '0.75rem' }}>N$ {baseDP.toFixed(2)}</span>
-                                    <span style={{ fontWeight: 700, color: '#b45309', fontSize: '0.82rem' }}>N$ {discountedDP.toFixed(2)}</span>
-                                  </>
+                                    <span style={{ color: '#6b7280', fontSize: '0.75rem' }}>→</span>
+                                    <span style={{ fontWeight: 700, color: '#4f46e5', fontSize: '0.82rem' }}>N$ {discountedDP.toFixed(2)}</span>
+                                  </div>
+                                )}
+                                {baseCP > 0 && (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+                                    <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#b45309', background: '#fef3c7', borderRadius: 3, padding: '1px 5px' }}>Non-member CP</span>
+                                    <span style={{ textDecoration: 'line-through', color: '#94a3b8', fontSize: '0.75rem' }}>N$ {baseCP.toFixed(2)}</span>
+                                    <span style={{ color: '#6b7280', fontSize: '0.75rem' }}>→</span>
+                                    <span style={{ fontWeight: 700, color: '#b45309', fontSize: '0.82rem' }}>N$ {discountedCP.toFixed(2)}</span>
+                                  </div>
                                 )}
                               </div>
                             );
