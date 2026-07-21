@@ -142,8 +142,11 @@ export default async function handler(req, res) {
                        -- Member paid item: unit_price is the actual sold/discounted price.
                        WHEN type = 'campaign_sale'
                          THEN COALESCE(NULLIF(unit_price, 0), NULLIF(pp.dp, 0), 0)
-                       -- Non-member paid item: unit_price is discounted CP, NOT list DP.
-                       -- Never fall back to unit_price here or the DP column is overstated.
+                       -- Non-member discount campaign: apply discount_pct from sale record.
+                       WHEN COALESCE(NULLIF((bws.data->>'discount_pct')::numeric, 0), 0) > 0
+                         THEN COALESCE(NULLIF(ROUND(pp.dp * (1 - (bws.data->>'discount_pct')::numeric / 100), 2), 0), NULLIF(pp.dp, 0), 0)
+                       -- Non-member paid item (bxgy or no discount): list DP is revenue basis.
+                       -- Never fall back to unit_price here (it stores CP, not DP).
                        ELSE COALESCE(NULLIF(pp.dp, 0), 0)
                   END)                                        AS total_dp,
                 -- Per-unit sold price for campaign_sale rows (actual charged/discounted price).
@@ -154,6 +157,7 @@ export default async function handler(req, res) {
                 MAX(pp.dp)                                    AS list_dp
          FROM branch_inventory_movements
          LEFT JOIN product_prices pp ON LOWER(TRIM(pp.description)) = LOWER(TRIM(product_name))
+         LEFT JOIN branch_walkin_sales bws ON bws.id = reference
          WHERE ${movConds.join(' AND ')}
            AND (
              type IN ('campaign_sale', 'campaign_free_item')

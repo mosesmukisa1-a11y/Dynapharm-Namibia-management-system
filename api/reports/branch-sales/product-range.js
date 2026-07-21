@@ -44,7 +44,7 @@ export default async function handler(req, res) {
 
     const rows = await getMany(`
       WITH campaign_refs AS (
-        SELECT id
+        SELECT id, COALESCE(NULLIF((data->>'discount_pct')::numeric, 0), 0) AS discount_pct
         FROM branch_walkin_sales
         WHERE DATE(sale_date) >= $1::date
           AND DATE(sale_date) <= $2::date
@@ -69,8 +69,11 @@ export default async function handler(req, res) {
             -- those rows or the product-range report will show inflated DP figures. Mirror of
             -- the same guard in daily-products.js.
             CASE WHEN bim.type = 'campaign_free_item'      THEN 0
+                 WHEN bim.type = 'walk_in_non_member_sale' AND COALESCE(cr.discount_pct, 0) > 0
+                   -- Non-member discount campaign: apply discount_pct from campaign_refs CTE.
+                   THEN COALESCE(NULLIF(ROUND(pp.dp * (1 - cr.discount_pct / 100), 2), 0), NULLIF(pp.dp, 0), 0)
                  WHEN bim.type = 'walk_in_non_member_sale'
-                   -- bim.unit_price is CP for all non-member rows; never use it as a DP fallback.
+                   -- bxgy or regular: list DP (unit_price stores CP, not DP).
                    THEN COALESCE(NULLIF(pp.dp, 0), 0)
                  ELSE COALESCE(NULLIF(pp.dp, 0), NULLIF(bim.unit_price, 0), 0)
             END

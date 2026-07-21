@@ -144,16 +144,13 @@ export default async function handler(req, res) {
                 SUM(ABS(quantity) *
                   CASE WHEN type = 'campaign_free_item' THEN 0
                        -- For member campaign_sale, unit_price holds the actual sold price
-                       -- (may be discounted for discount-type campaigns).  Prefer it over
-                       -- pp.dp (list DP) so the report reflects what was charged.
-                       -- For non-member walk-in rows inside a campaign, pp.dp is the cost
-                       -- basis and is the correct DP reference.  unit_price for non-member
-                       -- rows holds the discounted CP, NOT the list DP — never use it as a
-                       -- fallback here or the campaign total will be silently overstated.
-                       -- If pp.dp is missing/0 the product has no price list entry; return 0
-                       -- so the caller can detect and warn rather than silently inflate.
+                       -- (may be discounted for discount-type campaigns).
                        WHEN type = 'campaign_sale'
                          THEN COALESCE(NULLIF(unit_price, 0), NULLIF(pp.dp, 0), 0)
+                       -- Non-member discount campaign: apply discount_pct from sale record.
+                       -- unit_price stores CP — never use it as a DP fallback.
+                       WHEN COALESCE(NULLIF((bws.data->>'discount_pct')::numeric, 0), 0) > 0
+                         THEN COALESCE(NULLIF(ROUND(pp.dp * (1 - (bws.data->>'discount_pct')::numeric / 100), 2), 0), NULLIF(pp.dp, 0), 0)
                        ELSE COALESCE(NULLIF(pp.dp, 0), 0)
                   END)                                        AS total_dp,
                 -- Per-unit sold price for campaign_sale rows (actual charged price, may be
@@ -165,6 +162,7 @@ export default async function handler(req, res) {
                 MAX(pp.dp)                                    AS list_dp
          FROM branch_inventory_movements
          LEFT JOIN product_prices pp ON LOWER(TRIM(pp.description)) = LOWER(TRIM(product_name))
+         LEFT JOIN branch_walkin_sales bws ON bws.id = reference
          WHERE ${movConds.join(' AND ')}
            AND (
              type IN ('campaign_sale', 'campaign_free_item')

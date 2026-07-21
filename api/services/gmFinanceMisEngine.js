@@ -223,7 +223,7 @@ export async function getLocationMovements(locationType, locationId, start, end)
 export async function getBranchSalesRevenue(branchId, start, end) {
   const [rows, refundRows, rxRows, priceListRows] = await Promise.all([
     getMany(
-      `SELECT customer_type, payment_method, total, subtotal, items
+      `SELECT customer_type, payment_method, total, subtotal, items, data
        FROM branch_walkin_sales
        WHERE branch_id = $1
          AND status = 'completed'
@@ -273,12 +273,13 @@ export async function getBranchSalesRevenue(branchId, start, end) {
     // Non-member walk-in: branch_walkin_sales.total = CP (consumer price).
     // Parse item-level DP to get the true distributor-price basis.
     if (ct.includes('non') || (!ct.includes('member') && !ct.includes('online'))) {
-      let items = [];
+      let items = [], discountPct = 0;
       try { items = typeof r.items === 'string' ? JSON.parse(r.items) : (Array.isArray(r.items) ? r.items : []); } catch {}
+      try { const d = typeof r.data === 'string' ? JSON.parse(r.data) : (r.data || {}); discountPct = Number(d.discount_pct || 0); } catch {}
       amt = items.reduce((s, i) => {
         const nm = (i.product_name || i.name || i.description || '').trim();
-        const dp = lookupDpBSR(nm) || Number(i.dpPrice || i.dp || i.unit_price || 0);
-        return s + dp * Number(i.quantity || i.qty || 1);
+        const listDp = lookupDpBSR(nm) || Number(i.dpPrice || i.dp || i.unit_price || 0);
+        return s + (discountPct > 0 ? listDp * (1 - discountPct / 100) : listDp) * Number(i.quantity || i.qty || 1);
       }, 0);
     } else {
       // Member and online sales: total = DP (members pay at DP)

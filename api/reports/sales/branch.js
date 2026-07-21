@@ -16,7 +16,7 @@ export default async function handler(req, res) {
   // Walk-in sales from branch_walkin_sales (completed only)
   const [walkinRows, movRows] = await Promise.all([
     getMany(
-      `SELECT customer_type, total, items
+      `SELECT customer_type, total, items, data
        FROM branch_walkin_sales
        WHERE branch_id = $1
          AND status = 'completed'
@@ -48,7 +48,12 @@ export default async function handler(req, res) {
     let amt;
     const items = Array.isArray(r.items) ? r.items : (r.items ? JSON.parse(r.items) : []);
     if (ct.includes('non') || (!ct.includes('member') && !ct.includes('online'))) {
-      amt = items.reduce((s, i) => s + Number(i.dpPrice || i.dp || i.unit_price || 0) * Number(i.quantity || i.qty || 1), 0);
+      let discountPct = 0;
+      try { const d = typeof r.data === 'string' ? JSON.parse(r.data) : (r.data || {}); discountPct = Number(d.discount_pct || 0); } catch {}
+      amt = items.reduce((s, i) => {
+        const listDp = Number(i.dpPrice || i.dp || i.unit_price || 0);
+        return s + (discountPct > 0 ? listDp * (1 - discountPct / 100) : listDp) * Number(i.quantity || i.qty || 1);
+      }, 0);
     } else {
       amt = Number(r.total || 0);
     }

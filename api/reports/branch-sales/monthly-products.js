@@ -35,7 +35,8 @@ export default async function handler(req, res) {
     // The outer SELECT can then ORDER BY sale_type as a plain column.
     const rows = await getMany(`
       WITH campaign_refs AS (
-        SELECT id FROM branch_walkin_sales
+        SELECT id, COALESCE(NULLIF((data->>'discount_pct')::numeric, 0), 0) AS discount_pct
+        FROM branch_walkin_sales
         WHERE sale_date >= $1::date
           AND sale_date  < $2::date
           ${campSubBranchClause}
@@ -45,32 +46,27 @@ export default async function handler(req, res) {
         SELECT
           MIN(TRIM(bim.product_name))                                       AS product_name,
           CASE
-            WHEN bim.type = 'campaign_free_item' THEN 'campaign_free'
-            WHEN bim.type = 'campaign_sale'      THEN 'campaign_paid'
-            WHEN cr.id   IS NOT NULL             THEN 'campaign_paid'
-            ELSE                                      'regular'
+            WHEN bim.type = 'campaign_free_item'                        THEN 'campaign_free'
+            WHEN bim.type = 'campaign_sale'                             THEN 'campaign_paid'
+            WHEN cr.id   IS NOT NULL                                    THEN 'campaign_paid'
+            WHEN bim.type IN ('prescription_dispense', 'dispense')      THEN 'prescription'
+            ELSE                                                              'regular'
           END                                                               AS sale_type,
           SUM(ABS(bim.quantity))                                            AS total_qty,
           -- dp_amount: revenue at DP level for each movement type.
-          --   campaign_sale (member paid): use bim.unit_price which now stores the actual
-          --     discounted DP the member paid (paidUnitPrice). For bxgy campaigns this equals
-          --     pp.dp; for discount campaigns it is pp.dp × (1-disc%). Falls back to pp.dp
-          --     for older records that stored the full list DP.
-          --   walk_in_non_member_sale (regular OR campaign non-member): bim.unit_price always
-          --     stores the selling CP, never DP. An explicit branch here ensures we never fall
-          --     back to bim.unit_price and accidentally use CP as the DP figure — for both
-          --     regular rows (where it was always CP) and campaign rows (where it is the
-          --     discounted CP after the non-member BIM unit_price fix).
-          --   campaign_free_item: always 0 (free, no revenue).
-          --   All other types: pp.dp is authoritative; bim.unit_price as last resort fallback.
+          --   campaign_sale (member paid): bim.unit_price = actual discounted DP.
+          --   walk_in_non_member_sale (discount campaign): pp.dp × (1 - cr.discount_pct/100).
+          --   walk_in_non_member_sale (bxgy/regular): pp.dp (unit_price = CP, never DP).
+          --   campaign_free_item: 0 (free, no revenue).
+          --   All other types: pp.dp authoritative; bim.unit_price as last resort.
           SUM(
             ABS(bim.quantity) *
             CASE WHEN bim.type = 'campaign_free_item'      THEN 0
                  WHEN bim.type = 'campaign_sale'
                    THEN COALESCE(NULLIF(bim.unit_price, 0), NULLIF(pp.dp, 0), 0)
+                 WHEN bim.type = 'walk_in_non_member_sale' AND COALESCE(cr.discount_pct, 0) > 0
+                   THEN COALESCE(NULLIF(ROUND(pp.dp * (1 - cr.discount_pct / 100), 2), 0), NULLIF(pp.dp, 0), 0)
                  WHEN bim.type = 'walk_in_non_member_sale'
-                   -- bim.unit_price is CP (not DP) for all non-member rows; never use it
-                   -- as a DP fallback regardless of whether the row is campaign or regular.
                    THEN COALESCE(NULLIF(pp.dp, 0), 0)
                  ELSE COALESCE(NULLIF(pp.dp, 0), NULLIF(bim.unit_price, 0), 0)
             END
@@ -98,10 +94,11 @@ export default async function handler(req, res) {
         GROUP BY
           LOWER(TRIM(bim.product_name)),
           CASE
-            WHEN bim.type = 'campaign_free_item' THEN 'campaign_free'
-            WHEN bim.type = 'campaign_sale'      THEN 'campaign_paid'
-            WHEN cr.id   IS NOT NULL             THEN 'campaign_paid'
-            ELSE                                      'regular'
+            WHEN bim.type = 'campaign_free_item'                        THEN 'campaign_free'
+            WHEN bim.type = 'campaign_sale'                             THEN 'campaign_paid'
+            WHEN cr.id   IS NOT NULL                                    THEN 'campaign_paid'
+            WHEN bim.type IN ('prescription_dispense', 'dispense')      THEN 'prescription'
+            ELSE                                                              'regular'
           END
       ),
       -- Approved refunds in this month (recognised on approval date)
@@ -124,7 +121,12 @@ export default async function handler(req, res) {
       FROM agg a
       LEFT JOIN refund_agg r ON r.pkey = LOWER(TRIM(a.product_name))
       ORDER BY
-        CASE a.sale_type WHEN 'regular' THEN 0 WHEN 'campaign_paid' THEN 1 ELSE 2 END,
+        CASE a.sale_type
+          WHEN 'regular'       THEN 0
+          WHEN 'prescription'  THEN 1
+          WHEN 'campaign_paid' THEN 2
+          ELSE 3
+        END,
         a.dp_amount DESC
     `, params);
 
@@ -154,9 +156,9 @@ export default async function handler(req, res) {
     let totalRefundDp  = 0;
     const seenRefundKeys = new Set();
 
-    // Sort so 'regular' rows come before campaign rows per product (refund applied to regular first).
+    // Sort: regular → prescription → campaign_paid → campaign_free (refund applied to regular first).
     const sortedRows = [...rows].sort((a, b) => {
-      const order = { regular: 0, campaign_paid: 1, campaign_free: 2 };
+      const order = { regular: 0, prescription: 1, campaign_paid: 2, campaign_free: 3 };
       return (order[a.sale_type] ?? 9) - (order[b.sale_type] ?? 9);
     });
 
@@ -212,6 +214,13 @@ export default async function handler(req, res) {
                              .reduce((s, r) => s + r.total_qty, 0),
       dp_amount:  parseFloat(netProducts.reduce((s, r) => s + r.dp_amount,  0).toFixed(2)),
       bv_total:   parseFloat(netProducts.reduce((s, r) => s + r.bv_total,   0).toFixed(2)),
+      // Breakdown totals — mirror the Sales Review columns
+      walkin_dp:  parseFloat(netProducts.filter(r => r.sale_type === 'regular')
+                                        .reduce((s, r) => s + r.dp_amount, 0).toFixed(2)),
+      rx_dp:      parseFloat(netProducts.filter(r => r.sale_type === 'prescription')
+                                        .reduce((s, r) => s + r.dp_amount, 0).toFixed(2)),
+      campaign_dp:parseFloat(netProducts.filter(r => r.sale_type === 'campaign_paid')
+                                        .reduce((s, r) => s + r.dp_amount, 0).toFixed(2)),
       campaign_free_qty: netProducts.filter(r => r.sale_type === 'campaign_free')
                                     .reduce((s, r) => s + r.total_qty, 0),
       refund_qty: totalRefundQty,
