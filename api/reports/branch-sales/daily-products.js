@@ -41,10 +41,11 @@ export default async function handler(req, res) {
         SELECT
           MIN(TRIM(bim.product_name))                                       AS product_name,
           CASE
-            WHEN bim.type = 'campaign_free_item' THEN 'campaign_free'
-            WHEN bim.type = 'campaign_sale'      THEN 'campaign_paid'
-            WHEN cr.id   IS NOT NULL             THEN 'campaign_paid'
-            ELSE                                      'regular'
+            WHEN bim.type = 'campaign_free_item'                        THEN 'campaign_free'
+            WHEN bim.type = 'campaign_sale'                             THEN 'campaign_paid'
+            WHEN cr.id   IS NOT NULL                                    THEN 'campaign_paid'
+            WHEN bim.type IN ('prescription_dispense', 'dispense')      THEN 'prescription'
+            ELSE                                                              'regular'
           END                                                               AS sale_type,
           SUM(ABS(bim.quantity))                                            AS total_qty,
           -- dp_amount: revenue at DP level for each movement type.
