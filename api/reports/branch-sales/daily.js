@@ -147,10 +147,14 @@ export default async function handler(req, res) {
                        -- (may be discounted for discount-type campaigns).  Prefer it over
                        -- pp.dp (list DP) so the report reflects what was charged.
                        -- For non-member walk-in rows inside a campaign, pp.dp is the cost
-                       -- basis and is still the correct DP reference.
+                       -- basis and is the correct DP reference.  unit_price for non-member
+                       -- rows holds the discounted CP, NOT the list DP — never use it as a
+                       -- fallback here or the campaign total will be silently overstated.
+                       -- If pp.dp is missing/0 the product has no price list entry; return 0
+                       -- so the caller can detect and warn rather than silently inflate.
                        WHEN type = 'campaign_sale'
                          THEN COALESCE(NULLIF(unit_price, 0), NULLIF(pp.dp, 0), 0)
-                       ELSE COALESCE(NULLIF(pp.dp, 0), NULLIF(unit_price, 0), 0)
+                       ELSE COALESCE(NULLIF(pp.dp, 0), 0)
                   END)                                        AS total_dp
          FROM branch_inventory_movements
          LEFT JOIN product_prices pp ON LOWER(TRIM(pp.description)) = LOWER(TRIM(product_name))
@@ -335,6 +339,23 @@ export default async function handler(req, res) {
       campaignRefAgg[ref].total_qty += Number(c.total_qty || 0);
       // Free items carry 0 DP — don't double-count; unit_price is NULL in DB so total_dp is 0 anyway
       if (!isFree) campaignRefAgg[ref].total_dp += Number(c.total_dp || 0);
+    }
+
+    // Detect campaign products that have stock deducted but no DP value — this means the
+    // product is absent from product_prices (or has dp = 0).  The SQL guard above already
+    // returns 0 instead of falling back to unit_price (CP), so the total is correct, but
+    // we surface the product names here so finance staff can diagnose any mismatch.
+    const campaignMissingPriceWarnings = [];
+    for (const [ref, products] of Object.entries(campaignProductMap)) {
+      for (const p of products) {
+        if (!p.is_free && p.qty > 0 && p.dp_value === 0) {
+          campaignMissingPriceWarnings.push({
+            reference: ref,
+            product_name: p.product_name,
+            qty: p.qty,
+          });
+        }
+      }
     }
 
     // Set of campaign sale reference IDs (= saleId) that exist in inventory movements.
@@ -556,6 +577,7 @@ export default async function handler(req, res) {
       online_order_sales: build(onlineRows),
       prescription_dispensing: buildRxWithDetail(rxRows),
       campaign_sales: buildCampaignWithDetail(campaignRows),
+      campaign_missing_price_warnings: campaignMissingPriceWarnings,
       walkin_products: walkinProducts,
       refund_deductions: { count: refundCount, total_amount: refundTotal },
       pending_unposted_records: pendingCapture,
