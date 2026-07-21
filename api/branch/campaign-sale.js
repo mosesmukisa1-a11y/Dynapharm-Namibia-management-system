@@ -352,6 +352,7 @@ export default async function handler(req, res) {
           total_bv:     paidBvTotal,
           is_free:      false,
           is_member:    isMember,
+          discount_pct: discountPct,
         },
         ...(free_product && free_qty > 0 ? [{
           product_name: free_product,

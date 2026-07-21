@@ -12139,9 +12139,11 @@ function printCampaignReceipt(receipt, branchDisplayName) {
     // unit_price on the item is the actual charged (discounted) price — use it as the primary
     const chargedPrice = Number(it.unit_price || 0);
     const originalBase = isMember ? Number(it.dp || 0) : Number(it.cp || 0);
-    const hasDiscount  = discountPct > 0 && chargedPrice < originalBase;
+    // Prefer item-level discount_pct (supports hybrid campaigns); fall back to receipt-level
+    const itemDiscPct  = Number(it.discount_pct ?? discountPct ?? 0);
+    const hasDiscount  = itemDiscPct > 0 && chargedPrice < originalBase;
     const displayName  = hasDiscount
-      ? `${it.product_name} 🏷️ (-${discountPct}% OFF, was N$${originalBase.toFixed(2)})`
+      ? `${it.product_name} 🏷️ (-${itemDiscPct}% OFF, was N$${originalBase.toFixed(2)})`
       : it.product_name;
     return {
       product_name: displayName,
