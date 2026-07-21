@@ -321,19 +321,45 @@ export default async function handler(req, res) {
     }
     const walkinProducts = Object.values(walkinProductAgg).sort((a, b) => b.dp_value - a.dp_value);
 
+    // Build per-sale pricing/discount data from branch_walkin_sales.data for campaign sales.
+    // data stores: paid_product, paid_base_price (list price before discount),
+    // paid_unit_price (discounted price charged), discount_pct, discount_amount.
+    const campaignSaleDataMap = {};
+    for (const s of walkinSalesRows) {
+      let sData = {};
+      try { sData = typeof s.data === 'string' ? JSON.parse(s.data) : (s.data || {}); } catch {}
+      if (sData.sale_type === 'campaign_sale') {
+        campaignSaleDataMap[s.id] = {
+          paid_product:     sData.paid_product || '',
+          paid_base_price:  parseFloat(Number(sData.paid_base_price  || 0).toFixed(2)),
+          paid_unit_price:  parseFloat(Number(sData.paid_unit_price  || 0).toFixed(2)),
+          discount_pct:     Number(sData.discount_pct    || 0),
+          discount_amount:  parseFloat(Number(sData.discount_amount  || 0).toFixed(2)),
+        };
+      }
+    }
+
     // Build per-product map and per-reference aggregates from campaign movements.
     // Each campaign sale may span multiple product rows; aggregate into one synthetic row per reference.
     const campaignProductMap = {};
     const campaignRefAgg = {};
     for (const c of campaignMovements) {
-      const ref    = c.reference;
-      const isFree = c.type === 'campaign_free_item';
+      const ref      = c.reference;
+      const isFree   = c.type === 'campaign_free_item';
+      const saleData = campaignSaleDataMap[ref] || {};
+      // Use historical base/unit prices from the sale record when the product name matches
+      // (case-insensitive). Falls back to 0 so the UI skips the strikethrough rather than
+      // showing a wrong value.
+      const nameMatch = saleData.paid_product
+        && (c.product_name || '').trim().toLowerCase() === saleData.paid_product.trim().toLowerCase();
       if (!campaignProductMap[ref]) campaignProductMap[ref] = [];
       campaignProductMap[ref].push({
         product_name: c.product_name,
-        qty:      Number(c.total_qty || 0),
-        dp_value: parseFloat(Number(c.total_dp || 0).toFixed(2)),
-        is_free:  isFree,   // free items have 0 dp_value but stock was still deducted
+        qty:        Number(c.total_qty || 0),
+        dp_value:   parseFloat(Number(c.total_dp || 0).toFixed(2)),
+        is_free:    isFree,
+        base_price: isFree || !nameMatch ? 0 : saleData.paid_base_price,   // list price/unit before discount
+        unit_price: isFree || !nameMatch ? 0 : saleData.paid_unit_price,   // discounted price/unit charged
       });
       if (!campaignRefAgg[ref]) campaignRefAgg[ref] = { reference: ref, branch_id: c.branch_id, total_qty: 0, total_dp: 0 };
       campaignRefAgg[ref].total_qty += Number(c.total_qty || 0);
@@ -457,14 +483,17 @@ export default async function handler(req, res) {
     const buildCampaignWithDetail = (rows) => {
       const base = build(rows);
       const line_items = rows.map(r => {
-        const products = campaignProductMap[r.form_reference_id] || [];
+        const products  = campaignProductMap[r.form_reference_id] || [];
+        const saleData  = campaignSaleDataMap[r.form_reference_id] || {};
         return {
-          reference_id: r.form_reference_id,
-          date: r.service_date,
-          total_qty: Number(r.total_qty || 0),
-          total_dp_value: parseFloat(Number(r.grand_total || 0).toFixed(2)),
-          payment_method: r.payment_method || 'cash',
-          payment_status: r.payment_status,
+          reference_id:    r.form_reference_id,
+          date:            r.service_date,
+          total_qty:       Number(r.total_qty || 0),
+          total_dp_value:  parseFloat(Number(r.grand_total || 0).toFixed(2)),
+          payment_method:  r.payment_method || 'cash',
+          payment_status:  r.payment_status,
+          discount_pct:    Number(saleData.discount_pct    || 0),
+          discount_amount: parseFloat(Number(saleData.discount_amount || 0).toFixed(2)),
           products,
         };
       });

@@ -6625,19 +6625,32 @@ function BranchStockTab() {
         const buildCampaignLineItemsHTML = (lineItems) => {
           if (!Array.isArray(lineItems) || lineItems.length === 0) return '';
           const rows = lineItems.map((li, idx) => {
+            const discPct = Number(li.discount_pct || 0);
+            const discBadge = discPct > 0
+              ? `<span style="background:#dc2626;color:#fff;border-radius:3px;padding:1px 5px;font-size:8px;font-weight:700;white-space:nowrap">${discPct}% off</span>`
+              : `<span style="color:#94a3b8;font-size:9px">—</span>`;
             const productRows = Array.isArray(li.products) && li.products.length > 0
               ? li.products.map(p => {
                   const isFree = p.is_free === true;
                   const freeBadge = isFree ? `<span style="background:#d97706;color:#fff;border-radius:3px;padding:0 4px;font-size:7px;font-weight:700;margin-left:4px">FREE</span>` : '';
-                  const dpDisplay = isFree ? `<em style="color:#d97706;font-style:normal">FREE</em>` : fmtC(p.dp_value);
+                  const basePerUnit = Number(p.base_price || 0);
+                  const soldPerUnit = Number(p.unit_price || 0);
+                  const hasDiscount = !isFree && discPct > 0 && basePerUnit > 0 && soldPerUnit > 0 && soldPerUnit < basePerUnit;
+                  const priceDisplay = isFree
+                    ? `<em style="color:#d97706;font-style:normal">FREE</em>`
+                    : hasDiscount
+                      ? `<span style="text-decoration:line-through;color:#94a3b8;font-size:8px">${fmtC(basePerUnit)}</span> <span style="color:#b45309;font-weight:700">${fmtC(soldPerUnit)}</span>`
+                      : soldPerUnit > 0
+                        ? `<span style="color:#b45309;font-weight:700">${fmtC(soldPerUnit)}</span>`
+                        : `<span style="color:#94a3b8;font-size:9px">—</span>`;
                   const rowBg = isFree ? '#fffbeb' : '#fef9ec';
-                  return `<tr style="background:${rowBg}"><td style="padding:3px 8px 3px 20px;font-size:9px;color:#92400e" colspan="2">&rarr; ${p.product_name || '—'}${freeBadge}</td><td style="padding:3px 8px;font-size:9px;text-align:center;color:#92400e">${p.qty}</td><td style="padding:3px 8px;font-size:9px;text-align:right;color:${isFree ? '#d97706' : '#b45309'};font-weight:700">${dpDisplay}</td></tr>`;
+                  return `<tr style="background:${rowBg}"><td style="padding:3px 8px 3px 20px;font-size:9px;color:#92400e" colspan="2">&rarr; ${p.product_name || '—'}${freeBadge}</td><td style="padding:3px 8px;font-size:9px;text-align:center;color:#92400e">${p.qty}</td><td style="padding:3px 8px;font-size:9px;text-align:right">${priceDisplay}</td></tr>`;
                 }).join('')
               : '';
             const refShort = (li.reference_id || '').slice(-8).toUpperCase();
-            return `<tr style="background:${idx % 2 === 0 ? '#fff' : '#fafaf8'}"><td style="padding:4px 8px;font-size:10px;color:#92400e;font-family:monospace">${refShort}</td><td style="padding:4px 8px;font-size:10px;text-align:center">${li.total_qty || 0}</td><td style="padding:4px 8px;font-size:10px;text-align:right;font-weight:700;color:#b45309">${fmtC(li.total_dp_value || 0)}</td></tr>${productRows}`;
+            return `<tr style="background:${idx % 2 === 0 ? '#fff' : '#fafaf8'}"><td style="padding:4px 8px;font-size:10px;color:#92400e;font-family:monospace">${refShort}</td><td style="padding:4px 8px;font-size:10px;text-align:center">${discBadge}</td><td style="padding:4px 8px;font-size:10px;text-align:center">${li.total_qty || 0}</td><td style="padding:4px 8px;font-size:10px;text-align:right;font-weight:700;color:#b45309">${fmtC(li.total_dp_value || 0)}</td></tr>${productRows}`;
           }).join('');
-          return `<table style="width:100%;border-collapse:collapse;margin-top:4px;border-radius:6px;overflow:hidden"><thead><tr style="background:#b45309;color:#fff"><th style="padding:4px 8px;font-size:9px;text-align:left">Sale Ref</th><th style="padding:4px 8px;font-size:9px;text-align:center">Qty</th><th style="padding:4px 8px;font-size:9px;text-align:right">DP Value</th></tr></thead><tbody>${rows}</tbody></table>`;
+          return `<table style="width:100%;border-collapse:collapse;margin-top:4px;border-radius:6px;overflow:hidden"><thead><tr style="background:#b45309;color:#fff"><th style="padding:4px 8px;font-size:9px;text-align:left">Sale Ref</th><th style="padding:4px 8px;font-size:9px;text-align:center">Discount</th><th style="padding:4px 8px;font-size:9px;text-align:center">Qty</th><th style="padding:4px 8px;font-size:9px;text-align:right">DP Value</th></tr></thead><tbody>${rows}</tbody></table>`;
         };
 
         const printDPSalesReportFromData = (data, period) => {
