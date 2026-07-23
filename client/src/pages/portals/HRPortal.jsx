@@ -257,6 +257,48 @@ const DEPT_OPTIONS = [
   { value: 'Cleaning', label: 'Cleaning' },
 ];
 
+// ── Shared profile display helpers ──────────────────────────────────────────
+function ProfileSection({ title, icon, hasData, children }) {
+  if (!hasData) {
+    return (
+      <div style={{ textAlign: 'center', padding: '32px 16px', color: '#94a3b8' }}>
+        <div style={{ fontSize: '2rem', marginBottom: 8 }}>📭</div>
+        <p style={{ fontWeight: 600, color: '#64748b', marginBottom: 4 }}>No profile data available</p>
+        <p style={{ fontSize: '0.8rem' }}>This employee has not completed their "My Profile" section yet.</p>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.9rem', marginBottom: 12 }}>{icon} {title}</div>
+      {children}
+    </div>
+  );
+}
+
+function ProfileGrid({ items }) {
+  const wideItems = items.filter(i => i.wide);
+  const normalItems = items.filter(i => !i.wide);
+  return (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: wideItems.length ? 12 : 0 }}>
+        {normalItems.map(({ label, value }) => (
+          <div key={label}>
+            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>{label}</div>
+            <div style={{ fontSize: '0.88rem', fontWeight: 600, color: value ? '#1e293b' : '#cbd5e1' }}>{value || '— not provided —'}</div>
+          </div>
+        ))}
+      </div>
+      {wideItems.map(({ label, value }) => (
+        <div key={label} style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>{label}</div>
+          <div style={{ fontSize: '0.88rem', fontWeight: 600, color: value ? '#1e293b' : '#cbd5e1' }}>{value || '— not provided —'}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function EmployeesTab() {
   const [employees, setEmployees] = useState([]);
   const [changeRequests, setChangeRequests] = useState([]);
@@ -272,6 +314,8 @@ function EmployeesTab() {
   const [profileEmp, setProfileEmp] = useState(null);
   const [profileData, setProfileData] = useState({ attendance: [], leaves: [], warnings: [], reviews: [] });
   const [profileLoading, setProfileLoading] = useState(false);
+  const [fullProfile, setFullProfile] = useState(null);
+  const [profileTab, setProfileTab] = useState('overview');
 
   const loadData = () => {
     setLoading(true);
@@ -325,15 +369,19 @@ function EmployeesTab() {
 
   const openProfile = async (emp) => {
     setProfileEmp(emp);
+    setFullProfile(null);
+    setProfileTab('overview');
     setProfileLoading(true);
     try {
-      const [att, lvs, warns, perf] = await Promise.all([
+      const [att, lvs, warns, perf, fp] = await Promise.all([
         api.hr.records('attendance').then(d => (Array.isArray(d) ? d : d.records || []).filter(r => r.employee_name === emp.full_name)).catch(() => []),
         api.hr.leaves().then(d => (Array.isArray(d) ? d : d.leaves || []).filter(l => l.employee_name === emp.full_name)).catch(() => []),
         api.hr.records('warning').then(d => (Array.isArray(d) ? d : d.records || []).filter(r => r.employee_name === emp.full_name)).catch(() => []),
         api.hr.records('performance').then(d => (Array.isArray(d) ? d : d.records || []).filter(r => r.employee_name === emp.full_name)).catch(() => []),
+        api.hr.staffProfile(emp.full_name).catch(() => null),
       ]);
       setProfileData({ attendance: att, leaves: lvs, warnings: warns, reviews: perf });
+      if (fp?.profile) setFullProfile(fp.profile);
     } finally { setProfileLoading(false); }
   };
 
@@ -565,80 +613,195 @@ function EmployeesTab() {
         </Modal>
 
       {profileEmp && (
-        <Modal open={!!profileEmp} title={`👤 ${profileEmp.full_name}`} onClose={() => setProfileEmp(null)}>
+        <Modal open={!!profileEmp} title={`👤 ${profileEmp.full_name}`} onClose={() => { setProfileEmp(null); setFullProfile(null); }}>
           <div style={{ padding: '0 24px 24px' }}>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginBottom: 16, paddingBottom: 14, borderBottom: '1px solid #f1f5f9' }}>
+
+            {/* Identity banner */}
+            <div style={{ background: 'linear-gradient(135deg,#1e3a5f,#2c5282)', borderRadius: 12, padding: '16px 20px', marginBottom: 16, display: 'flex', flexWrap: 'wrap', gap: 20 }}>
+              <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', flexShrink: 0 }}>
+                {(profileEmp.full_name || '?')[0].toUpperCase()}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ color: '#fff', fontWeight: 800, fontSize: '1rem' }}>{profileEmp.full_name}</div>
+                <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.82rem', marginTop: 2 }}>
+                  {profileEmp.position || '—'}{profileEmp.department ? ` · ${profileEmp.department}` : ''}{profileEmp.branch ? ` · ${profileEmp.branch}` : ''}
+                </div>
+              </div>
               {[
-                { label: 'Position', value: profileEmp.position || '—' },
-                { label: 'Department', value: profileEmp.department || '—' },
-                { label: 'Branch', value: profileEmp.branch || '—' },
-                { label: 'Phone', value: profileEmp.phone || '—' },
-                { label: 'Tenure', value: (() => { const t = getTenure(profileEmp.hire_date); return t ? t.text : '—'; })() },
                 { label: 'Joined', value: profileEmp.hire_date ? formatDate(profileEmp.hire_date) : '—' },
-              ].map(item => (
-                <div key={item.label} style={{ minWidth: 110 }}>
-                  <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.05em' }}>{item.label}</div>
-                  <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#1f2937' }}>{item.value}</div>
+                { label: 'Tenure', value: (() => { const t = getTenure(profileEmp.hire_date); return t ? t.text : '—'; })() },
+              ].map(({ label, value }) => (
+                <div key={label} style={{ textAlign: 'center' }}>
+                  <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.67rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
+                  <div style={{ color: '#fff', fontWeight: 700, fontSize: '0.85rem', marginTop: 2 }}>{value}</div>
                 </div>
               ))}
             </div>
-            {profileLoading ? <LoadingSpinner /> : (
-              <div className="space-y-5">
-                <div>
-                  <p style={{ fontWeight: 700, fontSize: '0.83rem', color: '#374151', marginBottom: 6 }}>📅 Leave History ({profileData.leaves.length})</p>
-                  {profileData.leaves.length === 0 ? <p style={{ fontSize: '0.82rem', color: '#9ca3af' }}>No leave records</p> : (
-                    <div style={{ maxHeight: 130, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      {profileData.leaves.map((l, i) => (
-                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', padding: '4px 8px', background: '#f9fafb', borderRadius: 6 }}>
-                          <span><Badge variant={LEAVE_TYPE_COLORS[l.leave_type] || 'info'}>{l.leave_type}</Badge> {formatDate(l.start_date)} → {formatDate(l.end_date)} ({l.working_days ?? '?'}d)</span>
-                          <Badge variant={l.status === 'approved' ? 'success' : l.status === 'rejected' ? 'danger' : 'warning'}>{l.status}</Badge>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <p style={{ fontWeight: 700, fontSize: '0.83rem', color: '#374151', marginBottom: 6 }}>⚠️ Warnings ({profileData.warnings.length})</p>
-                  {profileData.warnings.length === 0 ? <p style={{ fontSize: '0.82rem', color: '#9ca3af' }}>No warnings on record</p> : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      {profileData.warnings.map((w, i) => (
-                        <div key={i} style={{ fontSize: '0.8rem', padding: '5px 8px', background: '#fef2f2', borderRadius: 6, color: '#991b1b' }}>
-                          <strong>{w.subtype || 'Warning'}</strong> — {formatDate(w.date || w.created_at)}: {w.reason || w.notes || '—'}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <p style={{ fontWeight: 700, fontSize: '0.83rem', color: '#374151', marginBottom: 6 }}>⭐ Performance Reviews ({profileData.reviews.length})</p>
-                  {profileData.reviews.length === 0 ? <p style={{ fontSize: '0.82rem', color: '#9ca3af' }}>No reviews yet</p> : (
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      {profileData.reviews.map((rev, i) => (
-                        <div key={i} style={{ background: '#fefce8', border: '1px solid #fde047', borderRadius: 8, padding: '6px 12px', textAlign: 'center', minWidth: 56 }}>
-                          <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#ca8a04' }}>{rev.rating}</div>
-                          <div style={{ fontSize: '0.68rem', color: '#a16207' }}>{formatDate(rev.created_at)}</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <p style={{ fontWeight: 700, fontSize: '0.83rem', color: '#374151', marginBottom: 6 }}>🕐 Recent Attendance ({profileData.attendance.length} records)</p>
-                  {profileData.attendance.length === 0 ? <p style={{ fontSize: '0.82rem', color: '#9ca3af' }}>No attendance records</p> : (
-                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                      {profileData.attendance.slice(-20).map((a, i) => {
-                        const isLate = (a.subtype || a.status) === 'Late';
-                        return (
-                          <div key={i} title={`${a.date}: in ${a.clock_in || '?'} out ${a.clock_out || '?'}`}
-                            style={{ width: 30, height: 30, borderRadius: 6, background: isLate ? '#fef3c7' : '#dcfce7', border: `1.5px solid ${isLate ? '#fde68a' : '#86efac'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700, color: isLate ? '#b45309' : '#15803d', cursor: 'default' }}>
-                            {isLate ? '⚠' : '✓'}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+
+            {/* Profile completion notice */}
+            {!fullProfile && !profileLoading && (
+              <div style={{ marginBottom: 12, padding: '8px 14px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, fontSize: '0.8rem', color: '#92400e' }}>
+                ⚠️ This employee has not yet linked their system account — contact details from "My Profile" are unavailable.
               </div>
+            )}
+
+            {/* Tab bar */}
+            <div style={{ display: 'flex', gap: 6, marginBottom: 16, borderBottom: '2px solid #f1f5f9', paddingBottom: 0, flexWrap: 'wrap' }}>
+              {[
+                { id: 'overview', label: '📋 Overview' },
+                { id: 'contact', label: '📞 Contact' },
+                { id: 'personal', label: '👤 Personal' },
+                { id: 'qualifications', label: '🎓 Education' },
+                { id: 'payroll', label: '🔒 Payroll' },
+              ].map(t => (
+                <button key={t.id} onClick={() => setProfileTab(t.id)}
+                  style={{ padding: '7px 16px', fontSize: '0.82rem', fontWeight: profileTab === t.id ? 700 : 500, background: 'none', border: 'none', borderBottom: `2px solid ${profileTab === t.id ? '#1e3a5f' : 'transparent'}`, color: profileTab === t.id ? '#1e3a5f' : '#64748b', marginBottom: -2, cursor: 'pointer', transition: 'color 0.15s' }}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {profileLoading ? <LoadingSpinner /> : (
+              <>
+                {/* ── OVERVIEW ── */}
+                {profileTab === 'overview' && (
+                  <div className="space-y-5">
+                    <div>
+                      <p style={{ fontWeight: 700, fontSize: '0.83rem', color: '#374151', marginBottom: 6 }}>📅 Leave History ({profileData.leaves.length})</p>
+                      {profileData.leaves.length === 0 ? <p style={{ fontSize: '0.82rem', color: '#9ca3af' }}>No leave records</p> : (
+                        <div style={{ maxHeight: 140, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          {profileData.leaves.map((l, i) => (
+                            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', padding: '4px 8px', background: '#f9fafb', borderRadius: 6 }}>
+                              <span><Badge variant={LEAVE_TYPE_COLORS[l.leave_type] || 'info'}>{l.leave_type}</Badge> {formatDate(l.start_date)} → {formatDate(l.end_date)} ({l.working_days ?? '?'}d)</span>
+                              <Badge variant={l.status === 'approved' ? 'success' : l.status === 'rejected' ? 'danger' : 'warning'}>{l.status}</Badge>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <p style={{ fontWeight: 700, fontSize: '0.83rem', color: '#374151', marginBottom: 6 }}>⚠️ Warnings ({profileData.warnings.length})</p>
+                      {profileData.warnings.length === 0 ? <p style={{ fontSize: '0.82rem', color: '#9ca3af' }}>No warnings on record</p> : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          {profileData.warnings.map((w, i) => (
+                            <div key={i} style={{ fontSize: '0.8rem', padding: '5px 8px', background: '#fef2f2', borderRadius: 6, color: '#991b1b' }}>
+                              <strong>{w.subtype || 'Warning'}</strong> — {formatDate(w.date || w.created_at)}: {w.reason || w.notes || '—'}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <p style={{ fontWeight: 700, fontSize: '0.83rem', color: '#374151', marginBottom: 6 }}>⭐ Performance Reviews ({profileData.reviews.length})</p>
+                      {profileData.reviews.length === 0 ? <p style={{ fontSize: '0.82rem', color: '#9ca3af' }}>No reviews yet</p> : (
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          {profileData.reviews.map((rev, i) => (
+                            <div key={i} style={{ background: '#fefce8', border: '1px solid #fde047', borderRadius: 8, padding: '6px 12px', textAlign: 'center', minWidth: 56 }}>
+                              <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#ca8a04' }}>{rev.rating}</div>
+                              <div style={{ fontSize: '0.68rem', color: '#a16207' }}>{formatDate(rev.created_at)}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <p style={{ fontWeight: 700, fontSize: '0.83rem', color: '#374151', marginBottom: 6 }}>🕐 Recent Attendance ({profileData.attendance.length} records)</p>
+                      {profileData.attendance.length === 0 ? <p style={{ fontSize: '0.82rem', color: '#9ca3af' }}>No attendance records</p> : (
+                        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                          {profileData.attendance.slice(-20).map((a, i) => {
+                            const isLate = (a.subtype || a.status) === 'Late';
+                            return (
+                              <div key={i} title={`${a.date}: in ${a.clock_in || '?'} out ${a.clock_out || '?'}`}
+                                style={{ width: 30, height: 30, borderRadius: 6, background: isLate ? '#fef3c7' : '#dcfce7', border: `1.5px solid ${isLate ? '#fde68a' : '#86efac'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700, color: isLate ? '#b45309' : '#15803d', cursor: 'default' }}>
+                                {isLate ? '⚠' : '✓'}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── CONTACT ── */}
+                {profileTab === 'contact' && (
+                  <ProfileSection title="Contact & Emergency Information" icon="📞" hasData={!!fullProfile}>
+                    <ProfileGrid items={[
+                      { label: 'Phone', value: fullProfile?.phone || profileEmp.phone },
+                      { label: 'Email', value: fullProfile?.email || profileEmp.email },
+                      { label: 'Date of Birth', value: fullProfile?.date_of_birth ? formatDate(fullProfile.date_of_birth) : null },
+                      { label: 'Gender', value: fullProfile?.gender },
+                      { label: 'Home Address', value: fullProfile?.address, wide: true },
+                    ]} />
+                    {(fullProfile?.emergency_contact_name || fullProfile?.emergency_contact_phone) && (
+                      <div style={{ marginTop: 16, padding: '12px 16px', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 10 }}>
+                        <div style={{ fontWeight: 700, color: '#9a3412', fontSize: '0.82rem', marginBottom: 8 }}>🚨 Emergency Contact</div>
+                        <ProfileGrid items={[
+                          { label: 'Name', value: fullProfile?.emergency_contact_name },
+                          { label: 'Phone', value: fullProfile?.emergency_contact_phone },
+                        ]} />
+                      </div>
+                    )}
+                  </ProfileSection>
+                )}
+
+                {/* ── PERSONAL ── */}
+                {profileTab === 'personal' && (
+                  <ProfileSection title="Personal Details" icon="👤" hasData={!!fullProfile}>
+                    <ProfileGrid items={[
+                      { label: 'Marital Status', value: fullProfile?.marital_status },
+                      { label: 'Nationality', value: fullProfile?.nationality },
+                      { label: 'Home Language', value: fullProfile?.home_language },
+                    ]} />
+                    {(fullProfile?.next_of_kin_name || fullProfile?.next_of_kin_phone) && (
+                      <div style={{ marginTop: 16, padding: '12px 16px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10 }}>
+                        <div style={{ fontWeight: 700, color: '#166534', fontSize: '0.82rem', marginBottom: 8 }}>👨‍👩‍👧 Next of Kin</div>
+                        <ProfileGrid items={[
+                          { label: 'Name', value: fullProfile?.next_of_kin_name },
+                          { label: 'Relationship', value: fullProfile?.next_of_kin_relationship },
+                          { label: 'Phone', value: fullProfile?.next_of_kin_phone },
+                        ]} />
+                      </div>
+                    )}
+                  </ProfileSection>
+                )}
+
+                {/* ── EDUCATION ── */}
+                {profileTab === 'qualifications' && (
+                  <ProfileSection title="Education & Qualifications" icon="🎓" hasData={!!fullProfile}>
+                    <ProfileGrid items={[
+                      { label: 'Highest Qualification', value: fullProfile?.highest_qualification },
+                      { label: 'Year of Completion', value: fullProfile?.graduation_year },
+                      { label: 'Institution', value: fullProfile?.institution_name, wide: true },
+                      { label: 'Field of Study', value: fullProfile?.field_of_study, wide: true },
+                    ]} />
+                    {fullProfile?.professional_certifications && (
+                      <div style={{ marginTop: 14 }}>
+                        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Professional Certifications</div>
+                        <div style={{ fontSize: '0.88rem', color: '#374151', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '10px 14px', whiteSpace: 'pre-wrap' }}>
+                          {fullProfile.professional_certifications}
+                        </div>
+                      </div>
+                    )}
+                  </ProfileSection>
+                )}
+
+                {/* ── PAYROLL / SENSITIVE ── */}
+                {profileTab === 'payroll' && (
+                  <ProfileSection title="Payroll & ID Details" icon="🔒" hasData={!!fullProfile}>
+                    <div style={{ padding: '10px 14px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, fontSize: '0.8rem', color: '#1e40af', marginBottom: 14 }}>
+                      ℹ️ Sensitive data — visible to authorised HR personnel only. Staff update requests require HR approval.
+                    </div>
+                    <ProfileGrid items={[
+                      { label: 'National ID', value: fullProfile?.national_id },
+                      { label: 'Bank Name', value: fullProfile?.bank_name },
+                      { label: 'Account Number', value: fullProfile?.bank_account_no
+                          ? '•••• ' + String(fullProfile.bank_account_no).slice(-4)
+                          : null },
+                    ]} />
+                  </ProfileSection>
+                )}
+              </>
             )}
           </div>
         </Modal>

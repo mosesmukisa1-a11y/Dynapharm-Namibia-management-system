@@ -360,6 +360,7 @@ export const api = {
       create: (data) => api.post('/hr/staff-change-requests', data),
       review: (id, status, gm_note = '') => api.put(`/hr/staff-change-requests?id=${id}`, { id, status, gm_note }),
     },
+    staffProfile: (employeeName) => api.get(`/hr/staff-profile?employee_name=${encodeURIComponent(employeeName)}`),
   },
 
   staff: {
