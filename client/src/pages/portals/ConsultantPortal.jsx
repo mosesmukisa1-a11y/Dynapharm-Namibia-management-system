@@ -1371,15 +1371,37 @@ ${consultantNotes ? `
             <button onClick={() => setSearchQuery('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '1rem', color: '#94a3b8', lineHeight: 1, padding: 2 }}>✕</button>
           )}
         </div>
-        <div style={{ position: 'relative' }}>
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+          <span style={{
+            position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
+            fontSize: '1rem', pointerEvents: 'none', zIndex: 1,
+            color: dateFilter ? '#c41e3a' : '#94a3b8'
+          }}>📅</span>
           <input
             type="date"
             value={dateFilter}
             onChange={e => setDateFilter(e.target.value)}
-            style={{ padding: '9px 14px', borderRadius: 10, border: `1.5px solid ${dateFilter ? '#c41e3a' : '#e2e8f0'}`, fontSize: '0.88rem', color: dateFilter ? '#1e293b' : '#94a3b8', background: dateFilter ? '#fff0f3' : '#f8fafc', cursor: 'pointer', minWidth: 155, outline: 'none' }}
+            title="Filter by exact date"
+            style={{
+              padding: '9px 34px 9px 34px',
+              borderRadius: 10,
+              border: `1.5px solid ${dateFilter ? '#c41e3a' : '#e2e8f0'}`,
+              fontSize: '0.88rem',
+              color: dateFilter ? '#1e293b' : '#94a3b8',
+              background: dateFilter ? '#fff0f3' : '#f8fafc',
+              cursor: 'pointer',
+              minWidth: 170,
+              outline: 'none',
+              transition: 'border-color .15s, background .15s'
+            }}
+            onFocus={e => { e.target.style.borderColor = '#c41e3a'; }}
+            onBlur={e => { if (!dateFilter) e.target.style.borderColor = '#e2e8f0'; }}
           />
           {dateFilter && (
-            <button onClick={() => setDateFilter('')} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.9rem', color: '#94a3b8', lineHeight: 1, padding: 2 }}>✕</button>
+            <button
+              onClick={() => setDateFilter('')}
+              title="Clear date filter"
+              style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.9rem', color: '#94a3b8', lineHeight: 1, padding: 2 }}>✕</button>
           )}
         </div>
         <select
