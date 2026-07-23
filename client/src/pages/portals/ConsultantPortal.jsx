@@ -689,7 +689,8 @@ function CheckupsSection() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('upcoming');
   const [searchQuery, setSearchQuery] = useState('');
-  const [dateFilter, setDateFilter] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [showReport, setShowReport] = useState(false);
   const [selectedCheckup, setSelectedCheckup] = useState(null);
   const [showDetail, setShowDetail] = useState(false);
@@ -1299,10 +1300,13 @@ ${consultantNotes ? `
     ? appointments.filter(a => (a.branch || '').toLowerCase().includes(branchViewFilter.toLowerCase()))
     : appointments;
 
-  // Apply date filter so tab counts (Upcoming / Completed / No Show) reflect the chosen day
-  const dateFiltered = dateFilter
-    ? branchFiltered.filter(a => (a.date || '').slice(0, 10) === dateFilter)
-    : branchFiltered;
+  // Apply date range filter so tab counts reflect the chosen period
+  const dateFiltered = branchFiltered.filter(a => {
+    const d = (a.date || '').slice(0, 10);
+    if (dateFrom && d < dateFrom) return false;
+    if (dateTo   && d > dateTo)   return false;
+    return true;
+  });
 
   const upcoming = dateFiltered.filter(a => {
     const s = (a.status || '').toLowerCase();
@@ -1371,37 +1375,26 @@ ${consultantNotes ? `
             <button onClick={() => setSearchQuery('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '1rem', color: '#94a3b8', lineHeight: 1, padding: 2 }}>✕</button>
           )}
         </div>
-        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-          <span style={{
-            position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
-            fontSize: '1rem', pointerEvents: 'none', zIndex: 1,
-            color: dateFilter ? '#c41e3a' : '#94a3b8'
-          }}>📅</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: (dateFrom || dateTo) ? '#fff0f3' : '#f8fafc', border: `1.5px solid ${(dateFrom || dateTo) ? '#c41e3a' : '#e2e8f0'}`, borderRadius: 10, padding: '2px 8px' }}>
+          <span style={{ fontSize: '0.95rem', color: (dateFrom || dateTo) ? '#c41e3a' : '#94a3b8', flexShrink: 0 }}>📅</span>
           <input
             type="date"
-            value={dateFilter}
-            onChange={e => setDateFilter(e.target.value)}
-            title="Filter by exact date"
-            style={{
-              padding: '9px 34px 9px 34px',
-              borderRadius: 10,
-              border: `1.5px solid ${dateFilter ? '#c41e3a' : '#e2e8f0'}`,
-              fontSize: '0.88rem',
-              color: dateFilter ? '#1e293b' : '#94a3b8',
-              background: dateFilter ? '#fff0f3' : '#f8fafc',
-              cursor: 'pointer',
-              minWidth: 170,
-              outline: 'none',
-              transition: 'border-color .15s, background .15s'
-            }}
-            onFocus={e => { e.target.style.borderColor = '#c41e3a'; }}
-            onBlur={e => { if (!dateFilter) e.target.style.borderColor = '#e2e8f0'; }}
+            value={dateFrom}
+            onChange={e => setDateFrom(e.target.value)}
+            title="From date"
+            style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: '0.85rem', color: dateFrom ? '#1e293b' : '#94a3b8', cursor: 'pointer', width: 130 }}
           />
-          {dateFilter && (
-            <button
-              onClick={() => setDateFilter('')}
-              title="Clear date filter"
-              style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.9rem', color: '#94a3b8', lineHeight: 1, padding: 2 }}>✕</button>
+          <span style={{ color: '#94a3b8', fontSize: '0.8rem', flexShrink: 0 }}>→</span>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={e => setDateTo(e.target.value)}
+            title="To date"
+            style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: '0.85rem', color: dateTo ? '#1e293b' : '#94a3b8', cursor: 'pointer', width: 130 }}
+          />
+          {(dateFrom || dateTo) && (
+            <button onClick={() => { setDateFrom(''); setDateTo(''); }} title="Clear date range"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.85rem', color: '#94a3b8', lineHeight: 1, padding: '0 2px', flexShrink: 0 }}>✕</button>
           )}
         </div>
         <select
@@ -1420,14 +1413,14 @@ ${consultantNotes ? `
           <p style={{ fontSize: '1.1rem' }}>
             {searchQuery.trim()
               ? `No ${filter === 'completed' ? 'completed' : filter === 'no_show' ? 'no-show' : 'upcoming'} clients match "${searchQuery.trim()}".`
-              : dateFilter
-                ? `No ${filter === 'completed' ? 'completed' : filter === 'no_show' ? 'no-show' : 'upcoming'} forms on ${new Date(dateFilter + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}${branchViewFilter ? ` at ${branchViewFilter}` : ''}.`
+              : (dateFrom || dateTo)
+                ? `No ${filter === 'completed' ? 'completed' : filter === 'no_show' ? 'no-show' : 'upcoming'} forms in the selected date range${branchViewFilter ? ` at ${branchViewFilter}` : ''}.`
                 : branchViewFilter
                   ? `No ${filter} clients at ${branchViewFilter}.`
                   : filter === 'completed' ? 'No completed forms yet.' : 'No upcoming checkup forms for your assigned branches.'}
           </p>
-          {(searchQuery.trim() || dateFilter || branchViewFilter) && (
-            <button onClick={() => { setSearchQuery(''); setDateFilter(''); setBranchViewFilter(''); }} style={{ marginTop: 8, padding: '6px 16px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#64748b', cursor: 'pointer', fontSize: '0.85rem' }}>Clear filters</button>
+          {(searchQuery.trim() || dateFrom || dateTo || branchViewFilter) && (
+            <button onClick={() => { setSearchQuery(''); setDateFrom(''); setDateTo(''); setBranchViewFilter(''); }} style={{ marginTop: 8, padding: '6px 16px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#64748b', cursor: 'pointer', fontSize: '0.85rem' }}>Clear filters</button>
           )}
         </div>
       ) : (
