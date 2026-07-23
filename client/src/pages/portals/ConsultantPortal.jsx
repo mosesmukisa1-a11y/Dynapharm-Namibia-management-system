@@ -689,6 +689,7 @@ function CheckupsSection() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('upcoming');
   const [searchQuery, setSearchQuery] = useState('');
+  const [dateFilter, setDateFilter] = useState('');
   const [showReport, setShowReport] = useState(false);
   const [selectedCheckup, setSelectedCheckup] = useState(null);
   const [showDetail, setShowDetail] = useState(false);
@@ -1298,12 +1299,17 @@ ${consultantNotes ? `
     ? appointments.filter(a => (a.branch || '').toLowerCase().includes(branchViewFilter.toLowerCase()))
     : appointments;
 
-  const upcoming = branchFiltered.filter(a => {
+  // Apply date filter so tab counts (Upcoming / Completed / No Show) reflect the chosen day
+  const dateFiltered = dateFilter
+    ? branchFiltered.filter(a => (a.date || '').slice(0, 10) === dateFilter)
+    : branchFiltered;
+
+  const upcoming = dateFiltered.filter(a => {
     const s = (a.status || '').toLowerCase();
     return !['completed', 'cancelled', 'no_show'].includes(s);
   });
-  const completed = branchFiltered.filter(a => (a.status || '').toLowerCase() === 'completed');
-  const noShows = branchFiltered.filter(a => (a.status || '').toLowerCase() === 'no_show');
+  const completed = dateFiltered.filter(a => (a.status || '').toLowerCase() === 'completed');
+  const noShows = dateFiltered.filter(a => (a.status || '').toLowerCase() === 'no_show');
   const baseFiltered = filter === 'completed' ? completed : filter === 'no_show' ? noShows : upcoming;
   const branchDisplayFiltered = searchQuery.trim()
     ? baseFiltered.filter(a => (a.full_name || '').toLowerCase().includes(searchQuery.trim().toLowerCase()))
@@ -1365,6 +1371,17 @@ ${consultantNotes ? `
             <button onClick={() => setSearchQuery('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '1rem', color: '#94a3b8', lineHeight: 1, padding: 2 }}>✕</button>
           )}
         </div>
+        <div style={{ position: 'relative' }}>
+          <input
+            type="date"
+            value={dateFilter}
+            onChange={e => setDateFilter(e.target.value)}
+            style={{ padding: '9px 14px', borderRadius: 10, border: `1.5px solid ${dateFilter ? '#c41e3a' : '#e2e8f0'}`, fontSize: '0.88rem', color: dateFilter ? '#1e293b' : '#94a3b8', background: dateFilter ? '#fff0f3' : '#f8fafc', cursor: 'pointer', minWidth: 155, outline: 'none' }}
+          />
+          {dateFilter && (
+            <button onClick={() => setDateFilter('')} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.9rem', color: '#94a3b8', lineHeight: 1, padding: 2 }}>✕</button>
+          )}
+        </div>
         <select
           value={branchViewFilter}
           onChange={e => setBranchViewFilter(e.target.value)}
@@ -1381,12 +1398,14 @@ ${consultantNotes ? `
           <p style={{ fontSize: '1.1rem' }}>
             {searchQuery.trim()
               ? `No ${filter === 'completed' ? 'completed' : filter === 'no_show' ? 'no-show' : 'upcoming'} clients match "${searchQuery.trim()}".`
-              : branchViewFilter
-                ? `No ${filter} clients at ${branchViewFilter}.`
-                : filter === 'completed' ? 'No completed forms yet.' : 'No upcoming checkup forms for your assigned branches.'}
+              : dateFilter
+                ? `No ${filter === 'completed' ? 'completed' : filter === 'no_show' ? 'no-show' : 'upcoming'} forms on ${new Date(dateFilter + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}${branchViewFilter ? ` at ${branchViewFilter}` : ''}.`
+                : branchViewFilter
+                  ? `No ${filter} clients at ${branchViewFilter}.`
+                  : filter === 'completed' ? 'No completed forms yet.' : 'No upcoming checkup forms for your assigned branches.'}
           </p>
-          {(searchQuery.trim() || branchViewFilter) && (
-            <button onClick={() => { setSearchQuery(''); setBranchViewFilter(''); }} style={{ marginTop: 8, padding: '6px 16px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#64748b', cursor: 'pointer', fontSize: '0.85rem' }}>Clear filters</button>
+          {(searchQuery.trim() || dateFilter || branchViewFilter) && (
+            <button onClick={() => { setSearchQuery(''); setDateFilter(''); setBranchViewFilter(''); }} style={{ marginTop: 8, padding: '6px 16px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#64748b', cursor: 'pointer', fontSize: '0.85rem' }}>Clear filters</button>
           )}
         </div>
       ) : (
