@@ -131,6 +131,43 @@ export default async function handler(req, res) {
       queryText += ' ORDER BY date DESC, time DESC';
       
       const appointments = await getMany(queryText, params);
+
+      // Enrich appointments: resolve any bare NB codes (client_reference or
+      // data->>'referral_nb') to a distributor full name so the consultant
+      // always sees "NAME (CODE)" rather than just the code.
+      try {
+        const nbCodes = new Set();
+        for (const apt of appointments) {
+          const code = (apt.client_reference || '').trim().toUpperCase();
+          if (code && code.startsWith('NB')) nbCodes.add(code);
+          const aptData = apt.data ? (typeof apt.data === 'string' ? JSON.parse(apt.data) : apt.data) : {};
+          const refNb = (aptData.referral_nb || '').trim().toUpperCase();
+          if (refNb && refNb.startsWith('NB')) nbCodes.add(refNb);
+        }
+        if (nbCodes.size > 0) {
+          const distRows = await getMany(
+            `SELECT UPPER(TRIM(distributor_code)) AS code, distributor_name
+             FROM distributors
+             WHERE UPPER(TRIM(distributor_code)) = ANY($1::text[])`,
+            [[...nbCodes]]
+          );
+          const nameMap = {};
+          for (const d of distRows) nameMap[d.code] = d.distributor_name;
+          for (const apt of appointments) {
+            const code = (apt.client_reference || '').trim().toUpperCase();
+            const aptData = apt.data ? (typeof apt.data === 'string' ? JSON.parse(apt.data) : apt.data) : {};
+            const refNb = (aptData.referral_nb || '').trim().toUpperCase();
+            const resolvedCode = code || refNb;
+            if (resolvedCode && nameMap[resolvedCode]) {
+              apt._distributor_name = nameMap[resolvedCode];
+              apt._distributor_code = resolvedCode;
+            }
+          }
+        }
+      } catch (enrichErr) {
+        console.error('[appointments] distributor name enrichment error:', enrichErr.message);
+      }
+
       return res.json(appointments);
     }
 

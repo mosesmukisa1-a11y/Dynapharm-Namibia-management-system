@@ -1408,12 +1408,18 @@ ${consultantNotes ? `
                 if (m2) return m2[1].trim();
               }
               if (data.booking_source === 'distributor_portal') {
-                const name = data.referral_name || '';
-                const nb = data.referral_nb || apt.client_reference || '';
+                const name = data.referral_name || apt._distributor_name || '';
+                const nb = data.referral_nb || apt.client_reference || apt._distributor_code || '';
                 return name ? `${name}${nb ? ` (${nb})` : ''}` : nb || 'Distributor Portal';
               }
               if (data.booking_source === 'front_desk') return 'Front Desk';
-              if (apt.client_reference) return apt.client_reference;
+              // Fallback: bare NB code in client_reference — enrich with resolved name if available
+              if (apt.client_reference) {
+                const resolvedName = apt._distributor_name || '';
+                return resolvedName
+                  ? `${resolvedName} (${apt.client_reference})`
+                  : apt.client_reference;
+              }
               return null;
             })();
 
