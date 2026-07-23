@@ -4393,9 +4393,22 @@ function ClientProfileModal({ apt, onClose }) {
 
   const report     = reports[0] || null;
   const rd         = (() => { try { return report ? (typeof report.data === 'string' ? JSON.parse(report.data) : (report.data || {})) : {}; } catch { return {}; } })();
-  const medicines  = rd.medicines  || rd.prescriptions || [];
-  const dispensed  = medicines.filter(m => m.dispensed);
-  const pending    = medicines.filter(m => !m.dispensed);
+
+  // For each report, build a merged medicines list with dispensed status
+  const buildMedList = (data) => {
+    const meds  = Array.isArray(data.medicines)     ? data.medicines     : [];
+    const presc = Array.isArray(data.prescriptions) ? data.prescriptions : [];
+    if (meds.length > 0) {
+      const medsSet = new Set(meds.map(m => (m.name || '').toLowerCase().trim()));
+      const extra = presc
+        .filter(p => !medsSet.has((p.product || p.name || '').toLowerCase().trim()))
+        .map(p => ({ name: p.product || p.name, quantity: p.quantity || 1, dispensed: false, dispensed_qty: 0 }));
+      return [...meds, ...extra];
+    }
+    return presc.map(p => ({ name: p.product || p.name, quantity: p.quantity || 1, dispensed: false, dispensed_qty: 0 }));
+  };
+
+  // Total unique medicine names across all reports for Follow-ups count badge
   const followUps  = reports.filter(r => {
     const fd = (() => { try { return typeof r.data === 'string' ? JSON.parse(r.data) : (r.data || {}); } catch { return {}; } })();
     return fd.follow_up_date;
@@ -4562,74 +4575,130 @@ function ClientProfileModal({ apt, onClose }) {
 
           {/* ── PRESCRIPTION ── */}
           {activeTab === 'prescription' && (
-            <div className="space-y-5">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               {loading ? (
                 <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Loading prescription data…</div>
-              ) : !report ? (
+              ) : reports.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: 40 }}>
                   <div style={{ fontSize: '2rem', marginBottom: 8 }}>📋</div>
-                  <div style={{ color: '#94a3b8', fontSize: '0.9rem' }}>No consultation report found for this appointment.</div>
+                  <div style={{ color: '#94a3b8', fontSize: '0.9rem' }}>No consultation reports found for this client.</div>
                   <div style={{ color: '#cbd5e1', fontSize: '0.8rem', marginTop: 4 }}>A report will appear here once the consultant creates one.</div>
                 </div>
               ) : (
-                <>
-                  {/* Report header */}
-                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 16px', display: 'flex', gap: 20, flexWrap: 'wrap' }}>
-                    <div><div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>Report ID</div><div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.85rem' }}>{report.id}</div></div>
-                    <div><div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>Consultant</div><div style={{ fontWeight: 600, color: '#374151', fontSize: '0.85rem' }}>{report.consultant || rd.consultant || '—'}</div></div>
-                    <div><div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>Date</div><div style={{ fontWeight: 600, color: '#374151', fontSize: '0.85rem' }}>{fmtDate((report.created_at || '').slice(0,10))}</div></div>
-                  </div>
+                reports.map((rpt, ri) => {
+                  const rdata = (() => { try { return typeof rpt.data === 'string' ? JSON.parse(rpt.data) : (rpt.data || {}); } catch { return {}; } })();
+                  const medList = buildMedList(rdata);
 
-                  {/* Diagnosis */}
-                  {(rd.diagnosis || rd.notes || rd.consultant_notes) && (
-                    <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '12px 16px' }}>
-                      <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#1d4ed8', textTransform: 'uppercase', marginBottom: 6 }}>🩺 Diagnosis / Notes</div>
-                      <div style={{ color: '#1e293b', fontSize: '0.9rem', lineHeight: 1.6 }}>{rd.diagnosis || rd.notes || rd.consultant_notes}</div>
-                    </div>
-                  )}
+                  // Per-item dispense classification
+                  const fullList  = medList.map(m => {
+                    const prescribed = Number(m.quantity || 1);
+                    const dqty = Number(m.dispensed_qty != null ? m.dispensed_qty : (m.dispensed ? prescribed : 0));
+                    const isFullyDone = dqty >= prescribed;
+                    const isPartial   = dqty > 0 && dqty < prescribed;
+                    const isPending   = dqty === 0;
+                    return { ...m, _prescribed: prescribed, _dqty: dqty, _isFullyDone: isFullyDone, _isPartial: isPartial, _isPending: isPending };
+                  });
 
-                  {/* Dispensed */}
-                  {dispensed.length > 0 && (
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: '0.78rem', textTransform: 'uppercase', color: '#16a34a', letterSpacing: '0.06em', marginBottom: 8 }}>✅ Dispensed ({dispensed.length})</div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        {dispensed.map((m, i) => (
-                          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 14px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8 }}>
-                            <span style={{ fontWeight: 600, color: '#166534', fontSize: '0.88rem' }}>{m.name || m.product || m.medicine || '—'}</span>
-                            {(m.quantity || m.qty) && <span style={{ background: '#dcfce7', color: '#166534', borderRadius: 6, padding: '1px 8px', fontSize: '0.78rem', fontWeight: 700 }}>Qty: {m.quantity || m.qty}</span>}
+                  const fullyDone = fullList.filter(m => m._isFullyDone);
+                  const partial   = fullList.filter(m => m._isPartial);
+                  const pending   = fullList.filter(m => m._isPending);
+
+                  // Overall report dispensing status
+                  const overallStatus = medList.length === 0 ? 'no-rx'
+                    : pending.length === 0 && partial.length === 0 ? 'complete'
+                    : fullyDone.length === 0 && partial.length === 0 ? 'pending'
+                    : 'partial';
+
+                  const statusChip = {
+                    'complete': { bg: '#dcfce7', color: '#166534', label: '✅ Fully Dispensed' },
+                    'partial':  { bg: '#fef3c7', color: '#92400e', label: '⚠️ Partially Dispensed' },
+                    'pending':  { bg: '#fee2e2', color: '#991b1b', label: '⏳ Not Dispensed' },
+                    'no-rx':    { bg: '#f1f5f9', color: '#64748b', label: '📋 No Medicines' },
+                  }[overallStatus];
+
+                  return (
+                    <div key={rpt.id} style={{ border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
+                      {/* Report header bar */}
+                      <div style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+                          <div>
+                            <div style={{ fontSize: '0.68rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Visit {reports.length - ri}</div>
+                            <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.82rem' }}>{fmtDate((rpt.created_at || '').slice(0, 10))}</div>
                           </div>
-                        ))}
+                          {(rpt.consultant || rdata.consultant) && (
+                            <div>
+                              <div style={{ fontSize: '0.68rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Consultant</div>
+                              <div style={{ fontWeight: 600, color: '#374151', fontSize: '0.82rem' }}>{rpt.consultant || rdata.consultant}</div>
+                            </div>
+                          )}
+                        </div>
+                        <span style={{ background: statusChip.bg, color: statusChip.color, borderRadius: 20, padding: '3px 12px', fontSize: '0.75rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                          {statusChip.label}
+                        </span>
+                      </div>
+
+                      <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {/* Diagnosis */}
+                        {(rdata.diagnosis || rdata.notes || rdata.consultant_notes) && (
+                          <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '8px 12px' }}>
+                            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#1d4ed8', textTransform: 'uppercase', marginBottom: 4 }}>🩺 Diagnosis</div>
+                            <div style={{ color: '#1e293b', fontSize: '0.875rem', lineHeight: 1.55 }}>{rdata.diagnosis || rdata.notes || rdata.consultant_notes}</div>
+                          </div>
+                        )}
+
+                        {/* Medicines table */}
+                        {fullList.length > 0 ? (
+                          <div>
+                            <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>💊 Medicines</div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                              {fullList.map((m, mi) => {
+                                const rowBg    = m._isFullyDone ? '#f0fdf4' : m._isPartial ? '#fffbeb' : '#fff5f5';
+                                const rowBdr   = m._isFullyDone ? '#bbf7d0' : m._isPartial ? '#fde68a' : '#fecaca';
+                                const nameCol  = m._isFullyDone ? '#166534' : m._isPartial ? '#92400e' : '#991b1b';
+                                const badge    = m._isFullyDone ? { bg: '#dcfce7', color: '#166534', icon: '✅' }
+                                               : m._isPartial   ? { bg: '#fef3c7', color: '#92400e', icon: '⚠️' }
+                                               :                   { bg: '#fee2e2', color: '#991b1b', icon: '⏳' };
+                                return (
+                                  <div key={mi} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 12px', background: rowBg, border: `1px solid ${rowBdr}`, borderRadius: 8, gap: 8, flexWrap: 'wrap' }}>
+                                    <span style={{ fontWeight: 600, color: nameCol, fontSize: '0.87rem', flex: 1, minWidth: 120 }}>{m.name || m.product || '—'}</span>
+                                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+                                      <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                                        Rx: <strong>{m._prescribed}</strong>
+                                      </span>
+                                      {m._dqty > 0 && (
+                                        <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                                          · Given: <strong>{m._dqty}</strong>
+                                        </span>
+                                      )}
+                                      {m._isPartial && (
+                                        <span style={{ fontSize: '0.75rem', color: '#b45309' }}>
+                                          · Remaining: <strong>{m._prescribed - m._dqty}</strong>
+                                        </span>
+                                      )}
+                                      <span style={{ background: badge.bg, color: badge.color, borderRadius: 6, padding: '2px 8px', fontSize: '0.73rem', fontWeight: 700 }}>
+                                        {badge.icon} {m._isFullyDone ? 'Dispensed' : m._isPartial ? 'Partial' : 'Pending'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ textAlign: 'center', padding: '14px', color: '#94a3b8', fontSize: '0.85rem', background: '#f8fafc', borderRadius: 8 }}>No medicines prescribed in this report.</div>
+                        )}
+
+                        {/* Recommendations */}
+                        {rdata.recommendations && (
+                          <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '8px 12px' }}>
+                            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#92400e', textTransform: 'uppercase', marginBottom: 4 }}>💡 Recommendations</div>
+                            <div style={{ color: '#78350f', fontSize: '0.85rem', lineHeight: 1.55 }}>{rdata.recommendations}</div>
+                          </div>
+                        )}
                       </div>
                     </div>
-                  )}
-
-                  {/* Pending / Not dispensed */}
-                  {pending.length > 0 && (
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: '0.78rem', textTransform: 'uppercase', color: '#dc2626', letterSpacing: '0.06em', marginBottom: 8 }}>⏳ Not Yet Dispensed ({pending.length})</div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        {pending.map((m, i) => (
-                          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 14px', background: '#fff5f5', border: '1px solid #fecaca', borderRadius: 8 }}>
-                            <span style={{ fontWeight: 600, color: '#991b1b', fontSize: '0.88rem' }}>{m.name || m.product || m.medicine || '—'}</span>
-                            {(m.quantity || m.qty) && <span style={{ background: '#fee2e2', color: '#991b1b', borderRadius: 6, padding: '1px 8px', fontSize: '0.78rem', fontWeight: 700 }}>Qty: {m.quantity || m.qty}</span>}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {medicines.length === 0 && (
-                    <div style={{ textAlign: 'center', padding: '24px', color: '#94a3b8', fontSize: '0.88rem', background: '#f8fafc', borderRadius: 10 }}>No medicines prescribed in this report.</div>
-                  )}
-
-                  {/* Recommendations */}
-                  {rd.recommendations && (
-                    <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '12px 16px' }}>
-                      <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#92400e', textTransform: 'uppercase', marginBottom: 6 }}>💡 Recommendations</div>
-                      <div style={{ color: '#78350f', fontSize: '0.88rem', lineHeight: 1.6 }}>{rd.recommendations}</div>
-                    </div>
-                  )}
-                </>
+                  );
+                })
               )}
             </div>
           )}

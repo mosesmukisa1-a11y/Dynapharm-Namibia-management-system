@@ -198,6 +198,43 @@ export default async function handler(req, res) {
         }
       });
 
+      // ── Update report medicines dispensed status ──────────────────────────
+      // Build a map: product name (lower) → total qty dispensed in this session
+      const dispensedQtyMap = {};
+      for (const d of deductions) {
+        const k = (d.product_name || '').toLowerCase().trim();
+        dispensedQtyMap[k] = (dispensedQtyMap[k] || 0) + Number(d.quantity || 0);
+      }
+      try {
+        const rptRow = await query(`SELECT data FROM reports WHERE id = $1`, [reportId]);
+        if (rptRow.rows.length > 0) {
+          const rptData = (() => {
+            try { return typeof rptRow.rows[0].data === 'string' ? JSON.parse(rptRow.rows[0].data) : (rptRow.rows[0].data || {}); } catch { return {}; }
+          })();
+          if (Array.isArray(rptData.medicines) && rptData.medicines.length > 0) {
+            let changed = false;
+            rptData.medicines = rptData.medicines.map(m => {
+              const k = (m.name || '').toLowerCase().trim();
+              const sessionQty = dispensedQtyMap[k];
+              if (sessionQty === undefined) return m;
+              const prevQty = Number(m.dispensed_qty || 0);
+              const newQty = prevQty + sessionQty;
+              const prescQty = Number(m.quantity || 1);
+              changed = true;
+              return { ...m, dispensed_qty: newQty, dispensed: newQty >= prescQty };
+            });
+            if (changed) {
+              await query(
+                `UPDATE reports SET data = $1::jsonb, updated_at = NOW() WHERE id = $2`,
+                [JSON.stringify(rptData), reportId]
+              );
+            }
+          }
+        }
+      } catch (e) {
+        console.error('[dispense] report medicines update error:', e.message);
+      }
+
       recomputeLocationBalances('branch', branchId).catch(e =>
         console.error('[stockEngine] dispense recompute error:', e.message)
       );
