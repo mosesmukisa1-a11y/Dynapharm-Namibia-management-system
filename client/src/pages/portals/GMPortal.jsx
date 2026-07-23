@@ -5995,6 +5995,21 @@ function CheckupsTab() {
   const gt = { upcoming: 0, completed: 0, no_show: 0, total: 0 };
   summary.forEach(s => { gt.upcoming += s.upcoming; gt.completed += s.completed; gt.no_show += s.no_show; gt.total += s.total; });
 
+  // Distributor ranking — group afterBranch by booked_by / distributor name
+  const distMap = {};
+  for (const r of afterBranch) {
+    const code = r.booked_by || '';
+    const name = r._distributor_name || code || 'Unknown';
+    const key  = code || name;
+    if (!key || key === 'Unknown') continue;
+    if (!distMap[key]) distMap[key] = { name, code, upcoming: 0, completed: 0, no_show: 0, total: 0 };
+    distMap[key].total++;
+    if (isCompleted(r.status))   distMap[key].completed++;
+    else if (isNoShow(r.status)) distMap[key].no_show++;
+    else                         distMap[key].upcoming++;
+  }
+  const distRanking = Object.values(distMap).sort((a, b) => b.total - a.total);
+
   const fmtDate = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
   const sdot = s => isCompleted(s) ? { label:'Completed', bg:'#dcfce7', color:'#166534' }
