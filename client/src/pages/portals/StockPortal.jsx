@@ -3061,6 +3061,9 @@ function WarehouseTab({ name }) {
   const [outboundTransfers, setOutboundTransfers] = useState([]);
   const [movements, setMovements] = useState([]);
   const [loading, setLoading] = useState(true);
+  // refreshing = background silently re-fetching (no spinner, no stock disappear)
+  const [refreshing, setRefreshing] = useState(false);
+  const initialLoadDone = useRef(false);
   const [showDispatch, setShowDispatch] = useState(false);
   const [dispatchCart, setDispatchCart] = useState([]);
   const [dispatchBranch, setDispatchBranch] = useState('');
@@ -3125,8 +3128,19 @@ function WarehouseTab({ name }) {
   const location = name.toLowerCase() + '_warehouse';
   const whKey = name.toLowerCase();
 
-  const loadData = useCallback(() => {
+  // Reset initial-load flag whenever the warehouse switches so the spinner shows correctly
+  useEffect(() => {
+    initialLoadDone.current = false;
     setLoading(true);
+  }, [location]);
+
+  const loadData = useCallback((isBackground = false) => {
+    // On first load: show full spinner. On background refreshes: show subtle indicator only.
+    if (!initialLoadDone.current) {
+      setLoading(true);
+    } else if (isBackground) {
+      setRefreshing(true);
+    }
     Promise.all([
       api.stock.batches().then(d => (Array.isArray(d) ? d : d.batches || []).filter(b => b.location === location && Number(b.remaining_quantity || 0) > 0 && (b.status || '').toLowerCase() !== 'expired')).catch(() => []),
       api.stock.transfers(`branch=${encodeURIComponent(location)}`).then(d => Array.isArray(d) ? d : d.transfers || []).catch(() => []),
@@ -3141,16 +3155,22 @@ function WarehouseTab({ name }) {
         setMovements(movData);
         setWriteoffReturns(returnsData);
       })
-      .finally(() => setLoading(false));
-  }, [location, name, whKey]);
+      .finally(() => {
+        initialLoadDone.current = true;
+        setLoading(false);
+        setRefreshing(false);
+      });
+  }, [location, whKey]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  // Initial load
+  useEffect(() => { loadData(false); }, [loadData]);
 
-  // Real-time: warehouse receives dispatch, accepts transfer, etc.
-  useStockRealtime({ onUpdate: loadData });
+  // Real-time: warehouse receives dispatch, accepts transfer, etc. — background only, no spinner
+  useStockRealtime({ onUpdate: () => loadData(true) });
 
+  // Poll every 90 s (background refresh — no spinner)
   useEffect(() => {
-    const iv = setInterval(loadData, 60000);
+    const iv = setInterval(() => loadData(true), 90000);
     return () => clearInterval(iv);
   }, [loadData]);
 
@@ -3394,6 +3414,12 @@ function WarehouseTab({ name }) {
                   <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', display: 'inline-block', boxShadow: '0 0 6px #22c55e' }} />
                   Live
                 </span>
+                {refreshing && (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#93c5fd', fontSize: '0.67rem' }}>
+                    <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#93c5fd', display: 'inline-block', animation: 'pulse 1s infinite' }} />
+                    Syncing…
+                  </span>
+                )}
                 <span style={{ color: 'rgba(255,255,255,0.2)' }}>·</span>
                 <span style={{ fontFamily: 'monospace', fontSize: '0.68rem' }}>{location}</span>
               </div>
