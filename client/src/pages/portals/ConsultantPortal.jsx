@@ -4382,13 +4382,19 @@ function ClientProfileModal({ apt, onClose }) {
 
   useEffect(() => {
     setLoading(true);
-    // Reports are linked by client_name (no appointment_id stored in report data)
-    const params = { client_name: apt.full_name };
-    if (apt.branch) params.branch = apt.branch;
-    api.reports.list(params)
-      .then(data => setReports(Array.isArray(data) ? data : []))
-      .catch(() => setReports([]))
-      .finally(() => setLoading(false));
+    // Fetch by both appointment_id (exact link) AND client_name (full history across all branches).
+    // Merge + deduplicate so cross-branch visits all appear.
+    Promise.all([
+      api.reports.list({ appointment_id: apt.id }).then(d => Array.isArray(d) ? d : []).catch(() => []),
+      apt.full_name
+        ? api.reports.list({ client_name: apt.full_name }).then(d => Array.isArray(d) ? d : []).catch(() => [])
+        : Promise.resolve([]),
+    ]).then(([byAptId, byName]) => {
+      const seen = new Set();
+      const merged = [...byAptId, ...byName].filter(r => r.id && !seen.has(r.id) && seen.add(r.id));
+      merged.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+      setReports(merged);
+    }).finally(() => setLoading(false));
   }, [apt.id]);
 
   const report     = reports[0] || null;
@@ -4629,6 +4635,12 @@ function ClientProfileModal({ apt, onClose }) {
                             <div>
                               <div style={{ fontSize: '0.68rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Consultant</div>
                               <div style={{ fontWeight: 600, color: '#374151', fontSize: '0.82rem' }}>{rpt.consultant || rdata.consultant}</div>
+                            </div>
+                          )}
+                          {(rpt.branch || rdata.branch) && (
+                            <div>
+                              <div style={{ fontSize: '0.68rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Branch</div>
+                              <div style={{ fontWeight: 600, color: '#0f172a', fontSize: '0.82rem' }}>📍 {rpt.branch || rdata.branch}</div>
                             </div>
                           )}
                         </div>
