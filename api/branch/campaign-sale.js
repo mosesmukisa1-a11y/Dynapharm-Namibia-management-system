@@ -329,24 +329,30 @@ export default async function handler(req, res) {
         : 0;
       const discountMult = discountPct > 0 ? (1 - discountPct / 100) : 1;
 
+      // Discounted DP — the discount applies to both DP and CP (branch books discounted cost)
+      const paidDpDiscounted = Math.round(paidDp * discountMult * 100) / 100;
+
       // Member pays DP (with any campaign discount); non-member pays CP (with any campaign discount)
       const basePrice     = isMember ? paidDp : paidCp;
       const paidUnitPrice = Math.round(basePrice * discountMult * 100) / 100;
       const paidTotal     = Math.round(paidUnitPrice * paid_qty * 100) / 100;
       // BV credited only for member sales (on the discounted unit price)
       const paidBvTotal   = isMember ? Math.round(paidBv * paid_qty * 100) / 100 : 0;
-      // Profit = selling price minus DP cost (discount reduces both selling price and margin)
-      const profitAmount  = !isMember ? Math.max(0, Math.round((paidUnitPrice - paidDp) * paid_qty * 100) / 100) : 0;
+      // Profit = discounted CP − discounted DP (both are discounted; consistent margin)
+      const profitAmount  = !isMember ? Math.max(0, Math.round((paidUnitPrice - paidDpDiscounted) * paid_qty * 100) / 100) : 0;
 
       const itemsArray = [
         {
           product_name: paid_product,
           quantity:     paid_qty,
-          dp:           paidDp,
+          // dp is the discounted DP — the discount reduces branch cost alongside the selling price
+          dp:           paidDpDiscounted,
+          // original_dp preserved for auditing (not used by receipt display)
+          original_dp:  paidDp,
           cp:           paidCp,
           bv:           isMember ? paidBv : 0,
           unit_price:   paidUnitPrice,
-          total_dp:     Math.round(paidDp * paid_qty * 100) / 100,
+          total_dp:     Math.round(paidDpDiscounted * paid_qty * 100) / 100,
           total_cp:     Math.round(paidCp * paid_qty * 100) / 100,
           total:        paidTotal,
           total_bv:     paidBvTotal,
@@ -525,11 +531,12 @@ export default async function handler(req, res) {
           unit_price:     paidUnitPrice,
           base_price:     basePrice,
           discount_pct:   discountPct,
-          dp:             paidDp,
+          dp:             paidDpDiscounted,
+          original_dp:    paidDp,
           cp:             paidCp,
           bv_per_unit:    isMember ? paidBv : 0,
           total:          paidTotal,
-          total_dp:       Math.round(paidDp * paid_qty * 100) / 100,
+          total_dp:       Math.round(paidDpDiscounted * paid_qty * 100) / 100,
           total_bv:       paidBvTotal,
           profit_amount:  profitAmount,
           referral_nb:    referral_nb || null,

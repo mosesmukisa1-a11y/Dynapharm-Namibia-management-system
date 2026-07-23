@@ -12200,13 +12200,29 @@ function printCampaignReceipt(receipt, branchDisplayName) {
     }
     // unit_price on the item is the actual charged (discounted) price — use it as the primary
     const chargedPrice = Number(it.unit_price || 0);
-    const originalBase = isMember ? Number(it.dp || 0) : Number(it.cp || 0);
+    // "was N$X" label uses the PRE-DISCOUNT base price:
+    //   member → original DP (stored as it.original_dp; falls back to it.dp for old records)
+    //   non-member → original CP (it.cp is always the undiscounted CP)
+    const originalBase = isMember
+      ? Number(it.original_dp || it.dp || 0)
+      : Number(it.cp || 0);
     // Prefer item-level discount_pct (supports hybrid campaigns); fall back to receipt-level
     const itemDiscPct  = Number(it.discount_pct ?? discountPct ?? 0);
     const hasDiscount  = itemDiscPct > 0 && chargedPrice < originalBase;
     const displayName  = hasDiscount
       ? `${it.product_name} 🏷️ (-${itemDiscPct}% OFF, was N$${originalBase.toFixed(2)})`
       : it.product_name;
+    // dpPrice for receipt line item:
+    //   member → chargedPrice (they pay the discounted DP)
+    //   non-member → it.dp (now stored as discounted DP after the campaign-sale fix)
+    //                falls back to chargedPrice × (dp/cp ratio) for old records where it.dp was original
+    const dpForLine = isMember
+      ? chargedPrice
+      : (it.dp != null && it.original_dp != null)
+        ? Number(it.dp)  // new records: dp already discounted
+        : (it.cp > 0 && it.dp > 0 && chargedPrice < it.cp)
+          ? Math.round(Number(it.dp) * (chargedPrice / it.cp) * 100) / 100  // old records: derive discounted dp
+          : Number(it.dp || 0);
     return {
       product_name: displayName,
       name:         displayName,
@@ -12216,7 +12232,7 @@ function printCampaignReceipt(receipt, branchDisplayName) {
       cpPrice:    chargedPrice,
       unit_price: chargedPrice,
       unitPrice:  chargedPrice,
-      dpPrice:    isMember ? chargedPrice : Number(it.dp || 0),
+      dpPrice:    dpForLine,
       // BV fields
       bv:     Number(it.bv || 0),
       lineBV: Number(it.total_bv || 0),
