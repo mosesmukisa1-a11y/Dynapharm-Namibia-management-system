@@ -1542,9 +1542,8 @@ app.get('/api/stock/branch/:branchId/inventory', async (req, res) => {
 
     const candidates = [...candidateSet].filter(Boolean);
 
-    // Query branch_inventory_batches — physical stock source of truth.
-    // Use LOWER(TRIM()) on the stored branch_id so historical alias rows are found
-    // regardless of how they were originally written (e.g. 'Gobabis' vs 'gobabis').
+    // Query branch_inventory_batches — physical stock source of truth for branches
+    // that use the transactional batch system (e.g. townshop).
     const rows = await getMany(
       `SELECT product_name, SUM(quantity) AS total_qty, MIN(expiry_date) AS earliest_expiry
        FROM branch_inventory_batches
@@ -1554,12 +1553,56 @@ app.get('/api/stock/branch/:branchId/inventory', async (req, res) => {
       [candidates]
     );
 
-    const inventory = rows.map(r => ({
-      productName: r.product_name,
-      availableQty: Number(r.total_qty || 0),
-      closingQty:   Number(r.total_qty || 0),
-      expiryDate:   r.earliest_expiry ? String(r.earliest_expiry).slice(0, 10) : null,
-    }));
+    // Build inventory map keyed by lowercase product name.
+    const inventoryMap = new Map();
+    for (const r of rows) {
+      const key = (r.product_name || '').trim().toLowerCase();
+      if (!key) continue;
+      const existing = inventoryMap.get(key);
+      const qty = Number(r.total_qty || 0);
+      if (!existing || qty > existing.availableQty) {
+        inventoryMap.set(key, {
+          productName: r.product_name,
+          availableQty: qty,
+          closingQty:   qty,
+          expiryDate:   r.earliest_expiry ? String(r.earliest_expiry).slice(0, 10) : null,
+        });
+      }
+    }
+
+    // Fallback: for branches that use inventory_balances (centralized stock engine path),
+    // BIB will be empty. Merge inventory_balances so the consultant sees the correct
+    // in-stock / out-of-stock status for those branches (e.g. Tsumeb, Gobabis, etc.).
+    // BIB rows take precedence over IB rows for the same product (BIB is authoritative
+    // when it exists).
+    try {
+      const ibRows = await getMany(
+        `SELECT product_name, SUM(GREATEST(closing_qty, 0)) AS total_qty, MIN(expiry_date) AS earliest_expiry
+         FROM inventory_balances
+         WHERE location_type = 'branch'
+           AND LOWER(TRIM(location_id)) = ANY($1::text[])
+         GROUP BY product_name`,
+        [candidates]
+      );
+      for (const r of ibRows) {
+        const key = (r.product_name || '').trim().toLowerCase();
+        if (!key) continue;
+        if (inventoryMap.has(key)) continue; // BIB already has this product — prefer BIB
+        const qty = Number(r.total_qty || 0);
+        inventoryMap.set(key, {
+          productName: r.product_name,
+          availableQty: qty,
+          closingQty:   qty,
+          expiryDate:   r.earliest_expiry ? String(r.earliest_expiry).slice(0, 10) : null,
+        });
+      }
+    } catch (ibErr) {
+      console.error('[stock/branch/inventory] inventory_balances fallback error:', ibErr.message);
+    }
+
+    const inventory = [...inventoryMap.values()].sort((a, b) =>
+      (a.productName || '').localeCompare(b.productName || '')
+    );
     res.json({ success: true, branchId: rawId, inventory });
   } catch (err) {
     console.error('[stock/branch/inventory]', err);
