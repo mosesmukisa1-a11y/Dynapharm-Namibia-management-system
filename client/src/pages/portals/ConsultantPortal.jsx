@@ -4382,7 +4382,10 @@ function ClientProfileModal({ apt, onClose }) {
 
   useEffect(() => {
     setLoading(true);
-    api.reports.list({ appointment_id: apt.id })
+    // Reports are linked by client_name (no appointment_id stored in report data)
+    const params = { client_name: apt.full_name };
+    if (apt.branch) params.branch = apt.branch;
+    api.reports.list(params)
       .then(data => setReports(Array.isArray(data) ? data : []))
       .catch(() => setReports([]))
       .finally(() => setLoading(false));
@@ -4401,7 +4404,19 @@ function ClientProfileModal({ apt, onClose }) {
     return { ...r, _fd: fd };
   });
 
-  const fmtDate = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+  // Handle full ISO timestamps OR bare YYYY-MM-DD strings OR dob strings like "15/06/1990"
+  const fmtDate = d => {
+    if (!d) return '—';
+    const s = String(d);
+    // Already a DD/MM/YYYY string
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
+      const [day, mon, yr] = s.split('/');
+      return new Date(`${yr}-${mon}-${day}T12:00:00`).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    }
+    // ISO or YYYY-MM-DD — take first 10 chars to avoid double-suffix
+    const iso = s.slice(0, 10);
+    return new Date(iso + 'T12:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  };
 
   const bmi = (() => {
     const h = parseFloat(d.height); const w = parseFloat(d.weight);

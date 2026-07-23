@@ -86,6 +86,7 @@ export default async function handler(req, res) {
   const { searchParams } = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const id = searchParams.get('id');
   const clientId = searchParams.get('clientId');
+  const clientName = searchParams.get('client_name');
   const branch = searchParams.get('branch');
   const consultant = searchParams.get('consultant');
   const appointmentId = searchParams.get('appointment_id');
@@ -111,6 +112,10 @@ export default async function handler(req, res) {
       if (consultant) {
         conditions.push(`consultant = $${params.length + 1}`);
         params.push(consultant);
+      }
+      if (clientName) {
+        conditions.push(`LOWER(data->>'client_name') = LOWER($${params.length + 1})`);
+        params.push(clientName);
       }
       if (appointmentId) {
         conditions.push(`data->>'appointment_id' = $${params.length + 1}`);
