@@ -978,9 +978,9 @@ function LeaveTab() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 className="font-bold text-gray-800">Leave Calendar</h3>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <button onClick={() => { const [y,m] = leaveMonth.split('-').map(Number); setLeaveMonth(new Date(y, m-2, 1).toISOString().slice(0,7)); }} style={{ background: 'none', border: '1px solid #e2e8f0', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: '0.9rem' }}>‹</button>
+                <button onClick={() => { const [y,m] = leaveMonth.split('-').map(Number); const pm = m === 1 ? 12 : m-1; const py = m === 1 ? y-1 : y; setLeaveMonth(`${py}-${String(pm).padStart(2,'0')}`); }} style={{ background: 'none', border: '1px solid #e2e8f0', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: '0.9rem' }}>‹</button>
                 <span style={{ fontWeight: 700, color: '#1f2937', fontSize: '0.88rem' }}>{new Date(leaveMonth + '-15').toLocaleString('default', { month: 'long', year: 'numeric' })}</span>
-                <button onClick={() => { const [y,m] = leaveMonth.split('-').map(Number); setLeaveMonth(new Date(y, m, 1).toISOString().slice(0,7)); }} style={{ background: 'none', border: '1px solid #e2e8f0', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: '0.9rem' }}>›</button>
+                <button onClick={() => { const [y,m] = leaveMonth.split('-').map(Number); const nm = m === 12 ? 1 : m+1; const ny = m === 12 ? y+1 : y; setLeaveMonth(`${ny}-${String(nm).padStart(2,'0')}`); }} style={{ background: 'none', border: '1px solid #e2e8f0', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: '0.9rem' }}>›</button>
               </div>
             </div>
           </CardHeader>
