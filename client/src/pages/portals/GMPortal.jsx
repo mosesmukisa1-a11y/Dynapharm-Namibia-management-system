@@ -6101,6 +6101,38 @@ function CheckupsTab() {
         <td style="text-align:center">${gt.total}</td>
       </tr>
     </tbody></table>
+    <div style="margin-top:30px;page-break-before:auto;">
+      <div class="sec">🏅 Distributor Rankings — Bookings</div>
+      ${distRanking.length === 0
+        ? '<p style="color:#999;font-size:13px;">No distributor bookings in the selected period.</p>'
+        : `<table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead><tr style="background:#f8f8f8;font-size:10px;color:#555;text-transform:uppercase;">
+              <th style="padding:5px 10px;text-align:center;border-bottom:1px solid #ddd;width:36px;">#</th>
+              <th style="padding:5px 10px;text-align:left;border-bottom:1px solid #ddd;">Distributor</th>
+              <th style="padding:5px 10px;text-align:left;border-bottom:1px solid #ddd;">NB Code</th>
+              <th style="padding:5px 10px;text-align:center;border-bottom:1px solid #ddd;color:#1d4ed8;">Pending</th>
+              <th style="padding:5px 10px;text-align:center;border-bottom:1px solid #ddd;color:#166534;">Completed</th>
+              <th style="padding:5px 10px;text-align:center;border-bottom:1px solid #ddd;color:#991b1b;">No Show</th>
+              <th style="padding:5px 10px;text-align:center;border-bottom:1px solid #ddd;font-weight:700;">Total</th>
+            </tr></thead>
+            <tbody>
+              ${distRanking.map((d, i) => {
+                const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}`;
+                const bg = i === 0 ? '#fffbeb' : i === 1 ? '#f8fafc' : i === 2 ? '#fff7ed' : '#fff';
+                return `<tr style="background:${bg};border-bottom:1px solid #f0f0f0;">
+                  <td style="padding:5px 10px;text-align:center;font-weight:700;">${medal}</td>
+                  <td style="padding:5px 10px;font-weight:600;">${d.name}</td>
+                  <td style="padding:5px 10px;color:#64748b;font-size:11px;">${d.code}</td>
+                  <td style="padding:5px 10px;text-align:center;color:#1d4ed8;">${d.upcoming}</td>
+                  <td style="padding:5px 10px;text-align:center;color:#166534;">${d.completed}</td>
+                  <td style="padding:5px 10px;text-align:center;color:#991b1b;">${d.no_show}</td>
+                  <td style="padding:5px 10px;text-align:center;font-weight:700;">${d.total}</td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>`
+      }
+    </div>
     <div style="margin-top:30px;">
       <div class="sec">👥 Client Records — ${branchLabel}</div>
       ${branchSections || '<p style="color:#999;font-size:13px;">No records match the selected filters.</p>'}
@@ -6218,6 +6250,54 @@ function CheckupsTab() {
                       <td style={{ padding: '9px 14px', textAlign: 'center', color: '#fca5a5', fontWeight: 700 }}>{gt.no_show}</td>
                       <td style={{ padding: '9px 14px', textAlign: 'center', color: '#fff', fontWeight: 700 }}>{gt.total}</td>
                     </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Distributor Rankings */}
+          <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontWeight: 700, fontSize: '0.9rem', color: '#1e293b' }}>🏅 Distributor Rankings</span>
+              <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>ranked by client bookings · {distRanking.length} distributor{distRanking.length !== 1 ? 's' : ''}</span>
+            </div>
+            {distRanking.length === 0 ? (
+              <div style={{ padding: '24px', textAlign: 'center', color: '#94a3b8', fontSize: '0.88rem' }}>No distributor bookings in the selected period.</div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc', textTransform: 'uppercase', fontSize: '0.68rem', color: '#64748b', letterSpacing: '0.05em' }}>
+                      <th style={{ padding: '9px 12px', textAlign: 'center', borderBottom: '1px solid #e5e7eb', width: 40 }}>#</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'left',   borderBottom: '1px solid #e5e7eb' }}>Distributor</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'left',   borderBottom: '1px solid #e5e7eb' }}>NB Code</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'center', borderBottom: '1px solid #e5e7eb', color: '#1d4ed8' }}>Pending</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'center', borderBottom: '1px solid #e5e7eb', color: '#16a34a' }}>Completed</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'center', borderBottom: '1px solid #e5e7eb', color: '#dc2626' }}>No Show</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'center', borderBottom: '1px solid #e5e7eb' }}>Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {distRanking.map((d, i) => {
+                      const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;
+                      const rowBg = i === 0 ? '#fffbeb' : i === 1 ? '#f8fafc' : i === 2 ? '#fff7ed' : '#fff';
+                      return (
+                        <tr key={d.code || d.name} style={{ borderBottom: '1px solid #f5f5f5', background: rowBg }} className="hover:bg-blue-50">
+                          <td style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 700, fontSize: '0.92rem' }}>
+                            {medal || <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>{i + 1}</span>}
+                          </td>
+                          <td style={{ padding: '8px 12px', fontWeight: 600, color: '#1e293b' }}>{d.name}</td>
+                          <td style={{ padding: '8px 12px', color: '#64748b', fontSize: '0.8rem' }}>{d.code || '—'}</td>
+                          <td style={{ padding: '8px 12px', textAlign: 'center', color: '#1d4ed8', fontWeight: 600 }}>{d.upcoming}</td>
+                          <td style={{ padding: '8px 12px', textAlign: 'center', color: '#16a34a', fontWeight: 600 }}>{d.completed}</td>
+                          <td style={{ padding: '8px 12px', textAlign: 'center', color: '#dc2626', fontWeight: 600 }}>{d.no_show}</td>
+                          <td style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 700, color: '#1e293b' }}>
+                            <span style={{ background: '#1e293b', color: '#fff', borderRadius: 6, padding: '2px 10px', fontSize: '0.82rem' }}>{d.total}</span>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

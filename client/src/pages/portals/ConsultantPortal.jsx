@@ -695,6 +695,8 @@ function CheckupsSection() {
   const [selectedCheckup, setSelectedCheckup] = useState(null);
   const [showDetail, setShowDetail] = useState(false);
   const [detailCheckup, setDetailCheckup] = useState(null);
+  const [showClientProfile, setShowClientProfile] = useState(false);
+  const [clientProfileApt, setClientProfileApt] = useState(null);
   const [showEditCheckup, setShowEditCheckup] = useState(false);
   const [editCheckupData, setEditCheckupData] = useState({});
   const [editCheckupSaving, setEditCheckupSaving] = useState(false);
@@ -1486,12 +1488,14 @@ ${consultantNotes ? `
                 </div>
                 {sl === 'no_show' && (
                   <div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap', borderTop: '1px solid #f3f4f6', paddingTop: '10px' }}>
+                    <button onClick={() => { setClientProfileApt(apt); setShowClientProfile(true); }} style={{ padding: '6px 14px', fontSize: '0.85rem', background: '#0f172a', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}>👤 Profile</button>
                     <button onClick={() => viewDetail(apt)} style={{ padding: '6px 14px', fontSize: '0.85rem', background: '#6b7280', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>View Details</button>
                     <button onClick={() => updateStatus(apt, 'pending')} style={{ padding: '6px 14px', fontSize: '0.85rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Restore to Pending</button>
                   </div>
                 )}
                 {sl !== 'completed' && sl !== 'cancelled' && sl !== 'no_show' && (
                   <div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap', borderTop: '1px solid #f3f4f6', paddingTop: '10px' }}>
+                    <button onClick={() => { setClientProfileApt(apt); setShowClientProfile(true); }} style={{ padding: '6px 14px', fontSize: '0.85rem', background: '#0f172a', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}>👤 Profile</button>
                     <button onClick={() => viewDetail(apt)} style={{ padding: '6px 14px', fontSize: '0.85rem', background: '#2563eb', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>View Details</button>
                     <button onClick={() => openReportModal(apt)} style={{ padding: '6px 14px', fontSize: '0.85rem', background: '#c41e3a', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Create Report</button>
                     {(sl === 'pending' || sl === 'walk-in') && <button onClick={() => updateStatus(apt, 'checked_in')} style={{ padding: '6px 14px', fontSize: '0.85rem', background: '#8b5cf6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Check In</button>}
@@ -1502,6 +1506,7 @@ ${consultantNotes ? `
                 )}
                 {sl === 'completed' && (
                   <div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap', borderTop: '1px solid #f3f4f6', paddingTop: '10px' }}>
+                    <button onClick={() => { setClientProfileApt(apt); setShowClientProfile(true); }} style={{ padding: '6px 14px', fontSize: '0.85rem', background: '#0f172a', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}>👤 Profile</button>
                     <button onClick={() => viewDetail(apt)} style={{ padding: '6px 14px', fontSize: '0.85rem', background: '#6b7280', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>View Details</button>
                     <button
                       onClick={() => openEditPrescription(apt)}
@@ -1557,6 +1562,10 @@ ${consultantNotes ? `
             </div>
           </div>
         </div>
+      )}
+
+      {showClientProfile && clientProfileApt && (
+        <ClientProfileModal apt={clientProfileApt} onClose={() => { setShowClientProfile(false); setClientProfileApt(null); }} />
       )}
 
       {showReport && selectedCheckup && (() => {
@@ -4357,6 +4366,292 @@ function ConsultantTrainingSection() {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Client Profile Modal ──────────────────────────────────────────────────────
+// Shows a full client profile from a checkup appointment: personal info,
+// who referred/booked them, prescription & dispensing status, and follow-ups.
+function ClientProfileModal({ apt, onClose }) {
+  const [activeTab, setActiveTab] = useState('overview');
+  const [reports, setReports]     = useState([]);
+  const [loading, setLoading]     = useState(true);
+
+  const d = (() => { try { return typeof apt.data === 'string' ? JSON.parse(apt.data) : (apt.data || {}); } catch { return {}; } })();
+
+  useEffect(() => {
+    setLoading(true);
+    api.reports.list({ appointment_id: apt.id })
+      .then(data => setReports(Array.isArray(data) ? data : []))
+      .catch(() => setReports([]))
+      .finally(() => setLoading(false));
+  }, [apt.id]);
+
+  const report     = reports[0] || null;
+  const rd         = (() => { try { return report ? (typeof report.data === 'string' ? JSON.parse(report.data) : (report.data || {})) : {}; } catch { return {}; } })();
+  const medicines  = rd.medicines  || rd.prescriptions || [];
+  const dispensed  = medicines.filter(m => m.dispensed);
+  const pending    = medicines.filter(m => !m.dispensed);
+  const followUps  = reports.filter(r => {
+    const fd = (() => { try { return typeof r.data === 'string' ? JSON.parse(r.data) : (r.data || {}); } catch { return {}; } })();
+    return fd.follow_up_date;
+  }).map(r => {
+    const fd = (() => { try { return typeof r.data === 'string' ? JSON.parse(r.data) : (r.data || {}); } catch { return {}; } })();
+    return { ...r, _fd: fd };
+  });
+
+  const fmtDate = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+
+  const bmi = (() => {
+    const h = parseFloat(d.height); const w = parseFloat(d.weight);
+    if (!h || !w) return null;
+    const b = w / ((h / 100) ** 2);
+    const cat = b < 18.5 ? 'Underweight' : b < 25 ? 'Normal' : b < 30 ? 'Overweight' : 'Obese';
+    return { value: b.toFixed(1), cat };
+  })();
+
+  const TABS = [
+    { id: 'overview',     label: '👤 Overview' },
+    { id: 'prescription', label: '💊 Prescription' },
+    { id: 'followups',    label: `🔁 Follow-ups${followUps.length ? ` (${followUps.length})` : ''}` },
+  ];
+
+  const statusBg  = (apt.status || '').toLowerCase() === 'completed' ? '#dcfce7' : (apt.status || '').toLowerCase() === 'no_show' ? '#fee2e2' : '#eff6ff';
+  const statusCol = (apt.status || '').toLowerCase() === 'completed' ? '#166534' : (apt.status || '').toLowerCase() === 'no_show' ? '#991b1b' : '#1d4ed8';
+
+  return (
+    <div onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 999999, overflowY: 'auto', padding: '20px', boxSizing: 'border-box', display: 'flex', alignItems: 'flex-start', justifyContent: 'center' }}>
+      <div style={{ width: '100%', maxWidth: 680, background: '#fff', borderRadius: 14, boxShadow: '0 20px 60px rgba(0,0,0,0.35)', overflow: 'hidden', margin: '20px auto' }}>
+
+        {/* Header */}
+        <div style={{ background: '#0f172a', padding: '18px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <div style={{ color: '#fff', fontWeight: 800, fontSize: '1.15rem', marginBottom: 4 }}>{apt.full_name || '—'}</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              {apt.phone && <span style={{ color: '#94a3b8', fontSize: '0.83rem' }}>📞 {apt.phone}</span>}
+              {apt.branch && <span style={{ color: '#94a3b8', fontSize: '0.83rem' }}>📍 {apt.branch}</span>}
+              <span style={{ background: statusBg, color: statusCol, borderRadius: 6, padding: '2px 8px', fontWeight: 700, fontSize: '0.75rem', textTransform: 'capitalize' }}>
+                {(apt.status || 'pending').replace('_', ' ')}
+              </span>
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}>✕ Close</button>
+        </div>
+
+        {/* Tabs */}
+        <div style={{ display: 'flex', borderBottom: '2px solid #f1f5f9', background: '#f8fafc' }}>
+          {TABS.map(t => (
+            <button key={t.id} onClick={() => setActiveTab(t.id)}
+              style={{ flex: 1, padding: '11px 8px', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem',
+                borderBottom: activeTab === t.id ? '3px solid #c41e3a' : '3px solid transparent',
+                background: activeTab === t.id ? '#fff' : 'transparent',
+                color: activeTab === t.id ? '#c41e3a' : '#64748b', transition: 'all .15s' }}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ padding: '22px 24px', maxHeight: '65vh', overflowY: 'auto' }}>
+          {/* ── OVERVIEW ── */}
+          {activeTab === 'overview' && (
+            <div className="space-y-5">
+              {/* Appointment Info */}
+              <section>
+                <div style={{ fontWeight: 700, fontSize: '0.78rem', textTransform: 'uppercase', color: '#94a3b8', letterSpacing: '0.06em', marginBottom: 10 }}>Appointment</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 20px' }}>
+                  {[
+                    ['Date', fmtDate(apt.date)],
+                    ['Time', apt.time ? apt.time.slice(0,5) : '—'],
+                    ['Type', apt.type || '—'],
+                    ['Branch', apt.branch || '—'],
+                  ].map(([l, v]) => (
+                    <div key={l} style={{ background: '#f8fafc', borderRadius: 8, padding: '8px 12px' }}>
+                      <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>{l}</div>
+                      <div style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>{v}</div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              {/* Referral / Booked By */}
+              <section>
+                <div style={{ fontWeight: 700, fontSize: '0.78rem', textTransform: 'uppercase', color: '#94a3b8', letterSpacing: '0.06em', marginBottom: 10 }}>Referred / Booked By</div>
+                <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '12px 16px' }}>
+                  {(apt._distributor_name || apt.booked_by) ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span style={{ fontSize: '1.6rem' }}>🌟</span>
+                      <div>
+                        <div style={{ fontWeight: 700, color: '#92400e', fontSize: '0.95rem' }}>{apt._distributor_name || apt.booked_by}</div>
+                        {apt.booked_by && apt._distributor_name && <div style={{ fontSize: '0.8rem', color: '#a16207' }}>NB Code: {apt.booked_by}</div>}
+                      </div>
+                    </div>
+                  ) : (d.referral_name || d.referralName || d.distributorName) ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span style={{ fontSize: '1.6rem' }}>👥</span>
+                      <div>
+                        <div style={{ fontWeight: 700, color: '#92400e', fontSize: '0.95rem' }}>{d.referral_name || d.referralName || d.distributorName}</div>
+                        {(d.referral_nb || d.referralNbNumber || d.distributorNB) && <div style={{ fontSize: '0.8rem', color: '#a16207' }}>NB Code: {d.referral_nb || d.referralNbNumber || d.distributorNB}</div>}
+                      </div>
+                    </div>
+                  ) : (
+                    <span style={{ color: '#94a3b8', fontSize: '0.88rem' }}>Walk-in — no referral on record</span>
+                  )}
+                </div>
+              </section>
+
+              {/* Personal Info */}
+              <section>
+                <div style={{ fontWeight: 700, fontSize: '0.78rem', textTransform: 'uppercase', color: '#94a3b8', letterSpacing: '0.06em', marginBottom: 10 }}>Personal Details</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 20px' }}>
+                  {[
+                    ['Gender',     d.gender || '—'],
+                    ['Date of Birth', d.dob ? fmtDate(d.dob) : '—'],
+                    ['Height',     d.height ? `${d.height} cm` : '—'],
+                    ['Weight',     d.weight ? `${d.weight} kg` : '—'],
+                    bmi ? ['BMI', `${bmi.value} — ${bmi.cat}`] : null,
+                    ['Membership', d.membershipStatus || d.membership_status || d.customer_type || '—'],
+                    ['Email', apt.email || '—'],
+                  ].filter(Boolean).map(([l, v]) => (
+                    <div key={l} style={{ background: '#f8fafc', borderRadius: 8, padding: '8px 12px' }}>
+                      <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>{l}</div>
+                      <div style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.88rem' }}>{v}</div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              {/* Health Info */}
+              {(d.primary_reason || d.primaryReason || d.symptoms || d.allergies || d.medical_history || d.medicalHistory || d.current_medications || d.currentMedications) && (
+                <section>
+                  <div style={{ fontWeight: 700, fontSize: '0.78rem', textTransform: 'uppercase', color: '#94a3b8', letterSpacing: '0.06em', marginBottom: 10 }}>Health Assessment</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {[
+                      ['Primary Concern', d.primary_reason || d.primaryReason],
+                      ['Allergies', d.allergies],
+                      ['Current Medications', d.current_medications || d.currentMedications],
+                      ['Medical History', Array.isArray(d.medical_history) ? d.medical_history.join(', ') : d.medical_history || (Array.isArray(d.medicalHistory) ? d.medicalHistory.join(', ') : d.medicalHistory)],
+                      ['Symptoms', Array.isArray(d.symptoms) ? d.symptoms.filter(s => s && s !== 'none').join(', ') : typeof d.symptoms === 'string' ? d.symptoms : null],
+                    ].filter(([, v]) => v).map(([l, v]) => (
+                      <div key={l} style={{ background: '#f8fafc', borderRadius: 8, padding: '8px 12px', borderLeft: '3px solid #e2e8f0' }}>
+                        <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>{l}</div>
+                        <div style={{ color: '#374151', fontSize: '0.88rem' }}>{v}</div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+            </div>
+          )}
+
+          {/* ── PRESCRIPTION ── */}
+          {activeTab === 'prescription' && (
+            <div className="space-y-5">
+              {loading ? (
+                <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Loading prescription data…</div>
+              ) : !report ? (
+                <div style={{ textAlign: 'center', padding: 40 }}>
+                  <div style={{ fontSize: '2rem', marginBottom: 8 }}>📋</div>
+                  <div style={{ color: '#94a3b8', fontSize: '0.9rem' }}>No consultation report found for this appointment.</div>
+                  <div style={{ color: '#cbd5e1', fontSize: '0.8rem', marginTop: 4 }}>A report will appear here once the consultant creates one.</div>
+                </div>
+              ) : (
+                <>
+                  {/* Report header */}
+                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 16px', display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+                    <div><div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>Report ID</div><div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.85rem' }}>{report.id}</div></div>
+                    <div><div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>Consultant</div><div style={{ fontWeight: 600, color: '#374151', fontSize: '0.85rem' }}>{report.consultant || rd.consultant || '—'}</div></div>
+                    <div><div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>Date</div><div style={{ fontWeight: 600, color: '#374151', fontSize: '0.85rem' }}>{fmtDate((report.created_at || '').slice(0,10))}</div></div>
+                  </div>
+
+                  {/* Diagnosis */}
+                  {(rd.diagnosis || rd.notes || rd.consultant_notes) && (
+                    <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '12px 16px' }}>
+                      <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#1d4ed8', textTransform: 'uppercase', marginBottom: 6 }}>🩺 Diagnosis / Notes</div>
+                      <div style={{ color: '#1e293b', fontSize: '0.9rem', lineHeight: 1.6 }}>{rd.diagnosis || rd.notes || rd.consultant_notes}</div>
+                    </div>
+                  )}
+
+                  {/* Dispensed */}
+                  {dispensed.length > 0 && (
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: '0.78rem', textTransform: 'uppercase', color: '#16a34a', letterSpacing: '0.06em', marginBottom: 8 }}>✅ Dispensed ({dispensed.length})</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {dispensed.map((m, i) => (
+                          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 14px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8 }}>
+                            <span style={{ fontWeight: 600, color: '#166534', fontSize: '0.88rem' }}>{m.name || m.product || m.medicine || '—'}</span>
+                            {(m.quantity || m.qty) && <span style={{ background: '#dcfce7', color: '#166534', borderRadius: 6, padding: '1px 8px', fontSize: '0.78rem', fontWeight: 700 }}>Qty: {m.quantity || m.qty}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Pending / Not dispensed */}
+                  {pending.length > 0 && (
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: '0.78rem', textTransform: 'uppercase', color: '#dc2626', letterSpacing: '0.06em', marginBottom: 8 }}>⏳ Not Yet Dispensed ({pending.length})</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {pending.map((m, i) => (
+                          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 14px', background: '#fff5f5', border: '1px solid #fecaca', borderRadius: 8 }}>
+                            <span style={{ fontWeight: 600, color: '#991b1b', fontSize: '0.88rem' }}>{m.name || m.product || m.medicine || '—'}</span>
+                            {(m.quantity || m.qty) && <span style={{ background: '#fee2e2', color: '#991b1b', borderRadius: 6, padding: '1px 8px', fontSize: '0.78rem', fontWeight: 700 }}>Qty: {m.quantity || m.qty}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {medicines.length === 0 && (
+                    <div style={{ textAlign: 'center', padding: '24px', color: '#94a3b8', fontSize: '0.88rem', background: '#f8fafc', borderRadius: 10 }}>No medicines prescribed in this report.</div>
+                  )}
+
+                  {/* Recommendations */}
+                  {rd.recommendations && (
+                    <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '12px 16px' }}>
+                      <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#92400e', textTransform: 'uppercase', marginBottom: 6 }}>💡 Recommendations</div>
+                      <div style={{ color: '#78350f', fontSize: '0.88rem', lineHeight: 1.6 }}>{rd.recommendations}</div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ── FOLLOW-UPS ── */}
+          {activeTab === 'followups' && (
+            <div className="space-y-4">
+              {loading ? (
+                <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Loading follow-up data…</div>
+              ) : followUps.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 40 }}>
+                  <div style={{ fontSize: '2rem', marginBottom: 8 }}>🔁</div>
+                  <div style={{ color: '#94a3b8', fontSize: '0.9rem' }}>No follow-ups scheduled for this client.</div>
+                </div>
+              ) : (
+                followUps.map((r, i) => {
+                  const fd = r._fd;
+                  const overdue = fd.follow_up_date && fd.follow_up_date < new Date().toISOString().slice(0, 10) && !fd.follow_up_done;
+                  const bg    = fd.follow_up_done ? '#f0fdf4' : overdue ? '#fff5f5' : '#fffbeb';
+                  const border = fd.follow_up_done ? '#bbf7d0' : overdue ? '#fecaca' : '#fde68a';
+                  const tag   = fd.follow_up_done ? { text: '✅ Done', color: '#16a34a' } : overdue ? { text: '⚠️ Overdue', color: '#dc2626' } : { text: '📅 Upcoming', color: '#d97706' };
+                  return (
+                    <div key={r.id} style={{ background: bg, border: `1px solid ${border}`, borderRadius: 10, padding: '14px 16px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                        <span style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.88rem' }}>Follow-up #{i + 1} — {fmtDate(fd.follow_up_date)}</span>
+                        <span style={{ fontWeight: 700, fontSize: '0.78rem', color: tag.color }}>{tag.text}</span>
+                      </div>
+                      {fd.follow_up_notes && <div style={{ color: '#374151', fontSize: '0.85rem', lineHeight: 1.6 }}>{fd.follow_up_notes}</div>}
+                      <div style={{ marginTop: 8, fontSize: '0.75rem', color: '#94a3b8' }}>Report: {r.id} · {fmtDate((r.created_at || '').slice(0,10))}</div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
