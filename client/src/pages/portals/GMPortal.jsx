@@ -53,6 +53,7 @@ export default function GMPortal() {
     { id: 'messages', label: 'My Messages', icon: '📨' },
     { id: 'distributors', label: 'Distributor Performance', icon: '👥' },
     { id: 'discrepancies', label: 'Discrepancy Inbox', icon: '⚠️' },
+    { id: 'checkups', label: 'Check-ups', icon: '🩺' },
   ];
 
   return (
@@ -84,6 +85,7 @@ export default function GMPortal() {
         {activeTab === 'messages' && <StaffMessagesTab key={tabVisits.messages || 0} accentColor="#7c3aed" />}
         {activeTab === 'distributors' && <DistributorPerformanceTab key={tabVisits.distributors || 0} title="Distributor Performance — All Branches" />}
         {activeTab === 'discrepancies' && <DiscrepancyInboxTab key={tabVisits.discrepancies || 0} />}
+        {activeTab === 'checkups' && <CheckupsTab key={tabVisits.checkups || 0} />}
       </div>
     </div>
   );
@@ -5933,3 +5935,325 @@ function StatementsUploadTab() {
   );
 }
 
+
+// ── GM Check-ups Tab ─────────────────────────────────────────────────────────
+function CheckupsTab() {
+  const today = new Date().toISOString().slice(0, 10);
+  const firstOfMonth = today.slice(0, 8) + '01';
+
+  const [rows, setRows]           = useState([]);
+  const [loading, setLoading]     = useState(true);
+  const [dateFrom, setDateFrom]   = useState(firstOfMonth);
+  const [dateTo, setDateTo]       = useState(today);
+  const [branchFilter, setBranchFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+
+  const load = useCallback(() => {
+    setLoading(true);
+    api.appointments.list()
+      .then(data => setRows(Array.isArray(data) ? data : []))
+      .catch(() => setRows([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const allBranches = [...new Set(rows.map(r => r.branch).filter(Boolean))].sort();
+
+  const inRange = rows.filter(r => {
+    const d = (r.date || '').slice(0, 10);
+    if (dateFrom && d < dateFrom) return false;
+    if (dateTo   && d > dateTo)   return false;
+    return true;
+  });
+
+  const afterBranch = branchFilter
+    ? inRange.filter(r => r.branch === branchFilter)
+    : inRange;
+
+  const isUpcoming  = s => !['completed','no_show','cancelled'].includes((s||'').toLowerCase());
+  const isCompleted = s => (s||'').toLowerCase() === 'completed';
+  const isNoShow    = s => (s||'').toLowerCase() === 'no_show';
+
+  const displayed =
+    statusFilter === 'completed' ? afterBranch.filter(r => isCompleted(r.status)) :
+    statusFilter === 'no_show'   ? afterBranch.filter(r => isNoShow(r.status))    :
+    statusFilter === 'upcoming'  ? afterBranch.filter(r => isUpcoming(r.status))  :
+    afterBranch;
+
+  // Summary per branch
+  const summaryMap = {};
+  for (const r of afterBranch) {
+    const b = r.branch || 'Unknown';
+    if (!summaryMap[b]) summaryMap[b] = { branch: b, upcoming: 0, completed: 0, no_show: 0, total: 0 };
+    summaryMap[b].total++;
+    if (isCompleted(r.status))  summaryMap[b].completed++;
+    else if (isNoShow(r.status)) summaryMap[b].no_show++;
+    else                         summaryMap[b].upcoming++;
+  }
+  const summary = Object.values(summaryMap).sort((a, b) => a.branch.localeCompare(b.branch));
+  const gt = { upcoming: 0, completed: 0, no_show: 0, total: 0 };
+  summary.forEach(s => { gt.upcoming += s.upcoming; gt.completed += s.completed; gt.no_show += s.no_show; gt.total += s.total; });
+
+  const fmtDate = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+
+  const sdot = s => isCompleted(s) ? { label:'Completed', bg:'#dcfce7', color:'#166534' }
+                  : isNoShow(s)    ? { label:'No Show',   bg:'#fee2e2', color:'#991b1b' }
+                  :                  { label:'Pending',   bg:'#eff6ff', color:'#1d4ed8' };
+
+  const handlePrint = () => {
+    const periodLabel = dateFrom === dateTo
+      ? fmtDate(dateFrom)
+      : `${fmtDate(dateFrom)} – ${fmtDate(dateTo)}`;
+    const branchLabel  = branchFilter || 'All Branches';
+    const statusLabel  = statusFilter === 'all' ? 'All Statuses'
+                       : statusFilter === 'no_show' ? 'No Show'
+                       : statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1);
+
+    const badge = s => {
+      const sd = sdot(s);
+      return `<span style="background:${sd.bg};color:${sd.color};border-radius:4px;padding:1px 7px;font-size:11px;font-weight:700;">${sd.label}</span>`;
+    };
+
+    const grouped = {};
+    for (const r of displayed) {
+      const b = r.branch || 'Unknown';
+      if (!grouped[b]) grouped[b] = [];
+      grouped[b].push(r);
+    }
+
+    const branchSections = Object.entries(grouped).sort(([a],[b])=>a.localeCompare(b)).map(([branch, apts]) => {
+      const trs = apts.map(a => `<tr>
+        <td>${a.full_name||'—'}</td><td>${a.phone||'—'}</td>
+        <td>${a.date ? new Date(a.date+'T00:00:00').toLocaleDateString('en-GB') : '—'} ${a.time ? a.time.slice(0,5) : ''}</td>
+        <td>${a.type||'—'}</td><td>${badge(a.status)}</td>
+      </tr>`).join('');
+      return `<div style="margin-bottom:28px;page-break-inside:avoid;">
+        <div style="background:#c41e3a;color:#fff;padding:6px 14px;border-radius:6px 6px 0 0;font-weight:700;font-size:13px;">📍 ${branch} · ${apts.length} client${apts.length!==1?'s':''}</div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+          <thead><tr style="background:#f8f8f8;font-size:10px;color:#555;text-transform:uppercase;">
+            <th style="padding:5px 10px;text-align:left;border-bottom:1px solid #ddd;">Client</th>
+            <th style="padding:5px 10px;text-align:left;border-bottom:1px solid #ddd;">Phone</th>
+            <th style="padding:5px 10px;text-align:left;border-bottom:1px solid #ddd;">Date & Time</th>
+            <th style="padding:5px 10px;text-align:left;border-bottom:1px solid #ddd;">Type</th>
+            <th style="padding:5px 10px;text-align:left;border-bottom:1px solid #ddd;">Status</th>
+          </tr></thead>
+          <tbody>${trs}</tbody>
+        </table>
+      </div>`;
+    }).join('');
+
+    const summaryTrs = summary.map(s => `<tr>
+      <td style="padding:5px 10px;border-bottom:1px solid #f0f0f0;font-weight:600;">${s.branch}</td>
+      <td style="padding:5px 10px;border-bottom:1px solid #f0f0f0;text-align:center;color:#1d4ed8;">${s.upcoming}</td>
+      <td style="padding:5px 10px;border-bottom:1px solid #f0f0f0;text-align:center;color:#166534;">${s.completed}</td>
+      <td style="padding:5px 10px;border-bottom:1px solid #f0f0f0;text-align:center;color:#991b1b;">${s.no_show}</td>
+      <td style="padding:5px 10px;border-bottom:1px solid #f0f0f0;text-align:center;font-weight:700;">${s.total}</td>
+    </tr>`).join('');
+
+    const html = `<!DOCTYPE html><html><head><title>Dynapharm – Checkup Report</title>
+    <style>
+      body{font-family:Arial,sans-serif;color:#111;margin:0;padding:20px;}
+      h1{font-size:20px;color:#c41e3a;margin:0 0 4px;}
+      .meta{font-size:12px;color:#666;margin-bottom:20px;}
+      table{width:100%;border-collapse:collapse;}
+      th{background:#f8f8f8;text-transform:uppercase;font-size:10px;color:#555;padding:6px 10px;text-align:left;border-bottom:2px solid #ddd;}
+      td{padding:5px 10px;border-bottom:1px solid #f0f0f0;font-size:12px;vertical-align:middle;}
+      .sec{font-weight:700;font-size:13px;margin:22px 0 6px;color:#c41e3a;border-bottom:2px solid #c41e3a;padding-bottom:4px;}
+      .totrow td{background:#1e293b;color:#fff;font-weight:700;}
+      @media print{@page{size:A4;margin:15mm;}}
+    </style></head><body>
+    <h1>🩺 Dynapharm – Checkup Report</h1>
+    <div class="meta">
+      <strong>Period:</strong> ${periodLabel} &nbsp;·&nbsp;
+      <strong>Branch:</strong> ${branchLabel} &nbsp;·&nbsp;
+      <strong>Status:</strong> ${statusLabel} &nbsp;·&nbsp;
+      <strong>Clients shown:</strong> ${displayed.length} &nbsp;·&nbsp;
+      <strong>Printed:</strong> ${new Date().toLocaleString('en-GB')}
+    </div>
+    <div class="sec">📊 Branch Summary</div>
+    <table><thead><tr>
+      <th>Branch</th><th style="text-align:center">Pending</th>
+      <th style="text-align:center">Completed</th><th style="text-align:center">No Show</th>
+      <th style="text-align:center">Total</th>
+    </tr></thead><tbody>
+      ${summaryTrs}
+      <tr class="totrow">
+        <td>GRAND TOTAL</td>
+        <td style="text-align:center">${gt.upcoming}</td>
+        <td style="text-align:center">${gt.completed}</td>
+        <td style="text-align:center">${gt.no_show}</td>
+        <td style="text-align:center">${gt.total}</td>
+      </tr>
+    </tbody></table>
+    <div style="margin-top:30px;">
+      <div class="sec">👥 Client Records — ${branchLabel}</div>
+      ${branchSections || '<p style="color:#999;font-size:13px;">No records match the selected filters.</p>'}
+    </div>
+    </body></html>`;
+
+    const w = window.open('', '_blank');
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    setTimeout(() => w.print(), 400);
+  };
+
+  const upCount   = afterBranch.filter(r => isUpcoming(r.status)).length;
+  const compCount = afterBranch.filter(r => isCompleted(r.status)).length;
+  const nsCount   = afterBranch.filter(r => isNoShow(r.status)).length;
+
+  return (
+    <div className="space-y-5">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h3 className="font-bold text-lg text-gray-900">🩺 Check-up Records</h3>
+          <p className="text-sm text-gray-500 mt-0.5">Country-wide checkup appointments across all branches</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={load} className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm font-semibold text-gray-600 hover:bg-gray-50">↺ Refresh</button>
+          <button onClick={handlePrint} className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white" style={{ background: '#c41e3a' }}>🖨 Print / PDF</button>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '14px 16px' }}>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          {[['From', dateFrom, setDateFrom], ['To', dateTo, setDateTo]].map(([lbl, val, setter]) => (
+            <div key={lbl}>
+              <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>{lbl}</label>
+              <input type="date" value={val} onChange={e => setter(e.target.value)}
+                style={{ padding: '7px 10px', borderRadius: 8, border: '1.5px solid #e2e8f0', fontSize: '0.88rem', background: '#fff', cursor: 'pointer', outline: 'none' }} />
+            </div>
+          ))}
+          <div>
+            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Branch</label>
+            <select value={branchFilter} onChange={e => setBranchFilter(e.target.value)}
+              style={{ padding: '7px 12px', borderRadius: 8, border: `1.5px solid ${branchFilter ? '#c41e3a' : '#e2e8f0'}`, fontSize: '0.88rem', background: branchFilter ? '#fff0f3' : '#fff', minWidth: 180, cursor: 'pointer', outline: 'none' }}>
+              <option value="">All Branches ({allBranches.length})</option>
+              {allBranches.map(b => <option key={b} value={b}>{b}</option>)}
+            </select>
+          </div>
+          <button onClick={() => { setDateFrom(firstOfMonth); setDateTo(today); setBranchFilter(''); setStatusFilter('all'); }}
+            style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', fontSize: '0.85rem', color: '#64748b', cursor: 'pointer' }}>
+            Reset
+          </button>
+        </div>
+      </div>
+
+      {/* Status tabs */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {[
+          { key:'all',       label:`All (${afterBranch.length})`,     active:'#1e293b', inBg:'#f1f5f9', inCol:'#64748b' },
+          { key:'upcoming',  label:`Pending (${upCount})`,            active:'#1d4ed8', inBg:'#eff6ff', inCol:'#1d4ed8' },
+          { key:'completed', label:`Completed (${compCount})`,        active:'#16a34a', inBg:'#f0fdf4', inCol:'#16a34a' },
+          { key:'no_show',   label:`No Show (${nsCount})`,            active:'#dc2626', inBg:'#fff5f5', inCol:'#dc2626' },
+        ].map(({ key, label, active, inBg, inCol }) => (
+          <button key={key} onClick={() => setStatusFilter(key)}
+            style={{ padding: '7px 18px', borderRadius: 20, fontSize: '0.84rem', fontWeight: 700, border: 'none', cursor: 'pointer',
+              background: statusFilter === key ? active : inBg,
+              color: statusFilter === key ? '#fff' : inCol, transition: 'all 0.15s' }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading checkup records…</div>
+      ) : (
+        <>
+          {/* Branch Summary */}
+          <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontWeight: 700, fontSize: '0.9rem', color: '#1e293b' }}>📊 Branch Summary</span>
+              <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
+                {dateFrom === dateTo ? fmtDate(dateFrom) : `${fmtDate(dateFrom)} – ${fmtDate(dateTo)}`}
+                {branchFilter ? ` · ${branchFilter}` : ''}
+              </span>
+            </div>
+            {summary.length === 0 ? (
+              <div style={{ padding: '24px', textAlign: 'center', color: '#94a3b8', fontSize: '0.88rem' }}>No appointments in the selected period.</div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.87rem' }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc', textTransform: 'uppercase', fontSize: '0.7rem', color: '#64748b', letterSpacing: '0.05em' }}>
+                      {['Branch','Pending','Completed','No Show','Total'].map(h => (
+                        <th key={h} style={{ padding: '9px 14px', textAlign: h === 'Branch' ? 'left' : 'center', borderBottom: '1px solid #e5e7eb' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {summary.map(s => (
+                      <tr key={s.branch} style={{ borderBottom: '1px solid #f0f0f0', cursor: 'pointer' }}
+                        onClick={() => { setBranchFilter(s.branch === branchFilter ? '' : s.branch); setStatusFilter('all'); }}
+                        className="hover:bg-blue-50">
+                        <td style={{ padding: '8px 14px', fontWeight: 600, color: '#1e293b' }}>{s.branch}</td>
+                        <td style={{ padding: '8px 14px', textAlign: 'center', color: '#1d4ed8', fontWeight: 600 }}>{s.upcoming}</td>
+                        <td style={{ padding: '8px 14px', textAlign: 'center', color: '#16a34a', fontWeight: 600 }}>{s.completed}</td>
+                        <td style={{ padding: '8px 14px', textAlign: 'center', color: '#dc2626', fontWeight: 600 }}>{s.no_show}</td>
+                        <td style={{ padding: '8px 14px', textAlign: 'center', fontWeight: 700, color: '#1e293b' }}>{s.total}</td>
+                      </tr>
+                    ))}
+                    <tr style={{ background: '#1e293b' }}>
+                      <td style={{ padding: '9px 14px', color: '#fff', fontWeight: 700 }}>GRAND TOTAL</td>
+                      <td style={{ padding: '9px 14px', textAlign: 'center', color: '#93c5fd', fontWeight: 700 }}>{gt.upcoming}</td>
+                      <td style={{ padding: '9px 14px', textAlign: 'center', color: '#86efac', fontWeight: 700 }}>{gt.completed}</td>
+                      <td style={{ padding: '9px 14px', textAlign: 'center', color: '#fca5a5', fontWeight: 700 }}>{gt.no_show}</td>
+                      <td style={{ padding: '9px 14px', textAlign: 'center', color: '#fff', fontWeight: 700 }}>{gt.total}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Client Records Table */}
+          <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontWeight: 700, fontSize: '0.9rem', color: '#1e293b' }}>
+                👥 Client Records
+                {branchFilter && <span style={{ marginLeft: 8, fontSize: '0.78rem', background: '#fff0f3', color: '#c41e3a', borderRadius: 6, padding: '2px 8px', fontWeight: 600 }}>{branchFilter}</span>}
+              </span>
+              <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{displayed.length} record{displayed.length !== 1 ? 's' : ''}</span>
+            </div>
+            {displayed.length === 0 ? (
+              <div style={{ padding: '32px', textAlign: 'center', color: '#94a3b8', fontSize: '0.88rem' }}>No records match the selected filters.</div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc', textTransform: 'uppercase', fontSize: '0.68rem', color: '#64748b', letterSpacing: '0.05em' }}>
+                      {['Client Name','Phone','Branch','Date','Time','Type','Status'].map(h => (
+                        <th key={h} style={{ padding: '9px 12px', textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {displayed.map(r => {
+                      const sd = sdot(r.status);
+                      return (
+                        <tr key={r.id} style={{ borderBottom: '1px solid #f5f5f5' }} className="hover:bg-gray-50">
+                          <td style={{ padding: '8px 12px', fontWeight: 600, color: '#1e293b' }}>{r.full_name || '—'}</td>
+                          <td style={{ padding: '8px 12px', color: '#374151' }}>{r.phone || '—'}</td>
+                          <td style={{ padding: '8px 12px', color: '#6b7280', fontSize: '0.82rem' }}>{r.branch || '—'}</td>
+                          <td style={{ padding: '8px 12px', color: '#374151', whiteSpace: 'nowrap' }}>{fmtDate(r.date)}</td>
+                          <td style={{ padding: '8px 12px', color: '#374151' }}>{r.time ? r.time.slice(0,5) : '—'}</td>
+                          <td style={{ padding: '8px 12px', color: '#6b7280', fontSize: '0.82rem' }}>{r.type || '—'}</td>
+                          <td style={{ padding: '8px 12px' }}>
+                            <span style={{ background: sd.bg, color: sd.color, borderRadius: 6, padding: '2px 8px', fontWeight: 700, fontSize: '0.75rem' }}>{sd.label}</span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
