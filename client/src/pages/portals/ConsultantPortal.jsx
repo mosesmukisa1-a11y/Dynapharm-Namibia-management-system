@@ -538,8 +538,25 @@ function PrescriptionEditModal({ report, onClose, onSaved }) {
   const handleSave = async () => {
     setSaving(true); setError('');
     try {
-      const medicines = Array.from(meds).map(name => ({ name, dispensed: false }));
-      const prescriptions = medicines.map(m => ({ product: m.name, quantity: 1 }));
+      // Preserve existing dispensed status per medicine — the branch may
+      // have already dispensed some items; don't wipe that information.
+      const existingMedMap = {};
+      const existingMeds = Array.isArray(report.medicines) ? report.medicines : [];
+      for (const m of existingMeds) {
+        const key = (m.name || '').toLowerCase().trim();
+        existingMedMap[key] = m;
+      }
+      const medicines = Array.from(meds).map(name => {
+        const key = name.toLowerCase().trim();
+        const prev = existingMedMap[key];
+        return {
+          name,
+          quantity: prev?.quantity || 1,
+          dispensed: prev?.dispensed || false,
+          dispensed_qty: prev?.dispensed_qty || 0,
+        };
+      });
+      const prescriptions = medicines.map(m => ({ product: m.name, quantity: m.quantity }));
       await api.reports.update(report.id, {
         diagnosis: notes, recommendations: notes,
         medicines, prescriptions,
@@ -1178,10 +1195,31 @@ ${consultantNotes ? `
     try {
       const result = await api.reports.list({ appointment_id: apt.id });
       const reports = Array.isArray(result) ? result : (result?.reports || []);
-      const report = reports[0] || null;
+      let report = reports[0] || null;
       if (!report) {
-        alert('No consultation report found for this appointment. The consultant must create a report first before it can be edited.');
-        return;
+        // No report exists yet — auto-create a minimal one so the consultant
+        // can fill in the prescription without going through the full form.
+        const d = (() => { try { return typeof apt.data === 'string' ? JSON.parse(apt.data) : (apt.data || {}); } catch { return {}; } })();
+        const rawMemberType = d.membershipStatus || d.membership_status || d.customer_type || 'referred';
+        const membershipStatus = rawMemberType === 'member' ? 'member' : 'referred';
+        const isMember = membershipStatus === 'member';
+        const created = await api.reports.create({
+          client_name: apt.full_name || '',
+          appointment_id: apt.id,
+          diagnosis: '',
+          prescriptions: [],
+          medicines: [],
+          recommendations: '',
+          consultant: user?.full_name || user?.username || 'Consultant',
+          membership_status: membershipStatus,
+          consultation_fee: isMember ? 150 : 200,
+          branch: getBranchId(apt.branch || d.branch || user?.branch || ''),
+        });
+        report = created?.report || created;
+        // Auto-mark the appointment completed if it isn't already
+        if (apt.status !== 'completed') {
+          api.appointments.update(apt.id, { status: 'completed' }).catch(() => {});
+        }
       }
       setEditPrescReport(report);
     } catch (err) {
