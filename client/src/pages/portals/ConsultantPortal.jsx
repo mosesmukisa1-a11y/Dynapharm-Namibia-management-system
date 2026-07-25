@@ -2561,7 +2561,7 @@ function ClientsSection() {
         <div onClick={e => { if (e.target === e.currentTarget) { setSelectedClient(null); setEditMode(false); } }} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 999999, overflowY: 'auto', padding: '20px', boxSizing: 'border-box' }}>
           <div style={{ maxWidth: '900px', margin: '20px auto', background: 'white', borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.3)', maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid #e5e7eb' }}>
-              <h3 style={{ margin: 0, color: '#1f2937', fontSize: '1.1rem' }}>{editMode ? 'Edit Client Details' : 'Client Details'} - {selectedClient.reference || selectedClient.referenceNumber || ''}</h3>
+              <h3 style={{ margin: 0, color: '#1f2937', fontSize: '1.1rem' }}>{editMode ? 'Edit Client' : 'Client Profile'}</h3>
               <button onClick={() => { setSelectedClient(null); setEditMode(false); }} style={{ padding: '8px 16px', background: '#6b7280', color: 'white', border: 'none', borderRadius: '8px', fontSize: '0.9rem', cursor: 'pointer' }}>✕</button>
             </div>
             <div style={{ padding: '24px' }}>
@@ -2594,85 +2594,274 @@ function ClientsSection() {
 }
 
 function ClientViewDetails({ client }) {
+  const [activeTab, setActiveTab] = useState('profile');
+
   const name = client.full_name || client.fullName || client.name || '';
   const memberStatus = client.membershipStatus || client.membership_status || 'referred';
-  const symptoms = Array.isArray(client.symptoms) ? client.symptoms : [];
+  const isMember = memberStatus === 'member';
 
-  const sectionStyle = { marginBottom: '20px', background: '#f8f9fa', padding: '16px', borderRadius: '8px' };
-  const sectionTitleStyle = { fontSize: '1rem', fontWeight: 600, color: '#2c3e50', marginBottom: '12px' };
-  const gridStyle = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' };
-  const fieldStyle = { fontSize: '0.9rem', color: '#374151', margin: 0 };
+  // BMI
+  const h = parseFloat(client.height);
+  const w = parseFloat(client.weight);
+  const bmi = (h > 0 && w > 0) ? (() => {
+    const val = (w / ((h / 100) ** 2)).toFixed(1);
+    const n = parseFloat(val);
+    const cat = n < 18.5 ? 'Underweight' : n < 25 ? 'Normal' : n < 30 ? 'Overweight' : 'Obese';
+    return { value: val, cat };
+  })() : null;
+
+  // Symptoms — handle both array and keyed-object storage formats
+  const rawSym = client.symptoms;
+  const symptomsArr = Array.isArray(rawSym)
+    ? rawSym.filter(s => s && s !== 'none')
+    : (rawSym && typeof rawSym === 'object')
+      ? Object.values(rawSym).flat().filter(Boolean)
+      : (typeof rawSym === 'string' && rawSym ? [rawSym] : []);
+
+  const regDate = (client.timestamp || client.created_at)
+    ? new Date(client.timestamp || client.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+    : null;
+
+  const tabs = [
+    { id: 'profile', label: '👤 Profile' },
+    { id: 'health',  label: '🩺 Health'  },
+    { id: 'history', label: '📋 History' },
+  ];
+
+  const tabBtn = (id) => ({
+    padding: '8px 18px', border: 'none', cursor: 'pointer', fontWeight: activeTab === id ? 700 : 500,
+    color: activeTab === id ? '#c41e3a' : '#64748b', background: 'none', fontSize: '0.88rem',
+    borderBottom: activeTab === id ? '2px solid #c41e3a' : '2px solid transparent',
+    transition: 'all 0.15s',
+  });
+
+  const pill = (label, color = '#f8fafc', textColor = '#1e293b', accent = null) => ({
+    base: { background: color, borderRadius: 8, padding: '8px 12px', ...(accent ? { borderLeft: `3px solid ${accent}` } : {}) },
+    label: { fontSize: '0.68rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 },
+    value: { fontWeight: 600, color: textColor, fontSize: '0.88rem' },
+  });
 
   return (
     <div>
-      <div style={sectionStyle}>
-        <h4 style={sectionTitleStyle}>Personal Information</h4>
-        <div style={gridStyle}>
-          <div style={fieldStyle}><strong>Full Name:</strong> {name}</div>
-          <div style={fieldStyle}><strong>Namibian ID:</strong> {client.nbNumber || client.nb_number || 'Not provided'}</div>
-          <div style={fieldStyle}><strong>Date of Birth:</strong> {client.dob || 'Not provided'}</div>
-          <div style={fieldStyle}><strong>Age:</strong> {client.age || 'Not provided'} years</div>
-          <div style={fieldStyle}><strong>Gender:</strong> {client.gender || 'Not provided'}</div>
-          <div style={fieldStyle}><strong>Phone:</strong> {client.phone || 'Not provided'}</div>
-          <div style={fieldStyle}><strong>Email:</strong> {client.email || 'Not provided'}</div>
-          <div style={fieldStyle}><strong>Height:</strong> {client.height || 'Not provided'} cm</div>
-          <div style={fieldStyle}><strong>Weight:</strong> {client.weight || 'Not provided'} kg</div>
-        </div>
-      </div>
-      <div style={sectionStyle}>
-        <h4 style={sectionTitleStyle}>Member/Referral Information</h4>
-        <div style={gridStyle}>
-          <div style={fieldStyle}><strong>Membership Status:</strong> {memberStatus === 'member' ? 'Registered Member' : 'Referred by Member'}</div>
-          {memberStatus === 'member' ? (
-            <>
-              <div style={fieldStyle}><strong>Member ID:</strong> {client.memberId || client.member_id || 'Not provided'}</div>
-              <div style={fieldStyle}><strong>Member Since:</strong> {client.memberSince || client.member_since || 'Not provided'}</div>
-            </>
-          ) : (
-            <>
-              <div style={fieldStyle}><strong>Referred by:</strong> {client.referralName || client.referral_name || 'Not provided'}</div>
-              <div style={fieldStyle}><strong>Referral NB:</strong> {client.referralNbNumber || client.referral_nb || 'Not provided'}</div>
-            </>
-          )}
-        </div>
-      </div>
-      <div style={sectionStyle}>
-        <h4 style={sectionTitleStyle}>Health Assessment</h4>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '10px' }}>
-          <div style={fieldStyle}><strong>Primary Reason:</strong> {client.primaryReason || client.primary_reason || 'Not provided'}</div>
-          <div style={fieldStyle}><strong>Water Intake:</strong> {client.waterIntake || client.water_intake || 'Not specified'}</div>
-          <div style={fieldStyle}><strong>Exercise:</strong> {client.exerciseFreq || client.exercise_freq || 'Not specified'}</div>
-          <div style={fieldStyle}><strong>Sleep:</strong> {client.sleepHours || client.sleep_hours ? `${client.sleepHours || client.sleep_hours} hrs/night` : 'Not specified'}</div>
-          <div style={fieldStyle}><strong>Stress Level:</strong> {client.stressLevel || client.stress_level ? `${client.stressLevel || client.stress_level}/10` : 'Not specified'}</div>
-          <div style={fieldStyle}><strong>Current Medications:</strong> {client.currentMedications || client.medications || 'None'}</div>
-          <div style={fieldStyle}><strong>Allergies:</strong> {client.allergies || 'None'}</div>
-        </div>
-        <div style={fieldStyle}><strong>Medical History:</strong> {Array.isArray(client.medicalHistory) ? client.medicalHistory.join(', ') : (client.medicalHistory || client.medical_history || 'None')}</div>
-      </div>
-      {symptoms.length > 0 && (
-        <div style={sectionStyle}>
-          <h4 style={sectionTitleStyle}>Symptoms</h4>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-            {symptoms.map((s, i) => (
-              <span key={i} style={{ display: 'inline-block', padding: '4px 12px', background: '#fee2e2', color: '#c41e3a', borderRadius: '16px', fontSize: '0.85rem' }}>{s}</span>
-            ))}
+      {/* ── Client banner ── */}
+      <div style={{ background: 'linear-gradient(135deg, #1e3a5f 0%, #2d5a8e 100%)', borderRadius: 12, padding: '18px 22px', marginBottom: 20, color: 'white' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div style={{ width: 50, height: 50, borderRadius: '50%', background: 'rgba(255,255,255,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.35rem', fontWeight: 700, flexShrink: 0 }}>
+              {name.charAt(0).toUpperCase() || '?'}
+            </div>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: '1.05rem', lineHeight: 1.2 }}>{name || '—'}</div>
+              <div style={{ fontSize: '0.8rem', opacity: 0.72, marginTop: 3 }}>
+                {[client.reference || client.referenceNumber || client.reference_number, client.branch].filter(Boolean).join(' · ')}
+              </div>
+              {client.phone && <div style={{ fontSize: '0.8rem', opacity: 0.72 }}>📞 {client.phone}</div>}
+            </div>
           </div>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+            <span style={{ background: isMember ? '#16a34a' : '#d97706', padding: '4px 13px', borderRadius: 20, fontSize: '0.78rem', fontWeight: 700 }}>
+              {isMember ? '🏅 Member' : '🤝 Referred'}
+            </span>
+            {bmi && <span style={{ fontSize: '0.77rem', opacity: 0.82 }}>BMI {bmi.value} — {bmi.cat}</span>}
+            {regDate && <span style={{ fontSize: '0.75rem', opacity: 0.65 }}>Registered {regDate}</span>}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Tabs ── */}
+      <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb', marginBottom: 20 }}>
+        {tabs.map(t => <button key={t.id} style={tabBtn(t.id)} onClick={() => setActiveTab(t.id)}>{t.label}</button>)}
+      </div>
+
+      {/* ── PROFILE TAB ── */}
+      {activeTab === 'profile' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+
+          {/* Personal Details */}
+          <section>
+            <div style={{ fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', color: '#94a3b8', letterSpacing: '0.06em', marginBottom: 10 }}>Personal Details</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 18px' }}>
+              {[
+                client.gender                                  ? ['Gender',      client.gender]                                          : null,
+                client.dob                                     ? ['Date of Birth', new Date(client.dob).toLocaleDateString('en-GB')]      : null,
+                client.age                                     ? ['Age',         `${client.age} years`]                                   : null,
+                client.email                                   ? ['Email',       client.email]                                            : null,
+                (client.address || client.city)                ? ['Address',     [client.address, client.city].filter(Boolean).join(', ')] : null,
+                client.height                                  ? ['Height',      `${client.height} cm`]                                   : null,
+                client.weight                                  ? ['Weight',      `${client.weight} kg`]                                   : null,
+                bmi                                            ? ['BMI',         `${bmi.value} — ${bmi.cat}`]                             : null,
+                (client.nbNumber || client.nb_number)          ? ['NB Number',   client.nbNumber || client.nb_number]                     : null,
+              ].filter(Boolean).map(([l, v]) => {
+                const s = pill(l);
+                return (
+                  <div key={l} style={s.base}>
+                    <div style={s.label}>{l}</div>
+                    <div style={s.value}>{v}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          {/* Membership / Referral */}
+          <section>
+            <div style={{ fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', color: '#94a3b8', letterSpacing: '0.06em', marginBottom: 10 }}>
+              {isMember ? 'Membership' : 'Referral'}
+            </div>
+            <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '14px 16px' }}>
+              {isMember ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span style={{ fontSize: '1.5rem' }}>🏅</span>
+                  <div>
+                    <div style={{ fontWeight: 700, color: '#92400e', fontSize: '0.95rem' }}>Registered Member</div>
+                    {(client.nbNumber || client.nb_number) && <div style={{ fontSize: '0.82rem', color: '#a16207', marginTop: 2 }}>NB: {client.nbNumber || client.nb_number}</div>}
+                    {(client.memberId || client.member_id) && <div style={{ fontSize: '0.82rem', color: '#a16207' }}>Member ID: {client.memberId || client.member_id}</div>}
+                    {(client.memberSince || client.member_since) && <div style={{ fontSize: '0.82rem', color: '#a16207' }}>Since: {client.memberSince || client.member_since}</div>}
+                  </div>
+                </div>
+              ) : (
+                (client.referralName || client.referral_name) ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <span style={{ fontSize: '1.5rem' }}>👥</span>
+                    <div>
+                      <div style={{ fontWeight: 700, color: '#92400e', fontSize: '0.95rem' }}>{client.referralName || client.referral_name}</div>
+                      {(client.referralNbNumber || client.referral_nb) && <div style={{ fontSize: '0.82rem', color: '#a16207', marginTop: 2 }}>NB: {client.referralNbNumber || client.referral_nb}</div>}
+                    </div>
+                  </div>
+                ) : (
+                  <span style={{ color: '#94a3b8', fontSize: '0.88rem' }}>Walk-in — no referral on record</span>
+                )
+              )}
+            </div>
+          </section>
         </div>
       )}
-      <div style={sectionStyle}>
-        <h4 style={sectionTitleStyle}>Registration Details</h4>
-        <div style={gridStyle}>
-          <div style={fieldStyle}><strong>Registration Date:</strong> {client.timestamp ? new Date(client.timestamp).toLocaleDateString('en-GB') : (client.created_at ? new Date(client.created_at).toLocaleDateString('en-GB') : 'N/A')}</div>
-          <div style={fieldStyle}><strong>Branch:</strong> {client.branch || 'N/A'}</div>
-          <div style={fieldStyle}><strong>Signature:</strong> {client.signature || 'Not signed'}</div>
+
+      {/* ── HEALTH TAB ── */}
+      {activeTab === 'health' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+
+          {/* Symptoms */}
+          {symptomsArr.length > 0 && (
+            <section>
+              <div style={{ fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', color: '#94a3b8', letterSpacing: '0.06em', marginBottom: 10 }}>Symptoms / Complaints</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {symptomsArr.map((s, i) => (
+                  <span key={i} style={{ display: 'inline-block', padding: '4px 13px', background: '#fee2e2', color: '#c41e3a', borderRadius: 16, fontSize: '0.85rem', fontWeight: 500 }}>{s}</span>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Health Assessment rows */}
+          {(() => {
+            const rows = [
+              ['Primary Reason',      client.primaryReason || client.primary_reason],
+              ['Allergies',           client.allergies],
+              ['Current Medications', client.currentMedications || client.medications || client.current_medications],
+              ['Medical History',     Array.isArray(client.medicalHistory) ? client.medicalHistory.join(', ') : (client.medicalHistory || client.medical_history)],
+            ].filter(([, v]) => v && (typeof v !== 'string' || v.trim() !== ''));
+
+            if (!rows.length) return null;
+            return (
+              <section>
+                <div style={{ fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', color: '#94a3b8', letterSpacing: '0.06em', marginBottom: 10 }}>Health Assessment</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {rows.map(([l, v]) => {
+                    const s = pill(l, '#f8fafc', '#374151', '#e2e8f0');
+                    return (
+                      <div key={l} style={s.base}>
+                        <div style={s.label}>{l}</div>
+                        <div style={{ color: '#374151', fontSize: '0.88rem' }}>{v}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })()}
+
+          {/* Lifestyle */}
+          {(() => {
+            const rows = [
+              ['Water Intake',  client.waterIntake || client.water_intake],
+              ['Exercise',      client.exerciseFreq || client.exercise_freq],
+              ['Sleep',         (client.sleepHours || client.sleep_hours) ? `${client.sleepHours || client.sleep_hours} hrs/night` : null],
+              ['Stress Level',  (client.stressLevel || client.stress_level) ? `${client.stressLevel || client.stress_level}/10` : null],
+            ].filter(([, v]) => v && (typeof v !== 'string' || v.trim() !== ''));
+
+            if (!rows.length) return null;
+            return (
+              <section>
+                <div style={{ fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', color: '#94a3b8', letterSpacing: '0.06em', marginBottom: 10 }}>Lifestyle</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  {rows.map(([l, v]) => (
+                    <div key={l} style={{ background: '#f0fdf4', borderRadius: 8, padding: '8px 12px' }}>
+                      <div style={{ fontSize: '0.68rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>{l}</div>
+                      <div style={{ color: '#374151', fontSize: '0.88rem', fontWeight: 600 }}>{v}</div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            );
+          })()}
+
+          {/* Empty state */}
+          {symptomsArr.length === 0 &&
+           ![client.primaryReason, client.primary_reason, client.allergies, client.currentMedications,
+             client.medications, client.current_medications, client.medicalHistory, client.medical_history,
+             client.waterIntake, client.water_intake, client.exerciseFreq, client.exercise_freq,
+             client.sleepHours, client.sleep_hours, client.stressLevel, client.stress_level].some(Boolean) && (
+            <div style={{ textAlign: 'center', padding: '48px 20px', color: '#94a3b8' }}>
+              <div style={{ fontSize: '2rem', marginBottom: 8 }}>🩺</div>
+              <div style={{ fontSize: '0.9rem' }}>No health assessment data on record.</div>
+              <div style={{ fontSize: '0.8rem', marginTop: 4, color: '#cbd5e1' }}>This client's health form may not have been fully completed.</div>
+            </div>
+          )}
         </div>
-        {client.edited_by_consultant && (
-          <div style={{ marginTop: '10px', padding: '8px 12px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', fontSize: '0.85rem', color: '#1d4ed8' }}>
-            ✏️ <strong>Edited by consultant:</strong> {client.edited_by_consultant_name || 'Consultant'}
-            {client.edited_by_consultant_at && <span style={{ marginLeft: '8px', color: '#64748b' }}>{new Date(client.edited_by_consultant_at).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>}
-          </div>
-        )}
-      </div>
+      )}
+
+      {/* ── HISTORY TAB ── */}
+      {activeTab === 'history' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+          <section>
+            <div style={{ fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', color: '#94a3b8', letterSpacing: '0.06em', marginBottom: 10 }}>Registration</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 18px' }}>
+              {[
+                regDate           ? ['Registered',  regDate]           : null,
+                client.branch     ? ['Branch',       client.branch]     : null,
+                client.signature  ? ['Signature',    client.signature]  : null,
+              ].filter(Boolean).map(([l, v]) => {
+                const s = pill(l);
+                return (
+                  <div key={l} style={s.base}>
+                    <div style={s.label}>{l}</div>
+                    <div style={s.value}>{v}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          {client.edited_by_consultant ? (
+            <section>
+              <div style={{ fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', color: '#94a3b8', letterSpacing: '0.06em', marginBottom: 10 }}>Edit History</div>
+              <div style={{ padding: '12px 16px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, fontSize: '0.85rem', color: '#1d4ed8' }}>
+                ✏️ <strong>Edited by:</strong> {client.edited_by_consultant_name || 'Consultant'}
+                {client.edited_by_consultant_at && (
+                  <span style={{ marginLeft: 8, color: '#64748b' }}>
+                    {new Date(client.edited_by_consultant_at).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                )}
+              </div>
+            </section>
+          ) : (
+            <div style={{ padding: '12px 16px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: '0.84rem', color: '#94a3b8' }}>
+              No consultant edits on record.
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
