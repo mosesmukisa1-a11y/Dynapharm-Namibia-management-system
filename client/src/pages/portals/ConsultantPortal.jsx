@@ -2593,12 +2593,48 @@ function ClientsSection() {
   );
 }
 
+// ── Shared helper: merge medicines + prescriptions arrays, preserving dispensed status ──
+function buildMedList(data) {
+  const meds  = Array.isArray(data.medicines)     ? data.medicines     : [];
+  const presc = Array.isArray(data.prescriptions) ? data.prescriptions : [];
+  if (meds.length > 0) {
+    const medsSet = new Set(meds.map(m => (m.name || '').toLowerCase().trim()));
+    const extra = presc
+      .filter(p => !medsSet.has((p.product || p.name || '').toLowerCase().trim()))
+      .map(p => ({ name: p.product || p.name, quantity: p.quantity || 1, dispensed: false, dispensed_qty: 0 }));
+    return [...meds, ...extra];
+  }
+  return presc.map(p => ({ name: p.product || p.name, quantity: p.quantity || 1, dispensed: false, dispensed_qty: 0 }));
+}
+
+function fmtReportDate(d) {
+  if (!d) return '—';
+  const s = String(d).slice(0, 10);
+  return new Date(s + 'T12:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
 function ClientViewDetails({ client }) {
   const [activeTab, setActiveTab] = useState('profile');
+  const [reports,   setReports]   = useState([]);
+  const [rxLoading, setRxLoading] = useState(true);
 
   const name = client.full_name || client.fullName || client.name || '';
   const memberStatus = client.membershipStatus || client.membership_status || 'referred';
   const isMember = memberStatus === 'member';
+
+  // Fetch all consultation reports for this client by name (and phone as fallback key)
+  useEffect(() => {
+    if (!name) { setRxLoading(false); return; }
+    setRxLoading(true);
+    api.reports.list({ client_name: name })
+      .then(d => {
+        const list = Array.isArray(d) ? d : (d?.reports || []);
+        list.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+        setReports(list);
+      })
+      .catch(() => setReports([]))
+      .finally(() => setRxLoading(false));
+  }, [name]);
 
   // BMI
   const h = parseFloat(client.height);
@@ -2622,10 +2658,22 @@ function ClientViewDetails({ client }) {
     ? new Date(client.timestamp || client.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
     : null;
 
+  // Count pending medicines across all reports for the badge
+  const pendingCount = reports.reduce((acc, rpt) => {
+    const rd = (() => { try { return typeof rpt.data === 'string' ? JSON.parse(rpt.data) : (rpt.data || {}); } catch { return {}; } })();
+    const ml = buildMedList(rd);
+    return acc + ml.filter(m => {
+      const prescribed = Number(m.quantity || 1);
+      const dqty = Number(m.dispensed_qty != null ? m.dispensed_qty : (m.dispensed ? prescribed : 0));
+      return dqty < prescribed;
+    }).length;
+  }, 0);
+
   const tabs = [
-    { id: 'profile', label: '👤 Profile' },
-    { id: 'health',  label: '🩺 Health'  },
-    { id: 'history', label: '📋 History' },
+    { id: 'profile',      label: '👤 Profile'  },
+    { id: 'health',       label: '🩺 Health'   },
+    { id: 'prescription', label: `💊 Prescriptions${pendingCount > 0 ? ` (${pendingCount} pending)` : reports.length > 0 ? ` (${reports.length})` : ''}` },
+    { id: 'history',      label: '📋 History'  },
   ];
 
   const tabBtn = (id) => ({
@@ -2817,6 +2865,146 @@ function ClientViewDetails({ client }) {
               <div style={{ fontSize: '0.9rem' }}>No health assessment data on record.</div>
               <div style={{ fontSize: '0.8rem', marginTop: 4, color: '#cbd5e1' }}>This client's health form may not have been fully completed.</div>
             </div>
+          )}
+        </div>
+      )}
+
+      {/* ── PRESCRIPTIONS TAB ── */}
+      {activeTab === 'prescription' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {rxLoading ? (
+            <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Loading prescription history…</div>
+          ) : reports.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '48px 20px' }}>
+              <div style={{ fontSize: '2.2rem', marginBottom: 8 }}>💊</div>
+              <div style={{ color: '#94a3b8', fontSize: '0.9rem' }}>No consultation reports found for this client.</div>
+              <div style={{ color: '#cbd5e1', fontSize: '0.8rem', marginTop: 4 }}>Reports appear here once the consultant creates one after a check-up.</div>
+            </div>
+          ) : (
+            reports.map((rpt, ri) => {
+              const rdata = (() => { try { return typeof rpt.data === 'string' ? JSON.parse(rpt.data) : (rpt.data || {}); } catch { return {}; } })();
+              const medList = buildMedList(rdata);
+
+              const fullList = medList.map(m => {
+                const prescribed = Number(m.quantity || 1);
+                const dqty = Number(m.dispensed_qty != null ? m.dispensed_qty : (m.dispensed ? prescribed : 0));
+                return {
+                  ...m,
+                  _prescribed: prescribed,
+                  _dqty: dqty,
+                  _isFullyDone: dqty >= prescribed,
+                  _isPartial:   dqty > 0 && dqty < prescribed,
+                  _isPending:   dqty === 0,
+                };
+              });
+
+              const fullyDone = fullList.filter(m => m._isFullyDone);
+              const partial   = fullList.filter(m => m._isPartial);
+              const pending   = fullList.filter(m => m._isPending);
+
+              const overallStatus = medList.length === 0 ? 'no-rx'
+                : pending.length === 0 && partial.length === 0 ? 'complete'
+                : fullyDone.length === 0 && partial.length === 0 ? 'pending'
+                : 'partial';
+
+              const statusChip = {
+                'complete': { bg: '#dcfce7', color: '#166534', label: '✅ Fully Dispensed'      },
+                'partial':  { bg: '#fef3c7', color: '#92400e', label: '⚠️ Partially Dispensed' },
+                'pending':  { bg: '#fee2e2', color: '#991b1b', label: '⏳ Not Dispensed'        },
+                'no-rx':    { bg: '#f1f5f9', color: '#64748b', label: '📋 No Medicines'         },
+              }[overallStatus];
+
+              return (
+                <div key={rpt.id} style={{ border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
+                  {/* Visit header */}
+                  <div style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                    <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontSize: '0.66rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Visit {reports.length - ri}</div>
+                        <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.83rem' }}>{fmtReportDate((rpt.created_at || '').slice(0, 10))}</div>
+                      </div>
+                      {(rpt.consultant || rdata.consultant) && (
+                        <div>
+                          <div style={{ fontSize: '0.66rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Consultant</div>
+                          <div style={{ fontWeight: 600, color: '#374151', fontSize: '0.83rem' }}>{rpt.consultant || rdata.consultant}</div>
+                        </div>
+                      )}
+                      {(rpt.branch || rdata.branch) && (
+                        <div>
+                          <div style={{ fontSize: '0.66rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Branch</div>
+                          <div style={{ fontWeight: 600, color: '#0f172a', fontSize: '0.83rem' }}>📍 {rpt.branch || rdata.branch}</div>
+                        </div>
+                      )}
+                    </div>
+                    <span style={{ background: statusChip.bg, color: statusChip.color, borderRadius: 20, padding: '3px 12px', fontSize: '0.75rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                      {statusChip.label}
+                    </span>
+                  </div>
+
+                  <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {/* Diagnosis */}
+                    {(rdata.diagnosis || rdata.notes || rdata.consultant_notes) && (
+                      <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '8px 12px' }}>
+                        <div style={{ fontSize: '0.67rem', fontWeight: 700, color: '#1d4ed8', textTransform: 'uppercase', marginBottom: 4 }}>🩺 Diagnosis / Notes</div>
+                        <div style={{ color: '#1e293b', fontSize: '0.875rem', lineHeight: 1.55 }}>{rdata.diagnosis || rdata.notes || rdata.consultant_notes}</div>
+                      </div>
+                    )}
+
+                    {/* Medicines */}
+                    {fullList.length > 0 ? (
+                      <div>
+                        <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>💊 Medicines Prescribed</div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                          {fullList.map((m, mi) => {
+                            const rowBg  = m._isFullyDone ? '#f0fdf4' : m._isPartial ? '#fffbeb' : '#fff5f5';
+                            const rowBdr = m._isFullyDone ? '#bbf7d0' : m._isPartial ? '#fde68a' : '#fecaca';
+                            const nameCol = m._isFullyDone ? '#166534' : m._isPartial ? '#92400e' : '#991b1b';
+                            const badge  = m._isFullyDone
+                              ? { bg: '#dcfce7', color: '#166534', icon: '✅', text: 'Dispensed' }
+                              : m._isPartial
+                              ? { bg: '#fef3c7', color: '#92400e', icon: '⚠️', text: 'Partial'   }
+                              : { bg: '#fee2e2', color: '#991b1b', icon: '⏳', text: 'Pending'   };
+                            return (
+                              <div key={mi} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 12px', background: rowBg, border: `1px solid ${rowBdr}`, borderRadius: 8, gap: 8, flexWrap: 'wrap' }}>
+                                <span style={{ fontWeight: 600, color: nameCol, fontSize: '0.87rem', flex: 1, minWidth: 120 }}>{m.name || m.product || '—'}</span>
+                                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+                                  <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Rx: <strong>{m._prescribed}</strong></span>
+                                  {m._dqty > 0 && <span style={{ fontSize: '0.75rem', color: '#64748b' }}>· Given: <strong>{m._dqty}</strong></span>}
+                                  {m._isPartial && <span style={{ fontSize: '0.75rem', color: '#b45309' }}>· Remaining: <strong>{m._prescribed - m._dqty}</strong></span>}
+                                  <span style={{ background: badge.bg, color: badge.color, borderRadius: 6, padding: '2px 8px', fontSize: '0.73rem', fontWeight: 700 }}>
+                                    {badge.icon} {badge.text}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ textAlign: 'center', padding: '14px', color: '#94a3b8', fontSize: '0.85rem', background: '#f8fafc', borderRadius: 8 }}>
+                        No medicines prescribed in this report.
+                      </div>
+                    )}
+
+                    {/* Recommendations */}
+                    {rdata.recommendations && (
+                      <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '8px 12px' }}>
+                        <div style={{ fontSize: '0.67rem', fontWeight: 700, color: '#92400e', textTransform: 'uppercase', marginBottom: 4 }}>💡 Recommendations</div>
+                        <div style={{ color: '#78350f', fontSize: '0.85rem', lineHeight: 1.55 }}>{rdata.recommendations}</div>
+                      </div>
+                    )}
+
+                    {/* Follow-up date if set */}
+                    {rdata.follow_up_date && (
+                      <div style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 8, padding: '8px 12px', fontSize: '0.83rem', color: '#6d28d9' }}>
+                        🔁 Follow-up scheduled: <strong>{fmtReportDate(rdata.follow_up_date)}</strong>
+                        {rpt.follow_up_done && <span style={{ marginLeft: 8, background: '#dcfce7', color: '#166534', borderRadius: 6, padding: '1px 8px', fontSize: '0.72rem', fontWeight: 700 }}>Done</span>}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })
           )}
         </div>
       )}
@@ -4627,19 +4815,7 @@ function ClientProfileModal({ apt, onClose }) {
   const report     = reports[0] || null;
   const rd         = (() => { try { return report ? (typeof report.data === 'string' ? JSON.parse(report.data) : (report.data || {})) : {}; } catch { return {}; } })();
 
-  // For each report, build a merged medicines list with dispensed status
-  const buildMedList = (data) => {
-    const meds  = Array.isArray(data.medicines)     ? data.medicines     : [];
-    const presc = Array.isArray(data.prescriptions) ? data.prescriptions : [];
-    if (meds.length > 0) {
-      const medsSet = new Set(meds.map(m => (m.name || '').toLowerCase().trim()));
-      const extra = presc
-        .filter(p => !medsSet.has((p.product || p.name || '').toLowerCase().trim()))
-        .map(p => ({ name: p.product || p.name, quantity: p.quantity || 1, dispensed: false, dispensed_qty: 0 }));
-      return [...meds, ...extra];
-    }
-    return presc.map(p => ({ name: p.product || p.name, quantity: p.quantity || 1, dispensed: false, dispensed_qty: 0 }));
-  };
+  // buildMedList is defined at module level and shared with ClientViewDetails
 
   // Total unique medicine names across all reports for Follow-ups count badge
   const followUps  = reports.filter(r => {
