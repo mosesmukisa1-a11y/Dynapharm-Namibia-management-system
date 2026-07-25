@@ -4550,25 +4550,23 @@ function ClientProfileModal({ apt, onClose }) {
               {/* Referral / Booked By */}
               <section>
                 <div style={{ fontWeight: 700, fontSize: '0.78rem', textTransform: 'uppercase', color: '#94a3b8', letterSpacing: '0.06em', marginBottom: 10 }}>Referred / Booked By</div>
-                <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '12px 16px' }}>
-                  {(apt._distributor_name || apt.booked_by) ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <span style={{ fontSize: '1.6rem' }}>🌟</span>
-                      <div>
-                        <div style={{ fontWeight: 700, color: '#92400e', fontSize: '0.95rem' }}>{apt._distributor_name || apt.booked_by}</div>
-                        {apt.booked_by && apt._distributor_name && <div style={{ fontSize: '0.8rem', color: '#a16207' }}>NB Code: {apt.booked_by}</div>}
-                      </div>
-                    </div>
-                  ) : (d.referral_name || d.referralName || d.distributorName) ? (
+                <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {(d.referral_name || d.referralName || d.distributorName) ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <span style={{ fontSize: '1.6rem' }}>👥</span>
                       <div>
                         <div style={{ fontWeight: 700, color: '#92400e', fontSize: '0.95rem' }}>{d.referral_name || d.referralName || d.distributorName}</div>
-                        {(d.referral_nb || d.referralNbNumber || d.distributorNB) && <div style={{ fontSize: '0.8rem', color: '#a16207' }}>NB Code: {d.referral_nb || d.referralNbNumber || d.distributorNB}</div>}
+                        {(d.referral_nb || d.referralNbNumber || d.distributorNB) && <div style={{ fontSize: '0.8rem', color: '#a16207' }}>NB: {d.referral_nb || d.referralNbNumber || d.distributorNB}</div>}
                       </div>
                     </div>
                   ) : (
                     <span style={{ color: '#94a3b8', fontSize: '0.88rem' }}>Walk-in — no referral on record</span>
+                  )}
+                  {(d.booked_by || d.booked_by_name || apt._distributor_name) && (
+                    <div style={{ fontSize: '0.78rem', color: '#a16207', borderTop: '1px solid #fde68a', paddingTop: 6 }}>
+                      📅 Booked by: <strong>{d.booked_by_name || apt._distributor_name || d.booked_by}</strong>
+                      {d.booked_by && (d.booked_by_name || apt._distributor_name) && <span style={{ marginLeft: 4 }}>({d.booked_by})</span>}
+                    </div>
                   )}
                 </div>
               </section>
@@ -4584,7 +4582,8 @@ function ClientProfileModal({ apt, onClose }) {
                     ['Weight',     d.weight ? `${d.weight} kg` : '—'],
                     bmi ? ['BMI', `${bmi.value} — ${bmi.cat}`] : null,
                     ['Membership', d.membershipStatus || d.membership_status || d.customer_type || '—'],
-                    ['Email', apt.email || '—'],
+                    (d.nb_number || d.nbNumber) ? ['NB Number', d.nb_number || d.nbNumber] : null,
+                    apt.email ? ['Email', apt.email] : null,
                   ].filter(Boolean).map(([l, v]) => (
                     <div key={l} style={{ background: '#f8fafc', borderRadius: 8, padding: '8px 12px' }}>
                       <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>{l}</div>
@@ -4594,26 +4593,58 @@ function ClientProfileModal({ apt, onClose }) {
                 </div>
               </section>
 
-              {/* Health Info */}
-              {(d.primary_reason || d.primaryReason || d.symptoms || d.allergies || d.medical_history || d.medicalHistory || d.current_medications || d.currentMedications) && (
-                <section>
-                  <div style={{ fontWeight: 700, fontSize: '0.78rem', textTransform: 'uppercase', color: '#94a3b8', letterSpacing: '0.06em', marginBottom: 10 }}>Health Assessment</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {[
-                      ['Primary Concern', d.primary_reason || d.primaryReason],
-                      ['Allergies', d.allergies],
-                      ['Current Medications', d.current_medications || d.currentMedications],
-                      ['Medical History', Array.isArray(d.medical_history) ? d.medical_history.join(', ') : d.medical_history || (Array.isArray(d.medicalHistory) ? d.medicalHistory.join(', ') : d.medicalHistory)],
-                      ['Symptoms', Array.isArray(d.symptoms) ? d.symptoms.filter(s => s && s !== 'none').join(', ') : typeof d.symptoms === 'string' ? d.symptoms : null],
-                    ].filter(([, v]) => v).map(([l, v]) => (
-                      <div key={l} style={{ background: '#f8fafc', borderRadius: 8, padding: '8px 12px', borderLeft: '3px solid #e2e8f0' }}>
-                        <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>{l}</div>
-                        <div style={{ color: '#374151', fontSize: '0.88rem' }}>{v}</div>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              )}
+              {/* Health Assessment */}
+              {(() => {
+                // Flatten symptoms regardless of whether they're stored as an array or
+                // a system-keyed object like { digestive: ['Bloating'], nervous: ['Headaches'] }
+                const rawSym = d.symptoms;
+                const symptomsText = Array.isArray(rawSym)
+                  ? rawSym.filter(s => s && s !== 'none').join(', ')
+                  : (rawSym && typeof rawSym === 'object' && !Array.isArray(rawSym))
+                    ? Object.values(rawSym).flat().filter(Boolean).join(', ')
+                    : (typeof rawSym === 'string' ? rawSym : '');
+
+                const healthRows = [
+                  ['Primary Concern',      d.primary_reason || d.primaryReason || ''],
+                  ['Allergies',            d.allergies || ''],
+                  ['Current Medications',  d.current_medications || d.currentMedications || ''],
+                  ['Medical History',      Array.isArray(d.medical_history) ? d.medical_history.join(', ') : (d.medical_history || (Array.isArray(d.medicalHistory) ? d.medicalHistory.join(', ') : (d.medicalHistory || '')))],
+                  ['Symptoms',             symptomsText],
+                ].filter(([, v]) => v && (typeof v !== 'string' || v.trim() !== ''));
+
+                const lifestyleRows = [
+                  ['Water Intake',  d.water_intake || d.waterIntake || ''],
+                  ['Exercise',      d.exercise_freq || d.exerciseFreq || ''],
+                  ['Sleep',         (d.sleep_hours || d.sleepHours) ? `${d.sleep_hours || d.sleepHours} hrs/night` : ''],
+                  ['Stress Level',  (d.stress_level || d.stressLevel) ? `${d.stress_level || d.stressLevel}/10` : ''],
+                ].filter(([, v]) => v && v.trim && v.trim() !== '');
+
+                if (healthRows.length === 0 && lifestyleRows.length === 0) return null;
+
+                return (
+                  <section>
+                    <div style={{ fontWeight: 700, fontSize: '0.78rem', textTransform: 'uppercase', color: '#94a3b8', letterSpacing: '0.06em', marginBottom: 10 }}>Health Assessment</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {healthRows.map(([l, v]) => (
+                        <div key={l} style={{ background: '#f8fafc', borderRadius: 8, padding: '8px 12px', borderLeft: '3px solid #e2e8f0' }}>
+                          <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>{l}</div>
+                          <div style={{ color: '#374151', fontSize: '0.88rem' }}>{v}</div>
+                        </div>
+                      ))}
+                      {lifestyleRows.length > 0 && (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: healthRows.length > 0 ? 4 : 0 }}>
+                          {lifestyleRows.map(([l, v]) => (
+                            <div key={l} style={{ background: '#f0fdf4', borderRadius: 8, padding: '8px 12px' }}>
+                              <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>{l}</div>
+                              <div style={{ color: '#374151', fontSize: '0.88rem', fontWeight: 600 }}>{v}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </section>
+                );
+              })()}
             </div>
           )}
 
