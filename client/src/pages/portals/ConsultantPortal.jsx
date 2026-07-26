@@ -2593,6 +2593,19 @@ function ClientsSection() {
   );
 }
 
+// ── Shared helper: extract data fields from a normalized report object.
+// normalizeReportRow() spreads ...payload at the top level, so fields like
+// medicines/prescriptions/diagnosis live directly on the report, NOT under .data.
+// This helper handles both that case and any legacy double-encoded .data field.
+function parseReportData(r) {
+  if (!r) return {};
+  try {
+    if (typeof r.data === 'string') return { ...r, ...JSON.parse(r.data) };
+    if (r.data && typeof r.data === 'object') return { ...r, ...r.data };
+  } catch { /* ignore */ }
+  return r; // fields already at top level
+}
+
 // ── Shared helper: merge medicines + prescriptions arrays, preserving dispensed status ──
 function buildMedList(data) {
   const meds  = Array.isArray(data.medicines)     ? data.medicines     : [];
@@ -2660,7 +2673,7 @@ function ClientViewDetails({ client }) {
 
   // Count pending medicines across all reports for the badge
   const pendingCount = reports.reduce((acc, rpt) => {
-    const rd = (() => { try { return typeof rpt.data === 'string' ? JSON.parse(rpt.data) : (rpt.data || {}); } catch { return {}; } })();
+    const rd = parseReportData(rpt);
     const ml = buildMedList(rd);
     return acc + ml.filter(m => {
       const prescribed = Number(m.quantity || 1);
@@ -2882,7 +2895,7 @@ function ClientViewDetails({ client }) {
             </div>
           ) : (
             reports.map((rpt, ri) => {
-              const rdata = (() => { try { return typeof rpt.data === 'string' ? JSON.parse(rpt.data) : (rpt.data || {}); } catch { return {}; } })();
+              const rdata = parseReportData(rpt);
               const medList = buildMedList(rdata);
 
               const fullList = medList.map(m => {
@@ -4813,18 +4826,13 @@ function ClientProfileModal({ apt, onClose }) {
   }, [apt.id]);
 
   const report     = reports[0] || null;
-  const rd         = (() => { try { return report ? (typeof report.data === 'string' ? JSON.parse(report.data) : (report.data || {})) : {}; } catch { return {}; } })();
+  const rd         = report ? parseReportData(report) : {};
 
   // buildMedList is defined at module level and shared with ClientViewDetails
 
   // Total unique medicine names across all reports for Follow-ups count badge
-  const followUps  = reports.filter(r => {
-    const fd = (() => { try { return typeof r.data === 'string' ? JSON.parse(r.data) : (r.data || {}); } catch { return {}; } })();
-    return fd.follow_up_date;
-  }).map(r => {
-    const fd = (() => { try { return typeof r.data === 'string' ? JSON.parse(r.data) : (r.data || {}); } catch { return {}; } })();
-    return { ...r, _fd: fd };
-  });
+  const followUps  = reports.filter(r => parseReportData(r).follow_up_date)
+    .map(r => ({ ...r, _fd: parseReportData(r) }));
 
   // Handle full ISO timestamps OR bare YYYY-MM-DD strings OR dob strings like "15/06/1990"
   const fmtDate = d => {
@@ -5026,7 +5034,7 @@ function ClientProfileModal({ apt, onClose }) {
                 </div>
               ) : (
                 reports.map((rpt, ri) => {
-                  const rdata = (() => { try { return typeof rpt.data === 'string' ? JSON.parse(rpt.data) : (rpt.data || {}); } catch { return {}; } })();
+                  const rdata = parseReportData(rpt);
                   const medList = buildMedList(rdata);
 
                   // Per-item dispense classification
