@@ -58,6 +58,17 @@ export default async function handler(req, res) {
         const approver = approved_by || 'Stock Manager';
         const today    = now.toISOString().slice(0, 10);
 
+        // ── Look up the live DP (cost basis) for the product so BAT product_total_dp
+        // correctly reflects the inventory cost, not the campaign selling price. ──
+        const livePriceRow = await getOne(
+          `SELECT dp FROM product_prices WHERE LOWER(TRIM(description)) = LOWER(TRIM($1)) LIMIT 1`,
+          [product]
+        );
+        // costDp: use live DP for the cost-basis column; fall back to refund.unit_price
+        // only when the product has no price list entry (e.g. checkup fees).
+        const costDp      = livePriceRow ? Number(livePriceRow.dp || 0) : unitDp;
+        const dpCostTotal = Math.round(costDp * qty * 100) / 100;
+
         await withTransaction(async (client) => {
           // ── 1. branch_inventory_movements — financial refund record ──────────
           await client.query(
@@ -70,6 +81,8 @@ export default async function handler(req, res) {
           );
 
           // ── 2. branch_activity_transactions — reversal record ────────────────
+          // product_total_dp → DP cost basis (what it cost the branch, mirrors original sale)
+          // product_total_cp / grand_total → actual refunded amount (campaign price paid)
           await client.query(
             `INSERT INTO branch_activity_transactions
                (id, branch_id, branch_name, client_name, client_type,
@@ -87,7 +100,7 @@ export default async function handler(req, res) {
             [batId, branchId, today,
              now.toTimeString().slice(0, 8),
              refund.id,
-             -dpTotal, -dpTotal, -qty,
+             -dpCostTotal, -dpTotal, -qty,
              -dpTotal,
              approver]
           );

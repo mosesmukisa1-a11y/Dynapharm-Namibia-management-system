@@ -1319,8 +1319,12 @@ function RefundRequestsTab() {
                                 // Prefer unit_price (actual charged price, accounts for campaign discounts)
                                 // over dp (regular distributor price). For non-campaign items they are equal.
                                 const pChargedPrice = Number(p.unit_price || p.dpPrice || p.dp || 0);
-                                const pRegularDp    = Number(p.dpPrice || p.dp || 0);
-                                const hasDisc = pChargedPrice > 0 && pRegularDp > 0 && pChargedPrice < pRegularDp;
+                                // originalCp/originalDp preserved on walk-in POS campaign items.
+                                // For campaign-modal items, cp holds the regular (pre-discount) CP.
+                                const pOriginalPrice = Number(p.originalCp || p.originalDp || p.cp || p.dpPrice || p.dp || 0);
+                                // Detect campaign discount: explicit flags first, then price comparison.
+                                const hasDisc = !!(p.isCampaignSale || Number(p.campaign_discount_pct) > 0 || Number(p.discount_pct) > 0)
+                                  || (pChargedPrice > 0 && pOriginalPrice > 0 && pChargedPrice < pOriginalPrice);
                                 return (
                                   <div key={i} onClick={e => { e.stopPropagation(); handleSelectProduct(p); }}
                                     style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderRadius: 8, border: `2px solid ${isSelProd ? '#c41e3a' : '#f0e8ea'}`, background: isSelProd ? '#fff0f3' : '#fdf7f8', cursor: 'pointer' }}>
@@ -1332,7 +1336,7 @@ function RefundRequestsTab() {
                                     <div style={{ textAlign: 'right', fontSize: '0.82rem', color: '#475569' }}>
                                       <span style={{ fontWeight: 700 }}>Qty: {pQty}</span>
                                       {hasDisc
-                                        ? <span style={{ marginLeft: 10 }}><span style={{ textDecoration: 'line-through', color: '#94a3b8' }}>{fmtN(pRegularDp)}</span> <span style={{ color: '#16a34a', fontWeight: 800 }}>{fmtN(pChargedPrice)}</span></span>
+                                        ? <span style={{ marginLeft: 10 }}><span style={{ textDecoration: 'line-through', color: '#94a3b8' }}>{fmtN(pOriginalPrice)}</span> <span style={{ color: '#16a34a', fontWeight: 800 }}>{fmtN(pChargedPrice)}</span></span>
                                         : <span style={{ marginLeft: 10 }}>{fmtN(pChargedPrice)}</span>
                                       }
                                     </div>
@@ -1364,8 +1368,9 @@ function RefundRequestsTab() {
                 </div>
                 {(() => {
                   const chargedPr = Number(selectedProduct.unit_price || selectedProduct.dpPrice || selectedProduct.dp || 0);
-                  const regDp     = Number(selectedProduct.dpPrice || selectedProduct.dp || 0);
-                  const isDisc    = chargedPr > 0 && regDp > 0 && chargedPr < regDp;
+                  const origPr    = Number(selectedProduct.originalCp || selectedProduct.originalDp || selectedProduct.cp || selectedProduct.dpPrice || selectedProduct.dp || 0);
+                  const isDisc    = !!(selectedProduct.isCampaignSale || Number(selectedProduct.campaign_discount_pct) > 0 || Number(selectedProduct.discount_pct) > 0)
+                    || (chargedPr > 0 && origPr > 0 && chargedPr < origPr);
                   return (
                     <div style={{ fontSize: '0.8rem', color: '#475569', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
                       <span>Receipt: <strong>{selectedReceipt.saleNumber || selectedReceipt.id}</strong></span>
@@ -1374,7 +1379,7 @@ function RefundRequestsTab() {
                         <strong style={{ color: isDisc ? '#16a34a' : undefined }}>
                           {fmtN(chargedPr)}
                         </strong>
-                        {isDisc && <span style={{ marginLeft: 6, color: '#94a3b8', textDecoration: 'line-through', fontWeight: 400 }}>{fmtN(regDp)}</span>}
+                        {isDisc && <span style={{ marginLeft: 6, color: '#94a3b8', textDecoration: 'line-through', fontWeight: 400 }}>{fmtN(origPr)}</span>}
                       </span>
                       <span>Max Qty: <strong>{Number(selectedProduct.quantity || selectedProduct.qty || 0)}</strong></span>
                     </div>
