@@ -135,7 +135,9 @@ export default async function handler(req, res) {
         SELECT
           LOWER(TRIM(bim.product_name))                                          AS pkey,
           SUM(ABS(bim.quantity))                                                 AS refund_qty,
-          SUM(ABS(bim.quantity) * COALESCE(NULLIF(pp.dp, 0), NULLIF(bim.unit_price, 0), 0)) AS refund_dp
+          -- bim.unit_price first: stores the ACTUAL refunded (campaign) price paid.
+          -- Fall back to pp.dp only for legacy entries where bim.unit_price is 0/null.
+          SUM(ABS(bim.quantity) * COALESCE(NULLIF(bim.unit_price, 0), NULLIF(pp.dp, 0), 0)) AS refund_dp
         FROM branch_inventory_movements bim
         LEFT JOIN product_prices pp ON LOWER(TRIM(pp.description)) = LOWER(TRIM(bim.product_name))
         WHERE DATE(bim.created_at) = $1::date

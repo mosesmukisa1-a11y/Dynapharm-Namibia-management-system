@@ -51,7 +51,9 @@ export default async function handler(req, res) {
       let discountPct = 0;
       try { const d = typeof r.data === 'string' ? JSON.parse(r.data) : (r.data || {}); discountPct = Number(d.discount_pct || 0); } catch {}
       amt = items.reduce((s, i) => {
-        const listDp = Number(i.dpPrice || i.dp || i.unit_price || 0);
+        // Non-member walk-in: i.unit_price is the consumer price (CP), not DP.
+        // Never use it as a DP fallback — it inflates revenue figures.
+        const listDp = Number(i.dpPrice || i.dp || 0);
         return s + (discountPct > 0 ? listDp * (1 - discountPct / 100) : listDp) * Number(i.quantity || i.qty || 1);
       }, 0);
     } else {
