@@ -299,13 +299,17 @@ export default async function handler(req, res) {
 
       let items = [];
       try { items = typeof s.items === 'string' ? JSON.parse(s.items) : (Array.isArray(s.items) ? s.items : []); } catch {}
+      const saleCt = (s.customer_type || '').toLowerCase();
+      const saleIsNonMember = saleCt.includes('non') || (!saleCt.includes('member') && saleCt !== 'online');
       for (const item of items) {
         if (item.is_free) continue;
         const name = (item.product_name || item.name || item.description || '').trim();
         if (!name) continue;
         const key = name.toUpperCase();
         const qty = Number(item.quantity || item.qty || 0);
-        const dp  = lookupDp(name) || Number(item.dpPrice || item.dp || item.unit_price || 0);
+        // Non-member walk-in: item.unit_price = consumer price (CP), never DP.
+        // Only allow unit_price as a last-resort fallback for member/general sales.
+        const dp  = lookupDp(name) || Number(item.dpPrice || item.dp || (saleIsNonMember ? 0 : item.unit_price) || 0);
         if (!walkinProductAgg[key]) walkinProductAgg[key] = { product_name: name, qty: 0, dp_value: 0, unit_dp: dp };
         walkinProductAgg[key].qty      += qty;
         walkinProductAgg[key].dp_value  = parseFloat((walkinProductAgg[key].dp_value + qty * dp).toFixed(2));

@@ -132,13 +132,16 @@ export default async function handler(req, res) {
       let saleData = {};
       try { saleData = typeof s.data === 'string' ? JSON.parse(s.data || '{}') : (s.data || {}); } catch {}
       const discountPct = Number(saleData.discount_pct || 0);
+      const brId = s.branch_id || 'unknown';
+      const ct   = (s.customer_type || '').toLowerCase();
+      const isNonMember = ct.includes('non') || (!ct.includes('member') && ct !== 'online');
       const dpTotal = items.reduce((acc, i) => {
-        const dp = Number(i.dpPrice || i.dp || i.unit_price || 0);
+        // Non-member walk-in: i.unit_price = consumer price (CP), never DP.
+        // Only allow unit_price as a last-resort fallback for member/general sales.
+        const dp = Number(i.dpPrice || i.dp || (isNonMember ? 0 : i.unit_price) || 0);
         const discountedDp = discountPct > 0 ? dp * (1 - discountPct / 100) : dp;
         return acc + discountedDp * Number(i.quantity || i.qty || 1);
       }, 0);
-      const brId = s.branch_id || 'unknown';
-      const ct   = (s.customer_type || '').toLowerCase();
       if (!walkinSupplementMap[brId]) walkinSupplementMap[brId] = { transactions: 0, member_dp: 0, non_member_dp: 0 };
       walkinSupplementMap[brId].transactions++;
       if (ct === 'member') {
