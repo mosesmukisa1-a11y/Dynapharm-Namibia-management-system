@@ -278,7 +278,9 @@ export async function getBranchSalesRevenue(branchId, start, end) {
       try { const d = typeof r.data === 'string' ? JSON.parse(r.data) : (r.data || {}); discountPct = Number(d.discount_pct || 0); } catch {}
       amt = items.reduce((s, i) => {
         const nm = (i.product_name || i.name || i.description || '').trim();
-        const listDp = lookupDpBSR(nm) || Number(i.dpPrice || i.dp || i.unit_price || 0);
+        // Non-member walk-in: i.unit_price is the consumer price (CP), not DP.
+        // Never use it as a DP fallback — it inflates the revenue figure.
+        const listDp = lookupDpBSR(nm) || Number(i.dpPrice || i.dp || 0);
         return s + (discountPct > 0 ? listDp * (1 - discountPct / 100) : listDp) * Number(i.quantity || i.qty || 1);
       }, 0);
     } else {
@@ -452,7 +454,9 @@ export async function getAllBranchesSalesRevenue(start, end) {
       if (items.length > 0) {
         amt = items.reduce((s, i) => {
           const nm = (i.product_name || i.name || i.description || '').trim();
-          const dp = lookupDp(nm) || Number(i.dpPrice || i.dp || i.unit_price || 0);
+          // Non-member walk-in: i.unit_price is the consumer price (CP), not DP.
+          // Never use it as a DP fallback — it inflates the revenue figure.
+          const dp = lookupDp(nm) || Number(i.dpPrice || i.dp || 0);
           return s + dp * Number(i.quantity || i.qty || 1);
         }, 0);
       } else {

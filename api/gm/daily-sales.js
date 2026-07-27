@@ -98,7 +98,9 @@ export default async function handler(req, res) {
       try { items = typeof r.items === 'string' ? JSON.parse(r.items) : (Array.isArray(r.items) ? r.items : []); } catch {}
       amt = items.reduce((s, i) => {
         const nm = (i.product_name || i.name || i.description || '').trim();
-        const dp = lookupDp(nm) || Number(i.dpPrice || i.dp || i.unit_price || 0);
+        // Non-member walk-in: i.unit_price is the consumer price (CP), not DP.
+        // Never use it as a DP fallback — it inflates the revenue figure.
+        const dp = lookupDp(nm) || Number(i.dpPrice || i.dp || 0);
         return s + dp * Number(i.quantity || i.qty || 1);
       }, 0);
     } else {

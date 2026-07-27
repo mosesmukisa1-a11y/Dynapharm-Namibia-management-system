@@ -223,9 +223,13 @@ export default async function handler(req, res) {
         const ct = (s.customer_type || 'walk_in').toLowerCase();
         const actType = ct === 'member' ? 'member_sale' : ct === 'non_member' ? 'non_member_sale' : 'walkin_sale';
         const totalQty = items.reduce((acc, i) => acc + Number(i.quantity || i.qty || 1), 0);
+        // Non-member sales: unit_price in items is the consumer price (CP), not DP.
+        // Never use it as DP fallback — members pay at DP so the fallback only makes
+        // sense for member/general rows where unit_price ≈ DP.
+        const isNonMember = ct.includes('non') || (!ct.includes('member') && ct !== 'online');
         const dpTotal = items.reduce((acc, i) => {
           const nm = (i.product_name || i.name || i.description || '').trim();
-          const dp = lookupDp(nm) || Number(i.dpPrice || i.dp || i.unit_price || 0);
+          const dp = lookupDp(nm) || Number(i.dpPrice || i.dp || (isNonMember ? 0 : i.unit_price) || 0);
           return acc + dp * Number(i.quantity || i.qty || 1);
         }, 0);
         const saleDateStr = s.sale_date instanceof Date

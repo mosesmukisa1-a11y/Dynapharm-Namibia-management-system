@@ -172,16 +172,24 @@ export default async function handler(req, res) {
          --   campaign_free_item → 0 (free, no revenue)
          --   campaign_sale (member paid) → bim.unit_price (actual discounted DP) else pp.dp
          --   non-member walk_in discount campaign → pp.dp × (1 - discount_pct/100)
-         --   non-member walk_in bxgy (no discount) → pp.dp
+         --   non-member walk_in bxgy (no discount) → pp.dp ONLY (unit_price is CP for non-member)
+         --   other types (generic 'sale') → pp.dp, then unit_price as fallback
          COALESCE(SUM(
            ABS(bim.quantity) *
            CASE WHEN bim.type = 'campaign_free_item' THEN 0
                 WHEN bim.type = 'campaign_sale'
                   THEN COALESCE(NULLIF(bim.unit_price, 0), NULLIF(pp.dp, 0), 0)
-                WHEN COALESCE(NULLIF((bws.data->>'discount_pct')::numeric, 0), 0) > 0
+                -- Non-member discount campaign: apply discount % to list DP.
+                WHEN bim.type = 'walk_in_non_member_sale'
+                      AND COALESCE(NULLIF((bws.data->>'discount_pct')::numeric, 0), 0) > 0
                   THEN COALESCE(
                     NULLIF(ROUND(pp.dp * (1 - (bws.data->>'discount_pct')::numeric / 100), 2), 0),
                     NULLIF(pp.dp, 0), 0)
+                -- Non-member bxgy / missing discount_pct: list DP only.
+                -- bim.unit_price stores the consumer price (CP) for non-member rows — never
+                -- fall back to it or the campaign total will be inflated to a CP figure.
+                WHEN bim.type = 'walk_in_non_member_sale'
+                  THEN COALESCE(NULLIF(pp.dp, 0), 0)
                 ELSE COALESCE(NULLIF(pp.dp, 0), NULLIF(bim.unit_price, 0), 0)
            END
          ), 0)::numeric                                                  AS campaign_total
@@ -284,7 +292,9 @@ export default async function handler(req, res) {
               COUNT(*)::int AS refund_count,
               COALESCE(SUM(
                 ABS(bim.quantity) *
-                COALESCE(NULLIF(pp.dp, 0), NULLIF(bim.unit_price, 0), 0)
+                -- Use bim.unit_price first: it stores the ACTUAL refunded (campaign) price.
+                -- Fall back to pp.dp only when bim.unit_price is 0/null (legacy entries).
+                COALESCE(NULLIF(bim.unit_price, 0), NULLIF(pp.dp, 0), 0)
               ), 0)::numeric AS refund_total
        FROM branch_inventory_movements bim
        LEFT JOIN product_prices pp
