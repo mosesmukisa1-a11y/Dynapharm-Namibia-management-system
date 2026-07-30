@@ -29,7 +29,7 @@ export default async function handler(req, res) {
   const [walkinRows, refundRows, rxRows, priceListRows] = await Promise.all([
     // Walk-in sales — fetch items JSON to compute DP for non-members
     getMany(
-      `SELECT branch_id, customer_type, payment_method, total, subtotal, items
+      `SELECT branch_id, customer_type, payment_method, total, subtotal, items, data
        FROM branch_walkin_sales
        WHERE status = 'completed'
          AND sale_date::date = $1::date`,
@@ -94,17 +94,19 @@ export default async function handler(req, res) {
     let amt;
     // Non-member walk-in: branch_walkin_sales.total = CP. Parse item-level DP.
     if (ct.includes('non') || (!ct.includes('member') && !ct.includes('online'))) {
-      let items = [];
+      let items = [], discountPct = 0;
       try { items = typeof r.items === 'string' ? JSON.parse(r.items) : (Array.isArray(r.items) ? r.items : []); } catch {}
+      try { const d = typeof r.data === 'string' ? JSON.parse(r.data) : (r.data || {}); discountPct = Number(d.discount_pct || 0); } catch {}
       amt = items.reduce((s, i) => {
         const nm = (i.product_name || i.name || i.description || '').trim();
         // Non-member walk-in: i.unit_price is the consumer price (CP), not DP.
         // Never use it as a DP fallback — it inflates the revenue figure.
-        const dp = lookupDp(nm) || Number(i.dpPrice || i.dp || 0);
-        return s + dp * Number(i.quantity || i.qty || 1);
+        const listDp = lookupDp(nm) || Number(i.dpPrice || i.dp || 0);
+        // Apply campaign/promotion discount if one was active for this sale.
+        return s + (discountPct > 0 ? listDp * (1 - discountPct / 100) : listDp) * Number(i.quantity || i.qty || 1);
       }, 0);
     } else {
-      // Member / online: pays at DP, total = DP
+      // Member / online: pays at DP; campaign discount is already reflected in the stored total.
       amt = Number(r.total || r.subtotal || 0);
     }
 

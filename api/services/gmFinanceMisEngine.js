@@ -403,7 +403,7 @@ export async function getCompanyStockSummary() {
 export async function getAllBranchesSalesRevenue(start, end) {
   const [rows, refundRow, rxRows, priceListRows] = await Promise.all([
     getMany(
-      `SELECT branch_id, customer_type, payment_method, total, items
+      `SELECT branch_id, customer_type, payment_method, total, items, data
        FROM branch_walkin_sales
        WHERE status = 'completed'
          AND sale_date >= $1::date
@@ -449,21 +449,23 @@ export async function getAllBranchesSalesRevenue(start, end) {
     // Non-member walk-in receipts are stored at CP (consumer price).
     // Re-compute at DP so the sale value is uniform: every sale = DP × qty.
     if (ct.includes('non') || (!ct.includes('member') && !ct.includes('online'))) {
-      let items = [];
+      let items = [], discountPct = 0;
       try { items = typeof r.items === 'string' ? JSON.parse(r.items) : (Array.isArray(r.items) ? r.items : []); } catch {}
+      try { const d = typeof r.data === 'string' ? JSON.parse(r.data) : (r.data || {}); discountPct = Number(d.discount_pct || 0); } catch {}
       if (items.length > 0) {
         amt = items.reduce((s, i) => {
           const nm = (i.product_name || i.name || i.description || '').trim();
           // Non-member walk-in: i.unit_price is the consumer price (CP), not DP.
           // Never use it as a DP fallback — it inflates the revenue figure.
-          const dp = lookupDp(nm) || Number(i.dpPrice || i.dp || 0);
-          return s + dp * Number(i.quantity || i.qty || 1);
+          const listDp = lookupDp(nm) || Number(i.dpPrice || i.dp || 0);
+          // Apply campaign/promotion discount if one was active for this sale.
+          return s + (discountPct > 0 ? listDp * (1 - discountPct / 100) : listDp) * Number(i.quantity || i.qty || 1);
         }, 0);
       } else {
         amt = Number(r.total || 0);
       }
     } else {
-      // Member and online: stored total = DP (members pay at DP).
+      // Member and online: stored total = DP (members pay at DP, campaign discount already in total).
       amt = Number(r.total || 0);
     }
     const isMember = ct.includes('member') && !ct.includes('non');
