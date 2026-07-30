@@ -4914,25 +4914,39 @@ async function extractPdfText(file) {
 // Supports both:
 //   Official 4-column format:  DESCRIPTION   CIF   DP   CP   BV
 //   Legacy 3-column format:    DESCRIPTION   DP    CP   BV
+// Parse a price number that may use comma as the decimal separator (e.g. 142,75 → 142.75).
+function parsePriceNum(s) {
+  return parseFloat(String(s).replace(',', '.'));
+}
+
 function parsePriceListText(text) {
   const results = [];
   const seen = new Set();
   const lines = text.split('\n');
+
+  // Number token: accepts both dot and comma as decimal separator (e.g. 142,75 or 142.75).
+  // NOTE: only used in price-column positions, never applied to the description text.
+  const N = '(\\d+(?:[.,]\\d+)?)';
+  const S = '\\s+';
+
   for (const raw of lines) {
-    const line = raw.trim();
+    // Strip a leading product-code token if present (e.g. "NB1201", "NB10804", "NB3816N").
+    // Pattern: 1-3 uppercase letters + 4-6 digits + optional uppercase letter suffix,
+    // followed by whitespace. This must be removed before the number-column regexes run
+    // or the code itself becomes part of the description and confuses the column split.
+    let line = raw.trim().replace(/^[A-Z]{1,3}\d{4,6}[A-Z]?\s+/, '');
     if (!line) continue;
 
-    // Try 4-column format first (official Dynapharm: CIF DP CP BV).
-    // The description is separated from the first number by 2+ spaces so we can
-    // reliably split even when the description itself contains numbers (e.g. "30's").
-    // Accepts decimal values (e.g. 11.5 BV).
-    const m4 = line.match(/^(.+?)\s{2,}(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s*$/);
+    // ── 4-column format: DESCRIPTION  CIF  DP  CP  BV ──────────────────────────
+    // 2+ space gap before the first number anchors the description boundary even when
+    // the description itself contains digits or single-space-separated words.
+    const m4 = line.match(new RegExp(`^(.+?)\\s{2,}${N}${S}${N}${S}${N}${S}${N}\\s*$`));
     if (m4) {
       const description = m4[1].trim().toUpperCase().replace(/\s+/g, ' ');
-      const cif = Math.round(Number(m4[2]));
-      const dp  = Math.round(Number(m4[3]));
-      const cp  = Math.round(Number(m4[4]));
-      const bv  = parseFloat(Number(m4[5]).toFixed(2));
+      const cif = Math.round(parsePriceNum(m4[2]));
+      const dp  = Math.round(parsePriceNum(m4[3]));
+      const cp  = Math.round(parsePriceNum(m4[4]));
+      const bv  = parseFloat(parsePriceNum(m4[5]).toFixed(2));
       if (!description || description === 'DESCRIPTION') continue;
       if (isNaN(dp) || isNaN(cp) || isNaN(bv)) continue;
       if (dp <= 0 || cp <= 0) continue;
@@ -4942,15 +4956,33 @@ function parsePriceListText(text) {
       continue;
     }
 
-    // Fallback: legacy 3-column format (DP CP BV) — no CIF column.
-    // Use GREEDY (.+) so regex takes the longest possible description,
-    // then backtracks to find 3 numbers at the end.
-    const m3 = line.match(/^(.+)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s*$/);
+    // ── 3-column format WITH CIF: DESCRIPTION  CIF  DP  CP ─────────────────────
+    // Same 2+ space gap anchor. First number is treated as CIF, no BV column.
+    // This is the format used by Dynapharm price lists that omit the BV column.
+    const m3c = line.match(new RegExp(`^(.+?)\\s{2,}${N}${S}${N}${S}${N}\\s*$`));
+    if (m3c) {
+      const description = m3c[1].trim().toUpperCase().replace(/\s+/g, ' ');
+      const cif = Math.round(parsePriceNum(m3c[2]));
+      const dp  = Math.round(parsePriceNum(m3c[3]));
+      const cp  = Math.round(parsePriceNum(m3c[4]));
+      if (!description || description === 'DESCRIPTION') continue;
+      if (isNaN(dp) || isNaN(cp)) continue;
+      if (dp <= 0 || cp <= 0) continue;
+      if (seen.has(description)) continue;
+      seen.add(description);
+      results.push({ description, cif, dp, cp, bv: 0 });
+      continue;
+    }
+
+    // ── 3-column legacy fallback: DESCRIPTION  DP  CP  BV ──────────────────────
+    // No CIF column. Greedy description so the longest possible description is kept.
+    // Only reached when the line has no 2+ space gap before the numbers (rare legacy format).
+    const m3 = line.match(new RegExp(`^(.+)${S}${N}${S}${N}${S}${N}\\s*$`));
     if (!m3) continue;
     const description = m3[1].trim().toUpperCase().replace(/\s+/g, ' ');
-    const dp  = Math.round(Number(m3[2]));
-    const cp  = Math.round(Number(m3[3]));
-    const bv  = parseFloat(Number(m3[4]).toFixed(2));
+    const dp  = Math.round(parsePriceNum(m3[2]));
+    const cp  = Math.round(parsePriceNum(m3[3]));
+    const bv  = parseFloat(parsePriceNum(m3[4]).toFixed(2));
     if (!description || description === 'DESCRIPTION') continue;
     if (isNaN(dp) || isNaN(cp) || isNaN(bv)) continue;
     if (dp <= 0 || cp <= 0) continue;
