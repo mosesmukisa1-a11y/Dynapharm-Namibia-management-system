@@ -1,81 +1,81 @@
 {
   "Gastric Package": {
-    "price": { "dp": 2054, "cp": 2432, "bv": 381 },
+    "price": { "dp": 2569, "cp": 3338, "bv": 420 },
     "products": [
-      { "name": "DI LIQUID CHLOROPHYLL PLUS GUARANA 500ml", "quantity": 1, "dp": 430, "cp": 530, "bv": 75 },
-      { "name": "SEA CUCUMBER JELLY 500ml", "quantity": 1, "dp": 533, "cp": 633, "bv": 115 },
-      { "name": "PRO-LSB TABLET 150's", "quantity": 1, "dp": 455, "cp": 573, "bv": 100 },
-      { "name": "INSTANT GINSENG HONEY GINGER 500g", "quantity": 1, "dp": 350, "cp": 455, "bv": 43 },
-      { "name": "GOAT'S MILK TABLET 150's", "quantity": 1, "dp": 286, "cp": 372, "bv": 48 }
+      { "name": "DI LIQUID ALFALFA PLUS GUARANA (500ML)", "quantity": 1, "dp": 517, "cp": 672, "bv": 100 },
+      { "name": "SEA CUCUMBER JELLY (500ML)", "quantity": 1, "dp": 676, "cp": 879, "bv": 120 },
+      { "name": "PRO- LSB TABLET 150'S", "quantity": 1, "dp": 520, "cp": 675, "bv": 80 },
+      { "name": "INSTANT GINSENG HONEY GINGER 500G", "quantity": 1, "dp": 473, "cp": 615, "bv": 60 },
+      { "name": "GOAT'S MILK TABLET 150'S", "quantity": 1, "dp": 383, "cp": 497, "bv": 60 }
     ]
   },
   "Womens Package": {
-    "price": { "dp": 2543, "cp": 2950, "bv": 481 },
+    "price": { "dp": 3418, "cp": 4445, "bv": 580 },
     "products": [
-      { "name": "DI LIQUID CHLOROPHYLL PLUS GUARANA 500ml", "quantity": 1, "dp": 430, "cp": 530, "bv": 75 },
-      { "name": "SEA CUCUMBER JELLY 500ml", "quantity": 1, "dp": 533, "cp": 633, "bv": 115 },
-      { "name": "HERBA WARISAN MAHARANI 6 x 10g", "quantity": 1, "dp": 520, "cp": 620, "bv": 110 },
-      { "name": "INSTANT COFFEE MIX W/GANO, COLLAGEN & KACIP 15's", "quantity": 1, "dp": 260, "cp": 320, "bv": 38 },
-      { "name": "DYNA TONIC 780ml", "quantity": 1, "dp": 600, "cp": 700, "bv": 120 },
-      { "name": "GAMAT FEMININE WASH (2)", "quantity": 1, "dp": 200, "cp": 260, "bv": 23 }
+      { "name": "DI LIQUID ALFALFA PLUS GUARANA (500ML)", "quantity": 1, "dp": 517, "cp": 672, "bv": 100 },
+      { "name": "SEA CUCUMBER JELLY (500ML)", "quantity": 1, "dp": 676, "cp": 879, "bv": 120 },
+      { "name": "HERBA WARISAN MAHARANI 6 X 10G", "quantity": 1, "dp": 623, "cp": 810, "bv": 140 },
+      { "name": "INSTANT COFFEE MIX W/GANODERMA, COLLAGEN & KACIP", "quantity": 1, "dp": 359, "cp": 467, "bv": 60 },
+      { "name": "DYNA TONIC (780ML)", "quantity": 1, "dp": 935, "cp": 1215, "bv": 140 },
+      { "name": "NANO HOME FEMININE WASH WITH GAMAT 60ML", "quantity": 2, "dp": 154, "cp": 201, "bv": 10 }
     ]
   },
   "Mens Health Package": {
-    "price": { "dp": 2033, "cp": 2362, "bv": 388 },
+    "price": { "dp": 2470, "cp": 3211, "bv": 510 },
     "products": [
-      { "name": "DI LIQUID CHLOROPHYLL PLUS GUARANA 500ml", "quantity": 1, "dp": 430, "cp": 530, "bv": 75 },
-      { "name": "GINALI CAPSULE 100's", "quantity": 1, "dp": 403, "cp": 493, "bv": 80 },
-      { "name": "YEEGINKGO TABLET 90's", "quantity": 1, "dp": 420, "cp": 500, "bv": 80 },
-      { "name": "DYNA SERENOA TABLET 100's", "quantity": 1, "dp": 520, "cp": 620, "bv": 115 },
-      { "name": "INSTANT COFFEE W/ TONGKAT ALI 20's x 21g", "quantity": 1, "dp": 260, "cp": 320, "bv": 38 }
+      { "name": "DI LIQUID ALFALFA PLUS GUARANA (500ML)", "quantity": 1, "dp": 517, "cp": 672, "bv": 100 },
+      { "name": "GINALI CAPSULE 100'S", "quantity": 1, "dp": 515, "cp": 670, "bv": 140 },
+      { "name": "YEEGINKGO TABLETS 90'S", "quantity": 1, "dp": 572, "cp": 744, "bv": 100 },
+      { "name": "DYNA SERENOA TABLET 100'S", "quantity": 1, "dp": 543, "cp": 705, "bv": 120 },
+      { "name": "INSTANT COFFEE W/ TONGKAT ALI 20'S X 21G", "quantity": 1, "dp": 323, "cp": 420, "bv": 50 }
     ]
   },
   "Blood Circulation Pack": {
-    "price": { "dp": 3290, "cp": 3854, "bv": 657 },
+    "price": { "dp": 4423, "cp": 5749, "bv": 810 },
     "products": [
-      { "name": "DI LIQUID CHLOROPHYLL PLUS GUARANA 500ml", "quantity": 1, "dp": 430, "cp": 530, "bv": 75 },
-      { "name": "YEEGINKGO TABLET 90's", "quantity": 1, "dp": 420, "cp": 500, "bv": 80 },
-      { "name": "YEEGARLIC CAPSULE 90's", "quantity": 1, "dp": 300, "cp": 390, "bv": 64 },
-      { "name": "YEE YANG YEN TABLET 90's", "quantity": 1, "dp": 370, "cp": 455, "bv": 90 },
-      { "name": "GINSENG CAPSULE 9 x 10's", "quantity": 1, "dp": 546, "cp": 655, "bv": 115 },
-      { "name": "INSTANT COFFEE W/ TONGKAT ALI 20's x 21g", "quantity": 1, "dp": 260, "cp": 320, "bv": 38 },
-      { "name": "DYNA TONIC 780ml", "quantity": 1, "dp": 600, "cp": 700, "bv": 120 },
-      { "name": "DYNA-RH CAPSULE 100's", "quantity": 1, "dp": 300, "cp": 390, "bv": 60 }
+      { "name": "DI LIQUID ALFALFA PLUS GUARANA (500ML)", "quantity": 1, "dp": 517, "cp": 672, "bv": 100 },
+      { "name": "YEEGINKGO TABLETS 90'S", "quantity": 1, "dp": 572, "cp": 744, "bv": 100 },
+      { "name": "YEEGARLIC CAPSULE 90'S", "quantity": 1, "dp": 391, "cp": 508, "bv": 100 },
+      { "name": "YEEYANGYEN TABLET 90'S", "quantity": 1, "dp": 492, "cp": 639, "bv": 120 },
+      { "name": "GINSENG CAPSULE 9 X 10'S", "quantity": 1, "dp": 690, "cp": 897, "bv": 140 },
+      { "name": "INSTANT COFFEE W/ TONGKAT ALI 20'S X 21G", "quantity": 1, "dp": 323, "cp": 420, "bv": 50 },
+      { "name": "DYNA TONIC (780ML)", "quantity": 1, "dp": 935, "cp": 1215, "bv": 140 },
+      { "name": "DYNA-RH CAPSULE 100'S", "quantity": 1, "dp": 503, "cp": 654, "bv": 60 }
     ]
   },
   "Cleansing And Detoxification Package": {
-    "price": { "dp": 2183, "cp": 2596, "bv": 447 },
+    "price": { "dp": 2672, "cp": 3472, "bv": 640 },
     "products": [
-      { "name": "DI LIQUID CHLOROPHYLL PLUS GUARANA 500ml", "quantity": 1, "dp": 430, "cp": 530, "bv": 75 },
-      { "name": "YEEGARLIC CAPSULE 90's", "quantity": 1, "dp": 300, "cp": 390, "bv": 64 },
-      { "name": "YEEGANO CAPSULE 90's", "quantity": 1, "dp": 364, "cp": 454, "bv": 75 },
-      { "name": "DYNA 'S' TABLET 120's", "quantity": 1, "dp": 290, "cp": 360, "bv": 43 },
-      { "name": "MILK THISTLE TABLET 120's", "quantity": 1, "dp": 500, "cp": 592, "bv": 125 },
-      { "name": "NONI PLUS TEA 30's x 3g", "quantity": 1, "dp": 299, "cp": 360, "bv": 65 }
+      { "name": "DI LIQUID ALFALFA PLUS GUARANA (500ML)", "quantity": 1, "dp": 517, "cp": 672, "bv": 100 },
+      { "name": "YEEGARLIC CAPSULE 90'S", "quantity": 1, "dp": 391, "cp": 508, "bv": 100 },
+      { "name": "YEEGANO CAPSULE 90'S", "quantity": 1, "dp": 457, "cp": 594, "bv": 100 },
+      { "name": "DYNA 'S' TABLET 120'S", "quantity": 1, "dp": 336, "cp": 436, "bv": 120 },
+      { "name": "MILK THISTLE TABLET 120'S", "quantity": 1, "dp": 577, "cp": 750, "bv": 140 },
+      { "name": "NONI PLUS TEA 30'S X 3G", "quantity": 1, "dp": 394, "cp": 512, "bv": 80 }
     ]
   },
   "Weight Management Pack": {
-    "price": { "dp": 2283, "cp": 2680, "bv": 448 },
+    "price": { "dp": 2763, "cp": 3590, "bv": 600 },
     "products": [
-      { "name": "GREEN TEA EXTRACT CAPSULE 60's", "quantity": 1, "dp": 344, "cp": 430, "bv": 85 },
-      { "name": "NONI PLUS TEA 30's x 3g", "quantity": 1, "dp": 299, "cp": 360, "bv": 65 },
-      { "name": "DYNA 'S' TABLET 120's", "quantity": 1, "dp": 290, "cp": 360, "bv": 65 },
-      { "name": "DI LIQUID CHLOROPHYLL PLUS GUARANA 500ml", "quantity": 1, "dp": 430, "cp": 530, "bv": 75 },
-      { "name": "HIGH FIBER NUTRION FOOD 30's x25g", "quantity": 1, "dp": 660, "cp": 780, "bv": 120 },
-      { "name": "INSTANT COFFEE MIX W/ GANO & GREEN TEA 20's x 21g", "quantity": 1, "dp": 260, "cp": 320, "bv": 38 }
+      { "name": "GREEN TEA CAPSULE 60'S", "quantity": 1, "dp": 398, "cp": 517, "bv": 100 },
+      { "name": "NONI PLUS TEA 30'S X 3G", "quantity": 1, "dp": 394, "cp": 512, "bv": 80 },
+      { "name": "DYNA 'S' TABLET 120'S", "quantity": 1, "dp": 336, "cp": 436, "bv": 120 },
+      { "name": "DI LIQUID ALFALFA PLUS GUARANA (500ML)", "quantity": 1, "dp": 517, "cp": 672, "bv": 100 },
+      { "name": "HIGH FIBER NUTRITION FOOD 30'SX25G", "quantity": 1, "dp": 761, "cp": 989, "bv": 140 },
+      { "name": "INSTANT COFFEE W/ GANO, GREEN TEA 20'S X 21G", "quantity": 1, "dp": 357, "cp": 464, "bv": 60 }
     ]
   },
   "Healthy Joints Package": {
-    "price": { "dp": 3538, "cp": 4177, "bv": 687.5 },
+    "price": { "dp": 4830, "cp": 6278, "bv": 800 },
     "products": [
-      { "name": "DI LIQUID CHLOROPHYLL PLUS GUARANA 500ml", "quantity": 1, "dp": 430, "cp": 530, "bv": 75 },
-      { "name": "DYNA RH CAPSULE 100's", "quantity": 1, "dp": 300, "cp": 390, "bv": 60 },
-      { "name": "NUTMEG OINTMENT 2 x 20g", "quantity": 1, "dp": 180, "cp": 234, "bv": 19.5 },
-      { "name": "NONI JUICE 1 LTR", "quantity": 1, "dp": 750, "cp": 950, "bv": 175 },
-      { "name": "SEA CUCUMBER JELLY 500ml", "quantity": 1, "dp": 533, "cp": 633, "bv": 115 },
-      { "name": "YEEGINKGO TABLET 90's", "quantity": 1, "dp": 420, "cp": 500, "bv": 80 },
-      { "name": "DYNA TONIC 780ml", "quantity": 1, "dp": 600, "cp": 700, "bv": 120 },
-      { "name": "D I INSTANT GOAT MILK POWDER PREMIX 20's x 21g", "quantity": 1, "dp": 325, "cp": 400, "bv": 43 }
+      { "name": "DI LIQUID ALFALFA PLUS GUARANA (500ML)", "quantity": 1, "dp": 517, "cp": 672, "bv": 100 },
+      { "name": "DYNA-RH CAPSULE 100'S", "quantity": 1, "dp": 503, "cp": 654, "bv": 60 },
+      { "name": "NUTMEG OINTMENT (2'S X 20G)", "quantity": 1, "dp": 232, "cp": 301, "bv": 20 },
+      { "name": "DI NONI JUICE 1 L", "quantity": 1, "dp": 1015, "cp": 1319, "bv": 200 },
+      { "name": "SEA CUCUMBER JELLY (500ML)", "quantity": 1, "dp": 676, "cp": 879, "bv": 120 },
+      { "name": "YEEGINKGO TABLETS 90'S", "quantity": 1, "dp": 572, "cp": 744, "bv": 100 },
+      { "name": "DYNA TONIC (780ML)", "quantity": 1, "dp": 935, "cp": 1215, "bv": 140 },
+      { "name": "D.I. INSTANT GOAT'S MILK POWDER PREMIX 20'S X 21G", "quantity": 1, "dp": 380, "cp": 494, "bv": 60 }
     ]
   }
 }
