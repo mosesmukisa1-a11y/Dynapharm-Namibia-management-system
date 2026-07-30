@@ -5008,6 +5008,7 @@ function PriceListTab() {
   const [importSaving, setImportSaving] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
   const [importTab, setImportTab] = useState('upload');
+  const [importEffectiveDate, setImportEffectiveDate] = useState('');
   const importFileRef = useRef(null);
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState([]);
@@ -5189,13 +5190,22 @@ function PriceListTab() {
     setImportSaving(true);
     setAlert(null);
     try {
-      for (const p of importParsed) {
-        await api.prices.create({ description: p.description, cif: p.cif || 0, dp: p.dp, cp: p.cp, bv: p.bv });
+      const chosenDate = importEffectiveDate || todayStr;
+      const isFuture = chosenDate > todayStr;
+      const result = await api.prices.bulkImport(importParsed, chosenDate);
+      const { updated = 0, scheduled = 0, created = 0 } = result || {};
+      const total = updated + scheduled + created;
+      let msg;
+      if (isFuture) {
+        msg = `✅ ${total} product price(s) scheduled for ${chosenDate}. Current prices remain active until that date.`;
+      } else {
+        msg = `✅ ${total} product price(s) imported (${updated} updated, ${created} new).`;
       }
-      setAlert({ type: 'success', msg: `✅ ${importParsed.length} product price(s) imported successfully.` });
+      setAlert({ type: 'success', msg });
       setShowImport(false);
       setImportText('');
       setImportParsed([]);
+      setImportEffectiveDate('');
       load();
     } catch {
       setAlert({ type: 'error', msg: 'Import failed. Please check the data and try again.' });
@@ -5492,7 +5502,7 @@ function PriceListTab() {
         </CardBody>
       </Card>
 
-      <Modal open={showImport} title="Import Price List" onClose={() => { setShowImport(false); setImportText(''); setImportParsed([]); setImportTab('upload'); }}>
+      <Modal open={showImport} title="Import Price List" onClose={() => { setShowImport(false); setImportText(''); setImportParsed([]); setImportTab('upload'); setImportEffectiveDate(''); }}>
         <div style={{ width: '100%', maxWidth: 640, boxSizing: 'border-box', padding: '0 4px 4px' }}>
 
           {/* Tab switcher */}
@@ -5568,7 +5578,7 @@ function PriceListTab() {
                   ✓ {importParsed.length} products detected
                 </div>
                 <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                  {importParsed.filter(p => rows.some(r => r.description?.toUpperCase() === p.description)).length} updates · {importParsed.filter(p => !rows.some(r => r.description?.toUpperCase() === p.description)).length} new
+                  {(() => { const strip = d => (d||'').toUpperCase().replace(/^[A-Z]{1,3}\d{4,6}[A-Z]?\s+/,'').trim(); const upd = importParsed.filter(p => rows.some(r => r.description?.toUpperCase() === p.description || strip(r.description||'') === p.description)).length; return `${upd} updates · ${importParsed.length - upd} new`; })()}
                 </div>
               </div>
               <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
@@ -5585,7 +5595,8 @@ function PriceListTab() {
                   </thead>
                   <tbody>
                     {importParsed.map((p, i) => {
-                      const exists = rows.some(r => r.description?.toUpperCase() === p.description);
+                      const strip = d => (d||'').toUpperCase().replace(/^[A-Z]{1,3}\d{4,6}[A-Z]?\s+/,'').trim();
+                      const exists = rows.some(r => r.description?.toUpperCase() === p.description || strip(r.description||'') === p.description);
                       return (
                         <tr key={i} style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
                           <td style={{ padding: '6px 12px', fontWeight: 500, color: '#1e293b', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.description}</td>
@@ -5603,6 +5614,33 @@ function PriceListTab() {
                     })}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          )}
+
+          {/* Effective date — shown once products are detected */}
+          {importParsed.length > 0 && (
+            <div style={{ marginTop: 16, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '14px 16px' }}>
+              <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#374151', marginBottom: 8 }}>
+                📅 When should these prices take effect?
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <input
+                  type="date"
+                  value={importEffectiveDate || todayStr}
+                  min={todayStr}
+                  onChange={e => setImportEffectiveDate(e.target.value)}
+                  style={{ padding: '8px 12px', borderRadius: 8, border: '1.5px solid #e2e8f0', fontSize: '0.85rem', color: '#1e293b', background: '#fff', cursor: 'pointer' }}
+                />
+                {importEffectiveDate && importEffectiveDate > todayStr ? (
+                  <span style={{ fontSize: '0.78rem', color: '#b45309', background: '#fef9c3', padding: '4px 10px', borderRadius: 20, fontWeight: 600 }}>
+                    ⏳ Scheduled — current prices stay active until {importEffectiveDate}
+                  </span>
+                ) : (
+                  <span style={{ fontSize: '0.78rem', color: '#15803d', background: '#f0fdf4', padding: '4px 10px', borderRadius: 20, fontWeight: 600 }}>
+                    ✅ Apply immediately
+                  </span>
+                )}
               </div>
             </div>
           )}
@@ -5630,7 +5668,7 @@ function PriceListTab() {
               {importSaving ? `Importing…` : importParsed.length === 0 ? 'No products detected' : `Import ${importParsed.length} Product${importParsed.length !== 1 ? 's' : ''}`}
             </button>
             <button
-              onClick={() => { setShowImport(false); setImportText(''); setImportParsed([]); setImportTab('upload'); }}
+              onClick={() => { setShowImport(false); setImportText(''); setImportParsed([]); setImportTab('upload'); setImportEffectiveDate(''); }}
               style={{ padding: '11px 20px', borderRadius: 10, border: '1.5px solid #e2e8f0', background: '#fff', color: '#475569', fontWeight: 600, fontSize: '0.88rem', cursor: 'pointer' }}
             >Cancel</button>
           </div>

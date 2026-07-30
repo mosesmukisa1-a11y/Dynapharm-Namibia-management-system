@@ -292,6 +292,7 @@ export const api = {
     history: (productId) => api.get(`/prices/history${productId ? `?product_id=${productId}` : ''}`),
     pending: () => api.get('/prices/pending'),
     analytics: () => api.get('/prices/analytics'),
+    bulkImport: (products, effectiveFrom) => api.post('/prices/bulk-import', { products, effective_from: effectiveFrom || null }),
   },
 
   gm: {

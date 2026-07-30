@@ -1456,6 +1456,105 @@ app.post('/api/prices', async (req, res) => {
   }
 });
 
+// Bulk import with deduplication + scheduling.
+// Matches incoming descriptions against existing rows by exact match OR by stripping
+// the leading product-code token (e.g. "NB1208 ARABICA..." → "ARABICA...") so that
+// rows imported before the code-stripping fix are updated rather than doubled.
+app.post('/api/prices/bulk-import', async (req, res) => {
+  try {
+    const { query } = await import('./api/db.js');
+    const { products, effective_from } = req.body;
+    if (!Array.isArray(products) || products.length === 0)
+      return res.status(400).json({ error: 'products array is required' });
+
+    const today = new Date().toISOString().slice(0, 10);
+    const isImmediate = !effective_from || effective_from <= today;
+    const updatedBy = req.user?.name || req.user?.username || 'gm';
+    // Matches: 1-3 uppercase letters + 4-6 digits + optional letter + whitespace
+    const CODE_RE = '^[A-Za-z]{1,3}[0-9]{4,6}[A-Za-z]?\\s+';
+
+    let updated = 0, scheduled = 0, created = 0;
+
+    for (const p of products) {
+      const cleanDesc = String(p.description).toUpperCase().trim().replace(/\s+/g, ' ');
+      const newDp  = Math.round(Number(p.dp))  || 0;
+      const newCp  = Math.round(Number(p.cp))  || 0;
+      const newCif = Math.round(Number(p.cif)) || 0;
+      const newBv  = parseFloat((Number(p.bv) || 0).toFixed(2));
+
+      // Find best-matching existing row: exact description match takes priority,
+      // then code-stripped match (catches rows stored with the old code-prefix format).
+      const { rows: existing } = await query(`
+        SELECT id, description, dp, cp, cif, bv FROM product_prices
+        WHERE TRIM(UPPER(description)) = $1
+           OR TRIM(UPPER(REGEXP_REPLACE(description, $2, '', 'i'))) = $1
+        ORDER BY
+          CASE WHEN TRIM(UPPER(description)) = $1 THEN 0 ELSE 1 END,
+          updated_at DESC NULLS LAST
+        LIMIT 1
+      `, [cleanDesc, CODE_RE]);
+
+      if (existing.length > 0) {
+        const row = existing[0];
+        const changed = Number(row.dp)  !== newDp  || Number(row.cp)  !== newCp ||
+                        Number(row.cif) !== newCif  || Number(row.bv)  !== newBv;
+
+        if (changed) {
+          await query(`
+            INSERT INTO product_price_history
+              (product_id, description, old_dp, old_cp, old_cif, old_bv,
+               new_dp, new_cp, new_cif, new_bv, changed_by, effective_from, status)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+          `, [row.id, cleanDesc, row.dp, row.cp, row.cif, row.bv,
+              newDp, newCp, newCif, newBv, updatedBy,
+              effective_from || today, isImmediate ? 'applied' : 'pending']);
+        }
+
+        if (isImmediate) {
+          // Apply immediately and normalise the description (strip any embedded code prefix).
+          await query(`
+            UPDATE product_prices
+            SET description=$1, dp=$2, cp=$3, cif=$4, bv=$5, updated_by=$6, updated_at=NOW()
+            WHERE id=$7
+          `, [cleanDesc, newDp, newCp, newCif, newBv, updatedBy, row.id]);
+          updated++;
+        } else {
+          // Scheduled: keep current prices active until effective_from; normalise description now.
+          await query(
+            `UPDATE product_prices SET description=$1, updated_at=NOW() WHERE id=$2`,
+            [cleanDesc, row.id]
+          );
+          scheduled++;
+        }
+
+        // Delete any duplicate rows that resolve to the same normalised description
+        // (artefacts from earlier imports that stored the product code in the description).
+        await query(`
+          DELETE FROM product_prices
+          WHERE id != $1
+            AND TRIM(UPPER(REGEXP_REPLACE(description, $2, '', 'i'))) = $3
+        `, [row.id, CODE_RE, cleanDesc]);
+
+      } else {
+        // Genuinely new product — insert immediately (nothing to schedule from).
+        await query(`
+          INSERT INTO product_prices (description, dp, cp, cif, bv, updated_by)
+          VALUES ($1,$2,$3,$4,$5,$6)
+          ON CONFLICT (description) DO UPDATE
+            SET dp=$2, cp=$3, cif=$4, bv=$5, updated_by=$6, updated_at=NOW()
+        `, [cleanDesc, newDp, newCp, newCif, newBv, updatedBy]);
+        created++;
+      }
+    }
+
+    res.json({ success: true, updated, scheduled, created,
+               effective_from: effective_from || today, isImmediate });
+  } catch (err) {
+    console.error('POST /api/prices/bulk-import error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.delete('/api/prices/:id', async (req, res) => {
   try {
     const { query } = await import('./api/db.js');
