@@ -28,6 +28,12 @@ export default async function handler(req, res) {
       movConds.push(`LOWER(REPLACE(branch_id, ' ', '_')) = $${movParams.length + 1}`);
       movParams.push(normBranchId);
     }
+    // Qualified version for the campaign query which joins branch_walkin_sales bws
+    // (bws also has created_at and branch_id, making bare refs ambiguous).
+    const camMovConds = movConds.map(c =>
+      c.replace(/\bcreated_at\b/g, 'bim.created_at')
+       .replace(/\bLOWER\(REPLACE\(branch_id/g, 'LOWER(REPLACE(bim.branch_id')
+    );
 
     // Supplement params: reports table uses branch name (may be plain or prefixed)
     const rpParams = [date];
@@ -137,7 +143,7 @@ export default async function handler(req, res) {
       //   campaign_free_item   — free item (unit_price = NULL → 0 DP, stock still deducted)
       // The subquery identifies campaign references via branch_walkin_sales.data->>'sale_type'.
       getMany(
-        `SELECT reference, branch_id,
+        `SELECT reference, bim.branch_id,
                 MIN(TRIM(product_name)) AS product_name,
                 type,
                 SUM(ABS(quantity))                            AS total_qty,
@@ -160,10 +166,10 @@ export default async function handler(req, res) {
                 -- List DP from product_prices — used as the "before discount" base price for
                 -- every non-free product in a mixed-price campaign sale.
                 MAX(pp.dp)                                    AS list_dp
-         FROM branch_inventory_movements
+         FROM branch_inventory_movements bim
          LEFT JOIN product_prices pp ON LOWER(TRIM(pp.description)) = LOWER(TRIM(product_name))
          LEFT JOIN branch_walkin_sales bws ON bws.id = reference
-         WHERE ${movConds.join(' AND ')}
+         WHERE ${camMovConds.join(' AND ')}
            AND (
              type IN ('campaign_sale', 'campaign_free_item')
              OR (
@@ -176,7 +182,7 @@ export default async function handler(req, res) {
                )
              )
            )
-         GROUP BY reference, branch_id, LOWER(TRIM(product_name)), type`,
+         GROUP BY reference, bim.branch_id, LOWER(TRIM(product_name)), type`,
         movParams
       ),
       // Approved refund return movements — deducted from sales totals

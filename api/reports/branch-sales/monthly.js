@@ -32,6 +32,12 @@ export default async function handler(req, res) {
       movConds.push(`LOWER(REPLACE(branch_id, ' ', '_')) = $${movParams.length + 1}`);
       movParams.push(normBranchId);
     }
+    // Qualified version for the campaign query which joins branch_walkin_sales bws
+    // (bws also has created_at and branch_id, making bare refs ambiguous).
+    const camMovConds = movConds.map(c =>
+      c.replace(/\bcreated_at\b/g, 'bim.created_at')
+       .replace(/\bLOWER\(REPLACE\(branch_id/g, 'LOWER(REPLACE(bim.branch_id')
+    );
 
     // Supplement params: reports table uses branch name (may be plain or prefixed)
     const rpParams = [monthStart, nextMonth];
@@ -135,7 +141,7 @@ export default async function handler(req, res) {
       //   campaign_sale → unit_price (actual sold price) preferred; pp.dp as fallback
       //   non-member    → pp.dp only (unit_price is CP, never DP — do not use as fallback)
       getMany(
-        `SELECT reference, branch_id, product_name, batch_no, type,
+        `SELECT reference, bim.branch_id, product_name, batch_no, type,
                 SUM(ABS(quantity))                            AS total_qty,
                 SUM(ABS(quantity) *
                   CASE WHEN type = 'campaign_free_item'          THEN 0
@@ -155,10 +161,10 @@ export default async function handler(req, res) {
                                                               AS sold_unit_price,
                 -- List DP from product_prices — used as the "before discount" base price.
                 MAX(pp.dp)                                    AS list_dp
-         FROM branch_inventory_movements
+         FROM branch_inventory_movements bim
          LEFT JOIN product_prices pp ON LOWER(TRIM(pp.description)) = LOWER(TRIM(product_name))
          LEFT JOIN branch_walkin_sales bws ON bws.id = reference
-         WHERE ${movConds.join(' AND ')}
+         WHERE ${camMovConds.join(' AND ')}
            AND (
              type IN ('campaign_sale', 'campaign_free_item')
              OR (
@@ -171,7 +177,7 @@ export default async function handler(req, res) {
                )
              )
            )
-         GROUP BY reference, branch_id, product_name, batch_no, type`,
+         GROUP BY reference, bim.branch_id, product_name, batch_no, type`,
         movParams
       ),
       // Approved refund return movements — deducted from sales totals
