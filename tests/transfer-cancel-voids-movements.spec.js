@@ -426,4 +426,133 @@ describe('transfer cancellation — voids in-transit movements so balance resets
     await query(`DELETE FROM stock_transfer_items WHERE transfer_id = $1`, [B2B_TRANSFER_ID]);
     await query(`DELETE FROM stock_transfers WHERE id = $1`, [B2B_TRANSFER_ID]);
   });
+
+  it('voids both reserved and transfer_out movements for branch-to-branch cancellation', async () => {
+    // ── What this test covers ──────────────────────────────────────────────────
+    // Branch-to-branch transfers that went through GM approval produce TWO
+    // movement types that must both be voided on cancellation:
+    //
+    //   • 'reserved'     — written at approval time to soft-lock stock
+    //   • 'transfer_out' — written at dispatch time for the physical movement
+    //
+    // The cancel block in transfers.js voids both via separate UPDATE statements
+    // (lines ~1397-1413).  This test seeds both movement types and confirms that
+    // neither is left 'posted' after cancellation — leaving either posted would
+    // cause the source branch balance to appear lower than it really is.
+
+    const B2B2_TRANSFER_ID = 'test-cancel-void-b2b-reserved-001';
+    const SRC_BRANCH2      = 'test_cancel_src_branch_2';
+    const DST_BRANCH2      = 'test_cancel_dst_branch_2';
+    const B2B2_PRODUCT     = 'TEST_CANCEL_B2B_RESERVED_PRODUCT';
+    const B2B2_BATCH       = 'BATCH-CANCEL-B2B-RSV-001';
+    const B2B2_EXPIRY      = '2027-06-30';
+    const B2B2_QTY         = 12;
+
+    // ── Pre-test cleanup ───────────────────────────────────────────────────────
+    await query(`DELETE FROM inventory_balances WHERE location_id = $1`, [SRC_BRANCH2]);
+    await query(`DELETE FROM branch_inventory_batches WHERE branch_id = $1 AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))`, [SRC_BRANCH2, B2B2_PRODUCT]);
+    await query(`DELETE FROM stock_movements WHERE reference_id = $1`, [B2B2_TRANSFER_ID]);
+    await query(`DELETE FROM stock_transfer_items WHERE transfer_id = $1`, [B2B2_TRANSFER_ID]);
+    await query(`DELETE FROM stock_transfers WHERE id = $1`, [B2B2_TRANSFER_ID]);
+
+    // ── Seed the branch-to-branch transfer (dispatched state) ─────────────────
+    // previousStatus='dispatched' satisfies the cancel-block guard that requires
+    // previousStatus === 'approved' || previousStatus === 'dispatched'.
+    await query(
+      `INSERT INTO stock_transfers
+         (id, from_warehouse, to_branch, status, dispatched_by, dispatched_at, created_by, created_at, updated_at)
+       VALUES ($1, $2, $3, 'dispatched', 'Test Admin', NOW(), 'Test Admin', NOW(), NOW())`,
+      [B2B2_TRANSFER_ID, SRC_BRANCH2, DST_BRANCH2]
+    );
+
+    // Transfer item — expiry_date is required for the branch_inventory_batches
+    // restore path (cancel block guards on batchNo && expiryDate).
+    await query(
+      `INSERT INTO stock_transfer_items
+         (transfer_id, product_id, product_name, batch_no, expiry_date, quantity, quantity_approved)
+       VALUES ($1, $2, $2, $3, $4::date, $5, $5)`,
+      [B2B2_TRANSFER_ID, B2B2_PRODUCT, B2B2_BATCH, B2B2_EXPIRY, B2B2_QTY]
+    );
+
+    // ── Seed 'reserved' movement — written at approval time ───────────────────
+    await query(
+      `INSERT INTO stock_movements
+         (id, product_name, batch_no, quantity, movement_type,
+          source_location, source_location_type,
+          destination_location, destination_location_type,
+          reference_id, status, created_at, updated_at)
+       VALUES
+         (gen_random_uuid()::text, $1, $2, $3, 'reserved',
+          $4, 'branch',
+          $5, 'branch',
+          $6, 'posted', NOW(), NOW())`,
+      [B2B2_PRODUCT, B2B2_BATCH, B2B2_QTY, SRC_BRANCH2, DST_BRANCH2, B2B2_TRANSFER_ID]
+    );
+
+    // ── Seed 'transfer_out' movement — written at dispatch time ───────────────
+    await query(
+      `INSERT INTO stock_movements
+         (id, product_name, batch_no, quantity, movement_type,
+          source_location, source_location_type,
+          destination_location, destination_location_type,
+          reference_id, status, created_at, updated_at)
+       VALUES
+         (gen_random_uuid()::text, $1, $2, $3, 'transfer_out',
+          $4, 'branch',
+          $5, 'branch',
+          $6, 'posted', NOW(), NOW())`,
+      [B2B2_PRODUCT, B2B2_BATCH, B2B2_QTY, SRC_BRANCH2, DST_BRANCH2, B2B2_TRANSFER_ID]
+    );
+
+    // ── Cancel via the real PATCH handler ──────────────────────────────────────
+    const { req, res, captured } = buildMockReqRes(
+      'PATCH',
+      `/api/stock/transfers?id=${B2B2_TRANSFER_ID}`,
+      { status: 'cancelled' },
+      { id: 'test-admin', role: 'admin', fullName: 'Test Admin' }
+    );
+    req.url = `/api/stock/transfers?id=${B2B2_TRANSFER_ID}`;
+
+    await handler(req, res);
+
+    expect(captured.status).toBe(200);
+    expect(captured.body?.success).toBe(true);
+
+    // ── Assert: reserved movements are voided ─────────────────────────────────
+    const reservedRows = await query(
+      `SELECT movement_type, status FROM stock_movements
+       WHERE reference_id = $1 AND movement_type = 'reserved'`,
+      [B2B2_TRANSFER_ID]
+    );
+    expect(reservedRows.rows.length).toBeGreaterThan(0);
+    for (const row of reservedRows.rows) {
+      expect(row.status).toBe('cancelled');
+    }
+
+    // ── Assert: transfer_out movements are voided ─────────────────────────────
+    const transitRows = await query(
+      `SELECT movement_type, status FROM stock_movements
+       WHERE reference_id = $1 AND movement_type = 'transfer_out'`,
+      [B2B2_TRANSFER_ID]
+    );
+    expect(transitRows.rows.length).toBeGreaterThan(0);
+    for (const row of transitRows.rows) {
+      expect(row.status).toBe('cancelled');
+    }
+
+    // ── Assert: no posted movements remain for this transfer ──────────────────
+    const postedRows = await query(
+      `SELECT id FROM stock_movements
+       WHERE reference_id = $1 AND status = 'posted'`,
+      [B2B2_TRANSFER_ID]
+    );
+    expect(postedRows.rows.length).toBe(0);
+
+    // ── Post-test cleanup ──────────────────────────────────────────────────────
+    await query(`DELETE FROM inventory_balances WHERE location_id = $1`, [SRC_BRANCH2]);
+    await query(`DELETE FROM branch_inventory_batches WHERE branch_id = $1 AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))`, [SRC_BRANCH2, B2B2_PRODUCT]);
+    await query(`DELETE FROM stock_movements WHERE reference_id = $1`, [B2B2_TRANSFER_ID]);
+    await query(`DELETE FROM stock_transfer_items WHERE transfer_id = $1`, [B2B2_TRANSFER_ID]);
+    await query(`DELETE FROM stock_transfers WHERE id = $1`, [B2B2_TRANSFER_ID]);
+  });
 });
