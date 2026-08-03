@@ -135,11 +135,13 @@ afterAll(async () => {
 
 // ─── Request / response helpers ───────────────────────────────────────────────
 
-function buildMockReq() {
+function buildMockReq({ authenticated = true } = {}) {
   return {
     method: 'GET',
     headers: { host: 'localhost' },
     url: `/api/reports/branch-sales/monthly?branch_id=${BRANCH}&month=${MONTH}`,
+    // Simulate an authenticated session; handlers added in #144 require req.user
+    user: authenticated ? { id: 0, role: 'mis', fullName: 'Test Runner' } : undefined,
   };
 }
 
@@ -162,6 +164,14 @@ async function runHandler() {
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe('monthly branch-sales report — campaign free-item DP guard (DB-backed)', () => {
+
+  it('returns 401 when request has no session (unauthenticated)', async () => {
+    const req = buildMockReq({ authenticated: false });
+    const res = buildMockRes();
+    await handler(req, res);
+    expect(res._status).toBe(401);
+    expect(res._body.success).toBe(false);
+  });
 
   it('handler returns HTTP 200 with success=true', async () => {
     const res = await runHandler();

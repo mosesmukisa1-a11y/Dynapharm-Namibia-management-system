@@ -46,6 +46,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
+  if (!req.user) return res.status(401).json({ success: false, error: 'Authentication required' });
 
   if (req.method !== 'GET') {
     return res.status(405).json({ success: false, error: 'Method not allowed' });

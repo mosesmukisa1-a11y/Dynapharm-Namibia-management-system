@@ -8,6 +8,7 @@ import { getMany, query as dbQuery } from '../../db.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+  if (!req.user) return res.status(401).json({ success: false, error: 'Authentication required' });
 
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const from   = url.searchParams.get('from');
