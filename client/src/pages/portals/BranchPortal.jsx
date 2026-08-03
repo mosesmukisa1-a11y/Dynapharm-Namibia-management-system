@@ -5054,6 +5054,7 @@ function BranchStockTab() {
         return dqty > 0 && Number(it.received_qty) !== dqty;
       });
       let discrepancyRecorded = 0;
+      let discrepancyFailed = 0;
       for (const item of allDiscrepancyItems) {
         try {
           const productName = safeLabel(item.product_name) || safeLabel(item.productName) || 'Unknown';
@@ -5075,6 +5076,10 @@ function BranchStockTab() {
           });
           discrepancyRecorded++;
         } catch (discErr) {
+          // Discrepancy logging is best-effort — the receipt itself already committed.
+          // Count failures so the success message accurately reflects what was recorded
+          // rather than falsely claiming all discrepancies reached Finance/GM.
+          discrepancyFailed++;
           console.warn('[receiveStock] discrepancy log failed (non-blocking):', discErr.message);
         }
       }
@@ -5082,9 +5087,16 @@ function BranchStockTab() {
       setShowReceiveForm(false);
       setSelectedRequest(null);
       setReceiveFormMsg(null);
-      const discMsg = allDiscrepancyItems.length > 0
-        ? ` Discrepancy noted for ${discrepancyRecorded} item(s) — recorded for Finance/GM review.`
-        : '';
+      let discMsg = '';
+      if (allDiscrepancyItems.length > 0) {
+        if (discrepancyFailed === 0) {
+          discMsg = ` Discrepancy noted for ${discrepancyRecorded} item(s) — recorded for Finance/GM review.`;
+        } else if (discrepancyRecorded > 0) {
+          discMsg = ` Discrepancy recorded for ${discrepancyRecorded} item(s). ⚠️ ${discrepancyFailed} discrepancy log(s) could not be saved — please notify your Stock Manager to record the shortfall manually.`;
+        } else {
+          discMsg = ` ⚠️ ${discrepancyFailed} discrepancy item(s) could not be logged — receipt was saved but please notify your Stock Manager to record the shortfall manually.`;
+        }
+      }
       setAlert({ type: 'success', message: `Stock received and recorded successfully.${discMsg}` });
       setSubTab('inventory');
       setTimeout(() => loadData(), 100);
