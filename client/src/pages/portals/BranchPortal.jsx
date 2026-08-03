@@ -463,7 +463,11 @@ function SalesReviewTab() {
                         const t = productData.totals || {};
                         const hasBreakdown = (t.walkin_dp > 0 || t.rx_dp > 0 || t.campaign_dp > 0 || t.refund_dp > 0);
                         if (!hasBreakdown) return null;
-                        const netTotal = (t.walkin_dp || 0) + (t.rx_dp || 0) + (t.campaign_dp || 0) - (t.refund_dp || 0);
+                        // walkin_dp / rx_dp / campaign_dp are already net of refunds
+                        // (the API deducts refund amounts per row before aggregating).
+                        // refund_dp is shown as an informational column only — do NOT
+                        // subtract it here or the total will be double-deducted.
+                        const netTotal = (t.walkin_dp || 0) + (t.rx_dp || 0) + (t.campaign_dp || 0);
                         return (
                           <div style={{ marginTop: 10, borderRadius: 8, border: '1.5px solid #e2e8f0', overflow: 'hidden' }}>
                             <div style={{ background: '#1e293b', color: '#fff', padding: '7px 14px', fontSize: '0.78rem', fontWeight: 800, letterSpacing: '0.06em' }}>
