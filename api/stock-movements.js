@@ -74,8 +74,13 @@ export default async function handler(req, res) {
       const dateFrom = url.searchParams.get('date_from');
       const dateTo = url.searchParams.get('date_to');
       const referenceIdFilter = url.searchParams.get('reference_id');
-      const limit = parseInt(url.searchParams.get('limit') || '100', 10);
-      const safeLimit = Number.isNaN(limit) ? 100 : Math.min(limit, 2000);
+      // Fix #4: validate limit — reject negative, NaN, and non-finite values with 400;
+      // clamp the accepted range to [1, 1000] to prevent oversized DB queries.
+      const rawLimit = parseInt(url.searchParams.get('limit') || '100', 10);
+      if (Number.isNaN(rawLimit) || rawLimit < 1) {
+        return res.status(400).json({ success: false, error: 'Invalid limit parameter: must be a positive integer between 1 and 1000.' });
+      }
+      const safeLimit = Math.min(rawLimit, 1000);
 
       // Scoped roles never access warehouse-level movements
       let rows;
@@ -263,21 +268,6 @@ export default async function handler(req, res) {
           }
         }
 
-        // Idempotency guard: check the stock request's own status rather than counting
-        // existing movements. Counting movements would block every item after the first
-        // in a multi-item receipt (all items share the same reference_id). Checking the
-        // request status correctly allows all items in a legitimate first submission while
-        // blocking any subsequent full re-submission once the request is marked received.
-        if (movType === 'received' && referenceId) {
-          const reqRow = await query(
-            `SELECT status FROM stock_requests WHERE id = $1`,
-            [referenceId]
-          );
-          if (reqRow.rows[0]?.status === 'received') {
-            return res.status(409).json({ success: false, error: 'This stock request has already been received. Duplicate receipt prevented to protect inventory accuracy.' });
-          }
-        }
-
         // For pending write-offs: insert record only (no stock deduction — GM must approve first)
         // warehouse_dispatch is a warehouse-level outbound — no branch mirror needed here
         const needsBranchMirror = branchId && ['write_off', 'sale', 'field_use', 'return'].includes(movType) && movStatus !== 'pending_approval';
@@ -288,6 +278,71 @@ export default async function handler(req, res) {
         const disposalStatus = movType === 'write_off' && movStatus === 'posted' ? 'pending_disposal' : null;
 
         await withTransaction(async (client) => {
+          // Fix #5: Idempotency guard for duplicate receipts — inside the transaction with
+          // FOR UPDATE so two concurrent receipt requests serialise on this row lock and
+          // only one succeeds. The check is on request status (not movement count) so all
+          // items in a legitimate multi-item receipt can still be posted in the same call.
+          //
+          // Critically, after the guard passes we IMMEDIATELY flip the row to 'received'
+          // within this transaction. The second concurrent request blocks on the FOR UPDATE
+          // lock; once the first commits, the second reads status='received' and is rejected.
+          // Without this update the lock is useless — both requests would see the same
+          // pre-receipt status and both would commit.
+          if (movType === 'received' && referenceId) {
+            const reqRow = await client.query(
+              `SELECT status FROM stock_requests WHERE id = $1 FOR UPDATE`,
+              [referenceId]
+            );
+            if (reqRow.rows[0]?.status === 'received') {
+              const dupErr = new Error('This stock request has already been received. Duplicate receipt prevented to protect inventory accuracy.');
+              dupErr.statusCode = 409;
+              throw dupErr;
+            }
+            // Atomically claim the receipt slot — any concurrent transaction will now
+            // see status='received' once this one commits and be rejected above.
+            if (reqRow.rows[0]) {
+              await client.query(
+                `UPDATE stock_requests SET status = 'received', updated_at = NOW() WHERE id = $1`,
+                [referenceId]
+              );
+            }
+          }
+
+          // Fix #7: Sufficiency guard for branch outward deductions.
+          // Lock the candidate batch rows with FOR UPDATE before reading their quantities
+          // (matching the warehouse_dispatch guard pattern) so that two concurrent
+          // sale/write_off/field_use requests serialise on the same row locks instead of
+          // both reading the same positive aggregate and both passing the check.
+          // Summing in JS over the locked rows is intentional — PostgreSQL forbids
+          // FOR UPDATE on aggregate-only selects.
+          if (['write_off', 'sale', 'field_use'].includes(movType) &&
+              srcLocType === 'branch' && srcLoc && qty > 0 &&
+              movStatus !== 'pending_approval') {
+            const branchCandidates = branchSearchTerms(srcLoc);
+            const lockedBatches = await client.query(
+              `SELECT id, quantity
+               FROM branch_inventory_batches
+               WHERE LOWER(REPLACE(branch_id, ' ', '_')) = ANY($1)
+                 AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))
+                 AND quantity > 0
+               ORDER BY expiry_date ASC NULLS LAST
+               FOR UPDATE`,
+              [branchCandidates, productName]
+            );
+            const available = lockedBatches.rows.reduce(
+              (sum, r) => sum + Number(r.quantity ?? 0), 0
+            );
+            if (available < qty) {
+              const insuffErr = new Error(
+                `Insufficient branch stock for "${productName}" at ${srcLoc}: ` +
+                `${available} unit${available !== 1 ? 's' : ''} available, ${qty} requested. ` +
+                `Adjust the quantity or restock this branch first.`
+              );
+              insuffErr.statusCode = 409;
+              throw insuffErr;
+            }
+          }
+
           // ── Availability guard for warehouse_dispatch ─────────────────────────
           // Check that the source warehouse can cover the requested quantity at the
           // moment of insertion. This closes the race window between the frontend
@@ -476,28 +531,38 @@ export default async function handler(req, res) {
             }
           }
         });
-        // Recompute inventory_balances for the primary affected location
+        // Fix #6: await all recomputeLocationBalances calls (previously fire-and-forget)
+        // so the 201 response is only sent after inventory_balances are up to date.
+        // A client that re-fetches immediately after a successful POST now sees accurate totals.
+        const recomputeJobs = [];
         const locType = srcLocType || dstLocType;
         const locId = srcLoc || destLoc;
         if (locType && locId) {
-          recomputeLocationBalances(locType, locId).catch(e =>
-            console.error('[stockEngine] stock-movements recompute error:', e.message)
+          recomputeJobs.push(
+            recomputeLocationBalances(locType, locId).catch(e =>
+              console.error('[stockEngine] stock-movements recompute error:', e.message)
+            )
           );
         }
-        // For 'received': the primary loc resolves to the warehouse source — also recompute
-        // the destination branch so its inventory_balances cache stays current.
+        // For 'received': primary loc is the warehouse source — also recompute the
+        // destination branch so its balance cache stays current.
         if (movType === 'received' && dstLocType === 'branch' && destLoc) {
-          recomputeLocationBalances('branch', destLoc).catch(e =>
-            console.error('[stockEngine] stock-movements received→branch recompute error:', e.message)
+          recomputeJobs.push(
+            recomputeLocationBalances('branch', destLoc).catch(e =>
+              console.error('[stockEngine] stock-movements received→branch recompute error:', e.message)
+            )
           );
         }
-        // For 'warehouse_dispatch': src is warehouse (already recomputed above) — also
-        // recompute the destination branch so its in-transit balance is reflected.
+        // For 'warehouse_dispatch': also recompute the destination branch so its
+        // in-transit balance is reflected immediately.
         if (movType === 'warehouse_dispatch' && dstLocType === 'branch' && destLoc) {
-          recomputeLocationBalances('branch', destLoc).catch(e =>
-            console.error('[stockEngine] stock-movements dispatch→branch recompute error:', e.message)
+          recomputeJobs.push(
+            recomputeLocationBalances('branch', destLoc).catch(e =>
+              console.error('[stockEngine] stock-movements dispatch→branch recompute error:', e.message)
+            )
           );
         }
+        await Promise.all(recomputeJobs);
         return res.status(201).json({
           success: true,
           id, product_name: productName, productName, quantity: qty, movement_type: movType, movementType: movType,
