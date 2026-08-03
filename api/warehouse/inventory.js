@@ -344,27 +344,118 @@ async function listInventory(searchParams) {
   const productId = searchParams.get('product');
   const status = searchParams.get('status');
 
-  const conditions = [];
+  // Reconciled read model — UNION of two legs, scoped to warehouse_locations only:
+  //
+  //  Leg A  — warehouse_inventory rows at known warehouse locations.
+  //           These reflect POST adjustment history and are the authoritative tracked value.
+  //           All lot-identity fields (product_id, batch_no, expiry_date) come from wi directly.
+  //
+  //  Leg B  — stock_batches rows at warehouse locations that have NO matching
+  //           warehouse_inventory row (matched on warehouse + product_id + batch_no + expiry_date).
+  //           These are "untracked" batches; their live remaining_quantity is shown as-is.
+  //
+  // Together the legs cover every scenario:
+  //   • batch with POST adjustment → Leg A (wi.quantity, never double-counted)
+  //   • batch with no adjustment   → Leg B (sb.remaining_quantity)
+  //   • adjustment with no batch   → Leg A (adjustment-only row, never lost)
+  // Country-stock and branch-location rows are excluded because the JOIN starts from
+  // warehouse_locations, which contains only real warehouse IDs.
+  const outerConditions = [];
   const params = [];
 
   if (warehouseId) {
-    conditions.push('warehouse_id = $' + (params.length + 1));
+    outerConditions.push('warehouse_id = $' + (params.length + 1));
     params.push(warehouseId);
   }
   if (productId) {
-    conditions.push('product_id = $' + (params.length + 1));
+    outerConditions.push('product_id = $' + (params.length + 1));
     params.push(productId);
   }
-  if (status) {
-    conditions.push('status = $' + (params.length + 1));
-    params.push(status);
-  }
 
-  let queryText = 'SELECT * FROM warehouse_inventory';
-  if (conditions.length > 0) {
-    queryText += ' WHERE ' + conditions.join(' AND ');
+  // Map 'status' param to derived quantity condition applied on the outer query.
+  let statusCondition;
+  if (status === 'depleted') {
+    statusCondition = 'quantity <= 0';
+  } else if (status === 'low_stock') {
+    statusCondition = 'quantity > 0 AND quantity <= 10';
+  } else if (status === 'available') {
+    statusCondition = 'quantity > 10';
+  } else if (status === 'reserved') {
+    statusCondition = 'reserved_quantity > 0';
+  } else {
+    // Default: only rows with effective stock (covers both legs)
+    statusCondition = 'quantity > 0';
   }
-  queryText += ' ORDER BY warehouse_id ASC, product_name ASC, expiry_date ASC NULLS LAST';
+  outerConditions.push(statusCondition);
+
+  const whereClause = outerConditions.length
+    ? 'WHERE ' + outerConditions.join(' AND ')
+    : '';
+
+  const queryText = `
+    SELECT id, warehouse_id, product_id, product_name, batch_no, expiry_date,
+           quantity, reserved_quantity, unit, reorder_level, status,
+           metadata, created_at, updated_at
+    FROM (
+      -- Leg A: warehouse_inventory rows at known warehouse locations (adjustment-tracked)
+      SELECT
+        wi.id,
+        wi.warehouse_id,
+        wi.product_id,
+        wi.product_name,
+        wi.batch_no,
+        wi.expiry_date,
+        wi.quantity,
+        wi.reserved_quantity,
+        COALESCE(wi.unit, 'units')       AS unit,
+        COALESCE(wi.reorder_level, 0)    AS reorder_level,
+        COALESCE(wi.status, 'available') AS status,
+        wi.metadata,
+        wi.created_at,
+        wi.updated_at
+      FROM warehouse_locations wl
+      JOIN warehouse_inventory wi ON wi.warehouse_id = wl.id
+      WHERE wl.type = 'warehouse'
+
+      UNION ALL
+
+      -- Leg B: stock_batches at warehouse locations with no warehouse_inventory overlay.
+      -- Matched on all lot-identity fields to avoid duplicates with Leg A.
+      SELECT
+        sb.id,
+        sb.location      AS warehouse_id,
+        sb.product_id,
+        sb.description   AS product_name,
+        sb.batch_no,
+        sb.expiry_date,
+        sb.remaining_quantity AS quantity,
+        0                AS reserved_quantity,
+        'units'          AS unit,
+        0                AS reorder_level,
+        CASE
+          WHEN sb.remaining_quantity <= 0  THEN 'depleted'
+          WHEN sb.remaining_quantity <= 10 THEN 'low_stock'
+          ELSE 'available'
+        END              AS status,
+        NULL             AS metadata,
+        sb.import_date   AS created_at,
+        sb.import_date   AS updated_at
+      FROM warehouse_locations wl
+      JOIN stock_batches sb ON sb.location = wl.id
+      WHERE wl.type = 'warehouse'
+        AND COALESCE(sb.status, '') != 'expired'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM warehouse_inventory wi2
+          WHERE wi2.warehouse_id = sb.location
+            AND wi2.product_id   IS NOT DISTINCT FROM sb.product_id
+            AND wi2.batch_no     IS NOT DISTINCT FROM sb.batch_no
+            AND wi2.expiry_date  IS NOT DISTINCT FROM sb.expiry_date
+        )
+    ) combined
+    ${whereClause}
+    ORDER BY warehouse_id ASC, product_name ASC, expiry_date ASC NULLS LAST
+  `;
 
   const rows = await getMany(queryText, params);
   return rows.map(normalizeInventoryRow).filter(Boolean);
