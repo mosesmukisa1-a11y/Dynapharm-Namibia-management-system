@@ -10,7 +10,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { query } from '../api/db.js';
-import { recomputeInventoryBalance } from '../api/services/stockEngine.js';
+import { recomputeInventoryBalance, recomputeLocationBalances } from '../api/services/stockEngine.js';
 
 const BRANCH   = 'test_concurrent_recompute_branch';
 const PRODUCT  = 'CONCURRENT_RECOMPUTE_TEST_PRODUCT';
@@ -131,5 +131,127 @@ describe('recomputeInventoryBalance — concurrent recompute serialisation (DB-b
     expect(Number(rows[0].inward_qty)).toBe(25);
     expect(Number(rows[0].outward_qty)).toBe(9);
     expect(Number(rows[0].closing_qty)).toBe(16);
+  });
+});
+
+// ─── Warehouse concurrent dispatch + receipt ──────────────────────────────────
+//
+// This scenario mirrors what happens in production when a receive-request
+// (api/stock/receive-request.js) and a transfer dispatch
+// (api/stock/transfers.js / api/stock/dispatch/confirm-receipt.js) both
+// complete at roughly the same time for the same warehouse product:
+//
+//   • receive-request commits its transaction, then calls
+//     recomputeLocationBalances('warehouse', warehouseId)
+//   • confirm-receipt commits its transaction, then also calls
+//     recomputeLocationBalances('warehouse', warehouseId)
+//
+// Both fan out into multiple recomputeInventoryBalance calls for the same
+// (warehouse, product, batch) key.  The pg_advisory_xact_lock inside
+// recomputeInventoryBalance serialises them so neither overwrites the other
+// with a stale read.
+
+const WAREHOUSE    = 'test_concurrent_warehouse';
+const WH_PRODUCT   = 'CONCURRENT_WH_TEST_PRODUCT';
+const WH_BATCH     = 'WH-BATCH-CONCURRENT-001';
+const WH_LOC_TYPE  = 'warehouse';
+
+async function cleanupWarehouse() {
+  await query(
+    `DELETE FROM inventory_balances
+     WHERE location_type = $1 AND location_id = $2
+       AND LOWER(TRIM(product_name)) = LOWER(TRIM($3))`,
+    [WH_LOC_TYPE, WAREHOUSE, WH_PRODUCT]
+  );
+  await query(
+    `DELETE FROM stock_movements
+     WHERE LOWER(TRIM(product_name)) = LOWER(TRIM($1))`,
+    [WH_PRODUCT]
+  );
+}
+
+async function insertWhMovement(type, qty, { src, srcType, dst, dstType } = {}) {
+  await query(
+    `INSERT INTO stock_movements
+       (id, product_name, batch_no, quantity, movement_type,
+        source_location, source_location_type,
+        destination_location, destination_location_type,
+        status, movement_date, created_at, updated_at)
+     VALUES (gen_random_uuid()::text, $1, $2, $3, $4,
+             $5, $6, $7, $8,
+             'posted', NOW(), NOW(), NOW())`,
+    [WH_PRODUCT, WH_BATCH, qty, type,
+     src || null, srcType || null, dst || null, dstType || null]
+  );
+}
+
+describe('recomputeLocationBalances — concurrent warehouse dispatch + receipt (DB-backed)', () => {
+  beforeAll(cleanupWarehouse);
+  afterAll(cleanupWarehouse);
+
+  it('two concurrent recomputeLocationBalances calls leave the correct warehouse balance', async () => {
+    // Simulate movements that would be posted by a warehouse receipt (inward)
+    // and a warehouse dispatch (outward) for the same product+batch.
+    //
+    // Inward to WAREHOUSE (warehouse_receipt):
+    //   +20, +10  →  inward total = 30
+    // Outward from WAREHOUSE (warehouse_dispatch):
+    //   -8, -5   →  outward total = 13
+    // Expected closing_qty = 30 - 13 = 17
+    await insertWhMovement('warehouse_receipt',  20, { dst: WAREHOUSE, dstType: WH_LOC_TYPE });
+    await insertWhMovement('warehouse_receipt',  10, { dst: WAREHOUSE, dstType: WH_LOC_TYPE });
+    await insertWhMovement('warehouse_dispatch',  8, { src: WAREHOUSE, srcType: WH_LOC_TYPE });
+    await insertWhMovement('warehouse_dispatch',  5, { src: WAREHOUSE, srcType: WH_LOC_TYPE });
+
+    // Simulate two concurrent callers (receive-request path + dispatch path) both
+    // triggering recomputeLocationBalances for the same warehouse at the same time.
+    await Promise.all([
+      recomputeLocationBalances(WH_LOC_TYPE, WAREHOUSE),
+      recomputeLocationBalances(WH_LOC_TYPE, WAREHOUSE),
+    ]);
+
+    // Exactly one balance row for the product.
+    const { rows } = await query(
+      `SELECT inward_qty, outward_qty, closing_qty
+       FROM inventory_balances
+       WHERE location_type = $1
+         AND location_id   = $2
+         AND LOWER(TRIM(product_name)) = LOWER(TRIM($3))
+         AND COALESCE(batch_no, '') = $4`,
+      [WH_LOC_TYPE, WAREHOUSE, WH_PRODUCT, WH_BATCH]
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(Number(rows[0].inward_qty)).toBe(30);
+    expect(Number(rows[0].outward_qty)).toBe(13);
+    expect(Number(rows[0].closing_qty)).toBe(17);
+  });
+
+  it('a third concurrent wave after more dispatches still lands on the correct balance', async () => {
+    // Add one more inward (+6) and one more outward (-3).
+    // New totals: inward = 36, outward = 16, closing = 20.
+    await insertWhMovement('warehouse_receipt',   6, { dst: WAREHOUSE, dstType: WH_LOC_TYPE });
+    await insertWhMovement('warehouse_dispatch',  3, { src: WAREHOUSE, srcType: WH_LOC_TYPE });
+
+    await Promise.all([
+      recomputeLocationBalances(WH_LOC_TYPE, WAREHOUSE),
+      recomputeLocationBalances(WH_LOC_TYPE, WAREHOUSE),
+      recomputeLocationBalances(WH_LOC_TYPE, WAREHOUSE),
+    ]);
+
+    const { rows } = await query(
+      `SELECT inward_qty, outward_qty, closing_qty
+       FROM inventory_balances
+       WHERE location_type = $1
+         AND location_id   = $2
+         AND LOWER(TRIM(product_name)) = LOWER(TRIM($3))
+         AND COALESCE(batch_no, '') = $4`,
+      [WH_LOC_TYPE, WAREHOUSE, WH_PRODUCT, WH_BATCH]
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(Number(rows[0].inward_qty)).toBe(36);
+    expect(Number(rows[0].outward_qty)).toBe(16);
+    expect(Number(rows[0].closing_qty)).toBe(20);
   });
 });
