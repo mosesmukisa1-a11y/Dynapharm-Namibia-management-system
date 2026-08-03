@@ -1,6 +1,5 @@
 import { applyAuthCors } from '../_lib/auth.js';
 import { getMany } from '../db.js';
-import { syncInventoryBalances } from '../services/inventoryBalanceSync.js';
 import { ALL_BRANCH_IDS, normalizeBranchSlug } from '../_lib/branchUtils.js';
 
 export default async function handler(req, res) {
@@ -19,21 +18,43 @@ export default async function handler(req, res) {
       `SELECT * FROM branch_inventory_batches ORDER BY branch_id, product_name, expiry_date ASC NULLS LAST`
     );
 
-    let bimQuery = `SELECT branch_id, product_name, batch_no, type, SUM(ABS(quantity)) as total_qty, MAX(created_at) as last_date, (array_agg(DISTINCT source_branch_id))[1] as source FROM branch_inventory_movements`;
+    let bimQuery = `SELECT branch_id, product_name, batch_no, type, SUM(quantity) as total_qty, MAX(created_at) as last_date, (array_agg(DISTINCT source_branch_id))[1] as source FROM branch_inventory_movements`;
     const bimParams = [];
     const bimWhere = [];
     if (dateFrom) { bimParams.push(dateFrom); bimWhere.push(`created_at >= $${bimParams.length}::timestamp`); }
-    if (dateTo) { bimParams.push(dateTo + 'T23:59:59'); bimWhere.push(`created_at <= $${bimParams.length}::timestamp`); }
+    if (dateTo) { bimParams.push(dateTo); bimWhere.push(`created_at < ($${bimParams.length}::date + interval '1 day')`); }
     if (branchFilter) { bimParams.push(branchFilter); bimWhere.push(`branch_id = $${bimParams.length}`); }
     if (bimWhere.length) bimQuery += ' WHERE ' + bimWhere.join(' AND ');
     bimQuery += ' GROUP BY branch_id, product_name, batch_no, type';
     const bimAgg = await getMany(bimQuery, bimParams);
 
+    // For opening-qty calculation: fetch individual movements BEFORE date_from.
+    // opening = pre_period_in − pre_period_out, independent of closing_today and date_to.
+    // De-duplication: BIM rows whose `reference` matches an SM `reference_id` are mirrors
+    // (all current write paths write both tables). BIM rows with no SM match are genuine
+    // BIM-only events (historical data before SM dual-write was introduced) and ARE included.
+    let bimPrePeriodRows = [];
+    let smPrePeriodRows  = [];
+    if (dateFrom) {
+      const smPrePs = [dateFrom];
+      let smPreQ = `SELECT movement_type, quantity, source_location, destination_location, reference_id, product_name, batch_no FROM stock_movements WHERE created_at < $1::timestamp`;
+      if (branchFilter) { smPrePs.push(branchFilter); smPrePs.push(branchFilter); smPreQ += ` AND (source_location = $${smPrePs.length - 1} OR destination_location = $${smPrePs.length})`; }
+
+      const bimPrePs = [dateFrom];
+      let bimPreQ = `SELECT branch_id, type, quantity, reference, product_name, batch_no FROM branch_inventory_movements WHERE created_at < $1::timestamp`;
+      if (branchFilter) { bimPrePs.push(branchFilter); bimPreQ += ` AND branch_id = $${bimPrePs.length}`; }
+
+      [smPrePeriodRows, bimPrePeriodRows] = await Promise.all([
+        getMany(smPreQ, smPrePs),
+        getMany(bimPreQ, bimPrePs),
+      ]);
+    }
+
     let smQuery = `SELECT product_name, batch_no, expiry_date, movement_type, quantity, source_location, destination_location, reference_id, notes, created_by, created_at FROM stock_movements`;
     const smParams = [];
     const smWhere = [];
     if (dateFrom) { smParams.push(dateFrom); smWhere.push(`created_at >= $${smParams.length}::timestamp`); }
-    if (dateTo) { smParams.push(dateTo + 'T23:59:59'); smWhere.push(`created_at <= $${smParams.length}::timestamp`); }
+    if (dateTo) { smParams.push(dateTo); smWhere.push(`created_at < ($${smParams.length}::date + interval '1 day')`); }
     if (branchFilter) {
       smParams.push(branchFilter); smParams.push(branchFilter);
       smWhere.push(`(source_location = $${smParams.length - 1} OR destination_location = $${smParams.length})`);
@@ -46,7 +67,7 @@ export default async function handler(req, res) {
     const salesParams = [];
     const salesWhere = [];
     if (dateFrom) { salesParams.push(dateFrom); salesWhere.push(`created_at >= $${salesParams.length}::timestamp`); }
-    if (dateTo) { salesParams.push(dateTo + 'T23:59:59'); salesWhere.push(`created_at <= $${salesParams.length}::timestamp`); }
+    if (dateTo) { salesParams.push(dateTo); salesWhere.push(`created_at < ($${salesParams.length}::date + interval '1 day')`); }
     if (branchFilter) { salesParams.push(branchFilter); salesWhere.push(`branch_id = $${salesParams.length}`); }
     if (salesWhere.length) salesQuery += ' WHERE ' + salesWhere.join(' AND ');
     salesQuery += ' ORDER BY created_at DESC';
@@ -149,13 +170,16 @@ export default async function handler(req, res) {
         const br = ensureBranch(dst);
         smBranches.add(dst);
         br.movements.push(movRecord);
-        // transfer_in OR transfer_out/dispatched FROM a warehouse TO this branch = stock received
-        if (t === 'transfer_in' || t === 'received' || t === 'receive' ||
-            t === 'branch_receipt' ||
-            (t === 'transfer_out' && isWarehouseLoc(src)) ||
-            t === 'dispatched' || t === 'import_received') {
-          br.qty_received += q;
+        // Warehouse dispatch/transfer to branch → qty_transferred_in only (not also qty_received)
+        if ((t === 'transfer_out' && isWarehouseLoc(src)) || t === 'dispatched' ||
+            t === 'warehouse_dispatch' || t === 'country_release') {
           br.qty_transferred_in += q;
+          if (sm.source_location) br.source_warehouse = sm.source_location;
+        }
+        // Direct receipts (branch_receipt, import, transfer_in) → qty_received only
+        else if (t === 'transfer_in' || t === 'received' || t === 'receive' ||
+                 t === 'branch_receipt' || t === 'import_received') {
+          br.qty_received += q;
           if (sm.source_location) br.source_warehouse = sm.source_location;
         }
         else if (t === 'positive_adjustment') br.qty_adjusted += q;
@@ -183,7 +207,8 @@ export default async function handler(req, res) {
       const normBimId = normalizeBranchSlug(agg.branch_id) || norm(agg.branch_id);
       if (smBranches.has(normBimId) || smBranches.has(agg.branch_id)) continue;
       const br = ensureBranch(agg.branch_id);
-      const q = Number(agg.total_qty || 0);
+      // Use Math.abs: direction is encoded in the type, not the stored quantity sign.
+      const q = Math.abs(Number(agg.total_qty || 0));
       const t = (agg.type || '').toLowerCase();
       if (t === 'receive' || t === 'received' || t === 'stock_receipt' || t === 'transfer_in') {
         br.qty_received += q;
@@ -216,19 +241,120 @@ export default async function handler(req, res) {
       }
     }
 
+    // Build per-branch opening-quantity from movements BEFORE date_from.
+    // opening = max(0, net) where net = sum_of_inward − sum_of_outward.
+    // No dependency on closing_today or date_to.
+    //
+    // SM rows: quantities are stored as positive magnitudes; direction comes from
+    //   source/destination location classification.
+    // BIM rows: quantities are SIGNED (e.g. `adjustment` stores newQty−oldQty).
+    //   Direction is determined by the quantity sign — NOT forced via Math.abs —
+    //   so a negative adjustment correctly reduces the opening balance.
+    //
+    // De-duplication: all current write paths write both an SM row and a BIM mirror
+    // that share the same reference/reference_id. SM rows are always included; BIM
+    // rows are included only when their `reference` does NOT match any SM reference_id
+    // (genuine BIM-only events: api/branch/inventory.js adjustments/transfers, and
+    // historical BIM rows from before SM dual-write was introduced).
+    const openingNet = {}; // branch_id → signed net qty (in = positive, out = negative)
+    const ensureOpeningNet = (bid) => { if (!(bid in openingNet)) openingNet[bid] = 0; };
+
+    if (dateFrom) {
+      const isBranchLocO   = (loc) => loc && !loc.includes('warehouse') && loc !== 'country_stock' && loc !== 'branch' && loc !== 'written_off' && loc !== 'customer' && loc !== 'patient';
+      const isWarehouseLocO = (loc) => !loc || loc.includes('warehouse') || loc === 'country_stock';
+
+      // Step 1: classify ALL SM pre-period rows (magnitudes, direction from location).
+      // Build composite dedup keys: reference_id + branch + product + batch, so that
+      // a transfer reference shared by multiple items/branches only suppresses the
+      // specific BIM rows that truly have SM mirrors.
+      const smMirrorKeys = new Set();
+      const smMirrorKey = (branch, ref, product, batch) =>
+        `${ref||''}||${branch||''}||${(product||'').toLowerCase()}||${(batch||'').toLowerCase()}`;
+      for (const sm of smPrePeriodRows) {
+        if (sm.reference_id) {
+          const ref = String(sm.reference_id);
+          const p   = sm.product_name || '';
+          const b   = sm.batch_no    || '';
+          const src = norm(sm.source_location);
+          const dst = norm(sm.destination_location);
+          if (isBranchLocO(dst)) smMirrorKeys.add(smMirrorKey(dst, ref, p, b));
+          if (isBranchLocO(src)) smMirrorKeys.add(smMirrorKey(src, ref, p, b));
+        }
+        const src = norm(sm.source_location);
+        const dst = norm(sm.destination_location);
+        const q   = Math.abs(Number(sm.quantity || 0)); // SM stores positive magnitudes
+        const t   = (sm.movement_type || '').toLowerCase();
+        if (isBranchLocO(dst)) {
+          // Dispatch-type movements only count as inward when the SOURCE is not a branch
+          // (warehouse→branch or country→branch). Branch-to-branch dispatches debit the
+          // source; the matching branch_receipt/transfer_in movement credits the dest.
+          const fromNonBranch = !isBranchLocO(src);
+          if ((t === 'transfer_out' || t === 'dispatched' ||
+               t === 'warehouse_dispatch' || t === 'country_release') && fromNonBranch) {
+            ensureOpeningNet(dst);
+            openingNet[dst] += q;
+          } else if (t === 'transfer_in' || t === 'received' || t === 'receive' ||
+                     t === 'branch_receipt' || t === 'import_received' ||
+                     t === 'positive_adjustment' || t === 'adjustment' ||
+                     t === 'return' || t === 'return_in') {
+            ensureOpeningNet(dst);
+            openingNet[dst] += q;
+          }
+        }
+        if (isBranchLocO(src)) {
+          if (t === 'transfer_out' || t === 'dispatched' || t === 'warehouse_dispatch' ||
+              t === 'write_off' || t === 'field_use' || t === 'negative_adjustment' ||
+              t === 'campaign_free_item' || t === 'sale' || t === 'campaign_sale' ||
+              t.includes('sale') || t === 'dispense' || t === 'prescription_dispense') {
+            ensureOpeningNet(src);
+            openingNet[src] -= q;
+          }
+        }
+      }
+
+      // Step 2: BIM-only events (no matching SM reference_id) — use SIGNED quantity.
+      // In-types contribute +signedQ; out-types contribute −signedQ.
+      // This correctly handles adjustments where signedQ may be negative.
+      const bimInTypes  = new Set(['receive','received','stock_receipt','transfer_in',
+                                   'return','return_in','positive_adjustment','adjustment']);
+      const bimOutTypes = new Set(['sale','walkin_sale','walkin_member_sale','walkin_non_member_sale',
+                                   'walk_in_member_sale','walk_in_non_member_sale','campaign_sale',
+                                   'online_order_sale','online_order_fulfilment','campaign_free_item',
+                                   'dispense','prescription_dispense','field_use',
+                                   'transfer_out','transfer','write_off','negative_adjustment']);
+      for (const row of bimPrePeriodRows) {
+        const ref = row.reference ? String(row.reference) : null;
+        const bid = normalizeBranchSlug(row.branch_id) || norm(row.branch_id);
+        // Only skip this BIM row if there is an SM mirror with the SAME reference,
+        // branch, product, and batch — not just the same reference alone.
+        if (ref && smMirrorKeys.has(smMirrorKey(bid, ref, row.product_name, row.batch_no))) continue;
+        const signedQ   = Number(row.quantity || 0); // preserve sign — do NOT abs()
+        const t         = (row.type || '').toLowerCase();
+        ensureOpeningNet(bid);
+        if (bimInTypes.has(t))       openingNet[bid] += signedQ;  // negative adj reduces opening
+        else if (bimOutTypes.has(t)) openingNet[bid] -= signedQ;  // negative reversal adds back
+      }
+    }
+
     for (const key of Object.keys(branchMap)) {
       const br = branchMap[key];
       const products = new Set();
       br.inventory.forEach(i => products.add(i.product_name));
       br.product_count = products.size;
-      br.opening_qty = Math.max(0, br.closing_qty + br.qty_sold + br.qty_dispensed + br.qty_written_off + br.qty_transferred_out - br.qty_received - br.qty_returned - br.qty_adjusted);
-    }
 
-    // Sync branch_inventory_batches quantities into inventory_balances to keep Stock Manager
-    // consistent with the Branch inventory view. Run asynchronously so response is not delayed.
-    syncInventoryBalances(branchInventory).catch(e =>
-      console.error('[branch/stock-summary] inventory_balances sync error:', e.message)
-    );
+      if (dateFrom) {
+        // opening = signed net of all movements before period_start
+        const net = openingNet[key] ?? 0;
+        br.opening_qty = Math.max(0, net);
+      } else {
+        // No date filter: period == all time.  Derive from period columns (all magnitudes are abs-normalised).
+        br.opening_qty = Math.max(0,
+          br.closing_qty
+          + br.qty_sold + br.qty_dispensed + br.qty_written_off + br.qty_transferred_out
+          - br.qty_received - br.qty_transferred_in - br.qty_returned - br.qty_adjusted
+        );
+      }
+    }
 
     res.json({
       success: true,
