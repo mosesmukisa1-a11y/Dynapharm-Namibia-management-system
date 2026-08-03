@@ -5,13 +5,19 @@
  * Confirms that when a dispatched transfer is cancelled (or rejected):
  *   1. The 'transfer_out' stock_movements created at dispatch time are set to
  *      status='cancelled' — not just the 'reserved' movements from approval.
- *   2. After voiding, recomputeLocationBalances for the source warehouse
+ *   2. After voiding, recomputeLocationBalances for the source warehouse/branch
  *      correctly reflects the restored stock (the in-transit outward deduction
  *      is gone so closing_qty returns to the pre-dispatch level).
  *
  * This is the regression guard for the bug where the cancel block only voided
  * movement_type='reserved' and left 'transfer_out' rows posted, keeping the
  * warehouse balance permanently lowered even after cancellation.
+ *
+ * Also covers branch-to-branch transfers: when from_warehouse is a branch slug
+ * inferLocationType() returns 'branch', so the cancel block restores
+ * branch_inventory_batches instead of stock_batches. The transfer_out movement
+ * voiding and recomputeLocationBalances('branch', ...) call must still work so
+ * the source branch balance is correctly zeroed after cancellation.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { query } from '../api/db.js';
@@ -286,5 +292,138 @@ describe('transfer cancellation — voids in-transit movements so balance resets
     await query(`DELETE FROM stock_movements WHERE reference_id = $1`, [REJECT_TRANSFER_ID]);
     await query(`DELETE FROM stock_transfer_items WHERE transfer_id = $1`, [REJECT_TRANSFER_ID]);
     await query(`DELETE FROM stock_transfers WHERE id = $1`, [REJECT_TRANSFER_ID]);
+  });
+
+  it('voids transfer_out movements and resets source branch balance for branch-to-branch cancellation', async () => {
+    // ── Fixture identifiers ────────────────────────────────────────────────────
+    // The source is a branch slug (no "warehouse" in the name) so that
+    // inferLocationType() returns 'branch' and the cancel block takes the
+    // branch_inventory_batches restore path instead of the stock_batches path.
+    const B2B_TRANSFER_ID = 'test-cancel-void-b2b-transfer-001';
+    const SRC_BRANCH      = 'test_cancel_void_src_branch';
+    const DST_BRANCH      = 'test_cancel_void_dst_branch';
+    const B2B_PRODUCT     = 'TEST_CANCEL_VOID_B2B_PRODUCT';
+    const B2B_BATCH       = 'BATCH-CANCEL-VOID-B2B-001';
+    const B2B_EXPIRY      = '2027-12-31';
+    const B2B_QTY         = 8;
+
+    // ── Pre-test cleanup ───────────────────────────────────────────────────────
+    await query(`DELETE FROM inventory_balances WHERE location_id = $1`, [SRC_BRANCH]);
+    await query(`DELETE FROM branch_inventory_batches WHERE branch_id = $1 AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))`, [SRC_BRANCH, B2B_PRODUCT]);
+    await query(`DELETE FROM stock_movements WHERE reference_id = $1`, [B2B_TRANSFER_ID]);
+    await query(`DELETE FROM stock_transfer_items WHERE transfer_id = $1`, [B2B_TRANSFER_ID]);
+    await query(`DELETE FROM stock_transfers WHERE id = $1`, [B2B_TRANSFER_ID]);
+
+    // ── Seed the branch-to-branch transfer in 'dispatched' state ──────────────
+    // Branch-to-branch transfers use from_warehouse = source branch slug.
+    // inferLocationType(SRC_BRANCH) → 'branch' (no "warehouse" substring),
+    // so the cancel block will restore branch_inventory_batches.
+    await query(
+      `INSERT INTO stock_transfers
+         (id, from_warehouse, to_branch, status, dispatched_by, dispatched_at, created_by, created_at, updated_at)
+       VALUES ($1, $2, $3, 'dispatched', 'Test Admin', NOW(), 'Test Admin', NOW(), NOW())`,
+      [B2B_TRANSFER_ID, SRC_BRANCH, DST_BRANCH]
+    );
+
+    // Transfer item — expiry_date is required for the branch_inventory_batches
+    // restore path (the cancel block guards on batchNo && expiryDate).
+    await query(
+      `INSERT INTO stock_transfer_items
+         (transfer_id, product_id, product_name, batch_no, expiry_date, quantity, quantity_approved)
+       VALUES ($1, $2, $2, $3, $4::date, $5, $5)`,
+      [B2B_TRANSFER_ID, B2B_PRODUCT, B2B_BATCH, B2B_EXPIRY, B2B_QTY]
+    );
+
+    // ── Seed the inventory_balance for the source branch ──────────────────────
+    // Simulates the state after dispatch: an outward deduction of B2B_QTY exists
+    // so closing_qty = 0.  After cancellation the recompute should still yield
+    // closing_qty = 0 (no posted movements remain for this location+product).
+    await query(
+      `INSERT INTO inventory_balances
+         (id, location_type, location_id, product_name, batch_no,
+          inward_qty, outward_qty, closing_qty, updated_at)
+       VALUES
+         (gen_random_uuid()::text, 'branch', $1, $2, $3,
+          $4, $4, 0, NOW())
+       ON CONFLICT DO NOTHING`,
+      [SRC_BRANCH, B2B_PRODUCT, B2B_BATCH, B2B_QTY]
+    );
+
+    // ── Seed the transfer_out movement written at dispatch time ───────────────
+    // source_location_type='branch' mirrors how the dispatch block records it
+    // for branch-sourced transfers.
+    await query(
+      `INSERT INTO stock_movements
+         (id, product_name, batch_no, quantity, movement_type,
+          source_location, source_location_type,
+          destination_location, destination_location_type,
+          reference_id, status, created_at, updated_at)
+       VALUES
+         (gen_random_uuid()::text, $1, $2, $3, 'transfer_out',
+          $4, 'branch',
+          $5, 'branch',
+          $6, 'posted', NOW(), NOW())`,
+      [B2B_PRODUCT, B2B_BATCH, B2B_QTY, SRC_BRANCH, DST_BRANCH, B2B_TRANSFER_ID]
+    );
+
+    // ── Call the PATCH endpoint to cancel the dispatched transfer ──────────────
+    const { req, res, captured } = buildMockReqRes(
+      'PATCH',
+      `/api/stock/transfers?id=${B2B_TRANSFER_ID}`,
+      { status: 'cancelled' },
+      { id: 'test-admin', role: 'admin', fullName: 'Test Admin' }
+    );
+    req.url = `/api/stock/transfers?id=${B2B_TRANSFER_ID}`;
+
+    await handler(req, res);
+
+    expect(captured.status).toBe(200);
+    expect(captured.body?.success).toBe(true);
+
+    // ── Assert 1: transfer_out movements are now cancelled ────────────────────
+    const transitMovements = await query(
+      `SELECT status FROM stock_movements
+       WHERE reference_id = $1 AND movement_type = 'transfer_out'`,
+      [B2B_TRANSFER_ID]
+    );
+    expect(transitMovements.rows.length).toBeGreaterThan(0);
+    for (const row of transitMovements.rows) {
+      expect(row.status).toBe('cancelled');
+    }
+
+    // ── Assert 2: recomputeLocationBalances returns closing_qty = 0 ───────────
+    // All transfer_out movements are now cancelled; no posted outward movements
+    // remain for this source branch + product combination, so the recomputed
+    // balance must show zero across inward, outward, and closing.
+    await recomputeLocationBalances('branch', SRC_BRANCH);
+
+    const balanceRows = await query(
+      `SELECT inward_qty, outward_qty, closing_qty
+       FROM inventory_balances
+       WHERE location_type = 'branch'
+         AND location_id   = $1
+         AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))
+         AND COALESCE(batch_no, '') = $3`,
+      [SRC_BRANCH, B2B_PRODUCT, B2B_BATCH]
+    );
+
+    // With no posted movements the balance row should be absent or all-zero.
+    // recomputeLocationBalances deletes rows that compute to zero so either
+    // outcome (0 rows or 1 all-zero row) confirms the outward deduction is gone.
+    if (balanceRows.rows.length > 0) {
+      expect(Number(balanceRows.rows[0].inward_qty)).toBe(0);
+      expect(Number(balanceRows.rows[0].outward_qty)).toBe(0);
+      expect(Number(balanceRows.rows[0].closing_qty)).toBe(0);
+    } else {
+      // Row was pruned because it was all-zero — balance is correctly zeroed.
+      expect(balanceRows.rows.length).toBe(0);
+    }
+
+    // ── Post-test cleanup ──────────────────────────────────────────────────────
+    await query(`DELETE FROM inventory_balances WHERE location_id = $1`, [SRC_BRANCH]);
+    await query(`DELETE FROM branch_inventory_batches WHERE branch_id = $1 AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))`, [SRC_BRANCH, B2B_PRODUCT]);
+    await query(`DELETE FROM stock_movements WHERE reference_id = $1`, [B2B_TRANSFER_ID]);
+    await query(`DELETE FROM stock_transfer_items WHERE transfer_id = $1`, [B2B_TRANSFER_ID]);
+    await query(`DELETE FROM stock_transfers WHERE id = $1`, [B2B_TRANSFER_ID]);
   });
 });
