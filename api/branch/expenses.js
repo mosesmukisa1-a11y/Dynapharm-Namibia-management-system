@@ -96,8 +96,10 @@ export default async function handler(req, res) {
       const status = searchParams.get('status');
       const limit = parseInt(searchParams.get('limit') || '100', 10);
 
-      // Require branch for unrestricted roles (admin) to prevent all-branches dump.
-      if (!branchScope.enforced && !requestedBranch) {
+      // Require branch only for admin-level roles (admin/gm/director) to prevent
+      // accidental all-branches dumps. Finance and other reporting roles may query
+      // without a branch to get a cross-branch view.
+      if (branchScope.requiresBranchParam && !requestedBranch) {
         return res.status(400).json({ success: false, error: 'branch parameter is required' });
       }
 
