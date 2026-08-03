@@ -255,3 +255,125 @@ describe('recomputeLocationBalances — concurrent warehouse dispatch + receipt 
     expect(Number(rows[0].closing_qty)).toBe(20);
   });
 });
+
+// ─── Country-stock concurrent import receipt + warehouse dispatch ─────────────
+//
+// This scenario mirrors what happens in production when a supplier import
+// (api/stock/import/receive.js) and a GM-approved country→warehouse dispatch
+// (api/stock/transfers.js) both complete at roughly the same time for the
+// same country_stock product:
+//
+//   • receive.js commits its transaction, then calls
+//     recomputeLocationBalances('country', 'country_stock')
+//   • transfers.js (GM approve path) commits its transaction, then also calls
+//     recomputeLocationBalances('country', 'country_stock')
+//
+// Both fan out into multiple recomputeInventoryBalance calls for the same
+// (country_stock, product, batch) key.  The pg_advisory_xact_lock inside
+// recomputeInventoryBalance serialises them so neither overwrites the other
+// with a stale read.
+
+const CS_LOCATION  = 'country_stock';
+const CS_LOC_TYPE  = 'country';
+const CS_PRODUCT   = 'CONCURRENT_CS_TEST_PRODUCT';
+const CS_BATCH     = 'CS-BATCH-CONCURRENT-001';
+
+async function cleanupCountryStock() {
+  await query(
+    `DELETE FROM inventory_balances
+     WHERE location_type = $1 AND location_id = $2
+       AND LOWER(TRIM(product_name)) = LOWER(TRIM($3))`,
+    [CS_LOC_TYPE, CS_LOCATION, CS_PRODUCT]
+  );
+  await query(
+    `DELETE FROM stock_movements
+     WHERE LOWER(TRIM(product_name)) = LOWER(TRIM($1))`,
+    [CS_PRODUCT]
+  );
+}
+
+async function insertCsMovement(type, qty, { src, srcType, dst, dstType } = {}) {
+  await query(
+    `INSERT INTO stock_movements
+       (id, product_name, batch_no, quantity, movement_type,
+        source_location, source_location_type,
+        destination_location, destination_location_type,
+        status, movement_date, created_at, updated_at)
+     VALUES (gen_random_uuid()::text, $1, $2, $3, $4,
+             $5, $6, $7, $8,
+             'posted', NOW(), NOW(), NOW())`,
+    [CS_PRODUCT, CS_BATCH, qty, type,
+     src || null, srcType || null, dst || null, dstType || null]
+  );
+}
+
+describe('recomputeLocationBalances — concurrent country_stock import receipt + warehouse dispatch (DB-backed)', () => {
+  beforeAll(cleanupCountryStock);
+  afterAll(cleanupCountryStock);
+
+  it('two concurrent recomputeLocationBalances calls leave the correct country_stock balance', async () => {
+    // Simulate movements that would be posted by a supplier import receipt (inward)
+    // and a country→warehouse dispatch (outward) for the same product+batch.
+    //
+    // Inward to country_stock (supplier_import_receipt):
+    //   +50, +30  →  inward total = 80
+    // Outward from country_stock (warehouse_dispatch):
+    //   -20, -15  →  outward total = 35
+    // Expected closing_qty = 80 - 35 = 45
+    await insertCsMovement('supplier_import_receipt', 50, { dst: CS_LOCATION, dstType: CS_LOC_TYPE });
+    await insertCsMovement('supplier_import_receipt', 30, { dst: CS_LOCATION, dstType: CS_LOC_TYPE });
+    await insertCsMovement('warehouse_dispatch',      20, { src: CS_LOCATION, srcType: CS_LOC_TYPE });
+    await insertCsMovement('warehouse_dispatch',      15, { src: CS_LOCATION, srcType: CS_LOC_TYPE });
+
+    // Simulate two concurrent callers (import-receive path + transfer-approve path)
+    // both triggering recomputeLocationBalances for country_stock at the same time.
+    await Promise.all([
+      recomputeLocationBalances(CS_LOC_TYPE, CS_LOCATION),
+      recomputeLocationBalances(CS_LOC_TYPE, CS_LOCATION),
+    ]);
+
+    // Exactly one balance row for the product.
+    const { rows } = await query(
+      `SELECT inward_qty, outward_qty, closing_qty
+       FROM inventory_balances
+       WHERE location_type = $1
+         AND location_id   = $2
+         AND LOWER(TRIM(product_name)) = LOWER(TRIM($3))
+         AND COALESCE(batch_no, '') = $4`,
+      [CS_LOC_TYPE, CS_LOCATION, CS_PRODUCT, CS_BATCH]
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(Number(rows[0].inward_qty)).toBe(80);
+    expect(Number(rows[0].outward_qty)).toBe(35);
+    expect(Number(rows[0].closing_qty)).toBe(45);
+  });
+
+  it('a third concurrent wave after more imports and dispatches still lands on the correct balance', async () => {
+    // Add one more import receipt (+12) and one more warehouse dispatch (-7).
+    // New totals: inward = 92, outward = 42, closing = 50.
+    await insertCsMovement('supplier_import_receipt', 12, { dst: CS_LOCATION, dstType: CS_LOC_TYPE });
+    await insertCsMovement('warehouse_dispatch',       7, { src: CS_LOCATION, srcType: CS_LOC_TYPE });
+
+    await Promise.all([
+      recomputeLocationBalances(CS_LOC_TYPE, CS_LOCATION),
+      recomputeLocationBalances(CS_LOC_TYPE, CS_LOCATION),
+      recomputeLocationBalances(CS_LOC_TYPE, CS_LOCATION),
+    ]);
+
+    const { rows } = await query(
+      `SELECT inward_qty, outward_qty, closing_qty
+       FROM inventory_balances
+       WHERE location_type = $1
+         AND location_id   = $2
+         AND LOWER(TRIM(product_name)) = LOWER(TRIM($3))
+         AND COALESCE(batch_no, '') = $4`,
+      [CS_LOC_TYPE, CS_LOCATION, CS_PRODUCT, CS_BATCH]
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(Number(rows[0].inward_qty)).toBe(92);
+    expect(Number(rows[0].outward_qty)).toBe(42);
+    expect(Number(rows[0].closing_qty)).toBe(50);
+  });
+});
