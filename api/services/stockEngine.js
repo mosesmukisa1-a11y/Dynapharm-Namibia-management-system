@@ -477,11 +477,16 @@ export async function getClosingStock(params) {
  * @param {string} locationId   - e.g. 'oshakati_branch'
  */
 export async function recomputeLocationBalances(locationType, locationId) {
+  // Discover ALL product+batch combinations that have EVER had a movement at
+  // this location, regardless of status.  The recomputeInventoryBalance call
+  // below already filters on status IN ('posted','approved'), so products whose
+  // only remaining movements are cancelled/voided will correctly compute to
+  // inward=0 / outward=0 / closing=0 and the stale balance row will be zeroed.
+  // Filtering by status here would skip those products and leave stale balances.
   const result = await query(
     `SELECT DISTINCT product_name, COALESCE(batch_no,'') as batch_no, expiry_date
      FROM stock_movements
-     WHERE status IN ('posted', 'approved')
-       AND (
+     WHERE (
          (source_location_type = $1 AND source_location = $2)
          OR (destination_location_type = $1 AND destination_location = $2)
          OR (source_location_type IS NULL AND source_location = $2)

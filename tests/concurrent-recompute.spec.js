@@ -503,3 +503,168 @@ describe('recomputeLocationBalances — concurrent in_transit transfer in + bran
     expect(Number(rows[0].closing_qty)).toBe(27);
   });
 });
+
+// ─── In-transit cancellation path ────────────────────────────────────────────
+//
+// When a warehouse cancels a dispatched transfer, the system must void the
+// associated stock movements (status → 'cancelled').  A subsequent
+// recomputeLocationBalances call should then reflect zero closing_qty for
+// the in_transit location, because recomputeInventoryBalance only counts
+// movements with status IN ('posted', 'approved').
+//
+// If the cancellation handler omits the void step — or sets the wrong status
+// — the in_transit balance will permanently overstate goods in flight.
+//
+// This block uses its own isolated namespace (IT_CANCEL_*) to avoid
+// interfering with the cumulative movement totals in the concurrent tests above.
+
+const IT_CANCEL_LOCATION = 'in_transit_cancel_test_001';
+const IT_CANCEL_PRODUCT  = 'IT_CANCEL_TEST_PRODUCT';
+const IT_CANCEL_BATCH    = 'IT-CANCEL-BATCH-001';
+
+async function cleanupInTransitCancel() {
+  await query(
+    `DELETE FROM inventory_balances
+     WHERE location_type = $1 AND location_id = $2
+       AND LOWER(TRIM(product_name)) = LOWER(TRIM($3))`,
+    [IT_LOC_TYPE, IT_CANCEL_LOCATION, IT_CANCEL_PRODUCT]
+  );
+  await query(
+    `DELETE FROM stock_movements
+     WHERE LOWER(TRIM(product_name)) = LOWER(TRIM($1))`,
+    [IT_CANCEL_PRODUCT]
+  );
+}
+
+describe('recomputeLocationBalances — in_transit balance drops to zero after cancellation (DB-backed)', () => {
+  beforeAll(cleanupInTransitCancel);
+  afterAll(cleanupInTransitCancel);
+
+  it('cancelling in_transit movements causes recompute to return closing_qty = 0', async () => {
+    // Step 1 — insert two inward movements (transfer_in → in_transit).
+    // Total inward = 30, outward = 0, closing = 30.
+    await query(
+      `INSERT INTO stock_movements
+         (id, product_name, batch_no, quantity, movement_type,
+          source_location, source_location_type,
+          destination_location, destination_location_type,
+          status, movement_date, created_at, updated_at)
+       VALUES
+         (gen_random_uuid()::text, $1, $2, 20, 'transfer_in',
+          null, null, $3, $4,
+          'posted', NOW(), NOW(), NOW()),
+         (gen_random_uuid()::text, $1, $2, 10, 'transfer_in',
+          null, null, $3, $4,
+          'posted', NOW(), NOW(), NOW())`,
+      [IT_CANCEL_PRODUCT, IT_CANCEL_BATCH, IT_CANCEL_LOCATION, IT_LOC_TYPE]
+    );
+
+    // Step 2 — recompute; balance should reflect the two inward movements.
+    await recomputeLocationBalances(IT_LOC_TYPE, IT_CANCEL_LOCATION);
+
+    const { rows: before } = await query(
+      `SELECT inward_qty, outward_qty, closing_qty
+       FROM inventory_balances
+       WHERE location_type = $1
+         AND location_id   = $2
+         AND LOWER(TRIM(product_name)) = LOWER(TRIM($3))
+         AND COALESCE(batch_no, '') = $4`,
+      [IT_LOC_TYPE, IT_CANCEL_LOCATION, IT_CANCEL_PRODUCT, IT_CANCEL_BATCH]
+    );
+
+    expect(before).toHaveLength(1);
+    expect(Number(before[0].inward_qty)).toBe(30);
+    expect(Number(before[0].closing_qty)).toBe(30);
+
+    // Step 3 — void the movements by setting their status to 'cancelled',
+    // mirroring what the transfer cancellation handler does in transfers.js.
+    await query(
+      `UPDATE stock_movements
+       SET status = 'cancelled', updated_at = NOW()
+       WHERE LOWER(TRIM(product_name)) = LOWER(TRIM($1))
+         AND destination_location = $2
+         AND status IN ('posted', 'approved')`,
+      [IT_CANCEL_PRODUCT, IT_CANCEL_LOCATION]
+    );
+
+    // Step 4 — recompute again; cancelled movements must not be counted.
+    await recomputeLocationBalances(IT_LOC_TYPE, IT_CANCEL_LOCATION);
+
+    const { rows: after } = await query(
+      `SELECT inward_qty, outward_qty, closing_qty
+       FROM inventory_balances
+       WHERE location_type = $1
+         AND location_id   = $2
+         AND LOWER(TRIM(product_name)) = LOWER(TRIM($3))
+         AND COALESCE(batch_no, '') = $4`,
+      [IT_LOC_TYPE, IT_CANCEL_LOCATION, IT_CANCEL_PRODUCT, IT_CANCEL_BATCH]
+    );
+
+    expect(after).toHaveLength(1);
+    expect(Number(after[0].inward_qty)).toBe(0);
+    expect(Number(after[0].outward_qty)).toBe(0);
+    expect(Number(after[0].closing_qty)).toBe(0);
+  });
+
+  it('partially cancelling in_transit movements reduces closing_qty proportionally', async () => {
+    // Insert three inward movements: 10 + 15 + 5 = 30 total.
+    await query(
+      `INSERT INTO stock_movements
+         (id, product_name, batch_no, quantity, movement_type,
+          source_location, source_location_type,
+          destination_location, destination_location_type,
+          status, movement_date, created_at, updated_at)
+       VALUES
+         (gen_random_uuid()::text, $1, $2, 10, 'transfer_in',
+          null, null, $3, $4,
+          'posted', NOW(), NOW(), NOW()),
+         (gen_random_uuid()::text, $1, $2, 15, 'transfer_in',
+          null, null, $3, $4,
+          'posted', NOW(), NOW(), NOW()),
+         (gen_random_uuid()::text, $1, $2,  5, 'transfer_in',
+          null, null, $3, $4,
+          'posted', NOW(), NOW(), NOW())`,
+      [IT_CANCEL_PRODUCT, IT_CANCEL_BATCH, IT_CANCEL_LOCATION, IT_LOC_TYPE]
+    );
+
+    // Recompute: balance is now 30 (from the three new movements; cancelled
+    // ones from the previous test are already excluded).
+    await recomputeLocationBalances(IT_LOC_TYPE, IT_CANCEL_LOCATION);
+
+    const { rows: full } = await query(
+      `SELECT closing_qty FROM inventory_balances
+       WHERE location_type = $1 AND location_id = $2
+         AND LOWER(TRIM(product_name)) = LOWER(TRIM($3))
+         AND COALESCE(batch_no, '') = $4`,
+      [IT_LOC_TYPE, IT_CANCEL_LOCATION, IT_CANCEL_PRODUCT, IT_CANCEL_BATCH]
+    );
+    expect(Number(full[0].closing_qty)).toBe(30);
+
+    // Cancel only the qty=15 movement, leaving 10 + 5 = 15 posted.
+    await query(
+      `UPDATE stock_movements
+       SET status = 'cancelled', updated_at = NOW()
+       WHERE LOWER(TRIM(product_name)) = LOWER(TRIM($1))
+         AND destination_location = $2
+         AND quantity = 15
+         AND status IN ('posted', 'approved')`,
+      [IT_CANCEL_PRODUCT, IT_CANCEL_LOCATION]
+    );
+
+    await recomputeLocationBalances(IT_LOC_TYPE, IT_CANCEL_LOCATION);
+
+    const { rows: partial } = await query(
+      `SELECT inward_qty, outward_qty, closing_qty
+       FROM inventory_balances
+       WHERE location_type = $1 AND location_id = $2
+         AND LOWER(TRIM(product_name)) = LOWER(TRIM($3))
+         AND COALESCE(batch_no, '') = $4`,
+      [IT_LOC_TYPE, IT_CANCEL_LOCATION, IT_CANCEL_PRODUCT, IT_CANCEL_BATCH]
+    );
+
+    expect(partial).toHaveLength(1);
+    expect(Number(partial[0].inward_qty)).toBe(15);  // 10 + 5
+    expect(Number(partial[0].outward_qty)).toBe(0);
+    expect(Number(partial[0].closing_qty)).toBe(15);
+  });
+});
