@@ -1401,6 +1401,27 @@ export default async function handler(req, res) {
                 [id]
               );
 
+              // Void the 'transfer_out' stock_movements written at dispatch time.
+              // These represent goods physically in transit; without this cancellation
+              // the movements remain 'posted' and recomputeLocationBalances will
+              // continue to see an outward deduction on the source location — preventing
+              // the balance from ever returning to its pre-dispatch value even after the
+              // transfer is fully cancelled.
+              await client.query(
+                `UPDATE stock_movements SET status='cancelled', updated_at=NOW()
+                 WHERE reference_id=$1 AND movement_type='transfer_out' AND status='posted'`,
+                [id]
+              );
+
+              // Recompute the source location's balance now that both the reservation
+              // and any in-transit deductions have been voided.
+              if (sourceWarehouse) {
+                const cancNormSrc = normalizeBranchSlug(sourceWarehouse) || sourceWarehouse;
+                recomputeLocationBalances(cancSrcType, cancNormSrc).catch(e =>
+                  console.error(`[transfers] recompute after cancel failed for ${cancNormSrc}:`, e.message)
+                );
+              }
+
               console.log(`[transfers] stock reservation restored for ${transfer.status} transfer ${id} (was ${previousStatus})`);
             }
           }
