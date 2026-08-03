@@ -3,7 +3,7 @@
  * Single source of truth: stock_movements
  * Fast-read cache: inventory_balances
  */
-import { query, getOne, publishRealtimeEvent } from '../db.js';
+import { query, getOne, withTransaction, publishRealtimeEvent } from '../db.js';
 
 // Movement types that INCREASE stock at the destination location
 export const INWARD_TYPES = new Set([
@@ -62,6 +62,24 @@ function generateId(prefix) {
 }
 
 /**
+ * Derive a stable signed 32-bit integer key for a PostgreSQL advisory lock
+ * from a (locationId, productName, batchNo) tuple.
+ *
+ * Uses FNV-1a so the distribution is good enough to avoid collisions between
+ * the small set of location+product combinations that exist in practice.
+ * The result fits within int8 (PostgreSQL pg_advisory_xact_lock accepts int8).
+ */
+function advisoryLockKey(locationId, productName, batchNo) {
+  const str = `IB|${(locationId || '').toLowerCase()}|${(productName || '').toLowerCase()}|${batchNo || ''}`;
+  let h = 0x811c9dc5; // FNV-1a 32-bit offset basis
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193); // FNV prime, 32-bit multiply
+  }
+  return h | 0; // signed 32-bit integer
+}
+
+/**
  * Recompute inventory_balances for a given location + product + batch.
  * Reads ALL posted stock_movements for that product+batch, then sums
  * inward/outward relative to the specified location.
@@ -76,110 +94,131 @@ function generateId(prefix) {
 export async function recomputeInventoryBalance(key) {
   const { locationType, locationId, productName, batchNo, expiryDate } = key;
   const batchNoVal = batchNo || '';
-  let expiryVal = expiryDate || null;
 
-  // Fetch ALL finalized movements for this product+batch.
-  // Include 'approved' as well as 'posted' because write-offs approved by GM
-  // land in status='approved' (not 'posted') and must count as outward stock.
-  const result = await query(
-    `SELECT movement_type, quantity, source_location, destination_location,
-            source_location_type, destination_location_type,
-            unit_dp, unit_cif, expiry_date, created_at
-     FROM stock_movements
-     WHERE status IN ('posted', 'approved')
-       AND LOWER(TRIM(product_name)) = LOWER(TRIM($1))
-       AND COALESCE(batch_no, '') = $2
-     ORDER BY created_at ASC`,
-    [productName, batchNoVal]
-  );
+  // Serialize concurrent recomputes for the same (locationId, productName, batchNo).
+  //
+  // Without serialisation, two concurrent calls can interleave like this:
+  //   T1 reads movements → computes closing=8 → T2 reads movements → T2 computes
+  //   closing=6 → T1 writes closing=8 → T2 writes closing=6 (stale, overwrites T1).
+  //
+  // Fix: acquire a transaction-level advisory lock keyed by the tuple before
+  // reading movements.  pg_advisory_xact_lock blocks until the lock is available
+  // and auto-releases on COMMIT/ROLLBACK — no manual unlock needed and no risk
+  // of lock leaks if the function throws.
+  //
+  // We run everything inside a single transaction so the movement read and the
+  // upsert are consistent, and the advisory lock is scoped to that transaction.
+  const lockKey = advisoryLockKey(locationId, productName, batchNoVal);
 
-  let inwardQty = 0;
-  let outwardQty = 0;
-  let unitDP = 0;
-  let unitCIF = 0;
-  let lastMovementDate = null;
+  await withTransaction(async (client) => {
+    // Block until no other recompute holds the lock for this key.
+    await client.query(`SELECT pg_advisory_xact_lock($1)`, [lockKey]);
 
-  for (const m of result.rows) {
-    if (!expiryVal && m.expiry_date) {
-      expiryVal = m.expiry_date;
-    }
-    const srcType = m.source_location_type || inferLocationType(m.source_location);
-    const dstType = m.destination_location_type || inferLocationType(m.destination_location);
+    let expiryVal = expiryDate || null;
 
-    const qty = Number(m.quantity || 0);
-    if (m.unit_dp) unitDP = Number(m.unit_dp);
-    if (m.unit_cif) unitCIF = Number(m.unit_cif);
-
-    const isInbound = dstType === locationType &&
-      m.destination_location === locationId &&
-      INWARD_TYPES.has(m.movement_type);
-
-    const isOutbound = srcType === locationType &&
-      m.source_location === locationId &&
-      OUTWARD_TYPES.has(m.movement_type);
-
-    if (isInbound) {
-      inwardQty += qty;
-      lastMovementDate = m.created_at;
-    }
-    if (isOutbound) {
-      outwardQty += qty;
-      lastMovementDate = m.created_at;
-    }
-  }
-
-  const closingQty = inwardQty - outwardQty;
-  const stockValueDP = closingQty * (unitDP || 0);
-  const stockValueCIF = closingQty * (unitCIF || 0);
-
-  // Upsert keyed by (location_type, location_id, product_name, batch_no).
-  // expiry_date is metadata, NOT part of the key — prevents duplicates when
-  // the seed stores null and recompute later sees an actual expiry_date.
-  const existing = await getOne(
-    `SELECT id FROM inventory_balances
-     WHERE location_type = $1
-       AND location_id = $2
-       AND LOWER(TRIM(product_name)) = LOWER(TRIM($3))
-       AND COALESCE(batch_no, '') = $4`,
-    [locationType, locationId, productName, batchNoVal]
-  );
-
-  if (existing) {
-    await query(
-      `UPDATE inventory_balances
-       SET inward_qty = $1,
-           outward_qty = $2,
-           closing_qty = $3,
-           unit_dp = COALESCE($4, unit_dp),
-           unit_cif = COALESCE($5, unit_cif),
-           stock_value_dp = $6,
-           stock_value_cif = $7,
-           last_movement_date = $8,
-           expiry_date = COALESCE($9::date, expiry_date),
-           updated_at = NOW()
-       WHERE id = $10`,
-      [inwardQty, outwardQty, closingQty,
-       unitDP || null, unitCIF || null,
-       stockValueDP, stockValueCIF,
-       lastMovementDate, expiryVal, existing.id]
+    // Fetch ALL finalized movements for this product+batch.
+    // Include 'approved' as well as 'posted' because write-offs approved by GM
+    // land in status='approved' (not 'posted') and must count as outward stock.
+    const result = await client.query(
+      `SELECT movement_type, quantity, source_location, destination_location,
+              source_location_type, destination_location_type,
+              unit_dp, unit_cif, expiry_date, created_at
+       FROM stock_movements
+       WHERE status IN ('posted', 'approved')
+         AND LOWER(TRIM(product_name)) = LOWER(TRIM($1))
+         AND COALESCE(batch_no, '') = $2
+       ORDER BY created_at ASC`,
+      [productName, batchNoVal]
     );
-  } else {
-    const balId = generateId('BAL');
-    await query(
-      `INSERT INTO inventory_balances
-         (id, location_type, location_id, product_name, batch_no, expiry_date,
-          opening_qty, inward_qty, outward_qty, closing_qty,
-          unit_dp, unit_cif, stock_value_dp, stock_value_cif,
-          last_movement_date, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6::date, 0,$7,$8,$9,$10,$11,$12,$13,$14,NOW())`,
-      [balId, locationType, locationId, productName, batchNoVal, expiryVal,
-       inwardQty, outwardQty, closingQty,
-       unitDP || null, unitCIF || null,
-       stockValueDP, stockValueCIF,
-       lastMovementDate]
-    );
-  }
 
+    let inwardQty = 0;
+    let outwardQty = 0;
+    let unitDP = 0;
+    let unitCIF = 0;
+    let lastMovementDate = null;
+
+    for (const m of result.rows) {
+      if (!expiryVal && m.expiry_date) {
+        expiryVal = m.expiry_date;
+      }
+      const srcType = m.source_location_type || inferLocationType(m.source_location);
+      const dstType = m.destination_location_type || inferLocationType(m.destination_location);
+
+      const qty = Number(m.quantity || 0);
+      if (m.unit_dp) unitDP = Number(m.unit_dp);
+      if (m.unit_cif) unitCIF = Number(m.unit_cif);
+
+      const isInbound = dstType === locationType &&
+        m.destination_location === locationId &&
+        INWARD_TYPES.has(m.movement_type);
+
+      const isOutbound = srcType === locationType &&
+        m.source_location === locationId &&
+        OUTWARD_TYPES.has(m.movement_type);
+
+      if (isInbound) {
+        inwardQty += qty;
+        lastMovementDate = m.created_at;
+      }
+      if (isOutbound) {
+        outwardQty += qty;
+        lastMovementDate = m.created_at;
+      }
+    }
+
+    const closingQty = inwardQty - outwardQty;
+    const stockValueDP = closingQty * (unitDP || 0);
+    const stockValueCIF = closingQty * (unitCIF || 0);
+
+    // Upsert keyed by (location_type, location_id, product_name, batch_no).
+    // expiry_date is metadata, NOT part of the key — prevents duplicates when
+    // the seed stores null and recompute later sees an actual expiry_date.
+    const existingRow = await client.query(
+      `SELECT id FROM inventory_balances
+       WHERE location_type = $1
+         AND location_id = $2
+         AND LOWER(TRIM(product_name)) = LOWER(TRIM($3))
+         AND COALESCE(batch_no, '') = $4`,
+      [locationType, locationId, productName, batchNoVal]
+    );
+    const existing = existingRow.rows[0] || null;
+
+    if (existing) {
+      await client.query(
+        `UPDATE inventory_balances
+         SET inward_qty = $1,
+             outward_qty = $2,
+             closing_qty = $3,
+             unit_dp = COALESCE($4, unit_dp),
+             unit_cif = COALESCE($5, unit_cif),
+             stock_value_dp = $6,
+             stock_value_cif = $7,
+             last_movement_date = $8,
+             expiry_date = COALESCE($9::date, expiry_date),
+             updated_at = NOW()
+         WHERE id = $10`,
+        [inwardQty, outwardQty, closingQty,
+         unitDP || null, unitCIF || null,
+         stockValueDP, stockValueCIF,
+         lastMovementDate, expiryVal, existing.id]
+      );
+    } else {
+      const balId = generateId('BAL');
+      await client.query(
+        `INSERT INTO inventory_balances
+           (id, location_type, location_id, product_name, batch_no, expiry_date,
+            opening_qty, inward_qty, outward_qty, closing_qty,
+            unit_dp, unit_cif, stock_value_dp, stock_value_cif,
+            last_movement_date, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6::date, 0,$7,$8,$9,$10,$11,$12,$13,$14,NOW())`,
+        [balId, locationType, locationId, productName, batchNoVal, expiryVal,
+         inwardQty, outwardQty, closingQty,
+         unitDP || null, unitCIF || null,
+         stockValueDP, stockValueCIF,
+         lastMovementDate]
+      );
+    }
+  });
 }
 
 /**
