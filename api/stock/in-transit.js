@@ -48,14 +48,14 @@ export default async function handler(req, res) {
          st.dispatch_notes,
          st.dispatched_by,
          st.dispatched_at,
-         st.expected_arrival,
          st.gm_approved_by,
          st.created_by,
          st.created_at,
          st.updated_at,
          EXTRACT(EPOCH FROM (NOW() - st.updated_at)) / 3600 AS hours_in_flight,
-         dn.barcode      AS dispatch_barcode,
-         dn.id           AS dispatch_note_id
+         dn.barcode           AS dispatch_barcode,
+         dn.id                AS dispatch_note_id,
+         dn.expected_arrival  AS expected_arrival
        FROM stock_transfers st
        LEFT JOIN dispatch_notes dn ON dn.transfer_id = st.id
        WHERE ${conditions.join(' AND ')}
@@ -87,7 +87,7 @@ export default async function handler(req, res) {
     const enriched = transfers.map(t => {
       const items = itemsByTransfer.get(t.id) || [];
       const totalQty  = items.reduce((s, i) => s + Number(i.quantity || 0), 0);
-      const hoursInFlight = parseFloat((t.hours_in_flight || 0).toFixed(1));
+      const hoursInFlight = parseFloat(Number(t.hours_in_flight || 0).toFixed(1));
       const isOverdue = hoursInFlight > 24;
 
       return {
