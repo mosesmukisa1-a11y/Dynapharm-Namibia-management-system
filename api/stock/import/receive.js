@@ -81,6 +81,11 @@ export default async function handler(req, res) {
     // 2. Create or increment stock_batches row at country_stock
     const batchId = `SB-IMP-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
     const barcode = `BC-IMP-${batchNo}-${Date.now().toString(36).toUpperCase()}`;
+    // Compute totals in JS — pg sends bare $N params as unknown type, so
+    // arithmetic expressions like $11*$6 in the VALUES clause fail with
+    // "operator is not unique: unknown * unknown" when either operand is null.
+    const dpcTotalValue = unitDP ? unitDP * qty : null;
+    const cifTotalValue = unitCIF ? unitCIF * qty : null;
     await query(
       `INSERT INTO stock_batches
          (id, barcode, description, batch_no, expiry_date,
@@ -91,7 +96,7 @@ export default async function handler(req, res) {
           cif_unit_cost, cif_total_value,
           unit_price, notes, created_at, updated_at)
        VALUES ($1,$2,$3,$4,$5::date,$6,$6,0,NOW(),'country_stock','available',
-               $7,$8,$9,$10,$11,$11*$6,$12,$12*$6,$11,$13,NOW(),NOW())
+               $7,$8,$9,$10,$11,$12,$13,$14,$11,$15,NOW(),NOW())
        ON CONFLICT DO NOTHING`,
       [
         batchId, barcode, productName, batchNo, item.expiryDate,
@@ -101,7 +106,9 @@ export default async function handler(req, res) {
         refId,
         supplierImportId || null,
         unitDP || null,
+        dpcTotalValue,
         unitCIF || null,
+        cifTotalValue,
         notes || null,
       ]
     );
