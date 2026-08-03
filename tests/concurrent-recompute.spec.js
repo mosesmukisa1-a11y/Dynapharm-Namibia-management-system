@@ -377,3 +377,129 @@ describe('recomputeLocationBalances — concurrent country_stock import receipt 
     expect(Number(rows[0].closing_qty)).toBe(50);
   });
 });
+
+// ─── In-transit concurrent recompute ─────────────────────────────────────────
+//
+// The in_transit location type represents goods physically between a warehouse
+// and a branch (the stock_transfers.status column reaches 'in_transit' or
+// 'dispatched' during this window).
+//
+// Concurrent recomputes can race when two calls both trigger
+// recomputeLocationBalances('in_transit', transitId) — for example if a
+// warehouse marks a consignment dispatched while the branch simultaneously
+// confirms partial receipt.
+//
+// Movement type semantics relative to the in_transit location:
+//   • transfer_in  — goods enter the transit pipeline (destination=in_transit);
+//                    this is in INWARD_TYPES.
+//   • branch_receipt — goods leave transit upon delivery to branch
+//                      (source=in_transit); this is in OUTWARD_TYPES.
+//
+// Note: transfer_out is in OUTWARD_TYPES (outward from the *source* warehouse)
+// not INWARD_TYPES, so it cannot count as inward to in_transit in the engine.
+// transfer_in is the correct inward counterpart.
+
+const IT_LOCATION  = 'in_transit_test_001';
+const IT_LOC_TYPE  = 'in_transit';
+const IT_PRODUCT   = 'CONCURRENT_IT_TEST_PRODUCT';
+const IT_BATCH     = 'IT-BATCH-CONCURRENT-001';
+
+async function cleanupInTransit() {
+  await query(
+    `DELETE FROM inventory_balances
+     WHERE location_type = $1 AND location_id = $2
+       AND LOWER(TRIM(product_name)) = LOWER(TRIM($3))`,
+    [IT_LOC_TYPE, IT_LOCATION, IT_PRODUCT]
+  );
+  await query(
+    `DELETE FROM stock_movements
+     WHERE LOWER(TRIM(product_name)) = LOWER(TRIM($1))`,
+    [IT_PRODUCT]
+  );
+}
+
+async function insertItMovement(type, qty, { src, srcType, dst, dstType } = {}) {
+  await query(
+    `INSERT INTO stock_movements
+       (id, product_name, batch_no, quantity, movement_type,
+        source_location, source_location_type,
+        destination_location, destination_location_type,
+        status, movement_date, created_at, updated_at)
+     VALUES (gen_random_uuid()::text, $1, $2, $3, $4,
+             $5, $6, $7, $8,
+             'posted', NOW(), NOW(), NOW())`,
+    [IT_PRODUCT, IT_BATCH, qty, type,
+     src || null, srcType || null, dst || null, dstType || null]
+  );
+}
+
+describe('recomputeLocationBalances — concurrent in_transit transfer in + branch receipt (DB-backed)', () => {
+  beforeAll(cleanupInTransit);
+  afterAll(cleanupInTransit);
+
+  it('two concurrent recomputeLocationBalances calls leave the correct in_transit balance', async () => {
+    // Simulate movements that would be posted when goods enter and leave
+    // the in_transit pipeline for the same product+batch.
+    //
+    // Inward to in_transit (transfer_in — INWARD_TYPES):
+    //   +25, +15  →  inward total = 40
+    // Outward from in_transit (branch_receipt — OUTWARD_TYPES when source=in_transit):
+    //   -10, -6   →  outward total = 16
+    // Expected closing_qty = 40 - 16 = 24
+    await insertItMovement('transfer_in',    25, { dst: IT_LOCATION, dstType: IT_LOC_TYPE });
+    await insertItMovement('transfer_in',    15, { dst: IT_LOCATION, dstType: IT_LOC_TYPE });
+    await insertItMovement('branch_receipt', 10, { src: IT_LOCATION, srcType: IT_LOC_TYPE });
+    await insertItMovement('branch_receipt',  6, { src: IT_LOCATION, srcType: IT_LOC_TYPE });
+
+    // Simulate two concurrent callers both triggering recomputeLocationBalances
+    // for the same in_transit ID at the same time.
+    await Promise.all([
+      recomputeLocationBalances(IT_LOC_TYPE, IT_LOCATION),
+      recomputeLocationBalances(IT_LOC_TYPE, IT_LOCATION),
+    ]);
+
+    // Exactly one balance row for the product.
+    const { rows } = await query(
+      `SELECT inward_qty, outward_qty, closing_qty
+       FROM inventory_balances
+       WHERE location_type = $1
+         AND location_id   = $2
+         AND LOWER(TRIM(product_name)) = LOWER(TRIM($3))
+         AND COALESCE(batch_no, '') = $4`,
+      [IT_LOC_TYPE, IT_LOCATION, IT_PRODUCT, IT_BATCH]
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(Number(rows[0].inward_qty)).toBe(40);
+    expect(Number(rows[0].outward_qty)).toBe(16);
+    expect(Number(rows[0].closing_qty)).toBe(24);
+  });
+
+  it('a third concurrent wave after more in-transit movements still lands on the correct balance', async () => {
+    // Add one more transfer_in (+8) and one more branch_receipt (-5).
+    // New totals: inward = 48, outward = 21, closing = 27.
+    await insertItMovement('transfer_in',    8, { dst: IT_LOCATION, dstType: IT_LOC_TYPE });
+    await insertItMovement('branch_receipt', 5, { src: IT_LOCATION, srcType: IT_LOC_TYPE });
+
+    await Promise.all([
+      recomputeLocationBalances(IT_LOC_TYPE, IT_LOCATION),
+      recomputeLocationBalances(IT_LOC_TYPE, IT_LOCATION),
+      recomputeLocationBalances(IT_LOC_TYPE, IT_LOCATION),
+    ]);
+
+    const { rows } = await query(
+      `SELECT inward_qty, outward_qty, closing_qty
+       FROM inventory_balances
+       WHERE location_type = $1
+         AND location_id   = $2
+         AND LOWER(TRIM(product_name)) = LOWER(TRIM($3))
+         AND COALESCE(batch_no, '') = $4`,
+      [IT_LOC_TYPE, IT_LOCATION, IT_PRODUCT, IT_BATCH]
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(Number(rows[0].inward_qty)).toBe(48);
+    expect(Number(rows[0].outward_qty)).toBe(21);
+    expect(Number(rows[0].closing_qty)).toBe(27);
+  });
+});
