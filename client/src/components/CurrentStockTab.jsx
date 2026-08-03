@@ -23,7 +23,10 @@ const LOC_COLORS = {
 };
 
 function fmt(v) { return formatCurrency(Number(v) || 0); }
-function qty(v) { return Number(v || 0).toLocaleString('en-NA', { maximumFractionDigits: 0 }); }
+// Fix #4: use maximumFractionDigits:1 so fractional quantities (e.g. 0.5)
+// render as "0.5" instead of "0".  Whole numbers still display without decimals
+// because minimumFractionDigits defaults to 0.
+function qty(v) { return Number(v || 0).toLocaleString('en-NA', { minimumFractionDigits: 0, maximumFractionDigits: 1 }); }
 
 function LocBadge({ type }) {
   const c = LOC_COLORS[type] || LOC_COLORS.warehouse;
@@ -129,7 +132,7 @@ export default function CurrentStockTab() {
     if (!data) return;
     const esc  = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const fmtN = v => 'N$ ' + Number(v || 0).toLocaleString('en-NA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const fmtQ = v => Number(v || 0).toLocaleString('en-NA', { maximumFractionDigits: 0 });
+    const fmtQ = v => Number(v || 0).toLocaleString('en-NA', { minimumFractionDigits: 0, maximumFractionDigits: 1 });
     const today = new Date().toLocaleDateString('en-NA', { day: '2-digit', month: 'long', year: 'numeric' });
     const logo  = window.location.origin + '/assets/dynapharm-logo.png';
 
@@ -291,7 +294,7 @@ export default function CurrentStockTab() {
     if (!data) return;
     const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const fmtN = v => 'N$ ' + Number(v || 0).toLocaleString('en-NA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const fmtQ = v => Number(v || 0).toLocaleString('en-NA', { maximumFractionDigits: 0 });
+    const fmtQ = v => Number(v || 0).toLocaleString('en-NA', { minimumFractionDigits: 0, maximumFractionDigits: 1 });
     const today = new Date().toLocaleDateString('en-NA', { day: '2-digit', month: 'long', year: 'numeric' });
     const logo = window.location.origin + '/assets/dynapharm-logo.png';
 
@@ -368,7 +371,7 @@ export default function CurrentStockTab() {
   <div class="meta">
     <div><b>Date:</b> ${today}</div>
     <div><b>Products:</b> ${data.products.length}</div>
-    <div><b>Scope:</b> Warehouses · Branches · Field</div>
+    <div><b>Scope:</b> Country · Warehouses · Branches · Field</div>
   </div>
 </div>
 ${summaryCards}
@@ -401,7 +404,7 @@ ${summaryCards}
             <div>
               <h2 className="text-base font-bold text-gray-800">Current Stock — Countrywide</h2>
               <p className="text-xs text-gray-400 mt-0.5">
-                Warehouses · Branches · Field — live operational snapshot
+                Country · Warehouses · Branches · Field — live operational snapshot
               </p>
             </div>
             <div className="flex items-center gap-2">

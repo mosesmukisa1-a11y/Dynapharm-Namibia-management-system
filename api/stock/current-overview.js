@@ -100,12 +100,19 @@ export default async function handler(req, res) {
       // remaining_quantity was not zeroed after dispatch, does not double-count
       // with the branch_inventory_batches query above.
       getMany(
+        // Fix #1 + #2: apply per-batch price fallback using the product_prices JOIN
+        // so batches with a zero/null stored cost use the catalogue price for their
+        // share of the value total, not zero.  This replaces the old whole-aggregate
+        // JS fallback (val || qty * cataloguePrice) which silently undercounted when
+        // only *some* batches in a group had stored costs.
+        // NULLIF(…, 0) treats a stored cost of 0 as "not set" so the catalogue price
+        // fills in — same assumption used elsewhere in the pricing pipeline.
         `SELECT sb.location, sb.description AS product_name,
-                SUM(sb.remaining_quantity)                                   AS qty,
-                SUM(sb.remaining_quantity * COALESCE(sb.cif_unit_cost, 0))  AS val_cif,
-                SUM(sb.remaining_quantity * COALESCE(sb.dpc_unit_value, 0)) AS val_dp,
-                MAX(sb.cif_unit_cost)                                        AS unit_cif,
-                MAX(sb.dpc_unit_value)                                       AS unit_dp
+                SUM(sb.remaining_quantity)                                                            AS qty,
+                SUM(sb.remaining_quantity * COALESCE(NULLIF(sb.cif_unit_cost,  0), pp.cif,  0))  AS val_cif,
+                SUM(sb.remaining_quantity * COALESCE(NULLIF(sb.dpc_unit_value, 0), pp.dp,   0))  AS val_dp,
+                COALESCE(MAX(NULLIF(sb.cif_unit_cost,  0)), MAX(pp.cif),  0)                      AS unit_cif,
+                COALESCE(MAX(NULLIF(sb.dpc_unit_value, 0)), MAX(pp.dp),   0)                      AS unit_dp
          FROM stock_batches sb
          LEFT JOIN product_prices pp
                ON LOWER(TRIM(pp.description)) = LOWER(TRIM(sb.description))
