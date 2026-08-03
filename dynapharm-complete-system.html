@@ -31745,14 +31745,29 @@ if (loginForm) {
                         gmMeta.decidedAt = new Date().toISOString();
                         metadata.gmApproval = gmMeta;
 
-                        const nextStatus = approve ? 'pending' : 'rejected';
+                        // Branch-to-branch transfers skip the warehouse dispatch step.
+                        // Detect by checking whether the source location is a branch (not a warehouse or country stock).
+                        const fromLoc = (transferRecord.fromWarehouse || transferRecord.from_warehouse || '').toLowerCase().trim();
+                        const isBranchToBranch = approve && fromLoc &&
+                                !fromLoc.includes('warehouse') &&
+                                fromLoc !== 'country_stock' &&
+                                fromLoc !== 'external_supplier_source';
+
+                        // For branch-to-branch: send a proper GM approval so the backend can deduct
+                        // source-branch stock and advance directly to 'dispatched'.
+                        // For warehouse/country sources: keep the existing 'pending' handoff.
+                        const nextStatus = approve ? (isBranchToBranch ? 'approved' : 'pending') : 'rejected';
+                        const transferOptions = {
+                                metadata,
+                                user: window.currentUser,
+                                dispatchNotes: transferRecord.dispatchNotes || null,
+                        };
+                        if (isBranchToBranch) {
+                                transferOptions.gmAction = 'approve';
+                        }
 
                         try {
-                                const response = await stockApiModule.updateTransferStatus(transferId, nextStatus, {
-                                        metadata,
-                                        user: window.currentUser,
-                                        dispatchNotes: transferRecord.dispatchNotes || null,
-                                });
+                                const response = await stockApiModule.updateTransferStatus(transferId, nextStatus, transferOptions);
                                 if (!response?.success) {
                                         alert('Unable to update dispatch request. Please try again.');
                                         return;
@@ -31771,7 +31786,11 @@ if (loginForm) {
                                 }
                         } catch (_) {}
 
-                        showToast(approve ? '✅ Dispatch approved.' : '🚫 Dispatch rejected.');
+                        showToast(approve
+                                ? (isBranchToBranch
+                                        ? '✅ Transfer approved — branch can now receive stock directly.'
+                                        : '✅ Dispatch approved.')
+                                : '🚫 Dispatch rejected.');
 
                         try {
                                 await stockApiModule.refreshStockData();

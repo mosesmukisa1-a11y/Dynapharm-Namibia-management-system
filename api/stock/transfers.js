@@ -1092,6 +1092,19 @@ export default async function handler(req, res) {
         }
       }
 
+      // Branch-to-branch transfers: skip the warehouse dispatch step.
+      // When the GM approves a transfer sourced from a branch (not a warehouse or
+      // country stock), advance directly to 'dispatched' so the receiving branch
+      // can receive stock immediately — no separate warehouse dispatch action needed.
+      if (isGmApprovalAction && updatePayload.status === 'approved') {
+        const b2bSrcType = inferLocationType(oldTransfer?.from_warehouse);
+        if (b2bSrcType === 'branch') {
+          updatePayload.status = 'dispatched';
+          updatePayload.dispatched_at = updatePayload.gm_approved_at || nowIso;
+          updatePayload.dispatched_by = updatePayload.gm_approved_by || currentUser?.fullName || currentUser?.username || 'GM';
+        }
+      }
+
       const transfer = await update('stock_transfers', id, updatePayload, 'id');
       if (!transfer) {
         return res.status(404).json({ success: false, error: 'Transfer not found or was already modified by another user. Please refresh and try again.' });

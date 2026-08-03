@@ -386,6 +386,9 @@ export async function updateTransferStatus(id, status, meta = {}) {
       body.receivedBy = actor;
     }
 
+    if (meta.gmAction) {
+      body.gmAction = meta.gmAction;
+    }
     if (meta.metadata) {
       body.metadata = meta.metadata;
     }
