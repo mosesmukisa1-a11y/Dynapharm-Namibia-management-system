@@ -1569,6 +1569,20 @@ export default async function handler(req, res) {
         );
       }
 
+      // ── #167: Mark dispatch note as cancelled when transfer is cancelled/rejected ─
+      // A dispatched transfer creates a dispatch_notes row with status='in_transit'.
+      // Without this update, Finance and GM continue to see an active dispatch note
+      // for a transfer that no longer exists, which is misleading.
+      // This intentionally runs outside the `transferItems.length > 0` guard so it
+      // fires even for transfers whose items were cleared before cancellation.
+      if (transfer.status === 'cancelled' || transfer.status === 'rejected') {
+        await query(
+          `UPDATE dispatch_notes SET status='cancelled', updated_at=NOW()
+           WHERE transfer_id=$1 AND status='in_transit'`,
+          [transfer.id]
+        );
+      }
+
       await publishRealtimeEvent('stock_transfers', 'update', transfer);
       broadcastStockEvent('transfer_updated', { transferId: transfer.id, status: transfer.status })?.catch(() => {});
 
