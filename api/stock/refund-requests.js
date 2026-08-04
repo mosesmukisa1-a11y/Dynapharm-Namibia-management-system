@@ -107,10 +107,46 @@ export default async function handler(req, res) {
 
           // ── 3. branch_inventory_batches — restore stock to branch ────────────
           // Returned items go back into sellable branch inventory.
-          // ON CONFLICT cannot reliably target NULL keys (btree treats each NULL as
-          // distinct), so we use IS NOT DISTINCT FROM in an explicit UPDATE first,
-          // then INSERT only if no existing row was found.
+          // We must restore into the SAME expiry-dated batch that was deducted at
+          // sale time — not into a NULL-expiry row — otherwise the stock appears to
+          // be a different batch and FEFO ordering is broken.
+          //
+          // expiry_date is not stored on the refund request itself, so we resolve it:
+          //   a) from any live branch_inventory_batches row with matching batch_no
+          //      (the batch still exists with remaining qty from other units)
+          //   b) from stock_movements for the original sale reference
+          //      (the batch was fully sold and the BIB row was deleted)
+          //   c) NULL as a last resort (product genuinely has no expiry)
           const resolvedBatchNo = batchNo || null;
+
+          let resolvedExpiry = null;
+          // (a) existing batch row
+          const expiryFromBib = await client.query(
+            `SELECT expiry_date FROM branch_inventory_batches
+             WHERE LOWER(TRIM(branch_id))    = LOWER(TRIM($1))
+               AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))
+               AND batch_no IS NOT DISTINCT FROM $3
+             ORDER BY expiry_date ASC NULLS LAST LIMIT 1`,
+            [branchId, product, resolvedBatchNo]
+          );
+          if (expiryFromBib.rows.length > 0) {
+            resolvedExpiry = expiryFromBib.rows[0].expiry_date || null;
+          }
+          // (b) stock_movements for the original sale
+          if (!resolvedExpiry && refund.sale_reference) {
+            const expiryFromSm = await client.query(
+              `SELECT expiry_date FROM stock_movements
+               WHERE LOWER(TRIM(product_name)) = LOWER(TRIM($1))
+                 AND batch_no IS NOT DISTINCT FROM $2
+                 AND reference_id = $3
+               ORDER BY created_at DESC LIMIT 1`,
+              [product, resolvedBatchNo, refund.sale_reference]
+            );
+            if (expiryFromSm.rows.length > 0) {
+              resolvedExpiry = expiryFromSm.rows[0].expiry_date || null;
+            }
+          }
+
           const bibUpd = await client.query(
             `UPDATE branch_inventory_batches
              SET quantity   = quantity + $1,
@@ -119,8 +155,8 @@ export default async function handler(req, res) {
              WHERE branch_id = $2
                AND LOWER(TRIM(product_name)) = LOWER(TRIM($3))
                AND batch_no    IS NOT DISTINCT FROM $4
-               AND expiry_date IS NULL`,
-            [qty, branchId, product, resolvedBatchNo]
+               AND expiry_date IS NOT DISTINCT FROM $5`,
+            [qty, branchId, product, resolvedBatchNo, resolvedExpiry]
           );
           if (bibUpd.rowCount === 0) {
             const bibRestoreId = `BIB-RFND-${Date.now()}-${Math.random().toString(36).slice(2,6).toUpperCase()}`;
@@ -128,8 +164,8 @@ export default async function handler(req, res) {
               `INSERT INTO branch_inventory_batches
                  (id, branch_id, product_name, batch_no, expiry_date,
                   quantity, unit_price, source_warehouse, status, created_at, updated_at)
-               VALUES ($1,$2,$3,$4,NULL,$5,$6,NULL,'in_stock',NOW(),NOW())`,
-              [bibRestoreId, branchId, product, resolvedBatchNo, qty, unitDp]
+               VALUES ($1,$2,$3,$4,$5,$6,$7,NULL,'in_stock',NOW(),NOW())`,
+              [bibRestoreId, branchId, product, resolvedBatchNo, resolvedExpiry, qty, unitDp]
             );
           }
 

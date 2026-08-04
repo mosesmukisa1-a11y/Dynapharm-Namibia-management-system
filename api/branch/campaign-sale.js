@@ -71,6 +71,7 @@ async function deductStock(client, branchId, productName, qty, movType, noteStr,
       `UPDATE branch_inventory_batches SET quantity = quantity - $1, updated_at = NOW() WHERE id = $2`,
       [take, batch.id]
     );
+    await client.query(`DELETE FROM branch_inventory_batches WHERE id = $1 AND quantity <= 0`, [batch.id]);
     const ts1  = Date.now();
     const bimId = 'BIM-' + ts1 + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
     await client.query(
@@ -153,6 +154,7 @@ async function deductStock(client, branchId, productName, qty, movType, noteStr,
       `UPDATE branch_inventory_batches SET quantity = quantity - $1, updated_at = NOW() WHERE id = $2`,
       [take, bibId]
     );
+    await client.query(`DELETE FROM branch_inventory_batches WHERE id = $1 AND quantity <= 0`, [bibId]);
 
     const ts2  = Date.now();
     const bimId = 'BIM-' + ts2 + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
