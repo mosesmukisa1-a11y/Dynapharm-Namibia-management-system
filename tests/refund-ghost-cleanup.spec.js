@@ -148,6 +148,171 @@ describe('refund-ghost-cleanup migration', () => {
   });
 });
 
+// ── confirm_no_expiry handler: stock total correctness (task #188) ────────────
+/**
+ * Verifies that confirm_no_expiry does NOT inflate branch inventory even when a
+ * canonical expiry-dated batch exists alongside the ghost row.
+ *
+ * Design note: ghost rows exist precisely because the pre-fix refund code
+ * INSERT-ed the refund qty instead of UPDATE-ing the canonical batch.  So the
+ * canonical batch was never incremented.  The correct total is:
+ *
+ *   canonical_qty (pre-sale qty minus sold units)
+ * + ghost_qty     (the returned units that should have gone back into canonical)
+ * = correct on-hand stock
+ *
+ * confirm_no_expiry leaves both rows in place, which produces this correct total.
+ * It does NOT add ghost_qty on top of a canonical that was already updated.
+ */
+describe('confirm_no_expiry handler — stock total is not inflated', () => {
+  const CN_BRANCH  = 'test_confirm_noexp_branch';
+  const CN_PRODUCT = 'TEST_CONFIRM_NOEXP_PRODUCT';
+  const CN_BATCH   = 'BATCH-CONFIRM-NOEXP-001';
+  const CN_EXPIRY  = '2028-06-30';
+
+  // Ghost row alongside a canonical expiry-dated batch
+  const CN_GHOST_ID = 'BIB-RFND-CONFIRM-NOEXP-001';
+  const CN_CANON_ID = 'BIB-TEST-CANON-NOEXP-001';
+
+  // Ghost row with no matching canonical batch (genuinely no-expiry product)
+  const CN_SOLO_GHOST_ID = 'BIB-RFND-CONFIRM-NOEXP-SOLO-001';
+
+  const CN_GHOST_QTY = 4;   // returned units — these are the refund qty
+  const CN_CANON_QTY = 6;   // units still in canonical batch after original sale
+
+  async function cnCleanup() {
+    await query(
+      `DELETE FROM branch_inventory_batches WHERE id = ANY($1)`,
+      [[CN_GHOST_ID, CN_CANON_ID, CN_SOLO_GHOST_ID]]
+    );
+  }
+
+  // Minimal mock req/res builder reused across tests
+  function mockReqRes(body) {
+    let responseBody;
+    const res = {
+      _status: 200,
+      status(code) { this._status = code; return this; },
+      json(data)   { responseBody = data; return this; },
+      end()        { return this; },
+      setHeader()  { return this; },
+      getHeader()  { return undefined; },
+      get captured() { return responseBody; },
+    };
+    const req = {
+      method: 'PATCH',
+      body,
+      user: { fullName: 'Test GM', role: 'gm' },
+      headers: {},
+    };
+    return { req, res };
+  }
+
+  beforeAll(cnCleanup);
+  afterAll(cnCleanup);
+
+  it('keeps combined qty equal to canonical + ghost (no inflation) when canonical batch exists', async () => {
+    // Seed canonical expiry-dated batch (was never incremented by the refund)
+    await query(
+      `INSERT INTO branch_inventory_batches
+         (id, branch_id, product_name, batch_no, expiry_date, quantity, status, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5::date,$6,'in_stock',NOW(),NOW())`,
+      [CN_CANON_ID, CN_BRANCH, CN_PRODUCT, CN_BATCH, CN_EXPIRY, CN_CANON_QTY]
+    );
+
+    // Seed ghost row (refund qty that ended up as orphan)
+    await query(
+      `INSERT INTO branch_inventory_batches
+         (id, branch_id, product_name, batch_no, expiry_date, source_warehouse, quantity, status, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,NULL,NULL,$5,'in_stock',NOW(),NOW())`,
+      [CN_GHOST_ID, CN_BRANCH, CN_PRODUCT, CN_BATCH, CN_GHOST_QTY]
+    );
+
+    const { default: handler } = await import('../api/gm/ghost-refunds.js');
+    const { req, res } = mockReqRes({ id: CN_GHOST_ID, action: 'confirm_no_expiry' });
+
+    await handler(req, res);
+
+    // Handler must succeed
+    expect(res.captured?.success).toBe(true);
+
+    // Ghost row still exists — now with source_warehouse = 'refund_confirmed'
+    const ghostRow = await query(
+      `SELECT quantity, source_warehouse FROM branch_inventory_batches WHERE id = $1`,
+      [CN_GHOST_ID]
+    );
+    expect(ghostRow.rows.length).toBe(1);
+    expect(ghostRow.rows[0].source_warehouse).toBe('refund_confirmed');
+    expect(Number(ghostRow.rows[0].quantity)).toBe(CN_GHOST_QTY);
+
+    // Canonical batch is UNCHANGED — confirm_no_expiry must not touch it
+    const canonRow = await query(
+      `SELECT quantity FROM branch_inventory_batches WHERE id = $1`,
+      [CN_CANON_ID]
+    );
+    expect(canonRow.rows.length).toBe(1);
+    expect(Number(canonRow.rows[0].quantity)).toBe(CN_CANON_QTY);
+
+    // Total visible stock for this product/branch = canonical + ghost = correct on-hand
+    // (ghost_qty = returned units that were never re-added to canonical, so combined is right)
+    const totalRow = await query(
+      `SELECT COALESCE(SUM(quantity), 0) AS total
+       FROM branch_inventory_batches
+       WHERE branch_id    = $1
+         AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))`,
+      [CN_BRANCH, CN_PRODUCT]
+    );
+    const expectedTotal = CN_CANON_QTY + CN_GHOST_QTY;
+    expect(Number(totalRow.rows[0].total)).toBe(expectedTotal);
+  });
+
+  it('is idempotent: a second confirm_no_expiry on the same row returns 409', async () => {
+    const { default: handler } = await import('../api/gm/ghost-refunds.js');
+    const { req, res } = mockReqRes({ id: CN_GHOST_ID, action: 'confirm_no_expiry' });
+
+    await handler(req, res);
+
+    // Pre-check filters source_warehouse IS NULL, so an already-confirmed row
+    // is "not found" at the pre-check stage (404) rather than reaching the
+    // UPDATE conflict (409).  Both codes mean "already resolved".
+    expect([404, 409]).toContain(res._status);
+    expect(res.captured?.success).toBe(false);
+
+    // Ghost row still intact — idempotency must not delete it
+    const ghostRow = await query(
+      `SELECT quantity FROM branch_inventory_batches WHERE id = $1`,
+      [CN_GHOST_ID]
+    );
+    expect(ghostRow.rows.length).toBe(1);
+  });
+
+  it('works correctly when there is no canonical batch (genuinely no-expiry product)', async () => {
+    const soloQty = 7;
+    await query(
+      `INSERT INTO branch_inventory_batches
+         (id, branch_id, product_name, batch_no, expiry_date, source_warehouse, quantity, status, created_at, updated_at)
+       VALUES ($1,$2,'SOLO_NOEXP_PRODUCT','SOLO-BATCH-001',NULL,NULL,$3,'in_stock',NOW(),NOW())`,
+      [CN_SOLO_GHOST_ID, CN_BRANCH, soloQty]
+    );
+
+    const { default: handler } = await import('../api/gm/ghost-refunds.js');
+    const { req, res } = mockReqRes({ id: CN_SOLO_GHOST_ID, action: 'confirm_no_expiry' });
+
+    await handler(req, res);
+
+    expect(res.captured?.success).toBe(true);
+
+    // Row is still there, confirmed
+    const row = await query(
+      `SELECT quantity, source_warehouse FROM branch_inventory_batches WHERE id = $1`,
+      [CN_SOLO_GHOST_ID]
+    );
+    expect(row.rows.length).toBe(1);
+    expect(row.rows[0].source_warehouse).toBe('refund_confirmed');
+    expect(Number(row.rows[0].quantity)).toBe(soloQty);
+  });
+});
+
 // ── Write-off handler: balance non-negative guard (task #185) ─────────────────
 /**
  * Exercises the PATCH write_off path in api/gm/ghost-refunds.js against a

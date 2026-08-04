@@ -202,6 +202,27 @@ export default async function handler(req, res) {
         // the ghost-cleanup migration ignores it in future runs, and the GM
         // report no longer lists it.  The row stays in branch inventory with
         // its NULL expiry (genuinely expiry-free product).
+        //
+        // ── Why this does NOT inflate inventory ──────────────────────────────
+        // Ghost rows were created because the pre-fix refund code tried
+        // UPDATE WHERE expiry_date IS NULL and found no matching row (the real
+        // batch has a non-NULL expiry), then fell through to an INSERT of the
+        // ghost with the refund qty.  The canonical expiry-dated batch was
+        // NEVER updated — the refund qty was not added to it.
+        //
+        // So at the moment of confirm_no_expiry:
+        //   canonical batch qty = pre-sale qty minus the original sale deduction
+        //   ghost row qty       = the returned units from that sale
+        //   total               = (pre-sale qty − sold) + returned = correct
+        //
+        // For products that genuinely have no expiry: the ghost IS the correct
+        // refund entry and no canonical expiry-dated batch exists, so there is
+        // also no double-count.
+        //
+        // In both cases, canonical_qty + ghost_qty equals the correct on-hand
+        // total and confirm_no_expiry does not over-count stock.
+        // ─────────────────────────────────────────────────────────────────────
+        //
         // Use a conditional UPDATE so a duplicate request is idempotent.
         const updResult = await query(
           `UPDATE branch_inventory_batches
