@@ -79,11 +79,20 @@ export default async function handler(req, res) {
 
   try {
     const [productRows, distributorRows, salesBranches, draftBranches] = await Promise.all([
+      // Join product_prices so dp/cp/bv always reflect the current GM price list.
+      // product_prices is the authoritative source; the products table columns are
+      // legacy fallbacks only.
       getMany(
         `
-          SELECT id, sku, name, unit, dp, cp, bv, tax_rate, category, branch, is_active
-          FROM products
-          ORDER BY name
+          SELECT
+            p.id, p.sku, p.name, p.unit, p.tax_rate, p.category, p.branch, p.is_active,
+            COALESCE(NULLIF(pp.dp,  0), p.dp)  AS dp,
+            COALESCE(NULLIF(pp.cp,  0), p.cp)  AS cp,
+            COALESCE(NULLIF(pp.bv,  0), p.bv)  AS bv
+          FROM products p
+          LEFT JOIN product_prices pp
+            ON LOWER(TRIM(pp.description)) = LOWER(TRIM(p.name))
+          ORDER BY p.name
         `,
         []
       ),
