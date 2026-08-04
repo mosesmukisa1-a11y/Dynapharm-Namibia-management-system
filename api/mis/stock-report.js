@@ -25,7 +25,9 @@ export default async function handler(req, res) {
         bib.product_name,
         SUM(bib.quantity) AS closing_qty,
         SUM(
-          COALESCE(NULLIF(bib.unit_price, 0), pp.dp, 0) * bib.quantity
+          -- Live price-list dp takes priority so a price update is reflected
+          -- immediately; cached batch unit_price is the fallback only.
+          COALESCE(NULLIF(pp.dp, 0), NULLIF(bib.unit_price, 0), 0) * bib.quantity
         ) AS closing_value,
         COUNT(*) FILTER (WHERE bib.expiry_date IS NOT NULL AND bib.expiry_date < NOW()) AS expired_batches,
         COUNT(*) FILTER (WHERE bib.expiry_date IS NOT NULL AND bib.expiry_date < NOW() + INTERVAL '30 days' AND bib.expiry_date >= NOW()) AS expiring_soon,

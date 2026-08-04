@@ -1449,13 +1449,22 @@ export default async function handler(req, res) {
               const batchNo = item.batch_no || null;
               const expiryDate = item.expiry_date || null;
 
-              // Look up unit price from the source warehouse batch
+              // Look up unit price: prefer the live product_prices.dp so a price-list
+              // update is immediately reflected in newly received branch batches.
+              // Falls back to the warehouse batch's stored dpc_unit_value.
               const priceRow = await client.query(
-                `SELECT COALESCE(dpc_unit_value, 0) AS unit_price
-                   FROM stock_batches
-                  WHERE location = $1 AND description ILIKE $2
-                    AND ($3::text IS NULL OR batch_no = $3)
-                  ORDER BY created_at DESC LIMIT 1`,
+                `SELECT
+                   COALESCE(
+                     NULLIF((SELECT pp.dp FROM product_prices pp
+                             WHERE LOWER(TRIM(pp.description)) = LOWER(TRIM($2))
+                             LIMIT 1), 0),
+                     NULLIF(sb.dpc_unit_value, 0),
+                     0
+                   ) AS unit_price
+                 FROM stock_batches sb
+                 WHERE sb.location = $1 AND sb.description ILIKE $2
+                   AND ($3::text IS NULL OR sb.batch_no = $3)
+                 ORDER BY sb.created_at DESC LIMIT 1`,
                 [sourceWarehouse, productName, batchNo]
               );
               const unitPrice = Number(priceRow.rows[0]?.unit_price || 0);
