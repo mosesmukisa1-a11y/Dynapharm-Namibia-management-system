@@ -438,6 +438,14 @@
                     Requires attention
                 </div>
             </div>
+
+            <div class="stat-card" id="ghostStatCard" style="cursor:pointer;border:2px solid transparent;transition:border-color 0.3s,transform 0.3s,box-shadow 0.3s;" onclick="document.querySelector('.ghost-refund-panel')?.scrollIntoView({behavior:'smooth',block:'start'})" title="Click to jump to Orphaned Ghost Refund Rows">
+                <h3>Ghost Rows Pending</h3>
+                <div class="value" id="ghostStatValue" style="color:#9ca3af;">…</div>
+                <div class="change" id="ghostStatChange" style="color:#9ca3af;">
+                    Unresolved orphan batches
+                </div>
+            </div>
         </div>
         
         <div class="filter-bar">
@@ -1232,6 +1240,23 @@
                 if (!data.success) throw new Error(data.error || 'Unknown error');
                 const rows = Array.isArray(data.rows) ? data.rows : [];
                 if (badge) badge.textContent = rows.length === 0 ? '✓ None' : rows.length;
+
+                // ── Stat card (top of page) ──────────────────────────────────
+                const statVal    = document.getElementById('ghostStatValue');
+                const statChange = document.getElementById('ghostStatChange');
+                const statCard   = document.getElementById('ghostStatCard');
+                if (statVal) statVal.textContent = rows.length;
+                if (rows.length === 0) {
+                    if (statVal)    { statVal.style.color    = '#10b981'; }
+                    if (statChange) { statChange.style.color = '#10b981'; statChange.textContent = 'All resolved ✓'; }
+                    if (statCard)   { statCard.style.borderColor = 'transparent'; }
+                } else {
+                    if (statVal)    { statVal.style.color    = '#d97706'; }
+                    if (statChange) { statChange.style.color = '#d97706'; statChange.textContent = 'Unresolved — review needed'; }
+                    if (statCard)   { statCard.style.borderColor = '#fbbf24'; }
+                }
+                // ────────────────────────────────────────────────────────────
+
                 if (rows.length === 0) {
                     container.innerHTML = '<div class="no-data" style="color:#065f46;">✓ No orphaned ghost refund rows — nothing to resolve.</div>';
                     return;
@@ -1258,6 +1283,10 @@
                 console.error('[ghost-refunds] load error:', err);
                 container.innerHTML = `<div class="no-data" style="color:#991b1b;">Failed to load ghost refund rows: ${escapeHtml(err.message)}</div>`;
                 if (badge) badge.textContent = '!';
+                const statVal  = document.getElementById('ghostStatValue');
+                const statCard = document.getElementById('ghostStatCard');
+                if (statVal) { statVal.textContent = '!'; statVal.style.color = '#ef4444'; }
+                if (statCard) statCard.style.borderColor = '#ef4444';
             }
         }
 
