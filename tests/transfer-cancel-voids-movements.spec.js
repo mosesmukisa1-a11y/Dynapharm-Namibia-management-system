@@ -555,4 +555,160 @@ describe('transfer cancellation — voids in-transit movements so balance resets
     await query(`DELETE FROM stock_transfer_items WHERE transfer_id = $1`, [B2B2_TRANSFER_ID]);
     await query(`DELETE FROM stock_transfers WHERE id = $1`, [B2B2_TRANSFER_ID]);
   });
+
+  it('voids the reserved movement and releases the stock lock when a branch-to-branch transfer is cancelled while still in approved state', async () => {
+    // ── What this test covers ──────────────────────────────────────────────────
+    // A branch-to-branch transfer that was GM-approved (writing a 'reserved'
+    // movement) but NOT yet dispatched (no 'transfer_out' movement exists).
+    // When the transfer is cancelled at this point:
+    //
+    //   • The cancel block guard: previousStatus === 'approved' → fires.
+    //   • Only a 'reserved' movement is present; it must be set to 'cancelled'.
+    //   • No 'transfer_out' rows exist, so the transfer_out UPDATE is a no-op.
+    //   • recomputeLocationBalances('branch', srcBranch) must return closing_qty=0
+    //     — the phantom outward reservation lock is fully released.
+    //
+    // This is the critical regression check: if the 'reserved' movement is left
+    // 'posted', branch_inventory balances show a permanent phantom deduction even
+    // though the goods never left the branch.
+
+    const B2B_APR_TRANSFER_ID = 'test-cancel-void-b2b-approved-001';
+    const SRC_BRANCH_APR      = 'test_cancel_src_branch_apr';
+    const DST_BRANCH_APR      = 'test_cancel_dst_branch_apr';
+    const APR_PRODUCT         = 'TEST_CANCEL_B2B_APPROVED_PRODUCT';
+    const APR_BATCH           = 'BATCH-CANCEL-B2B-APR-001';
+    const APR_EXPIRY          = '2027-09-30';
+    const APR_QTY             = 15;
+
+    // ── Pre-test cleanup ───────────────────────────────────────────────────────
+    await query(`DELETE FROM inventory_balances WHERE location_id = $1`, [SRC_BRANCH_APR]);
+    await query(
+      `DELETE FROM branch_inventory_batches
+       WHERE branch_id = $1 AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))`,
+      [SRC_BRANCH_APR, APR_PRODUCT]
+    );
+    await query(`DELETE FROM stock_movements WHERE reference_id = $1`, [B2B_APR_TRANSFER_ID]);
+    await query(`DELETE FROM stock_transfer_items WHERE transfer_id = $1`, [B2B_APR_TRANSFER_ID]);
+    await query(`DELETE FROM stock_transfers WHERE id = $1`, [B2B_APR_TRANSFER_ID]);
+
+    // ── Seed the branch-to-branch transfer in 'approved' state ────────────────
+    // Status is 'approved' — GM has signed off but warehouse has NOT dispatched.
+    // from_warehouse = SRC_BRANCH_APR (no "warehouse" substring) so
+    // inferLocationType() returns 'branch', triggering the branch restore path.
+    await query(
+      `INSERT INTO stock_transfers
+         (id, from_warehouse, to_branch, status, created_by, created_at, updated_at)
+       VALUES ($1, $2, $3, 'approved', 'Test Admin', NOW(), NOW())`,
+      [B2B_APR_TRANSFER_ID, SRC_BRANCH_APR, DST_BRANCH_APR]
+    );
+
+    // Transfer item — expiry_date is required for the branch_inventory_batches
+    // restore path (cancel block guards on batchNo && expiryDate).
+    await query(
+      `INSERT INTO stock_transfer_items
+         (transfer_id, product_id, product_name, batch_no, expiry_date, quantity, quantity_approved)
+       VALUES ($1, $2, $2, $3, $4::date, $5, $5)`,
+      [B2B_APR_TRANSFER_ID, APR_PRODUCT, APR_BATCH, APR_EXPIRY, APR_QTY]
+    );
+
+    // ── Seed the inventory_balance representing the soft-locked state ──────────
+    // After approval a 'reserved' movement creates an outward deduction so the
+    // branch balance shows closing_qty = 0 (stock appears locked).
+    await query(
+      `INSERT INTO inventory_balances
+         (id, location_type, location_id, product_name, batch_no,
+          inward_qty, outward_qty, closing_qty, updated_at)
+       VALUES
+         (gen_random_uuid()::text, 'branch', $1, $2, $3,
+          $4, $4, 0, NOW())
+       ON CONFLICT DO NOTHING`,
+      [SRC_BRANCH_APR, APR_PRODUCT, APR_BATCH, APR_QTY]
+    );
+
+    // ── Seed only the 'reserved' movement — no 'transfer_out' exists yet ──────
+    // This is the only movement written at approval time; the transfer was
+    // cancelled before the warehouse dispatched, so transfer_out was never added.
+    await query(
+      `INSERT INTO stock_movements
+         (id, product_name, batch_no, quantity, movement_type,
+          source_location, source_location_type,
+          destination_location, destination_location_type,
+          reference_id, status, created_at, updated_at)
+       VALUES
+         (gen_random_uuid()::text, $1, $2, $3, 'reserved',
+          $4, 'branch',
+          $5, 'branch',
+          $6, 'posted', NOW(), NOW())`,
+      [APR_PRODUCT, APR_BATCH, APR_QTY, SRC_BRANCH_APR, DST_BRANCH_APR, B2B_APR_TRANSFER_ID]
+    );
+
+    // ── Cancel via the real PATCH handler ──────────────────────────────────────
+    const { req, res, captured } = buildMockReqRes(
+      'PATCH',
+      `/api/stock/transfers?id=${B2B_APR_TRANSFER_ID}`,
+      { status: 'cancelled' },
+      { id: 'test-admin', role: 'admin', fullName: 'Test Admin' }
+    );
+    req.url = `/api/stock/transfers?id=${B2B_APR_TRANSFER_ID}`;
+
+    await handler(req, res);
+
+    expect(captured.status).toBe(200);
+    expect(captured.body?.success).toBe(true);
+
+    // ── Assert 1: the 'reserved' movement is now cancelled ────────────────────
+    const reservedRows = await query(
+      `SELECT status FROM stock_movements
+       WHERE reference_id = $1 AND movement_type = 'reserved'`,
+      [B2B_APR_TRANSFER_ID]
+    );
+    expect(reservedRows.rows.length).toBeGreaterThan(0);
+    for (const row of reservedRows.rows) {
+      expect(row.status).toBe('cancelled');
+    }
+
+    // ── Assert 2: no posted movements remain for the transfer ─────────────────
+    const postedRows = await query(
+      `SELECT id FROM stock_movements
+       WHERE reference_id = $1 AND status = 'posted'`,
+      [B2B_APR_TRANSFER_ID]
+    );
+    expect(postedRows.rows.length).toBe(0);
+
+    // ── Assert 3: recomputeLocationBalances returns closing_qty = 0 ───────────
+    // The reserved movement is now voided; no posted outward movements remain
+    // for this source branch + product, so the balance must be zero (or absent).
+    await recomputeLocationBalances('branch', SRC_BRANCH_APR);
+
+    const balanceRows = await query(
+      `SELECT inward_qty, outward_qty, closing_qty
+       FROM inventory_balances
+       WHERE location_type = 'branch'
+         AND location_id   = $1
+         AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))
+         AND COALESCE(batch_no, '') = $3`,
+      [SRC_BRANCH_APR, APR_PRODUCT, APR_BATCH]
+    );
+
+    // recomputeLocationBalances may delete the row when all quantities are zero.
+    if (balanceRows.rows.length > 0) {
+      expect(Number(balanceRows.rows[0].inward_qty)).toBe(0);
+      expect(Number(balanceRows.rows[0].outward_qty)).toBe(0);
+      expect(Number(balanceRows.rows[0].closing_qty)).toBe(0);
+    } else {
+      // Row pruned because it computed to all-zero — stock lock is fully released.
+      expect(balanceRows.rows.length).toBe(0);
+    }
+
+    // ── Post-test cleanup ──────────────────────────────────────────────────────
+    await query(`DELETE FROM inventory_balances WHERE location_id = $1`, [SRC_BRANCH_APR]);
+    await query(
+      `DELETE FROM branch_inventory_batches
+       WHERE branch_id = $1 AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))`,
+      [SRC_BRANCH_APR, APR_PRODUCT]
+    );
+    await query(`DELETE FROM stock_movements WHERE reference_id = $1`, [B2B_APR_TRANSFER_ID]);
+    await query(`DELETE FROM stock_transfer_items WHERE transfer_id = $1`, [B2B_APR_TRANSFER_ID]);
+    await query(`DELETE FROM stock_transfers WHERE id = $1`, [B2B_APR_TRANSFER_ID]);
+  });
 });
