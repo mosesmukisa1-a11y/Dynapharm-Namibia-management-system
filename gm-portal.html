@@ -240,6 +240,48 @@
             flex-wrap: wrap;
             margin-top: 14px;
         }
+        /* Ghost refund panel */
+        .ghost-refund-panel {
+            border: 2px solid #fbbf24;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        .ghost-refund-panel h2 {
+            border-bottom-color: #f59e0b !important;
+        }
+        .ghost-badge {
+            display: inline-block;
+            background: #fef3c7;
+            color: #92400e;
+            border: 1px solid #fbbf24;
+            border-radius: 20px;
+            font-size: 0.75em;
+            font-weight: 700;
+            padding: 2px 10px;
+            margin-left: 8px;
+            vertical-align: middle;
+        }
+        .ghost-row-card {
+            background: #fffbeb;
+            border: 1px solid #fde68a;
+            border-radius: 10px;
+            padding: 14px 16px;
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .ghost-row-info { flex: 1; min-width: 200px; }
+        .ghost-row-info strong { display: block; font-size: 1em; color: #1f2937; margin-bottom: 4px; }
+        .ghost-row-meta { font-size: 0.85em; color: #6b7280; }
+        .ghost-row-qty { font-size: 1.3em; font-weight: 700; color: #d97706; white-space: nowrap; }
+        .ghost-row-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        .btn-write-off { background: #ef4444; color: #fff; }
+        .btn-write-off:hover { background: #c53030; }
+        .btn-confirm-expiry { background: #10b981; color: #fff; }
+        .btn-confirm-expiry:hover { background: #0b9a6f; }
         .btn-approve {
             background: #10b981;
             color: #fff;
@@ -458,6 +500,18 @@
                 <h2>Stock Requests Awaiting GM Approval</h2>
                 <div id="gmStockRequests" class="gm-requests-container">
                     <div class="no-data">Loading stock requests...</div>
+                </div>
+            </div>
+
+            <div class="card ghost-refund-panel" style="grid-column: span 2;">
+                <h2>⚠️ Orphaned Ghost Refund Rows <span class="ghost-badge" id="ghostRefundCount">…</span></h2>
+                <p style="font-size:0.9em;color:#78350f;margin-bottom:16px;">
+                    These inventory rows were created when a refund was approved but no matching expiry-dated batch could be found.
+                    They inflate on-hand quantities and must be resolved. <strong>Write off</strong> removes the stock and records an audit entry.
+                    <strong>Confirm (no expiry)</strong> marks the product as genuinely expiry-free and keeps it in sellable inventory.
+                </p>
+                <div id="ghostRefundRows">
+                    <div class="no-data">Loading…</div>
                 </div>
             </div>
 
@@ -1084,6 +1138,7 @@
                 loadRecentActivity();
                 loadGmStockRequests();
                 loadBranchPerformance();
+                loadGhostRefundRows();
                 
                 // Show success indicator
                 if (refreshBtn && restoreBtn) {
@@ -1163,8 +1218,115 @@
         });
         window.addEventListener('stock-updated', () => loadGmStockRequests());
 
+        // ── Ghost Refund Orphan Panel ──────────────────────────────────────
+        async function loadGhostRefundRows() {
+            const container = document.getElementById('ghostRefundRows');
+            const badge     = document.getElementById('ghostRefundCount');
+            if (!container) return;
+            container.innerHTML = '<div class="no-data">Loading…</div>';
+            try {
+                const resp = await fetch('/api/gm/ghost-refunds', {
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await resp.json();
+                if (!data.success) throw new Error(data.error || 'Unknown error');
+                const rows = Array.isArray(data.rows) ? data.rows : [];
+                if (badge) badge.textContent = rows.length === 0 ? '✓ None' : rows.length;
+                if (rows.length === 0) {
+                    container.innerHTML = '<div class="no-data" style="color:#065f46;">✓ No orphaned ghost refund rows — nothing to resolve.</div>';
+                    return;
+                }
+                container.innerHTML = rows.map(r => `
+                    <div class="ghost-row-card" data-ghost-id="${r.id}">
+                        <div class="ghost-row-info">
+                            <strong>${escapeHtml(r.product_name)}</strong>
+                            <div class="ghost-row-meta">
+                                Branch: <strong>${escapeHtml(r.branch_id)}</strong> &nbsp;|&nbsp;
+                                Batch: ${r.batch_no ? escapeHtml(r.batch_no) : '<em>no batch</em>'} &nbsp;|&nbsp;
+                                Created: ${r.created_at ? new Date(r.created_at).toLocaleDateString() : '—'}
+                            </div>
+                            <div class="ghost-row-meta" style="margin-top:4px;font-size:0.78em;color:#9ca3af;">ID: ${escapeHtml(r.id)}</div>
+                        </div>
+                        <div class="ghost-row-qty">${Number(r.quantity || 0).toLocaleString()} units</div>
+                        <div class="ghost-row-actions">
+                            <button class="btn btn-write-off"    data-ghost-action="write_off"         data-ghost-id="${r.id}" title="Remove stock and record audit write-off">Write Off</button>
+                            <button class="btn btn-confirm-expiry" data-ghost-action="confirm_no_expiry" data-ghost-id="${r.id}" title="Product has no expiry — keep in inventory">Confirm (no expiry)</button>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (err) {
+                console.error('[ghost-refunds] load error:', err);
+                container.innerHTML = `<div class="no-data" style="color:#991b1b;">Failed to load ghost refund rows: ${escapeHtml(err.message)}</div>`;
+                if (badge) badge.textContent = '!';
+            }
+        }
+
+        function escapeHtml(str) {
+            if (str == null) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        async function resolveGhostRow(id, action) {
+            try {
+                const resp = await fetch('/api/gm/ghost-refunds', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id, action })
+                });
+                const data = await resp.json();
+                if (!data.success) throw new Error(data.error || 'Unknown error');
+                return { ok: true, message: data.message };
+            } catch (err) {
+                return { ok: false, message: err.message };
+            }
+        }
+
+        const ghostContainer = document.getElementById('ghostRefundRows');
+        if (ghostContainer) {
+            ghostContainer.addEventListener('click', async (event) => {
+                const btn = event.target.closest('[data-ghost-action]');
+                if (!btn) return;
+                const action   = btn.getAttribute('data-ghost-action');
+                const ghostId  = btn.getAttribute('data-ghost-id');
+                if (!ghostId) return;
+
+                const card = ghostContainer.querySelector(`[data-ghost-id="${ghostId}"].ghost-row-card`);
+                const productName = card ? card.querySelector('.ghost-row-info strong')?.textContent : ghostId;
+
+                const confirmMsg = action === 'write_off'
+                    ? `Write off and permanently remove "${productName}" from inventory?`
+                    : `Confirm "${productName}" as a legitimate no-expiry return and keep it in sellable inventory?`;
+                if (!confirm(confirmMsg)) return;
+
+                // Disable buttons during request
+                const buttons = card ? card.querySelectorAll('button') : [];
+                buttons.forEach(b => { b.disabled = true; b.style.opacity = '0.5'; });
+
+                const result = await resolveGhostRow(ghostId, action);
+                if (result.ok) {
+                    if (card) {
+                        card.style.background = '#d1fae5';
+                        card.style.border     = '1px solid #6ee7b7';
+                        card.querySelector('.ghost-row-actions').innerHTML =
+                            `<span style="color:#065f46;font-size:0.9em;">✓ ${action === 'write_off' ? 'Written off' : 'Confirmed'}</span>`;
+                        setTimeout(() => { card.remove(); loadGhostRefundRows(); }, 1500);
+                    } else {
+                        await loadGhostRefundRows();
+                    }
+                } else {
+                    buttons.forEach(b => { b.disabled = false; b.style.opacity = ''; });
+                    alert('Failed: ' + result.message);
+                }
+            });
+        }
+
         // Initialize when page loads
         initializePortal();
+        loadGhostRefundRows();
 
         // Export current filtered transactions to CSV
         function exportCSV() {
