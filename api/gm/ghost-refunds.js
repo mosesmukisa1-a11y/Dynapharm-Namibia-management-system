@@ -12,7 +12,7 @@
  */
 import { applyAuthCors } from '../_lib/auth.js';
 import { getMany, getOne, query, withTransaction } from '../db.js';
-import { recomputeLocationBalances } from '../services/stockEngine.js';
+import { recomputeLocationBalances, INWARD_TYPES, OUTWARD_TYPES } from '../services/stockEngine.js';
 import { normalizeBranchSlug } from '../_lib/branchUtils.js';
 
 const ALLOWED_ROLES = new Set(['gm', 'admin', 'director', 'general_manager']);
@@ -122,28 +122,56 @@ export default async function handler(req, res) {
           if (qty > 0) {
             const smId = `SM-WOFF-GHOST-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
             const canonicalBranch = normalizeBranchSlug(ghost.branch_id) || ghost.branch_id;
-            await client.query(
-              `INSERT INTO stock_movements
-                 (id, product_name, batch_no, expiry_date, quantity, movement_type,
-                  source_location, source_location_type,
-                  destination_location, destination_location_type,
-                  reference_id, notes, created_by, status,
-                  movement_date, created_at, updated_at)
-               VALUES ($1,$2,$3,NULL,$4,'write_off',
-                       $5,'branch',
-                       'disposed','external',
-                       $6,$7,$8,'posted',NOW(),NOW(),NOW())`,
-              [
-                smId,
-                ghost.product_name,
-                ghost.batch_no || null,
-                qty,
-                canonicalBranch,
-                id,
-                `Ghost refund row written off by GM (${actor}) — no matching expiry-dated batch`,
-                actor,
-              ]
+
+            // ── Guard: cap write-off qty at the current live balance ──────────
+            // If the ghost quantity was already partially (or fully) deducted by
+            // a concurrent sale or prior adjustment, writing off the full ghost
+            // qty would push the balance negative.  Compute the movement-backed
+            // balance for this branch/product/batch BEFORE the write-off and cap
+            // the deduction to avoid a negative closing_qty.
+            const inwardList  = [...INWARD_TYPES];
+            const outwardList = [...OUTWARD_TYPES];
+            const balRes = await client.query(
+              `SELECT
+                 COALESCE(SUM(CASE WHEN destination_location = $1
+                                    AND movement_type = ANY($3::text[]) THEN quantity ELSE 0 END), 0)
+                 - COALESCE(SUM(CASE WHEN source_location = $1
+                                      AND movement_type = ANY($4::text[]) THEN quantity ELSE 0 END), 0)
+                 AS live_closing
+               FROM stock_movements
+               WHERE status IN ('posted', 'approved')
+                 AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))
+                 AND COALESCE(batch_no, '') = $5`,
+              [canonicalBranch, ghost.product_name, inwardList, outwardList, ghost.batch_no || '']
             );
+            const liveClosing = Number(balRes.rows[0]?.live_closing ?? qty);
+            const effectiveQty = Math.min(qty, Math.max(0, liveClosing));
+
+            if (effectiveQty > 0) {
+              await client.query(
+                `INSERT INTO stock_movements
+                   (id, product_name, batch_no, expiry_date, quantity, movement_type,
+                    source_location, source_location_type,
+                    destination_location, destination_location_type,
+                    reference_id, notes, created_by, status,
+                    movement_date, created_at, updated_at)
+                 VALUES ($1,$2,$3,NULL,$4,'write_off',
+                         $5,'branch',
+                         'disposed','external',
+                         $6,$7,$8,'posted',NOW(),NOW(),NOW())`,
+                [
+                  smId,
+                  ghost.product_name,
+                  ghost.batch_no || null,
+                  effectiveQty,
+                  canonicalBranch,
+                  id,
+                  `Ghost refund row written off by GM (${actor}) — no matching expiry-dated batch` +
+                    (effectiveQty < qty ? ` (capped from ${qty} to ${effectiveQty} — partial deduction already applied)` : ''),
+                  actor,
+                ]
+              );
+            }
           }
         });
 
