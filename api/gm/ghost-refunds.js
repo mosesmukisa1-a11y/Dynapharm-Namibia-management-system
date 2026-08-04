@@ -12,7 +12,7 @@
  */
 import { applyAuthCors } from '../_lib/auth.js';
 import { getMany, getOne, query, withTransaction } from '../db.js';
-import { recomputeLocationBalances, INWARD_TYPES, OUTWARD_TYPES } from '../services/stockEngine.js';
+import { recomputeLocationBalances, recomputeInventoryBalanceTx, INWARD_TYPES, OUTWARD_TYPES } from '../services/stockEngine.js';
 import { normalizeBranchSlug } from '../_lib/branchUtils.js';
 
 const ALLOWED_ROLES = new Set(['gm', 'admin', 'director', 'general_manager']);
@@ -171,6 +171,26 @@ export default async function handler(req, res) {
                   actor,
                 ]
               );
+
+              // ── Atomically update inventory_balances inside this transaction ──
+              //
+              // Previously the balance recompute ran OUTSIDE the transaction,
+              // creating a race window: a concurrent sale that committed between
+              // the write-off movement commit and the recompute could push
+              // closing_qty negative before the recompute corrected it.
+              //
+              // By calling recomputeInventoryBalanceTx here, the movement insert
+              // and the inventory_balances upsert are part of the SAME database
+              // transaction.  The per-key advisory lock inside that function
+              // serialises any concurrent recompute that arrives during this
+              // window, so the balance is always consistent with the committed
+              // movements the moment this transaction commits.
+              await recomputeInventoryBalanceTx(client, {
+                locationType: 'branch',
+                locationId: canonicalBranch,
+                productName: ghost.product_name,
+                batchNo: ghost.batch_no || '',
+              });
             }
           }
         });
@@ -178,17 +198,6 @@ export default async function handler(req, res) {
         // If a concurrent request already resolved the row, return 409
         if (!ghostBranchId) {
           return res.status(409).json({ success: false, error: 'Ghost row was already resolved by a concurrent request' });
-        }
-
-        // Recompute branch balances — await so the write-off is reflected
-        // before we return success.  Signature: recomputeLocationBalances(locationType, locationId)
-        const canonBranch = normalizeBranchSlug(ghostBranchId) || ghostBranchId;
-        try {
-          await recomputeLocationBalances('branch', canonBranch);
-        } catch (recomputeErr) {
-          console.error('[gm/ghost-refunds] recomputeLocationBalances error:', recomputeErr.message);
-          // Non-fatal: the movement is committed; the balance will reconcile on
-          // the next scheduled recompute.
         }
 
         return res.json({
