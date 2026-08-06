@@ -120,36 +120,60 @@ async function deductStock(client, branchId, productName, qty, movType, noteStr,
 
   for (const ib of ibRows) {
     if (remaining <= 0) break;
-    const available = Number(ib.available_qty);
-    if (available <= 0) continue;
-    const take = Math.min(remaining, available);
+    const ibAvailable = Number(ib.available_qty);
+    if (ibAvailable <= 0) continue;
 
-    // Upsert a branch_inventory_batches row so it is deductable and auditable.
-    // The table's unique constraint is on (branch_id, product_name, batch_no, expiry_date).
-    const upsertResult = await client.query(
-      `INSERT INTO branch_inventory_batches
-         (id, branch_id, product_name, batch_no, expiry_date, quantity, unit, unit_price, status, created_at, updated_at)
-       VALUES (
-         $1, $2, $3, $4, $5, $6::numeric, 'units', $7, 'in_stock', NOW(), NOW()
-       )
-       ON CONFLICT (branch_id, product_name, batch_no, expiry_date)
-       DO UPDATE SET
-         quantity   = GREATEST(branch_inventory_batches.quantity, $6::numeric),
-         unit_price = COALESCE(EXCLUDED.unit_price, branch_inventory_batches.unit_price),
-         updated_at = NOW()
-       RETURNING id, product_name, batch_no`,
-      [
-        'BIB-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6).toUpperCase(),
-        branchId, ib.product_name, ib.batch_no || null, ib.expiry_date || null,
-        available,
-        ib.unit_dp ? Number(ib.unit_dp) : (unitPrice || null),
-      ]
-    );
+    // ── Fallback concurrency fix ───────────────────────────────────────────
+    // The old code used ON CONFLICT DO UPDATE SET quantity = GREATEST(bib, ib).
+    // That silently restores already-sold units: if a sale deducted BIB to 2
+    // but inventory_balances still shows 10 (stale), GREATEST would reset BIB
+    // to 10 and let us deduct against phantom stock.
+    //
+    // Correct approach:
+    //  1. Lock any existing BIB row first (FOR UPDATE).
+    //  2. If a row exists, deduct from its ACTUAL current quantity — never
+    //     from the stale IB value.
+    //  3. If no row exists, create one from IB (the stock-engine balance is
+    //     the source of truth for products with no BIB row yet).
+    const existingBibLocked = (await client.query(
+      `SELECT id, quantity FROM branch_inventory_batches
+       WHERE branch_id = $1
+         AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))
+         AND batch_no    IS NOT DISTINCT FROM $3
+         AND expiry_date IS NOT DISTINCT FROM $4
+       FOR UPDATE`,
+      [branchId, ib.product_name, ib.batch_no || null, ib.expiry_date || null]
+    )).rows;
 
-    const bibId = upsertResult.rows[0]?.id;
-    if (!bibId) continue;
+    let bibId, actualAvailable;
+    if (existingBibLocked.length > 0) {
+      // Row exists — use its live quantity, not the stale IB value
+      bibId           = existingBibLocked[0].id;
+      actualAvailable = Number(existingBibLocked[0].quantity);
+    } else {
+      // No BIB row yet — create one seeded from inventory_balances
+      const inserted = (await client.query(
+        `INSERT INTO branch_inventory_batches
+           (id, branch_id, product_name, batch_no, expiry_date,
+            quantity, unit, unit_price, status, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6::numeric,'units',$7,'in_stock',NOW(),NOW())
+         RETURNING id`,
+        [
+          'BIB-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6).toUpperCase(),
+          branchId, ib.product_name, ib.batch_no || null, ib.expiry_date || null,
+          ibAvailable,
+          ib.unit_dp ? Number(ib.unit_dp) : (unitPrice || null),
+        ]
+      )).rows;
+      bibId           = inserted[0]?.id;
+      actualAvailable = ibAvailable;
+    }
 
-    // Now deduct from that row
+    if (!bibId || actualAvailable <= 0) continue;
+    const take = Math.min(remaining, actualAvailable);
+    if (take <= 0) continue;
+
+    // Deduct from the (now-locked) BIB row
     await client.query(
       `UPDATE branch_inventory_batches SET quantity = quantity - $1, updated_at = NOW() WHERE id = $2`,
       [take, bibId]

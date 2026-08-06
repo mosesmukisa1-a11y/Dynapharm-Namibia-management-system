@@ -147,18 +147,31 @@ export default async function handler(req, res) {
             }
           }
 
-          const bibUpd = await client.query(
-            `UPDATE branch_inventory_batches
-             SET quantity   = quantity + $1,
-                 status     = 'in_stock',
-                 updated_at = NOW()
-             WHERE branch_id = $2
-               AND LOWER(TRIM(product_name)) = LOWER(TRIM($3))
-               AND batch_no    IS NOT DISTINCT FROM $4
-               AND expiry_date IS NOT DISTINCT FROM $5`,
-            [qty, branchId, product, resolvedBatchNo, resolvedExpiry]
+          // ── Concurrency guard: lock the BIB row before restoring ─────────────
+          // Two concurrent approval requests for the same refund can both
+          // reach this UPDATE at the same time and add qty twice.  The FOR
+          // UPDATE lock serialises them: the second request blocks until the
+          // first commits, then sees the already-updated row and skips the
+          // duplicate restore.
+          const lockedBib = await client.query(
+            `SELECT id FROM branch_inventory_batches
+             WHERE branch_id = $1
+               AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))
+               AND batch_no    IS NOT DISTINCT FROM $3
+               AND expiry_date IS NOT DISTINCT FROM $4
+             FOR UPDATE`,
+            [branchId, product, resolvedBatchNo, resolvedExpiry]
           );
-          if (bibUpd.rowCount === 0) {
+          if (lockedBib.rows.length > 0) {
+            await client.query(
+              `UPDATE branch_inventory_batches
+               SET quantity   = quantity + $1,
+                   status     = 'in_stock',
+                   updated_at = NOW()
+               WHERE id = $2`,
+              [qty, lockedBib.rows[0].id]
+            );
+          } else {
             const bibRestoreId = `BIB-RFND-${Date.now()}-${Math.random().toString(36).slice(2,6).toUpperCase()}`;
             await client.query(
               `INSERT INTO branch_inventory_batches
@@ -170,6 +183,10 @@ export default async function handler(req, res) {
           }
 
           // ── 4. stock_movements — audit entry for stock engine ────────────────
+          // expiry_date must match what was written to branch_inventory_batches
+          // (resolvedExpiry, not NULL).  If the movement uses NULL here while BIB
+          // uses the real expiry, recomputeLocationBalances tracks them under
+          // different keys and the branch inventory_balance diverges.
           const canonicalBranch = normalizeBranchSlug(branchId) || branchId;
           await client.query(
             `INSERT INTO stock_movements
@@ -178,11 +195,11 @@ export default async function handler(req, res) {
                 destination_location, destination_location_type,
                 reference_id, notes, created_by, status,
                 movement_date, created_at, updated_at)
-             VALUES ($1,$2,$3,NULL,$4,'refund_return',
+             VALUES ($1,$2,$3,$4,$5,'refund_return',
                      'customer','external',
-                     $5,'branch',
-                     $6,$7,$8,'posted',NOW(),NOW(),NOW())`,
-            [smId, product, batchNo || null, qty,
+                     $6,'branch',
+                     $7,$8,$9,'posted',NOW(),NOW(),NOW())`,
+            [smId, product, batchNo || null, resolvedExpiry || null, qty,
              canonicalBranch,
              refund.id, `Refund approved — ${refund.reason}`, approver]
           );
@@ -197,8 +214,9 @@ export default async function handler(req, res) {
         });
 
         // ── 6. Recompute inventory_balances for the branch (best-effort) ─────
+        // Signature: recomputeLocationBalances(locationType, locationId)
         const canonicalBranchForRecompute = normalizeBranchSlug(branchId) || branchId;
-        recomputeLocationBalances(canonicalBranchForRecompute, 'branch').catch(e =>
+        recomputeLocationBalances('branch', canonicalBranchForRecompute).catch(e =>
           console.error('[refundApproval] recomputeLocationBalances error:', e.message)
         );
 

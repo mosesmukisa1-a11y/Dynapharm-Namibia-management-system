@@ -1441,13 +1441,24 @@ export default async function handler(req, res) {
             // but branch_inventory_batches / inventory_balances use the canonical slug.
             const branchId = normalizeBranchSlug(transfer.to_branch) || transfer.to_branch || null;
             const sourceWarehouse = transfer.from_warehouse || null;
-            // ── Concurrent receipt guard ──────────────────────────────────────────
-            // The outer UPDATE (~line 1108) advances transfer.status BEFORE this
-            // transaction opens, so SELECT…FOR UPDATE can only read the *new* status
-            // and cannot tell whether a concurrent request already wrote BIB rows.
-            // A transfer_in movement existence check is the correct signal: the first
-            // successful request posts one; any concurrent duplicate finds it here
-            // and exits without writing more BIB rows or movements.
+            // ── Concurrent receipt guard (advisory lock + existence check) ──────
+            // Problem: the outer UPDATE (~line 1108) sets transfer.status BEFORE
+            // this transaction opens.  Two concurrent receipt requests both see
+            // status='delivered' in their outer UPDATE, both enter withTransaction,
+            // and under READ COMMITTED both could read "no movement yet" and both
+            // write BIB rows — doubling stock.
+            //
+            // Fix (two-layer):
+            //   1. pg_advisory_xact_lock — serialises concurrent receipt
+            //      transactions for the same transfer ID.  The second request
+            //      blocks here until the first commits, so it will always see
+            //      the committed movement from the first request.
+            //   2. transfer_in existence check — idempotency guard so even a
+            //      retry after a transient failure is safe.
+            await client.query(
+              `SELECT pg_advisory_xact_lock(hashtext($1))`,
+              [id]
+            );
             const dupReceiptCheck = await client.query(
               `SELECT 1 FROM stock_movements
                WHERE reference_id = $1

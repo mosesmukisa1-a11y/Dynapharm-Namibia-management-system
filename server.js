@@ -3776,6 +3776,140 @@ server.on('error', (error) => {
     }
     // ─────────────────────────────────────────────────────────────────────────
 
+    // ── Heal delivered/received transfers missing their inward movements ─────
+    // Root cause: transfers.js UPDATE stock_transfers (line ~1108) runs BEFORE
+    // withTransaction.  If withTransaction errors (network blip, constraint
+    // violation, server restart mid-flight), the status row is permanently
+    // 'delivered'/'received' but no transfer_in movement or BIB row was written.
+    // This correction detects those gaps, backfills branch_inventory_batches and
+    // stock_movements, then recomputes inventory_balances for the affected branch.
+    try {
+      const gapQuery = await query(`
+        SELECT t.id, t.to_branch, t.from_warehouse,
+               json_agg(json_build_object(
+                 'product',   sti.product_name,
+                 'batch_no',  sti.batch_no,
+                 'expiry',    sti.expiry_date,
+                 'qty',       COALESCE(sti.quantity_approved, sti.quantity)
+               )) AS items
+        FROM stock_transfers t
+        JOIN stock_transfer_items sti ON sti.transfer_id = t.id
+        WHERE t.status IN ('delivered','received','partially_received')
+          AND NOT EXISTS (
+            SELECT 1 FROM stock_movements sm
+            WHERE sm.reference_id = t.id
+              AND sm.movement_type IN ('transfer_in','branch_receipt','received')
+              AND sm.status = 'posted'
+          )
+        GROUP BY t.id, t.to_branch, t.from_warehouse
+        HAVING COUNT(sti.id) > 0
+      `);
+
+      const { normalizeBranchSlug } = await import('./api/_lib/branchUtils.js');
+      const { withTransaction } = await import('./api/db.js');
+      const { recomputeLocationBalances } = await import('./api/services/stockEngine.js');
+
+      let healed = 0;
+      for (const gap of (gapQuery?.rows || [])) {
+        try {
+          const branchId = normalizeBranchSlug(gap.to_branch) || gap.to_branch;
+          const srcWarehouse = gap.from_warehouse || null;
+          const items = Array.isArray(gap.items) ? gap.items : [];
+          if (!branchId || items.length === 0) continue;
+
+          await withTransaction(async (client) => {
+            for (const item of items) {
+              const productName = (item.product || '').trim();
+              const batchNo     = item.batch_no || null;
+              const expiryDate  = item.expiry   || null;
+              const qty         = Number(item.qty || 0);
+              if (!productName || qty <= 0) continue;
+
+              // BIB: upsert so a double-heal is idempotent
+              const bibId = `BIB-HEAL-${Date.now()}-${Math.random().toString(36).slice(2,6).toUpperCase()}`;
+              if (batchNo && expiryDate) {
+                await client.query(
+                  `INSERT INTO branch_inventory_batches
+                     (id, branch_id, product_name, batch_no, expiry_date,
+                      quantity, source_warehouse, status, created_at, updated_at)
+                   VALUES ($1,$2,$3,$4,$5::date,$6,$7,'in_stock',NOW(),NOW())
+                   ON CONFLICT (branch_id, product_name, batch_no, expiry_date)
+                   DO UPDATE SET
+                     quantity         = branch_inventory_batches.quantity + EXCLUDED.quantity,
+                     source_warehouse = COALESCE(EXCLUDED.source_warehouse, branch_inventory_batches.source_warehouse),
+                     updated_at       = NOW()`,
+                  [bibId, branchId, productName, batchNo, expiryDate, qty, srcWarehouse]
+                );
+              } else {
+                const ex = (await client.query(
+                  `SELECT id FROM branch_inventory_batches
+                   WHERE branch_id=$1 AND LOWER(TRIM(product_name))=LOWER(TRIM($2))
+                     AND batch_no IS NOT DISTINCT FROM $3
+                     AND expiry_date IS NOT DISTINCT FROM $4
+                   FOR UPDATE`,
+                  [branchId, productName, batchNo, expiryDate]
+                )).rows;
+                if (ex.length > 0) {
+                  await client.query(
+                    `UPDATE branch_inventory_batches SET quantity=quantity+$1, updated_at=NOW() WHERE id=$2`,
+                    [qty, ex[0].id]
+                  );
+                } else {
+                  await client.query(
+                    `INSERT INTO branch_inventory_batches
+                       (id, branch_id, product_name, batch_no, expiry_date,
+                        quantity, source_warehouse, status, created_at, updated_at)
+                     VALUES ($1,$2,$3,$4,$5,$6,$7,'in_stock',NOW(),NOW())`,
+                    [bibId, branchId, productName, batchNo, expiryDate, qty, srcWarehouse]
+                  );
+                }
+              }
+
+              // stock_movements: idempotent — only insert if truly missing
+              const smExists = (await client.query(
+                `SELECT 1 FROM stock_movements
+                 WHERE reference_id=$1 AND movement_type='transfer_in'
+                   AND LOWER(TRIM(product_name))=LOWER(TRIM($2)) AND status='posted'`,
+                [gap.id, productName]
+              )).rowCount;
+              if (!smExists) {
+                await client.query(
+                  `INSERT INTO stock_movements
+                     (id, product_name, batch_no, expiry_date, quantity, movement_type,
+                      source_location, source_location_type,
+                      destination_location, destination_location_type,
+                      reference_id, notes, status, created_at, updated_at)
+                   VALUES ($1,$2,$3,$4,$5,'transfer_in',$6,'warehouse',$7,'branch',$8,
+                           'Backfilled by startup heal — transfer previously lacked inward movement',
+                           'posted',NOW(),NOW())`,
+                  [
+                    `MOV-HEAL-${Date.now()}-${Math.random().toString(36).slice(2,6).toUpperCase()}`,
+                    productName, batchNo, expiryDate, qty,
+                    srcWarehouse, branchId, gap.id,
+                  ]
+                );
+              }
+            }
+          });
+
+          recomputeLocationBalances('branch', branchId).catch(() => {});
+          if (srcWarehouse) recomputeLocationBalances('warehouse', srcWarehouse).catch(() => {});
+          healed++;
+          console.log(`[transfer-heal] Backfilled missing inward movement/BIB for transfer ${gap.id} → ${branchId}`);
+        } catch (healItemErr) {
+          console.warn(`[transfer-heal] Could not heal transfer ${gap.id}:`, healItemErr.message);
+        }
+      }
+      if (healed === 0 && gapQuery?.rows?.length === 0) {
+        // Silently pass — no gaps found
+      } else if (healed > 0) {
+        console.log(`[transfer-heal] Healed ${healed} transfer(s) missing inward movement.`);
+      }
+    } catch (healErr) {
+      console.warn('[transfer-heal] Startup heal failed:', healErr.message);
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     // ── Start automated stock reporting scheduler ────────────────────────────
     try {
       const { startStockScheduler, ensureStockSummaryTable } = await import('./api/services/stockScheduler.js');
