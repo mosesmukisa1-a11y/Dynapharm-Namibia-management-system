@@ -1188,43 +1188,6 @@ export default async function handler(req, res) {
       const statusChanged = transfer.status !== previousStatus;
       if (statusChanged && transferItems.length > 0) {
         await withTransaction(async (client) => {
-          // ── Concurrency guard: re-read transfer status under a row lock ─────────
-          // previousStatus was read at line ~988 outside this transaction.  Two
-          // concurrent requests (e.g. two staff clicking "Receive" simultaneously)
-          // could both read the pre-receipt status and both enter this block.
-          // The FOR UPDATE lock serialises them; the second request sees the
-          // status already updated by the first and skips all inventory writes.
-          const lockedRow = await client.query(
-            `SELECT status FROM stock_transfers WHERE id = $1 FOR UPDATE`,
-            [id]
-          );
-          const lockedStatus = lockedRow.rows[0]?.status;
-
-          // Derive an authoritative previousStatus from the locked read.
-          // If another concurrent request already advanced the status, use
-          // that value so every branch below (approved, dispatched, delivered,
-          // received, isFirstReceipt) reflects reality rather than the stale
-          // value read before the transaction started.
-          const concurrentlyUpdatedPreviousStatus =
-            lockedStatus !== undefined ? lockedStatus : previousStatus;
-
-          // Receipt idempotency: if the transfer is already in a terminal
-          // receipt state, skip all BIB/movement writes for the current request.
-          const TERMINAL_RECEIPT_STATUSES = new Set(['received', 'delivered', 'partially_received', 'completed']);
-          const targetingReceipt = TERMINAL_RECEIPT_STATUSES.has(transfer.status);
-          if (targetingReceipt && TERMINAL_RECEIPT_STATUSES.has(concurrentlyUpdatedPreviousStatus)) {
-            console.warn(
-              `[transfers] duplicate receipt blocked inside transaction: ` +
-              `transfer ${id} is already '${concurrentlyUpdatedPreviousStatus}' — skipping BIB/movement writes`
-            );
-            return; // no inventory changes; transaction commits as a clean no-op
-          }
-
-          // Shadow previousStatus inside this transaction with the locked value
-          // so all downstream checks reflect the true pre-write state.
-          const previousStatus = concurrentlyUpdatedPreviousStatus; // eslint-disable-line no-shadow
-          // ─────────────────────────────────────────────────────────────────────
-
           const actorName = transfer.received_by || transfer.dispatched_by || transfer.delivered_by || currentUser?.fullName || null;
 
           if (transfer.status === 'received' && previousStatus !== 'received') {
@@ -1478,7 +1441,27 @@ export default async function handler(req, res) {
             // but branch_inventory_batches / inventory_balances use the canonical slug.
             const branchId = normalizeBranchSlug(transfer.to_branch) || transfer.to_branch || null;
             const sourceWarehouse = transfer.from_warehouse || null;
-            for (const item of transferItems) {
+            // ── Concurrent receipt guard ──────────────────────────────────────────
+            // The outer UPDATE (~line 1108) advances transfer.status BEFORE this
+            // transaction opens, so SELECT…FOR UPDATE can only read the *new* status
+            // and cannot tell whether a concurrent request already wrote BIB rows.
+            // A transfer_in movement existence check is the correct signal: the first
+            // successful request posts one; any concurrent duplicate finds it here
+            // and exits without writing more BIB rows or movements.
+            const dupReceiptCheck = await client.query(
+              `SELECT 1 FROM stock_movements
+               WHERE reference_id = $1
+                 AND movement_type = 'transfer_in'
+                 AND status = 'posted'
+               LIMIT 1`,
+              [id]
+            );
+            if (dupReceiptCheck.rowCount > 0) {
+              console.warn(
+                `[transfers] duplicate receipt blocked — transfer_in already posted for ${id}; ` +
+                `concurrent request finished first, BIB writes skipped.`
+              );
+            } else for (const item of transferItems) {
               // B2: Fall back to quantity_approved (GM-approved qty) before the original request qty.
               const qtyReceived = Number(item.quantity_received ?? item.quantity_approved ?? item.quantity ?? 0);
               if (qtyReceived <= 0) continue;

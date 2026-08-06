@@ -203,6 +203,7 @@ async function getInventoryByBranch(branchId, enriched = false) {
       [ibCandidates]
     );
     const normKey = (pn, bn) => `${(pn || '').trim().toLowerCase()}|${(bn || '').trim().toLowerCase()}`;
+    const normProd = (pn) => (pn || '').trim().toLowerCase();
     // Build lookup map: key → index in normalized (qty > 0) array
     const existingMap = new Map();
     normalized.forEach((n, idx) => existingMap.set(normKey(n.product_name, n.batch_no), idx));
@@ -210,13 +211,25 @@ async function getInventoryByBranch(branchId, enriched = false) {
     // Prevents a recently-depleted batch (qty just set to 0 by a sale) from being
     // re-added by a stale inventory_balances row before recomputeLocationBalances runs.
     const allBibKeys = new Set(rows.map(r => normKey(r.product_name, r.batch_no)));
+    // Product-only guard: if ANY BIB row exists for this product, an inventory_balances
+    // entry with no batch (batch_no = '' / NULL) must not be injected as a synthetic row.
+    // recomputeLocationBalances stores COALESCE(batch_no,'') so a movement recorded
+    // without a batch produces IB.batch_no='', while BIB carries the real batch string.
+    // Without this guard the merge key ('product|') ≠ ('product|real-batch') and the
+    // stale IB quantity is added on top of the real BIB rows — doubling visible stock.
+    const bibProductNames = new Set(rows.map(r => normProd(r.product_name)));
 
     for (const ib of ibRows) {
       const key = normKey(ib.product_name, ib.batch_no);
       const ibQty = parseNumber(ib.quantity);
+      const ibHasNoBatch = !(ib.batch_no || '').trim();
       if (existingMap.has(key) || allBibKeys.has(key)) {
         // Item exists in branch_inventory_batches (even if quantity is now 0) —
         // BIB is authoritative; never let a stale inventory_balances entry override it.
+      } else if (ibHasNoBatch && bibProductNames.has(normProd(ib.product_name))) {
+        // IB has no batch info AND BIB already tracks this product under a real batch.
+        // The IB balance is captured in the BIB rows; adding a synthetic entry here
+        // would double-count the stock for this product.
       } else if (ibQty > 0) {
         // Item only exists in inventory_balances — add it
         const expiryDate = ib.expiry_date ? (ib.expiry_date instanceof Date ? ib.expiry_date.toISOString().slice(0, 10) : String(ib.expiry_date).slice(0, 10)) : null;
