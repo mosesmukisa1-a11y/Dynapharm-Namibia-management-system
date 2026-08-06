@@ -1188,6 +1188,43 @@ export default async function handler(req, res) {
       const statusChanged = transfer.status !== previousStatus;
       if (statusChanged && transferItems.length > 0) {
         await withTransaction(async (client) => {
+          // ── Concurrency guard: re-read transfer status under a row lock ─────────
+          // previousStatus was read at line ~988 outside this transaction.  Two
+          // concurrent requests (e.g. two staff clicking "Receive" simultaneously)
+          // could both read the pre-receipt status and both enter this block.
+          // The FOR UPDATE lock serialises them; the second request sees the
+          // status already updated by the first and skips all inventory writes.
+          const lockedRow = await client.query(
+            `SELECT status FROM stock_transfers WHERE id = $1 FOR UPDATE`,
+            [id]
+          );
+          const lockedStatus = lockedRow.rows[0]?.status;
+
+          // Derive an authoritative previousStatus from the locked read.
+          // If another concurrent request already advanced the status, use
+          // that value so every branch below (approved, dispatched, delivered,
+          // received, isFirstReceipt) reflects reality rather than the stale
+          // value read before the transaction started.
+          const concurrentlyUpdatedPreviousStatus =
+            lockedStatus !== undefined ? lockedStatus : previousStatus;
+
+          // Receipt idempotency: if the transfer is already in a terminal
+          // receipt state, skip all BIB/movement writes for the current request.
+          const TERMINAL_RECEIPT_STATUSES = new Set(['received', 'delivered', 'partially_received', 'completed']);
+          const targetingReceipt = TERMINAL_RECEIPT_STATUSES.has(transfer.status);
+          if (targetingReceipt && TERMINAL_RECEIPT_STATUSES.has(concurrentlyUpdatedPreviousStatus)) {
+            console.warn(
+              `[transfers] duplicate receipt blocked inside transaction: ` +
+              `transfer ${id} is already '${concurrentlyUpdatedPreviousStatus}' — skipping BIB/movement writes`
+            );
+            return; // no inventory changes; transaction commits as a clean no-op
+          }
+
+          // Shadow previousStatus inside this transaction with the locked value
+          // so all downstream checks reflect the true pre-write state.
+          const previousStatus = concurrentlyUpdatedPreviousStatus; // eslint-disable-line no-shadow
+          // ─────────────────────────────────────────────────────────────────────
+
           const actorName = transfer.received_by || transfer.dispatched_by || transfer.delivered_by || currentUser?.fullName || null;
 
           if (transfer.status === 'received' && previousStatus !== 'received') {

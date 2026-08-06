@@ -138,6 +138,27 @@ export default async function handler(req, res) {
   let received;
   try {
     received = await withTransaction(async (client) => {
+      // ── Concurrency guard: re-read transfer status under a row lock ─────────
+      // The pre-transaction status check (lines above) is a fast-path guard but
+      // is not race-safe — two concurrent receipt confirmations can both pass it.
+      // Acquiring FOR UPDATE here serialises them: the second request will see the
+      // status already set to 'received' by the first and must abort.
+      const lockedTransfer = await client.query(
+        `SELECT status FROM stock_transfers WHERE id = $1 FOR UPDATE`,
+        [resolvedTransfer.id]
+      );
+      const lockedStatus = lockedTransfer.rows[0]?.status;
+      const ALREADY_RECEIVED = new Set(['received', 'delivered', 'partially_received', 'completed']);
+      if (lockedStatus && ALREADY_RECEIVED.has(lockedStatus)) {
+        const err = new Error(
+          `Duplicate receipt blocked: transfer ${resolvedTransfer.id} is already '${lockedStatus}'. ` +
+          `A concurrent confirmation was processed first.`
+        );
+        err.statusCode = 409;
+        throw err;
+      }
+      // ─────────────────────────────────────────────────────────────────────────
+
       const result = [];
 
       for (const item of items) {
