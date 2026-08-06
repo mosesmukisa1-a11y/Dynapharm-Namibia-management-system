@@ -15,6 +15,7 @@ export default function AdminPortal() {
     { id: 'distributors', label: 'Distributor List', icon: '📋' },
     { id: 'branches', label: 'Branches', icon: '🏬' },
     { id: 'system', label: 'System', icon: '⚙️' },
+    { id: 'stock-debug', label: 'Stock Debug', icon: '🔍' },
   ];
 
   return (
@@ -34,6 +35,7 @@ export default function AdminPortal() {
         {activeTab === 'distributors' && <DistributorsTab />}
         {activeTab === 'branches' && <BranchesTab />}
         {activeTab === 'system' && <SystemTab />}
+        {activeTab === 'stock-debug' && <StockDebugTab />}
       </div>
     </div>
   );
@@ -1600,6 +1602,381 @@ function AppointmentsTab() {
             </div>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Stock Debug Tab — reconciliation diagnostic view (admin only)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function DriftBadge({ drift }) {
+  const abs = Math.abs(Number(drift));
+  if (abs === 0) return <span style={{ display:'inline-block', padding:'2px 10px', borderRadius:'12px', fontSize:'0.75rem', fontWeight:700, background:'#d1fae5', color:'#065f46' }}>✓ 0</span>;
+  const big = abs >= 10;
+  return (
+    <span style={{ display:'inline-block', padding:'2px 10px', borderRadius:'12px', fontSize:'0.75rem', fontWeight:700,
+      background: big ? '#fee2e2' : '#fef3c7',
+      color: big ? '#991b1b' : '#92400e' }}>
+      {Number(drift) > 0 ? '+' : ''}{Number(drift).toFixed(2)}
+    </span>
+  );
+}
+
+function MovementAuditTrail({ movements }) {
+  if (!movements || movements.length === 0) {
+    return <p style={{ fontSize:'0.8rem', color:'#6b7280', fontStyle:'italic', margin:'8px 0' }}>No recent movements found for this product/location.</p>;
+  }
+  return (
+    <div style={{ overflowX:'auto', marginTop:'6px' }}>
+      <table style={{ width:'100%', fontSize:'0.78rem', borderCollapse:'collapse' }}>
+        <thead>
+          <tr style={{ background:'#f1f5f9', textAlign:'left' }}>
+            {['Date','Type','Qty','From','To','Batch','By','Notes'].map(h => (
+              <th key={h} style={{ padding:'4px 8px', fontWeight:600, color:'#475569', whiteSpace:'nowrap' }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {movements.map((m, i) => (
+            <tr key={m.id || i} style={{ borderBottom:'1px solid #f1f5f9', background: i % 2 === 0 ? '#fff' : '#f8fafc' }}>
+              <td style={{ padding:'3px 8px', whiteSpace:'nowrap', color:'#64748b' }}>{m.createdAt ? new Date(m.createdAt).toLocaleString() : '-'}</td>
+              <td style={{ padding:'3px 8px', whiteSpace:'nowrap' }}>
+                <code style={{ background:'#e0f2fe', color:'#0369a1', padding:'1px 5px', borderRadius:'4px', fontSize:'0.72rem' }}>{m.movementType}</code>
+              </td>
+              <td style={{ padding:'3px 8px', fontWeight:600 }}>{Number(m.quantity).toFixed(2)}</td>
+              <td style={{ padding:'3px 8px', color:'#64748b', whiteSpace:'nowrap' }}>{m.sourceLocation || '—'}</td>
+              <td style={{ padding:'3px 8px', color:'#64748b', whiteSpace:'nowrap' }}>{m.destinationLocation || '—'}</td>
+              <td style={{ padding:'3px 8px', color:'#64748b' }}>{m.batchNo || '—'}</td>
+              <td style={{ padding:'3px 8px', color:'#64748b', whiteSpace:'nowrap' }}>{m.createdBy || '—'}</td>
+              <td style={{ padding:'3px 8px', color:'#64748b', maxWidth:'180px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{m.notes || '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function WarehouseSection({ rows }) {
+  const [open, setOpen] = useState(true);
+  const [expandedRows, setExpandedRows] = useState({});
+  const [showAllRows, setShowAllRows] = useState(false);
+
+  const toggleRow = (key) => setExpandedRows(prev => ({ ...prev, [key]: !prev[key] }));
+  const driftCount = rows.filter(r => r.hasDrift).length;
+
+  const displayRows = showAllRows ? rows : rows.slice(0, 50);
+
+  return (
+    <div style={{ border:'1px solid #e2e8f0', borderRadius:'10px', overflow:'hidden', marginBottom:'16px' }}>
+      <div
+        onClick={() => setOpen(o => !o)}
+        style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 16px',
+          background:'#f0f9ff', cursor:'pointer', userSelect:'none' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+          <span style={{ fontSize:'1.1rem' }}>🏭</span>
+          <span style={{ fontWeight:700, color:'#1e3a5f', fontSize:'0.95rem' }}>Warehouse Stock</span>
+          <span style={{ fontSize:'0.78rem', color:'#64748b' }}>{rows.length} rows</span>
+          {driftCount > 0 && (
+            <span style={{ background:'#fee2e2', color:'#991b1b', padding:'2px 8px', borderRadius:'10px', fontSize:'0.75rem', fontWeight:700 }}>
+              ⚠️ {driftCount} drifted
+            </span>
+          )}
+        </div>
+        <span style={{ color:'#64748b', fontSize:'0.9rem' }}>{open ? '▲' : '▼'}</span>
+      </div>
+
+      {open && (
+        <div style={{ overflowX:'auto' }}>
+          {rows.length === 0 ? (
+            <p style={{ padding:'20px', color:'#6b7280', textAlign:'center', fontSize:'0.9rem' }}>No warehouse stock data found.</p>
+          ) : (
+            <>
+              <table style={{ width:'100%', fontSize:'0.82rem', borderCollapse:'collapse' }}>
+                <thead>
+                  <tr style={{ background:'#f8fafc', textAlign:'left', borderBottom:'2px solid #e2e8f0' }}>
+                    <th style={{ padding:'8px 10px', fontWeight:600, color:'#475569' }}>Warehouse</th>
+                    <th style={{ padding:'8px 10px', fontWeight:600, color:'#475569' }}>Product</th>
+                    <th style={{ padding:'8px 10px', fontWeight:600, color:'#475569' }}>Batch / Expiry</th>
+                    <th style={{ padding:'8px 10px', fontWeight:600, color:'#0369a1' }} title="stock_batches.remaining_quantity — FEFO physical counter (api/warehouse/inventory.js Leg B)">
+                      FEFO Batch <span style={{ fontSize:'0.7rem', fontWeight:400 }}>①</span>
+                    </th>
+                    <th style={{ padding:'8px 10px', fontWeight:600, color:'#7c3aed' }} title="warehouse_inventory.quantity — adjustment overlay (api/warehouse/inventory.js Leg A); null if no overlay row exists">
+                      WH Inventory <span style={{ fontSize:'0.7rem', fontWeight:400 }}>②</span>
+                    </th>
+                    <th style={{ padding:'8px 10px', fontWeight:600, color:'#d97706' }} title="inventory_balances.closing_qty — movement-cache recomputed by stockEngine (server.js:1821)">
+                      IB Cache <span style={{ fontSize:'0.7rem', fontWeight:400 }}>③</span>
+                    </th>
+                    <th style={{ padding:'8px 10px', fontWeight:600, color:'#475569' }}>Drift ①vs③</th>
+                    <th style={{ padding:'8px 10px', fontWeight:600, color:'#475569' }}>API Source</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {displayRows.map((r, i) => {
+                    const rowKey = `${r.warehouseId}|${r.productName}|${r.batchNo || ''}`;
+                    const isExpanded = expandedRows[rowKey];
+                    return (
+                      <>
+                        <tr key={rowKey}
+                          onClick={() => r.hasDrift && toggleRow(rowKey)}
+                          style={{
+                            borderBottom:'1px solid #f1f5f9',
+                            background: r.hasDrift ? (i % 2 === 0 ? '#fffbeb' : '#fef9e7') : (i % 2 === 0 ? '#fff' : '#f8fafc'),
+                            cursor: r.hasDrift ? 'pointer' : 'default',
+                          }}>
+                          <td style={{ padding:'7px 10px', fontWeight:600, color:'#1e293b', whiteSpace:'nowrap' }}>{r.warehouseName}</td>
+                          <td style={{ padding:'7px 10px', color:'#1e293b', maxWidth:'200px' }}>{r.productName}</td>
+                          <td style={{ padding:'7px 10px', color:'#64748b', whiteSpace:'nowrap' }}>
+                            {r.batchNo || <span style={{ color:'#94a3b8' }}>—</span>}
+                            {r.expiryDate && <span style={{ display:'block', fontSize:'0.72rem', color:'#94a3b8' }}>{String(r.expiryDate).slice(0,10)}</span>}
+                          </td>
+                          <td style={{ padding:'7px 10px', color:'#0369a1', fontWeight:600, textAlign:'right' }}>{Number(r.fefoQty).toFixed(2)}</td>
+                          <td style={{ padding:'7px 10px', color:'#7c3aed', fontWeight:600, textAlign:'right' }}>
+                            {r.wiQty != null ? Number(r.wiQty).toFixed(2) : <span style={{ color:'#94a3b8', fontStyle:'italic' }}>—</span>}
+                          </td>
+                          <td style={{ padding:'7px 10px', color:'#d97706', fontWeight:600, textAlign:'right' }}>{Number(r.ibQty).toFixed(2)}</td>
+                          <td style={{ padding:'7px 10px', textAlign:'center' }}><DriftBadge drift={r.drift} /></td>
+                          <td style={{ padding:'7px 10px', fontSize:'0.72rem', color:'#64748b' }}>
+                            <div title={r.fefoApiSource} style={{ color:'#0369a1', cursor:'help' }}>① FEFO store</div>
+                            <div title={r.ibApiSource} style={{ color:'#d97706', cursor:'help' }}>③ IB cache</div>
+                          </td>
+                        </tr>
+                        {isExpanded && r.hasDrift && (
+                          <tr key={`${rowKey}-trail`}>
+                            <td colSpan={8} style={{ padding:'10px 20px', background:'#f0f9ff', borderBottom:'1px solid #bae6fd' }}>
+                              <div style={{ fontWeight:600, fontSize:'0.8rem', color:'#0369a1', marginBottom:'4px' }}>
+                                📋 Last 10 stock_movements for {r.productName} @ {r.warehouseName}
+                              </div>
+                              <MovementAuditTrail movements={r.movements} />
+                            </td>
+                          </tr>
+                        )}
+                      </>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {rows.length > 50 && (
+                <div style={{ padding:'10px 16px', textAlign:'center' }}>
+                  <button onClick={() => setShowAllRows(v => !v)}
+                    style={{ padding:'6px 18px', background:'#f1f5f9', border:'1px solid #e2e8f0', borderRadius:'6px', cursor:'pointer', fontSize:'0.82rem', color:'#475569' }}>
+                    {showAllRows ? `Show first 50 only` : `Show all ${rows.length} rows`}
+                  </button>
+                </div>
+              )}
+              <div style={{ padding:'8px 14px', background:'#f8fafc', borderTop:'1px solid #e2e8f0', fontSize:'0.72rem', color:'#94a3b8', display:'flex', gap:'18px', flexWrap:'wrap' }}>
+                <span>① <strong>FEFO Batch</strong> = stock_batches.remaining_quantity (api/warehouse/inventory.js Leg B)</span>
+                <span>② <strong>WH Inventory</strong> = warehouse_inventory.quantity overlay (api/warehouse/inventory.js Leg A)</span>
+                <span>③ <strong>IB Cache</strong> = inventory_balances.closing_qty (server.js GET /api/stock/warehouse/:id/inventory)</span>
+                <span>Click a drifted row to expand movement history.</span>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BranchSection({ rows }) {
+  const [open, setOpen] = useState(true);
+  const [expandedRows, setExpandedRows] = useState({});
+  const [showAllRows, setShowAllRows] = useState(false);
+
+  const toggleRow = (key) => setExpandedRows(prev => ({ ...prev, [key]: !prev[key] }));
+  const driftCount = rows.filter(r => r.hasDrift).length;
+
+  const displayRows = showAllRows ? rows : rows.slice(0, 50);
+
+  return (
+    <div style={{ border:'1px solid #e2e8f0', borderRadius:'10px', overflow:'hidden' }}>
+      <div
+        onClick={() => setOpen(o => !o)}
+        style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 16px',
+          background:'#f0fdf4', cursor:'pointer', userSelect:'none' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+          <span style={{ fontSize:'1.1rem' }}>🏬</span>
+          <span style={{ fontWeight:700, color:'#14532d', fontSize:'0.95rem' }}>Branch Stock</span>
+          <span style={{ fontSize:'0.78rem', color:'#64748b' }}>{rows.length} rows</span>
+          {driftCount > 0 && (
+            <span style={{ background:'#fee2e2', color:'#991b1b', padding:'2px 8px', borderRadius:'10px', fontSize:'0.75rem', fontWeight:700 }}>
+              ⚠️ {driftCount} drifted
+            </span>
+          )}
+        </div>
+        <span style={{ color:'#64748b', fontSize:'0.9rem' }}>{open ? '▲' : '▼'}</span>
+      </div>
+
+      {open && (
+        <div style={{ overflowX:'auto' }}>
+          {rows.length === 0 ? (
+            <p style={{ padding:'20px', color:'#6b7280', textAlign:'center', fontSize:'0.9rem' }}>No branch stock data found.</p>
+          ) : (
+            <>
+              <table style={{ width:'100%', fontSize:'0.82rem', borderCollapse:'collapse' }}>
+                <thead>
+                  <tr style={{ background:'#f8fafc', textAlign:'left', borderBottom:'2px solid #e2e8f0' }}>
+                    <th style={{ padding:'8px 10px', fontWeight:600, color:'#475569' }}>Branch</th>
+                    <th style={{ padding:'8px 10px', fontWeight:600, color:'#475569' }}>Product</th>
+                    <th style={{ padding:'8px 10px', fontWeight:600, color:'#0369a1' }} title="SUM(branch_inventory_batches.quantity)">
+                      BIB Qty <span style={{ fontSize:'0.7rem', fontWeight:400 }}>①</span>
+                    </th>
+                    <th style={{ padding:'8px 10px', fontWeight:600, color:'#d97706' }} title="inventory_balances.closing_qty for this branch location">
+                      IB Cache <span style={{ fontSize:'0.7rem', fontWeight:400 }}>②</span>
+                    </th>
+                    <th style={{ padding:'8px 10px', fontWeight:600, color:'#475569' }}>Drift ①vs②</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {displayRows.map((r, i) => {
+                    const rowKey = `${r.branchId}|${r.productName}`;
+                    const isExpanded = expandedRows[rowKey];
+                    return (
+                      <>
+                        <tr key={rowKey}
+                          onClick={() => r.hasDrift && toggleRow(rowKey)}
+                          style={{
+                            borderBottom:'1px solid #f1f5f9',
+                            background: r.hasDrift ? (i % 2 === 0 ? '#fffbeb' : '#fef9e7') : (i % 2 === 0 ? '#fff' : '#f8fafc'),
+                            cursor: r.hasDrift ? 'pointer' : 'default',
+                          }}>
+                          <td style={{ padding:'7px 10px', fontWeight:600, color:'#1e293b', whiteSpace:'nowrap' }}>{r.branchId}</td>
+                          <td style={{ padding:'7px 10px', color:'#1e293b', maxWidth:'200px' }}>{r.productName}</td>
+                          <td style={{ padding:'7px 10px', color:'#0369a1', fontWeight:600, textAlign:'right' }}>{Number(r.bibQty).toFixed(2)}</td>
+                          <td style={{ padding:'7px 10px', color:'#d97706', fontWeight:600, textAlign:'right' }}>{Number(r.ibQty).toFixed(2)}</td>
+                          <td style={{ padding:'7px 10px', textAlign:'center' }}><DriftBadge drift={r.drift} /></td>
+                        </tr>
+                        {isExpanded && r.hasDrift && (
+                          <tr key={`${rowKey}-trail`}>
+                            <td colSpan={5} style={{ padding:'10px 20px', background:'#f0fdf4', borderBottom:'1px solid #bbf7d0' }}>
+                              <div style={{ fontWeight:600, fontSize:'0.8rem', color:'#15803d', marginBottom:'4px' }}>
+                                📋 Last 10 stock_movements for {r.productName} @ {r.branchId}
+                              </div>
+                              <MovementAuditTrail movements={r.movements} />
+                            </td>
+                          </tr>
+                        )}
+                      </>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {rows.length > 50 && (
+                <div style={{ padding:'10px 16px', textAlign:'center' }}>
+                  <button onClick={() => setShowAllRows(v => !v)}
+                    style={{ padding:'6px 18px', background:'#f1f5f9', border:'1px solid #e2e8f0', borderRadius:'6px', cursor:'pointer', fontSize:'0.82rem', color:'#475569' }}>
+                    {showAllRows ? `Show first 50 only` : `Show all ${rows.length} rows`}
+                  </button>
+                </div>
+              )}
+              <div style={{ padding:'8px 14px', background:'#f8fafc', borderTop:'1px solid #e2e8f0', fontSize:'0.72rem', color:'#94a3b8', display:'flex', gap:'18px', flexWrap:'wrap' }}>
+                <span>① <strong>BIB Qty</strong> = SUM(branch_inventory_batches.quantity) — authoritative batch-level counter</span>
+                <span>② <strong>IB Cache</strong> = inventory_balances.closing_qty — movement-cache fallback</span>
+                <span>Click a drifted row to expand movement history.</span>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StockDebugTab() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [filterDrift, setFilterDrift] = useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await api.get('/admin/stock-reconciliation');
+      setData(result);
+    } catch (err) {
+      setError(err.message || 'Failed to load reconciliation data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const warehouseRows = data ? (filterDrift ? data.warehouses.filter(r => r.hasDrift) : data.warehouses) : [];
+  const branchRows    = data ? (filterDrift ? data.branches.filter(r => r.hasDrift)   : data.branches)   : [];
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:'10px' }}>
+        <div>
+          <h2 style={{ margin:0, fontSize:'1.05rem', fontWeight:700, color:'#1e293b', display:'flex', alignItems:'center', gap:'8px' }}>
+            🔍 Stock Reconciliation Diagnostic
+          </h2>
+          <p style={{ margin:'4px 0 0', fontSize:'0.82rem', color:'#64748b' }}>
+            Admin-only view. Compares FEFO batch store, warehouse inventory overlay, movement-cache (inventory_balances),
+            and branch batch totals side-by-side. Rows with drift are highlighted; click to reveal movement history.
+          </p>
+        </div>
+        <div style={{ display:'flex', gap:'10px', alignItems:'center' }}>
+          <label style={{ display:'flex', alignItems:'center', gap:'6px', fontSize:'0.83rem', color:'#475569', cursor:'pointer' }}>
+            <input type="checkbox" checked={filterDrift} onChange={e => setFilterDrift(e.target.checked)} />
+            Show drifted only
+          </label>
+          <button onClick={load} disabled={loading}
+            style={{ padding:'7px 18px', background: loading ? '#94a3b8' : '#1d4ed8', color:'white', border:'none', borderRadius:'7px',
+              fontWeight:600, fontSize:'0.85rem', cursor: loading ? 'not-allowed' : 'pointer' }}>
+            {loading ? '⏳ Loading…' : '↻ Refresh'}
+          </button>
+        </div>
+      </div>
+
+      {/* Summary cards */}
+      {data && (
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(160px, 1fr))', gap:'12px' }}>
+          {[
+            { label:'Warehouse rows', value: data.summary.warehouseRows, color:'#0369a1' },
+            { label:'Warehouse drifted', value: data.summary.warehouseDrift,
+              color: data.summary.warehouseDrift > 0 ? '#dc2626' : '#16a34a',
+              bg: data.summary.warehouseDrift > 0 ? '#fee2e2' : '#d1fae5' },
+            { label:'Branch rows', value: data.summary.branchRows, color:'#065f46' },
+            { label:'Branch drifted', value: data.summary.branchDrift,
+              color: data.summary.branchDrift > 0 ? '#dc2626' : '#16a34a',
+              bg: data.summary.branchDrift > 0 ? '#fee2e2' : '#d1fae5' },
+          ].map(s => (
+            <div key={s.label} style={{ padding:'14px', borderRadius:'8px', background: s.bg || '#f0f9ff', border:'1px solid #e2e8f0' }}>
+              <p style={{ margin:0, fontSize:'0.75rem', color:'#64748b', fontWeight:600 }}>{s.label}</p>
+              <p style={{ margin:'4px 0 0', fontSize:'1.5rem', fontWeight:800, color: s.color }}>{s.value}</p>
+            </div>
+          ))}
+          <div style={{ padding:'14px', borderRadius:'8px', background:'#f8fafc', border:'1px solid #e2e8f0', gridColumn:'span 1' }}>
+            <p style={{ margin:0, fontSize:'0.75rem', color:'#64748b', fontWeight:600 }}>Generated at</p>
+            <p style={{ margin:'4px 0 0', fontSize:'0.8rem', fontWeight:600, color:'#475569' }}>
+              {data.generatedAt ? new Date(data.generatedAt).toLocaleString() : '—'}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Error */}
+      {error && (
+        <div style={{ padding:'12px 16px', background:'#fee2e2', border:'1px solid #fca5a5', borderRadius:'8px', color:'#991b1b', fontSize:'0.85rem' }}>
+          ❌ {error}
+        </div>
+      )}
+
+      {/* Loading */}
+      {loading && !data && <LoadingSpinner />}
+
+      {/* Data tables */}
+      {data && (
+        <>
+          <WarehouseSection rows={warehouseRows} />
+          <BranchSection rows={branchRows} />
+        </>
       )}
     </div>
   );
