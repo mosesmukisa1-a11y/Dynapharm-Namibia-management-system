@@ -7,4 +7,5 @@
 - [Portal route naming](portal-route-naming.md) — portal routes are short names (/consultant, /branch, /finance...) not "/xxx-portal"; wrong URL causes blank page, easily mistaken for a real bug.
 - [Auth user field naming](auth-user-field-naming.md) — sanitizeUser() returns fullName (camelCase), not full_name; reading user.full_name silently gives undefined.
 - [Dependency audit caveats](dependency-audit-caveats.md) — official patched SheetJS releases can trigger overbroad npm advisories; compare upstream fixed versions without suppressing future findings.
+- [Publishing dependency state](publishing-dependency-state.md) — ENOTEMPTY installation conflicts require a clean dependency tree; distinguish them from older security-scan failures.
 - [Browser runtime on Nix](browser-runtime-nix.md) — downloaded Playwright Chromium may lack shared libraries; prefer the environment’s Chromium wrapper for local browser checks.
