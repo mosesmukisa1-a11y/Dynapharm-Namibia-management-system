@@ -4824,7 +4824,7 @@ function PriceAdvisorTab() {
 
 // Extract all text from a PDF File using pdfjs-dist.
 // Groups text items by Y-coordinate into lines, preserving column gaps as spaces.
-const PDFJS_VERSION = '5.6.205';
+const PDFJS_VERSION = '5.5.207';
 async function extractPdfText(file) {
   // Load pdfjs directly from CDN at runtime — bypasses Vite bundling issues
   // entirely. The /* @vite-ignore */ comment tells Vite not to touch this import.
