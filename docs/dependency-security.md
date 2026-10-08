@@ -49,6 +49,25 @@ Keep checking the installed version against upstream advisories; do not broadly
 suppress future SheetJS findings. This choice preserves the existing CSV,
 legacy `.xls`, and `.xlsx` import/export features.
 
+### Upstream verification (2026-10-08)
+
+Rechecked both reports against the authoritative SheetJS advisories:
+
+- https://cdn.sheetjs.com/advisories/CVE-2023-30533 — affected through
+  0.19.2; fixed in 0.19.3.
+- https://cdn.sheetjs.com/advisories/CVE-2024-22363 — affected through
+  0.20.1; fixed in 0.20.2.
+- https://docs.sheetjs.com/docs/getting-started/installation/nodejs/ —
+  recommends the official 0.20.3 tarball currently used by this project.
+
+The installed runtime is 0.20.3, matching the committed dependency and lockfile.
+No further dependency upgrade is required for these two CVEs. The dependency
+security tests now explicitly check each advisory's fixed-version floor,
+the installed ESM and CommonJS versions, and official CDN provenance and SHA-512
+integrity entries for every locked SheetJS copy. Existing round-trip tests cover
+CSV, XLS and XLSX compatibility. These guards do not suppress scanner findings;
+OSV can still report the two unbounded npm advisories.
+
 ## Verification
 
 - `npm audit` and `npm audit --prefix realtime-gateway`: no vulnerabilities.

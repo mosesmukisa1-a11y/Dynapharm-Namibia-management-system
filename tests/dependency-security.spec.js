@@ -12,6 +12,7 @@ import { PDFParse } from 'pdf-parse';
 
 const rootLock = JSON.parse(readFileSync(new URL('../package-lock.json', import.meta.url)));
 const gatewayLock = JSON.parse(readFileSync(new URL('../realtime-gateway/package-lock.json', import.meta.url)));
+const rootManifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url)));
 
 const minimumVersions = {
   '@babel/core': '7.29.6',
@@ -55,6 +56,39 @@ function atLeast(version, minimum) {
   }
   return true;
 }
+
+describe('SheetJS advisory remediation', () => {
+  for (const [advisory, fixedVersion] of [
+    ['GHSA-4r6h-8v6p-xvw6 (prototype pollution)', '0.19.3'],
+    ['GHSA-5pgg-2g8v-p4x9 (regular-expression DoS)', '0.20.2'],
+  ]) {
+    it(`uses the upstream patched release for ${advisory}`, () => {
+      const lockedVersion = rootLock.packages['node_modules/xlsx'].version;
+      expect(atLeast(lockedVersion, fixedVersion)).toBe(true);
+      // Check both Node entry points, not just the declared lockfile version.
+      const require = createRequire(import.meta.url);
+      expect(XLSX.version).toBe(lockedVersion);
+      expect(require('xlsx').version).toBe(lockedVersion);
+    });
+  }
+
+  it('pins every SheetJS copy to an integrity-checked official CDN release', () => {
+    const entry = rootLock.packages['node_modules/xlsx'];
+    const officialUrl = `https://cdn.sheetjs.com/xlsx-${entry.version}/xlsx-${entry.version}.tgz`;
+    expect(rootManifest.dependencies.xlsx).toBe(officialUrl);
+    expect(rootLock.packages[''].dependencies.xlsx).toBe(officialUrl);
+    for (const lock of [rootLock, gatewayLock]) {
+      for (const [path, installed] of Object.entries(lock.packages)) {
+        if (path.split('node_modules/').pop() !== 'xlsx') continue;
+        expect(atLeast(installed.version, '0.20.2')).toBe(true);
+        expect(installed.resolved).toBe(
+          `https://cdn.sheetjs.com/xlsx-${installed.version}/xlsx-${installed.version}.tgz`,
+        );
+        expect(installed.integrity).toMatch(/^sha512-[A-Za-z0-9+/]{86}==$/);
+      }
+    }
+  });
+});
 
 describe('patched dependency trees', () => {
   for (const [label, lock] of [['application', rootLock], ['realtime gateway', gatewayLock]]) {
