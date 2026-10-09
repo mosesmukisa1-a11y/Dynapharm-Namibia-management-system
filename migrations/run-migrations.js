@@ -113,6 +113,8 @@ async function main() {
       '023_create_mis_csi_entries.sql',
       '024_sync_runtime_schema.sql',
       '025_nb_number_nullable.sql',
+      '026_stock_cost_lifecycle.sql',
+      '027_price_import_identity.sql',
     ];
     
     for (const migration of migrations) {

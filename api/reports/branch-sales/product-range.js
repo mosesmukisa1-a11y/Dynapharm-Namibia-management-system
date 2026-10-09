@@ -80,7 +80,7 @@ export default async function handler(req, res) {
             END
           )                            AS dp_amount
         FROM branch_inventory_movements bim
-        LEFT JOIN product_prices pp
+        LEFT JOIN live_product_prices pp
                ON LOWER(TRIM(pp.description)) = LOWER(TRIM(bim.product_name))
         LEFT JOIN campaign_refs cr ON cr.id = bim.reference
         WHERE bim.created_at >= $1::date
@@ -110,7 +110,7 @@ export default async function handler(req, res) {
           -- Fall back to pp.dp only when bim.unit_price is 0/null (legacy entries).
           SUM(ABS(bim.quantity) * COALESCE(bim.charge_unit, NULLIF(bim.unit_price, 0), NULLIF(pp.dp, 0), 0)) AS refund_dp
         FROM branch_inventory_movements bim
-        LEFT JOIN product_prices pp ON LOWER(TRIM(pp.description)) = LOWER(TRIM(bim.product_name))
+        LEFT JOIN live_product_prices pp ON LOWER(TRIM(pp.description)) = LOWER(TRIM(bim.product_name))
         WHERE bim.created_at >= $1::date
           AND bim.created_at  < ($2::date + INTERVAL '1 day')
           ${movBranchClause}

@@ -54,7 +54,7 @@ export default async function handler(req, res) {
       [targetDate]
     ),
     // GM price list — authoritative DP source
-    getMany(`SELECT description, dp FROM product_prices`),
+    getMany(`SELECT description, dp FROM live_product_prices`),
   ]);
 
   // Build price-map from GM price list — authoritative DP for walk-in item calculations

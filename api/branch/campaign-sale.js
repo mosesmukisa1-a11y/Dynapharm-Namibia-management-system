@@ -1,6 +1,7 @@
 import { recordBranchSaleAllocationTx } from '../services/stockSaleAllocations.js';
 import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
 import { atomicStockRequest } from '../_lib/atomicStockRequest.js';
+import { assertActivePriceProducts } from '../services/priceImport.js';
 import { query, getOne, getMany, withTransaction } from '../db.js';
 import { recomputeLocationBalances } from '../services/stockEngine.js';
 import { postActivityRecord, generateBatId } from '../_lib/activityCapture.js';
@@ -179,6 +180,7 @@ async function handler(req, res) {
         ? JSON.parse(campaign.prize || '{}') : (campaign.prize || {});
 
       let paid_product, paid_qty, free_product, free_qty;
+      await assertActivePriceProducts(body.paid_items || (body.paid_product ? [{name:body.paid_product}] : []));
 
       if (body.paid_product) {
         paid_product = body.paid_product;
@@ -211,7 +213,7 @@ async function handler(req, res) {
 
         if (productsText) {
           const eligibleProducts = productsText.split(',').map(p => p.trim().toLowerCase()).filter(Boolean);
-          const allPrices = await getMany(`SELECT LOWER(TRIM(description)) AS desc FROM product_prices`);
+          const allPrices = await getMany(`SELECT LOWER(TRIM(description)) AS desc FROM live_product_prices`);
           const knownProductNames = new Set(allPrices.map(r => r.desc));
           const hasRealProducts = eligibleProducts.some(ep => knownProductNames.has(ep));
           if (hasRealProducts && !eligibleProducts.includes(paid_product.trim().toLowerCase())) {
@@ -236,7 +238,7 @@ async function handler(req, res) {
       }
 
       // ── Pricing: member = DP price + BV; non-member = CP price, no BV ────────
-      const livePrices = await getMany(`SELECT description, dp, cp, bv FROM product_prices`);
+      const livePrices = await getMany(`SELECT description, dp, cp, bv FROM live_product_prices`);
       const matchPrice = (name) => livePrices.find(p =>
         p.description && name && p.description.trim().toLowerCase() === name.trim().toLowerCase()
       );

@@ -132,7 +132,7 @@ async function loadItemsForRequests(requestIds) {
              pp.cp AS cp_price,
              pp.description AS product_desc
       FROM stock_request_items sri
-      LEFT JOIN product_prices pp
+      LEFT JOIN live_product_prices pp
         ON LOWER(TRIM(pp.description)) = LOWER(TRIM(sri.product_name))
         OR LOWER(TRIM(pp.description)) = LOWER(TRIM(sri.product_id))
       WHERE sri.request_id = ANY($1::text[])

@@ -198,7 +198,7 @@ export default async function handler(req, res) {
            END
          ), 0)::numeric                                                  AS campaign_total
        FROM branch_inventory_movements bim
-       LEFT JOIN product_prices pp
+       LEFT JOIN live_product_prices pp
               ON LOWER(TRIM(pp.description)) = LOWER(TRIM(bim.product_name))
        LEFT JOIN branch_walkin_sales bws ON bws.id = bim.reference
        WHERE (
@@ -260,7 +260,7 @@ export default async function handler(req, res) {
            pm.branch_id,
            pm.membership_status,
            pm.qty * COALESCE(
-             (SELECT pp.dp FROM product_prices pp
+             (SELECT pp.dp FROM live_product_prices pp
               WHERE LOWER(TRIM(pp.description)) = LOWER(TRIM(pm.med_name)) LIMIT 1), 0
            ) AS line_dp
          FROM paid_meds pm
@@ -301,7 +301,7 @@ export default async function handler(req, res) {
                 COALESCE(bim.charge_unit, NULLIF(bim.unit_price, 0), NULLIF(pp.dp, 0), 0)
               ), 0)::numeric AS refund_total
        FROM branch_inventory_movements bim
-       LEFT JOIN product_prices pp
+       LEFT JOIN live_product_prices pp
               ON LOWER(TRIM(pp.description)) = LOWER(TRIM(bim.product_name))
        WHERE bim.type = 'refund_return'
          AND DATE(bim.created_at) >= $1 AND DATE(bim.created_at) <= $2
@@ -349,7 +349,7 @@ export default async function handler(req, res) {
                    ELSE NULLIF(pp.dp,0) END, 0)
                ELSE 0 END) AS non_member_dp
        FROM branch_inventory_movements bim
-       LEFT JOIN product_prices pp
+       LEFT JOIN live_product_prices pp
               ON LOWER(TRIM(pp.description))=LOWER(TRIM(bim.product_name))
        LEFT JOIN (
          SELECT id, (data->>'discount_pct')::numeric AS discount_pct

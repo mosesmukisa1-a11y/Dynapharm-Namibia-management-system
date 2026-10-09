@@ -13,7 +13,7 @@ async function enrichWithPrices(batch) {
 
   try {
     const price = await getOne(
-      `SELECT dp, cp, bv FROM product_prices
+      `SELECT dp, cp, bv FROM live_product_prices
        WHERE LOWER(TRIM(description)) = LOWER(TRIM($1))
        LIMIT 1`,
       [batch.description || '']
@@ -47,7 +47,7 @@ export default async function handler(req, res) {
       if (configured.length) {
         if (configured.length!==1) return res.status(409).json({success:false,error:'Ambiguous pack barcode'});
         const config=configured[0],pack=config.packs.find(p=>p.barcode===barcode);
-        const price=await getOne('SELECT description,dp,cp,bv FROM product_prices WHERE LOWER(TRIM(description))=$1',[config.product_name]);
+        const price=await getOne('SELECT description,dp,cp,bv FROM live_product_prices WHERE LOWER(TRIM(description))=$1',[config.product_name]);
         return res.json({success:true,productName:config.product_name,enteredUnit:pack.unit,
           baseUnit:config.base_unit,conversionFactor:pack.factor,barcode,
           dp:price?.dp==null ? null : Number(price.dp),cp:price?.cp==null ? null : Number(price.cp),
@@ -58,7 +58,7 @@ export default async function handler(req, res) {
       // FEFO batch selection happens at sale/dispense time on the backend.
       const productRow = await getOne(
         `SELECT description, dp, cp, bv, cif, product_code
-         FROM product_prices
+         FROM live_product_prices
          WHERE product_code = $1
          LIMIT 1`,
         [barcode.trim().toUpperCase()]

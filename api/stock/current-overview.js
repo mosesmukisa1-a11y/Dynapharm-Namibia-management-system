@@ -59,7 +59,7 @@ export default async function handler(req, res) {
               WHEN 'katima_mulilo'   THEN 'katima'
               WHEN 'katima'          THEN 'katima_mulilo'
               ELSE NULL END
-         LEFT JOIN product_prices p
+         LEFT JOIN live_product_prices p
                ON LOWER(TRIM(p.description)) = LOWER(TRIM(b.product_name))
          WHERE b.quantity > 0
          GROUP BY b.branch_id, br.name, b.product_name`
@@ -80,7 +80,7 @@ export default async function handler(req, res) {
                 COALESCE(p.cif, 0)                        AS unit_cif
          FROM inventory_balances ib
          LEFT JOIN branches br ON LOWER(TRIM(br.id)) = LOWER(TRIM(ib.location_id))
-         LEFT JOIN product_prices p ON LOWER(TRIM(p.description)) = LOWER(TRIM(ib.product_name))
+         LEFT JOIN live_product_prices p ON LOWER(TRIM(p.description)) = LOWER(TRIM(ib.product_name))
          WHERE ib.location_type = 'branch'
            AND ib.closing_qty > 0
            AND NOT EXISTS (
@@ -114,7 +114,7 @@ export default async function handler(req, res) {
                 COALESCE(MAX(NULLIF(sb.cif_unit_cost,  0)), MAX(pp.cif),  0)                      AS unit_cif,
                 COALESCE(MAX(NULLIF(sb.dpc_unit_value, 0)), MAX(pp.dp),   0)                      AS unit_dp
          FROM stock_batches sb
-         LEFT JOIN product_prices pp
+         LEFT JOIN live_product_prices pp
                ON LOWER(TRIM(pp.description)) = LOWER(TRIM(sb.description))
          WHERE sb.remaining_quantity > 0
            AND COALESCE(sb.status, '') != 'expired'
@@ -135,7 +135,7 @@ export default async function handler(req, res) {
       ),
 
       // ── Price lookup for fallback / field stock pricing + zero-stock product list ──
-      getMany(`SELECT description, cif, dp FROM product_prices WHERE dp > 0 OR cif > 0 ORDER BY description`),
+      getMany(`SELECT description, cif, dp FROM live_product_prices WHERE dp > 0 OR cif > 0 ORDER BY description`),
     ]);
 
     // Price lookup keyed by lowercase product name

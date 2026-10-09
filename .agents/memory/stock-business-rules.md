@@ -9,6 +9,14 @@ The user approved these rules on 2026-10-09: reserve at approval, deduct once at
 
 **How to apply:** Implement incrementally in the existing database/application. Never guess pack factors or original costs. No automatic timeout receipt or startup stock additions. Preserve historical evidence; historical quantity corrections require a separate reviewed proposal and backup.
 
+## Commercial price corrections
+
+A current price list is not authority to reprice historical sales or received stock. Catalogue identity reconciliation must preserve the original physical-stock and sale names as evidence, even when a canonical price-list description includes a product code.
+
+**Why:** Today's DP/CIF cannot prove what a customer was charged or what a received layer cost. Keeping original row IDs alone is insufficient when historical evidence identifies goods by their original name; replacing those names would also discard source evidence.
+
+**How to apply:** Require separate reviewed, backed-up historical corrections. Resolve preserved names to reviewed canonical commercial prices for current lookups rather than rewriting stock/sale evidence. Keep different codes, packs and unproved numeric-name variants separate.
+
 ## Count cutoff and supplier-return policy
 
 Counts represent the saved session cutoff. Approval applies the counted-minus-expected difference to current locked quantities, preserving intervening sales/receipts; it must never overwrite current stock with the old count. A negative result requires a recount. Supplier-return approval segregates an approved quantity; only actual dispatch removes it from total on-hand stock. Actual supplier credit notes remain separate from expected original-cost recovery.

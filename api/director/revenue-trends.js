@@ -16,7 +16,7 @@ export default async function handler(req, res) {
       `SELECT COUNT(*) as cnt FROM branch_walkin_sales WHERE status='completed' AND sale_date >= $1::date AND sale_date <= ($2 || 'T23:59:59')::timestamp`,
       [start, end]
     ),
-    getOne(`SELECT COUNT(DISTINCT description) as cnt FROM product_prices`),
+    getOne(`SELECT COUNT(DISTINCT description) as cnt FROM live_product_prices WHERE catalogue_entry`),
   ]);
 
   const totalOrders = Number(orderCount?.cnt || 0);

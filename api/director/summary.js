@@ -19,7 +19,7 @@ export default async function handler(req, res) {
     getStockAlerts(90),
     getOne(`SELECT COUNT(*) as cnt FROM branches WHERE status = 'active'`),
     getOne(`SELECT COUNT(*) as cnt FROM distributors WHERE status = 'active' OR status IS NULL`),
-    getOne(`SELECT COUNT(DISTINCT description) as cnt FROM product_prices`),
+    getOne(`SELECT COUNT(DISTINCT description) as cnt FROM live_product_prices WHERE catalogue_entry`),
     getOne(`SELECT COUNT(*) as cnt FROM clients WHERE created_at >= $1::date AND created_at <= ($2 || 'T23:59:59')::timestamp`, [start, end]),
     getOne(`SELECT COUNT(*) as cnt FROM distributors WHERE created_at >= $1::date AND created_at <= ($2 || 'T23:59:59')::timestamp`, [start, end]),
     getWriteOffs(start, end),
@@ -54,7 +54,7 @@ export default async function handler(req, res) {
   const cifRow = await getOne(
     `SELECT COALESCE(SUM(sm.quantity * COALESCE(sm.unit_cif, pp.cif, 0)), 0) as cif_cost
      FROM stock_movements sm
-     LEFT JOIN product_prices pp ON LOWER(TRIM(sm.product_name)) = LOWER(TRIM(pp.description))
+     LEFT JOIN live_product_prices pp ON LOWER(TRIM(sm.product_name)) = LOWER(TRIM(pp.description))
      WHERE sm.status = 'posted'
        AND sm.movement_type IN (
          'walkin_sale','walkin_member_sale','walkin_non_member_sale',

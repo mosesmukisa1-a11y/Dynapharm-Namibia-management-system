@@ -20,7 +20,7 @@ async function handler(req,res) {
   const codes=normalized.map(p=>p.barcode).filter(Boolean);
   if (new Set(codes).size!==codes.length || others.some(row=>row.packs.some(p=>codes.includes(p.barcode))))
     fail('A pack barcode must identify exactly one product and unit');
-  if (codes.length && (await query(`SELECT product_code FROM product_prices WHERE product_code=ANY($1::text[])
+  if (codes.length && (await query(`SELECT product_code FROM live_product_prices WHERE product_code=ANY($1::text[])
     UNION ALL SELECT barcode FROM stock_batches WHERE barcode=ANY($1::text[]) OR qr_code=ANY($1::text[])`,[codes])).rowCount)
     fail('Pack barcode conflicts with an existing product or batch barcode');
   await query(`INSERT INTO stock_product_packs(product_name,base_unit,packs) VALUES ($1,$2,$3)

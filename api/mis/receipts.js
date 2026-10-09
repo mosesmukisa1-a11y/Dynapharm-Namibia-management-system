@@ -262,7 +262,7 @@ export default async function handler(req, res) {
     const [walkinRows, rxRows, priceRows] = await Promise.all([
       getMany(walkinQuery, walkinParams),
       getMany(rxQuery, rxParams),
-      getMany(`SELECT description, dp FROM product_prices`),
+      getMany(`SELECT description, dp FROM live_product_prices`),
     ]);
 
     // Build DP price map for non-member receipt recalculation.

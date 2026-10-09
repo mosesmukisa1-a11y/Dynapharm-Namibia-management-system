@@ -8,6 +8,7 @@ import warehouseReceive from '../api/stock/warehouses/receive-stock.js';
 import transfers from '../api/stock/transfers.js';
 import { lifecycleSchema,allocateExpenses,allocateTransferTx,restoreTransferAllocationTx } from '../api/services/stockCostLayers.js';
 import { receiveTransferTx } from '../api/services/transferReceipt.js';
+import { reversalSchema } from '../api/services/linkedReversals.js';
 import { deductStock } from '../api/branch/campaign-sale.js';
 import { getStockCostProjection,getSalesCostReport } from '../api/services/stockCostReporting.js';
 import { ensureControlledStockSchema } from '../api/services/controlledStock.js';
@@ -51,7 +52,7 @@ async function clean() {
   await query('DELETE FROM stock_import_receipts WHERE receipt_key LIKE $1',[`${prefix}%`]);
 }
 describe.sequential('carton receiving and actual source cost lifecycle',()=>{
-  beforeAll(async()=>{await query(lifecycleSchema);await query(saleAllocationSchema);await ensureControlledStockSchema();await clean();baseline=await physical();});
+  beforeAll(async()=>{await query(lifecycleSchema);await query(saleAllocationSchema);await query(reversalSchema);await ensureControlledStockSchema();await clean();baseline=await physical();});
   afterAll(async()=>{await clean();expect(await physical()).toEqual(baseline);});
   it('reconciles expense cents by purchase value, with deterministic ties',()=>{
     expect(allocateExpenses([1,1,1],{freight:.01}).allocations).toEqual([.01,0,0]);

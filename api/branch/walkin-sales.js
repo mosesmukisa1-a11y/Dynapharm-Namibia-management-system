@@ -2,6 +2,7 @@ import { recordBranchSaleAllocationTx, reconcileSaleFinancialsTx } from '../serv
 import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
 import { query, getMany, getOne, withTransaction } from '../db.js';
 import { atomicStockRequest } from '../_lib/atomicStockRequest.js';
+import { assertActivePriceProducts } from '../services/priceImport.js';
 import { branchSearchTerms } from '../_lib/branchUtils.js';
 import { recomputeLocationBalances } from '../services/stockEngine.js';
 import { broadcastStockEvent } from '../services/stockEvents.js';
@@ -494,6 +495,7 @@ async function handler(req, res) {
       }
 
       const saleItems = Array.isArray(salePayload.items) ? salePayload.items : Array.isArray(salePayload.products) ? salePayload.products : [];
+      await assertActivePriceProducts(saleItems);
       const branchId = record.branch_id;
       const customerType = record.customer_type || 'customer';
       const saleMovType = customerType === 'member' ? 'walk_in_member_sale' : customerType === 'non_member' ? 'walk_in_non_member_sale' : 'sale';
@@ -501,7 +503,7 @@ async function handler(req, res) {
       const deductItems = [];
       const isMemberSale = (record.customer_type === 'member');
 
-      const livePriceRows = await getMany(`SELECT description, dp, cp, bv, cif FROM product_prices`);
+      const livePriceRows = await getMany(`SELECT description, dp, cp, bv, cif FROM live_product_prices`);
       const livePriceMap = {};
       for (const row of livePriceRows) {
         if (row.description) livePriceMap[row.description.toLowerCase()] = row;

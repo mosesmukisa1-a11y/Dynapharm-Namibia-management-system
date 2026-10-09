@@ -17,7 +17,7 @@ export default async function handler(req, res) {
     getOne(
       `SELECT COALESCE(SUM(sm.quantity * COALESCE(sm.unit_cif, pp.cif, 0)), 0) AS cif_cost
        FROM stock_movements sm
-       LEFT JOIN product_prices pp
+       LEFT JOIN live_product_prices pp
          ON LOWER(TRIM(sm.product_name)) = LOWER(TRIM(pp.description))
        WHERE sm.status = 'posted'
          AND sm.movement_type IN ('walkin_sale','walkin_member_sale','walkin_non_member_sale',

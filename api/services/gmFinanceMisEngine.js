@@ -238,7 +238,7 @@ export async function getBranchSalesRevenue(branchId, start, end) {
       [branchId, start, end]
     ),
     // GM price list — authoritative DP source
-    getMany(`SELECT description, dp FROM product_prices`),
+    getMany(`SELECT description, dp FROM live_product_prices`),
   ]);
 
   // Build price-map from GM price list
@@ -395,7 +395,7 @@ export async function getAllBranchesSalesRevenue(start, end) {
          AND service_date <= $2::date`,
       [start, end]
     ),
-    getMany(`SELECT description, dp FROM product_prices`),
+    getMany(`SELECT description, dp FROM live_product_prices`),
   ]);
 
   // Build DP price map — authoritative source for non-member DP recalculation.

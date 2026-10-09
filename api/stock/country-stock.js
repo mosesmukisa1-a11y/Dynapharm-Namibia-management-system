@@ -70,7 +70,7 @@ export default async function handler(req, res) {
                   sb.remaining_quantity * COALESCE(p.dp, sb.dpc_unit_value, sb.unit_price, 0) AS stock_value_dp,
                   sb.import_date AS last_movement_date
            FROM stock_batches sb
-           LEFT JOIN product_prices p
+           LEFT JOIN live_product_prices p
                   ON LOWER(TRIM(p.description)) = LOWER(TRIM(sb.description))
            WHERE sb.location = 'country_stock'
              AND sb.remaining_quantity > 0
@@ -84,7 +84,7 @@ export default async function handler(req, res) {
                   COALESCE(MAX(p.dp), MAX(sb.dpc_unit_value), 0) AS unit_dp,
                   SUM(sb.remaining_quantity * COALESCE(p.dp, sb.dpc_unit_value, 0)) AS stock_value_dp
            FROM stock_batches sb
-           LEFT JOIN product_prices p
+           LEFT JOIN live_product_prices p
                   ON LOWER(TRIM(p.description)) = LOWER(TRIM(sb.description))
            WHERE sb.location != 'country_stock'
              AND sb.remaining_quantity > 0
@@ -98,12 +98,12 @@ export default async function handler(req, res) {
                   COALESCE(MAX(p.dp), 0) AS unit_dp,
                   SUM(b.quantity * COALESCE(p.dp, 0)) AS stock_value_dp
            FROM branch_inventory_batches b
-           LEFT JOIN product_prices p
+           LEFT JOIN live_product_prices p
                   ON LOWER(TRIM(p.description)) = LOWER(TRIM(b.product_name))
            WHERE b.quantity > 0
            GROUP BY b.branch_id, b.product_name`
         ),
-        getMany(`SELECT description, dp FROM product_prices`),
+        getMany(`SELECT description, dp FROM live_product_prices`),
       ]);
 
       const distinctProducts = new Set(countryRows.map(r => r.product_name)).size;

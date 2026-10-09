@@ -25,9 +25,22 @@ import { OfflineBanner } from './components/OfflineBanner.jsx';
 
 export default function App() {
   useEffect(() => {
-    api.prices.list()
-      .then(prices => { if (Array.isArray(prices)) setLivePrices(prices); })
-      .catch(() => {});
+    let mounted = true;
+    const refreshPrices = () => {
+      api.prices.list()
+        .then(prices => { if (mounted && Array.isArray(prices)) setLivePrices(prices); })
+        .catch(() => {});
+    };
+    refreshPrices();
+    const intervalId = window.setInterval(refreshPrices, 60_000);
+    window.addEventListener('focus', refreshPrices);
+    window.addEventListener('online', refreshPrices);
+    return () => {
+      mounted = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshPrices);
+      window.removeEventListener('online', refreshPrices);
+    };
   }, []);
 
   return (

@@ -1564,7 +1564,7 @@ async function handler(req, res) {
               const priceRow = await client.query(
                 `SELECT
                    COALESCE(
-                     NULLIF((SELECT pp.dp FROM product_prices pp
+                     NULLIF((SELECT pp.dp FROM live_product_prices pp
                              WHERE LOWER(TRIM(pp.description)) = LOWER(TRIM($2))
                              LIMIT 1), 0),
                      NULLIF(sb.dpc_unit_value, 0),

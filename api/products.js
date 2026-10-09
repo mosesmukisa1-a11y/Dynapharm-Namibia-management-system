@@ -1,4 +1,5 @@
 import { applyAuthCors } from './_lib/auth.js';
+import { nameKey,resolveProduct } from '../shared/price-list-import.js';
 import { query, getMany, getOne, insert, update, remove, publishRealtimeEvent } from './db.js';
 
 export default async function handler(req, res) {
@@ -37,10 +38,8 @@ export default async function handler(req, res) {
         }
 
         // Enrich with GM price-list values
-        const pl = await getOne(
-          'SELECT * FROM product_prices WHERE UPPER(TRIM(description)) = UPPER(TRIM($1))',
-          [product.name || '']
-        );
+        const pl=resolveProduct({description:product.name,product_code:product.product_code},
+          await getMany('SELECT * FROM live_product_prices WHERE catalogue_entry')).existing;
         if (pl) {
           product.dp = pl.dp;
           product.cp = pl.cp;
@@ -72,7 +71,7 @@ export default async function handler(req, res) {
         // Get all products from the products table and price list together
         const [dbProducts, priceRows] = await Promise.all([
           getMany('SELECT * FROM products WHERE is_active = true ORDER BY name'),
-          getMany('SELECT * FROM product_prices ORDER BY description'),
+          getMany('SELECT * FROM live_product_prices WHERE catalogue_entry ORDER BY description'),
         ]);
 
         // Attach images to each db product
@@ -99,8 +98,7 @@ export default async function handler(req, res) {
 
         // Override dp/cp/cif/bv on every dbProduct with GM price-list values when a match exists
         const enrichedDbProducts = dbProducts.map(prod => {
-          const key = (prod.name || '').toUpperCase().trim();
-          const pl = priceMap.get(key);
+          const pl=resolveProduct({description:prod.name,product_code:prod.product_code},priceRows).existing;
           if (pl) {
             return {
               ...prod,
@@ -115,9 +113,9 @@ export default async function handler(req, res) {
         });
 
         // Add price-list entries that have NO matching row in the products table
-        const dbNames = new Set(enrichedDbProducts.map(p => (p.name || '').toUpperCase().trim()));
+        const dbNames = new Set(enrichedDbProducts.map(p => nameKey(p.name || '')));
         const priceOnlyProducts = priceRows
-          .filter(p => !dbNames.has((p.description || '').toUpperCase().trim()))
+          .filter(p => !dbNames.has(nameKey(p.description || '')))
           .map(p => ({
             id: `pl-${p.id}`,
             sku: null,

@@ -24,7 +24,7 @@ export default async function handler(req, res) {
               COALESCE(NULLIF(pp.dp,  0), NULLIF(sb.dpc_unit_value, 0), NULLIF(sb.unit_price, 0), 0) AS live_dpc,
               COALESCE(NULLIF(pp.cif, 0), NULLIF(sb.cif_unit_cost,  0), NULLIF(sb.unit_price, 0), 0) AS live_cif
        FROM stock_batches sb
-       LEFT JOIN product_prices pp
+       LEFT JOIN live_product_prices pp
          ON LOWER(TRIM(sb.description)) = LOWER(TRIM(pp.description))
        WHERE sb.location != 'country_stock'
          AND sb.remaining_quantity > 0
@@ -46,7 +46,7 @@ export default async function handler(req, res) {
               bib.created_at AS last_movement_at,
               b.name AS location_name
        FROM branch_inventory_batches bib
-       LEFT JOIN product_prices pp
+       LEFT JOIN live_product_prices pp
          ON LOWER(TRIM(bib.product_name)) = LOWER(TRIM(pp.description))
        LEFT JOIN branches b ON LOWER(b.id) = LOWER(bib.branch_id)
        WHERE bib.quantity > 0
@@ -60,7 +60,7 @@ export default async function handler(req, res) {
               COALESCE(NULLIF(pp.dp, 0), NULLIF(ib.unit_dp, 0), 0) AS live_dpc,
               ib.updated_at
        FROM inventory_balances ib
-       LEFT JOIN product_prices pp
+       LEFT JOIN live_product_prices pp
          ON LOWER(TRIM(ib.product_name)) = LOWER(TRIM(pp.description))
        WHERE ib.location_type = 'country'
          AND ib.closing_qty > 0

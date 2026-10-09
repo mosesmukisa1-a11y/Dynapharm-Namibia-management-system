@@ -950,7 +950,7 @@ export async function runNightlyStockHealthDigest() {
     getMany(
       `SELECT COALESCE(SUM(sm.quantity * COALESCE(pp.distributor_price,0)),0) AS value
        FROM stock_movements sm
-       LEFT JOIN product_prices pp ON LOWER(TRIM(pp.description))=LOWER(TRIM(sm.product_name))
+       LEFT JOIN live_product_prices pp ON LOWER(TRIM(pp.description))=LOWER(TRIM(sm.product_name))
        WHERE sm.movement_type='write_off' AND sm.status='pending_approval'`
     ),
   ]);

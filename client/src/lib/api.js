@@ -297,6 +297,9 @@ export const api = {
     pending: () => api.get('/prices/pending'),
     analytics: () => api.get('/prices/analytics'),
     bulkImport: (products, effectiveFrom) => api.post('/prices/bulk-import', { products, effective_from: effectiveFrom || null }),
+    importPreview: (products, effectiveFrom) => api.post('/prices/import-preview', { products, effective_from: effectiveFrom }),
+    duplicates: () => api.get('/prices/duplicates'),
+    reconcile: (key, canonicalId, reviewToken) => api.post('/prices/reconcile', { key, canonicalId, reviewToken, confirm: true }),
   },
 
   gm: {

@@ -170,7 +170,7 @@ export default async function handler(req, res) {
             ELSE '[]'::jsonb
           END
         ) AS item
-      LEFT JOIN product_prices pp
+      LEFT JOIN live_product_prices pp
         ON LOWER(TRIM(pp.description)) = LOWER(TRIM(
           COALESCE(
             NULLIF(TRIM(item->>'product_name'), ''),
@@ -254,7 +254,7 @@ export default async function handler(req, res) {
        AND bim_agg.branch_id = bat.branch_id
       LEFT JOIN reports r
         ON r.id = bat.form_reference_id
-      LEFT JOIN product_prices pp
+      LEFT JOIN live_product_prices pp
         ON LOWER(TRIM(pp.description)) = bim_agg.product_key
       LEFT JOIN distributors d
         ON bat.client_type IS DISTINCT FROM 'member'

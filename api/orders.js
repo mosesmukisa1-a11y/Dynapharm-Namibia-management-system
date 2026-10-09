@@ -243,7 +243,7 @@ export default async function handler(req, res) {
         const customerType = existing.customer_type === 'member' ? 'member' : 'non_member';
         const movType = customerType === 'member' ? 'walk_in_member_sale' : 'walk_in_non_member_sale';
 
-        const livePriceRows = await getMany(`SELECT description, dp, cp FROM product_prices`);
+        const livePriceRows = await getMany(`SELECT description, dp, cp FROM live_product_prices`);
         const livePriceMap = {};
         for (const row of livePriceRows) {
           if (row.description) livePriceMap[row.description.toLowerCase()] = row;

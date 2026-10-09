@@ -241,6 +241,23 @@ app.use('/api', async (req, res, next) => {
 });
 
 app.get('/dynapharm-complete-system', (req, res) => res.redirect('/dynapharm-complete-system.html'));
+// Apply due prices before any API handler can use the current catalogue.
+let priceActivationDay = null, priceActivationFlight = null;
+app.use('/api', async (req,res,next) => {
+  if(req.method === 'OPTIONS') return next();
+  try {
+    const {businessToday} = await import('./shared/price-list-import.js');
+    const day=businessToday();
+    if(priceActivationDay!==day) {
+      if(!priceActivationFlight) priceActivationFlight=(async()=>{
+        const {activateDuePrices}=await import('./api/services/priceImport.js');
+        await activateDuePrices(); priceActivationDay=day;
+      })().finally(()=>{priceActivationFlight=null;});
+      await priceActivationFlight;
+    }
+    next();
+  } catch(error) {res.status(503).json({error:'Live prices could not be refreshed. Please retry.'});}
+});
 app.get('/distributor/guest', (req, res) => res.redirect('/distributor-guest.html'));
 app.get('/staff/appointments', (req, res) => res.redirect('/appointments-admin.html'));
 
@@ -1151,36 +1168,24 @@ async function initProductPricesTable() {
     await query(`ALTER TABLE product_price_history ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'applied'`);
     await query(`CREATE INDEX IF NOT EXISTS idx_pph_status ON product_price_history (status) WHERE status = 'pending'`);
 
-    // ── One-time normalisation: uppercase all descriptions and remove case-duplicates ──
-    // For any group of rows that share the same UPPER(description), keep the most-recently
-    // updated one and delete the rest, then rename the survivor to its uppercased form.
-    await query(`
-      DELETE FROM product_prices
-      WHERE id IN (
-        SELECT id FROM (
-          SELECT id,
-                 ROW_NUMBER() OVER (
-                   PARTITION BY UPPER(TRIM(REGEXP_REPLACE(description, '\\s+', ' ', 'g')))
-                   ORDER BY updated_at DESC NULLS LAST
-                 ) AS rn
-          FROM product_prices
-        ) ranked
-        WHERE rn > 1
-      )
-    `);
-    await query(`
-      UPDATE product_prices
-      SET description = UPPER(TRIM(REGEXP_REPLACE(description, '\\s+', ' ', 'g')))
-      WHERE description <> UPPER(TRIM(REGEXP_REPLACE(description, '\\s+', ' ', 'g')))
-    `);
+    // Never delete/rename duplicates during startup: cascading deletion destroys
+    // price history. Reconciliation is a backed-up, GM-confirmed operation.
+    const { ensurePriceImportSchema } = await import('./api/services/priceImport.js');
+    const { nameKey } = await import('./shared/price-list-import.js');
+    await ensurePriceImportSchema();
+    const { withRequestTransaction } = await import('./api/db.js');
+    await withRequestTransaction(async () => {
+    await query("SELECT pg_advisory_xact_lock(hashtext('price-import-catalogue'))");
+    const seedRows = (await query(`SELECT description FROM product_prices
+      UNION ALL SELECT description FROM price_import_additions WHERE status IN('pending','conflict')`)).rows;
+    const seededNames = new Set(seedRows.map(row => nameKey(row.description)));
 
     let inserted = 0, updated = 0;
     for (const p of STATIC_PRICE_LIST) {
+      if (seededNames.has(nameKey(p.description))) continue;
       const res = await query(
         `INSERT INTO product_prices (description, dp, cp, cif, bv) VALUES ($1,$2,$3,$4,$5)
-         ON CONFLICT (description) DO UPDATE
-           SET dp=EXCLUDED.dp, cp=EXCLUDED.cp, cif=EXCLUDED.cif, bv=EXCLUDED.bv
-           WHERE product_prices.updated_by = 'system'`,
+         ON CONFLICT (description) DO NOTHING`,
         [String(p.description).trim().toUpperCase().replace(/\s+/g,' '), p.dp, p.cp, p.cif, p.bv]
       );
       if (res.rowCount > 0) { if (res.command === 'INSERT') inserted++; else updated++; }
@@ -1188,9 +1193,10 @@ async function initProductPricesTable() {
     if (inserted > 0) console.log(`Seeded ${inserted} new products into product_prices`);
     if (updated > 0) console.log(`Corrected prices for ${updated} system-seeded products`);
     for (const pkg of STATIC_PACKAGE_LIST) {
+      if (seededNames.has(nameKey(pkg.description))) continue;
       await query(
         `INSERT INTO product_prices (description, dp, cp, cif, bv, is_package) VALUES ($1,$2,$3,$4,$5,TRUE)
-         ON CONFLICT (description) DO UPDATE SET dp=$2, cp=$3, bv=$5, is_package=TRUE`,
+          ON CONFLICT (description) DO NOTHING`,
         [String(pkg.description).trim().toUpperCase().replace(/\s+/g,' '), pkg.dp, pkg.cp, pkg.cif, pkg.bv]
       );
     }
@@ -1203,12 +1209,16 @@ async function initProductPricesTable() {
         `UPDATE product_prices
          SET product_code = $1, original_cif = $2, vat_pct = $3, import_duty_pct = $4, clearing_fee = $5
          WHERE UPPER(TRIM(REGEXP_REPLACE(description, '\\s+', ' ', 'g'))) = $6
-           AND (product_code IS NULL OR product_code <> $1 OR original_cif IS DISTINCT FROM $2 OR vat_pct IS DISTINCT FROM $3 OR import_duty_pct IS DISTINCT FROM $4)`,
+            AND product_code IS NULL AND updated_by = 'system' AND merged_into_id IS NULL
+            AND NOT EXISTS(SELECT 1 FROM product_prices other WHERE other.product_code=$1)
+            AND (SELECT COUNT(*) FROM product_prices other
+              WHERE UPPER(TRIM(REGEXP_REPLACE(other.description, '\\s+', ' ', 'g')))=$6 AND other.merged_into_id IS NULL)=1`,
         [d.code, d.orig, d.vat, d.duty, d.clearing, normalizedDesc]
       );
       if (res.rowCount > 0) cifSeeded++;
     }
     if (cifSeeded > 0) console.log(`[prices] Seeded CIF data + codes for ${cifSeeded} products`);
+    });
   } catch (err) {
     console.error('initProductPricesTable error:', err.message);
   }
@@ -1236,19 +1246,9 @@ app.post('/api/gm/extract-pdf', _pdfUpload.single('pdf'), async (req, res) => {
 // Apply any pending price changes whose effective_from date has arrived
 async function applyPendingPriceChanges() {
   try {
-    const { query } = await import('./api/db.js');
-    const { rows: pending } = await query(
-      `SELECT * FROM product_price_history WHERE status = 'pending' AND effective_from <= CURRENT_DATE ORDER BY effective_from ASC, id ASC`
-    );
-    if (!pending.length) return;
-    for (const c of pending) {
-      await query(
-        `UPDATE product_prices SET dp=$1, cp=$2, cif=$3, bv=$4, updated_at=NOW(), updated_by=$5 WHERE id=$6`,
-        [c.new_dp, c.new_cp, c.new_cif, c.new_bv, c.changed_by, c.product_id]
-      );
-      await query(`UPDATE product_price_history SET status='applied' WHERE id=$1`, [c.id]);
-    }
-    console.log(`[prices] Applied ${pending.length} scheduled price change(s)`);
+    const { activateDuePrices } = await import('./api/services/priceImport.js');
+    const count = await activateDuePrices();
+    if (count) console.log(`[prices] Applied ${count} scheduled price change(s)`);
   } catch (err) {
     console.error('[prices] applyPendingPriceChanges error:', err.message);
   }
@@ -1256,15 +1256,49 @@ async function applyPendingPriceChanges() {
 // Run once at startup and then every hour
 setInterval(applyPendingPriceChanges, 60 * 60 * 1000);
 
+app.use('/api/prices', (req,res,next) => {
+  if(req.method==='GET'||req.method==='OPTIONS')return next();
+  if(!req.user)return res.status(401).json({error:'Authentication required'});
+  if(!['gm','admin','superadmin','super_admin'].includes(String(req.user.role).toLowerCase()))return res.status(403).json({error:'General Manager permission required'});
+  next();
+});
+const priceActor=req=>req.user?.fullName || req.user?.username || req.user?.sub;
+const priceMutation=handler=>atomicStockRequest(async(req,res)=>{
+  const {query}=await import('./api/db.js');
+  await query("SELECT pg_advisory_xact_lock(hashtext('price-import-catalogue'))");
+  await handler(req,res);
+});
+const priceEndpoint=fn=>async(req,res)=>{
+  try {res.json(await fn(req));}catch(error){res.status(error.status || 500).json({error:error.message});}
+};
+app.post('/api/prices/import-preview',priceEndpoint(async req=>{
+  const {ensurePriceImportSchema,previewImport}=await import('./api/services/priceImport.js');
+  const {withTransaction}=await import('./api/db.js');
+  await ensurePriceImportSchema();
+  return withTransaction(client=>previewImport(client,req.body.products,req.body.effective_from));
+}));
+app.post('/api/prices/bulk-import',priceEndpoint(async req=>{
+  const {importPrices}=await import('./api/services/priceImport.js');
+  return importPrices(req.body.products,req.body.effective_from,priceActor(req));
+}));
+app.get('/api/prices/duplicates',priceEndpoint(async req=>{
+  if(!req.user)throw Object.assign(new Error('Authentication required'),{status:401});
+  if(!['gm','admin','superadmin','super_admin'].includes(String(req.user.role).toLowerCase()))throw Object.assign(new Error('General Manager permission required'),{status:403});
+  return (await import('./api/services/priceImport.js')).reviewDuplicates();
+}));
+app.post('/api/prices/reconcile',priceEndpoint(async req=>{
+  const result=await (await import('./api/services/priceImport.js')).reconcileDuplicates(req.body,priceActor(req));
+  await (await import('./api/db.js')).publishRealtimeEvent('prices','reconciled',result);
+  return result;
+}));
+
 app.get('/api/prices', async (req, res) => {
   try {
     const { query } = await import('./api/db.js');
-    // DISTINCT ON normalised description to eliminate near-duplicates (spacing/case variants)
+    // Show every active identity. Unresolved distinct-code products must never
+    // be hidden by a description-only DISTINCT or client-side heuristic.
     const { rows } = await query(`
-      SELECT DISTINCT ON (UPPER(TRIM(REGEXP_REPLACE(description, '\\s+', ' ', 'g'))))
-        *
-      FROM product_prices
-      ORDER BY UPPER(TRIM(REGEXP_REPLACE(description, '\\s+', ' ', 'g'))), updated_at DESC
+      SELECT * FROM live_product_prices WHERE catalogue_entry ORDER BY description,id
     `);
     res.json(rows);
   } catch (err) {
@@ -1273,20 +1307,23 @@ app.get('/api/prices', async (req, res) => {
   }
 });
 
-app.put('/api/prices', async (req, res) => {
+app.put('/api/prices', priceMutation(async (req, res) => {
   try {
     const { query } = await import('./api/db.js');
     // Accept both legacy array body and new {updates, effective_from} body
     const updates = Array.isArray(req.body) ? req.body : (req.body?.updates || []);
     const effectiveFrom = Array.isArray(req.body) ? null : (req.body?.effective_from || null);
     if (!Array.isArray(updates) || updates.length === 0) return res.status(400).json({ error: 'Expected array of price updates' });
-    const today = new Date().toISOString().slice(0, 10);
-    const isImmediate = !effectiveFrom || effectiveFrom <= today;
-    const updatedBy = req.user?.name || req.user?.username || 'gm';
+    const { businessToday } = await import('./shared/price-list-import.js');
+    const { validateDate } = await import('./api/services/priceImport.js');
+    const today = businessToday();
+    validateDate(effectiveFrom,today);
+    const isImmediate = !effectiveFrom || effectiveFrom === today;
+    const updatedBy = priceActor(req);
     let count = 0;
     for (const u of updates) {
       if (!u.id) continue;
-      const { rows: old } = await query(`SELECT dp, cp, cif, bv, description FROM product_prices WHERE id=$1`, [u.id]);
+      const { rows: old } = await query(`SELECT dp, cp, cif, bv, description FROM live_product_prices WHERE id=$1`, [u.id]);
       if (!old.length) continue;
       const o = old[0];
       const newDp = Number(u.dp)||0, newCp = Number(u.cp)||0, newCif = Number(u.cif)||0, newBv = Number(u.bv)||0;
@@ -1316,18 +1353,19 @@ app.put('/api/prices', async (req, res) => {
     res.json({ success: true, updated: count, pending: !isImmediate, effective_from: effectiveFrom || today });
   } catch (err) {
     console.error('PUT /api/prices error:', err.message);
-    res.status(500).json({ error: err.message });
+    res.status(err.status || 500).json({ error: err.message });
   }
-});
+}));
 
-app.patch('/api/prices/:id', async (req, res) => {
+app.patch('/api/prices/:id', priceMutation(async (req, res) => {
   try {
     const { query } = await import('./api/db.js');
     const { id } = req.params;
     const { dp, cp, cif, bv, description, product_code, original_cif, vat_pct, import_duty_pct, clearing_fee } = req.body;
     const updatedBy = req.user?.name || req.user?.username || 'gm';
     // Snapshot old values before patching
-    const { rows: old } = await query(`SELECT dp, cp, cif, bv, description FROM product_prices WHERE id=$1`, [id]);
+    const { rows: old } = await query(`SELECT dp, cp, cif, bv, description FROM live_product_prices WHERE id=$1`, [id]);
+    if(!old.length)return res.status(409).json({error:'This product is absent or archived. Refresh the active price list.'});
     const fields = [];
     const vals = [];
     let i = 1;
@@ -1363,7 +1401,7 @@ app.patch('/api/prices/:id', async (req, res) => {
     console.error('PATCH /api/prices/:id error:', err.message);
     res.status(500).json({ error: err.message });
   }
-});
+}));
 
 // Sales analytics per product — last 90 days of branch inventory movements
 app.get('/api/prices/analytics', async (req, res) => {
@@ -1384,7 +1422,7 @@ app.get('/api/prices/analytics', async (req, res) => {
         COALESCE(SUM(CASE WHEN m.type IN ('walk_in_member_sale','walk_in_non_member_sale','sale','prescription_dispense','campaign_sale')
                           THEN ABS(m.quantity) * (COALESCE(m.unit_price, pp.dp, 0) - COALESCE(pp.cif, 0)) ELSE 0 END), 0)::NUMERIC(14,2) AS gross_profit_90d,
         COALESCE(COUNT(DISTINCT DATE_TRUNC('month', m.created_at)), 0)::INTEGER AS active_months
-      FROM product_prices pp
+      FROM live_product_prices pp
       LEFT JOIN branch_inventory_movements m
         ON UPPER(TRIM(REGEXP_REPLACE(m.product_name, '\\s+', ' ', 'g'))) = UPPER(TRIM(REGEXP_REPLACE(pp.description, '\\s+', ' ', 'g')))
         AND m.created_at >= NOW() - INTERVAL '90 days'
@@ -1410,7 +1448,13 @@ app.get('/api/prices/pending', async (req, res) => {
        WHERE h.status = 'pending'
        ORDER BY h.effective_from ASC, h.id ASC`
     );
-    res.json({ success: true, pending: rows });
+    const additions=(await query(`SELECT 'staged:' || id AS id,NULL::integer AS product_id,
+      description,current_date AS changed_at,changed_by,effective_from,status,activation_error,
+      dp AS new_dp,cp AS new_cp,cif AS new_cif,bv AS new_bv,description AS current_description,
+      NULL::numeric AS live_dp,NULL::numeric AS live_cp,NULL::numeric AS live_cif,NULL::numeric AS live_bv,
+      'new_product' AS change_type,product_code
+      FROM price_import_additions WHERE status IN('pending','conflict') ORDER BY effective_from,id`)).rows;
+    res.json({ success: true, pending: [...rows,...additions] });
   } catch (err) {
     console.error('GET /api/prices/pending error:', err.message);
     res.status(500).json({ error: err.message });
@@ -1439,133 +1483,32 @@ app.get('/api/prices/history', async (req, res) => {
   }
 });
 
-app.post('/api/prices', async (req, res) => {
+app.post('/api/prices', priceMutation(async (req, res) => {
   try {
     const { query } = await import('./api/db.js');
-    const { description, dp, cp, cif, bv } = req.body;
-    if (!description) return res.status(400).json({ error: 'description is required' });
-    // Always store description as UPPERCASE so ON CONFLICT works regardless of source case
-    const desc = String(description).trim().toUpperCase().replace(/\s+/g, ' ');
-    const updatedBy = req.user?.name || req.user?.username || 'gm';
-    const { rows } = await query(
-      `INSERT INTO product_prices (description, dp, cp, cif, bv, updated_by) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (description) DO UPDATE SET dp=$2,cp=$3,cif=$4,bv=$5,updated_by=$6,updated_at=NOW() RETURNING *`,
-      [desc, Number(dp)||0, Number(cp)||0, Number(cif)||0, Number(bv)||0, updatedBy]
-    );
-    res.json(rows[0]);
+    const { importPrices }=await import('./api/services/priceImport.js');
+    const { businessToday,resolveProduct }=await import('./shared/price-list-import.js');
+    await importPrices([req.body],businessToday(),priceActor(req));
+    const {rows}=await query('SELECT * FROM live_product_prices WHERE catalogue_entry');
+    res.json(resolveProduct(req.body,rows).existing);
   } catch (err) {
     console.error('POST /api/prices error:', err.message);
-    res.status(500).json({ error: err.message });
+    res.status(err.status || 500).json({ error: err.message });
   }
-});
+}));
 
-// Bulk import with deduplication + scheduling.
-// Matches incoming descriptions against existing rows by exact match OR by stripping
-// the leading product-code token (e.g. "NB1208 ARABICA..." → "ARABICA...") so that
-// rows imported before the code-stripping fix are updated rather than doubled.
-app.post('/api/prices/bulk-import', async (req, res) => {
+app.delete('/api/prices/:id', priceMutation(async (req, res) => {
   try {
     const { query } = await import('./api/db.js');
-    const { products, effective_from } = req.body;
-    if (!Array.isArray(products) || products.length === 0)
-      return res.status(400).json({ error: 'products array is required' });
-
-    const today = new Date().toISOString().slice(0, 10);
-    const isImmediate = !effective_from || effective_from <= today;
-    const updatedBy = req.user?.name || req.user?.username || 'gm';
-    // Matches: 1-3 uppercase letters + 4-6 digits + optional letter + whitespace
-    const CODE_RE = '^[A-Za-z]{1,3}[0-9]{4,6}[A-Za-z]?\\s+';
-
-    let updated = 0, scheduled = 0, created = 0;
-
-    for (const p of products) {
-      const cleanDesc = String(p.description).toUpperCase().trim().replace(/\s+/g, ' ');
-      const newDp  = Math.round(Number(p.dp))  || 0;
-      const newCp  = Math.round(Number(p.cp))  || 0;
-      const newCif = Math.round(Number(p.cif)) || 0;
-      const newBv  = parseFloat((Number(p.bv) || 0).toFixed(2));
-
-      // Find best-matching existing row: exact description match takes priority,
-      // then code-stripped match (catches rows stored with the old code-prefix format).
-      const { rows: existing } = await query(`
-        SELECT id, description, dp, cp, cif, bv FROM product_prices
-        WHERE TRIM(UPPER(description)) = $1
-           OR TRIM(UPPER(REGEXP_REPLACE(description, $2, '', 'i'))) = $1
-        ORDER BY
-          CASE WHEN TRIM(UPPER(description)) = $1 THEN 0 ELSE 1 END,
-          updated_at DESC NULLS LAST
-        LIMIT 1
-      `, [cleanDesc, CODE_RE]);
-
-      if (existing.length > 0) {
-        const row = existing[0];
-        const changed = Number(row.dp)  !== newDp  || Number(row.cp)  !== newCp ||
-                        Number(row.cif) !== newCif  || Number(row.bv)  !== newBv;
-
-        if (changed) {
-          await query(`
-            INSERT INTO product_price_history
-              (product_id, description, old_dp, old_cp, old_cif, old_bv,
-               new_dp, new_cp, new_cif, new_bv, changed_by, effective_from, status)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-          `, [row.id, cleanDesc, row.dp, row.cp, row.cif, row.bv,
-              newDp, newCp, newCif, newBv, updatedBy,
-              effective_from || today, isImmediate ? 'applied' : 'pending']);
-        }
-
-        if (isImmediate) {
-          // Apply immediately and normalise the description (strip any embedded code prefix).
-          await query(`
-            UPDATE product_prices
-            SET description=$1, dp=$2, cp=$3, cif=$4, bv=$5, updated_by=$6, updated_at=NOW()
-            WHERE id=$7
-          `, [cleanDesc, newDp, newCp, newCif, newBv, updatedBy, row.id]);
-          updated++;
-        } else {
-          // Scheduled: keep current prices active until effective_from; normalise description now.
-          await query(
-            `UPDATE product_prices SET description=$1, updated_at=NOW() WHERE id=$2`,
-            [cleanDesc, row.id]
-          );
-          scheduled++;
-        }
-
-        // Delete any duplicate rows that resolve to the same normalised description
-        // (artefacts from earlier imports that stored the product code in the description).
-        await query(`
-          DELETE FROM product_prices
-          WHERE id != $1
-            AND TRIM(UPPER(REGEXP_REPLACE(description, $2, '', 'i'))) = $3
-        `, [row.id, CODE_RE, cleanDesc]);
-
-      } else {
-        // Genuinely new product — insert immediately (nothing to schedule from).
-        await query(`
-          INSERT INTO product_prices (description, dp, cp, cif, bv, updated_by)
-          VALUES ($1,$2,$3,$4,$5,$6)
-          ON CONFLICT (description) DO UPDATE
-            SET dp=$2, cp=$3, cif=$4, bv=$5, updated_by=$6, updated_at=NOW()
-        `, [cleanDesc, newDp, newCp, newCif, newBv, updatedBy]);
-        created++;
-      }
-    }
-
-    res.json({ success: true, updated, scheduled, created,
-               effective_from: effective_from || today, isImmediate });
-  } catch (err) {
-    console.error('POST /api/prices/bulk-import error:', err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.delete('/api/prices/:id', async (req, res) => {
-  try {
-    const { query } = await import('./api/db.js');
+    const evidence=await query(`SELECT id FROM product_price_history WHERE product_id=$1
+      UNION ALL SELECT id FROM product_prices WHERE (id=$1 AND merged_into_id IS NOT NULL) OR merged_into_id=$1`,[req.params.id]);
+    if(evidence.rowCount)return res.status(409).json({error:'This identity has price history or reconciliation evidence. It cannot be deleted; use the GM duplicate review.'});
     await query('DELETE FROM product_prices WHERE id=$1', [req.params.id]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
-});
+}));
 // ── End Product Price Routes ────────────────────────────────────────────────────
 
 // ─── Centralized Stock Engine Read Endpoints ─────────────────────────────────
@@ -1747,7 +1690,7 @@ app.get('/api/stock/branch-batches', async (req, res) => {
              COALESCE(NULLIF(p.dp,  0), NULLIF(b.unit_price, 0), 0) AS dp,
              COALESCE(NULLIF(p.cif, 0), 0)                          AS cif
       FROM   branch_inventory_batches b
-      LEFT JOIN product_prices p
+      LEFT JOIN live_product_prices p
              ON LOWER(TRIM(p.description)) = LOWER(TRIM(b.product_name))
       WHERE  b.quantity > 0
       ORDER  BY b.branch_id, b.product_name, b.expiry_date NULLS LAST
@@ -3627,138 +3570,8 @@ server.on('error', (error) => {
     }
     // ───────────────────────────────────────────────────────────────────────
 
-    // ── One-time idempotent data correction: Eenhana May 5 2026 Rx ──────────
-    // The original dispense stored CP in BAT.product_total_dp, BIM.unit_price,
-    // and stock_movements.unit_dp instead of DP. These idempotent UPDATEs
-    // self-correct only if the wrong value is still present. Each table is in
-    // its own try/catch so one failure cannot block the others.
-    try {
-      // 1. BAT: fix product_total_dp (1925 CP → 1576 DP) and product_total_cp (0 → 1925)
-      await query(`
-        UPDATE branch_activity_transactions
-        SET product_total_dp = 1576.00,
-            product_total_cp = 1925.00,
-            updated_at = NOW()
-        WHERE form_reference_id = 'RPT-1777979570868-b7m93z'
-          AND branch_id = 'eenhana'
-          AND activity_type = 'prescription_dispensing'
-          AND product_total_dp = 1925.00
-      `);
-      console.log('[data-correction] BAT fix applied (Eenhana Rx product_total_dp).');
-    } catch (e) { console.warn('[data-correction] BAT fix error:', e.message); }
-
-    try {
-      // 2. BIM: fix unit_price per product (CP → DP) — no updated_at column in this table
-      const bimFixes = [
-        { product: 'HERBA WARISAN MAHARANI 6 x 10g',             cp: 620, dp: 520 },
-        { product: "GINSENG CAPSULE 9 x 10's",                   cp: 655, dp: 546 },
-        { product: 'Nano Home Feminine Wash Kacip Fatimah 60ml', cp: 150, dp: 90  },
-        { product: "YEEGINKGO TABLETS 90's",                     cp: 500, dp: 420 },
-      ];
-      for (const fix of bimFixes) {
-        await query(`
-          UPDATE branch_inventory_movements
-          SET unit_price = $1
-          WHERE branch_id = 'eenhana'
-            AND type = 'prescription_dispense'
-            AND reference = 'RPT-1777979570868-b7m93z'
-            AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))
-            AND unit_price = $3
-        `, [fix.dp, fix.product, fix.cp]);
-      }
-      console.log('[data-correction] BIM fix applied (Eenhana Rx unit_price).');
-    } catch (e) { console.warn('[data-correction] BIM fix error:', e.message); }
-
-    try {
-      // 3. stock_movements: fix unit_dp per product for this prescription
-      const smFixes = [
-        { product: 'HERBA WARISAN MAHARANI 6 x 10g',             cp: 620, dp: 520 },
-        { product: "GINSENG CAPSULE 9 x 10's",                   cp: 655, dp: 546 },
-        { product: 'Nano Home Feminine Wash Kacip Fatimah 60ml', cp: 150, dp: 90  },
-        { product: "YEEGINKGO TABLETS 90's",                     cp: 500, dp: 420 },
-      ];
-      for (const fix of smFixes) {
-        await query(`
-          UPDATE stock_movements
-          SET unit_dp = $1, updated_at = NOW()
-          WHERE reference_id = 'RPT-1777979570868-b7m93z'
-            AND movement_type = 'prescription_dispense'
-            AND source_location = 'eenhana'
-            AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))
-            AND unit_dp = $3
-        `, [fix.dp, fix.product, fix.cp]);
-      }
-      console.log('[data-correction] SM fix applied (Eenhana Rx unit_dp).');
-    } catch (e) { console.warn('[data-correction] SM fix error:', e.message); }
-    // ─────────────────────────────────────────────────────────────────────────
-
-    // ── Retroactive fix: prescription_dispensing BAT rows with grand_total = 0 ─
-    // When dispense.js couldn't match a product name in product_prices AND the
-    // frontend hadn't yet been updated to pass explicit dp/cp fields, both
-    // grand_total and product_total_dp were stored as 0 in BAT and unit_price
-    // as null/0 in BIM. This idempotent correction re-derives DP/CP values from
-    // product_prices by LOWER(TRIM()) name matching and updates all affected rows.
-    try {
-      // Step 1: fix BIM unit_price where it is 0 by joining with product_prices
-      // PostgreSQL UPDATE-FROM: additional tables listed in FROM, connected via WHERE
-      await query(`
-        UPDATE branch_inventory_movements
-        SET unit_price = pp.dp
-        FROM product_prices pp, branch_activity_transactions bat
-        WHERE branch_inventory_movements.reference = bat.form_reference_id
-          AND branch_inventory_movements.type = 'prescription_dispense'
-          AND (branch_inventory_movements.unit_price IS NULL OR branch_inventory_movements.unit_price = 0)
-          AND bat.activity_type = 'prescription_dispensing'
-          AND bat.workflow_source = 'branch_portal'
-          AND (bat.grand_total IS NULL OR bat.grand_total = 0)
-          AND LOWER(TRIM(pp.description)) = LOWER(TRIM(branch_inventory_movements.product_name))
-          AND pp.dp IS NOT NULL AND pp.dp > 0
-      `);
-
-      // Step 2: fix BAT grand_total / product_total_dp by summing corrected BIM rows
-      await query(`
-        UPDATE branch_activity_transactions bat
-        SET product_total_dp = sub.total_dp,
-            product_total_cp = sub.total_cp,
-            grand_total      = CASE WHEN bat.client_type = 'member' THEN sub.total_dp
-                                    ELSE sub.total_cp END,
-            updated_at = NOW()
-        FROM (
-          SELECT
-            bim.reference                                              AS report_id,
-            bim.branch_id,
-            SUM(ABS(bim.quantity) * COALESCE(pp.dp, 0))::numeric      AS total_dp,
-            SUM(ABS(bim.quantity) * COALESCE(pp.cp, 0))::numeric      AS total_cp
-          FROM branch_inventory_movements bim
-          JOIN product_prices pp
-            ON LOWER(TRIM(pp.description)) = LOWER(TRIM(bim.product_name))
-          WHERE bim.type = 'prescription_dispense'
-            AND pp.dp IS NOT NULL AND pp.dp > 0
-          GROUP BY bim.reference, bim.branch_id
-        ) sub
-        WHERE bat.form_reference_id = sub.report_id
-          AND bat.branch_id        = sub.branch_id
-          AND bat.activity_type    = 'prescription_dispensing'
-          AND bat.workflow_source  = 'branch_portal'
-          AND (bat.grand_total IS NULL OR bat.grand_total = 0)
-          AND sub.total_dp > 0
-      `);
-
-      // Step 3: fix stock_movements unit_dp = 0 for prescription_dispense rows
-      await query(`
-        UPDATE stock_movements sm
-        SET unit_dp = pp.dp, updated_at = NOW()
-        FROM product_prices pp
-        WHERE sm.movement_type = 'prescription_dispense'
-          AND LOWER(TRIM(pp.description)) = LOWER(TRIM(sm.product_name))
-          AND (sm.unit_dp IS NULL OR sm.unit_dp = 0)
-          AND pp.dp IS NOT NULL AND pp.dp > 0
-      `);
-
-      console.log('[data-correction] Prescription Rx zero-price rows corrected across all branches.');
-    } catch (rxFixErr) {
-      console.warn('[data-correction] Rx zero-price fix error:', rxFixErr.message);
-    }
+    // Historical sales and movement prices are immutable during application startup.
+    // Evidence-backed historical corrections require a separately approved repair.
     // ─────────────────────────────────────────────────────────────────────────
 
     // ── Backfill source_warehouse on branch_inventory_batches ────────────────

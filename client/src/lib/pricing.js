@@ -1,3 +1,5 @@
+import { nameKey } from '../../../shared/price-list-import.js';
+
 /**
  * pricing.js — Client-side pricing helpers.
  *
@@ -14,7 +16,9 @@ let _livePrices = null;
 function _mapPrice(p) {
   return {
     id:          p.id,
+    product_code: p.product_code ?? null,
     description: p.description,
+    aliases: Array.isArray(p.aliases) ? [...p.aliases] : [],
     dp:          Number(p.dp)  || 0,
     cp:          Number(p.cp)  || 0,
     cif:         Number(p.cif) || 0,
@@ -24,17 +28,22 @@ function _mapPrice(p) {
 }
 
 export function setLivePrices(prices) {
-  if (Array.isArray(prices) && prices.length > 0) {
-    _livePrices = prices.map(_mapPrice);
-    // Persist to localStorage so the POS is usable offline after a previous online session
-    try {
-      localStorage.setItem(PRICE_CACHE_KEY, JSON.stringify(_livePrices));
-    } catch (_) {}
+  if (!Array.isArray(prices)) return false;
+  const mapped = prices.map(_mapPrice);
+  const changed = _livePrices === null || JSON.stringify(_livePrices) !== JSON.stringify(mapped);
+  _livePrices = mapped;
+  // Persist even an empty list so a cleared catalogue cannot be restored from stale storage.
+  try {
+    localStorage.setItem(PRICE_CACHE_KEY, JSON.stringify(_livePrices));
+  } catch (_) {}
+  if (changed && typeof window !== 'undefined') {
+    window.dispatchEvent(new window.CustomEvent('dynapharm-prices-updated', { detail: mapped }));
   }
+  return changed;
 }
 
 export function getLiveProductList() {
-  if (_livePrices && _livePrices.length > 0) return _livePrices;
+  if (_livePrices !== null) return _livePrices;
   // Offline fallback: restore the last known price list from localStorage
   try {
     const cached = localStorage.getItem(PRICE_CACHE_KEY);
@@ -57,6 +66,15 @@ export function findProductPrice(productName) {
   if (!productName) return null;
   const list = getLiveProductList();
   if (!list.length) return null;
+  const normalizedKey = nameKey(productName);
+  if (normalizedKey) {
+    const identityMatches = list.filter(p =>
+      [p.description, ...(Array.isArray(p.aliases) ? p.aliases : [])]
+        .some(identity => nameKey(identity) === normalizedKey)
+    );
+    if (identityMatches.length === 1) return identityMatches[0];
+    if (identityMatches.length > 1) return null;
+  }
   const normalized = productName.trim().toUpperCase();
   let product = list.find(p => p.description.toUpperCase() === normalized);
   if (!product) {

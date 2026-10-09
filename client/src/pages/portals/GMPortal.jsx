@@ -14,6 +14,7 @@ import CurrentStockTab from '../../components/CurrentStockTab';
 import StockCostReport from '../../components/StockCostReport';
 import StaffMessagesTab from '../../components/StaffMessagesTab';
 import ControlledStockOperations from '../../components/ControlledStockOperations';
+import { parsePriceListText, businessToday } from '../../../../shared/price-list-import.js';
 
 export default function GMPortal() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -4916,89 +4917,6 @@ async function extractPdfText(file) {
   return merged.join('\n');
 }
 
-// Parse a raw price-list text block into [{description,cif,dp,cp,bv}]
-// Supports both:
-//   Official 4-column format:  DESCRIPTION   CIF   DP   CP   BV
-//   Legacy 3-column format:    DESCRIPTION   DP    CP   BV
-// Parse a price number that may use comma as the decimal separator (e.g. 142,75 → 142.75).
-function parsePriceNum(s) {
-  return parseFloat(String(s).replace(',', '.'));
-}
-
-function parsePriceListText(text) {
-  const results = [];
-  const seen = new Set();
-  const lines = text.split('\n');
-
-  // Number token: accepts both dot and comma as decimal separator (e.g. 142,75 or 142.75).
-  // NOTE: only used in price-column positions, never applied to the description text.
-  const N = '(\\d+(?:[.,]\\d+)?)';
-  const S = '\\s+';
-
-  for (const raw of lines) {
-    // Strip a leading product-code token if present (e.g. "NB1201", "NB10804", "NB3816N").
-    // Pattern: 1-3 uppercase letters + 4-6 digits + optional uppercase letter suffix,
-    // followed by whitespace. This must be removed before the number-column regexes run
-    // or the code itself becomes part of the description and confuses the column split.
-    let line = raw.trim().replace(/^[A-Z]{1,3}\d{4,6}[A-Z]?\s+/, '');
-    if (!line) continue;
-
-    // ── 4-column format: DESCRIPTION  CIF  DP  CP  BV ──────────────────────────
-    // 2+ space gap before the first number anchors the description boundary even when
-    // the description itself contains digits or single-space-separated words.
-    const m4 = line.match(new RegExp(`^(.+?)\\s{2,}${N}${S}${N}${S}${N}${S}${N}\\s*$`));
-    if (m4) {
-      const description = m4[1].trim().toUpperCase().replace(/\s+/g, ' ');
-      const cif = Math.round(parsePriceNum(m4[2]));
-      const dp  = Math.round(parsePriceNum(m4[3]));
-      const cp  = Math.round(parsePriceNum(m4[4]));
-      const bv  = parseFloat(parsePriceNum(m4[5]).toFixed(2));
-      if (!description || description === 'DESCRIPTION') continue;
-      if (isNaN(dp) || isNaN(cp) || isNaN(bv)) continue;
-      if (dp <= 0 || cp <= 0) continue;
-      if (seen.has(description)) continue;
-      seen.add(description);
-      results.push({ description, cif, dp, cp, bv });
-      continue;
-    }
-
-    // ── 3-column format WITH CIF: DESCRIPTION  CIF  DP  CP ─────────────────────
-    // Same 2+ space gap anchor. First number is treated as CIF, no BV column.
-    // This is the format used by Dynapharm price lists that omit the BV column.
-    const m3c = line.match(new RegExp(`^(.+?)\\s{2,}${N}${S}${N}${S}${N}\\s*$`));
-    if (m3c) {
-      const description = m3c[1].trim().toUpperCase().replace(/\s+/g, ' ');
-      const cif = Math.round(parsePriceNum(m3c[2]));
-      const dp  = Math.round(parsePriceNum(m3c[3]));
-      const cp  = Math.round(parsePriceNum(m3c[4]));
-      if (!description || description === 'DESCRIPTION') continue;
-      if (isNaN(dp) || isNaN(cp)) continue;
-      if (dp <= 0 || cp <= 0) continue;
-      if (seen.has(description)) continue;
-      seen.add(description);
-      results.push({ description, cif, dp, cp, bv: 0 });
-      continue;
-    }
-
-    // ── 3-column legacy fallback: DESCRIPTION  DP  CP  BV ──────────────────────
-    // No CIF column. Greedy description so the longest possible description is kept.
-    // Only reached when the line has no 2+ space gap before the numbers (rare legacy format).
-    const m3 = line.match(new RegExp(`^(.+)${S}${N}${S}${N}${S}${N}\\s*$`));
-    if (!m3) continue;
-    const description = m3[1].trim().toUpperCase().replace(/\s+/g, ' ');
-    const dp  = Math.round(parsePriceNum(m3[2]));
-    const cp  = Math.round(parsePriceNum(m3[3]));
-    const bv  = parseFloat(parsePriceNum(m3[4]).toFixed(2));
-    if (!description || description === 'DESCRIPTION') continue;
-    if (isNaN(dp) || isNaN(cp) || isNaN(bv)) continue;
-    if (dp <= 0 || cp <= 0) continue;
-    if (seen.has(description)) continue;
-    seen.add(description);
-    results.push({ description, cif: 0, dp, cp, bv });
-  }
-  return results;
-}
-
 function PriceListTab() {
   const [rows, setRows] = useState([]);
   const [edits, setEdits] = useState({});
@@ -5011,10 +4929,21 @@ function PriceListTab() {
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState('');
   const [importParsed, setImportParsed] = useState([]);
+  const [importErrors, setImportErrors] = useState([]);
+  const [importDuplicates, setImportDuplicates] = useState([]);
+  const [importLayout, setImportLayout] = useState('auto');
+  const [importPreview, setImportPreview] = useState(null);
+  const [previewPending, setPreviewPending] = useState(false);
+  const [previewError, setPreviewError] = useState('');
+  const previewSequence = useRef(0);
+  const [showDuplicateReview, setShowDuplicateReview] = useState(false);
+  const [duplicateReview, setDuplicateReview] = useState(null);
+  const [duplicateLoading, setDuplicateLoading] = useState(false);
+  const [duplicateError, setDuplicateError] = useState('');
   const [importSaving, setImportSaving] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
   const [importTab, setImportTab] = useState('upload');
-  const [importEffectiveDate, setImportEffectiveDate] = useState('');
+  const [importEffectiveDate, setImportEffectiveDate] = useState(businessToday());
   const importFileRef = useRef(null);
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState([]);
@@ -5025,7 +4954,7 @@ function PriceListTab() {
   const [pendingChanges, setPendingChanges] = useState([]);
   const [cifRow, setCifRow] = useState(null);
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = businessToday();
 
   const load = useCallback(() => {
     setLoading(true);
@@ -5035,16 +4964,9 @@ function PriceListTab() {
     ])
       .then(([data, pData]) => {
         if (Array.isArray(data)) {
-          // Deduplicate by normalised description (keep latest updated_at)
-          const seen = new Map();
-          for (const p of data) {
-            const key = (p.description || '').trim().toUpperCase().replace(/\s+/g, ' ');
-            const existing = seen.get(key);
-            if (!existing || new Date(p.updated_at) > new Date(existing.updated_at)) seen.set(key, p);
-          }
-          const deduped = [...seen.values()].sort((a, b) => (a.description || '').localeCompare(b.description || ''));
-          setRows(deduped);
-          setLivePrices(deduped);
+          const active = [...data].sort((a, b) => (a.description || '').localeCompare(b.description || ''));
+          setRows(active);
+          setLivePrices(active);
         }
         setPendingChanges(Array.isArray(pData?.pending) ? pData.pending : []);
       })
@@ -5157,8 +5079,68 @@ function PriceListTab() {
   };
 
   const handleImportTextChange = (text) => {
+    previewSequence.current += 1;
     setImportText(text);
-    setImportParsed(parsePriceListText(text));
+    setImportPreview(null);
+    const parsed = parsePriceListText(text, { layout: importLayout });
+    setImportParsed(Array.isArray(parsed?.products) ? parsed.products : []);
+    setImportErrors(Array.isArray(parsed?.errors) ? parsed.errors : []);
+    setImportDuplicates(Array.isArray(parsed?.duplicates) ? parsed.duplicates : []);
+  };
+
+  useEffect(() => {
+    const sequence = ++previewSequence.current;
+    setImportPreview(null);
+    setPreviewError('');
+    if (!importParsed.length || !importEffectiveDate) {
+      setPreviewPending(false);
+      return undefined;
+    }
+    setPreviewPending(true);
+    const timer = setTimeout(async () => {
+      try {
+        const preview = await api.prices.importPreview(importParsed, importEffectiveDate);
+        if (sequence !== previewSequence.current) return;
+        setImportPreview(preview);
+      } catch (err) {
+        if (sequence !== previewSequence.current) return;
+        setPreviewError(err?.message || 'Could not validate this import. Please try again.');
+      } finally {
+        if (sequence === previewSequence.current) setPreviewPending(false);
+      }
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [importParsed, importEffectiveDate]);
+
+  const openDuplicateReview = async () => {
+    setShowDuplicateReview(true);
+    setDuplicateLoading(true);
+    setDuplicateError('');
+    try {
+      setDuplicateReview(await api.prices.duplicates());
+    } catch (err) {
+      setDuplicateError(err?.message || 'Could not load duplicate review.');
+    } finally {
+      setDuplicateLoading(false);
+    }
+  };
+
+  const reconcileDuplicateGroup = async (group) => {
+    const canonical = group.rows?.find(row => String(row.id) === String(group.canonicalId));
+    const archived = group.rows?.filter(row => String(row.id) !== String(group.canonicalId)) || [];
+    const priceSummary = archived.map(row => `${row.description} (DP ${row.dp ?? '—'}, CP ${row.cp ?? '—'})`).join('; ');
+    const accepted = window.confirm(
+      `Confirm product identity reconciliation?\n\nCanonical product: ${canonical?.description || group.canonicalId} (ID ${group.canonicalId})\nOther identities: ${priceSummary || 'none'}\n\nThe canonical product keeps its active prices. Other products' future schedules will be retained and re-attached; identity and history are preserved.`
+    );
+    if (!accepted) return;
+    try {
+      const result = await api.prices.reconcile(group.key, group.canonicalId, group.reviewToken);
+      setAlert({ type: 'success', msg: `Identity reconciled to product ${result.canonicalId}. ${result.archivedIds?.length || 0} duplicate identity record(s) archived; history and schedules preserved. Backup: ${result.backupId || 'recorded by server'}.` });
+      await openDuplicateReview();
+      load();
+    } catch (err) {
+      setDuplicateError(err?.message || 'Reconciliation failed. No changes were confirmed.');
+    }
   };
 
   const handleImportFile = async (e) => {
@@ -5168,19 +5150,17 @@ function PriceListTab() {
     if (isPdf) {
       setImportText('');
       setImportParsed([]);
+      setImportErrors([]);
+      setImportDuplicates([]);
+      setImportPreview(null);
       setImportLoading(true);
       try {
         const formData = new FormData();
         formData.append('pdf', file);
-        const resp = await fetch('/api/gm/extract-pdf', { method: 'POST', body: formData });
-        if (!resp.ok) {
-          const err = await resp.json().catch(() => ({}));
-          throw new Error(err.error || `Server error ${resp.status}`);
-        }
-        const { text } = await resp.json();
+        const { text } = await api.post('/gm/extract-pdf', formData);
         handleImportTextChange(text);
       } catch (err) {
-        setAlert({ type: 'error', msg: 'Could not read PDF: ' + (err.message || 'Unknown error') });
+        setPreviewError('Could not read PDF: ' + (err.message || 'Unknown error'));
       } finally {
         setImportLoading(false);
       }
@@ -5192,29 +5172,23 @@ function PriceListTab() {
   };
 
   const confirmImport = async () => {
-    if (!importParsed.length) return;
+    if (!importParsed.length || importErrors.length || !importPreview?.canImport || previewPending || !importPreview || importPreview.effective_from !== importEffectiveDate) return;
+    const action = importPreview.isImmediate ? 'apply immediately' : `schedule for ${importPreview.effective_from}`;
+    if (!window.confirm(`Confirm price import: ${action}?\n\n${importPreview.counts?.updated || 0} updates · ${importPreview.counts?.created || 0} new products · ${importPreview.counts?.duplicates || 0} duplicate rows.\n\n${importPreview.isImmediate ? 'Prices become active now.' : 'Current prices remain active until the effective date.'}`)) return;
     setImportSaving(true);
     setAlert(null);
     try {
-      const chosenDate = importEffectiveDate || todayStr;
-      const isFuture = chosenDate > todayStr;
+      const chosenDate = importEffectiveDate;
       const result = await api.prices.bulkImport(importParsed, chosenDate);
-      const { updated = 0, scheduled = 0, created = 0 } = result || {};
-      const total = updated + scheduled + created;
-      let msg;
-      if (isFuture) {
-        msg = `✅ ${total} product price(s) scheduled for ${chosenDate}. Current prices remain active until that date.`;
-      } else {
-        msg = `✅ ${total} product price(s) imported (${updated} updated, ${created} new).`;
-      }
+      const msg = `${result.isImmediate ? 'Applied immediately' : 'Scheduled'} for ${result.effective_from}: ${result.updated || 0} updated, ${result.created || 0} created, ${result.scheduled || 0} scheduled, ${result.unchanged || 0} unchanged, ${result.duplicates || 0} duplicate rows.`;
       setAlert({ type: 'success', msg });
       setShowImport(false);
       setImportText('');
       setImportParsed([]);
-      setImportEffectiveDate('');
+      setImportEffectiveDate(businessToday());
       load();
-    } catch {
-      setAlert({ type: 'error', msg: 'Import failed. Please check the data and try again.' });
+    } catch (err) {
+      setPreviewError(err?.message || 'Import failed. Please check the data and try again.');
     } finally {
       setImportSaving(false);
     }
@@ -5277,11 +5251,18 @@ function PriceListTab() {
                 🕓 Change Log
               </button>
               <button
-                onClick={() => { setShowImport(true); setImportText(''); setImportParsed([]); }}
+                onClick={() => { setImportEffectiveDate(businessToday()); setShowImport(true); setImportText(''); setImportParsed([]); setImportErrors([]); setImportDuplicates([]); setImportLayout('auto'); }}
                 className="px-3 py-1.5 text-sm font-semibold rounded shadow"
                 style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)' }}
               >
-                📋 Import Price List
+                Import Price List
+              </button>
+              <button
+                onClick={openDuplicateReview}
+                className="px-3 py-1.5 text-sm font-semibold rounded shadow"
+                style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)' }}
+              >
+                Review product identities
               </button>
               <button
                 onClick={() => setShowAdd(true)}
@@ -5508,12 +5489,55 @@ function PriceListTab() {
         </CardBody>
       </Card>
 
+      {pendingChanges.some(change => change.change_type === 'new_product') && (
+        <section aria-labelledby="scheduled-new-products-heading" style={{ padding: '16px', border: '1px solid #d7c997', borderRadius: 12, background: '#fffdf5' }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+            <div>
+              <h3 id="scheduled-new-products-heading" style={{ margin: 0, color: '#4e472e', fontSize: 16, fontWeight: 800 }}>Scheduled new products</h3>
+              <p style={{ margin: '4px 0 0', color: '#71694c', fontSize: 12 }}>Staged records are not live and do not appear in the active price list until activation.</p>
+            </div>
+            <span style={{ padding: '4px 9px', borderRadius: 999, background: '#f2e9c9', color: '#665a30', fontSize: 12, fontWeight: 800 }}>
+              {pendingChanges.filter(change => change.change_type === 'new_product').length} staged
+            </span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: 10 }}>
+            {pendingChanges.filter(change => change.change_type === 'new_product').map(change => {
+              const blocked = change.status === 'conflict';
+              const money = value => `N$ ${Number(value || 0).toLocaleString('en-NA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+              return (
+                <article key={change.id} style={{ padding: 13, border: `1px solid ${blocked ? '#e2b8b4' : '#e1d8b2'}`, borderRadius: 9, background: blocked ? '#fff8f7' : '#fff' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: '#2d3942' }}>{change.description}</div>
+                      <div style={{ marginTop: 3, fontSize: 11, color: '#68757e' }}>Code: {change.product_code || 'Not supplied'} · Staged product</div>
+                    </div>
+                    <span style={{ flexShrink: 0, padding: '3px 8px', borderRadius: 999, fontSize: 11, fontWeight: 800, color: blocked ? '#8c302c' : '#655728', background: blocked ? '#f7e2df' : '#f5edce' }}>
+                      {blocked ? 'Blocked' : 'Scheduled'}
+                    </span>
+                  </div>
+                  <div style={{ marginTop: 10, color: '#465560', fontSize: 12 }}>
+                    <strong>Starts {change.effective_from}</strong>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px 14px', marginTop: 6 }}>
+                      <span>DP {money(change.new_dp)}</span>
+                      <span>CP {money(change.new_cp)}</span>
+                      <span>CIF {money(change.new_cif)}</span>
+                      <span>BV {Number(change.new_bv || 0).toLocaleString('en-NA')}</span>
+                    </div>
+                  </div>
+                  {blocked && change.activation_error && <div role="status" style={{ marginTop: 9, padding: '8px 9px', borderRadius: 6, background: '#f9e9e7', color: '#812e29', fontSize: 12 }}><strong>Activation blocked:</strong> {change.activation_error}</div>}
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       <Modal open={showImport} title="Import Price List" onClose={() => { setShowImport(false); setImportText(''); setImportParsed([]); setImportTab('upload'); setImportEffectiveDate(''); }}>
         <div style={{ width: '100%', maxWidth: 640, boxSizing: 'border-box', padding: '0 4px 4px' }}>
 
           {/* Tab switcher */}
           <div style={{ display: 'flex', borderBottom: '2px solid #f1f5f9', marginBottom: 20 }}>
-            {[['upload', '📎', 'Upload File'], ['paste', '📝', 'Paste Text']].map(([key, icon, label]) => (
+          {[['upload', 'Upload file'], ['paste', 'Paste text']].map(([key, label]) => (
               <button
                 key={key}
                 onClick={() => setImportTab(key)}
@@ -5522,7 +5546,7 @@ function PriceListTab() {
                   cursor: 'pointer', borderBottom: importTab === key ? '2px solid #c41e3a' : '2px solid transparent',
                   color: importTab === key ? '#c41e3a' : '#64748b', marginBottom: -2, transition: 'all 0.15s'
                 }}
-              >{icon} {label}</button>
+              >{label}</button>
             ))}
           </div>
 
@@ -5540,13 +5564,12 @@ function PriceListTab() {
             >
               {importLoading ? (
                 <>
-                  <div style={{ fontSize: '2.4rem', lineHeight: 1 }}>⏳</div>
                   <div style={{ fontWeight: 700, color: '#374151', fontSize: '0.95rem' }}>Reading PDF…</div>
                   <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Extracting product data, please wait</div>
                 </>
               ) : (
                 <>
-                  <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.6rem' }}>📄</div>
+                  <div aria-hidden="true" style={{ width: 56, height: 56, borderRadius: '50%', background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem', color: '#9b1730' }}>PDF</div>
                   <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.95rem' }}>Tap to select price list file</div>
                   <div style={{ display: 'flex', gap: 6 }}>
                     {['PDF', 'TXT', 'CSV'].map(ext => (
@@ -5576,107 +5599,111 @@ function PriceListTab() {
             </div>
           )}
 
-          {/* Results */}
-          {importParsed.length > 0 && (
-            <div style={{ marginTop: 18 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                <div style={{ background: '#dcfce7', color: '#15803d', fontWeight: 700, fontSize: '0.8rem', padding: '4px 12px', borderRadius: 20, display: 'flex', alignItems: 'center', gap: 5 }}>
-                  ✓ {importParsed.length} products detected
-                </div>
-                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                  {(() => { const strip = d => (d||'').toUpperCase().replace(/^[A-Z]{1,3}\d{4,6}[A-Z]?\s+/,'').trim(); const upd = importParsed.filter(p => rows.some(r => r.description?.toUpperCase() === p.description || strip(r.description||'') === p.description)).length; return `${upd} updates · ${importParsed.length - upd} new`; })()}
-                </div>
-              </div>
-              <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-                <table style={{ width: '100%', fontSize: '0.78rem', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ background: '#f8fafc', position: 'sticky', top: 0 }}>
-                      <th style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid #e2e8f0', fontWeight: 700, color: '#374151' }}>Product</th>
-                      <th style={{ textAlign: 'right', padding: '8px 10px', borderBottom: '1px solid #e2e8f0', fontWeight: 700, color: '#374151' }}>CIF</th>
-                      <th style={{ textAlign: 'right', padding: '8px 10px', borderBottom: '1px solid #e2e8f0', fontWeight: 700, color: '#374151' }}>DP</th>
-                      <th style={{ textAlign: 'right', padding: '8px 10px', borderBottom: '1px solid #e2e8f0', fontWeight: 700, color: '#374151' }}>CP</th>
-                      <th style={{ textAlign: 'right', padding: '8px 10px', borderBottom: '1px solid #e2e8f0', fontWeight: 700, color: '#374151' }}>BV</th>
-                      <th style={{ padding: '8px 10px', borderBottom: '1px solid #e2e8f0' }}></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {importParsed.map((p, i) => {
-                      const strip = d => (d||'').toUpperCase().replace(/^[A-Z]{1,3}\d{4,6}[A-Z]?\s+/,'').trim();
-                      const exists = rows.some(r => r.description?.toUpperCase() === p.description || strip(r.description||'') === p.description);
-                      return (
-                        <tr key={i} style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
-                          <td style={{ padding: '6px 12px', fontWeight: 500, color: '#1e293b', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.description}</td>
-                          <td style={{ padding: '6px 10px', textAlign: 'right', color: '#64748b' }}>{p.cif > 0 ? p.cif : '—'}</td>
-                          <td style={{ padding: '6px 10px', textAlign: 'right', color: '#374151' }}>{p.dp}</td>
-                          <td style={{ padding: '6px 10px', textAlign: 'right', color: '#374151' }}>{p.cp}</td>
-                          <td style={{ padding: '6px 10px', textAlign: 'right', color: '#374151' }}>{p.bv}</td>
-                          <td style={{ padding: '6px 10px', textAlign: 'center' }}>
-                            <span style={{ fontSize: '0.65rem', fontWeight: 700, padding: '2px 7px', borderRadius: 10, background: exists ? '#fef9c3' : '#f0fdf4', color: exists ? '#854d0e' : '#15803d' }}>
-                              {exists ? 'update' : 'new'}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+          <section aria-label="Import settings" style={{ marginTop: 14, padding: 14, background: '#f7f8fa', border: '1px solid #d9e0e7', borderRadius: 10 }}>
+            <label htmlFor="priceImportEffectiveDate" style={{ display: 'block', fontWeight: 700, color: '#263746', marginBottom: 7 }}>Effective date for Namibia branches</label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
+              <input id="priceImportEffectiveDate" type="date" value={importEffectiveDate} min={todayStr} onChange={e => { previewSequence.current += 1; setImportPreview(null); setImportEffectiveDate(e.target.value); }} style={{ minHeight: 42, padding: '8px 10px', borderRadius: 7, border: '1px solid #aebbc6', background: '#fff', color: '#263746', fontSize: 15 }} />
+              <span aria-live="polite" style={{ fontWeight: 700, color: importEffectiveDate > todayStr ? '#7a4d13' : '#285d4d' }}>
+                {importEffectiveDate > todayStr ? `Scheduled for ${importEffectiveDate}; current prices remain active until then.` : `Today — prices apply immediately (${importEffectiveDate || todayStr}).`}
+              </span>
             </div>
-          )}
-
-          {/* Effective date — shown once products are detected */}
-          {importParsed.length > 0 && (
-            <div style={{ marginTop: 16, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '14px 16px' }}>
-              <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#374151', marginBottom: 8 }}>
-                📅 When should these prices take effect?
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <input
-                  type="date"
-                  value={importEffectiveDate || todayStr}
-                  min={todayStr}
-                  onChange={e => setImportEffectiveDate(e.target.value)}
-                  style={{ padding: '8px 12px', borderRadius: 8, border: '1.5px solid #e2e8f0', fontSize: '0.85rem', color: '#1e293b', background: '#fff', cursor: 'pointer' }}
-                />
-                {importEffectiveDate && importEffectiveDate > todayStr ? (
-                  <span style={{ fontSize: '0.78rem', color: '#b45309', background: '#fef9c3', padding: '4px 10px', borderRadius: 20, fontWeight: 600 }}>
-                    ⏳ Scheduled — current prices stay active until {importEffectiveDate}
-                  </span>
-                ) : (
-                  <span style={{ fontSize: '0.78rem', color: '#15803d', background: '#f0fdf4', padding: '4px 10px', borderRadius: 20, fontWeight: 600 }}>
-                    ✅ Apply immediately
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Parse error */}
-          {importText.trim() && importParsed.length === 0 && !importLoading && (
-            <div style={{ marginTop: 16, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '12px 16px', fontSize: '0.82rem', color: '#b91c1c', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-              <span style={{ fontSize: '1.1rem', lineHeight: 1.3 }}>⚠️</span>
-              <span>No products detected. Check that each line has the product name followed by three numbers (DP, CP, BV).</span>
-            </div>
-          )}
-
+          </section>
+          <div style={{ marginTop: 14 }}>
+            <label htmlFor="priceImportLayout" style={{ display: 'block', fontWeight: 700, color: '#263746', marginBottom: 6 }}>Price list column layout</label>
+            <select id="priceImportLayout" value={importLayout} onChange={e => {
+              const layout = e.target.value;
+              previewSequence.current += 1;
+              setImportLayout(layout);
+              const parsed = parsePriceListText(importText, { layout });
+              setImportPreview(null);
+              setImportParsed(Array.isArray(parsed?.products) ? parsed.products : []);
+              setImportErrors(Array.isArray(parsed?.errors) ? parsed.errors : []);
+              setImportDuplicates(Array.isArray(parsed?.duplicates) ? parsed.duplicates : []);
+            }} style={{ width: '100%', minHeight: 42, padding: '8px 10px', border: '1px solid #aebbc6', borderRadius: 7, background: '#fff', color: '#263746' }}>
+              <option value="auto">Auto-detect layout</option>
+              <option value="cif-dp-cp-bv">CIF · DP · CP · BV</option>
+              <option value="dp-cp-bv">DP · CP · BV</option>
+              <option value="cif-dp-cp">CIF · DP · CP</option>
+            </select>
+          </div>
+          {importParsed.length > 0 && <div style={{ marginTop: 13, color: '#263746', fontWeight: 700 }}>{importParsed.length} rows parsed · {previewPending ? 'Checking server identities…' : importPreview ? `${importPreview.counts?.updated || 0} updates · ${importPreview.counts?.created || 0} new · ${importPreview.counts?.duplicates || 0} duplicates · ${importPreview.counts?.conflicts || 0} conflicts` : 'Awaiting server review'}</div>}
+          {(importErrors.length > 0 || importDuplicates.length > 0) && <div role="status" style={{ marginTop: 10, padding: 12, borderRadius: 8, background: '#fff4e5', color: '#704b1a' }}>
+            {importErrors.map((error, index) => <div key={`parse-${index}`}>{typeof error === 'string' ? error : error.message || JSON.stringify(error)}</div>)}
+            {importDuplicates.map((duplicate, index) => <div key={`duplicate-${index}`}>Repeated source row: {typeof duplicate === 'string' ? duplicate : duplicate.description || duplicate.product_code || JSON.stringify(duplicate)}</div>)}
+          </div>}
+          {previewError && <div role="alert" style={{ marginTop: 10, padding: 12, background: '#fff0ef', border: '1px solid #e2b7b3', color: '#8c302c', borderRadius: 8 }}>{previewError}{importParsed.length > 0 && <button type="button" onClick={() => setImportParsed(current => [...current])} style={{ display: 'block', marginTop: 8, padding: '6px 10px', border: '1px solid #c47b75', borderRadius: 6, color: '#712d28', background: '#fff', fontWeight: 700 }}>Retry validation</button>}</div>}
+          {importPreview?.rows?.length > 0 && <div style={{ marginTop: 12, maxHeight: 260, overflow: 'auto', border: '1px solid #d9e0e7', borderRadius: 8 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead><tr style={{ position: 'sticky', top: 0, background: '#edf1f4' }}>
+                {['Row', 'Imported identity', 'Status', 'Existing identity / review'].map(heading => <th key={heading} style={{ textAlign: 'left', padding: 9 }}>{heading}</th>)}
+              </tr></thead>
+              <tbody>{importPreview.rows.map((row, index) => <tr key={`${row.rowNumber}-${index}`} style={{ borderTop: '1px solid #e5e9ed' }}>
+                <td style={{ padding: 9 }}>{row.rowNumber}</td>
+                <td style={{ padding: 9, minWidth: 160 }}><strong>{row.product?.product_code || 'No code'}</strong><br />{row.product?.description}</td>
+                <td style={{ padding: 9, textTransform: 'capitalize' }}>{row.status}</td>
+                <td style={{ padding: 9, minWidth: 190 }}>{row.existing ? <><strong>{row.existing.product_code || 'No code'} · ID {row.existing.id}</strong><br />{row.existing.description}<br />DP {row.existing.dp ?? '—'} / CP {row.existing.cp ?? '—'} / CIF {row.existing.cif ?? '—'} / BV {row.existing.bv ?? '—'}</> : row.reason || 'No matching active identity'}{row.reason && row.existing ? <div>{row.reason}</div> : null}</td>
+              </tr>)}</tbody>
+            </table>
+          </div>}
           {/* Actions */}
           <div style={{ display: 'flex', gap: 10, marginTop: 20, paddingTop: 16, borderTop: '1px solid #f1f5f9' }}>
             <button
               onClick={confirmImport}
-              disabled={importSaving || importParsed.length === 0}
+              disabled={importSaving || !importParsed.length || importErrors.length > 0 || !importPreview?.canImport || previewPending || !importPreview || importPreview.effective_from !== importEffectiveDate}
               style={{
-                flex: 1, padding: '11px 16px', borderRadius: 10, border: 'none', cursor: importParsed.length === 0 ? 'not-allowed' : 'pointer',
-                background: importParsed.length === 0 ? '#e2e8f0' : 'linear-gradient(135deg,#c41e3a,#9b1730)',
-                color: importParsed.length === 0 ? '#94a3b8' : '#fff', fontWeight: 700, fontSize: '0.88rem',
-                transition: 'all 0.15s', boxShadow: importParsed.length === 0 ? 'none' : '0 2px 8px rgba(196,30,58,0.25)'
+                flex: 1, padding: '11px 16px', borderRadius: 10, border: 'none', cursor: !importPreview?.canImport || previewPending || importErrors.length > 0 ? 'not-allowed' : 'pointer',
+                background: !importPreview?.canImport || previewPending || importErrors.length > 0 ? '#d5dce1' : '#8b2635',
+                color: !importPreview?.canImport || previewPending || importErrors.length > 0 ? '#58656e' : '#fff', fontWeight: 700, fontSize: '0.88rem'
               }}
             >
-              {importSaving ? `Importing…` : importParsed.length === 0 ? 'No products detected' : `Import ${importParsed.length} Product${importParsed.length !== 1 ? 's' : ''}`}
+              {importSaving ? 'Importing…' : importErrors.length > 0 ? 'Resolve parser errors to continue' : previewPending ? 'Validating identities…' : !importPreview?.canImport ? 'Resolve preview issues to continue' : `${importPreview.isImmediate ? 'Apply immediately' : 'Schedule'} for ${importPreview.effective_from}`}
             </button>
             <button
-              onClick={() => { setShowImport(false); setImportText(''); setImportParsed([]); setImportTab('upload'); setImportEffectiveDate(''); }}
+              onClick={() => { setShowImport(false); setImportText(''); setImportParsed([]); setImportErrors([]); setImportDuplicates([]); setImportTab('upload'); setImportEffectiveDate(businessToday()); }}
               style={{ padding: '11px 20px', borderRadius: 10, border: '1.5px solid #e2e8f0', background: '#fff', color: '#475569', fontWeight: 600, fontSize: '0.88rem', cursor: 'pointer' }}
             >Cancel</button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal open={showDuplicateReview} title="Product identity review" onClose={() => setShowDuplicateReview(false)} size="xl">
+        <div style={{ padding: 18, maxWidth: 960 }}>
+          <p style={{ margin: '0 0 14px', color: '#465560', lineHeight: 1.5 }}>
+            Review suspected duplicate records before reconciliation. Reconciliation archives duplicate identities without deleting their history or scheduled prices.
+          </p>
+          {duplicateLoading && <div role="status" style={{ padding: 18, background: '#f1f4f6', borderRadius: 8 }}>Loading identity review…</div>}
+          {duplicateError && <div role="alert" style={{ padding: 12, marginBottom: 12, background: '#fff0ef', color: '#8c302c', borderRadius: 8 }}>{duplicateError}<button type="button" onClick={openDuplicateReview} style={{ display: 'block', marginTop: 8, padding: '6px 10px', border: '1px solid #c47b75', borderRadius: 6, color: '#712d28', background: '#fff', fontWeight: 700 }}>Retry review</button></div>}
+          {!duplicateLoading && duplicateReview && <>
+            {(duplicateReview.groups || []).length === 0 && <div style={{ padding: 14, background: '#edf5f1', color: '#285d4d', borderRadius: 8 }}>No proven duplicate groups require review.</div>}
+            {(duplicateReview.groups || []).map(group => {
+              const canonical = group.rows?.find(row => String(row.id) === String(group.canonicalId));
+              const others = group.rows?.filter(row => String(row.id) !== String(group.canonicalId)) || [];
+              return <section key={group.key} style={{ border: '1px solid #d4dce2', borderRadius: 10, padding: 14, marginTop: 12 }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
+                  <div>
+                    <div style={{ fontWeight: 800, color: '#263746' }}>Proven match · {group.reason}</div>
+                    <div style={{ marginTop: 5, color: '#53616b' }}>Canonical ID {group.canonicalId}: {canonical?.product_code || 'No code'} · {canonical?.description || 'Product details unavailable'}</div>
+                  </div>
+                  <button type="button" onClick={() => reconcileDuplicateGroup(group)} style={{ border: 0, borderRadius: 7, padding: '9px 13px', background: '#8b2635', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>Confirm reconciliation</button>
+                </div>
+                <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 10 }}>
+                  <div style={{ padding: 11, background: '#edf5f1', borderRadius: 7 }}><strong>After: canonical remains active</strong><div>{canonical?.description}; active DP {canonical?.dp ?? '—'}, CP {canonical?.cp ?? '—'}, CIF {canonical?.cif ?? '—'}, BV {canonical?.bv ?? '—'} remain canonical.</div></div>
+                  <div style={{ padding: 11, background: '#f4f1e9', borderRadius: 7 }}><strong>Other identities and future prices</strong><div>{others.length ? others.map(row => `ID ${row.id}: ${row.product_code || 'no code'} · ${row.description} (DP ${row.dp ?? '—'}, CP ${row.cp ?? '—'})`).join('; ') : 'No other identities listed.'} Schedules are retained and re-attached; historical identity remains preserved.</div></div>
+                </div>
+                {group.references?.length > 0 && <div style={{ marginTop: 9, fontSize: 12, color: '#596873' }}>Referenced by: {group.references.map(ref => `${ref.table}.${ref.column} (${ref.count})`).join(' · ')}</div>}
+              </section>;
+            })}
+            {(duplicateReview.uncertain || []).length > 0 && <section style={{ marginTop: 18, padding: 14, border: '1px solid #dfc98b', background: '#fff9e8', borderRadius: 10 }}>
+              <h3 style={{ margin: '0 0 8px', color: '#684f16' }}>Uncertain matches — no changes available</h3>
+              <p style={{ margin: '0 0 10px', color: '#725e2e' }}>These records remain unchanged because the evidence does not prove a shared product identity.</p>
+              {(duplicateReview.uncertain || []).map((group, index) => <div key={group.key || index} style={{ padding: '8px 0', borderTop: '1px solid #eee2bf' }}>
+                <strong>{group.reason || group.key || 'Review required'}</strong>
+                {(group.rows || []).map(row => <div key={row.id}>ID {row.id} · {row.product_code || 'No code'} · {row.description}</div>)}
+              </div>)}
+            </section>}
+          </>}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+            <button type="button" onClick={() => setShowDuplicateReview(false)} style={{ padding: '9px 14px', background: '#fff', border: '1px solid #bdc8d0', borderRadius: 7, color: '#344652', fontWeight: 700 }}>Close</button>
           </div>
         </div>
       </Modal>

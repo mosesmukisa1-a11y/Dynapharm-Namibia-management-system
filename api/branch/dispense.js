@@ -2,6 +2,7 @@ import { recordBranchSaleAllocationTx } from '../services/stockSaleAllocations.j
 import { applyAuthCors } from '../_lib/auth.js';
 import { authorizeBranchReturn } from '../services/linkedReversals.js';
 import { atomicStockRequest } from '../_lib/atomicStockRequest.js';
+import { assertActivePriceProducts } from '../services/priceImport.js';
 import { query, getMany, getOne, withTransaction } from '../db.js';
 import { branchSearchTerms, normalizeBranchSlug } from '../_lib/branchUtils.js';
 import { recomputeLocationBalances } from '../services/stockEngine.js';
@@ -40,12 +41,13 @@ async function handler(req, res) {
         return res.status(400).json({ success: false, error: 'reportId, branchId, and items are required' });
       }
       authorizeBranchReturn(req.user,branchId);
+      await assertActivePriceProducts(items);
 
       const movType = 'prescription_dispense';
       const deductions = [];
       const insufficientItems = [];
 
-      const livePriceRows = await getMany(`SELECT description, dp, cp, bv, cif FROM product_prices`);
+      const livePriceRows = await getMany(`SELECT description, dp, cp, bv, cif FROM live_product_prices`);
       const livePriceMap = {};
       for (const row of livePriceRows) {
         if (row.description) livePriceMap[row.description.toLowerCase()] = row;

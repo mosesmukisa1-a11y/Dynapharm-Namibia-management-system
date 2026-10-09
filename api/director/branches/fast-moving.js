@@ -25,7 +25,7 @@ export default async function handler(req, res) {
               SUM(sm.quantity) as units_sold,
               SUM(sm.quantity * COALESCE(pp.cif, 0)) as cif_cost
        FROM stock_movements sm
-       LEFT JOIN product_prices pp ON sm.product_name = pp.description
+       LEFT JOIN live_product_prices pp ON sm.product_name = pp.description
        WHERE sm.status = 'posted'
          AND sm.movement_type IN ('walkin_sale','walkin_member_sale','walkin_non_member_sale',
            'walk_in_member_sale','walk_in_non_member_sale','sale','prescription_dispense')

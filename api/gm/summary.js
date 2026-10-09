@@ -37,7 +37,7 @@ export default async function handler(req, res) {
     const cifRow = await getOne(
       `SELECT COALESCE(SUM(sm.quantity * COALESCE(sm.unit_cif, pp.cif, 0)), 0) as cif_cost
        FROM stock_movements sm
-       LEFT JOIN product_prices pp ON LOWER(TRIM(sm.product_name)) = LOWER(TRIM(pp.description))
+       LEFT JOIN live_product_prices pp ON LOWER(TRIM(sm.product_name)) = LOWER(TRIM(pp.description))
        WHERE sm.status = 'posted'
          AND sm.movement_type IN (
            'walkin_sale','walkin_member_sale','walkin_non_member_sale',
@@ -93,7 +93,7 @@ export default async function handler(req, res) {
     const activeBranches = Number(branchRow?.cnt || 0);
 
     // Product range count
-    const productRow = await getOne(`SELECT COUNT(DISTINCT description) as cnt FROM product_prices`);
+    const productRow = await getOne(`SELECT COUNT(DISTINCT description) as cnt FROM live_product_prices WHERE catalogue_entry`);
     const productCount = Number(productRow?.cnt || 0);
 
     res.json({

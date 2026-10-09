@@ -71,7 +71,7 @@ export default async function handler(req, res) {
                 SUM(ABS(quantity)) as qty,
                 SUM(ABS(quantity) * COALESCE(NULLIF(pp.dp, 0), NULLIF(unit_price, 0), 0)) as dp_value
          FROM branch_inventory_movements
-         LEFT JOIN product_prices pp ON LOWER(TRIM(pp.description)) = LOWER(TRIM(product_name))
+         LEFT JOIN live_product_prices pp ON LOWER(TRIM(pp.description)) = LOWER(TRIM(product_name))
          WHERE ${movConds.join(' AND ')} AND type IN ('prescription_dispense','dispense','field_use')
          GROUP BY reference, product_name, batch_no`,
         movParams
@@ -100,7 +100,7 @@ export default async function handler(req, res) {
               COALESCE(
                 CASE WHEN COALESCE((m->>'dp')::numeric, 0) > 0 THEN (m->>'dp')::numeric END,
                 CASE WHEN COALESCE((m->>'dpPrice')::numeric, 0) > 0 THEN (m->>'dpPrice')::numeric END,
-                (SELECT pp.dp FROM product_prices pp
+                (SELECT pp.dp FROM live_product_prices pp
                  WHERE LOWER(TRIM(pp.description)) = LOWER(TRIM(m->>'name')) LIMIT 1),
                 0
               ) * COALESCE((m->>'quantity')::numeric, 1)
@@ -163,7 +163,7 @@ export default async function handler(req, res) {
                 -- List DP from product_prices — used as the "before discount" base price.
                 MAX(pp.dp)                                    AS list_dp
          FROM branch_inventory_movements bim
-         LEFT JOIN product_prices pp ON LOWER(TRIM(pp.description)) = LOWER(TRIM(product_name))
+         LEFT JOIN live_product_prices pp ON LOWER(TRIM(pp.description)) = LOWER(TRIM(product_name))
          LEFT JOIN branch_walkin_sales bws ON bws.id = reference
          WHERE ${camMovConds.join(' AND ')}
            AND (
@@ -188,12 +188,12 @@ export default async function handler(req, res) {
                 -- Fall back to pp.dp only when unit_price is 0/null (legacy entries).
                 COALESCE(SUM(ABS(quantity) * COALESCE(charge_unit, NULLIF(unit_price, 0), NULLIF(pp.dp, 0), 0)), 0)::numeric AS refund_total
          FROM branch_inventory_movements
-         LEFT JOIN product_prices pp ON LOWER(TRIM(pp.description)) = LOWER(TRIM(product_name))
+         LEFT JOIN live_product_prices pp ON LOWER(TRIM(pp.description)) = LOWER(TRIM(product_name))
          WHERE ${movConds.join(' AND ')} AND type = 'refund_return'`,
         movParams
       ),
       // GM price list — authoritative DP source for JS-level walk-in processing
-      getMany(`SELECT description, dp FROM product_prices`),
+      getMany(`SELECT description, dp FROM live_product_prices`),
     ]);
 
     // Build price-map from GM price list — authoritative DP for JS-level walk-in processing

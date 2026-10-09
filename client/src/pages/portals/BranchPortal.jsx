@@ -16,6 +16,7 @@ import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner,
 import { ShoppingCart, FileText, Package, Landmark, CreditCard, ClipboardList, Gift, MessageSquare, Users, UserPlus, Map, Printer, AlertTriangle, Search, ArrowRightLeft, Trash2, RotateCcw, Heart, CheckCircle, Calendar, Megaphone, Clock, XCircle, Plus, Upload, List } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { MembershipAgreementForm } from '../../components/MembershipAgreementForm';
+import { nameKey } from '../../../../shared/price-list-import.js';
 import StaffMessagesTab from '../../components/StaffMessagesTab';
 import BarcodeScanner from '../../components/BarcodeScanner';
 import QRCameraScanner from '../../components/QRCameraScanner';
@@ -1539,13 +1540,12 @@ function WalkInSalesTab() {
     api.branch.walkinSales(branch ? `branch_id=${branch}` : '')
       .then(d => setSales(Array.isArray(d) ? d : d.sales || [])).catch(() => {});
 
-  useEffect(() => {
-    warmCache(); // pre-warm the local distributor cache while online
+  const loadPriceProducts = useCallback(() => {
     Promise.all([
-      api.prices.list().catch(() => []),
+      api.prices.list().catch(() => null),
       api.products.list().catch(() => []),
     ]).then(([priceData, productsData]) => {
-      if (Array.isArray(priceData) && priceData.length > 0) setLivePrices(priceData);
+      if (Array.isArray(priceData)) setLivePrices(priceData);
 
       // Build product list: start from GM price list (source of truth), then append
       // any DB products that have no price-list entry (backward compat).
@@ -1557,18 +1557,27 @@ function WalkInSalesTab() {
 
       // Map price-list entries to POS product shape
       const priceListSet = new Set();
+      const dbNameKeys = db => [db.name, db.description].map(nameKey).filter(Boolean);
       const priceListProducts = effectivePriceList.map((p, idx) => {
-        const key = (p.description || '').toUpperCase().trim();
-        priceListSet.add(key);
-        // Find matching DB product to inherit id, image, etc.
-        const dbMatch = dbProducts.find(db =>
-          (db.name || db.description || '').toUpperCase().trim() === key
-        );
+        const key = nameKey(p.description) || String(p.description || '').toLowerCase().trim();
+        const identityNames = [p.description, ...(Array.isArray(p.aliases) ? p.aliases : [])];
+        const identityKeys = new Set(identityNames.map(nameKey).filter(Boolean));
+        identityKeys.forEach(key => priceListSet.add(key));
+        // Prefer canonical DB identity, then archived-name aliases, for the stock-facing name.
+        const dbMatch = identityNames
+          .map(identity => {
+            const key = nameKey(identity);
+            return key ? dbProducts.find(db => dbNameKeys(db).includes(key)) : null;
+          })
+          .find(Boolean);
         return {
           ...(dbMatch || {}),
           id: dbMatch?.id || `pl-${idx}-${key.replace(/\W+/g, '-').toLowerCase()}`,
-          name: p.description,
+          name: dbMatch?.name || p.description,
           description: p.description,
+          canonical_description: p.description,
+          aliases: Array.isArray(p.aliases) ? p.aliases : [],
+          product_code: p.product_code ?? null,
           dp: Number(p.dp) || 0,
           cp: Number(p.cp) || 0,
           bv: Number(p.bv) || 0,
@@ -1577,9 +1586,35 @@ function WalkInSalesTab() {
         };
       });
 
+      const dbExtras = dbProducts
+        .filter(db => !dbNameKeys(db).some(key => priceListSet.has(key)))
+        .map(db => ({
+          ...db,
+          name: db.name || db.description,
+          description: db.description || db.name,
+          dp: Number(db.dp ?? db.price) || 0,
+          cp: Number(db.cp ?? db.price) || 0,
+          bv: Number(db.bv ?? db.bv_points) || 0,
+          cif: Number(db.cif) || 0,
+          hasPricing: false,
+        }));
       const packages = getPackagesForPOS();
-      setProducts([...priceListProducts, ...packages]);
+      setProducts([...priceListProducts, ...dbExtras, ...packages]);
     }).finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    warmCache(); // pre-warm the local distributor cache once; price refreshes do not reload customer data
+  }, []);
+
+  useEffect(() => {
+    const refreshPriceProducts = () => loadPriceProducts();
+    loadPriceProducts();
+    window.addEventListener('dynapharm-prices-updated', refreshPriceProducts);
+    return () => window.removeEventListener('dynapharm-prices-updated', refreshPriceProducts);
+  }, [loadPriceProducts]);
+
+  useEffect(() => {
     // Load active discount-type campaigns
     api.get('/campaigns').then(d => {
       const all = Array.isArray(d) ? d : (d.campaigns || []);

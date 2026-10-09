@@ -90,7 +90,7 @@ export default async function handler(req, res) {
             COALESCE(NULLIF(pp.cp,  0), p.cp)  AS cp,
             COALESCE(NULLIF(pp.bv,  0), p.bv)  AS bv
           FROM products p
-          LEFT JOIN product_prices pp
+          LEFT JOIN live_product_prices pp
             ON LOWER(TRIM(pp.description)) = LOWER(TRIM(p.name))
           ORDER BY p.name
         `,
