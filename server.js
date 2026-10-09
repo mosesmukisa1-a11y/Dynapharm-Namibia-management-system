@@ -2602,6 +2602,8 @@ server.on('error', (error) => {
       (await import('./api/services/linkedReversals.js')).reversalSchema,
       await (await import('node:fs/promises')).readFile(
         new URL('./migrations/028_stock_cost_reporting_indexes.sql',import.meta.url),'utf8'),
+      await (await import('node:fs/promises')).readFile(
+        new URL('./migrations/029_historical_refund_evidence.sql',import.meta.url),'utf8'),
       // Migration 019: GM dispatch approval columns on stock_transfers
       `ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS prepared_by_id VARCHAR(255)`,
       `ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS prepared_by_role VARCHAR(100)`,

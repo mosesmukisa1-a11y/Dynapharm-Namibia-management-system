@@ -15,6 +15,18 @@ Unlinked historical refunds need separately reviewed original-sale evidence. A c
 
 **How to apply:** Block ambiguous approvals rather than fabricating allocations. A missing original available batch goes to segregation; use the existing GM-reviewed release workflow instead of automatically creating saleable stock.
 
+Historical linking requires a Stock proposal and a separate GM reviewer; evidence approval alone cannot confirm custody, alter requested quantities/prices, approve the refund, or move stock. Reject multiple matching allocations and mixed source identities.
+
+**Why:** A historical evidence review is not proof that goods are physically present, and choosing a convenient current or mixed source would create false supplier/cost evidence.
+
+**How to apply:** Preserve the original request and frozen sale evidence immutably, recheck their fingerprints and shared caps before approval, leave missing receipt fields unknown, and conservatively count approved unlinked same-lot refunds even when their sale reference is missing.
+
+Approval audit identities must come from the verified principal contract, not an assumed UI-profile shape, and remain stable when roles change.
+
+**Why:** Authentication claims and user profiles are different data contracts. Confusing them can block legitimate writes or misidentify the proposer and reviewer.
+
+**How to apply:** Resolve the verified actor consistently for proposals, reviews and immutable audit records; role/display-name changes must not create a different identity.
+
 Goods already received by a branch return through a new branch-to-source transfer, not through cancellation of the original outbound transit.
 
 **Why:** The original transit is no longer their custodian, and restoring its source would leave the same goods available in both places.

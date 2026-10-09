@@ -1,4 +1,5 @@
 import { normalizeBranchSlug, branchSearchTerms } from '../_lib/branchUtils.js';
+import {createHash} from 'node:crypto';
 import { branchLayers, takeLayers, sourceSnapshot } from './stockCostLayers.js';
 // Server-recorded sale evidence, not a join to whatever lot happens to remain.
 // Physical/source IDs are intentionally historical strings: depleted rows may
@@ -11,6 +12,27 @@ export const saleAllocationSchema = `CREATE TABLE IF NOT EXISTS stock_sale_alloc
 )`;
 const date = value => value instanceof Date ? value.toISOString().slice(0,10) : String(value || '').slice(0,10) || null;
 const equal = (a,b) => String(a || '').trim().toLowerCase()===String(b || '').trim().toLowerCase();
+export const allocationEvidenceHash=a=>createHash('sha256').update(JSON.stringify([
+  a.movement_id,a.sale_reference,a.branch_id,a.product_name,a.batch_no,date(a.expiry_date),String(a.quantity),a.snapshot,
+])).digest('hex');
+
+// Historical matching only inspects persisted, posted sale evidence. Never
+// reconstruct an allocation from today's inventory or catalogue prices.
+export async function historicalRefundCandidatesTx(client,refund,saleReference) {
+  const reference=String(saleReference || refund.sale_reference || '').trim();
+  if(!reference) throw Object.assign(new Error('An original sale reference is required'),{statusCode:400});
+  if(refund.sale_reference && refund.sale_reference!==reference)
+    throw Object.assign(new Error('The reference conflicts with the historical request'),{statusCode:409});
+  const aliases=branchSearchTerms(refund.branch_id).map(value=>String(value).toLowerCase().trim());
+  const expiry=refund.original_snapshot?.expiry_date || refund.expiry_date || null;
+  return (await client.query(`SELECT a.* FROM stock_sale_allocations a
+    JOIN stock_movements sm ON sm.id=a.movement_id AND sm.status IN ('posted','approved')
+    WHERE a.sale_reference=$1 AND LOWER(TRIM(a.branch_id))=ANY($2::text[])
+      AND LOWER(TRIM(a.product_name))=LOWER(TRIM($3))
+      AND COALESCE(a.batch_no,'')=COALESCE($4,'')
+      AND ($5::date IS NULL OR a.expiry_date=$5::date)
+    ORDER BY a.movement_id LIMIT 51`,[reference,aliases,refund.product_name,refund.batch_no,date(expiry)])).rows;
+}
 
 export async function recordBranchSaleAllocationTx(client, {movementId,saleReference,batchId,quantity,branchMovementId,revenueUnit,bvUnit=0,financialDpUnit}) {
   await client.query(saleAllocationSchema);

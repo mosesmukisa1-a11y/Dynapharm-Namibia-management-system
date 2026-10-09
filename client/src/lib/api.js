@@ -182,6 +182,8 @@ export const api = {
     listRefundRequests: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/stock/refund-requests${qs ? '?' + qs : ''}`); },
     approveRefundRequest: (id, data = {}) => api.patch('/stock/refund-requests', { ...data, id, action: 'approve' }),
     rejectRefundRequest:  (id, data = {}) => api.patch('/stock/refund-requests', { ...data, id, action: 'reject'  }),
+    proposeRefundEvidence: (id,data) => api.patch('/stock/refund-requests',{...data,id,action:'propose_evidence'}),
+    reviewRefundEvidence: (id,data,approve) => api.patch('/stock/refund-requests',{...data,id,action:approve?'approve_evidence':'reject_evidence'}),
     valuation: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/stock/valuation${qs ? '?' + qs : ''}`); },
     valuationLocations: () => api.get('/stock/valuation/locations'),
     valuationProducts: (params = {}) => { const qs = new URLSearchParams(params).toString(); return api.get(`/stock/valuation/products${qs ? '?' + qs : ''}`); },

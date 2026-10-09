@@ -12,6 +12,7 @@ import { useStockRealtime } from '../../hooks/useStockRealtime';
 import AccountsTab from '../../components/AccountsTab';
 import CurrentStockTab from '../../components/CurrentStockTab';
 import StockCostReport from '../../components/StockCostReport';
+import HistoricalRefundReview from '../../components/HistoricalRefundEvidence';
 import StaffMessagesTab from '../../components/StaffMessagesTab';
 import ControlledStockOperations from '../../components/ControlledStockOperations';
 import { parsePriceListText, businessToday } from '../../../../shared/price-list-import.js';
@@ -50,6 +51,7 @@ export default function GMPortal() {
     { id: 'currentStock', label: 'Current Stock', icon: '📦' },
           { id:'originalCosts',label:'Original Costs & Profit',icon:'📊' },
     { id: 'controlledOperations', label: 'Controlled Counts & Returns' },
+    { id: 'historicalRefunds', label: 'Historical Refund Evidence' },
     { id: 'accounts', label: 'Accounts', icon: '📒' },
     { id: 'bonus', label: 'Bonus History', icon: '🎁' },
     { id: 'statements', label: 'Statements', icon: '📄' },
@@ -83,6 +85,7 @@ export default function GMPortal() {
         {activeTab === 'profitAnalysis' && <ProfitAnalysisTab key={tabVisits.profitAnalysis || 0} />}
         {activeTab === 'currentStock' && <CurrentStockTab key={tabVisits.currentStock || 0} />}
         {activeTab === 'originalCosts' && <StockCostReport />}
+        {activeTab === 'historicalRefunds' && <HistoricalRefundReview />}
         {activeTab === 'controlledOperations' && <ControlledStockOperations key={tabVisits.controlledOperations || 0} mode="gm" />}
         {activeTab === 'accounts' && <AccountsTab key={tabVisits.accounts || 0} role="gm" />}
         {activeTab === 'bonus' && <BonusHistoryTab key={tabVisits.bonus || 0} />}

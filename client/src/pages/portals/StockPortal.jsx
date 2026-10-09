@@ -8,6 +8,7 @@ import ControlledStockOperations from '../../components/ControlledStockOperation
 import DispatchNote from '../../components/DispatchNote';
 import StockProductPacks from '../../components/StockProductPacks';
 import StockCostReport from '../../components/StockCostReport';
+import {HistoricalRefundLinkForm} from '../../components/HistoricalRefundEvidence';
 import { CustomerReturnInspection, DispatchReturnsTab } from '../../components/LinkedCustomerReturns';
 import { buildReceiptPayload, clearReceiptDraft, readReceiptDraft, writeReceiptDraft, receiptMoney } from '../../lib/stockLifecycle';
 import { getCIFPrice, getDPCPrice, getProductProfit, findProductPrice, getLiveProductList, setLivePrices } from '../../lib/pricing';
@@ -957,6 +958,7 @@ function FieldStockTab() {
 function RefundApprovalsTab() {
   const { user } = useAuth();
   const [requests, setRequests]           = useState([]);
+  const [evidenceHistory,setEvidenceHistory] = useState([]);
   const [loading, setLoading]             = useState(true);
   const [filter, setFilter]               = useState('pending');
   const [acting, setActing]               = useState({});
@@ -970,8 +972,8 @@ function RefundApprovalsTab() {
   const load = () => {
     setLoading(true);
     api.stock.listRefundRequests()
-      .then(d => setRequests(d.requests || []))
-      .catch(() => setRequests([]))
+      .then(d => {setRequests(d.requests || []);setEvidenceHistory(d.evidenceHistory || []);})
+      .catch(error => setAlert({type:'error',msg:`Could not load refund requests: ${error.message}`}))
       .finally(() => setLoading(false));
   };
   useEffect(() => { load(); }, []);
@@ -1119,6 +1121,9 @@ function RefundApprovalsTab() {
                       <strong>Rejection Reason:</strong> {req.rejection_reason}
                     </div>
                   )}
+                  {req.status==='pending'&&!req.allocation_id&&<HistoricalRefundLinkForm refund={req} onChange={load}
+                    proposal={evidenceHistory.find(p=>p.refund_id===String(req.id)&&p.status==='proposed')}/>}
+                  {req.historical_evidence_link_id&&<p className="mt-2 text-sm font-semibold">GM-reviewed historical evidence: {req.historical_evidence_link_id}. Physical refund approval is separate.</p>}
                 </div>
                 {/* Action buttons (pending only) */}
                 {req.status === 'pending' && (
@@ -1131,7 +1136,7 @@ function RefundApprovalsTab() {
                       confirmed={!!physicalConfirmations[req.id]}
                       onConfirmedChange={value => setPhysicalConfirmations(s => ({ ...s, [req.id]: value }))}
                     />
-                    <button onClick={() => handleApprove(req)} disabled={!!acting[req.id] || !physicalConfirmations[req.id] || !inspectionReasons[req.id]?.trim()}
+                    <button onClick={() => handleApprove(req)} disabled={!!acting[req.id] || !req.allocation_id || !physicalConfirmations[req.id] || !inspectionReasons[req.id]?.trim()}
                       style={{ padding: '9px 20px', background: acting[req.id] === 'approving' ? '#d1fae5' : 'linear-gradient(135deg,#16a34a,#15803d)', color: acting[req.id] === 'approving' ? '#15803d' : '#fff', border: 'none', borderRadius: 9, fontWeight: 800, fontSize: '0.88rem', cursor: acting[req.id] ? 'default' : 'pointer' }}>
                       {acting[req.id] === 'approving' ? '⏳ Approving…' : '✅ Approve Refund'}
                     </button>

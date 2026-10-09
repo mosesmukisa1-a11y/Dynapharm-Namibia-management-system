@@ -2,7 +2,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { restoreWarehouseReturnStockTx } from './warehouseReturnStock.js';
 import { getBranchScope } from '../_lib/auth.js';
 import { normalizeBranchSlug, branchSearchTerms } from '../_lib/branchUtils.js';
-import { preserveRestoredProvenanceTx } from './stockSaleAllocations.js';
+import { preserveRestoredProvenanceTx,allocationEvidenceHash } from './stockSaleAllocations.js';
 import { branchLayers, day, fail } from './stockCostLayers.js';
 import { inferLocationType, recomputeLocationBalances } from './stockEngine.js';
 import { postActivityRecord } from '../_lib/activityCapture.js';
@@ -66,7 +66,7 @@ function saleableExpiry(snapshot,condition) {
 export async function saleReturnRemainingTx(client, allocation, excludeId=null, includePending=false) {
   const prior=(await client.query(`SELECT COALESCE(SUM(quantity),0) AS quantity FROM branch_refund_requests
     WHERE (status='approved' OR ($7::boolean AND status='pending')) AND id IS DISTINCT FROM $6
-    AND (allocation_id=$1 OR (allocation_id IS NULL AND sale_reference=$2
+    AND (allocation_id=$1 OR (allocation_id IS NULL AND (sale_reference=$2 OR (status='approved' AND sale_reference IS NULL))
       AND LOWER(REPLACE(branch_id,' ','_'))=ANY($3) AND LOWER(TRIM(product_name))=LOWER(TRIM($4))
       AND COALESCE(batch_no,'')=COALESCE($5,'')))`,
     [allocation.movement_id,allocation.sale_reference,branchSearchTerms(allocation.branch_id),allocation.product_name,allocation.batch_no,excludeId,includePending])).rows[0];
@@ -77,10 +77,19 @@ export async function approveLinkedRefundTx(client,refund,body,user) {
   authorizeStockReturn(user);
   const qty=returnEvidence({...body,quantity:refund.quantity,reason:refund.reason},true);
   if (!body.inspection_reason?.trim()) fail('An inspection reason is required',400);
-  if (!refund.allocation_id || !refund.physical_return_confirmed) fail('Legacy unlinked refunds require reviewed original-sale evidence before approval',409);
+  if (!refund.allocation_id || (!refund.physical_return_confirmed && !refund.historical_evidence_link_id)) fail('Legacy unlinked refunds require reviewed original-sale evidence before approval',409);
+  let reviewed;
+  if(refund.historical_evidence_link_id){
+    reviewed=(await client.query(`SELECT allocation_hash FROM stock_historical_refund_evidence
+      WHERE id=$1 AND refund_id=$2 AND allocation_id=$3 AND status='approved'`,
+      [refund.historical_evidence_link_id,String(refund.id),refund.allocation_id])).rows[0];
+    if(!reviewed)fail('Approved historical evidence is required before physical refund approval',409);
+  }
   await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[`refund-sale:${refund.sale_reference}`]);
   const allocation=(await client.query('SELECT * FROM stock_sale_allocations WHERE movement_id=$1 FOR UPDATE',[refund.allocation_id])).rows[0];
   if (!allocation) fail('Original sale allocation not found',409);
+  if(reviewed && allocationEvidenceHash(allocation)!==reviewed.allocation_hash)
+    fail('GM-reviewed original sale evidence changed; physical refund approval is blocked',409);
   if (qty>await saleReturnRemainingTx(client,allocation,refund.id)) fail('Quantity exceeds the original allocation remaining after prior refunds',409);
   const original=allocation.snapshot;
   const previousQuantity=Number(allocation.quantity)-await saleReturnRemainingTx(client,allocation,refund.id);
@@ -153,7 +162,7 @@ export async function approveLinkedRefundTx(client,refund,body,user) {
     VALUES ($1,'customer',$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
     [id,allocation.sale_reference,allocation.movement_id,qty,refund.reason,body.return_condition,actor(user),
       JSON.stringify(snapshot),`refund:${refund.id}`,createHash('sha256').update(JSON.stringify(body)).digest('hex')]);
-  await client.query(`UPDATE branch_refund_requests SET status='approved',approved_by=$1,movement_id=$2,processed_at=NOW(),
+  await client.query(`UPDATE branch_refund_requests SET status='approved',physical_return_confirmed=TRUE,approved_by=$1,movement_id=$2,processed_at=NOW(),
     return_condition=$3,stock_disposition=$4,inspection_reason=$5,refund_amount=$7 WHERE id=$6`,
     [actor(user),id,body.return_condition,body.return_condition==='saleable'?'available':'segregated',body.inspection_reason,refund.id,amount]);
   await recomputeLocationBalances('branch',branch);
