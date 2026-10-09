@@ -185,8 +185,8 @@ async function handler(req, res) {
               [smId, batch.product_name, batch.batch_no || '', batch.expiry_date || null, take, itemMovType, branchId, reportId, dispenseNote, unitPrice]
             );
 
-            await recordBranchSaleAllocationTx(client,{movementId:smId,saleReference:reportId,batchId:batch.id,quantity:take});
-            deductions.push({ product_name: batch.product_name, batch_no: batch.batch_no, quantity: take, unit_price: unitPrice, charge_unit: chargeUnit, bv_unit: item.bv_unit || 0, from_package: fromPackage, is_free: isFreeItem });
+            const actualCost=await recordBranchSaleAllocationTx(client,{movementId:smId,saleReference:reportId,batchId:batch.id,quantity:take,branchMovementId:bimId,revenueUnit:chargeUnit});
+            deductions.push({ product_name: batch.product_name, batch_no: batch.batch_no, quantity: take, unit_price: actualCost.unit_dp, unit_cif:actualCost.unit_cost, missing_cost_quantity:actualCost.missing_cost_quantity, charge_unit: chargeUnit, bv_unit: item.bv_unit || 0, from_package: fromPackage, is_free: isFreeItem });
             remaining -= take;
           }
 

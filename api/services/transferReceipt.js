@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { getBranchScope } from '../_lib/auth.js';
 import { normalizeBranchSlug, branchSearchTerms } from '../_lib/branchUtils.js';
-import { inferLocationType } from './stockEngine.js';
+import { inferLocationType,recomputeLocationBalances } from './stockEngine.js';
 import { lockStockBatchTx } from './stockLocks.js';
+import { receiveAllocatedBranchTx } from './stockCostLayers.js';
 
 const key = (product, batch, expiry) => JSON.stringify([
   String(product || '').trim().toLowerCase(), batch || '',
@@ -100,7 +101,8 @@ export async function receiveTransferTx(client, { transferId, items = [], user, 
   let changed = 0;
   let allReceived = true;
   for (const line of lines) {
-    const before = received.get(key(line.product_name, line.batch_no, line.expiry_date)) || 0;
+    const allocations=(await client.query('SELECT * FROM stock_transfer_allocations WHERE line_id=$1 ORDER BY allocation_order',[line.id])).rows;
+    const before = allocations.length ? Number(line.quantity_received || 0) : received.get(key(line.product_name, line.batch_no, line.expiry_date)) || 0;
     const expected = Number(line.quantity_approved ?? line.quantity);
     let delta = 0;
     if (selected.has(line.id)) delta = mode === 'increment' ? selected.get(line.id) : selected.get(line.id) - before;
@@ -110,6 +112,13 @@ export async function receiveTransferTx(client, { transferId, items = [], user, 
     }
     if (!Number.isFinite(expected) || expected <= 0 || delta < 0 || before + delta > expected) reject('Receipt exceeds dispatched quantity or reduces an earlier receipt.', 400);
     if (delta > 0) {
+      if (allocations.length) {
+        await receiveAllocatedBranchTx(client,{transfer,line,allocations,before,quantity:delta,branch,aliases:branchAliases,
+          actor:user.fullName || user.username || user.id,hasTransit});
+        if (mode==='increment') await client.query(`INSERT INTO stock_movements
+          (id,product_name,quantity,movement_type,reference_id,status)
+          VALUES ($1,$2,0,'receipt_retry_marker',$3,'posted')`,[`RCPT-${eventKey}-${line.id}`,line.product_name,transferId]);
+      } else {
       await lockStockBatchTx(client, branch, line.product_name, line.batch_no, line.expiry_date);
       const existing = (await client.query(
         `SELECT id,quantity,source_batch_id,metadata FROM branch_inventory_batches WHERE LOWER(TRIM(branch_id))=ANY($1::text[]) AND LOWER(TRIM(product_name))=LOWER(TRIM($2))
@@ -150,6 +159,7 @@ export async function receiveTransferTx(client, { transferId, items = [], user, 
          VALUES ($1,$2,'receive',$3,$4,$5,$6,$7,$8,NOW())`,
         [`BIM-${randomUUID()}`, branch, line.product_name, line.batch_no || null, delta, transferId, 'Staff-confirmed transfer receipt', user.fullName || user.username || user.id]
       );
+      }
       changed += delta;
     }
     await client.query('UPDATE stock_transfer_items SET quantity_received=$1 WHERE id=$2', [before + delta, line.id]);
@@ -160,5 +170,6 @@ export async function receiveTransferTx(client, { transferId, items = [], user, 
   const updated = (await client.query('UPDATE stock_transfers SET status=$1,updated_at=NOW() WHERE id=$2 RETURNING *', [status, transferId])).rows[0];
   if (transfer.request_id && allReceived) await client.query("UPDATE stock_requests SET status='received',updated_at=NOW() WHERE id=$1", [transfer.request_id]);
   if (allReceived) await client.query("UPDATE dispatch_notes SET status='closed',updated_at=NOW() WHERE transfer_id=$1", [transferId]);
+  await recomputeLocationBalances('in_transit',`in_transit:${transferId}`);
   return { transfer: updated, branchId: branch, receivedQuantity: changed, status };
 }

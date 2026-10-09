@@ -1,5 +1,6 @@
 import { applyAuthCors } from '../../_lib/auth.js';
 import { getMany, getOne } from '../../db.js';
+import { getStockCostProjection,getSalesCostReport } from '../../services/stockCostReporting.js';
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
@@ -25,7 +26,7 @@ export default async function handler(req, res) {
           `SELECT report_data, computed_at FROM stock_report_summaries WHERE id = $1`,
           [`${periodType}-${periodKey}-all`]
         ).catch(() => null);
-        if (stored) {
+        if (stored && stored.report_data?.cost_basis==='received_batches_v1') {
           const data = typeof stored.report_data === 'string' ? JSON.parse(stored.report_data) : stored.report_data;
           return res.json({ success: true, source: 'precomputed', period_type: periodType, period_key: periodKey, computed_at: stored.computed_at, ...data });
         }
@@ -37,15 +38,14 @@ export default async function handler(req, res) {
     if (from) { params.push(from); dateFilter += ` AND created_at >= $${params.length}`; }
     if (to) { params.push(to + 'T23:59:59'); dateFilter += ` AND created_at <= $${params.length}`; }
 
-    const [batches, branchInv, sales] = await Promise.all([
-      getMany("SELECT location, remaining_quantity, quantity, cif_unit_cost, dpc_unit_value, unit_price FROM stock_batches WHERE location != 'country_stock' AND remaining_quantity > 0 AND COALESCE(status,'') != 'expired'"),
-      getMany("SELECT location_id, closing_qty, unit_dp, stock_value_dp FROM inventory_balances WHERE location_type = 'branch'"),
+    const [stock,originalSales,sales] = await Promise.all([
+      getStockCostProjection(),getSalesCostReport({from,to}),
       getMany(`SELECT branch_id, total, customer_type, created_at FROM branch_walkin_sales WHERE 1=1${dateFilter} LIMIT 10000`, params),
     ]);
 
-    const warehouseCIF = batches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0) * Number(b.cif_unit_cost || b.unit_price || 0), 0);
-    const warehouseDPC = batches.reduce((s, b) => s + Number(b.remaining_quantity || b.quantity || 0) * Number(b.dpc_unit_value || b.unit_price || 0), 0);
-    const branchDPC = branchInv.reduce((s, b) => s + Number(b.stock_value_dp || 0), 0);
+    const warehouseCIF = stock.reduce((sum,r)=>sum+r.qty*(r.unitCIF ?? 0),0);
+    const warehouseDPC = stock.reduce((sum,r)=>sum+r.qty*(r.unitDPC ?? 0),0);
+    const branchDPC = 0;
     const totalRevenue = sales.reduce((s, r) => s + Number(r.total || 0), 0);
     const markup = warehouseCIF > 0 ? ((warehouseDPC - warehouseCIF) / warehouseCIF * 100) : 0;
 
@@ -58,11 +58,18 @@ export default async function handler(req, res) {
 
     res.status(200).json({
       success: true,
+      cost_basis:'received_batches_v1',
+      missingCostQuantity:stock.reduce((sum,r)=>sum+r.missingCostQuantity,0),
+      missingDPCQuantity:stock.reduce((sum,r)=>sum+r.missingDPCQuantity,0),
+      valuationComplete:stock.every(r=>!r.missingCostQuantity && !r.missingDPCQuantity),
+      knownSalesCost:originalSales.reduce((sum,r)=>sum+r.knownCost,0),
+      missingSalesCostQuantity:originalSales.reduce((sum,r)=>sum+r.missingCostQuantity,0),
+      grossProfit:originalSales.some(r=>r.grossProfit==null) ? null : originalSales.reduce((sum,r)=>sum+r.grossProfit,0),
       period: { from, to },
       totalStockValueCIF: parseFloat(warehouseCIF.toFixed(2)),
       totalStockValueDPC: parseFloat((warehouseDPC + branchDPC).toFixed(2)),
       totalRevenue: parseFloat(totalRevenue.toFixed(2)),
-      averageMarkup: parseFloat(markup.toFixed(1)),
+      averageMarkup:stock.some(r=>r.missingCostQuantity || r.missingDPCQuantity) ? null : parseFloat(markup.toFixed(1)),
       branchBreakdown: Object.values(byBranch).sort((a, b) => b.revenue - a.revenue).map(b => ({
         ...b,
         revenue: parseFloat(b.revenue.toFixed(2)),

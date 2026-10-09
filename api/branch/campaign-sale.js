@@ -51,7 +51,7 @@ async function resolveBranchId(raw) {
 }
 
 // Only locked physical batches are sellable. Cached balances cannot create stock.
-export async function deductStock(client, branchId, productName, qty, movType, noteStr, saleId, unitPrice, createdBy) {
+export async function deductStock(client, branchId, productName, qty, movType, noteStr, saleId, unitPrice, createdBy, revenueUnit) {
   let remaining = qty;
   const deductions = [];
 
@@ -92,7 +92,7 @@ export async function deductStock(client, branchId, productName, qty, movType, n
       [smId1, batch.product_name, batch.batch_no || '', batch.expiry_date || null,
        take, movType, branchId, saleId, noteStr, unitPrice || null]
     );
-    await recordBranchSaleAllocationTx(client,{movementId:smId1,saleReference:saleId,batchId:batch.id,quantity:take});
+    await recordBranchSaleAllocationTx(client,{movementId:smId1,saleReference:saleId,batchId:batch.id,quantity:take,branchMovementId:bimId,revenueUnit});
     deductions.push({ product_name: batch.product_name, batch_no: batch.batch_no, quantity: take, movement_type: movType });
     remaining -= take;
   }
@@ -309,7 +309,7 @@ async function handler(req, res) {
           client, branch, paid_product, paid_qty,
           isMember ? 'campaign_sale' : 'walk_in_non_member_sale',
           `Campaign: ${campaign.name} — paid item`,
-          saleId, paidUnitPrice || null, processed_by
+          saleId, paidUnitPrice || null, processed_by,paidUnitPrice
         );
         allDeductions.push(...paidResult.deductions);
         if (paidResult.short > 0) insufficientItems.push({ product_name: paid_product, short: paidResult.short });
@@ -319,7 +319,7 @@ async function handler(req, res) {
           const freeResult = await deductStock(
             client, branch, free_product, free_qty,
             'campaign_free_item', `Campaign: ${campaign.name} — FREE item`,
-            saleId, null, processed_by
+            saleId, null, processed_by,0
           );
           allDeductions.push(...freeResult.deductions);
           if (freeResult.short > 0) insufficientItems.push({ product_name: free_product, short: freeResult.short });

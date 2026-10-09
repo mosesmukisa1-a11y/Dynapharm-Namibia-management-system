@@ -6,6 +6,8 @@ import { recomputeLocationBalances, inferLocationType } from '../services/stockE
 import { broadcastStockEvent } from '../services/stockEvents.js';
 import { branchSearchTerms, normalizeBranchSlug } from '../_lib/branchUtils.js';
 import { checkAutoApproveTransfer } from '../services/stockAutomation.js';
+import { allocateTransferTx, restoreTransferAllocationTx, postAllocatedTransferMovementTx } from '../services/stockCostLayers.js';
+import receiveWarehouse from './warehouses/receive-stock.js';
 
 async function fefoDeductStockBatches(client, locationFilter, productName, totalQty, batchNo = null, expiryDate = null) {
   const batches = await client.query(
@@ -1016,6 +1018,11 @@ async function handler(req, res) {
       const oldTransfer = await getOne('SELECT * FROM stock_transfers WHERE id = $1 FOR UPDATE', [id]);
       if (!oldTransfer) return res.status(404).json({ success: false, error: 'Transfer not found' });
       const previousStatus = oldTransfer?.status;
+      if (previousStatus==='approved' && (body.items!==undefined || body.itemsArray!==undefined
+        || body.fromWarehouse!==undefined || body.from_warehouse!==undefined
+        || body.toBranch!==undefined || body.to_branch!==undefined)) {
+        return res.status(409).json({success:false,error:'Approved source allocations are locked. Release the reservation before changing transfer lines or locations.'});
+      }
 
       // Hard gate: block ANY stock-advancing status transition without a prior or current GM approval.
       // Covers all statuses that represent stock in motion or completed: approved, dispatched, in_transit,
@@ -1023,6 +1030,10 @@ async function handler(req, res) {
       // The gate passes ONLY when: (a) a valid GM approval action is present in this request, OR
       // (b) the record already has a persisted GM approval (gm_approved_by set from a prior approval event).
       const targetStatus = updatePayload.status || body.status;
+      if (targetStatus==='received' && oldTransfer.from_warehouse==='country_stock'
+        && inferLocationType(oldTransfer.to_branch)==='warehouse') {
+        return receiveWarehouse({...req,method:'POST',body:{transferId:id,action:'accept'}},res);
+      }
       const actorRole = String(currentUser?.role || '').toLowerCase();
       const approvers = ['gm','admin','superadmin','super_admin'];
       if ((body.gmAction || body.gm_action) && !approvers.includes(actorRole)) return res.status(403).json({ success:false, error:'Only a General Manager may record an approval decision.' });
@@ -1299,7 +1310,7 @@ async function handler(req, res) {
             // Only apply the approval reservation for warehouse→branch and branch→branch transfers.
             const isCountryToWarehouse = sourceWarehouse === 'country_stock';
             const aprSrcType = inferLocationType(sourceWarehouse) || 'warehouse';
-            if (sourceWarehouse && !isCountryToWarehouse) {
+            if (sourceWarehouse) {
               for (const item of transferItems) {
                 const qtyToReserve = Number(item.quantity_approved ?? item.quantity ?? 0);
                 if (qtyToReserve <= 0) continue;
@@ -1307,16 +1318,11 @@ async function handler(req, res) {
                 const normalizedSrc = normalizeBranchSlug(sourceWarehouse) || sourceWarehouse;
 
                 // Physically reserve from source — deduct the right table depending on source type.
-                if (aprSrcType === 'branch') {
-                  const deducted = await fefoDeductBranchInventoryBatches(client, normalizedSrc, productName, qtyToReserve, item.batch_no, item.expiry_date);
-                  if (deducted < qtyToReserve) {
-                    throw Object.assign(new Error(`Insufficient branch stock to reserve ${productName}; approval was not saved.`), { statusCode: 422 });
-                  }
-                } else {
-                  const reserved = await fefoDeductStockBatches(client, sourceWarehouse, productName, qtyToReserve, item.batch_no, item.expiry_date);
-                  if (reserved < qtyToReserve) throw Object.assign(new Error(`Insufficient warehouse stock to reserve ${productName}; approval was not saved.`), { statusCode: 422 });
+                await allocateTransferTx(client,transfer,item,qtyToReserve);
+                if (aprSrcType !== 'branch') {
                   await fefoDeductWarehouseInventory(client, sourceWarehouse, productName, qtyToReserve);
                 }
+                if (await postAllocatedTransferMovementTx(client,transfer,item,'reserved',actorName)) continue;
 
                 const batchNo = item.batch_no || null;
                 const expiryDate = item.expiry_date || null;
@@ -1342,18 +1348,13 @@ async function handler(req, res) {
 
               if (!alreadyDeducted && sourceWarehouse) {
                 const normalizedSrc = normalizeBranchSlug(sourceWarehouse) || sourceWarehouse;
-                if (dspSrcType === 'branch') {
-                  const deducted = await fefoDeductBranchInventoryBatches(client, normalizedSrc, productName, qty, item.batch_no, item.expiry_date);
-                  if (deducted < qty) {
-                    throw Object.assign(new Error(`Insufficient branch stock: ${productName}; need ${qty}, available ${deducted}.`), { statusCode: 422 });
-                  }
-                } else {
-                  const deducted = await fefoDeductStockBatches(client, sourceWarehouse, productName, qty, item.batch_no, item.expiry_date);
-                  if (deducted < qty) throw Object.assign(new Error(`Insufficient warehouse stock: ${productName}; need ${qty}, available ${deducted}.`), { statusCode: 422 });
+                await allocateTransferTx(client,transfer,item,qty);
+                if (dspSrcType !== 'branch') {
                   await fefoDeductWarehouseInventory(client, sourceWarehouse, productName, qty);
                 }
               }
 
+              if (await postAllocatedTransferMovementTx(client,transfer,item,'transit_dispatch',actorName)) continue;
               const batchNo = item.batch_no || null;
               const expiryDate = item.expiry_date || null;
               const movId = `MOV-DSP-${Date.now()}-${Math.floor(Math.random() * 9999)}`;
@@ -1397,11 +1398,21 @@ async function handler(req, res) {
             const isCountryToWarehouse = sourceWarehouse === 'country_stock';
             const cancSrcType = inferLocationType(sourceWarehouse) || 'warehouse';
 
-            if (sourceWarehouse && !isCountryToWarehouse) {
+            if (sourceWarehouse && (!isCountryToWarehouse || (await client.query(
+              'SELECT 1 FROM stock_transfer_allocations WHERE transfer_id=$1 LIMIT 1',[id])).rowCount)) {
               for (const item of transferItems) {
                 const qty = Number(item.quantity_approved ?? item.quantity ?? 0);
                 if (qty <= 0) continue;
                 const productName = item.product_name || 'Unknown';
+                const restored=await restoreTransferAllocationTx(client,item);
+                if (restored) {
+                  if (cancSrcType!=='branch') await client.query(`UPDATE warehouse_inventory
+                    SET quantity=quantity+$1,updated_at=NOW() WHERE warehouse_id=$2
+                      AND LOWER(TRIM(product_name))=LOWER(TRIM($3))
+                      AND batch_no IS NOT DISTINCT FROM $4 AND expiry_date IS NOT DISTINCT FROM $5::date`,
+                    [qty,sourceWarehouse,productName,item.batch_no || null,item.expiry_date || null]);
+                  continue;
+                }
 
                 if (cancSrcType === 'branch') {
                   // Restore branch_inventory_batches

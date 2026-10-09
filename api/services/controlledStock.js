@@ -4,6 +4,7 @@ import { getBranchScope } from '../_lib/auth.js';
 import { normalizeBranchSlug, branchSearchTerms } from '../_lib/branchUtils.js';
 import { lockStockBatchTx } from './stockLocks.js';
 import { saleAllocationSchema, refundSourceSnapshotTx, preserveRestoredProvenanceTx } from './stockSaleAllocations.js';
+import { sourceSnapshot,branchLayers,takeLayers } from './stockCostLayers.js';
 import { postStockMovementTx, recomputeInventoryBalanceTx } from './stockEngine.js';
 
 // Additive schema only: never derive or rewrite historical physical stock.
@@ -108,6 +109,7 @@ async function loadBatch(client, type, id, user, lock = true) {
     source = frozen;
   const unresolved = meta.provenance_conflict || (type === 'branch' && row.source_batch_id && !source);
   if (unresolved) source = null;
+  if (source) source=sourceSnapshot(source);
   const cost = unresolved ? null : source?.cif_unit_cost ?? meta.cif_unit_cost ?? meta.unit_cif;
   const batch = { id: row.id, batch_type: type, location, product_name: row.product_name || row.description,
     product_id: row.product_id || row.product_code, batch_no: row.batch_no, expiry_date: date(row.expiry_date),
@@ -190,6 +192,14 @@ async function changePhysical(client, batch, delta, countAdjustment = false) {
   const next = batch.quantity + delta;
   if (next < 0 || !Number.isSafeInteger(next)) fail('Insufficient locked current stock', 409);
   if (batch.batch_type === 'branch') {
+    const row=(await client.query('SELECT * FROM branch_inventory_batches WHERE id=$1 FOR UPDATE',[batch.id])).rows[0];
+    if (Array.isArray(row.metadata?.cost_layers)) {
+      const layers=branchLayers(row);
+      if (delta<0) takeLayers(layers,-delta);
+      else if (delta>0) layers.push({quantity:delta,source:batch.original_source || null});
+      await client.query('UPDATE branch_inventory_batches SET metadata=$1 WHERE id=$2',
+        [JSON.stringify({...row.metadata,cost_layers:layers.filter(l=>l.quantity>0)}),batch.id]);
+    }
     await client.query(`UPDATE branch_inventory_batches SET quantity=$1::numeric,
       quantity_adjusted=COALESCE(quantity_adjusted,0)+$2,
       status=CASE WHEN status='out_of_stock' AND $1::numeric>0 THEN 'in_stock' ELSE status END,

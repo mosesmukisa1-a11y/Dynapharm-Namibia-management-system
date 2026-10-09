@@ -1,4 +1,5 @@
 - [Approved stock rules](stock-business-rules.md) — staff-confirmed receipts, condition-controlled returns, original batch costs, explicit pack factors; historical corrections need separate approval.
+- [Received cost precision](stock-cost-precision.md) — carton-derived unit costs retain fractional cents; same-lot physical merges must not collapse received source layers.
 - [Stock report double-count rule](stock-mis-double-count.md) — MIS stock-report.js: never add walkin_sales qty AND BIM movement qty for same branch; use bimSaleBranches set to guard.
 - [Branch stock-summary movement types](branch-summary-move-types.md) — src-side movement classification: adjustment→qty_adjusted (NOT qty_written_off); field_use→qty_written_off.
 - [gmFinanceMisEngine consultationFees](gm-engine-consult-fees.md) — getAllBranchesSalesRevenue does NOT return consultationFees; query BAT separately in gm/summary.js.

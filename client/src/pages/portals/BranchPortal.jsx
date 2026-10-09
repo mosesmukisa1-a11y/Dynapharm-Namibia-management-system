@@ -6,6 +6,7 @@ import { enqueue, generateOfflineId } from '../../lib/offlineQueue.js';
 import { warmCache, addToCache, searchCache } from '../../lib/distributorCache.js';
 import { useOffline } from '../../lib/OfflineProvider.jsx';
 import { useStockRealtime } from '../../hooks/useStockRealtime';
+import { findExactScanProduct, getScanUnitConversion, resolveScanPrice } from '../../lib/barcodeUnits';
 import DistributorPerformanceTab from '../../components/DistributorPerformanceTab';
 import DispatchNote from '../../components/DispatchNote';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES, COMPANY_INFO, BRANCH_DETAILS, getBranchDisplayName, getBranchId, normalizeBranchSlug } from '../../lib/constants';
@@ -19,6 +20,7 @@ import StaffMessagesTab from '../../components/StaffMessagesTab';
 import BarcodeScanner from '../../components/BarcodeScanner';
 import QRCameraScanner from '../../components/QRCameraScanner';
 import ControlledStockOperations from '../../components/ControlledStockOperations';
+import StockCostReport from '../../components/StockCostReport';
 
 const DEFAULT_REFERRAL = { name: 'Dynapharm Namibia', nb_number: 'NB005676', id: 'DEFAULT_REFERRAL' };
 
@@ -1514,6 +1516,7 @@ function WalkInSalesTab() {
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [scanMessage, setScanMessage] = useState('');
   const [salesSearch, setSalesSearch] = useState('');
   const [salesDateFrom, setSalesDateFrom] = useState('');
   const [salesDateTo, setSalesDateTo] = useState('');
@@ -1749,17 +1752,19 @@ function WalkInSalesTab() {
     return result;
   }, [campaigns, products]);
 
-  const addToCart = (product) => {
+  const addToCart = (product, quantity = 1) => {
+    const addQty = Number(quantity);
+    if (!Number.isFinite(addQty) || addQty <= 0) return;
     setAddedProductId(product.id);
     setTimeout(() => setAddedProductId(null), 350);
     setCart(prev => {
       const existing = prev.find(c => c.id === product.id);
-      if (existing) return prev.map(c => c.id === product.id ? { ...c, qty: c.qty + 1 } : c);
+      if (existing) return prev.map(c => c.id === product.id ? { ...c, qty: c.qty + addQty } : c);
       // When Campaign Sale toggle is ON, apply discount for campaign products
       if (isCampaignSale) {
         // Campaign product cards already carry discounted prices
         if (product.isCampaignProduct) {
-          return [...prev, { ...product, qty: 1 }];
+          return [...prev, { ...product, qty: addQty }];
         }
         // Regular product card — check if it's in an active campaign
         const campDisc = getWalkinCampaignDiscount(product.name || product.description);
@@ -1767,7 +1772,7 @@ function WalkInSalesTab() {
           const mult = 1 - campDisc.pct / 100;
           return [...prev, {
             ...product,
-            qty: 1,
+            qty: addQty,
             originalCp: product.cp,
             originalDp: product.dp,
             cp: Math.round((product.cp || 0) * mult * 100) / 100,
@@ -1781,42 +1786,45 @@ function WalkInSalesTab() {
       if (product.isCampaignProduct) {
         return [...prev, {
           ...product,
-          qty: 1,
+          qty: addQty,
           cp: product.originalCp ?? product.cp,
           dp: product.originalDp ?? product.dp,
           campaignDiscount: null,
         }];
       }
-      return [...prev, { ...product, qty: 1 }];
+      return [...prev, { ...product, qty: addQty }];
     });
   };
 
   const handleBarcodeScan = (result) => {
+    setScanMessage('');
     // Out-of-stock guard — API now returns outOfStock flag
     if (result.outOfStock) {
       setError(`No stock available for "${result.productName || 'this product'}"`);
       return;
     }
-    const scannedName = (result.productName || '').toLowerCase().trim();
-    const matched = products.find(p =>
-      (p.name || p.description || '').toLowerCase().trim() === scannedName
-    ) || products.find(p => {
-      const pn = (p.name || p.description || '').toLowerCase();
-      return pn.includes(scannedName) || scannedName.includes(pn);
-    });
-    if (matched) {
-      addToCart(matched);
-    } else if (result.productName) {
-      // API now returns enriched dp/cp/bv from product_prices — use them directly.
-      addToCart({
-        id: `bc-${result.barcode || result.productId || Date.now()}`,
-        name: result.productName,
-        description: result.productName,
-        dp: result.dp || result.unitPrice || 0,
-        cp: result.cp || result.dp || result.unitPrice || 0,
-        price: result.dp || result.unitPrice || 0,
-        bv: result.bv || 0,
-      });
+    const conversion = getScanUnitConversion(result);
+    if (!conversion.valid) {
+      setError('This pack barcode has no valid configured conversion. Scan a base-unit barcode or add the base quantity manually.');
+      return;
+    }
+    const matched = findExactScanProduct(products, result);
+    if (!matched) {
+      setError('Barcode does not match one unique catalogue product. No item was added.');
+      return;
+    }
+    const dp = resolveScanPrice(result, matched, 'dp');
+    const cp = resolveScanPrice(result, matched, 'cp');
+    if (dp == null || cp == null || (conversion.isPack && (dp <= 0 || cp <= 0))) {
+      setError(`Pricing is missing for "${matched.name || matched.description || result.productName}". No item was added.`);
+      return;
+    }
+    setError('');
+    addToCart({ ...matched, dp, cp, price: dp, bv: resolveScanPrice(result, matched, 'bv') ?? matched.bv ?? 0 }, conversion.factor);
+    if (conversion.isPack) {
+      const enteredUnit = result.enteredUnit;
+      const baseUnit = result.baseUnit;
+      setScanMessage(`Scanned 1 ${enteredUnit}; added ${conversion.factor} ${baseUnit} base units to the walk-in cart.`);
     }
   };
   const updateQty = (id, delta) => setCart(prev => prev.map(c => c.id === id ? { ...c, qty: Math.max(1, c.qty + delta) } : c));
@@ -1835,7 +1843,7 @@ function WalkInSalesTab() {
     setNewName(''); setNewPhone(''); setReferralSearch(''); setReferralResults([]);
     setSelectedReferral(null); setNoReferral(false); setCart([]); setProductSearch('');
     setProductCategory('All');
-    setPaymentMethod('cash'); setError(''); setIsCampaignSale(false); setShowModal(true);
+    setPaymentMethod('cash'); setError(''); setScanMessage(''); setIsCampaignSale(false); setShowModal(true);
   };
   const closeModal = () => { setIsCampaignSale(false); setShowModal(false); };
 
@@ -2371,6 +2379,7 @@ function WalkInSalesTab() {
                       style={{ marginBottom: 10 }}
                     />
                   )}
+                  {scanMessage && <div role="status" style={{ margin: '0 0 9px', padding: '7px 10px', borderRadius: 8, background: '#ecfdf5', border: '1px solid #a7f3d0', color: '#065f46', fontSize: '0.78rem', fontWeight: 700 }}>{scanMessage}</div>}
                   {cameraMode && (
                     <div style={{ marginBottom: 10 }}>
                       <QRCameraScanner
@@ -3023,12 +3032,18 @@ function PrescriptionsTab() {
 
   const handleDispenseScan = (result) => {
     if (!dispensePreview) return;
-    const scannedName = (result.productName || '').toLowerCase().trim();
-    if (!scannedName) return;
+    const conversion = getScanUnitConversion(result);
+    if (!conversion.valid) {
+      setAlert({ type: 'error', message: 'This pack barcode has no valid configured conversion. Enter and confirm the prescribed base-unit quantity manually.' });
+      return;
+    }
+    if (conversion.isPack) {
+      setAlert({ type: 'error', message: `Pack barcode scanned (${result.enteredUnit}). Prescription dispensing is entered in ${result.baseUnit} base units; scan a base-unit barcode or confirm the base quantity manually.` });
+      return;
+    }
     const matches = [];
     dispensePreview.pendingItems.forEach((item, i) => {
-      const itemName = (item.name || '').toLowerCase().trim();
-      if (itemName === scannedName || itemName.includes(scannedName) || scannedName.includes(itemName)) {
+      if (matchesScanIdentity(item, result)) {
         matches.push(i);
       }
     });
@@ -3038,6 +3053,8 @@ function PrescriptionsTab() {
         matches.forEach(i => { next[i] = true; });
         return next;
       });
+    } else {
+      setAlert({ type: 'error', message: 'Barcode does not exactly match a pending prescription item.' });
     }
   };
 
@@ -4901,12 +4918,14 @@ function BranchStockTab() {
 
   const filteredProducts = products.filter(p => !productSearch || (p.name || p.description || '').toLowerCase().includes(productSearch.toLowerCase()));
 
-  const addToRequestItems = (p) => {
+  const addToRequestItems = (p, quantity = 1) => {
+    const addQty = Number(quantity);
+    if (!Number.isFinite(addQty) || addQty <= 0) return;
     const name = p.name || p.description || p.id || 'Unknown Product';
     setRequestItems(prev => {
       const ex = prev.find(i => i.id === p.id);
-      if (ex) return prev.map(i => i.id === p.id ? { ...i, quantity: i.quantity + 1 } : i);
-      return [...prev, { id: p.id, product_name: name, quantity: 1, dp: p.dp || p.price || 0, cp: p.cp || p.price || 0 }];
+      if (ex) return prev.map(i => i.id === p.id ? { ...i, quantity: i.quantity + addQty } : i);
+      return [...prev, { id: p.id, product_name: name, quantity: addQty, dp: p.dp || p.price || 0, cp: p.cp || p.price || 0 }];
     });
   };
   const updateRequestQty = (id, delta) => setRequestItems(prev => prev.map(i => i.id === id ? { ...i, quantity: Math.max(1, i.quantity + delta) } : i));
@@ -7251,6 +7270,7 @@ function BranchStockTab() {
         );
       })()}
 
+      {subTab === 'reports' && <div className="mt-6"><StockCostReport branchId={selectedBranch || user?.branch || ''} /></div>}
 
       {/* Request Stock Modal — Product Table */}
       {showRequestForm && (
@@ -7273,20 +7293,18 @@ function BranchStockTab() {
                     placeholder="Scan barcode to add to request…"
                     style={{ marginBottom: 8 }}
                     onResult={(result) => {
-                      const scannedName = (result.productName || '').toLowerCase().trim();
-                      const matched = products.find(p =>
-                        (p.name || p.description || '').toLowerCase().trim() === scannedName
-                      ) || products.find(p => {
-                        const pn = (p.name || p.description || '').toLowerCase();
-                        return pn.includes(scannedName) || scannedName.includes(pn);
-                      });
-                      if (result.outOfStock) {
+                      const conversion = getScanUnitConversion(result);
+                      if (!conversion.valid) {
+                        setAlert({ type: 'error', message: 'This pack barcode has no valid configured conversion. Enter the request quantity in base units instead.' });
                         return;
-                      } else if (matched) {
-                        addToRequestItems(matched);
-                      } else if (result.productName) {
-                        addToRequestItems({ id: `bc-${result.barcode || result.productId || Date.now()}`, name: result.productName, description: result.productName, dp: result.dp || result.unitPrice || 0, cp: result.cp || result.dp || result.unitPrice || 0, price: result.dp || result.unitPrice || 0, bv: result.bv || 0 });
                       }
+                      const matched = findExactScanProduct(products, result);
+                      if (!matched) {
+                        setAlert({ type: 'error', message: 'Barcode does not match one unique catalogue product. No request item was added.' });
+                        return;
+                      }
+                      addToRequestItems(matched, conversion.factor);
+                      if (conversion.isPack) setAlert({ type: 'success', message: `Scanned 1 ${result.enteredUnit}; added ${conversion.factor} ${result.baseUnit} base units to this stock request.` });
                     }}
                   />
                   <div style={{ position: 'relative' }}>
@@ -11400,8 +11418,18 @@ function FieldProgramTab() {
                       {scanRowIdx === idx && (
                         <BarcodeScanner autoFocus={true} placeholder="Aim scanner at product barcode…" style={{ marginLeft: 0 }}
                           onResult={(result) => {
+                            const conversion = getScanUnitConversion(result);
+                            if (!conversion.valid || conversion.isPack) {
+                              setAlert({ type: 'error', message: `Pack barcode detected (${result.enteredUnit || 'configured pack'}). Enter the requested quantity in ${result.baseUnit || 'base'} units manually; pack scanning did not change this row.` });
+                              return;
+                            }
+                            const matched = findExactScanProduct(catalogue, result);
+                            if (!matched) {
+                              setAlert({ type: 'error', message: 'Barcode does not match one unique catalogue product. This row was not changed.' });
+                              return;
+                            }
                             const rows = [...productRows];
-                            rows[idx].product = result.productName || '';
+                            rows[idx].product = matched.name || matched.description || '';
                             rows[idx].suggestions = [];
                             rows[idx].showSug = false;
                             setProductRows(rows);

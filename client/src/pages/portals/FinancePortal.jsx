@@ -169,6 +169,7 @@ function DashboardTab() {
               <div className="bg-white/80 rounded-lg p-3 text-center">
                 <p className="text-xs text-gray-500">Stock Value (DP)</p>
                 <p className="text-lg font-bold text-purple-700">{formatCurrency(financeSummary.stockValue?.companyValueDP || 0)}</p>
+                {financeSummary.stockValue?.valuationComplete === false && <p className="text-xs text-amber-800">Incomplete valuation: {financeSummary.stockValue.missingCostQuantity} units lack original received DP.</p>}
                 <p className="text-xs text-gray-400">Warehouse: {formatCurrency(financeSummary.stockValue?.warehouseValueDP || 0)}</p>
               </div>
               <div className="bg-white/80 rounded-lg p-3 text-center">
@@ -1606,16 +1607,17 @@ function ReportsTab() {
               </CardHeader>
               <CardBody>
                 <div className="mb-4 p-4 bg-gray-50 rounded-lg">
-                  <p className="text-sm text-gray-600">Total Company Stock Value (Selling Price / DP)</p>
+                  <p className="text-sm text-gray-600">Total Company Stock Value (Original Received DP)</p>
+                  {stockValue.valuationComplete === false && <Alert type="warning">Incomplete valuation. {stockValue.missingCostQuantity || 0} units lack original DP and {stockValue.missingCIFQuantity || 0} units lack purchase cost. These units are excluded from known-value totals; current catalogue prices are not substituted.</Alert>}
                   <p className="text-3xl font-bold text-primary">{formatCurrency(stockValue.totalCompanyValueDP || 0)}</p>
                 </div>
                 <Table
                   columns={[
-                    { header: 'Location', render: r => r.branchName || branchLabel(r.branchId) || '—' },
-                    { header: 'Retail Value (DP)', render: r => <span className="font-semibold text-blue-700">{formatCurrency(r.totalValueDP || 0)}</span> },
+                    { header: 'Location', render: r => r.locationName || r.warehouseName || r.branchName || branchLabel(r.branchId) },
+                    { header: 'Original Received DP', render: r => <span className="font-semibold text-blue-700">{formatCurrency(r.totalValueDP || 0)}</span> },
                     { header: 'SKUs', render: r => Array.isArray(r.items) ? r.items.length : '—' },
                   ]}
-                  data={[...(stockValue.warehouses || []), ...(stockValue.branches || [])]}
+                  data={stockValue.locations || [...(stockValue.warehouses || []), ...(stockValue.branches || [])]}
                   emptyMessage="No stock breakdown"
                 />
               </CardBody>

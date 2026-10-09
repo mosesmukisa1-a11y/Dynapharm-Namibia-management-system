@@ -1,6 +1,8 @@
 import { applyAuthCors } from '../_lib/auth.js';
 import { getMany } from '../db.js';
 import { ALL_BRANCH_IDS, normalizeBranchSlug } from '../_lib/branchUtils.js';
+import { getStockCostProjection } from '../services/stockCostReporting.js';
+import { inferLocationType } from '../services/stockEngine.js';
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
@@ -17,31 +19,10 @@ export default async function handler(req, res) {
     const startStr = searchParams.get('start') || monthStart.toISOString();
     const endStr = searchParams.get('end') || now.toISOString();
 
-    // 1. Current inventory per branch (= Closing Stock)
-    // Unit price falls back to catalog CP when not set on the batch
-    let invQuery = `
-      SELECT
-        bib.branch_id,
-        bib.product_name,
-        SUM(bib.quantity) AS closing_qty,
-        SUM(
-          -- Live price-list dp takes priority so a price update is reflected
-          -- immediately; cached batch unit_price is the fallback only.
-          COALESCE(NULLIF(pp.dp, 0), NULLIF(bib.unit_price, 0), 0) * bib.quantity
-        ) AS closing_value,
-        COUNT(*) FILTER (WHERE bib.expiry_date IS NOT NULL AND bib.expiry_date < NOW()) AS expired_batches,
-        COUNT(*) FILTER (WHERE bib.expiry_date IS NOT NULL AND bib.expiry_date < NOW() + INTERVAL '30 days' AND bib.expiry_date >= NOW()) AS expiring_soon,
-        SUM(CASE WHEN bib.expiry_date IS NOT NULL AND bib.expiry_date < NOW() THEN bib.quantity ELSE 0 END) AS expired_qty
-      FROM branch_inventory_batches bib
-      LEFT JOIN product_prices pp
-        ON LOWER(TRIM(bib.product_name)) = LOWER(TRIM(pp.description))
-    `;
-    const invParams = [];
-    if (branchFilter) {
-      invParams.push(branchFilter);
-      invQuery += ` WHERE bib.branch_id = $1`;
-    }
-    invQuery += ` GROUP BY bib.branch_id, bib.product_name ORDER BY bib.branch_id, bib.product_name`;
+    const projection=(await getStockCostProjection()).filter(r=>inferLocationType(r.location)==='branch'
+      && (!branchFilter || normalizeBranchSlug(r.location)===normalizeBranchSlug(branchFilter)));
+    const inventory=projection.map(r=>({branch_id:r.location,product_name:r.productName,closing_qty:r.qty,
+      closing_value:r.qty*(r.unitDPC ?? 0),expired_qty:r.expiredQty,missing_cost_quantity:r.missingDPCQuantity}));
 
     // 2. Stock movements in period per branch
     let movQuery = `
@@ -83,7 +64,7 @@ export default async function handler(req, res) {
     salesQuery += ` GROUP BY s.branch_id, product_name ORDER BY s.branch_id, product_name`;
 
     const [invRows, movRows, salesRows] = await Promise.all([
-      getMany(invQuery, invParams),
+      Promise.resolve(inventory),
       getMany(movQuery, movParams),
       getMany(salesQuery, salesParams),
     ]);
@@ -99,11 +80,13 @@ export default async function handler(req, res) {
     for (const row of invRows) {
       const b = row.branch_id;
       if (!branches[b]) branches[b] = { branch: b, products: {}, totals: { received: 0, returns: 0, transfers_in: 0, transfers_out: 0, write_offs: 0, adjustments: 0, sales: 0, closing: 0, expired: 0, closing_value: 0 } };
+      const prior=branches[b].products[row.product_name] || {};
       branches[b].products[row.product_name] = {
         product_name: row.product_name,
-        closing_qty: Number(row.closing_qty || 0),
-        closing_value: Number(row.closing_value || 0),
-        expired_qty: Number(row.expired_qty || 0),
+        closing_qty: Number(prior.closing_qty || 0)+Number(row.closing_qty || 0),
+        closing_value: Number(prior.closing_value || 0)+Number(row.closing_value || 0),
+        expired_qty: Number(prior.expired_qty || 0)+Number(row.expired_qty || 0),
+        missing_cost_quantity:Number(prior.missing_cost_quantity || 0)+Number(row.missing_cost_quantity || 0),
         received: 0, returns: 0, transfers_in: 0, transfers_out: 0, write_offs: 0, adjustments: 0, sales: 0,
       };
       branches[b].totals.closing += Number(row.closing_qty || 0);
@@ -169,6 +152,8 @@ export default async function handler(req, res) {
 
       return {
         branch: br.branch,
+        missingCostQuantity:projection.filter(r=>r.location===br.branch).reduce((sum,r)=>sum+r.missingDPCQuantity,0),
+        valuationComplete:projection.filter(r=>r.location===br.branch).every(r=>!r.missingDPCQuantity),
         formula: {
           opening: Math.max(0, opening),
           issued: issued,
@@ -213,6 +198,8 @@ export default async function handler(req, res) {
     }, { opening: 0, issued: 0, returns: 0, expiring: 0, promotions: 0, closing: 0, closing_value: 0, sales: 0, branch_count: 0 });
 
     return res.status(200).json({
+      missingCostQuantity:projection.reduce((sum,r)=>sum+r.missingDPCQuantity,0),
+      valuationComplete:projection.every(r=>!r.missingDPCQuantity),
       success: true,
       period: { start: startStr, end: endStr },
       branches: paddedResult,

@@ -183,83 +183,8 @@ async function getInventoryByBranch(branchId, enriched = false) {
   // purely to block inventory_balances from resurrecting them as synthetic ghosts.
   const normalized = rows.filter(r => Number(r.quantity || 0) > 0).map(normalizeInventoryRow).filter(Boolean);
 
-  // Merge with inventory_balances:
-  //  1. Add any items that exist ONLY in inventory_balances (stock that came via
-  //     the centralised stock engine path but never wrote to branch_inventory_batches).
-  //  2. Correct quantities for items that ARE in branch_inventory_batches but whose
-  //     quantity was overwritten to a lower value by a previous (now-removed) sync
-  //     job — use GREATEST(bib_qty, ib_qty) so we never display a quantity lower than
-  //     what inventory_balances says the closing balance is.
-  try {
-    // Build all plausible location_id values for this branch so data stored
-    // under 'oshakati', 'oshakati_branch', or any normalised variant is found.
-    const ibCandidates = [resolvedId];
-    const strippedResolved = resolvedId.replace(/_branch$/, '');
-    if (!resolvedId.endsWith('_branch')) ibCandidates.push(resolvedId + '_branch');
-    if (strippedResolved !== resolvedId) ibCandidates.push(strippedResolved);
-
-    const ibRows = await getMany(
-      `SELECT product_name, batch_no, expiry_date, GREATEST(closing_qty, 0) AS quantity, unit_dp
-       FROM inventory_balances
-       WHERE location_type = 'branch' AND location_id = ANY($1)`,
-      [ibCandidates]
-    );
-    const normKey = (pn, bn) => `${(pn || '').trim().toLowerCase()}|${(bn || '').trim().toLowerCase()}`;
-    const normProd = (pn) => (pn || '').trim().toLowerCase();
-    // Build lookup map: key → index in normalized (qty > 0) array
-    const existingMap = new Map();
-    normalized.forEach((n, idx) => existingMap.set(normKey(n.product_name, n.batch_no), idx));
-    // Guard set: ALL BIB keys including zero-qty rows.
-    // Prevents a recently-depleted batch (qty just set to 0 by a sale) from being
-    // re-added by a stale inventory_balances row before recomputeLocationBalances runs.
-    const allBibKeys = new Set(rows.map(r => normKey(r.product_name, r.batch_no)));
-    // Product-only guard: if ANY BIB row exists for this product, an inventory_balances
-    // entry with no batch (batch_no = '' / NULL) must not be injected as a synthetic row.
-    // recomputeLocationBalances stores COALESCE(batch_no,'') so a movement recorded
-    // without a batch produces IB.batch_no='', while BIB carries the real batch string.
-    // Without this guard the merge key ('product|') ≠ ('product|real-batch') and the
-    // stale IB quantity is added on top of the real BIB rows — doubling visible stock.
-    const bibProductNames = new Set(rows.map(r => normProd(r.product_name)));
-
-    for (const ib of ibRows) {
-      const key = normKey(ib.product_name, ib.batch_no);
-      const ibQty = parseNumber(ib.quantity);
-      const ibHasNoBatch = !(ib.batch_no || '').trim();
-      if (existingMap.has(key) || allBibKeys.has(key)) {
-        // Item exists in branch_inventory_batches (even if quantity is now 0) —
-        // BIB is authoritative; never let a stale inventory_balances entry override it.
-      } else if (ibHasNoBatch && bibProductNames.has(normProd(ib.product_name))) {
-        // IB has no batch info AND BIB already tracks this product under a real batch.
-        // The IB balance is captured in the BIB rows; adding a synthetic entry here
-        // would double-count the stock for this product.
-      } else if (ibQty > 0) {
-        // Item only exists in inventory_balances — add it
-        const expiryDate = ib.expiry_date ? (ib.expiry_date instanceof Date ? ib.expiry_date.toISOString().slice(0, 10) : String(ib.expiry_date).slice(0, 10)) : null;
-        const syntheticId = `IB-${(resolvedId || '').toLowerCase().replace(/\s+/g, '_')}-${(ib.product_name || '').trim().toLowerCase().replace(/\s+/g, '_')}-${(ib.batch_no || 'nobatch').trim().toLowerCase()}`;
-        normalized.push({
-          id: syntheticId,
-          branchId: resolvedId, branch_id: resolvedId,
-          productName: ib.product_name, product_name: ib.product_name,
-          productCode: null, product_code: null,
-          batchNo: ib.batch_no, batch_no: ib.batch_no, batch_number: ib.batch_no,
-          expiryDate, expiry_date: expiryDate,
-          quantity: ibQty,
-          unit: 'units',
-          unitPrice: ib.unit_dp ? Number(ib.unit_dp) : null,
-          unit_price: ib.unit_dp ? Number(ib.unit_dp) : null,
-          description: ib.product_name,
-          status: 'in_stock',
-          metadata: null,
-          createdAt: null, created_at: null,
-          updatedAt: null, updated_at: null,
-          _source: 'inventory_balances',
-        });
-        existingMap.set(key, normalized.length - 1);
-      }
-    }
-  } catch (err) {
-    console.error('[inventory] inventory_balances merge error:', err.message);
-  }
+  // Available stock comes only from physical batches. Unexplained legacy
+  // ledger/cache-only quantities require review, not synthetic stock rows.
 
   normalized.sort((a, b) => (a.product_name || '').localeCompare(b.product_name || ''));
 

@@ -132,7 +132,10 @@ describe.sequential('stock safety: atomic operations, partial receipt and segreg
     await query(`INSERT INTO stock_movements (id,product_name,quantity,movement_type,source_location,source_location_type,destination_location,destination_location_type,status)
       VALUES ('TEST-SAFETY-STALE',$1,10,'received','supplier','external',$2,'branch','posted')`, [product, `${branch}_empty`]);
     await recomputeInventoryBalance({ locationType:'branch', locationId:`${branch}_empty`, productName:product, batchNo:'' });
-    expect(Number((await query('SELECT closing_qty FROM inventory_balances WHERE location_id=$1 AND product_name=$2', [`${branch}_empty`, product])).rows[0].closing_qty)).toBe(10);
+    const projection=(await query('SELECT closing_qty,inward_qty,available_qty FROM inventory_balances WHERE location_id=$1 AND product_name=$2', [`${branch}_empty`, product])).rows[0];
+    expect(Number(projection.inward_qty)).toBe(10);
+    expect(Number(projection.closing_qty)).toBe(0);
+    expect(Number(projection.available_qty)).toBe(0);
     const result = await withTransaction(client => deductStock(client, `${branch}_empty`, product, 2, 'campaign_sale', 'Safety regression', 'TEST-SAFETY-CAMPAIGN', 10, 'test'));
     expect(result.short).toBe(2);
     expect((await query('SELECT 1 FROM branch_inventory_batches WHERE branch_id=$1', [`${branch}_empty`])).rowCount).toBe(0);

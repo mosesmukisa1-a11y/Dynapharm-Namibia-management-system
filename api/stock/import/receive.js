@@ -1,137 +1,76 @@
-/**
- * POST /api/stock/import/receive
- * Receive supplier import into country stock (staging layer).
- * All imported stock lands at country_stock first — it must be
- * explicitly released to a warehouse before further distribution.
- *
- * Writes:
- *   1. stock_movements (supplier_import_receipt) — movement ledger entry
- *   2. stock_batches at country_stock — physical batch record with cost data
- */
-import { query } from '../../db.js';
+import { createHash, randomUUID } from 'node:crypto';
+import { query, withTransaction } from '../../db.js';
 import { atomicStockRequest } from '../../_lib/atomicStockRequest.js';
-import { postStockMovement, recomputeLocationBalances } from '../../services/stockEngine.js';
+import { postStockMovementTx, recomputeLocationBalances } from '../../services/stockEngine.js';
+import { lifecycleSchema, convertImportItemTx, allocateExpenses, fail } from '../../services/stockCostLayers.js';
 
-async function parseBody(req) {
-  if (req.body && typeof req.body === 'object') return req.body;
-  return new Promise((resolve, reject) => {
-    let raw = '';
-    req.on('data', c => raw += c);
-    req.on('end', () => { try { resolve(raw ? JSON.parse(raw) : {}); } catch { reject(new Error('Invalid JSON')); } });
-    req.on('error', reject);
+async function handler(req,res) {
+  if (!req.user) return res.status(401).json({success:false,error:'Authentication required'});
+  if (!['stock','stock_manager','admin','superadmin','super_admin','gm'].includes(String(req.user.role || '').toLowerCase()))
+    return res.status(403).json({success:false,error:'Stock Manager access required'});
+  if (req.method!=='POST') return res.status(405).json({success:false,error:'Method not allowed'});
+  const body=typeof req.body==='string' ? JSON.parse(req.body) : req.body || {};
+  const receiptKey=String(body.receiptKey || body.referenceId || '').trim();
+  if (!receiptKey || receiptKey.length>180) fail('A stable receiptKey is required; reuse it when retrying',400);
+  if (!Array.isArray(body.items) || !body.items.length) fail('At least one import line is required',400);
+  const hash=createHash('sha256').update(JSON.stringify(body)).digest('hex');
+  await query('SELECT pg_advisory_xact_lock(hashtext($1))',[`import-receipt:${receiptKey}`]);
+  const prior=(await query('SELECT * FROM stock_import_receipts WHERE receipt_key=$1',[receiptKey])).rows[0];
+  if (prior) {
+    if (prior.payload_hash!==hash) fail('Receipt key already used with different contents; create a new receipt draft',409);
+    return res.status(200).json({...prior.response,replayed:true});
+  }
+  const response=await withTransaction(async client=>{
+    const lines=[];
+    for (const item of body.items) lines.push(await convertImportItemTx(client,item));
+    const allocation=allocateExpenses(lines.map(l=>l.purchaseValue),body.expenses);
+    const referenceId=`IMPORT-${randomUUID()}`;
+    const posted=[];
+    for (const [index,line] of lines.entries()) {
+      const expense=allocation.allocations[index];
+      const landedValue=line.purchaseValue==null ? null : line.purchaseValue+expense;
+      const unitCIF=landedValue==null ? null : landedValue/line.quantity;
+      const dpValue=line.unitDP==null ? null : line.unitDP*line.quantity;
+      const importId=`IMP-${randomUUID()}`,batchId=`SB-IMP-${randomUUID()}`;
+      const actor=req.user.fullName || req.user.username || req.user.id;
+      const metadata={...body.metadata,...line.metadata,receipt_key:receiptKey,line_index:index,
+        entered_quantity:line.enteredQuantity,entered_unit:line.enteredUnit,base_unit:line.baseUnit,
+        conversion_factor:line.factor,purchase_value:line.purchaseValue,allocated_expense:expense,
+        expense_allocation_basis:'purchase_value',landed_value:landedValue};
+      await client.query(`INSERT INTO supplier_imports
+        (id,supplier_name,import_reference,grn_number,invoice_number,shipment_reference,product_name,product_id,
+        quantity,batch_no,expiry_date,cif_unit_cost,cif_total_value,dpc_unit_value,dpc_total_value,
+        date_received,destination_warehouse,origin_country,notes,status,created_by,metadata)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::date,$12,$13,$14,$15,NOW(),'country_stock',$16,$17,'received',$18,$19)`,
+        [importId,body.supplierId || body.supplier_name || 'Unspecified supplier',referenceId,body.grn_number || null,
+          body.invoice_number || null,body.shipment_reference || null,line.productName,line.productId,
+          line.quantity,line.batchNo,line.expiryDate,unitCIF,landedValue,line.unitDP,dpValue,
+          body.origin_country || null,body.notes || null,actor,JSON.stringify(metadata)]);
+      await client.query(`INSERT INTO stock_batches
+        (id,barcode,description,batch_no,expiry_date,quantity,remaining_quantity,dispatched_quantity,
+        import_date,location,status,product_id,supplier_name,import_reference,supplier_import_id,
+        dpc_unit_value,dpc_total_value,cif_unit_cost,cif_total_value,unit_price,notes,metadata,created_at,updated_at)
+        VALUES ($1,$2,$3,$4,$5::date,$6,$6,0,NOW(),'country_stock','available',$7,$8,$9,$10,$11,$12,$13,$14,$11,$15,$16,NOW(),NOW())`,
+        [batchId,`BC-${randomUUID()}`,line.productName,line.batchNo,line.expiryDate,line.quantity,line.productId,
+          body.supplierId || body.supplier_name || null,referenceId,importId,line.unitDP,dpValue,unitCIF,landedValue,
+          body.notes || null,JSON.stringify(metadata)]);
+      await client.query('UPDATE supplier_imports SET original_unit_cif=$1,original_unit_dp=$2 WHERE id=$3',[unitCIF,line.unitDP,importId]);
+      await client.query('UPDATE stock_batches SET original_unit_cif=$1,original_unit_dp=$2 WHERE id=$3',[unitCIF,line.unitDP,batchId]);
+      const movement=await postStockMovementTx(client,{productName:line.productName,batchNo:line.batchNo,expiryDate:line.expiryDate,
+        quantity:line.quantity,movementType:'supplier_import_receipt',sourceLocation:body.supplierId || 'supplier',
+        sourceLocationType:'supplier',destinationLocation:'country_stock',destinationLocationType:'country',
+        referenceId,notes:body.notes || 'Staff-confirmed import receipt',unitDP:line.unitDP,unitCIF,createdBy:actor});
+      await client.query('UPDATE stock_movements SET original_unit_cif=$1,original_unit_dp=$2 WHERE id=$3',
+        [unitCIF,line.unitDP,movement.movementId]);
+      posted.push({...line,unitCIF,allocatedExpense:expense,landedValue,batchId,supplierImportId:importId,missingCost:unitCIF==null});
+    }
+    const result={success:true,referenceId,destinationLocation:'country_stock',itemsPosted:posted.length,
+      expenseTotal:allocation.total,items:posted,message:`${posted.length} lines received into Country Stock.`};
+    await client.query('INSERT INTO stock_import_receipts(receipt_key,payload_hash,response) VALUES ($1,$2,$3)',
+      [receiptKey,hash,JSON.stringify(result)]);
+    await recomputeLocationBalances('country','country_stock');
+    return result;
   });
+  return res.status(201).json(response);
 }
-
-async function handler(req, res) {
-  if (!req.user) return res.status(401).json({ success: false, error: 'Authentication required' });
-  if (!['stock','stock_manager','admin','superadmin','super_admin','gm'].includes(String(req.user.role || '').toLowerCase())) return res.status(403).json({ success: false, error: 'Stock Manager access required' });
-  if (req.method !== 'POST') return res.status(405).json({ success: false, error: 'Method not allowed' });
-
-  const body = await parseBody(req);
-  const { supplierId, supplierImportId, items, receivedBy, notes } = body;
-
-  if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ success: false, error: 'items array is required and must not be empty' });
-
-  const validationErrors = [];
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
-    if (!item.batchNo || !String(item.batchNo).trim()) {
-      validationErrors.push(`Item ${i + 1} (${item.productName || item.productId || 'unknown'}): batchNo is required`);
-    }
-    if (!item.expiryDate || !String(item.expiryDate).trim()) {
-      validationErrors.push(`Item ${i + 1} (${item.productName || item.productId || 'unknown'}): expiryDate is required`);
-    }
-    if (!Number.isFinite(Number(item.quantity)) || Number(item.quantity) <= 0 || !Number.isInteger(Number(item.quantity))) {
-      validationErrors.push(`Item ${i + 1}: quantity must be > 0`);
-    }
-  }
-  if (validationErrors.length > 0) {
-    return res.status(422).json({ success: false, error: 'Batch/expiry validation failed', validationErrors });
-  }
-
-  const ts = Date.now();
-  const refId = `IMPORT-${ts}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
-  const posted = [];
-
-  for (const item of items) {
-    const productName = item.productName || item.product_name || '';
-    if (!productName) continue;
-
-    const batchNo = String(item.batchNo).trim();
-    const qty = Number(item.quantity);
-    const unitDP = Number(item.unitDP || item.unit_dp || item.dpc_unit_value || 0);
-    const unitCIF = Number(item.unitCIF || item.unit_cif || item.cif_unit_cost || 0);
-
-    // 1. Post stock movement record
-    await postStockMovement({
-      productName,
-      batchNo,
-      expiryDate: item.expiryDate,
-      quantity: qty,
-      movementType: 'supplier_import_receipt',
-      sourceLocation: supplierId || 'supplier',
-      sourceLocationType: 'supplier',
-      destinationLocation: 'country_stock',
-      destinationLocationType: 'country',
-      referenceId: refId,
-      notes: notes || 'Supplier import receipt — held at country stock',
-      unitDP,
-      unitCIF: unitCIF || null,
-      createdBy: receivedBy || 'system',
-      status: 'posted',
-    });
-
-    // 2. Create or increment stock_batches row at country_stock
-    const batchId = `SB-IMP-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
-    const barcode = `BC-IMP-${batchNo}-${Date.now().toString(36).toUpperCase()}`;
-    // Compute totals in JS — pg sends bare $N params as unknown type, so
-    // arithmetic expressions like $11*$6 in the VALUES clause fail with
-    // "operator is not unique: unknown * unknown" when either operand is null.
-    const dpcTotalValue = unitDP ? unitDP * qty : null;
-    const cifTotalValue = unitCIF ? unitCIF * qty : null;
-    await query(
-      `INSERT INTO stock_batches
-         (id, barcode, description, batch_no, expiry_date,
-          quantity, remaining_quantity, dispatched_quantity,
-          import_date, location, status,
-          product_id, supplier_name, import_reference, supplier_import_id,
-          dpc_unit_value, dpc_total_value,
-          cif_unit_cost, cif_total_value,
-          unit_price, notes, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5::date,$6,$6,0,NOW(),'country_stock','available',
-               $7,$8,$9,$10,$11,$12,$13,$14,$11,$15,NOW(),NOW())
-       ON CONFLICT DO NOTHING`,
-      [
-        batchId, barcode, productName, batchNo, item.expiryDate,
-        qty,
-        item.productId || null,
-        supplierId || null,
-        refId,
-        supplierImportId || null,
-        unitDP || null,
-        dpcTotalValue,
-        unitCIF || null,
-        cifTotalValue,
-        notes || null,
-      ]
-    );
-
-    posted.push({ productName, batchNo, expiryDate: item.expiryDate, quantity: qty });
-  }
-
-  try {
-    await recomputeLocationBalances('country', 'country_stock');
-  } catch (err) {
-    console.error('[receive] post-import recompute error:', err.message);
-  }
-
-  return res.status(201).json({
-    success: true,
-    referenceId: refId,
-    destinationLocation: 'country_stock',
-    itemsPosted: posted.length,
-    items: posted,
-    message: `${posted.length} item(s) received into Country Stock (staging). Use Release to Warehouse to distribute.`,
-  });
-}
-export default atomicStockRequest(handler, ['POST']);
+export default atomicStockRequest(handler,['POST']);

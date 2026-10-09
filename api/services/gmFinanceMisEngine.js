@@ -6,6 +6,8 @@
  */
 import { query, getMany, getOne } from '../db.js';
 import { ALL_BRANCH_LOCATION_ALIASES } from '../_lib/branchUtils.js';
+import { getStockCostProjection } from './stockCostReporting.js';
+import { inferLocationType } from './stockEngine.js';
 
 const LOW_STOCK_THRESHOLD = 10;
 const EXPIRY_WARN_DAYS = 90;
@@ -122,30 +124,9 @@ function normalizeBranchName(id) {
  * Stock summary for a location from inventory_balances.
  */
 export async function getLocationStockSummary(locationType, locationId) {
-  let rows;
-  if (locationType === 'branch') {
-    // branch_inventory_batches is the authoritative source for branch stock.
-    // inventory_balances is a derived cache that can go stale / negative.
-    rows = await getMany(
-      `SELECT b.product_name,
-              b.expiry_date,
-              SUM(b.quantity)                                    AS closing_qty,
-              SUM(b.quantity * COALESCE(p.dp, 0))               AS stock_value_dp
-       FROM branch_inventory_batches b
-       LEFT JOIN product_prices p
-             ON LOWER(TRIM(p.description)) = LOWER(TRIM(b.product_name))
-       WHERE b.branch_id = $1 AND b.quantity > 0
-       GROUP BY b.product_name, b.expiry_date`,
-      [locationId]
-    );
-  } else {
-    rows = await getMany(
-      `SELECT product_name, batch_no, expiry_date, closing_qty, stock_value_dp, inward_qty, outward_qty
-       FROM inventory_balances
-       WHERE location_type = $1 AND location_id = $2`,
-      [locationType, locationId]
-    );
-  }
+  const layers=(await getStockCostProjection()).filter(r=>r.location===locationId);
+  const rows=layers.map(r=>({product_name:r.productName,expiry_date:r.expiryDate,
+    closing_qty:r.qty,stock_value_dp:r.qty*(r.unitDPC ?? 0)}));
 
   let closingQty = 0;
   let stockValueDP = 0;
@@ -175,6 +156,10 @@ export async function getLocationStockSummary(locationType, locationId) {
     stockValueDP,
     lowStockCount,
     expiringCount: expiringRows.length,
+    availableStock:layers.reduce((sum,r)=>sum+r.availableQty,0),
+    reservedStock:layers.reduce((sum,r)=>sum+r.reservedQty,0),
+    missingCostQuantity:layers.reduce((sum,r)=>sum+r.missingDPCQuantity,0),
+    valuationComplete:layers.every(r=>!r.missingDPCQuantity),
   };
 }
 
@@ -317,37 +302,11 @@ export async function getBranchSalesRevenue(branchId, start, end) {
  * Company-wide stock summary aggregated from inventory_balances.
  */
 export async function getCompanyStockSummary() {
-  // inventory_balances tracks branch stock (updated by stock_movements).
-  // stock_batches is the authoritative source for warehouse/country stock.
-  // We read both and combine — avoiding double-counting by only using
-  // inventory_balances for branches, and stock_batches for warehouses.
-  const [ibRows, batchRows] = await Promise.all([
-    // Branch stock: read directly from branch_inventory_batches (authoritative source).
-    // inventory_balances is a derived cache that can become stale; branch_inventory_batches
-    // is always kept current by the transactional sale/receive/dispense flows.
-    getMany(
-      `SELECT b.branch_id AS location_id, b.product_name, b.expiry_date,
-              SUM(b.quantity)                                      AS closing_qty,
-              SUM(b.quantity * COALESCE(p.dp, 0))                 AS stock_value_dp
-       FROM branch_inventory_batches b
-       LEFT JOIN product_prices p
-             ON LOWER(TRIM(p.description)) = LOWER(TRIM(b.product_name))
-       WHERE b.quantity > 0
-       GROUP BY b.branch_id, b.product_name, b.expiry_date`
-    ),
-    getMany(
-      `SELECT location, description as product_name, expiry_date,
-              SUM(remaining_quantity) AS qty,
-              SUM(remaining_quantity * COALESCE(dpc_unit_value, unit_price, 0)) AS val_dp
-       FROM stock_batches
-       WHERE location != 'country_stock'
-         AND location != ALL($1::text[])
-         AND remaining_quantity > 0
-         AND COALESCE(status,'') != 'expired'
-       GROUP BY location, description, expiry_date`,
-      [ALL_BRANCH_LOCATION_ALIASES]
-    ),
-  ]);
+  const layers=await getStockCostProjection();
+  const ibRows=layers.filter(r=>inferLocationType(r.location)==='branch').map(r=>({
+    product_name:r.productName,expiry_date:r.expiryDate,closing_qty:r.qty,stock_value_dp:r.qty*(r.unitDPC ?? 0)}));
+  const batchRows=layers.filter(r=>inferLocationType(r.location)==='warehouse').map(r=>({
+    product_name:r.productName,expiry_date:r.expiryDate,qty:r.qty,val_dp:r.qty*(r.unitDPC ?? 0)}));
 
   let totalQty = 0, totalValueDP = 0;
   let warehouseQty = 0, branchQty = 0, inTransitQty = 0;
@@ -389,11 +348,17 @@ export async function getCompanyStockSummary() {
     }
   }
 
-  totalQty = warehouseQty + branchQty + inTransitQty;
+  inTransitQty=layers.reduce((sum,r)=>sum+r.inTransitQty,0);
+  const countryQty=layers.filter(r=>r.location==='country_stock').reduce((sum,r)=>sum+r.qty,0);
+  totalQty = warehouseQty + branchQty + inTransitQty + countryQty;
+  totalValueDP=layers.reduce((sum,r)=>sum+r.qty*(r.unitDPC ?? 0),0);
 
   return {
     totalQty, totalValueDP, warehouseQty, branchQty, inTransitQty,
-    countryQty: 0, lowStockCount, expiringCount,
+    countryQty, lowStockCount, expiringCount,
+    availableQty:layers.reduce((sum,r)=>sum+r.availableQty,0),reservedQty:layers.reduce((sum,r)=>sum+r.reservedQty,0),
+    missingCostQuantity:layers.reduce((sum,r)=>sum+r.missingDPCQuantity,0),
+    valuationComplete:layers.every(r=>!r.missingDPCQuantity),
   };
 }
 
@@ -495,32 +460,19 @@ export async function getAllBranchesSalesRevenue(start, end) {
  * Warehouse stock: from inventory_balances (kept in sync by stock engine).
  */
 export async function getCompanyStockValueDP() {
-  const [warehouseRows, branchRow] = await Promise.all([
-    getMany(
-      `SELECT SUM(stock_value_dp) as total_value_dp
-       FROM inventory_balances
-       WHERE location_type = 'warehouse'`
-    ),
-    getMany(
-      `SELECT SUM(b.quantity * COALESCE(p.dp, 0)) as total_value_dp
-       FROM branch_inventory_batches b
-       LEFT JOIN product_prices p
-             ON LOWER(TRIM(p.description)) = LOWER(TRIM(b.product_name))
-       WHERE b.quantity > 0`
-    ),
-  ]);
-
-  const warehouseValueDP = Number(warehouseRows[0]?.total_value_dp || 0);
-  const branchValueDP    = Number(branchRow[0]?.total_value_dp    || 0);
-  const companyValueDP   = warehouseValueDP + branchValueDP;
+  const layers=await getStockCostProjection();
+  const value=type=>layers.filter(r=>inferLocationType(r.location)===type).reduce((sum,r)=>sum+r.qty*(r.unitDPC ?? 0),0);
+  const warehouseValueDP=value('warehouse'),branchValueDP=value('branch');
+  const companyValueDP=layers.reduce((sum,r)=>sum+r.qty*(r.unitDPC ?? 0),0);
 
   const writeOff = await getOne(
-    `SELECT COALESCE(SUM(quantity * COALESCE(unit_dp, 0)), 0) as val
+    `SELECT COALESCE(SUM(quantity * COALESCE(original_unit_dp,unit_dp, 0)), 0) as val
      FROM stock_movements WHERE status = 'posted' AND movement_type = 'write_off'`
   );
   const writeOffValueDP = Number(writeOff?.val || 0);
 
-  return { companyValueDP, warehouseValueDP, branchValueDP, writeOffValueDP };
+  return { companyValueDP, warehouseValueDP, branchValueDP, writeOffValueDP,
+    missingCostQuantity:layers.reduce((sum,r)=>sum+r.missingDPCQuantity,0),valuationComplete:layers.every(r=>!r.missingDPCQuantity) };
 }
 
 /**

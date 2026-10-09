@@ -122,8 +122,8 @@ function normalizeBatch(row) {
     warehouseId: row.warehouse_id,
     warehouse_id: row.warehouse_id,
     unit_price: row.unit_price || 0,
-    cif_unit_cost: row.cif_unit_cost || row.unit_price || 0,
-    dpc_unit_value: row.dpc_unit_value || 0,
+    cif_unit_cost: row.original_unit_cif ?? row.cif_unit_cost ?? null,
+    dpc_unit_value:row.original_unit_dp ?? row.dpc_unit_value ?? null,
     notes: row.notes || null
   };
 }
@@ -208,20 +208,12 @@ export default async function handler(req, res) {
   try {
     const expiryFallbackSelect = `
         SELECT sb.id, sb.barcode, sb.qr_code, sb.carton_no, sb.description, sb.batch_no,
-               COALESCE(sb.expiry_date, cs.expiry_date) AS expiry_date,
+               sb.expiry_date,
                sb.quantity, sb.total_ctns, sb.import_date, sb.location, sb.status,
                sb.dispatched_quantity, sb.remaining_quantity, sb.product_id,
                sb.warehouse_id, sb.unit_price, sb.cif_unit_cost, sb.dpc_unit_value,
-               sb.notes, sb.created_at, sb.updated_at
+               sb.original_unit_cif,sb.original_unit_dp,sb.metadata,sb.notes, sb.created_at, sb.updated_at
         FROM stock_batches sb
-        LEFT JOIN LATERAL (
-          SELECT expiry_date FROM stock_batches cs
-          WHERE cs.location = 'country_stock'
-            AND LOWER(TRIM(cs.description)) = LOWER(TRIM(sb.description))
-            AND cs.expiry_date IS NOT NULL
-          ORDER BY ABS(EXTRACT(EPOCH FROM (cs.import_date - sb.import_date))) ASC
-          LIMIT 1
-        ) cs ON sb.expiry_date IS NULL
     `;
 
     if (req.method === 'GET') {
@@ -255,103 +247,26 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'POST') {
-      const body = await parseRequestBody(req);
-      if (Array.isArray(body)) {
-        const results = [];
-        for (const item of body) {
-          try {
-            const batch = await upsertBatch(item);
-            results.push(batch);
-          } catch (error) {
-            console.error('Error importing stock batch:', error);
-          }
-        }
-        return res.status(201).json({ success: true, count: results.length, batches: results });
-      }
-
-      const input = normalizeInboundPayload(body);
-      const batch = await upsertBatch(input);
-      return res.status(201).json({ success: true, batch });
+      return res.status(409).json({success:false,error:'Use import receiving with a stable receipt key and explicit units to create physical batches.'});
     }
 
     if (req.method === 'PUT' || req.method === 'PATCH') {
-      const body = await parseRequestBody(req);
-      if (!body?.id && !body?.barcode) {
-        return res.status(400).json({ success: false, error: 'id or barcode required' });
-      }
-
-      const identifier = body.id
-        ? { column: 'id', value: body.id }
-        : { column: 'barcode', value: body.barcode };
-
-      const existing = await getOne(
-        `SELECT * FROM stock_batches WHERE ${identifier.column} = $1`,
-        [identifier.value]
-      );
-      if (!existing) {
-        return res.status(404).json({ success: false, error: 'Not found' });
-      }
-
-      // Use a direct UPDATE to avoid ON CONFLICT (barcode) clashing with the
-      // existing primary-key when the barcode is being assigned for the first time.
-      const merged = normalizeInboundPayload({ ...existing, ...body });
-      // qr_code: explicit null in body clears it; undefined preserves existing
-      const qrCodeValue = Object.prototype.hasOwnProperty.call(body, 'qr_code')
-        ? (body.qr_code || null)
-        : (existing.qr_code ?? null);
-      await query(
-        `UPDATE stock_batches
-         SET barcode              = $2,
-             qr_code              = $3,
-             carton_no            = $4,
-             description          = $5,
-             batch_no             = $6,
-             expiry_date          = $7,
-             quantity             = $8,
-             remaining_quantity   = $9,
-             dispatched_quantity  = $10,
-             location             = $11,
-             status               = $12,
-             product_id           = $13,
-             warehouse_id         = $14,
-             unit_price           = $15,
-             notes                = $16,
-             updated_at           = NOW()
-         WHERE id = $1`,
-        [
-          existing.id,
-          merged.barcode,
-          qrCodeValue,
-          merged.cartonNo  || existing.carton_no  || null,
-          merged.description || existing.description || null,
-          merged.batchNo   || existing.batch_no   || null,
-          toDate(merged.expiryDate || existing.expiry_date),
-          Number(merged.quantity)            >= 0 ? Number(merged.quantity)            : Number(existing.quantity            || 0),
-          Number(merged.remainingQuantity)   >= 0 ? Number(merged.remainingQuantity)   : Number(existing.remaining_quantity  || 0),
-          Number(merged.dispatchedQuantity)  >= 0 ? Number(merged.dispatchedQuantity)  : Number(existing.dispatched_quantity || 0),
-          merged.location  || existing.location  || null,
-          merged.status    || existing.status    || 'available',
-          merged.productId || existing.product_id   || null,
-          merged.warehouseId || existing.warehouse_id || null,
-          Number(merged.unitPrice ?? existing.unit_price ?? 0),
-          merged.notes ?? existing.notes ?? null,
-        ]
-      );
-
-      const updated = await getOne('SELECT * FROM stock_batches WHERE id = $1', [existing.id]);
-      return res.status(200).json({ success: true, batch: normalizeBatch(updated) });
+      const body=await parseRequestBody(req);
+      if (!body.id && !body.barcode) return res.status(400).json({success:false,error:'id or barcode required'});
+      const allowed=new Set(['id','barcode','qr_code','carton_no','cartonNo','notes']);
+      if (Object.keys(body).some(key=>!allowed.has(key))) return res.status(409).json({success:false,
+        error:'Received quantities, costs and lot identities are immutable. Use reviewed stock adjustments or a new receipt.'});
+      const row=await getOne(body.id ? 'SELECT * FROM stock_batches WHERE id=$1' : 'SELECT * FROM stock_batches WHERE barcode=$1',[body.id || body.barcode]);
+      if (!row) return res.status(404).json({success:false,error:'Not found'});
+      const updated=await getOne(`UPDATE stock_batches SET barcode=$2,qr_code=$3,carton_no=$4,notes=$5,updated_at=NOW() WHERE id=$1 RETURNING *`,
+        [row.id,body.barcode ?? row.barcode,body.qr_code===undefined ? row.qr_code : body.qr_code,
+          body.cartonNo ?? body.carton_no ?? row.carton_no,body.notes ?? row.notes]);
+      return res.json({success:true,batch:normalizeBatch(updated)});
     }
 
-    if (req.method === 'DELETE') {
-      if (!id && !barcode) {
-        return res.status(400).json({ success: false, error: 'id or barcode required' });
-      }
-      const identifier = id ? { column: 'id', value: id } : { column: 'barcode', value: barcode };
-      await query(`DELETE FROM stock_batches WHERE ${identifier.column} = $1`, [identifier.value]);
-      return res.status(200).json({ success: true });
-    }
+    if (req.method === 'DELETE') return res.status(409).json({success:false,error:'Physical batches cannot be deleted. Use a reviewed stock correction.'});
 
-    return res.status(405).json({ success: false, error: 'Method not allowed' });
+    return res.status(405).json({success:false,error:'Method not allowed'});
   } catch (error) {
     console.error('Stock batches API error:', error);
     return res.status(500).json({ success: false, error: 'Internal server error' });

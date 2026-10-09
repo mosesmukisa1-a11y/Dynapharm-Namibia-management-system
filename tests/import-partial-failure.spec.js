@@ -9,6 +9,8 @@ async function cleanup() {
   await query('DELETE FROM stock_batches WHERE description LIKE $1', [`${prefix}%`]);
   await query('DELETE FROM stock_movements WHERE product_name LIKE $1', [`${prefix}%`]);
   await query('DELETE FROM inventory_balances WHERE product_name LIKE $1', [`${prefix}%`]);
+  await query('DELETE FROM supplier_imports WHERE product_name LIKE $1', [`${prefix}%`]);
+  await query("DELETE FROM stock_import_receipts WHERE receipt_key='TEST-ATOMIC-IMPORT-REF'");
 }
 function receive(items) {
   const captured = { status: 200 };

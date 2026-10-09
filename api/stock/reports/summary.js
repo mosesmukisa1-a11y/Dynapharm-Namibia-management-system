@@ -1,5 +1,7 @@
 import { applyAuthCors } from '../../_lib/auth.js';
 import { getMany, getOne } from '../../db.js';
+import { getStockCostProjection } from '../../services/stockCostReporting.js';
+import { inferLocationType } from '../../services/stockEngine.js';
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
@@ -29,7 +31,7 @@ export default async function handler(req, res) {
           `SELECT report_data, computed_at FROM stock_report_summaries WHERE id = $1`,
           [id]
         ).catch(() => null);
-        if (stored) {
+        if (stored && stored.report_data?.cost_basis==='received_batches_v1') {
           const data = typeof stored.report_data === 'string' ? JSON.parse(stored.report_data) : stored.report_data;
           return res.json({ success: true, source: 'precomputed', period_type: periodType, period_key: periodKey, computed_at: stored.computed_at, ...data });
         }
@@ -46,23 +48,8 @@ export default async function handler(req, res) {
     const salesParams2  = [...params];
     const movParams2    = [...params];
 
-    const [batches, branchInv, salesAgg, movAgg] = await Promise.all([
-      // Only fetch batches with stock remaining — avoids the 0||quantity fallback bug.
-      // Country stock excluded: it is a staging/holding area, not active operations.
-      getMany(`SELECT location, remaining_quantity, cif_unit_cost, dpc_unit_value, unit_price
-               FROM stock_batches
-               WHERE remaining_quantity > 0
-                 AND COALESCE(status, '') != 'expired'
-                 AND location != 'country_stock'`),
-      getMany(`SELECT bib.branch_id AS location_id,
-                      SUM(bib.quantity)                        AS closing_qty,
-                      MAX(COALESCE(p.dp,  0))                  AS unit_dp,
-                      SUM(bib.quantity * COALESCE(p.dp,  0))   AS stock_value_dp
-               FROM branch_inventory_batches bib
-               LEFT JOIN product_prices p
-                      ON LOWER(TRIM(p.description)) = LOWER(TRIM(bib.product_name))
-               WHERE bib.quantity > 0
-               GROUP BY bib.branch_id`),
+    const [projection, salesAgg, movAgg] = await Promise.all([
+      getStockCostProjection(),
       // Aggregate in SQL — no row-count cap
       getMany(
         `SELECT customer_type,
@@ -82,11 +69,14 @@ export default async function handler(req, res) {
       ),
     ]);
 
-    const warehouseQty = batches.reduce((s, b) => s + Number(b.remaining_quantity || 0), 0);
-    const warehouseCIF = batches.reduce((s, b) => s + Number(b.remaining_quantity || 0) * Number(b.cif_unit_cost || b.unit_price || 0), 0);
-    const warehouseDPC = batches.reduce((s, b) => s + Number(b.remaining_quantity || 0) * Number(b.dpc_unit_value || b.unit_price || 0), 0);
-    const branchQty    = branchInv.reduce((s, b) => s + Number(b.closing_qty || 0), 0);
-    const branchDPC    = branchInv.reduce((s, b) => s + Number(b.stock_value_dp || Number(b.closing_qty || 0) * Number(b.unit_dp || 0)), 0);
+    const stock=projection.filter(r=>!branchId || r.location===branchId);
+    const batches=stock.filter(r=>inferLocationType(r.location)==='warehouse');
+    const branchInv=stock.filter(r=>inferLocationType(r.location)==='branch');
+    const warehouseQty = batches.reduce((s,b)=>s+b.qty,0);
+    const warehouseCIF = batches.reduce((s,b)=>s+b.qty*(b.unitCIF ?? 0),0);
+    const warehouseDPC = batches.reduce((s,b)=>s+b.qty*(b.unitDPC ?? 0),0);
+    const branchQty = branchInv.reduce((s,b)=>s+b.qty,0);
+    const branchDPC = branchInv.reduce((s,b)=>s+b.qty*(b.unitDPC ?? 0),0);
 
     const totalRevenue       = salesAgg.reduce((s, r) => s + Number(r.total_revenue || 0), 0);
     const transactionCount   = salesAgg.reduce((s, r) => s + Number(r.tx_count || 0), 0);
@@ -100,6 +90,7 @@ export default async function handler(req, res) {
 
     res.status(200).json({
       success: true,
+      cost_basis:'received_batches_v1',
       period: { from, to },
       inventory: {
         warehouseQty,
@@ -107,8 +98,14 @@ export default async function handler(req, res) {
         warehouseDPC:   parseFloat(warehouseDPC.toFixed(2)),
         branchQty,
         branchDPC:      parseFloat(branchDPC.toFixed(2)),
-        totalQty:       warehouseQty + branchQty,
-        totalValueDPC:  parseFloat((warehouseDPC + branchDPC).toFixed(2)),
+        totalQty:       stock.reduce((sum,r)=>sum+r.qty,0),
+        totalValueDPC:  Number(stock.reduce((sum,r)=>sum+r.qty*(r.unitDPC ?? 0),0).toFixed(2)),
+        totalValueCIF:  Number(stock.reduce((sum,r)=>sum+r.qty*(r.unitCIF ?? 0),0).toFixed(2)),
+        missingCostQuantity:stock.reduce((sum,r)=>sum+r.missingCostQuantity,0),
+        missingDPCQuantity:stock.reduce((sum,r)=>sum+r.missingDPCQuantity,0),
+        availableQty:stock.reduce((sum,r)=>sum+r.availableQty,0),reservedQty:stock.reduce((sum,r)=>sum+r.reservedQty,0),
+        inTransitQty:stock.reduce((sum,r)=>sum+r.inTransitQty,0),
+        valuationComplete:stock.every(r=>!r.missingCostQuantity && !r.missingDPCQuantity),
       },
       sales: {
         totalRevenue:     parseFloat(totalRevenue.toFixed(2)),

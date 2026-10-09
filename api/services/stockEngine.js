@@ -123,7 +123,7 @@ export async function recomputeInventoryBalanceTx(client, key) {
   const lockKey = advisoryLockKey(locationId, productName, batchNoVal);
   await client.query(`SELECT pg_advisory_xact_lock($1)`, [lockKey]);
 
-  let expiryVal = expiryDate || null;
+  const expiryVal = expiryDate || null;
 
   // Fetch ALL finalized movements for this product+batch.
   // Include 'approved' as well as 'posted' because write-offs approved by GM
@@ -136,8 +136,9 @@ export async function recomputeInventoryBalanceTx(client, key) {
      WHERE status IN ('posted', 'approved')
        AND LOWER(TRIM(product_name)) = LOWER(TRIM($1))
        AND COALESCE(batch_no, '') = $2
+       AND expiry_date IS NOT DISTINCT FROM $3::date
      ORDER BY created_at ASC`,
-    [productName, batchNoVal]
+    [productName, batchNoVal,expiryVal]
   );
 
   let inwardQty = 0;
@@ -161,9 +162,8 @@ export async function recomputeInventoryBalanceTx(client, key) {
       OUTWARD_TYPES.has(m.movement_type);
 
     if (isInbound || isOutbound) {
-      if (!expiryVal && m.expiry_date) expiryVal = m.expiry_date;
-      if (m.unit_dp) unitDP = Number(m.unit_dp);
-      if (m.unit_cif) unitCIF = Number(m.unit_cif);
+      if (m.unit_dp!=null) unitDP = Number(m.unit_dp);
+      if (m.unit_cif!=null) unitCIF = Number(m.unit_cif);
     }
 
     if (isInbound) {
@@ -176,20 +176,28 @@ export async function recomputeInventoryBalanceTx(client, key) {
     }
   }
 
-  const closingQty = inwardQty - outwardQty;
-  const stockValueDP = closingQty * (unitDP || 0);
-  const stockValueCIF = closingQty * (unitCIF || 0);
+  const {getStockCostProjection}=await import('./stockCostReporting.js');
+  const {day}=await import('./stockCostLayers.js');
+  const layers=(await getStockCostProjection(async(sql,params)=>(await client.query(sql,params)).rows)).filter(r=>
+    r.location===locationId && String(r.productName).toLowerCase().trim()===productName.toLowerCase().trim()
+      && (r.batchNo || '')===batchNoVal && day(r.expiryDate)===day(expiryVal));
+  const sum=field=>layers.reduce((total,r)=>total+Number(r[field] || 0),0);
+  const physicalLocation=['branch','warehouse','country','in_transit'].includes(locationType);
+  const closingQty = physicalLocation ? sum('qty') : inwardQty-outwardQty;
+  const stockValueDP = physicalLocation ? layers.reduce((total,r)=>total+r.qty*(r.unitDPC ?? 0),0) : closingQty*(unitDP || 0);
+  const stockValueCIF = physicalLocation ? layers.reduce((total,r)=>total+r.qty*(r.unitCIF ?? 0),0) : closingQty*(unitCIF || 0);
+  unitDP=sum('missingDPCQuantity') ? null : closingQty ? stockValueDP/closingQty : null;
+  unitCIF=sum('missingCostQuantity') ? null : closingQty ? stockValueCIF/closingQty : null;
 
-  // Upsert keyed by (location_type, location_id, product_name, batch_no).
-  // expiry_date is metadata, NOT part of the key — prevents duplicates when
-  // the seed stores null and recompute later sees an actual expiry_date.
+  // Expiry is part of the logical key; unknown expiry is its own identity.
   const existingRow = await client.query(
     `SELECT id FROM inventory_balances
      WHERE location_type = $1
        AND location_id = $2
        AND LOWER(TRIM(product_name)) = LOWER(TRIM($3))
-       AND COALESCE(batch_no, '') = $4`,
-    [locationType, locationId, productName, batchNoVal]
+       AND COALESCE(batch_no, '') = $4
+       AND expiry_date IS NOT DISTINCT FROM $5::date`,
+    [locationType, locationId, productName, batchNoVal,expiryVal]
   );
   const existing = existingRow.rows[0] || null;
 
@@ -199,16 +207,16 @@ export async function recomputeInventoryBalanceTx(client, key) {
        SET inward_qty = $1,
            outward_qty = $2,
            closing_qty = $3,
-           unit_dp = COALESCE($4, unit_dp),
-           unit_cif = COALESCE($5, unit_cif),
+           unit_dp = $4,
+           unit_cif = $5,
            stock_value_dp = $6,
            stock_value_cif = $7,
            last_movement_date = $8,
-           expiry_date = COALESCE($9::date, expiry_date),
+           expiry_date = $9::date,
            updated_at = NOW()
        WHERE id = $10`,
       [inwardQty, outwardQty, closingQty,
-       unitDP || null, unitCIF || null,
+       unitDP ?? null, unitCIF ?? null,
        stockValueDP, stockValueCIF,
        lastMovementDate, expiryVal, existing.id]
     );
@@ -223,11 +231,18 @@ export async function recomputeInventoryBalanceTx(client, key) {
        VALUES ($1,$2,$3,$4,$5,$6::date, 0,$7,$8,$9,$10,$11,$12,$13,$14,NOW())`,
       [balId, locationType, locationId, productName, batchNoVal, expiryVal,
        inwardQty, outwardQty, closingQty,
-       unitDP || null, unitCIF || null,
+       unitDP ?? null, unitCIF ?? null,
        stockValueDP, stockValueCIF,
        lastMovementDate]
     );
   }
+  await client.query(`UPDATE inventory_balances SET
+    on_hand_qty=$6,available_qty=$7,reserved_qty=$8,quarantined_qty=$9,expired_qty=$10,in_transit_qty=$11,
+    missing_cost_qty=$12,missing_dp_qty=$13,projection_version=1
+    WHERE location_type=$1 AND location_id=$2 AND LOWER(TRIM(product_name))=LOWER(TRIM($3))
+      AND COALESCE(batch_no,'')=$4 AND expiry_date IS NOT DISTINCT FROM $5::date`,
+    [locationType,locationId,productName,batchNoVal,expiryVal,sum('onHandQty'),sum('availableQty'),sum('reservedQty'),
+      sum('quarantinedQty'),sum('expiredQty'),sum('inTransitQty'),sum('missingCostQuantity'),sum('missingDPCQuantity')]);
 }
 
 /**
@@ -257,11 +272,12 @@ export async function recomputeInventoryBalance(key) {
 export async function getAvailableStock(key) {
   const { locationType, locationId, productName, batchNo, expiryDate } = key;
   const row = await getOne(
-    `SELECT closing_qty FROM inventory_balances
+    `SELECT available_qty AS closing_qty FROM inventory_balances
      WHERE location_type = $1
        AND location_id = $2
        AND LOWER(TRIM(product_name)) = LOWER(TRIM($3))
        AND COALESCE(batch_no, '') = $4
+       AND projection_version=1
        AND (expiry_date IS NOT DISTINCT FROM $5::date)`,
     [locationType, locationId, productName, batchNo || '', expiryDate || null]
   );
@@ -304,8 +320,8 @@ async function _postStockMovementInternal(queryFn, input) {
   const dstLocType = input.destinationLocationType || inferLocationType(dstLoc);
   const batchNo = input.batchNo || input.batch_no || null;
   const expiryDate = input.expiryDate || input.expiry_date || null;
-  const unitDP = input.unitDP || input.unit_dp || null;
-  const unitCIF = input.unitCIF || input.unit_cif || null;
+  const unitDP = input.unitDP ?? input.unit_dp ?? null;
+  const unitCIF = input.unitCIF ?? input.unit_cif ?? null;
   const productId = input.productId || input.product_id || null;
   const referenceId = input.referenceId || input.reference_id || null;
   const referenceType = input.referenceType || input.reference_type || null;
@@ -319,8 +335,8 @@ async function _postStockMovementInternal(queryFn, input) {
         movement_type, source_location, destination_location,
         source_location_type, destination_location_type,
         unit_dp, unit_cif, reference_type, reference_id, notes, created_by,
-        movement_date, status, created_at, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'posted',NOW(),NOW())`,
+        movement_date, status, created_at, updated_at, original_unit_dp, original_unit_cif)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'posted',NOW(),NOW(),$12,$13)`,
     [id, input.productName, productId, batchNo, expiryDate, Number(input.quantity),
      input.movementType, srcLoc, dstLoc, srcLocType, dstLocType,
      unitDP, unitCIF, referenceType, referenceId, notes, createdBy, movementDate]
@@ -376,8 +392,8 @@ export async function postStockMovementTx(client, input) {
   const dstLocType = input.destinationLocationType || inferLocationType(dstLoc);
   const batchNo = input.batchNo || input.batch_no || null;
   const expiryDate = input.expiryDate || input.expiry_date || null;
-  const unitDP = input.unitDP || input.unit_dp || null;
-  const unitCIF = input.unitCIF || input.unit_cif || null;
+  const unitDP = input.unitDP ?? input.unit_dp ?? null;
+  const unitCIF = input.unitCIF ?? input.unit_cif ?? null;
   const productId = input.productId || input.product_id || null;
   const referenceId = input.referenceId || input.reference_id || null;
   const referenceType = input.referenceType || input.reference_type || null;
@@ -391,8 +407,8 @@ export async function postStockMovementTx(client, input) {
         movement_type, source_location, destination_location,
         source_location_type, destination_location_type,
         unit_dp, unit_cif, reference_type, reference_id, notes, created_by,
-        movement_date, status, created_at, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'posted',NOW(),NOW())`,
+        movement_date, status, created_at, updated_at, original_unit_dp, original_unit_cif)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'posted',NOW(),NOW(),$12,$13)`,
     [id, input.productName, productId, batchNo, expiryDate, Number(input.quantity),
      input.movementType, srcLoc, dstLoc, srcLocType, dstLocType,
      unitDP, unitCIF, referenceType, referenceId, notes, createdBy, movementDate]
@@ -562,7 +578,7 @@ export async function seedInventoryBalances() {
     // Source location
     const srcType = r.source_location_type || inferLocationType(r.source_location);
     if (srcType && r.source_location) {
-      const k = `${srcType}|${r.source_location}|${r.product_name}|${r.batch_no}`;
+      const k = `${srcType}|${r.source_location}|${r.product_name}|${r.batch_no}|${r.expiry_date || ''}`;
       if (!seen.has(k)) {
         seen.set(k, r.expiry_date || null);
         targets.push({
@@ -584,7 +600,7 @@ export async function seedInventoryBalances() {
     // Destination location
     const dstType = r.destination_location_type || inferLocationType(r.destination_location);
     if (dstType && r.destination_location) {
-      const k = `${dstType}|${r.destination_location}|${r.product_name}|${r.batch_no}`;
+      const k = `${dstType}|${r.destination_location}|${r.product_name}|${r.batch_no}|${r.expiry_date || ''}`;
       if (!seen.has(k)) {
         seen.set(k, r.expiry_date || null);
         targets.push({

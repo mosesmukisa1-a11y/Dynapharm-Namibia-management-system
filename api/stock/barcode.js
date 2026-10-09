@@ -42,6 +42,17 @@ export default async function handler(req, res) {
     const productId = url.searchParams.get('productId') || '';
 
     if (barcode) {
+      const configured=await getMany(`SELECT product_name,base_unit,packs FROM stock_product_packs
+        WHERE EXISTS (SELECT 1 FROM jsonb_array_elements(packs) p WHERE p->>'barcode'=$1)`,[barcode]);
+      if (configured.length) {
+        if (configured.length!==1) return res.status(409).json({success:false,error:'Ambiguous pack barcode'});
+        const config=configured[0],pack=config.packs.find(p=>p.barcode===barcode);
+        const price=await getOne('SELECT description,dp,cp,bv FROM product_prices WHERE LOWER(TRIM(description))=$1',[config.product_name]);
+        return res.json({success:true,productName:config.product_name,enteredUnit:pack.unit,
+          baseUnit:config.base_unit,conversionFactor:pack.factor,barcode,
+          dp:price?.dp==null ? null : Number(price.dp),cp:price?.cp==null ? null : Number(price.cp),
+          bv:price?.bv==null ? null : Number(price.bv),fefoEnforced:true});
+      }
       // ── Priority 1: permanent product_code from the GM price list ──────────
       // Scanning a product code (e.g. NB9845) returns product identity only.
       // FEFO batch selection happens at sale/dispense time on the backend.

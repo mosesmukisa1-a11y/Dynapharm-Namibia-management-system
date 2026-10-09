@@ -6,6 +6,9 @@ import StaffServicesTab from '../../components/StaffServicesTab';
 import StaffMessagesTab from '../../components/StaffMessagesTab';
 import ControlledStockOperations from '../../components/ControlledStockOperations';
 import DispatchNote from '../../components/DispatchNote';
+import StockProductPacks from '../../components/StockProductPacks';
+import StockCostReport from '../../components/StockCostReport';
+import { buildReceiptPayload, clearReceiptDraft, readReceiptDraft, writeReceiptDraft, receiptMoney } from '../../lib/stockLifecycle';
 import { getCIFPrice, getDPCPrice, getProductProfit, findProductPrice, getLiveProductList, setLivePrices } from '../../lib/pricing';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES, BRANCH_DETAILS } from '../../lib/constants';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
@@ -1550,6 +1553,7 @@ export default function StockPortal() {
     { id: 'branchStock', label: 'Branch Stock', icon: '🏪' },
     { id: 'stockReports', label: 'Stock Reports', icon: '📋' },
     { id: 'supplierImport', label: 'Supplier Import', icon: '🚢' },
+    { id: 'costReport', label: 'Cost Report' },
     { id: 'countryStock', label: 'Country Stock', icon: '🌍' },
     { id: 'warehouses', label: 'Warehouses', icon: '🏭' },
     { id: 'distribution', label: 'Distribution', icon: '🚚' },
@@ -1620,6 +1624,7 @@ export default function StockPortal() {
         {activeTab === 'branchStock' && <BranchStockTab branch={globalBranch} />}
         {activeTab === 'stockReports' && <StockReportsTab branch={globalBranch} />}
         {activeTab === 'supplierImport' && <SupplierImportTab />}
+        {activeTab === 'costReport' && <StockCostReport />}
         {activeTab === 'countryStock' && <CountryStockTab />}
         {activeTab === 'warehouses' && <WarehousesTab />}
         {activeTab === 'distribution' && <DistributionTab branch={globalBranch} />}
@@ -2270,25 +2275,58 @@ function OverviewTab({ branch }) {
 }
 
 function SupplierImportTab() {
+  const receiptDraftStorageKey = 'dynapharm.stock.receiptDraft.v1';
   const [showForm, setShowForm] = useState(false);
+  const [showPackConfig, setShowPackConfig] = useState(false);
   const [imports, setImports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [alert, setAlert] = useState(null);
   const [adjRecord, setAdjRecord] = useState(null);
-  const [items, setItems] = useState([{ product_name: '', quantity: '', cif_price: '', dpc_price: '', carton_no: '', expiry_date: '', batch_number: '' }]);
-  const [form, setForm] = useState({ supplier: 'Dynapharm International (Malaysia)', shipping_ref: '', grn_number: '', invoice_number: '', arrival_date: '', destination_warehouse: 'country_stock', notes: '' });
+  const [items, setItems] = useState([{ product_name: '', quantity: '', entered_unit: '', cif_price: '', dpc_price: '', carton_no: '', expiry_date: '', batch_number: '' }]);
+  const [form, setForm] = useState({ supplier: 'Dynapharm International (Malaysia)', supplier_id: '', shipping_ref: '', grn_number: '', invoice_number: '', arrival_date: '', destination_warehouse: 'country_stock', notes: '', freight: '', duty: '', other: '' });
   const [errors, setErrors] = useState({});
   const [productOptions, setProductOptions] = useState([]);
+  const [productRecords, setProductRecords] = useState([]);
+  const [packRows, setPackRows] = useState([]);
+  const [receiptKey, setReceiptKey] = useState(() => `receipt-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const [retryPayload, setRetryPayload] = useState(null);
+  const [draftReady, setDraftReady] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
+  const newReceiptKey = () => `receipt-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const blankItem = () => ({ product_name: '', quantity: '', entered_unit: '', cif_price: '', dpc_price: '', carton_no: '', expiry_date: '', batch_number: '' });
+  const blankForm = () => ({ supplier: 'Dynapharm International (Malaysia)', supplier_id: '', shipping_ref: '', grn_number: '', invoice_number: '', arrival_date: '', destination_warehouse: 'country_stock', notes: '', freight: '', duty: '', other: '' });
+
+  useEffect(() => {
+    let storage = null;
+    try { storage = window.sessionStorage; } catch (_) {}
+    const draft = readReceiptDraft(storage, receiptDraftStorageKey);
+    if (draft?.receiptKey && draft?.form && Array.isArray(draft.items)) {
+      setReceiptKey(draft.receiptKey);
+      setForm({ ...blankForm(), ...draft.form });
+      setItems(draft.items.length ? draft.items : [blankItem()]);
+      setRetryPayload(draft.retryPayload || null);
+      setDraftRestored(true);
+    }
+    setDraftReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!draftReady) return;
+    try {
+      writeReceiptDraft(window.sessionStorage, receiptDraftStorageKey, { receiptKey, form, items, retryPayload });
+    } catch (_) {}
+  }, [draftReady, receiptKey, form, items, retryPayload]);
 
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [batchData, importData, priceData, prodData] = await Promise.allSettled([
+        const [batchData, importData, priceData, prodData, packsData] = await Promise.allSettled([
           api.stock.batches(),
           api.stock.supplierImports(),
           api.prices.list(),
           api.products.list(),
+          api.stock.productPacks(),
         ]);
         if (importData.status === 'fulfilled') {
           const impRows = Array.isArray(importData.value) ? importData.value : [];
@@ -2303,15 +2341,20 @@ function SupplierImportTab() {
           setImports(all.filter(b => b.location === 'country_stock').sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
         }
         const namesSet = new Set();
+        const catalogRecords = [];
         if (priceData.status === 'fulfilled') {
           const prices = Array.isArray(priceData.value) ? priceData.value : [];
           if (prices.length > 0) setLivePrices(prices);
+          catalogRecords.push(...prices);
           prices.filter(p => !p.is_package && p.description).forEach(p => namesSet.add(p.description));
         }
         if (prodData.status === 'fulfilled') {
           const prods = Array.isArray(prodData.value) ? prodData.value : prodData.value?.products || [];
+          catalogRecords.push(...prods);
           prods.filter(p => p.name).forEach(p => namesSet.add(p.name));
         }
+        setProductRecords(catalogRecords);
+        if (packsData.status === 'fulfilled') setPackRows(Array.isArray(packsData.value?.rows) ? packsData.value.rows : []);
         setProductOptions([...namesSet].sort());
       } catch (_) {}
       finally { setLoading(false); }
@@ -2319,18 +2362,13 @@ function SupplierImportTab() {
     loadData();
   }, []);
 
-  const addItem = () => setItems(prev => [...prev, { product_name: '', quantity: '', cif_price: '', dpc_price: '', carton_no: '', expiry_date: '', batch_number: '' }]);
+  const addItem = () => setItems(prev => [...prev, blankItem()]);
   const removeItem = (idx) => setItems(prev => prev.filter((_, i) => i !== idx));
   const updateItem = (idx, field, value) => {
     setItems(prev => {
       const updated = [...prev];
       updated[idx] = { ...updated[idx], [field]: value };
-      if (field === 'product_name') {
-        const cif = getCIFPrice(value);
-        if (cif > 0) updated[idx].cif_price = String(cif);
-        const dpc = getDPCPrice(value);
-        if (dpc > 0) updated[idx].dpc_price = String(dpc);
-      }
+      if (field === 'product_name') updated[idx].entered_unit = '';
       return updated;
     });
   };
@@ -2338,8 +2376,11 @@ function SupplierImportTab() {
   const validateItems = () => {
     const errs = {};
     items.forEach((item, idx) => {
-      if (!item.product_name) errs[`${idx}_product`] = true;
+      const product = productRecords.find(p => (p.name || p.description || '').trim().toLowerCase() === item.product_name.trim().toLowerCase());
+      const productId = product?.id ?? product?.product_id ?? product?.productId;
+      if (!item.product_name || productId == null || productId === '') errs[`${idx}_product`] = true;
       if (!item.quantity || Number(item.quantity) <= 0) errs[`${idx}_qty`] = true;
+      if (!item.entered_unit) errs[`${idx}_unit`] = true;
       if (!item.carton_no?.trim()) errs[`${idx}_carton`] = true;
       if (!item.expiry_date) errs[`${idx}_expiry`] = true;
       if (!item.batch_number?.trim()) errs[`${idx}_batch`] = true;
@@ -2348,53 +2389,60 @@ function SupplierImportTab() {
     return Object.keys(errs).length === 0;
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!validateItems()) {
-      setAlert({ type: 'error', msg: 'All mandatory fields required: Product, Carton No, Expiry Date, Quantity, Batch Number' });
-      return;
-    }
-    const validItems = items.filter(i => i.product_name && Number(i.quantity) > 0);
-    if (validItems.length === 0) {
-      setAlert({ type: 'error', msg: 'Add at least one product with quantity' });
-      return;
-    }
+  const startNewDraft = () => {
+    try { clearReceiptDraft(window.sessionStorage, receiptDraftStorageKey); } catch (_) {}
+    setItems([blankItem()]);
+    setForm(blankForm());
+    setReceiptKey(newReceiptKey());
+    setRetryPayload(null);
+    setErrors({});
+    setAlert(null);
+    setDraftRestored(false);
+  };
+
+  const submitReceipt = async payload => {
+    setRetryPayload(payload);
     setSubmitting(true);
     try {
-      for (const item of validItems) {
-        const cifUnit = Number(item.cif_price) || getCIFPrice(item.product_name);
-        const dpcUnit = Number(item.dpc_price) || getDPCPrice(item.product_name);
-        await api.stock.createSupplierImport({
-          supplier_name: form.supplier,
-          import_reference: form.shipping_ref || null,
-          grn_number: form.grn_number || null,
-          invoice_number: form.invoice_number || null,
-          shipment_reference: form.shipping_ref || null,
-          product_name: item.product_name,
-          quantity: Number(item.quantity),
-          batch_no: item.batch_number || null,
-          expiry_date: item.expiry_date || null,
-          cif_unit_cost: cifUnit,
-          dpc_unit_value: dpcUnit,
-          date_received: form.arrival_date || new Date().toISOString(),
-          destination_warehouse: form.destination_warehouse || 'country_stock',
-          origin_country: 'Malaysia',
-          notes: `Carton: ${item.carton_no || 'N/A'} | ${form.notes || ''}`.trim(),
-          metadata: { carton_no: item.carton_no, shipping_ref: form.shipping_ref, arrival_date: form.arrival_date },
-        });
-      }
-      setAlert({ type: 'success', msg: `${validItems.length} product(s) imported to Country Stock successfully` });
-      setItems([{ product_name: '', quantity: '', cif_price: '', dpc_price: '', carton_no: '', expiry_date: '', batch_number: '' }]);
-      setForm({ supplier: 'Dynapharm International (Malaysia)', shipping_ref: '', grn_number: '', invoice_number: '', arrival_date: '', destination_warehouse: 'country_stock', notes: '' });
+      writeReceiptDraft(window.sessionStorage, receiptDraftStorageKey, { receiptKey: payload.receiptKey, form, items, retryPayload: payload });
+    } catch (_) {}
+    try {
+      const receiptResult = await api.stock.receiveImport(payload);
+      setAlert({ type: 'success', msg: `${payload.items.length} product(s) received atomically. Reference ${receiptResult.referenceId || 'recorded'} · expenses ${receiptResult.expenseTotal == null ? 'not returned' : receiptMoney(receiptResult.expenseTotal)}.` });
+      try { clearReceiptDraft(window.sessionStorage, receiptDraftStorageKey); } catch (_) {}
+      setItems([blankItem()]);
+      setForm(blankForm());
+      setReceiptKey(newReceiptKey());
+      setRetryPayload(null);
+      setDraftRestored(false);
       setShowForm(false);
       const d = await api.stock.supplierImports().catch(() => []);
       const impRows = Array.isArray(d) ? d : [];
       setImports(impRows.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
     } catch (err) {
-      setAlert({ type: 'error', msg: err.message });
+      setRetryPayload(payload);
+      setAlert({ type: 'error', msg: `${err.message || 'Receipt failed.'} The exact receipt payload is saved for a safe retry.` });
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleSubmit = async e => {
+    e.preventDefault();
+    if (retryPayload) {
+      await submitReceipt(retryPayload);
+      return;
+    }
+    if (!validateItems()) {
+      setAlert({ type: 'error', msg: 'Choose a catalogue product with a product ID, select a configured receiving unit, and enter carton, expiry, quantity, and batch details.' });
+      return;
+    }
+    const payload = buildReceiptPayload({ receiptKey, form, items, productRecords });
+    if (payload.items.length === 0) {
+      setAlert({ type: 'error', msg: 'Add at least one product with quantity' });
+      return;
+    }
+    await submitReceipt(payload);
   };
 
   const totalCIF = items.reduce((s, i) => s + (Number(i.quantity) || 0) * (Number(i.cif_price) || 0), 0);
@@ -2413,7 +2461,7 @@ function SupplierImportTab() {
             <div>
               <h3 className="font-bold text-blue-900">Supplier Import from Malaysia</h3>
               <p className="text-sm text-blue-700 mt-1">
-                Record stock shipments from Dynapharm International Malaysia. CIF (Cost, Insurance, Freight) prices are auto-populated from the price list.
+                Record stock shipments from Dynapharm International Malaysia. Receiving-unit costs are entered explicitly and are never substituted from the price list.
                 Stock arrives at Country Stock level, then gets distributed to warehouses and branches.
               </p>
               <p className="text-xs text-blue-600 mt-1 font-semibold">
@@ -2433,7 +2481,7 @@ function SupplierImportTab() {
                 const rows = imports.slice(0, 50).map(r => `<tr><td>${formatDateTime(r.created_at)}</td><td>${r.product_name||''}</td><td>${r.batch_number||''}</td><td>${r.expiry_date?formatDate(r.expiry_date):'-'}</td><td>${r.quantity||''}</td><td>${formatCurrency(Number(r.unit_price||0))}</td><td>${formatCurrency(Number(r.quantity||0)*Number(r.unit_price||0))}</td></tr>`).join('');
                 printDocument('Supplier Import Shipments', `<table><thead><tr><th>Date</th><th>Product</th><th>Batch #</th><th>Expiry</th><th>Qty</th><th>CIF Price</th><th>CIF Total</th></tr></thead><tbody>${rows}</tbody></table>`);
               }}><Printer size={14} /> Print</Button>
-              <Button size="sm" onClick={() => setShowForm(true)}><Plus size={16} /> New Import Shipment</Button>
+              <Button size="sm" onClick={() => setShowForm(true)}><Plus size={16} /> {draftRestored ? 'Resume saved receipt' : 'New Import Shipment'}</Button>
             </div>
           </div>
         </CardHeader>
@@ -2445,12 +2493,11 @@ function SupplierImportTab() {
             { header: 'Batch #', render: r => r.batch_no || r.batch_number || '-' },
             { header: 'Expiry', render: r => (r.expiry_date ? formatDate(r.expiry_date) : '-') },
             { header: 'Qty', key: 'quantity' },
-            { header: 'CIF/unit', render: r => formatCurrency(getBatchCIF(r)) },
+            { header: 'CIF/unit', render: r => r.cif_unit_cost == null ? <span className="font-semibold text-amber-700">Missing cost</span> : `N$ ${Number(r.cif_unit_cost).toLocaleString('en-NA', { minimumFractionDigits: 2, maximumFractionDigits: 6 })}` },
             { header: 'CIF Total', render: r => {
-              const cif = Number(r.cif_total_value || 0) || (Number(r.quantity || 0) * getBatchCIF(r));
-              return formatCurrency(cif);
+              return r.cif_unit_cost == null ? <span className="text-amber-700">Incomplete</span> : formatCurrency(Number(r.quantity || 0) * Number(r.cif_unit_cost));
             }},
-            { header: 'DPC/unit', render: r => formatCurrency(Number(r.dpc_unit_value || 0)) },
+            { header: 'DPC/unit', render: r => r.dpc_unit_value == null ? <span className="font-semibold text-amber-700">Missing cost</span> : `N$ ${Number(r.dpc_unit_value).toLocaleString('en-NA', { minimumFractionDigits: 2, maximumFractionDigits: 6 })}` },
             { header: 'Destination', render: r => <span className="text-xs">{fmtLocation(r.destination_warehouse || r.location || 'country_stock')}</span> },
             { header: 'Status', render: r => <Badge variant={r.status === 'received' ? 'success' : 'info'}>{r.status || 'received'}</Badge> },
             { header: '', render: r => (
@@ -2471,10 +2518,20 @@ function SupplierImportTab() {
         onSuccess={() => setAlert({ type: 'success', msg: 'Edit request submitted — awaiting GM approval' })}
       />
 
-      <Modal open={showForm} onClose={() => setShowForm(false)} title="Record Import Shipment from Malaysia" size="lg">
+      <Modal open={showForm} onClose={() => setShowForm(false)} title="Receive shipment from Malaysia" size="lg">
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-rose-100 bg-rose-50 px-3 py-2">
+            <div><div className="text-xs font-bold uppercase tracking-wide text-rose-800">Atomic receipt draft</div><div className="font-mono text-xs text-rose-700">{receiptKey}</div></div>
+            <div className="flex flex-wrap gap-2">
+              {retryPayload && <Button type="button" size="sm" disabled={submitting} onClick={() => submitReceipt(retryPayload)}>{submitting ? 'Retrying…' : 'Retry exact receipt'}</Button>}
+              <Button type="button" size="sm" variant="secondary" disabled={submitting} onClick={startNewDraft}>Start new draft</Button>
+            </div>
+          </div>
+          {retryPayload && <Alert type="warning">This receipt is frozen to its saved payload and key for safe retry. Start a new draft to discard it.</Alert>}
+          <fieldset disabled={!!retryPayload} className="m-0 min-w-0 space-y-4 border-0 p-0">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Input label="Supplier" value={form.supplier} onChange={e => setForm(f => ({ ...f, supplier: e.target.value }))} />
+            <Input label="Supplier ID (optional)" value={form.supplier_id} onChange={e => setForm(f => ({ ...f, supplier_id: e.target.value }))} placeholder="Uses supplier name if blank" />
             <Input label="GRN Number" value={form.grn_number} onChange={e => setForm(f => ({ ...f, grn_number: e.target.value }))} placeholder="GRN-2026-001" />
             <Input label="Invoice Number" value={form.invoice_number} onChange={e => setForm(f => ({ ...f, invoice_number: e.target.value }))} placeholder="INV-2026-001" />
           </div>
@@ -2489,7 +2546,21 @@ function SupplierImportTab() {
             </div>
           </div>
           <div>
-            <Input label="Notes" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Container no., remarks..." />
+            <Input label="Notes" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Container number, remarks..." />
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><div><div className="text-sm font-bold text-slate-800">Freight, duty & other expenses</div><div className="text-xs text-slate-500">Keep blank when unknown; blank does not mean zero.</div></div><Button type="button" size="sm" variant="secondary" onClick={() => setShowPackConfig(true)}>Pack & barcode setup</Button></div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <Input label="Freight (N$)" type="number" min="0" step="any" value={form.freight} onChange={e => setForm(f => ({ ...f, freight: e.target.value }))} placeholder="Not entered" />
+              <Input label="Duty (N$)" type="number" min="0" step="any" value={form.duty} onChange={e => setForm(f => ({ ...f, duty: e.target.value }))} placeholder="Not entered" />
+              <Input label="Other (N$)" type="number" min="0" step="any" value={form.other} onChange={e => setForm(f => ({ ...f, other: e.target.value }))} placeholder="Not entered" />
+            </div>
+            <div className="mt-2 flex flex-wrap justify-end gap-x-4 gap-y-1 text-xs text-slate-600">
+              <span>Freight: {form.freight === '' ? 'Not entered' : receiptMoney(form.freight)}</span>
+              <span>Duty: {form.duty === '' ? 'Not entered' : receiptMoney(form.duty)}</span>
+              <span>Other: {form.other === '' ? 'Not entered' : receiptMoney(form.other)}</span>
+              <strong className="text-sm text-slate-800">Entered expense total: {receiptMoney(['freight','duty','other'].reduce((sum, key) => sum + (Number(form[key]) || 0), 0))}</strong>
+            </div>
           </div>
 
           <div>
@@ -2498,7 +2569,7 @@ function SupplierImportTab() {
               <Button type="button" size="sm" variant="secondary" onClick={addItem}><Plus size={14} /> Add Product</Button>
             </div>
             <div className="text-xs text-gray-500 mb-2 bg-yellow-50 border border-yellow-200 rounded p-2">
-              All fields are mandatory: Product/Description, Carton No, Expiry Date, Quantity, Batch Number
+              Product, receiving unit, carton, expiry, quantity and batch are required. CIF/DP costs may remain blank if not known.
             </div>
             <div className="space-y-3">
               {items.map((item, idx) => (
@@ -2528,7 +2599,7 @@ function SupplierImportTab() {
                     </div>
                     <div className="col-span-4 md:col-span-1">
                       <label className="text-xs text-gray-500 mb-1 block">Qty *</label>
-                      <input type="number" min="1" className={`w-full px-3 py-2 rounded-lg border text-sm ${errors[`${idx}_qty`] ? 'border-red-400 bg-red-50' : 'border-gray-300'}`} placeholder="0" value={item.quantity} onChange={e => updateItem(idx, 'quantity', e.target.value)} />
+                      <input type="number" min="0.000001" step="any" className={`w-full px-3 py-2 rounded-lg border text-sm ${errors[`${idx}_qty`] ? 'border-red-400 bg-red-50' : 'border-gray-300'}`} placeholder="0" value={item.quantity} onChange={e => updateItem(idx, 'quantity', e.target.value)} />
                     </div>
                     <div className="col-span-6 md:col-span-2">
                       <label className="text-xs text-gray-500 mb-1 block">Batch # *</label>
@@ -2539,27 +2610,42 @@ function SupplierImportTab() {
                     </div>
                   </div>
                   <div className="grid grid-cols-12 gap-2 items-center mt-2">
-                    <div className="col-span-3 md:col-span-2">
-                      <label className="text-xs text-gray-500 mb-1 block">CIF Price (N$)</label>
-                      <input type="number" min="0" step="0.01" className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm" placeholder="Auto" value={item.cif_price} onChange={e => updateItem(idx, 'cif_price', e.target.value)} />
+                    <div className="col-span-6 md:col-span-3">
+                      <label className="text-xs text-gray-500 mb-1 block">Receiving unit *</label>
+                      <select className={`w-full px-3 py-2 rounded-lg border bg-white text-sm ${errors[`${idx}_unit`] ? 'border-red-400 bg-red-50' : 'border-gray-300'}`} value={item.entered_unit} onChange={e => updateItem(idx, 'entered_unit', e.target.value)}>
+                        <option value="">Select configured unit</option>
+                        {(() => {
+                          const setup = packRows.find(p => (p.product_name || '').toLowerCase() === item.product_name.toLowerCase());
+                          const options = setup?.packs || (setup?.base_unit ? [{ unit: setup.base_unit, factor: 1 }] : []);
+                          return options.map(p => <option key={`${p.unit}-${p.factor}`} value={p.unit}>{p.unit} (×{p.factor})</option>);
+                        })()}
+                      </select>
                     </div>
                     <div className="col-span-3 md:col-span-2">
-                      <label className="text-xs text-gray-500 mb-1 block">DPC Price (N$)</label>
-                      <input type="number" min="0" step="0.01" className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm" placeholder="Auto" value={item.dpc_price} onChange={e => updateItem(idx, 'dpc_price', e.target.value)} />
+                      <label className="text-xs text-gray-500 mb-1 block">Unit CIF (N$)</label>
+                      <input type="number" min="0" step="any" className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm" placeholder="Unknown" value={item.cif_price} onChange={e => updateItem(idx, 'cif_price', e.target.value)} />
                     </div>
-                    <div className="col-span-3 md:col-span-2 text-xs font-medium text-gray-700 pt-5">
-                      CIF: {formatCurrency((Number(item.quantity) || 0) * (Number(item.cif_price) || 0))}
+                    <div className="col-span-3 md:col-span-2">
+                      <label className="text-xs text-gray-500 mb-1 block">Unit DP (N$)</label>
+                      <input type="number" min="0" step="any" className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm" placeholder="Unknown" value={item.dpc_price} onChange={e => updateItem(idx, 'dpc_price', e.target.value)} />
                     </div>
-                    <div className="col-span-3 md:col-span-2 text-xs font-medium text-gray-700 pt-5">
-                      DPC: {formatCurrency((Number(item.quantity) || 0) * (Number(item.dpc_price) || 0))}
+                    <div className="col-span-6 md:col-span-5 text-xs font-medium text-gray-700 pt-5">
+                      {(() => {
+                        const setup = packRows.find(p => (p.product_name || '').toLowerCase() === item.product_name.toLowerCase());
+                        const pack = setup?.packs?.find(p => p.unit === item.entered_unit);
+                        const factor = Number(pack?.factor || (item.entered_unit === setup?.base_unit ? 1 : 0));
+                        return <>Base quantity preview: <strong>{factor ? (Number(item.quantity || 0) * factor).toLocaleString('en-NA', { maximumFractionDigits: 4 }) : 'Set pack factor first'}</strong> {setup?.base_unit || 'base units'}</>;
+                      })()}
                     </div>
+                    <div className="col-span-6 md:col-span-3 text-xs font-medium text-gray-700">CIF total: {item.cif_price === '' ? <span className="text-amber-700">Missing cost</span> : formatCurrency((Number(item.quantity) || 0) * Number(item.cif_price))}</div>
+                    <div className="col-span-6 md:col-span-3 text-xs font-medium text-gray-700">DP total: {item.dpc_price === '' ? <span className="text-amber-700">Missing cost</span> : formatCurrency((Number(item.quantity) || 0) * Number(item.dpc_price))}</div>
                   </div>
                 </div>
               ))}
             </div>
             <div className="flex justify-end gap-6 mt-3 font-bold text-gray-800">
-              <span>Total CIF: {formatCurrency(totalCIF)}</span>
-              <span>Total DPC: {formatCurrency(totalDPC)}</span>
+              <span>Total known CIF: {formatCurrency(totalCIF)}{items.some(i => i.cif_price === '' && Number(i.quantity) > 0) && <span className="ml-1 text-amber-700">· some missing</span>}</span>
+              <span>Total known DP: {formatCurrency(totalDPC)}{items.some(i => i.dpc_price === '' && Number(i.quantity) > 0) && <span className="ml-1 text-amber-700">· some missing</span>}</span>
             </div>
           </div>
 
@@ -2567,8 +2653,13 @@ function SupplierImportTab() {
             <Button type="submit" disabled={submitting}><Ship size={16} /> {submitting ? 'Importing...' : 'Record Import'}</Button>
             <Button variant="secondary" type="button" onClick={() => setShowForm(false)}>Cancel</Button>
           </div>
+          </fieldset>
         </form>
       </Modal>
+      {showPackConfig && <StockProductPacks onClose={async () => {
+        setShowPackConfig(false);
+        try { const data = await api.stock.productPacks(); setPackRows(Array.isArray(data?.rows) ? data.rows : []); } catch (_) {}
+      }} />}
     </div>
   );
 }
@@ -8140,15 +8231,17 @@ function OrdersTab({ branch }) {
 }
 
 function ValuationTab({ branch }) {
-  const [valData, setValData] = useState({ rows: [] });
+  const [valData, setValData] = useState({ rows: [], summary: {} });
   const [loading, setLoading] = useState(true);
+  const [valError, setValError] = useState('');
   const [viewMode, setViewMode] = useState('product');
 
   const loadValuation = useCallback(() => {
     setLoading(true);
+    setValError('');
     api.stock.valuation()
       .then(d => setValData(d || { rows: [] }))
-      .catch(() => setValData({ rows: [] }))
+      .catch(e => setValError(e.message || 'Valuation could not be loaded.'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -8176,11 +8269,16 @@ function ValuationTab({ branch }) {
       locationId:   r.locationId,
       locationName: r.locationName,
       isWarehouse:  r.locationType === 'warehouse',
-      qty: 0, dpValue: 0, cifValue: 0,
+      qty: 0, dpValue: 0, cifValue: 0, missingCostQuantity: 0, missingDPCQuantity: 0,
     };
-    byLoc[key].qty      += r.qty;
-    byLoc[key].dpValue  += r.qty * (r.unitDPC || 0);
-    byLoc[key].cifValue += r.qty * (r.unitCIF || 0);
+    const qty = Number(r.qty || 0);
+    const missingCIF = Number(r.missingCostQuantity ?? (r.unitCIF == null ? qty : 0));
+    const missingDP = Number(r.missingDPCQuantity ?? (r.unitDPC == null ? qty : 0));
+    byLoc[key].qty += qty;
+    byLoc[key].missingCostQuantity += missingCIF;
+    byLoc[key].missingDPCQuantity += missingDP;
+    if (r.unitDPC != null) byLoc[key].dpValue += (qty - missingDP) * Number(r.unitDPC);
+    if (r.unitCIF != null) byLoc[key].cifValue += (qty - missingCIF) * Number(r.unitCIF);
   });
 
   const warehouses    = Object.values(byLoc).filter(g =>  g.isWarehouse);
@@ -8189,8 +8287,8 @@ function ValuationTab({ branch }) {
   const whTotals = warehouses.reduce(   (s, g) => ({ qty: s.qty + g.qty, dp: s.dp + g.dpValue, cif: s.cif + g.cifValue }), { qty: 0, dp: 0, cif: 0 });
   const brTotals = branchEntries.reduce((s, g) => ({ qty: s.qty + g.qty, dp: s.dp + g.dpValue, cif: s.cif + g.cifValue }), { qty: 0, dp: 0, cif: 0 });
   const grandQty = whTotals.qty + brTotals.qty;
-  const grandDP  = whTotals.dp  + brTotals.dp;
-  const grandCIF = whTotals.cif + brTotals.cif;
+  const grandDP  = branch === 'all' && valData.summary?.totalValueDPC != null ? Number(valData.summary.totalValueDPC) : whTotals.dp + brTotals.dp;
+  const grandCIF = branch === 'all' && valData.summary?.totalValueCIF != null ? Number(valData.summary.totalValueCIF) : whTotals.cif + brTotals.cif;
 
   const productMap = {};
   scopedRows.forEach(r => {
@@ -8198,21 +8296,36 @@ function ValuationTab({ branch }) {
     if (!productMap[key]) productMap[key] = {
       product: r.productName, location: r.locationName,
       isWarehouse: r.locationType === 'warehouse',
-      qty: 0, dpValue: 0, cifValue: 0,
-      dp: r.unitDPC || 0, cif: r.unitCIF || 0,
+       qty: 0, dpValue: 0, cifValue: 0, dpQty: 0, cifQty: 0, missingCostQuantity: 0, missingDPCQuantity: 0,
+       dp: r.unitDPC == null ? null : Number(r.unitDPC), cif: r.unitCIF == null ? null : Number(r.unitCIF),
     };
-    productMap[key].qty      += r.qty;
-    productMap[key].dpValue  += r.qty * (r.unitDPC || 0);
-    productMap[key].cifValue += r.qty * (r.unitCIF || 0);
+    const qty = Number(r.qty || 0);
+    const missingCIF = Number(r.missingCostQuantity ?? (r.unitCIF == null ? qty : 0));
+    const missingDP = Number(r.missingDPCQuantity ?? (r.unitDPC == null ? qty : 0));
+    productMap[key].qty += qty;
+    productMap[key].missingCostQuantity += missingCIF;
+    productMap[key].missingDPCQuantity += missingDP;
+    if (r.unitDPC != null) { const knownQty = qty - missingDP; productMap[key].dpValue += knownQty * Number(r.unitDPC); productMap[key].dpQty += knownQty; }
+    if (r.unitCIF != null) { const knownQty = qty - missingCIF; productMap[key].cifValue += knownQty * Number(r.unitCIF); productMap[key].cifQty += knownQty; }
+  });
+  Object.values(productMap).forEach(p => {
+    p.dp = p.dpQty ? p.dpValue / p.dpQty : null;
+    p.cif = p.cifQty ? p.cifValue / p.cifQty : null;
   });
   const breakdown = Object.values(productMap).sort((a, b) => b.dpValue - a.dpValue);
 
   const branchSummary = branchEntries
-    .map(g => ({ name: g.locationName, qty: g.qty, dpValue: g.dpValue, cifValue: g.cifValue }))
+    .map(g => ({ name: g.locationName, qty: g.qty, dpValue: g.dpValue, cifValue: g.cifValue, missingCostQuantity: g.missingCostQuantity, missingDPCQuantity: g.missingDPCQuantity }))
     .sort((a, b) => b.dpValue - a.dpValue);
 
   return (
     <div className="space-y-6">
+      {valError && <Alert type="error">{valError} <button type="button" onClick={loadValuation} className="ml-2 underline">Retry</button></Alert>}
+      {(Number(valData.summary?.missingCostQuantity || 0) > 0 || Number(valData.summary?.missingDPCQuantity || 0) > 0 || valData.summary?.valuationComplete === false) && (
+        <Alert type="warning">
+          Valuation is incomplete. {Number(valData.summary?.missingCostQuantity || 0).toLocaleString()} units are missing CIF cost and {Number(valData.summary?.missingDPCQuantity || 0).toLocaleString()} units are missing DP cost. Known values exclude missing-cost quantities; no catalogue prices are substituted.
+        </Alert>
+      )}
       {/* ── Top summary: warehouses + branches ─────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {warehouses.length === 0
@@ -8243,7 +8356,7 @@ function ValuationTab({ branch }) {
         <div>
           <div className="text-xs font-semibold text-emerald-600 uppercase tracking-wide mb-1">Total Stock Value (DP) — Warehouses + Branches</div>
           <div className="text-3xl font-bold text-emerald-800">N$ {Math.round(grandDP).toLocaleString('en-ZA')}</div>
-          <div className="text-sm text-emerald-600 mt-1">CIF cost N$ {Math.round(grandCIF).toLocaleString('en-ZA')} · Margin N$ {Math.round(grandDP - grandCIF).toLocaleString('en-ZA')}</div>
+          <div className="text-sm text-emerald-600 mt-1">Known CIF cost N$ {grandCIF.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} · {valData.summary?.valuationComplete === false ? 'Margin unavailable until costs are complete' : `Margin N$ ${(grandDP - grandCIF).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`}</div>
         </div>
         <div className="text-right">
           <div className="text-xs font-semibold text-emerald-600 uppercase tracking-wide mb-1">Total Units on Hand</div>
@@ -8277,7 +8390,7 @@ function ValuationTab({ branch }) {
                     <td className="px-4 py-2.5 text-right text-gray-700 border-b">{br.qty.toLocaleString()}</td>
                     <td className="px-4 py-2.5 text-right text-gray-600 border-b">N$ {Math.round(br.cifValue).toLocaleString('en-ZA')}</td>
                     <td className="px-4 py-2.5 text-right font-semibold text-gray-800 border-b">N$ {Math.round(br.dpValue).toLocaleString('en-ZA')}</td>
-                    <td className="px-4 py-2.5 text-right text-emerald-700 border-b">N$ {Math.round(br.dpValue - br.cifValue).toLocaleString('en-ZA')}</td>
+                    <td className="px-4 py-2.5 text-right text-emerald-700 border-b">{br.missingCostQuantity > 0 || br.missingDPCQuantity > 0 ? <span className="text-amber-700">Incomplete</span> : `N$ ${(br.dpValue - br.cifValue).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`}</td>
                     <td className="px-4 py-2.5 text-right text-gray-500 border-b">
                       <div className="flex items-center justify-end gap-2">
                         <div className="w-16 bg-gray-100 rounded-full h-1.5 overflow-hidden">
@@ -8293,7 +8406,7 @@ function ValuationTab({ branch }) {
                   <td className="px-4 py-2.5 text-right">{brTotals.qty.toLocaleString()}</td>
                   <td className="px-4 py-2.5 text-right">N$ {Math.round(brTotals.cif).toLocaleString('en-ZA')}</td>
                   <td className="px-4 py-2.5 text-right">N$ {Math.round(brTotals.dp).toLocaleString('en-ZA')}</td>
-                  <td className="px-4 py-2.5 text-right text-emerald-700">N$ {Math.round(brTotals.dp - brTotals.cif).toLocaleString('en-ZA')}</td>
+                  <td className="px-4 py-2.5 text-right text-emerald-700">{branchSummary.some(r => r.missingCostQuantity > 0 || r.missingDPCQuantity > 0) ? <span className="text-amber-700">Incomplete</span> : `N$ ${(brTotals.dp - brTotals.cif).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`}</td>
                   <td className="px-4 py-2.5 text-right">{grandDP > 0 ? ((brTotals.dp/grandDP)*100).toFixed(1) : 0}%</td>
                 </tr>
               </tbody>
@@ -8344,11 +8457,11 @@ function ValuationTab({ branch }) {
                     </td>
                     <td className="px-3 py-2.5 text-gray-600 border-b text-xs">{r.location}</td>
                     <td className="px-3 py-2.5 text-right font-bold text-gray-800 border-b">{r.qty.toLocaleString()}</td>
-                    <td className="px-3 py-2.5 text-right text-gray-500 border-b text-xs">{r.cif > 0 ? `N$ ${r.cif.toLocaleString('en-ZA', {minimumFractionDigits:0,maximumFractionDigits:0})}` : '—'}</td>
-                    <td className="px-3 py-2.5 text-right text-gray-500 border-b text-xs">{r.dp > 0 ? `N$ ${r.dp.toLocaleString('en-ZA', {minimumFractionDigits:0,maximumFractionDigits:0})}` : '—'}</td>
-                    <td className="px-3 py-2.5 text-right text-gray-600 border-b">{r.cifValue > 0 ? `N$ ${Math.round(r.cifValue).toLocaleString('en-ZA')}` : '—'}</td>
+                    <td className="px-3 py-2.5 text-right text-gray-500 border-b text-xs">{r.cif != null ? `N$ ${r.cif.toLocaleString('en-ZA', {minimumFractionDigits:2,maximumFractionDigits:6})}` : <span className="text-amber-700">Missing</span>}</td>
+                    <td className="px-3 py-2.5 text-right text-gray-500 border-b text-xs">{r.dp != null ? `N$ ${r.dp.toLocaleString('en-ZA', {minimumFractionDigits:2,maximumFractionDigits:6})}` : <span className="text-amber-700">Missing</span>}</td>
+                    <td className="px-3 py-2.5 text-right text-gray-600 border-b">{r.cifQty > 0 ? `N$ ${r.cifValue.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}` : '—'}</td>
                     <td className="px-3 py-2.5 text-right font-semibold border-b" style={{ color: '#c41e3a' }}>N$ {Math.round(r.dpValue).toLocaleString('en-ZA')}</td>
-                    <td className="px-3 py-2.5 text-right text-emerald-700 border-b">N$ {Math.round(r.dpValue - r.cifValue).toLocaleString('en-ZA')}</td>
+                    <td className="px-3 py-2.5 text-right text-emerald-700 border-b">{r.missingCostQuantity > 0 || r.missingDPCQuantity > 0 ? <span className="text-amber-700">Incomplete</span> : `N$ ${(r.dpValue - r.cifValue).toLocaleString('en-ZA', {minimumFractionDigits:2, maximumFractionDigits:4})}`}</td>
                   </tr>
                 ))
               }
@@ -8357,12 +8470,27 @@ function ValuationTab({ branch }) {
                   <td className="px-3 py-3" colSpan={2}>GRAND TOTAL</td>
                   <td className="px-3 py-3 text-right">{grandQty.toLocaleString()}</td>
                   <td colSpan={2}></td>
-                  <td className="px-3 py-3 text-right">N$ {Math.round(grandCIF).toLocaleString('en-ZA')}</td>
-                  <td className="px-3 py-3 text-right" style={{ color: '#c41e3a' }}>N$ {Math.round(grandDP).toLocaleString('en-ZA')}</td>
-                  <td className="px-3 py-3 text-right text-emerald-700">N$ {Math.round(grandDP - grandCIF).toLocaleString('en-ZA')}</td>
+                  <td className="px-3 py-3 text-right">N$ {grandCIF.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</td>
+                  <td className="px-3 py-3 text-right" style={{ color: '#c41e3a' }}>N$ {grandDP.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</td>
+                  <td className="px-3 py-3 text-right text-emerald-700">{valData.summary?.valuationComplete === false ? <span className="text-amber-700">Incomplete</span> : `N$ ${(grandDP - grandCIF).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`}</td>
                 </tr>
               )}
             </tbody>
+          </table>
+        </div>
+      </Card>
+      <Card>
+        <CardHeader><h3 className="font-bold text-gray-800">Batch cost detail</h3><p className="m-0 text-xs text-gray-500">Recorded batch-level prices and expiry; quantities without a cost remain excluded from known values.</p></CardHeader>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[780px] text-sm">
+            <thead><tr style={{ background: '#fef2f2' }}>{['Product','Location','Batch','Expiry','Qty','Unit CIF','Unit DP','Missing CIF qty','Missing DP qty'].map(h => <th key={h} className="border-b px-3 py-2 text-left text-xs font-bold uppercase text-gray-600">{h}</th>)}</tr></thead>
+            <tbody>{scopedRows.map((r, i) => <tr key={`${r.productName}-${r.locationId}-${r.batchNo}-${i}`} style={{ background: i % 2 ? '#fafafa' : '#fff' }}>
+              <td className="border-b px-3 py-2 font-medium">{r.productName || '—'}</td><td className="border-b px-3 py-2">{r.locationName || r.locationId || '—'}</td><td className="border-b px-3 py-2">{r.batchNo || '—'}</td><td className="border-b px-3 py-2">{r.expiryDate || '—'}</td><td className="border-b px-3 py-2">{Number(r.qty || 0).toLocaleString('en-NA', { maximumFractionDigits: 4 })}</td>
+              <td className="border-b px-3 py-2">{r.unitCIF == null ? <span className="font-semibold text-amber-700">Missing</span> : `N$ ${Number(r.unitCIF).toLocaleString('en-NA', { minimumFractionDigits: 2, maximumFractionDigits: 6 })}`}</td>
+              <td className="border-b px-3 py-2">{r.unitDPC == null ? <span className="font-semibold text-amber-700">Missing</span> : `N$ ${Number(r.unitDPC).toLocaleString('en-NA', { minimumFractionDigits: 2, maximumFractionDigits: 6 })}`}</td>
+              <td className="border-b px-3 py-2 font-semibold text-amber-800">{Number(r.missingCostQuantity ?? (r.unitCIF == null ? r.qty : 0)).toLocaleString()}</td><td className="border-b px-3 py-2 font-semibold text-amber-800">{Number(r.missingDPCQuantity ?? (r.unitDPC == null ? r.qty : 0)).toLocaleString()}</td>
+            </tr>)}
+            {!scopedRows.length && <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">No active stock batch rows.</td></tr>}</tbody>
           </table>
         </div>
       </Card>

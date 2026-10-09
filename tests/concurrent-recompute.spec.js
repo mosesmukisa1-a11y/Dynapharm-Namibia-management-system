@@ -3,7 +3,9 @@
  *
  * Verifies that running many parallel recomputes for the same
  * location+product+batch produces exactly one inventory_balances row with
- * a closing_qty that matches the true sum of all posted movements.
+ * correct ledger totals and an evidence-based owned-stock projection.
+ * These fixtures intentionally contain only movements, not physical batches or
+ * immutable dispatch allocations: recompute must not manufacture owned stock.
  *
  * Before task #145 the advisory lock was missing, so concurrent calls could
  * interleave their reads and writes and leave a stale or wrong balance.
@@ -18,6 +20,10 @@ const BATCH    = 'BATCH-CONCURRENT-TEST-001';
 const LOC_TYPE = 'branch';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+function expectLedgerOnlyProjection(row,ledgerClosing) {
+  expect(Number(row.inward_qty)-Number(row.outward_qty)).toBe(ledgerClosing);
+  expect(Number(row.closing_qty)).toBe(0);
+}
 
 async function cleanup() {
   await query(`DELETE FROM inventory_balances
@@ -95,7 +101,7 @@ describe('recomputeInventoryBalance — concurrent recompute serialisation (DB-b
     expect(rows).toHaveLength(1);
     expect(Number(rows[0].inward_qty)).toBe(15);
     expect(Number(rows[0].outward_qty)).toBe(7);
-    expect(Number(rows[0].closing_qty)).toBe(8);
+    expectLedgerOnlyProjection(rows[0],8);
   });
 
   it('second wave of movements followed by parallel recomputes reflects the updated total', async () => {
@@ -130,7 +136,7 @@ describe('recomputeInventoryBalance — concurrent recompute serialisation (DB-b
     expect(rows).toHaveLength(1);
     expect(Number(rows[0].inward_qty)).toBe(25);
     expect(Number(rows[0].outward_qty)).toBe(9);
-    expect(Number(rows[0].closing_qty)).toBe(16);
+    expectLedgerOnlyProjection(rows[0],16);
   });
 });
 
@@ -224,7 +230,7 @@ describe('recomputeLocationBalances — concurrent warehouse dispatch + receipt 
     expect(rows).toHaveLength(1);
     expect(Number(rows[0].inward_qty)).toBe(30);
     expect(Number(rows[0].outward_qty)).toBe(13);
-    expect(Number(rows[0].closing_qty)).toBe(17);
+    expectLedgerOnlyProjection(rows[0],17);
   });
 
   it('a third concurrent wave after more dispatches still lands on the correct balance', async () => {
@@ -252,7 +258,7 @@ describe('recomputeLocationBalances — concurrent warehouse dispatch + receipt 
     expect(rows).toHaveLength(1);
     expect(Number(rows[0].inward_qty)).toBe(36);
     expect(Number(rows[0].outward_qty)).toBe(16);
-    expect(Number(rows[0].closing_qty)).toBe(20);
+    expectLedgerOnlyProjection(rows[0],20);
   });
 });
 
@@ -346,7 +352,7 @@ describe('recomputeLocationBalances — concurrent country_stock import receipt 
     expect(rows).toHaveLength(1);
     expect(Number(rows[0].inward_qty)).toBe(80);
     expect(Number(rows[0].outward_qty)).toBe(35);
-    expect(Number(rows[0].closing_qty)).toBe(45);
+    expectLedgerOnlyProjection(rows[0],45);
   });
 
   it('a third concurrent wave after more imports and dispatches still lands on the correct balance', async () => {
@@ -374,7 +380,7 @@ describe('recomputeLocationBalances — concurrent country_stock import receipt 
     expect(rows).toHaveLength(1);
     expect(Number(rows[0].inward_qty)).toBe(92);
     expect(Number(rows[0].outward_qty)).toBe(42);
-    expect(Number(rows[0].closing_qty)).toBe(50);
+    expectLedgerOnlyProjection(rows[0],50);
   });
 });
 
@@ -472,7 +478,7 @@ describe('recomputeLocationBalances — concurrent in_transit transfer in + bran
     expect(rows).toHaveLength(1);
     expect(Number(rows[0].inward_qty)).toBe(40);
     expect(Number(rows[0].outward_qty)).toBe(16);
-    expect(Number(rows[0].closing_qty)).toBe(24);
+    expectLedgerOnlyProjection(rows[0],24);
   });
 
   it('a third concurrent wave after more in-transit movements still lands on the correct balance', async () => {
@@ -500,7 +506,7 @@ describe('recomputeLocationBalances — concurrent in_transit transfer in + bran
     expect(rows).toHaveLength(1);
     expect(Number(rows[0].inward_qty)).toBe(48);
     expect(Number(rows[0].outward_qty)).toBe(21);
-    expect(Number(rows[0].closing_qty)).toBe(27);
+    expectLedgerOnlyProjection(rows[0],27);
   });
 });
 
@@ -574,7 +580,7 @@ describe('recomputeLocationBalances — in_transit balance drops to zero after c
 
     expect(before).toHaveLength(1);
     expect(Number(before[0].inward_qty)).toBe(30);
-    expect(Number(before[0].closing_qty)).toBe(30);
+    expectLedgerOnlyProjection(before[0],30);
 
     // Step 3 — void the movements by setting their status to 'cancelled',
     // mirroring what the transfer cancellation handler does in transfers.js.
@@ -632,13 +638,13 @@ describe('recomputeLocationBalances — in_transit balance drops to zero after c
     await recomputeLocationBalances(IT_LOC_TYPE, IT_CANCEL_LOCATION);
 
     const { rows: full } = await query(
-      `SELECT closing_qty FROM inventory_balances
+      `SELECT inward_qty,outward_qty,closing_qty FROM inventory_balances
        WHERE location_type = $1 AND location_id = $2
          AND LOWER(TRIM(product_name)) = LOWER(TRIM($3))
          AND COALESCE(batch_no, '') = $4`,
       [IT_LOC_TYPE, IT_CANCEL_LOCATION, IT_CANCEL_PRODUCT, IT_CANCEL_BATCH]
     );
-    expect(Number(full[0].closing_qty)).toBe(30);
+    expectLedgerOnlyProjection(full[0],30);
 
     // Cancel only the qty=15 movement, leaving 10 + 5 = 15 posted.
     await query(
@@ -665,6 +671,6 @@ describe('recomputeLocationBalances — in_transit balance drops to zero after c
     expect(partial).toHaveLength(1);
     expect(Number(partial[0].inward_qty)).toBe(15);  // 10 + 5
     expect(Number(partial[0].outward_qty)).toBe(0);
-    expect(Number(partial[0].closing_qty)).toBe(15);
+    expectLedgerOnlyProjection(partial[0],15);
   });
 });

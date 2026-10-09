@@ -1,4 +1,5 @@
 import { normalizeBranchSlug, branchSearchTerms } from '../_lib/branchUtils.js';
+import { branchLayers, takeLayers, sourceSnapshot } from './stockCostLayers.js';
 // Server-recorded sale evidence, not a join to whatever lot happens to remain.
 // Physical/source IDs are intentionally historical strings: depleted rows may
 // disappear, but that must not change the supplier identity of the original sale.
@@ -11,7 +12,7 @@ export const saleAllocationSchema = `CREATE TABLE IF NOT EXISTS stock_sale_alloc
 const date = value => value instanceof Date ? value.toISOString().slice(0,10) : String(value || '').slice(0,10) || null;
 const equal = (a,b) => String(a || '').trim().toLowerCase()===String(b || '').trim().toLowerCase();
 
-export async function recordBranchSaleAllocationTx(client, {movementId,saleReference,batchId,quantity}) {
+export async function recordBranchSaleAllocationTx(client, {movementId,saleReference,batchId,quantity,branchMovementId,revenueUnit}) {
   await client.query(saleAllocationSchema);
   const row=(await client.query('SELECT * FROM branch_inventory_batches WHERE id=$1',[batchId])).rows[0];
   if (!row) throw new Error('Locked sale batch identity was lost');
@@ -21,15 +22,32 @@ export async function recordBranchSaleAllocationTx(client, {movementId,saleRefer
   if (frozen && frozen.id===row.source_batch_id) source=frozen;
   if (row.metadata?.provenance_conflict || !source || !equal(source.description,row.product_name)
     || source.batch_no!==row.batch_no || date(source.expiry_date)!==date(row.expiry_date)) source=null;
+  if (source) source=sourceSnapshot(source);
+  if (!Array.isArray(row.metadata?.cost_layers) && source)
+    row.metadata={...row.metadata,original_source:source};
+  const layers=branchLayers(row,Number(row.quantity)+Number(quantity));
+  const taken=takeLayers(layers,Number(quantity));
+  const cost=(field)=>taken.some(l=>l.source?.[field]==null) ? null :
+    taken.reduce((sum,l)=>sum+Number(l.source[field])*l.quantity,0)/Number(quantity);
+  const unique=new Set(taken.map(l=>l.source?.id || 'unknown'));
+  const original=unique.size===1 ? taken[0]?.source : null;
   const snapshot={
     id:row.id,batch_type:'branch',location:row.branch_id,product_name:row.product_name,batch_no:row.batch_no,
-    expiry_date:date(row.expiry_date),quantity:Number(quantity),source_batch_id:source?.id || null,
-    supplier_import_id:source?.supplier_import_id || null,supplier_name:source?.supplier_name || null,
-    unit_cost:source?.cif_unit_cost == null ? null : Number(source.cif_unit_cost),
-    unit_dp:source?.dpc_unit_value == null ? null : Number(source.dpc_unit_value),
-    original_source:source ? {...source,expiry_date:date(source.expiry_date)} : null,
+    expiry_date:date(row.expiry_date),quantity:Number(quantity),source_batch_id:original?.id || null,
+    supplier_import_id:original?.supplier_import_id || null,supplier_name:original?.supplier_name || null,
+    unit_cost:cost('cif_unit_cost'),unit_dp:cost('dpc_unit_value'),
+    original_source:original ? {...original,expiry_date:date(original.expiry_date)} : null,
+    cost_layers:taken,missing_cost_quantity:taken.filter(l=>l.source?.cif_unit_cost==null).reduce((sum,l)=>sum+l.quantity,0),
+    revenue_unit:revenueUnit ?? null,
     status:'in_stock',condition:'saleable',
   };
+  await client.query('UPDATE branch_inventory_batches SET metadata=$1 WHERE id=$2',
+    [JSON.stringify({...row.metadata,cost_layers:layers.filter(l=>l.quantity>0)}),batchId]);
+  // Selling prices remain in sale records; posted inventory cost is historical.
+  await client.query('UPDATE stock_movements SET unit_cif=$1,unit_dp=$2,original_unit_cif=$1,original_unit_dp=$2 WHERE id=$3',
+    [snapshot.unit_cost,snapshot.unit_dp,movementId]);
+  if (branchMovementId) await client.query('UPDATE branch_inventory_movements SET unit_price=$1 WHERE id=$2',
+    [snapshot.unit_dp,branchMovementId]);
   await client.query(`INSERT INTO stock_sale_allocations
     (movement_id,sale_reference,branch_batch_id,branch_id,product_name,batch_no,expiry_date,quantity,snapshot)
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
@@ -94,6 +112,13 @@ export async function preserveRestoredProvenanceTx(client,{batchId,snapshot,rece
     cif_unit_cost:mixed ? null : snapshot.unit_cost,unit_cif:mixed ? null : snapshot.unit_cost,
     supplier_import_id:mixed ? null : snapshot.supplier_import_id,
     supplier_name:mixed ? null : snapshot.supplier_name,customer_return_reference:snapshot.refund_reference};
+  const layers=branchLayers({...row,metadata:prior},previousQuantity);
+  layers.push({quantity:Number(receivedQuantity),source:snapshot.original_source ||
+    (snapshot.unit_cost==null && snapshot.unit_dp==null ? null : {
+      id:snapshot.source_batch_id || null,cif_unit_cost:snapshot.unit_cost,dpc_unit_value:snapshot.unit_dp,
+      supplier_import_id:snapshot.supplier_import_id || null,supplier_name:snapshot.supplier_name || null,
+      description:row.product_name,batch_no:row.batch_no,expiry_date:date(row.expiry_date)})});
+  metadata.cost_layers=layers.filter(l=>l.quantity>0);
   if (mixed) metadata.prior_original_source=prior.prior_original_source || priorSource || {
     source_batch_id:row.source_batch_id,quantity:previousQuantity,unverified:!row.source_batch_id,
   };

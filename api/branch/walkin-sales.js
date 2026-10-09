@@ -545,7 +545,8 @@ async function handler(req, res) {
             });
           }
         } else {
-          deductItems.push({ name: itemName, qty, unitPrice });
+          const charged=item.unit_price ?? item.unitPrice ?? (isMemberSale ? item.dpPrice ?? item.dp : item.cpPrice ?? item.cp);
+          deductItems.push({ name: itemName, qty, unitPrice,revenueUnit:charged==null ? null : Number(charged) });
         }
       }
 
@@ -607,7 +608,7 @@ async function handler(req, res) {
                 [smId, batch.product_name, batch.batch_no || '', batch.expiry_date || null,
                  take, saleMovType, branchId, saleId, 'Walk-in ' + customerType + ' sale', item.unitPrice || null]
               );
-              await recordBranchSaleAllocationTx(client,{movementId:smId,saleReference:saleId,batchId:batch.id,quantity:take});
+              await recordBranchSaleAllocationTx(client,{movementId:smId,saleReference:saleId,batchId:batch.id,quantity:take,branchMovementId:bimId,revenueUnit:item.revenueUnit});
               remaining -= take;
             }
             if (remaining > 0) {
