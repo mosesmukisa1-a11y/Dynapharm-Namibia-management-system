@@ -1,5 +1,6 @@
 import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
 import { query, getMany, getOne, withTransaction } from '../db.js';
+import { atomicStockRequest } from '../_lib/atomicStockRequest.js';
 import { branchSearchTerms } from '../_lib/branchUtils.js';
 import { recomputeLocationBalances } from '../services/stockEngine.js';
 import { broadcastStockEvent } from '../services/stockEvents.js';
@@ -372,7 +373,7 @@ function normalizeRxRow(row) {
   };
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   applyAuthCors(req, res);
 
   if (req.method === 'OPTIONS') {
@@ -572,6 +573,8 @@ export default async function handler(req, res) {
                WHERE LOWER(REPLACE(branch_id, ' ', '_')) = ANY($1)
                  AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))
                  AND quantity > 0
+                 AND COALESCE(status, 'in_stock') IN ('in_stock', 'available')
+                 AND (expiry_date IS NULL OR expiry_date >= (NOW() AT TIME ZONE 'Africa/Windhoek')::date)
                ORDER BY expiry_date ASC NULLS LAST
                FOR UPDATE`,
               [saleBranchCandidates, item.name]
@@ -743,6 +746,12 @@ export default async function handler(req, res) {
       }
 
       const record = buildSaleRecord(salePayload, existing);
+      const immutableFields = ['branch_id','status','items','total_amount','total_dp','total_cp','payment_status'];
+      for (const field of immutableFields) {
+        if (record[field] != null && JSON.stringify(record[field]) !== JSON.stringify(existing[field])) {
+          return res.status(409).json({ success: false, error: 'Posted sale quantities, totals, branch and status cannot be edited. Use a linked refund or controlled reversal.' });
+        }
+      }
       if (branchScope.enforced) {
         record.branch_id = existing.branch_id;
       }
@@ -762,6 +771,8 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'DELETE') {
+      return res.status(409).json({ success: false, error: 'Posted sales cannot be deleted because their stock and financial history must be preserved. Use a linked refund or controlled reversal.' });
+      /* Historical destructive deletion is intentionally disabled.
       const targetId = id;
       if (!targetId) {
         return res.status(400).json({ success: false, error: 'Sale id is required' });
@@ -780,6 +791,7 @@ export default async function handler(req, res) {
       }
 
       return res.status(200).json({ success: true });
+      */
     }
 
     return res.status(405).json({ success: false, error: 'Method not allowed' });
@@ -788,3 +800,4 @@ export default async function handler(req, res) {
     return res.status(500).json({ success: false, error: 'Internal server error' });
   }
 }
+export default atomicStockRequest(handler);

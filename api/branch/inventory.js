@@ -2,6 +2,8 @@ import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
 import { query, getMany, getOne, withTransaction } from '../db.js';
 import { recomputeLocationBalances } from '../services/stockEngine.js';
 import { normalizeBranchSlug } from '../_lib/branchUtils.js';
+import { atomicStockRequest } from '../_lib/atomicStockRequest.js';
+import { lockStockBatchTx } from '../services/stockLocks.js';
 
 function parseNumber(value, fallback = 0) {
   if (value === null || value === undefined || value === '') return fallback;
@@ -451,6 +453,7 @@ async function getMovementsByBranch(branchId, limit = 100) {
 }
 
 async function upsertInventoryBatch(client, payload) {
+  await lockStockBatchTx(client, payload.branchId, payload.productName, payload.batchNo, payload.expiryDate);
   const {
     id = generateId('BATCH'),
     branchId,
@@ -467,6 +470,18 @@ async function upsertInventoryBatch(client, payload) {
 
   const expirySqlDate = toSqlDate(expiryDate);
   const computedStatus = status || (parseNumber(quantity) > 0 ? 'in_stock' : 'out_of_stock');
+  const prior = (await client.query(
+    `SELECT id FROM branch_inventory_batches WHERE branch_id=$1 AND LOWER(TRIM(product_name))=LOWER(TRIM($2))
+      AND batch_no IS NOT DISTINCT FROM $3 AND expiry_date IS NOT DISTINCT FROM $4::date ORDER BY created_at,id LIMIT 1 FOR UPDATE`,
+    [branchId,productName,batchNo || null,expirySqlDate]
+  )).rows[0];
+  if (prior) {
+    const updated = await client.query(
+      `UPDATE branch_inventory_batches SET quantity=quantity+$1,unit_price=COALESCE($2,unit_price),status=$3,updated_at=NOW() WHERE id=$4 RETURNING *`,
+      [quantity,unitPrice,computedStatus,prior.id]
+    );
+    return normalizeInventoryRow(updated.rows[0]);
+  }
 
   const result = await client.query(
     `
@@ -563,6 +578,29 @@ async function recordMovement(client, payload) {
     ]
   );
 
+  const quantity = Number(movement.quantity);
+  const type = movement.type === 'adjustment'
+    ? (quantity >= 0 ? 'positive_adjustment' : 'negative_adjustment')
+    : movement.type === 'receive' ? 'received' : movement.type;
+  const batch = payload.relatedBatchId
+    ? (await client.query('SELECT expiry_date FROM branch_inventory_batches WHERE id = $1', [payload.relatedBatchId])).rows[0]
+    : null;
+  const inward = ['received', 'transfer_in', 'positive_adjustment'].includes(type);
+  await client.query(
+    `INSERT INTO stock_movements
+       (id, product_name, batch_no, expiry_date, quantity, movement_type,
+        source_location, source_location_type, destination_location, destination_location_type,
+        reference_id, notes, created_by, status, movement_date, created_at, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'posted',NOW(),NOW(),NOW())`,
+    [`SM-${movement.id}`, movement.product_name, movement.batch_no, batch?.expiry_date || null,
+     Math.abs(quantity), type,
+     inward ? (movement.source_branch_id || 'manual_source') : movement.branch_id,
+     inward ? (movement.source_branch_id ? 'branch' : 'external') : 'branch',
+     inward ? movement.branch_id : (movement.destination_branch_id || 'manual_destination'),
+     inward ? 'branch' : (movement.destination_branch_id ? 'branch' : 'external'),
+     movement.reference || movement.id, movement.notes, movement.created_by]
+  );
+  recomputeLocationBalances('branch', movement.branch_id).catch(error => console.error('[branch-movement-balance]', error.message));
   return normalizeMovementRow(result.rows[0]);
 }
 
@@ -646,7 +684,7 @@ async function handleTransfer(body, currentUser) {
   const result = await withTransaction(async (client) => {
     // Fetch source batch
     const sourceRow = await getOne(
-      'SELECT * FROM branch_inventory_batches WHERE branch_id = $1 AND product_name = $2 AND batch_no = $3 AND (expiry_date IS NOT DISTINCT FROM $4)',
+      'SELECT * FROM branch_inventory_batches WHERE branch_id = $1 AND product_name = $2 AND batch_no = $3 AND (expiry_date IS NOT DISTINCT FROM $4) FOR UPDATE',
       [fromBranchId, productName, batchNo, toSqlDate(expiryDate)]
     );
 
@@ -732,7 +770,7 @@ async function handleAdjustment(body, currentUser) {
 
   const result = await withTransaction(async (client) => {
     const existing = await getOne(
-      'SELECT * FROM branch_inventory_batches WHERE branch_id = $1 AND product_name = $2 AND batch_no = $3 AND (expiry_date IS NOT DISTINCT FROM $4)',
+      'SELECT * FROM branch_inventory_batches WHERE branch_id = $1 AND product_name = $2 AND batch_no = $3 AND (expiry_date IS NOT DISTINCT FROM $4) FOR UPDATE',
       [branchId, productName, batchNo, toSqlDate(expiryDate)]
     );
 
@@ -763,7 +801,7 @@ async function handleAdjustment(body, currentUser) {
   return result;
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   applyAuthCors(req, res);
 
   if (req.method === 'OPTIONS') {
@@ -847,6 +885,21 @@ export default async function handler(req, res) {
       }
 
       let result;
+      if (action === 'transfer') return res.status(409).json({ success:false, error:'Create a stock transfer request instead. Transfers require approval, dispatch and destination staff receipt; they cannot immediately credit another branch.' });
+      const quantity = Number(body.quantity);
+      if (!Number.isFinite(quantity) || quantity < 0 || (action !== 'adjust' && quantity <= 0) || !Number.isInteger(quantity)) {
+        return res.status(400).json({ success: false, error: 'Quantity must be a valid whole base-unit quantity; receipt/transfer quantities must be positive.' });
+      }
+      if (action === 'adjust' && !String(body.notes || '').trim()) {
+        return res.status(400).json({ success: false, error: 'An adjustment reason is required.' });
+      }
+      if (action === 'adjust' && !['gm','admin','superadmin','super_admin'].includes(String(currentUser.role || '').toLowerCase())) {
+        return res.status(403).json({ success:false, error:'Stock-count differences require General Manager approval; branch staff cannot directly change counted quantities.' });
+      }
+      if (['receive', 'adjust'].includes(action) && !['stock', 'stock_manager', 'gm', 'admin', 'superadmin', 'super_admin'].includes(String(currentUser.role || '').toLowerCase())) {
+        return res.status(403).json({ success: false, error: 'Manual receipts and adjustments require Stock Manager or administrator approval.' });
+      }
+      await query('SELECT pg_advisory_xact_lock(hashtext($1))', [`branch-manual:${[targetBranchId, destBranchId].filter(Boolean).sort().join(':')}:${String(body.productName || '').toLowerCase().trim()}`]);
       switch (action) {
         // Pass a normalized body so all handler functions receive canonical branch slugs.
         case 'receive':
@@ -880,4 +933,5 @@ export default async function handler(req, res) {
     return res.status(500).json({ success: false, error: 'Internal server error' });
   }
 }
+export default atomicStockRequest(handler, ['POST']);
 

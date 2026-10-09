@@ -1,5 +1,8 @@
 import { applyAuthCors } from '../_lib/auth.js';
-import { withTransaction } from '../db.js';
+import { withTransaction, getOne } from '../db.js';
+import { atomicStockRequest } from '../_lib/atomicStockRequest.js';
+import { receiveTransferTx } from '../services/transferReceipt.js';
+import { getBranchScope } from '../_lib/auth.js';
 import { recomputeLocationBalances } from '../services/stockEngine.js';
 import { normalizeBranchSlug } from '../_lib/branchUtils.js';
 
@@ -29,9 +32,10 @@ async function parseJsonBody(req) {
   });
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   applyAuthCors(req, res);
   if (req.method === 'OPTIONS') return res.status(200).end();
+  if (!req.user) return res.status(401).json({ success: false, error: 'Authentication required' });
   if (req.method !== 'POST') {
     return res.status(405).json({ success: false, error: 'Method not allowed' });
   }
@@ -51,17 +55,36 @@ export default async function handler(req, res) {
     // Normalize to canonical slug (e.g. 'katima' → 'katima_mulilo', 'Katima Mulilo' → 'katima_mulilo')
     // so branch_inventory_batches and stock_movements always use the canonical branch key.
     const branchId = normalizeBranchSlug(rawBranchId) || rawBranchId;
+    const scope = getBranchScope(req.user);
+    if (scope.enforced && !scope.branches.map(value => normalizeBranchSlug(value) || value).includes(branchId)) {
+      return res.status(403).json({ success: false, error: 'Cannot receive stock for another branch.' });
+    }
 
     if (!requestId) return res.status(400).json({ success: false, error: 'requestId is required' });
     if (!branchId) return res.status(400).json({ success: false, error: 'branchId is required' });
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ success: false, error: 'items array is required and must not be empty' });
     }
+    if (items.some(item => {
+      const quantity = Number(item.qtyReceived ?? item.quantity_received ?? item.quantityReceived ?? item.quantity ?? item.qty);
+      return !Number.isFinite(quantity) || quantity <= 0 || !Number.isInteger(quantity);
+    })) return res.status(400).json({ success: false, error: 'Received quantities must be finite positive whole base-unit quantities.' });
 
+    const linked = await getOne("SELECT id,to_branch FROM stock_transfers WHERE request_id=$1 AND status NOT IN ('cancelled','rejected') ORDER BY created_at DESC LIMIT 1", [requestId]);
+    if (linked) {
+      if ((normalizeBranchSlug(linked.to_branch) || linked.to_branch) !== branchId) return res.status(403).json({ success: false, error: 'Dispatch destination does not match this branch.' });
+      const result = await withTransaction(client => receiveTransferTx(client, {
+        transferId: linked.id, items, user: req.user, mode: 'increment',
+        receiptId: body.receiptId || req.headers['idempotency-key'],
+      }));
+      recomputeLocationBalances('branch', branchId).catch(error => console.error('[request-receipt]', error.message));
+      recomputeLocationBalances('in_transit', `in_transit:${linked.id}`).catch(error => console.error('[request-transit]', error.message));
+      return res.json({ success: true, ...result, itemsProcessed: items.length });
+    }
     const result = await withTransaction(async (client) => {
       // ── 1. Lock the request row and check status atomically ──────────────────
       const reqResult = await client.query(
-        `SELECT id, status, request_number FROM stock_requests WHERE id = $1 FOR UPDATE`,
+        `SELECT * FROM stock_requests WHERE id = $1 FOR UPDATE`,
         [requestId]
       );
       if (reqResult.rows.length === 0) {
@@ -70,6 +93,8 @@ export default async function handler(req, res) {
         throw err;
       }
       const reqRow = reqResult.rows[0];
+      if ((normalizeBranchSlug(reqRow.requesting_branch) || reqRow.requesting_branch) !== branchId) throw Object.assign(new Error('Request belongs to a different branch.'), { statusCode: 403 });
+      if (!reqRow.dispatch_warehouse || reqRow.dispatch_warehouse !== warehouseSource) throw Object.assign(new Error('Warehouse must match the recorded dispatch warehouse.'), { statusCode: 400 });
       if (reqRow.status === 'received') {
         const err = new Error(
           'This stock request has already been received. ' +
@@ -126,11 +151,7 @@ export default async function handler(req, res) {
             toDeduct -= take;
           }
           if (toDeduct > 0) {
-            console.warn(
-              `[stock/receive-request] shortfall: could not fully deduct ` +
-              `${productName} from ${warehouseSource} (shortfall: ${toDeduct}). ` +
-              `Stock may have already been reserved or dispatched via a transfer.`
-            );
+            throw Object.assign(new Error(`Insufficient source stock for ${productName}; receipt was not saved. A pre-dispatched delivery must reference its transfer.`), { statusCode: 422 });
           }
         }
 
@@ -218,3 +239,4 @@ export default async function handler(req, res) {
     return res.status(status).json({ success: false, error: err.message });
   }
 }
+export default atomicStockRequest(handler, ['POST']);

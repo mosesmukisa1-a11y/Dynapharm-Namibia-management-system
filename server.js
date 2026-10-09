@@ -4,6 +4,7 @@ import fs from 'fs';
 import os from 'os';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
+import { atomicStockRequest } from './api/_lib/atomicStockRequest.js';
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 5000;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -678,7 +679,7 @@ app.post('/api/stock-adjustments', async (req, res) => {
   }
 });
 
-app.patch('/api/stock-adjustments/:id/approve', async (req, res) => {
+app.patch('/api/stock-adjustments/:id/approve', atomicStockRequest(async (req, res) => {
   try {
     const { query, getOne } = await import('./api/db.js');
     const { recomputeLocationBalances } = await import('./api/services/stockEngine.js');
@@ -694,7 +695,7 @@ app.patch('/api/stock-adjustments/:id/approve', async (req, res) => {
     const approved_by = req.user?.sub || req.user?.username || 'gm';
     const approved_by_name = req.user?.fullName || req.user?.full_name || req.user?.name || approved_by;
 
-    const adj = await getOne('SELECT * FROM stock_adjustments WHERE id = $1', [adjId]);
+    const adj = await getOne('SELECT * FROM stock_adjustments WHERE id = $1 FOR UPDATE', [adjId]);
     if (!adj) return res.status(404).json({ error: 'Adjustment not found' });
     if (adj.status !== 'pending') return res.status(400).json({ error: 'Already processed' });
 
@@ -728,10 +729,11 @@ app.patch('/api/stock-adjustments/:id/approve', async (req, res) => {
         const dbCol = batchColumnMap[field_to_adjust];
         if (!dbCol) return res.status(400).json({ error: `Field '${field_to_adjust}' is not adjustable` });
 
-        const qtyDelta = field_to_adjust === 'quantity' ? Number(new_value) - Number(adj.old_value || 0) : 0;
-
         // Fetch current batch for audit trail (batch_no, expiry_date, location)
-        const batchRow = await getOne('SELECT batch_no, expiry_date, location, warehouse_id FROM stock_batches WHERE id = $1', [target_id]);
+        const batchRow = await getOne('SELECT batch_no, expiry_date, location, warehouse_id, remaining_quantity FROM stock_batches WHERE id = $1 FOR UPDATE', [target_id]);
+        if (!batchRow) return res.status(404).json({ error: 'Target stock batch not found; approval was not applied.' });
+        const qtyDelta = field_to_adjust === 'quantity' ? Number(new_value) - Number(batchRow.remaining_quantity || 0) : 0;
+        if (field_to_adjust === 'quantity' && (!Number.isFinite(Number(new_value)) || Number(new_value) < 0 || !Number.isInteger(Number(new_value)))) return res.status(400).json({ error: 'Quantity must be a nonnegative whole base-unit quantity.' });
 
         if (field_to_adjust === 'quantity') {
           // Update both remaining_quantity AND quantity (by the same delta) so the
@@ -845,7 +847,7 @@ app.patch('/api/stock-adjustments/:id/approve', async (req, res) => {
     console.error('stock-adjustments approve:', err);
     res.status(500).json({ error: err.message });
   }
-});
+}));
 
 app.patch('/api/stock-adjustments/:id/reject', async (req, res) => {
   try {
@@ -2742,6 +2744,8 @@ server.on('error', (error) => {
         created_at       TIMESTAMPTZ   DEFAULT NOW(),
         processed_at     TIMESTAMPTZ
       )`,
+      `ALTER TABLE branch_refund_requests ADD COLUMN IF NOT EXISTS return_condition TEXT`,
+      `ALTER TABLE branch_refund_requests ADD COLUMN IF NOT EXISTS stock_disposition TEXT`,
       // charge_unit: what the patient is actually charged per unit (CP for non-members, DP for members)
       // Stored alongside unit_price (always DP / cost basis) so the correction script and reports
       // can distinguish company cost from patient revenue without re-joining product_prices.
@@ -3293,6 +3297,10 @@ server.on('error', (error) => {
     }
     // ───────────────────────────────────────────────────────────────────────
 
+    // Historical corrections require reviewed evidence and separate approval.
+    // Preserve the legacy routines for audit, but never run them on startup.
+    const runLegacyStockRepairs = false;
+    if (runLegacyStockRepairs) {
     // ── Mark all NULL-status stock_movements as 'posted' ────────────────────
     // Historical records created before the status field was enforced have
     // status = NULL.  The stockEngine only counts 'posted' movements, so
@@ -3909,6 +3917,9 @@ server.on('error', (error) => {
       console.warn('[transfer-heal] Startup heal failed:', healErr.message);
     }
     // ─────────────────────────────────────────────────────────────────────────
+
+    }
+    console.log('[stock-safety] Automatic historical stock repairs are disabled.');
 
     // ── Start automated stock reporting scheduler ────────────────────────────
     try {

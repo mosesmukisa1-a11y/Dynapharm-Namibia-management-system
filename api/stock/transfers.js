@@ -1,21 +1,27 @@
 import { applyAuthCors } from '../_lib/auth.js';
 import { query, getMany, getOne, insert, update, remove, publishRealtimeEvent, withTransaction } from '../db.js';
+import { atomicStockRequest } from '../_lib/atomicStockRequest.js';
+import { receiveTransferTx } from '../services/transferReceipt.js';
 import { recomputeLocationBalances, inferLocationType } from '../services/stockEngine.js';
 import { broadcastStockEvent } from '../services/stockEvents.js';
 import { branchSearchTerms, normalizeBranchSlug } from '../_lib/branchUtils.js';
 import { checkAutoApproveTransfer } from '../services/stockAutomation.js';
 
-async function fefoDeductStockBatches(client, locationFilter, productName, totalQty) {
+async function fefoDeductStockBatches(client, locationFilter, productName, totalQty, batchNo = null, expiryDate = null) {
   const batches = await client.query(
     `SELECT id, remaining_quantity FROM stock_batches
      WHERE (location = $1 OR warehouse_id = $1)
-       AND (LOWER(description) = LOWER($2) OR description ILIKE $3)
+       AND LOWER(TRIM(description)) = LOWER(TRIM($2))
+       AND ($3::text IS NULL OR COALESCE(batch_no,'')=COALESCE($3,''))
+       AND ($4::date IS NULL OR expiry_date=$4)
+       AND (expiry_date IS NULL OR expiry_date >= (NOW() AT TIME ZONE 'Africa/Windhoek')::date)
+       AND status != 'expired'
        AND remaining_quantity > 0
      ORDER BY
        CASE WHEN LOWER(description) = LOWER($2) THEN 0 ELSE 1 END,
        expiry_date ASC NULLS LAST
      FOR UPDATE`,
-    [locationFilter, productName, '%' + productName + '%']
+    [locationFilter, productName, batchNo, expiryDate]
   );
   let remaining = totalQty;
   for (const batch of batches.rows) {
@@ -44,7 +50,7 @@ async function fefoDeductWarehouseInventory(client, warehouseId, productName, to
        CASE WHEN LOWER(product_name) = LOWER($2) THEN 0 ELSE 1 END,
        expiry_date ASC NULLS LAST
      FOR UPDATE`,
-    [warehouseId, productName, '%' + productName + '%']
+    [warehouseId, productName, productName]
   );
   let remaining = totalQty;
   for (const row of inv.rows) {
@@ -62,18 +68,21 @@ async function fefoDeductWarehouseInventory(client, warehouseId, productName, to
   return totalQty - remaining;
 }
 
-async function fefoDeductBranchInventoryBatches(client, branchId, productName, totalQty) {
+async function fefoDeductBranchInventoryBatches(client, branchId, productName, totalQty, batchNo = null, expiryDate = null) {
   const batches = await client.query(
     `SELECT id, quantity FROM branch_inventory_batches
-     WHERE branch_id = $1
-       AND (LOWER(product_name) = LOWER($2) OR product_name ILIKE $3)
+     WHERE LOWER(TRIM(branch_id)) = ANY($1::text[])
+       AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))
+       AND ($3::text IS NULL OR COALESCE(batch_no,'')=COALESCE($3,''))
+       AND ($4::date IS NULL OR expiry_date=$4)
+       AND (expiry_date IS NULL OR expiry_date >= (NOW() AT TIME ZONE 'Africa/Windhoek')::date)
        AND quantity > 0
        AND status != 'expired'
      ORDER BY
        CASE WHEN LOWER(product_name) = LOWER($2) THEN 0 ELSE 1 END,
        expiry_date ASC NULLS LAST
      FOR UPDATE`,
-    [branchId, productName, '%' + productName + '%']
+    [branchSearchTerms(branchId), productName, batchNo, expiryDate]
   );
   let remaining = totalQty;
   for (const row of batches.rows) {
@@ -557,12 +566,13 @@ async function listTransfers(searchParams) {
   return rows.map((row) => normalizeTransfer(row, itemsMap, notesMap));
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   applyAuthCors(req, res);
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
+  if (!req.user) return res.status(401).json({ success: false, error: 'Authentication required' });
 
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const searchParams = url.searchParams;
@@ -576,6 +586,7 @@ export default async function handler(req, res) {
 
     if (req.method === 'POST') {
       const body = await parseBody(req);
+      if (!['pending','pending_approval','prepared','draft','awaiting_gm'].includes(String(body.status || 'prepared'))) return res.status(409).json({ success:false, error:'Create a prepared transfer first, then approve and dispatch it through the stock workflow.' });
       const items = parseItems(body.items || body.itemsArray);
 
       const toLocation = body.toBranch || body.to_branch || body.to_location || body.toWarehouse || body.to_warehouse || null;
@@ -802,6 +813,23 @@ export default async function handler(req, res) {
       if (!id) {
         return res.status(400).json({ success: false, error: 'id is required' });
       }
+      const receiptTarget = body.status;
+      if (['received', 'delivered', 'partially_received'].includes(receiptTarget)) {
+        const target = await getOne('SELECT to_branch FROM stock_transfers WHERE id=$1', [id]);
+        if (target && inferLocationType(target.to_branch) === 'branch') {
+          const result = await withTransaction(client => receiveTransferTx(client, {
+            transferId: id, items: parseItems(body.items || body.itemsArray), user: currentUser,
+            requestedStatus: receiptTarget, receiptId: body.receiptId || req.headers['idempotency-key'],
+          }));
+          recomputeLocationBalances('branch', result.branchId).catch(error => console.error('[receipt-balance]', error.message));
+          recomputeLocationBalances('in_transit', `in_transit:${id}`).catch(error => console.error('[transit-balance]', error.message));
+          await publishRealtimeEvent('stock_transfers', 'update', result.transfer);
+          broadcastStockEvent('transfer_received', { transferId: id, branchId: result.branchId });
+          const itemMap = await loadTransferItems([id]);
+          const notesMap = await loadDispatchNotes([id]);
+          return res.json({ success: true, transfer: normalizeTransfer(result.transfer, itemMap, notesMap), receivedQuantity: result.receivedQuantity });
+        }
+      }
 
       const updatePayload = { ...body };
       delete updatePayload.id;
@@ -985,7 +1013,8 @@ export default async function handler(req, res) {
         updatePayload.metadata = JSON.stringify(updatePayload.metadata);
       }
 
-      const oldTransfer = await getOne('SELECT status, from_warehouse, to_branch, gm_action, gm_approved_by, prepared_by_id, created_by FROM stock_transfers WHERE id = $1', [id]);
+      const oldTransfer = await getOne('SELECT * FROM stock_transfers WHERE id = $1 FOR UPDATE', [id]);
+      if (!oldTransfer) return res.status(404).json({ success: false, error: 'Transfer not found' });
       const previousStatus = oldTransfer?.status;
 
       // Hard gate: block ANY stock-advancing status transition without a prior or current GM approval.
@@ -994,13 +1023,39 @@ export default async function handler(req, res) {
       // The gate passes ONLY when: (a) a valid GM approval action is present in this request, OR
       // (b) the record already has a persisted GM approval (gm_approved_by set from a prior approval event).
       const targetStatus = updatePayload.status || body.status;
+      const actorRole = String(currentUser?.role || '').toLowerCase();
+      const approvers = ['gm','admin','superadmin','super_admin'];
+      if ((body.gmAction || body.gm_action) && !approvers.includes(actorRole)) return res.status(403).json({ success:false, error:'Only a General Manager may record an approval decision.' });
+      if (targetStatus === 'in_transit' && !['dispatched','in_transit'].includes(previousStatus)) return res.status(409).json({ success:false, error:'Dispatch the transfer before placing it in transit.' });
+      if (targetStatus === 'approved' && previousStatus !== 'approved') {
+        if (!approvers.includes(actorRole)) return res.status(403).json({ success: false, error: 'GM approval is required.' });
+        updatePayload.gm_approved_by = currentUser.fullName || currentUser.username || String(currentUser.id);
+        updatePayload.gm_approved_by_id = String(currentUser.id);
+        updatePayload.gm_approved_at = new Date().toISOString();
+        updatePayload.gm_action = 'approved';
+      }
+      if (targetStatus === 'dispatched') {
+        if (!['stock','stock_manager',...approvers].includes(actorRole)) return res.status(403).json({ success: false, error: 'Stock Manager dispatch access required.' });
+        if (!['approved','dispatched'].includes(previousStatus)) return res.status(409).json({ success: false, error: 'Approve the transfer before dispatching it.' });
+      }
+      if (['cancelled','rejected'].includes(targetStatus) && previousStatus === 'approved' && !['stock','stock_manager',...approvers].includes(actorRole)) {
+        return res.status(403).json({ success: false, error: 'A stock approver must release an approved reservation.' });
+      }
+      if (['cancelled', 'rejected'].includes(targetStatus) && ['dispatched', 'in_transit', 'partially_received', 'received', 'delivered', 'completed'].includes(previousStatus)) {
+        return res.status(409).json({ success: false, error: 'Stock has already left its source. Use a controlled return/reversal rather than cancelling the dispatch.' });
+      }
+      if (body.items || body.itemsArray) {
+        if (['dispatched','in_transit','partially_received','received','delivered','completed'].includes(previousStatus)) {
+          return res.status(409).json({ success: false, error: 'Dispatched allocations cannot be edited. Use a linked correction or return.' });
+        }
+      }
       const STOCK_ADVANCING_STATUSES = ['approved', 'dispatched', 'in_transit', 'received', 'partially_received', 'delivered', 'completed'];
       const ALREADY_PAST_GATE_STATUSES = ['approved', 'dispatched', 'in_transit', 'received', 'partially_received', 'delivered', 'completed'];
       const isStockAdvancingTransition = targetStatus &&
         STOCK_ADVANCING_STATUSES.includes(targetStatus) &&
         previousStatus !== targetStatus &&
         !ALREADY_PAST_GATE_STATUSES.includes(previousStatus || '');
-      if (isStockAdvancingTransition && !isGmApprovalAction && !oldTransfer?.gm_approved_by) {
+      if (isStockAdvancingTransition && !isGmApprovalAction && !oldTransfer?.gm_approved_by && !(targetStatus === 'approved' && approvers.includes(actorRole))) {
         return res.status(403).json({
           success: false,
           error: 'GM approval is required before this dispatch can proceed. A General Manager must approve this transfer before status can advance.',
@@ -1200,7 +1255,8 @@ export default async function handler(req, res) {
               const expiryDate = item.expiry_date || null;
               const productId = item.product_id || productName;
 
-              await fefoDeductStockBatches(client, 'country_stock', productName, qty);
+              const deducted = await fefoDeductStockBatches(client, 'country_stock', productName, qty, batchNo, expiryDate);
+              if (deducted < qty) throw Object.assign(new Error(`Insufficient country stock in the specified lot for ${productName}.`), { statusCode:422 });
 
               const whBatchId = `WH-RCV-${id.slice(-6)}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
               const existing = await client.query(
@@ -1252,12 +1308,13 @@ export default async function handler(req, res) {
 
                 // Physically reserve from source — deduct the right table depending on source type.
                 if (aprSrcType === 'branch') {
-                  const deducted = await fefoDeductBranchInventoryBatches(client, normalizedSrc, productName, qtyToReserve);
+                  const deducted = await fefoDeductBranchInventoryBatches(client, normalizedSrc, productName, qtyToReserve, item.batch_no, item.expiry_date);
                   if (deducted < qtyToReserve) {
-                    console.warn(`[transfers] approval shortfall: ${productName} at ${normalizedSrc} — requested ${qtyToReserve}, deducted ${deducted}. Transfer approved with partial stock.`);
+                    throw Object.assign(new Error(`Insufficient branch stock to reserve ${productName}; approval was not saved.`), { statusCode: 422 });
                   }
                 } else {
-                  await fefoDeductStockBatches(client, sourceWarehouse, productName, qtyToReserve);
+                  const reserved = await fefoDeductStockBatches(client, sourceWarehouse, productName, qtyToReserve, item.batch_no, item.expiry_date);
+                  if (reserved < qtyToReserve) throw Object.assign(new Error(`Insufficient warehouse stock to reserve ${productName}; approval was not saved.`), { statusCode: 422 });
                   await fefoDeductWarehouseInventory(client, sourceWarehouse, productName, qtyToReserve);
                 }
 
@@ -1286,12 +1343,13 @@ export default async function handler(req, res) {
               if (!alreadyDeducted && sourceWarehouse) {
                 const normalizedSrc = normalizeBranchSlug(sourceWarehouse) || sourceWarehouse;
                 if (dspSrcType === 'branch') {
-                  const deducted = await fefoDeductBranchInventoryBatches(client, normalizedSrc, productName, qty);
+                  const deducted = await fefoDeductBranchInventoryBatches(client, normalizedSrc, productName, qty, item.batch_no, item.expiry_date);
                   if (deducted < qty) {
-                    console.warn(`[transfers] dispatch shortfall: ${productName} at ${normalizedSrc} — requested ${qty}, deducted ${deducted}. Dispatched with partial stock.`);
+                    throw Object.assign(new Error(`Insufficient branch stock: ${productName}; need ${qty}, available ${deducted}.`), { statusCode: 422 });
                   }
                 } else {
-                  await fefoDeductStockBatches(client, sourceWarehouse, productName, qty);
+                  const deducted = await fefoDeductStockBatches(client, sourceWarehouse, productName, qty, item.batch_no, item.expiry_date);
+                  if (deducted < qty) throw Object.assign(new Error(`Insufficient warehouse stock: ${productName}; need ${qty}, available ${deducted}.`), { statusCode: 422 });
                   await fefoDeductWarehouseInventory(client, sourceWarehouse, productName, qty);
                 }
               }
@@ -1301,8 +1359,8 @@ export default async function handler(req, res) {
               const movId = `MOV-DSP-${Date.now()}-${Math.floor(Math.random() * 9999)}`;
               await client.query(
                 `INSERT INTO stock_movements (id, product_name, batch_no, expiry_date, quantity, movement_type, source_location, source_location_type, destination_location, destination_location_type, reference_id, notes, created_by, status, created_at, updated_at)
-                 VALUES ($1, $2, $3, $4, $5, 'transfer_out', $6, $7, $8, 'branch', $9, $10, $11, 'posted', NOW(), NOW())`,
-                [movId, productName, batchNo, expiryDate, qty, sourceWarehouse || 'warehouse', dspSrcType, transfer.to_branch || 'branch', id,
+                 VALUES ($1, $2, $3, $4, $5, 'transit_dispatch', $6, $7, $8, 'in_transit', $9, $10, $11, 'posted', NOW(), NOW())`,
+                [movId, productName, batchNo, expiryDate, qty, sourceWarehouse || 'warehouse', dspSrcType, `in_transit:${id}`, id,
                  `Dispatched to ${transfer.to_branch || 'branch'} — transfer ${id}`, actorName]
               );
             }
@@ -1584,6 +1642,10 @@ export default async function handler(req, res) {
               console.error('[stockEngine] transfer receipt recompute error:', e.message)
             );
           }
+          if (transfer.status === 'dispatched') {
+            await query("UPDATE stock_movements SET status='consumed',updated_at=NOW() WHERE reference_id=$1 AND movement_type='reserved' AND status IN ('posted','approved')", [id]);
+            recomputeLocationBalances('in_transit', `in_transit:${id}`).catch(error => console.error('[stock transit]', error.message));
+          }
         }
       }
 
@@ -1659,6 +1721,8 @@ export default async function handler(req, res) {
       if (!id) {
         return res.status(400).json({ success: false, error: 'id query parameter is required' });
       }
+      const deleting = await getOne('SELECT status FROM stock_transfers WHERE id=$1 FOR UPDATE', [id]);
+      if (deleting && !['pending','draft','prepared','awaiting_gm','pending_approval'].includes(deleting.status)) return res.status(409).json({ success: false, error: 'Posted transfers cannot be deleted. Preserve the audit trail and use a linked correction.' });
       await remove('stock_transfers', id, 'id');
       await query('DELETE FROM stock_transfer_items WHERE transfer_id = $1', [id]);
       await query('DELETE FROM dispatch_notes WHERE transfer_id = $1', [id]);
@@ -1670,8 +1734,9 @@ export default async function handler(req, res) {
     return res.status(405).json({ success: false, error: 'Method not allowed' });
   } catch (error) {
     console.error('Stock transfers API error:', error);
-    return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
+    return res.status(error.statusCode || 500).json({ success: false, error: error.message || 'Internal server error' });
   }
 }
+export default atomicStockRequest(handler);
 
 

@@ -3,7 +3,7 @@
  * Single source of truth: stock_movements
  * Fast-read cache: inventory_balances
  */
-import { query, getOne, withTransaction, publishRealtimeEvent } from '../db.js';
+import { query, getOne, withTransaction, publishRealtimeEvent, deferUntilCommit } from '../db.js';
 
 // Movement types that INCREASE stock at the destination location
 export const INWARD_TYPES = new Set([
@@ -13,6 +13,9 @@ export const INWARD_TYPES = new Set([
   'transfer_in',
   'received',
   'return_in',
+  'refund_return',
+  'transit_dispatch',
+  'transit_receipt',
   'positive_adjustment',
 ]);
 
@@ -21,6 +24,8 @@ export const OUTWARD_TYPES = new Set([
   'warehouse_dispatch',
   'branch_receipt',      // warehouse→branch transfer: outflow from the source warehouse
   'transfer_out',
+  'transit_dispatch',
+  'transit_receipt',
   // NOTE: 'reserved' is intentionally NOT here. It is a soft-reservation marker posted
   // at GM approval to signal intent; the physical stock deduction happens via
   // fefoDeductStockBatches() at that same moment.  Including 'reserved' in OUTWARD_TYPES
@@ -142,15 +147,10 @@ export async function recomputeInventoryBalanceTx(client, key) {
   let lastMovementDate = null;
 
   for (const m of result.rows) {
-    if (!expiryVal && m.expiry_date) {
-      expiryVal = m.expiry_date;
-    }
     const srcType = m.source_location_type || inferLocationType(m.source_location);
     const dstType = m.destination_location_type || inferLocationType(m.destination_location);
 
     const qty = Number(m.quantity || 0);
-    if (m.unit_dp) unitDP = Number(m.unit_dp);
-    if (m.unit_cif) unitCIF = Number(m.unit_cif);
 
     const isInbound = dstType === locationType &&
       m.destination_location === locationId &&
@@ -159,6 +159,12 @@ export async function recomputeInventoryBalanceTx(client, key) {
     const isOutbound = srcType === locationType &&
       m.source_location === locationId &&
       OUTWARD_TYPES.has(m.movement_type);
+
+    if (isInbound || isOutbound) {
+      if (!expiryVal && m.expiry_date) expiryVal = m.expiry_date;
+      if (m.unit_dp) unitDP = Number(m.unit_dp);
+      if (m.unit_cif) unitCIF = Number(m.unit_cif);
+    }
 
     if (isInbound) {
       inwardQty += qty;
@@ -501,6 +507,7 @@ export async function getClosingStock(params) {
  * @param {string} locationId   - e.g. 'oshakati_branch'
  */
 export async function recomputeLocationBalances(locationType, locationId) {
+  if (deferUntilCommit(() => recomputeLocationBalances(locationType, locationId))) return;
   // Discover ALL product+batch combinations that have EVER had a movement at
   // this location, regardless of status.  The recomputeInventoryBalance call
   // below already filters on status IN ('posted','approved'), so products whose

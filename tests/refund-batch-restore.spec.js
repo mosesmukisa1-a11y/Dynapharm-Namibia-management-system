@@ -60,7 +60,7 @@ function buildMockReqRes(body) {
     url: '/api/stock/refund-requests',
     headers: { host: 'localhost' },
     user: { id: 'test-admin', role: 'admin', fullName: 'Test Admin' },
-    body,
+    body: { return_condition: 'saleable', ...body },
   };
 
   return { req, res, captured };

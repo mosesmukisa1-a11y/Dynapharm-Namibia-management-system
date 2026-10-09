@@ -1,4 +1,5 @@
 import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
+import { atomicStockRequest } from '../_lib/atomicStockRequest.js';
 import { query, getOne, getMany, withTransaction } from '../db.js';
 import { recomputeLocationBalances } from '../services/stockEngine.js';
 import { postActivityRecord, generateBatId } from '../_lib/activityCapture.js';
@@ -48,10 +49,8 @@ async function resolveBranchId(raw) {
   return ci ? ci.branch_id : key;
 }
 
-// Deduct `qty` units of `productName` from branch_inventory_batches (FIFO by expiry).
-// Falls back to inventory_balances when no batch rows exist so that stock tracked
-// only via the central stock-engine path is still deductable.
-async function deductStock(client, branchId, productName, qty, movType, noteStr, saleId, unitPrice, createdBy) {
+// Only locked physical batches are sellable. Cached balances cannot create stock.
+export async function deductStock(client, branchId, productName, qty, movType, noteStr, saleId, unitPrice, createdBy) {
   let remaining = qty;
   const deductions = [];
 
@@ -59,6 +58,8 @@ async function deductStock(client, branchId, productName, qty, movType, noteStr,
   const batches = (await client.query(
     `SELECT id, product_name, batch_no, expiry_date, quantity FROM branch_inventory_batches
      WHERE branch_id = $1 AND LOWER(TRIM(product_name)) = LOWER(TRIM($2)) AND quantity > 0
+       AND COALESCE(status, 'in_stock') IN ('in_stock', 'available')
+       AND (expiry_date IS NULL OR expiry_date >= (NOW() AT TIME ZONE 'Africa/Windhoek')::date)
      ORDER BY expiry_date ASC NULLS LAST
      FOR UPDATE`,
     [branchId, productName]
@@ -94,118 +95,10 @@ async function deductStock(client, branchId, productName, qty, movType, noteStr,
     remaining -= take;
   }
 
-  if (remaining <= 0) return { deductions, short: 0 };
-
-  // ── Fallback: inventory_balances ────────────────────────────────────────
-  // Products that arrived via the centralised stock engine may not have a
-  // branch_inventory_batches row yet.  Check inventory_balances and, if the
-  // stock is there, either top-up an existing batch or insert a new one so
-  // the deduction is still properly recorded.
-  const stripped     = branchId.replace(/_branch$/, '');
-  const ibCandidates = [branchId];
-  if (!branchId.endsWith('_branch')) ibCandidates.push(branchId + '_branch');
-  if (stripped !== branchId) ibCandidates.push(stripped);
-
-  const ibRows = (await client.query(
-    `SELECT product_name, batch_no, expiry_date,
-            GREATEST(closing_qty, 0) AS available_qty, unit_dp
-     FROM inventory_balances
-     WHERE location_type = 'branch'
-       AND location_id = ANY($1)
-       AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))
-       AND closing_qty > 0
-     ORDER BY expiry_date ASC NULLS LAST`,
-    [ibCandidates, productName]
-  )).rows;
-
-  for (const ib of ibRows) {
-    if (remaining <= 0) break;
-    const ibAvailable = Number(ib.available_qty);
-    if (ibAvailable <= 0) continue;
-
-    // ── Fallback concurrency fix ───────────────────────────────────────────
-    // The old code used ON CONFLICT DO UPDATE SET quantity = GREATEST(bib, ib).
-    // That silently restores already-sold units: if a sale deducted BIB to 2
-    // but inventory_balances still shows 10 (stale), GREATEST would reset BIB
-    // to 10 and let us deduct against phantom stock.
-    //
-    // Correct approach:
-    //  1. Lock any existing BIB row first (FOR UPDATE).
-    //  2. If a row exists, deduct from its ACTUAL current quantity — never
-    //     from the stale IB value.
-    //  3. If no row exists, create one from IB (the stock-engine balance is
-    //     the source of truth for products with no BIB row yet).
-    const existingBibLocked = (await client.query(
-      `SELECT id, quantity FROM branch_inventory_batches
-       WHERE branch_id = $1
-         AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))
-         AND batch_no    IS NOT DISTINCT FROM $3
-         AND expiry_date IS NOT DISTINCT FROM $4
-       FOR UPDATE`,
-      [branchId, ib.product_name, ib.batch_no || null, ib.expiry_date || null]
-    )).rows;
-
-    let bibId, actualAvailable;
-    if (existingBibLocked.length > 0) {
-      // Row exists — use its live quantity, not the stale IB value
-      bibId           = existingBibLocked[0].id;
-      actualAvailable = Number(existingBibLocked[0].quantity);
-    } else {
-      // No BIB row yet — create one seeded from inventory_balances
-      const inserted = (await client.query(
-        `INSERT INTO branch_inventory_batches
-           (id, branch_id, product_name, batch_no, expiry_date,
-            quantity, unit, unit_price, status, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6::numeric,'units',$7,'in_stock',NOW(),NOW())
-         RETURNING id`,
-        [
-          'BIB-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6).toUpperCase(),
-          branchId, ib.product_name, ib.batch_no || null, ib.expiry_date || null,
-          ibAvailable,
-          ib.unit_dp ? Number(ib.unit_dp) : (unitPrice || null),
-        ]
-      )).rows;
-      bibId           = inserted[0]?.id;
-      actualAvailable = ibAvailable;
-    }
-
-    if (!bibId || actualAvailable <= 0) continue;
-    const take = Math.min(remaining, actualAvailable);
-    if (take <= 0) continue;
-
-    // Deduct from the (now-locked) BIB row
-    await client.query(
-      `UPDATE branch_inventory_batches SET quantity = quantity - $1, updated_at = NOW() WHERE id = $2`,
-      [take, bibId]
-    );
-    await client.query(`DELETE FROM branch_inventory_batches WHERE id = $1 AND quantity <= 0`, [bibId]);
-
-    const ts2  = Date.now();
-    const bimId = 'BIM-' + ts2 + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
-    await client.query(
-      `INSERT INTO branch_inventory_movements (id, branch_id, type, product_name, batch_no, quantity, unit_price, reference, notes, created_by, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())`,
-      [bimId, branchId, movType, ib.product_name, ib.batch_no || '', take,
-       unitPrice || null, saleId, noteStr + ' [from inventory_balances]', createdBy || '']
-    );
-    const smId2 = 'MOV-' + ts2 + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();
-    await client.query(
-      `INSERT INTO stock_movements
-         (id, product_name, batch_no, expiry_date, quantity, movement_type,
-          source_location, source_location_type, destination_location, destination_location_type,
-          reference_id, notes, status, unit_dp, movement_date, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,'branch','customer',NULL,$8,$9,'posted',$10,NOW(),NOW(),NOW())`,
-      [smId2, ib.product_name, ib.batch_no || '', ib.expiry_date || null,
-       take, movType, branchId, saleId, noteStr, unitPrice || null]
-    );
-    deductions.push({ product_name: ib.product_name, batch_no: ib.batch_no, quantity: take, movement_type: movType, source: 'inventory_balances' });
-    remaining -= take;
-  }
-
   return { deductions, short: remaining };
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   applyAuthCors(req, res);
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (!req.user) return res.status(401).json({ success: false, error: 'Authentication required' });
@@ -583,3 +476,4 @@ export default async function handler(req, res) {
     return res.status(500).json({ success: false, error: err.message || 'Internal server error' });
   }
 }
+export default atomicStockRequest(handler);

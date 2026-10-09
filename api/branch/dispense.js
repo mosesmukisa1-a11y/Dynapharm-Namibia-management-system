@@ -1,4 +1,5 @@
 import { applyAuthCors } from '../_lib/auth.js';
+import { atomicStockRequest } from '../_lib/atomicStockRequest.js';
 import { query, getMany, getOne, withTransaction } from '../db.js';
 import { branchSearchTerms } from '../_lib/branchUtils.js';
 import { recomputeLocationBalances } from '../services/stockEngine.js';
@@ -16,7 +17,7 @@ async function parseJsonBody(req) {
   });
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   applyAuthCors(req, res);
   if (req.method === 'OPTIONS') return res.status(200).end();
 
@@ -146,6 +147,8 @@ export default async function handler(req, res) {
              WHERE LOWER(REPLACE(branch_id, ' ', '_')) = ANY($1)
                AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))
                AND quantity > 0
+               AND COALESCE(status, 'in_stock') IN ('in_stock', 'available')
+               AND (expiry_date IS NULL OR expiry_date >= (NOW() AT TIME ZONE 'Africa/Windhoek')::date)
              ORDER BY expiry_date ASC NULLS LAST
              FOR UPDATE`,
             [dispenseBranchCandidates, productName]
@@ -362,3 +365,4 @@ export default async function handler(req, res) {
     return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
   }
 }
+export default atomicStockRequest(handler);

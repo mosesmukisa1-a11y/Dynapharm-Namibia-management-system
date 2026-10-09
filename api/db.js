@@ -1,4 +1,46 @@
 import { Pool } from 'pg';
+import { AsyncLocalStorage } from 'node:async_hooks';
+
+const requestTransactions = new AsyncLocalStorage();
+
+export function deferUntilCommit(callback) {
+  const context = requestTransactions.getStore();
+  if (!context?.active) return false;
+  context.afterCommit.push(callback);
+  return true;
+}
+
+export async function withRequestTransaction(fn) {
+  if (requestTransactions.getStore()?.active) return fn();
+  const client = await getPool().connect();
+  const context = { client, active: true, afterCommit: [], pending: new Set() };
+  let result;
+  try {
+    await client.query('BEGIN');
+    result = await requestTransactions.run(context, async () => {
+      const value = await fn();
+      while (context.pending.size) await Promise.all([...context.pending]);
+      // COMMIT in an aborted PostgreSQL transaction returns ROLLBACK rather than
+      // throwing. Verify the transaction is usable before declaring success.
+      await client.query('SELECT 1');
+      await client.query('COMMIT');
+      return value;
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    context.afterCommit = [];
+    throw error;
+  } finally {
+    context.active = false;
+    client.release();
+  }
+  for (const callback of context.afterCommit) {
+    try { await callback(); } catch (error) {
+      console.error('[stock-after-commit]', error.message);
+    }
+  }
+  return result;
+}
 
 let pool = null;
 
@@ -49,9 +91,13 @@ function getPool() {
 }
 
 export async function query(text, params) {
-  const pool = getPool();
+  const context = requestTransactions.getStore();
+  const executor = context?.active ? context.client : getPool();
   try {
-    const res = await pool.query(text, params);
+    const pending = executor.query(text, params);
+    if (context?.active) context.pending.add(pending);
+    let res;
+    try { res = await pending; } finally { context?.pending.delete(pending); }
     return res;
   } catch (error) {
     console.error('Database query error', { text, error: error.message });
@@ -128,6 +174,7 @@ export async function findAll(tableName, conditions = {}, orderBy = 'created_at 
 
 // Publish realtime events
 export async function publishRealtimeEvent(resource, action, data) {
+  if (deferUntilCommit(() => publishRealtimeEvent(resource, action, data))) return;
   try {
     const REALTIME_GATEWAY_URL = process.env.REALTIME_GATEWAY_URL;
     if (!REALTIME_GATEWAY_URL) return;
@@ -156,6 +203,8 @@ export async function publishRealtimeEvent(resource, action, data) {
 }
 
 export async function withTransaction(fn) {
+  const context = requestTransactions.getStore();
+  if (context?.active) return fn(context.client);
   const pool = getPool();
   const client = await pool.connect();
   try {

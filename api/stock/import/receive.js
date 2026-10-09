@@ -9,6 +9,7 @@
  *   2. stock_batches at country_stock — physical batch record with cost data
  */
 import { query } from '../../db.js';
+import { atomicStockRequest } from '../../_lib/atomicStockRequest.js';
 import { postStockMovement, recomputeLocationBalances } from '../../services/stockEngine.js';
 
 async function parseBody(req) {
@@ -21,7 +22,9 @@ async function parseBody(req) {
   });
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
+  if (!req.user) return res.status(401).json({ success: false, error: 'Authentication required' });
+  if (!['stock','stock_manager','admin','superadmin','super_admin','gm'].includes(String(req.user.role || '').toLowerCase())) return res.status(403).json({ success: false, error: 'Stock Manager access required' });
   if (req.method !== 'POST') return res.status(405).json({ success: false, error: 'Method not allowed' });
 
   const body = await parseBody(req);
@@ -38,7 +41,7 @@ export default async function handler(req, res) {
     if (!item.expiryDate || !String(item.expiryDate).trim()) {
       validationErrors.push(`Item ${i + 1} (${item.productName || item.productId || 'unknown'}): expiryDate is required`);
     }
-    if (!item.quantity || Number(item.quantity) <= 0) {
+    if (!Number.isFinite(Number(item.quantity)) || Number(item.quantity) <= 0 || !Number.isInteger(Number(item.quantity))) {
       validationErrors.push(`Item ${i + 1}: quantity must be > 0`);
     }
   }
@@ -131,3 +134,4 @@ export default async function handler(req, res) {
     message: `${posted.length} item(s) received into Country Stock (staging). Use Release to Warehouse to distribute.`,
   });
 }
+export default atomicStockRequest(handler, ['POST']);

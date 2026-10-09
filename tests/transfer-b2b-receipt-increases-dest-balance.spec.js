@@ -97,8 +97,8 @@ async function seedDispatchedTransfer({ transferId, srcBranch, dstBranch, batchN
   await query(
     `INSERT INTO stock_transfers
        (id, from_warehouse, to_branch, status,
-        dispatched_by, dispatched_at, created_by, created_at, updated_at)
-     VALUES ($1, $2, $3, 'dispatched', 'Test Admin', NOW(), 'Test Admin', NOW(), NOW())`,
+        dispatched_by, dispatched_at, created_by, gm_approved_by, created_at, updated_at)
+     VALUES ($1, $2, $3, 'dispatched', 'Test Admin', NOW(), 'Test Admin', 'Test GM', NOW(), NOW())`,
     [transferId, srcBranch, dstBranch]
   );
 

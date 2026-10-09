@@ -5,7 +5,7 @@
  *  1. runAutoWriteOff()           — nightly: submit expired batches for GM approval
  *  2. runAutoStockRequest()       — nightly: create stock requests when stock < min threshold
  *  3. runAutoReceiveDispatched()  — every tick: auto-receive transfers idle >N hours
- *  4. checkAutoApproveTransfer()  — inline at transfer creation: small qty → skip to dispatched
+ *  4. checkAutoApproveTransfer() — retained compatibility hook; staff approval/dispatch required
  */
 
 import { query, withTransaction, getMany, getOne } from '../db.js';
@@ -238,7 +238,7 @@ export async function runAutoStockRequest() {
       const warehouse = items[0].preferred_warehouse || preferredWarehouse;
 
       await query(
-        `INSERT INTO stock_requests (id, requesting_branch, requested_by, priority, notes, items, status, created_at, updated_at)
+        `INSERT INTO stock_requests (id, requesting_branch, created_by, priority, notes, items, status, created_at, updated_at)
          VALUES ($1,$2,'system','high',$3,$4,'pending',NOW(),NOW())`,
         [id, branchId,
          `Auto-generated reorder: ${items.length} product${items.length !== 1 ? 's' : ''} below minimum stock threshold`,
@@ -283,6 +283,35 @@ export async function runAutoStockRequest() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function runAutoReceiveDispatched() {
+  const rawHours = Number(await getConfig('auto_receive_hours', '24'));
+  const hours = Number.isFinite(rawHours) && rawHours > 0 ? rawHours : 24;
+  await withTransaction(async client => {
+    // Serialize reminder selection across workers; never credit stock here.
+    await client.query("SELECT pg_advisory_xact_lock(hashtext('overdue-stock-receipt-reminders'))");
+    const overdue = await client.query(
+      `SELECT st.id, st.to_branch
+       FROM stock_transfers st
+       WHERE st.status IN ('dispatched', 'in_transit', 'partially_received')
+         AND st.updated_at < NOW() - ($1::numeric * INTERVAL '1 hour')
+         AND NOT EXISTS (
+           SELECT 1 FROM notifications n
+           WHERE n.title = 'Stock receipt overdue' AND n.message LIKE '%' || st.id || '%'
+             AND n.created_at > NOW() - INTERVAL '24 hours'
+         )`,
+      [hours]
+    );
+    for (const transfer of overdue.rows) {
+      await client.query(
+        `INSERT INTO notifications (id, recipient_type, recipient_id, title, message, type, is_read, created_at)
+         VALUES ($1,'branch',$2,'Stock receipt overdue',$3,'warning',false,NOW())`,
+        [genId('NOTIF'), transfer.to_branch, `Transfer ${transfer.id} is awaiting staff receipt confirmation. Stock remains in transit; confirm actual quantities and discrepancies.`]
+      );
+    }
+  });
+}
+
+// Retained only as historical implementation evidence; never called/exported.
+async function legacyAutoReceiveDispatchedDisabled() {
   const enabled = await getConfig('auto_receive_enabled', 'true');
   if (enabled !== 'true') return;
 
@@ -428,6 +457,10 @@ export async function runAutoReceiveDispatched() {
  * @returns {boolean} true if auto-approved, false otherwise
  */
 export async function checkAutoApproveTransfer(transferId, totalQty, fromWarehouse, toBranch, actorName) {
+  // Size does not establish approval or prove that goods were physically sent.
+  return false;
+}
+async function legacyAutoApproveTransferDisabled(transferId, totalQty, fromWarehouse, toBranch, actorName) {
   try {
     const enabled = await getConfig('small_transfer_auto_approve', 'true');
     if (enabled !== 'true') return false;
@@ -786,7 +819,7 @@ export async function runWarehouseReorderCheck() {
     try {
       const id = genId('ORD');
       await query(
-        `INSERT INTO stock_requests (id, requesting_branch, requested_by, priority, notes, items, status, created_at, updated_at)
+        `INSERT INTO stock_requests (id, requesting_branch, created_by, priority, notes, items, status, created_at, updated_at)
          VALUES ($1,$2,'system','high',$3,$4,'pending',NOW(),NOW())`,
         [id, warehouseId,
          `Warehouse reorder: ${rows.length} product${rows.length !== 1 ? 's' : ''} below minimum (${minQty} units) — warehouse reorder from country stock`,
@@ -917,7 +950,7 @@ export async function runNightlyStockHealthDigest() {
     getMany(
       `SELECT COALESCE(SUM(sm.quantity * COALESCE(pp.distributor_price,0)),0) AS value
        FROM stock_movements sm
-       LEFT JOIN product_prices pp ON LOWER(TRIM(pp.product_name))=LOWER(TRIM(sm.product_name))
+       LEFT JOIN product_prices pp ON LOWER(TRIM(pp.description))=LOWER(TRIM(sm.product_name))
        WHERE sm.movement_type='write_off' AND sm.status='pending_approval'`
     ),
   ]);

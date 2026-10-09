@@ -955,6 +955,7 @@ function RefundApprovalsTab() {
   const [loading, setLoading]             = useState(true);
   const [filter, setFilter]               = useState('pending');
   const [acting, setActing]               = useState({});
+  const [returnConditions, setReturnConditions] = useState({});
   const [rejectionReasons, setRejectionReasons] = useState({});
   const [showReject, setShowReject]       = useState({});
   const [alert, setAlert]                 = useState(null);
@@ -978,8 +979,11 @@ function RefundApprovalsTab() {
   const handleApprove = async req => {
     setActing(a => ({ ...a, [req.id]: 'approving' }));
     try {
-      await api.stock.approveRefundRequest(req.id, { approved_by: user?.full_name || user?.username || 'Stock Manager' });
-      setAlert({ type: 'success', msg: `✅ Refund approved — ${req.quantity} × "${req.product_name}" stock restored to ${fmtLoc(req.branch_id)}.` });
+      const result = await api.stock.approveRefundRequest(req.id, {
+        approved_by: user?.fullName || user?.username || 'Stock Manager',
+        return_condition: returnConditions[req.id] || 'quarantine',
+      });
+      setAlert({ type: 'success', msg: result?.message || 'Refund request approved.' });
       load();
     } catch (e) {
       setAlert({ type: 'error', msg: `Failed: ${e.message}` });
@@ -991,7 +995,7 @@ function RefundApprovalsTab() {
     if (!reason) { setAlert({ type: 'error', msg: 'Please enter a rejection reason.' }); return; }
     setActing(a => ({ ...a, [req.id]: 'rejecting' }));
     try {
-      await api.stock.rejectRefundRequest(req.id, { approved_by: user?.full_name || user?.username || 'Stock Manager', rejection_reason: reason });
+      await api.stock.rejectRefundRequest(req.id, { approved_by: user?.fullName || user?.username || 'Stock Manager', rejection_reason: reason });
       setAlert({ type: 'success', msg: `Refund request for "${req.product_name}" rejected.` });
       setShowReject(s => ({ ...s, [req.id]: false }));
       load();
@@ -1016,7 +1020,7 @@ function RefundApprovalsTab() {
         <div>
           <h3 style={{ fontWeight: 900, fontSize: '1.08rem', margin: 0 }}>↩️ Credit Refund Approvals</h3>
           <p style={{ fontSize: '0.8rem', opacity: 0.8, margin: '3px 0 0' }}>
-            Review branch refund requests. Approval returns stock to the branch and deducts the amount from branch sales automatically.
+            Review branch refund requests and record the returned item's condition. Only saleable items restore available stock; all other returns are segregated.
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -1083,6 +1087,12 @@ function RefundApprovalsTab() {
                     {req.sale_reference && <span>🧾 Ref: <strong>{req.sale_reference}</strong></span>}
                   </div>
                   <div style={{ marginTop: 8, fontSize: '0.85rem', color: '#374151' }}><strong>Reason:</strong> {req.reason}</div>
+                  {req.status === 'approved' && (
+                    <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: '6px 18px', fontSize: '0.82rem', color: '#334155' }}>
+                      {req.return_condition && <span><strong>Return condition:</strong> {req.return_condition}</span>}
+                      {req.stock_disposition && <span><strong>Stock disposition:</strong> {req.stock_disposition}</span>}
+                    </div>
+                  )}
                   <div style={{ marginTop: 4, fontSize: '0.78rem', color: '#94a3b8' }}>
                     Requested by: {req.requested_by || '—'}
                     {req.approved_by && ` · Processed by: ${req.approved_by}`}
@@ -1097,6 +1107,26 @@ function RefundApprovalsTab() {
                 {/* Action buttons (pending only) */}
                 {req.status === 'pending' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 170 }}>
+                    <div>
+                      <label htmlFor={`refund-condition-${req.id}`} style={{ display: 'block', marginBottom: 5, fontSize: '0.8rem', fontWeight: 800, color: '#334155' }}>
+                        Returned item condition
+                      </label>
+                      <select
+                        id={`refund-condition-${req.id}`}
+                        value={returnConditions[req.id] || 'quarantine'}
+                        onChange={e => setReturnConditions(s => ({ ...s, [req.id]: e.target.value }))}
+                        disabled={!!acting[req.id]}
+                        style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #cbd5e1', borderRadius: 8, background: '#fff', color: '#1e293b', fontSize: '0.84rem' }}
+                      >
+                        <option value="saleable">Saleable</option>
+                        <option value="damaged">Damaged</option>
+                        <option value="expired">Expired</option>
+                        <option value="quarantine">Quarantine — pending inspection</option>
+                      </select>
+                      <p style={{ margin: '5px 0 0', fontSize: '0.74rem', lineHeight: 1.45, color: '#64748b' }}>
+                        Only saleable returns restore available stock. Damaged, expired, and quarantined items are segregated.
+                      </p>
+                    </div>
                     <button onClick={() => handleApprove(req)} disabled={!!acting[req.id]}
                       style={{ padding: '9px 20px', background: acting[req.id] === 'approving' ? '#d1fae5' : 'linear-gradient(135deg,#16a34a,#15803d)', color: acting[req.id] === 'approving' ? '#15803d' : '#fff', border: 'none', borderRadius: 9, fontWeight: 800, fontSize: '0.88rem', cursor: acting[req.id] ? 'default' : 'pointer' }}>
                       {acting[req.id] === 'approving' ? '⏳ Approving…' : '✅ Approve Refund'}

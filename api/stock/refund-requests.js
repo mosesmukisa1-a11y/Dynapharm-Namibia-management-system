@@ -3,10 +3,16 @@ import { getMany, getOne, query, withTransaction } from '../db.js';
 import { generateBatId } from '../_lib/activityCapture.js';
 import { recomputeLocationBalances } from '../services/stockEngine.js';
 import { normalizeBranchSlug } from '../_lib/branchUtils.js';
+import { atomicStockRequest } from '../_lib/atomicStockRequest.js';
+import { lockStockBatchTx } from '../services/stockLocks.js';
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   applyAuthCors(req, res);
   if (req.method === 'OPTIONS') return res.status(200).end();
+  if (!req.user) return res.status(401).json({ success: false, error: 'Authentication required' });
+  if (!['stock', 'stock_manager', 'admin', 'superadmin', 'super_admin', 'gm'].includes(String(req.user.role || '').toLowerCase())) {
+    return res.status(403).json({ success: false, error: 'Stock Manager or administrator access required' });
+  }
 
   if (req.method === 'GET') {
     try {
@@ -35,41 +41,68 @@ export default async function handler(req, res) {
 
   if (req.method === 'PATCH') {
     try {
-      const { id, action, approved_by, rejection_reason } = req.body || {};
+      const { id, action, approved_by, rejection_reason, return_condition } = req.body || {};
       if (!id || !action)
         return res.status(400).json({ success: false, error: 'id and action are required' });
 
-      const refund = await getOne('SELECT * FROM branch_refund_requests WHERE id = $1', [id]);
+      const refund = await getOne('SELECT * FROM branch_refund_requests WHERE id = $1 FOR UPDATE', [id]);
       if (!refund) return res.status(404).json({ success: false, error: 'Refund request not found' });
       if (refund.status !== 'pending')
         return res.status(400).json({ success: false, error: 'Request has already been processed' });
 
       if (action === 'approve') {
+        if (!['saleable', 'damaged', 'expired', 'quarantine'].includes(return_condition)) {
+          return res.status(400).json({ success: false, error: 'Inspect the returned goods and select their condition before approving.' });
+        }
         const now      = new Date();
         const movId    = `RFND-${Date.now()}-${Math.random().toString(36).slice(2,5).toUpperCase()}`;
         const smId     = `SM-RFND-${Date.now()}-${Math.random().toString(36).slice(2,6).toUpperCase()}`;
         const batId    = generateBatId();
         const qty      = parseFloat(refund.quantity);
+        if (!Number.isFinite(qty) || qty <= 0) return res.status(400).json({ success: false, error: 'Refund quantity must be finite and positive' });
         const unitDp   = parseFloat(refund.unit_price);
         const dpTotal  = parseFloat(refund.refund_amount);
         const branchId = refund.branch_id;
         const product  = refund.product_name;
         const batchNo  = refund.batch_no || '';
-        const approver = approved_by || 'Stock Manager';
+        const approver = req.user.fullName || req.user.username || req.user.id || 'Stock Manager';
         const today    = now.toISOString().slice(0, 10);
 
         // ── Look up the live DP (cost basis) for the product so BAT product_total_dp
         // correctly reflects the inventory cost, not the campaign selling price. ──
-        const livePriceRow = await getOne(
-          `SELECT dp FROM product_prices WHERE LOWER(TRIM(description)) = LOWER(TRIM($1)) LIMIT 1`,
-          [product]
+        const originalCost = await getOne(
+          `SELECT unit_dp FROM stock_movements WHERE reference_id=$1
+           AND LOWER(TRIM(product_name))=LOWER(TRIM($2))
+           AND movement_type IN ('walkin_sale','walk_in_member_sale','walk_in_non_member_sale','campaign_sale','prescription_dispense','sale')
+           AND status IN ('posted','approved') ORDER BY created_at LIMIT 1`,
+          [refund.sale_reference, product]
         );
         // costDp: use live DP for the cost-basis column; fall back to refund.unit_price
         // only when the product has no price list entry (e.g. checkup fees).
-        const costDp      = livePriceRow ? Number(livePriceRow.dp || 0) : unitDp;
+        const costDp      = originalCost?.unit_dp != null ? Number(originalCost.unit_dp) : unitDp;
         const dpCostTotal = Math.round(costDp * qty * 100) / 100;
 
         await withTransaction(async (client) => {
+          if (refund.sale_reference) {
+            await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`refund-sale:${branchId}:${refund.sale_reference}`]);
+            const sold = (await client.query(
+              `SELECT SUM(quantity) AS quantity FROM stock_movements
+               WHERE reference_id=$1 AND LOWER(TRIM(product_name))=LOWER(TRIM($2))
+                 AND COALESCE(batch_no,'')=COALESCE($3,'') AND status IN ('posted','approved')
+                 AND movement_type IN ('walkin_sale','walkin_member_sale','walkin_non_member_sale','walk_in_member_sale','walk_in_non_member_sale','campaign_sale','prescription_dispense','sale')`,
+              [refund.sale_reference, product, batchNo]
+            )).rows[0];
+            if (sold.quantity != null) {
+              const returned = (await client.query(
+                `SELECT COALESCE(SUM(quantity),0) AS quantity FROM branch_refund_requests
+                 WHERE sale_reference=$1 AND branch_id=$2 AND LOWER(TRIM(product_name))=LOWER(TRIM($3))
+                   AND COALESCE(batch_no,'')=COALESCE($4,'') AND status='approved' AND id != $5`,
+                [refund.sale_reference, branchId, product, batchNo, refund.id]
+              )).rows[0];
+              if (Number(returned.quantity) + qty > Number(sold.quantity)) throw Object.assign(new Error('Cumulative returned quantity exceeds the original sale allocation.'), { statusCode: 400 });
+            }
+          }
+          await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`refund-batch:${branchId}:${product.toLowerCase().trim()}:${batchNo || ''}`]);
           // ── 1. branch_inventory_movements — financial refund record ──────────
           await client.query(
             `INSERT INTO branch_inventory_movements
@@ -147,12 +180,13 @@ export default async function handler(req, res) {
             }
           }
 
-          // ── Concurrency guard: lock the BIB row before restoring ─────────────
-          // Two concurrent approval requests for the same refund can both
-          // reach this UPDATE at the same time and add qty twice.  The FOR
-          // UPDATE lock serialises them: the second request blocks until the
-          // first commits, then sees the already-updated row and skips the
-          // duplicate restore.
+          // The refund row guards the operation; the logical batch lock protects
+          // creation even when no row exists. FOR UPDATE protects existing stock.
+          if (return_condition === 'saleable') {
+          await lockStockBatchTx(client, branchId, product, resolvedBatchNo, resolvedExpiry);
+          const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Windhoek', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+          const expiryDay = resolvedExpiry instanceof Date ? resolvedExpiry.toISOString().slice(0, 10) : String(resolvedExpiry || '').slice(0, 10);
+          if (expiryDay && expiryDay < today) throw Object.assign(new Error('Expired returns cannot be restored to saleable stock.'), { statusCode: 400 });
           const lockedBib = await client.query(
             `SELECT id FROM branch_inventory_batches
              WHERE branch_id = $1
@@ -182,6 +216,7 @@ export default async function handler(req, res) {
             );
           }
 
+          }
           // ── 4. stock_movements — audit entry for stock engine ────────────────
           // expiry_date must match what was written to branch_inventory_batches
           // (resolvedExpiry, not NULL).  If the movement uses NULL here while BIB
@@ -197,19 +232,27 @@ export default async function handler(req, res) {
                 movement_date, created_at, updated_at)
              VALUES ($1,$2,$3,$4,$5,'refund_return',
                      'customer','external',
-                     $6,'branch',
+                     $6,$10,
                      $7,$8,$9,'posted',NOW(),NOW(),NOW())`,
             [smId, product, batchNo || null, resolvedExpiry || null, qty,
-             canonicalBranch,
-             refund.id, `Refund approved — ${refund.reason}`, approver]
+             return_condition === 'saleable' ? canonicalBranch : `quarantine:${canonicalBranch}`,
+             refund.id, `Refund approved — ${refund.reason}`, approver, return_condition === 'saleable' ? 'branch' : 'quarantine']
           );
 
           // ── 5. branch_refund_requests — mark approved ────────────────────────
           await client.query(
             `UPDATE branch_refund_requests
-             SET status='approved', approved_by=$1, movement_id=$2, processed_at=NOW()
+             SET status='approved', approved_by=$1, movement_id=$2, processed_at=NOW(),
+                 return_condition=$4, stock_disposition=$5
              WHERE id=$3`,
-            [approver, movId, id]
+            [approver, movId, id, return_condition, return_condition === 'saleable' ? 'available' : 'segregated']
+          );
+          if (refund.sale_reference) await client.query(
+            `UPDATE branch_distributor_profit
+             SET profit_amount=GREATEST(0,profit_amount-$1),
+                 status=CASE WHEN profit_amount <= $1 THEN 'reversed' ELSE status END,updated_at=NOW()
+             WHERE (sale_id=$2 OR sale_receipt=$2) AND status != 'reversed'`,
+            [dpTotal, refund.sale_reference]
           );
         });
 
@@ -219,24 +262,14 @@ export default async function handler(req, res) {
         recomputeLocationBalances('branch', canonicalBranchForRecompute).catch(e =>
           console.error('[refundApproval] recomputeLocationBalances error:', e.message)
         );
-
-        // ── 7. Reverse distributor profit if any (best-effort) ───────────────
-        if (refund.sale_reference) {
-          query(
-            `UPDATE branch_distributor_profit
-             SET profit_amount = GREATEST(0, profit_amount - $1),
-                 status = CASE WHEN profit_amount <= $1 THEN 'reversed' ELSE status END,
-                 updated_at = NOW()
-             WHERE (sale_id = $2 OR sale_receipt = $2)
-               AND status != 'reversed'`,
-            [dpTotal, refund.sale_reference]
-          ).catch(e => console.error('[refundApproval] distributor profit reversal error:', e.message));
-        }
+        if (return_condition !== 'saleable') recomputeLocationBalances('quarantine', `quarantine:${canonicalBranchForRecompute}`).catch(e => console.error('[refund-quarantine]', e.message));
 
         return res.json({
           success: true,
           movement_id: movId,
-          message: `Refund approved — ${qty} × ${product}. Sales figures adjusted; returned items held separately (not restored to sellable stock).`,
+          return_condition,
+          stock_disposition: return_condition === 'saleable' ? 'available' : 'segregated',
+          message: `Refund approved — ${qty} × ${product}. ${return_condition === 'saleable' ? 'Accepted saleable goods restored to available stock.' : 'Goods recorded separately; available stock was not increased.'}`,
         });
       }
 
@@ -255,9 +288,10 @@ export default async function handler(req, res) {
       return res.status(400).json({ success: false, error: 'action must be approve or reject' });
     } catch (err) {
       console.error('[stock/refund-requests] PATCH error:', err.message);
-      return res.status(500).json({ success: false, error: err.message });
+      return res.status(err.statusCode || 500).json({ success: false, error: err.message });
     }
   }
 
   return res.status(405).json({ success: false, error: 'Method not allowed' });
 }
+export default atomicStockRequest(handler, ['PATCH']);

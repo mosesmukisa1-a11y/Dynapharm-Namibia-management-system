@@ -1,8 +1,9 @@
 import { applyAuthCors } from './_lib/auth.js';
 import { query, getMany, getOne, insert, update, remove } from './db.js';
+import { atomicStockRequest } from './_lib/atomicStockRequest.js';
 import { postStockMovement } from './services/stockEngine.js';
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   applyAuthCors(req, res);
   if (req.method === 'OPTIONS') return res.status(204).end();
 
@@ -226,3 +227,4 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Internal server error' });
   }
 }
+export default atomicStockRequest(handler);

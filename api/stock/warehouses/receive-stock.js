@@ -10,6 +10,7 @@ import { applyAuthCors } from '../../_lib/auth.js';
 import { getOne, getMany, withTransaction, publishRealtimeEvent } from '../../db.js';
 import { broadcastStockEvent } from '../../services/stockEvents.js';
 import { postStockMovementTx, recomputeInventoryBalance } from '../../services/stockEngine.js';
+import { atomicStockRequest } from '../../_lib/atomicStockRequest.js';
 
 async function parseBody(req) {
   if (req.body && typeof req.body === 'object') return req.body;
@@ -21,7 +22,7 @@ async function parseBody(req) {
   });
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   applyAuthCors(req, res);
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ success: false, error: 'Method not allowed' });
@@ -35,7 +36,7 @@ export default async function handler(req, res) {
   // Load the transfer
   const transfer = await getOne(
     `SELECT id, from_warehouse, to_branch, status, gm_approved_by, dispatch_reference
-     FROM stock_transfers WHERE id = $1`,
+     FROM stock_transfers WHERE id = $1 FOR UPDATE`,
     [transferId]
   );
   if (!transfer) return res.status(404).json({ success: false, error: 'Transfer not found' });
@@ -254,3 +255,4 @@ export default async function handler(req, res) {
     return res.status(500).json({ success: false, error: err.message || 'Failed to accept dispatch' });
   }
 }
+export default atomicStockRequest(handler, ['POST']);

@@ -45,29 +45,29 @@ export default async function handler(req, res) {
       WITH sb AS (
         -- All stock_batches rows sitting in a warehouse location
         SELECT
-          sb.id            AS batch_id,
+          MIN(sb.id)       AS batch_id,
           sb.location      AS warehouse_id,
           wl.name          AS warehouse_name,
-          sb.description   AS product_name,
-          sb.product_id,
-          sb.batch_no,
-          sb.expiry_date,
-          sb.remaining_quantity,
-          sb.status        AS batch_status
+          MIN(sb.description) AS product_name,
+          MIN(sb.product_id) AS product_id,
+          COALESCE(sb.batch_no, '') AS batch_no,
+          MIN(sb.expiry_date) AS expiry_date,
+          SUM(sb.remaining_quantity) AS remaining_quantity
         FROM stock_batches sb
         JOIN warehouse_locations wl ON wl.id = sb.location AND wl.type = 'warehouse'
         WHERE COALESCE(sb.status, '') != 'expired'
+        GROUP BY sb.location, wl.name, LOWER(TRIM(sb.description)), COALESCE(sb.batch_no, '')
       ),
       wi AS (
         -- Matching warehouse_inventory overlay rows
         SELECT
           wi.warehouse_id,
-          wi.product_id,
-          wi.batch_no,
-          wi.expiry_date,
-          wi.quantity AS wi_quantity
+          MIN(wi.product_name) AS product_name,
+          COALESCE(wi.batch_no, '') AS batch_no,
+          SUM(wi.quantity) AS wi_quantity
         FROM warehouse_inventory wi
         JOIN warehouse_locations wl ON wl.id = wi.warehouse_id AND wl.type = 'warehouse'
+        GROUP BY wi.warehouse_id, LOWER(TRIM(wi.product_name)), COALESCE(wi.batch_no, '')
       ),
       ib_wh AS (
         -- inventory_balances for warehouse locations
@@ -81,33 +81,32 @@ export default async function handler(req, res) {
         GROUP BY location_id, LOWER(TRIM(product_name)), COALESCE(batch_no, '')
       )
       SELECT
-        sb.warehouse_id,
+        COALESCE(sb.warehouse_id, wi.warehouse_id, ib.location_id) AS warehouse_id,
         sb.warehouse_name,
-        sb.product_name,
+        COALESCE(sb.product_name, wi.product_name, ib.product_key) AS product_name,
         sb.product_id,
-        sb.batch_no,
+        COALESCE(sb.batch_no, wi.batch_no, ib.batch_no) AS batch_no,
         sb.expiry_date,
         sb.remaining_quantity          AS fefo_qty,
         wi.wi_quantity,
         ib.ib_closing_qty,
         -- Authoritative figure: wi_quantity if an overlay exists, else fefo_qty
-        COALESCE(wi.wi_quantity, sb.remaining_quantity) AS authoritative_qty,
+        COALESCE(sb.remaining_quantity, 0) AS authoritative_qty,
         -- Drift = authoritative FEFO/overlay figure minus movement-cache figure
         ROUND(
-          COALESCE(wi.wi_quantity, sb.remaining_quantity)
+          COALESCE(sb.remaining_quantity, 0)
           - COALESCE(ib.ib_closing_qty, 0)
         , 4) AS drift
       FROM sb
-      LEFT JOIN wi
+      FULL OUTER JOIN wi
         ON wi.warehouse_id = sb.warehouse_id
-       AND wi.product_id IS NOT DISTINCT FROM sb.product_id
+       AND LOWER(TRIM(wi.product_name)) = LOWER(TRIM(sb.product_name))
        AND COALESCE(wi.batch_no, '') IS NOT DISTINCT FROM COALESCE(sb.batch_no, '')
-       AND wi.expiry_date IS NOT DISTINCT FROM sb.expiry_date
-      LEFT JOIN ib_wh ib
-        ON ib.location_id = sb.warehouse_id
-       AND ib.product_key = LOWER(TRIM(sb.description))
-       AND ib.batch_no    = COALESCE(sb.batch_no, '')
-      ORDER BY sb.warehouse_id, sb.description, sb.batch_no NULLS LAST
+      FULL OUTER JOIN ib_wh ib
+        ON ib.location_id = COALESCE(sb.warehouse_id, wi.warehouse_id)
+       AND ib.product_key = LOWER(TRIM(COALESCE(sb.product_name, wi.product_name)))
+       AND ib.batch_no = COALESCE(sb.batch_no, wi.batch_no, '')
+      ORDER BY warehouse_id, product_name, batch_no NULLS LAST
     `);
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -119,10 +118,10 @@ export default async function handler(req, res) {
         SELECT
           branch_id,
           LOWER(TRIM(product_name)) AS product_key,
-          product_name,
+          MIN(product_name) AS product_name,
           SUM(quantity) AS bib_qty
         FROM branch_inventory_batches
-        GROUP BY branch_id, LOWER(TRIM(product_name)), product_name
+        GROUP BY branch_id, LOWER(TRIM(product_name))
       ),
       ib_br AS (
         SELECT
@@ -226,7 +225,7 @@ export default async function handler(req, res) {
         fefoApiSource:  'api/warehouse/inventory.js (UNION stock_batches)',
         ibApiSource:    'server.js:1821 GET /api/stock/warehouse/:id/inventory',
         drift,
-        hasDrift:       drift !== 0,
+        hasDrift:       drift !== 0 || (r.wi_quantity != null && Number(r.wi_quantity) !== Number(r.fefo_qty || 0)),
         movements:      drift !== 0 ? (movementCache[cacheKey] || []) : [],
       };
     });

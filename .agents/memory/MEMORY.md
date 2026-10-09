@@ -1,9 +1,10 @@
+- [Approved stock rules](stock-business-rules.md) — staff-confirmed receipts, condition-controlled returns, original batch costs, explicit pack factors; historical corrections need separate approval.
 - [Stock report double-count rule](stock-mis-double-count.md) — MIS stock-report.js: never add walkin_sales qty AND BIM movement qty for same branch; use bimSaleBranches set to guard.
 - [Branch stock-summary movement types](branch-summary-move-types.md) — src-side movement classification: adjustment→qty_adjusted (NOT qty_written_off); field_use→qty_written_off.
 - [gmFinanceMisEngine consultationFees](gm-engine-consult-fees.md) — getAllBranchesSalesRevenue does NOT return consultationFees; query BAT separately in gm/summary.js.
 - [stock_adjustments schema](stock-adjustments-schema.md) — Full column set added to server.js schemaSyncs; old api/stock/edit-requests.js uses field_name (legacy, not used by StockPortal).
 - [Warehouse write-off deduction path](warehouse-writeoff-path.md) — warehouse write-offs deduct stock_batches.remaining_quantity (not branch_inventory_batches); detected via inferLocationType(source_location) in approve handler.
-- [receive-request warehouse deduction](receive-request-warehouse-deduction.md) — stock-request receipt path must FEFO-deduct stock_batches + use branch_receipt (not received) movement type + recompute warehouse balances.
+- [Receipt source evidence](receive-request-warehouse-deduction.md) — deduct each source once; a shortage is not evidence of earlier dispatch. Resolve persisted transfers before receiving.
 - [Portal route naming](portal-route-naming.md) — portal routes are short names (/consultant, /branch, /finance...) not "/xxx-portal"; wrong URL causes blank page, easily mistaken for a real bug.
 - [Auth user field naming](auth-user-field-naming.md) — sanitizeUser() returns fullName (camelCase), not full_name; reading user.full_name silently gives undefined.
 - [Dependency audit caveats](dependency-audit-caveats.md) — official patched SheetJS releases can trigger overbroad npm advisories; compare upstream fixed versions without suppressing future findings.

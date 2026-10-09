@@ -4,6 +4,7 @@
  * across every file that imports it — including the SSE endpoint handler
  * and every stock-mutating endpoint (walkin-sales, dispense, transfers).
  */
+import { deferUntilCommit } from '../db.js';
 const clients = new Set();
 
 export function addSseClient(res) {
@@ -16,6 +17,7 @@ export function removeSseClient(res) {
 }
 
 export function broadcastStockEvent(type = 'stock_change', payload = {}) {
+  if (deferUntilCommit(() => broadcastStockEvent(type, payload))) return;
   if (clients.size === 0) return;
   const line = `data: ${JSON.stringify({ type, payload, timestamp: Date.now() })}\n\n`;
   const dead = [];

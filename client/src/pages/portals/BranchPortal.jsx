@@ -8,7 +8,7 @@ import { useOffline } from '../../lib/OfflineProvider.jsx';
 import { useStockRealtime } from '../../hooks/useStockRealtime';
 import DistributorPerformanceTab from '../../components/DistributorPerformanceTab';
 import DispatchNote from '../../components/DispatchNote';
-import { formatCurrency, formatDateTime, formatDate, BRANCHES, COMPANY_INFO, BRANCH_DETAILS, getBranchDisplayName, getBranchId } from '../../lib/constants';
+import { formatCurrency, formatDateTime, formatDate, BRANCHES, COMPANY_INFO, BRANCH_DETAILS, getBranchDisplayName, getBranchId, normalizeBranchSlug } from '../../lib/constants';
 import { enrichProductsWithPricing, calculateCartTotals, generateReceiptNumber, PACKAGE_DATABASE, findProductPrice, calculatePrescriptionTotals, getConsultationFee, getPackagesForPOS, setLivePrices, getLiveProductList } from '../../lib/pricing';
 import { generateReceiptHTML, printReceipt, generateSalesPDFHTML, printSalesPDF, generatePrescriptionQuoteHTML, generatePrescriptionQuotePDFHTML } from '../../lib/receipt';
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
@@ -4874,7 +4874,13 @@ function BranchStockTab() {
       setInventory(invData);
       setBranchMovements(branchMovs);
       setRequests(Array.isArray(reqs) ? reqs : reqs.requests || []);
-      setTransfers(Array.isArray(trans) ? trans : trans.transfers || []);
+      const transferRows = Array.isArray(trans) ? trans : trans.transfers || [];
+      setTransfers(transferRows.map(t => {
+        const rawDestination = t.toBranch || t.to_branch || t.to_location;
+        return rawDestination
+          ? { ...t, toBranch: normalizeBranchSlug(String(rawDestination).trim().toLowerCase().replace(/\s+/g, '_')) }
+          : t;
+      }));
       const allMovs = Array.isArray(movs) ? movs : movs.movements || [];
       setMovements(allMovs);
       setProducts(Array.isArray(prods) ? prods : prods.products || []);
@@ -5187,19 +5193,24 @@ function BranchStockTab() {
 
   const openReceiveTransferModal = (transfer) => {
     const items = Array.isArray(transfer.items) ? transfer.items : [];
-    const mapped = items.length > 0 ? items.map(it => ({
-      ...it,
-      quantitySent: it.quantityApproved != null ? it.quantityApproved : it.quantity,
-      quantityReceived: it.quantityApproved != null ? it.quantityApproved : it.quantity,
-      discrepancyNote: '',
-      _hasDiscrepancy: false,
-    })) : (transfer.product_name ? [{
+    const mapped = items.length > 0 ? items.map(it => {
+      const quantitySent = it.quantityApproved ?? it.quantity_approved ?? it.quantitySent ?? it.quantity_sent ?? it.quantity ?? 0;
+      return {
+        ...it,
+        quantitySent,
+        alreadyReceived: Number(it.quantityReceived ?? it.quantity_received ?? 0),
+        quantityReceived: quantitySent,
+        discrepancyNote: '',
+        _hasDiscrepancy: false,
+      };
+    }) : (transfer.product_name ? [{
       productName: transfer.product_name,
       productId: transfer.product_name,
       batchNo: null,
       expiryDate: null,
       quantity: transfer.quantity || 0,
       quantitySent: transfer.quantity || 0,
+      alreadyReceived: Number(transfer.quantityReceived ?? transfer.quantity_received ?? 0),
       quantityReceived: transfer.quantity || 0,
       discrepancyNote: '',
       _hasDiscrepancy: false,
@@ -5221,12 +5232,20 @@ function BranchStockTab() {
     setReceiveModalMsg(null);
     try {
       const receiverName = user?.full_name || user?.username || 'Branch Staff';
+      const invalidCumulativeReceipt = receiveItems.some(it => {
+        const received = Number(it.quantityReceived);
+        return !Number.isFinite(received) || received < Number(it.alreadyReceived || 0) || received > Number(it.quantitySent || 0);
+      });
+      if (invalidCumulativeReceipt) {
+        setReceiveModalMsg({ type: 'error', text: 'Each cumulative received quantity must be at least the amount previously received and no more than the approved dispatched quantity.' });
+        return;
+      }
       const hasDiscrepancy = receiveItems.some(it => it._hasDiscrepancy || Number(it.quantityReceived) !== Number(it.quantitySent));
       const allZero = receiveItems.every(it => Number(it.quantityReceived) === 0);
 
       const receiptStatus = allZero ? 'discrepancy_reported' : hasDiscrepancy ? 'partially_received' : 'received';
       const transferStatus = hasDiscrepancy ? 'partially_received' : 'delivered';
-      const updatedItems = receiveItems.map(({ _hasDiscrepancy, ...it }) => ({
+      const updatedItems = receiveItems.map(({ _hasDiscrepancy, alreadyReceived, ...it }) => ({
         ...it,
         quantityReceived: Number(it.quantityReceived || 0),
         discrepancyNote: it.discrepancyNote || null,
@@ -5296,12 +5315,15 @@ function BranchStockTab() {
   const isBranchMatch = (dest) => {
     if (!branchKey) return true;
     const d = (dest || '').toLowerCase().replace(/\s+/g, '_');
-    return branchMatchKeys.some(k => d === k || d.includes(k) || k.includes(d));
+    const canonicalBranch = normalizeBranchSlug(branchKey);
+    const canonicalDestination = normalizeBranchSlug(d);
+    return (canonicalBranch && canonicalDestination && canonicalBranch === canonicalDestination)
+      || branchMatchKeys.some(k => d === k || d.includes(k) || k.includes(d));
   };
   const incomingDeliveries = transfers.filter(t => {
     const dest = t.toBranch || t.to_location || '';
     const st = (t.status || '').toLowerCase();
-    const isPhysicallyDispatched = st === 'dispatched' || st === 'in_transit';
+    const isPhysicallyDispatched = ['dispatched', 'in_transit', 'partially_received'].includes(st);
     return isBranchMatch(dest) && isPhysicallyDispatched;
   });
   const upcomingDeliveries = transfers.filter(t => {
@@ -6267,7 +6289,7 @@ function BranchStockTab() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
                   <div style={{ fontSize: 14, fontWeight: 700, color: '#1e293b' }}>Verify items against physical delivery</div>
                   <div style={{ fontSize: 12, color: '#64748b', background: '#f1f5f9', padding: '3px 10px', borderRadius: 20, border: '1px solid #e2e8f0' }}>
-                    All items are pre-confirmed as received in full — only tap <strong>Mark Discrepancy</strong> if something is short or damaged
+                    Enter cumulative quantities, including stock received earlier. Values must be at least the prior receipt and cannot exceed the approved dispatched quantity.
                   </div>
                 </div>
 
@@ -6390,7 +6412,7 @@ function BranchStockTab() {
                               </button>
                             ) : (
                               <button onClick={() => setReceiveItems(prev => prev.map((p, j) => j === i
-                                ? { ...p, _hasDiscrepancy: true, quantityReceived: '' } : p))}
+                                ? { ...p, _hasDiscrepancy: true, quantityReceived: Number(p.alreadyReceived || 0) } : p))}
                                 style={{ padding: '4px 12px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: '#dcfce7', color: '#166534', border: '1px solid #86efac', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                                 ✅ All Received
                               </button>
@@ -6398,16 +6420,21 @@ function BranchStockTab() {
                           </td>
                           <td style={{ padding: '8px 12px', textAlign: 'center' }}>
                             {flagged ? (
-                              <input type="number" min="0" max={it.quantitySent}
+                              <input type="number" min={Number(it.alreadyReceived || 0)} max={it.quantitySent} step="1"
                                 value={it.quantityReceived}
                                 onChange={e => {
-                                  const val = Math.max(0, Math.min(Number(e.target.value) || 0, Number(it.quantitySent)));
+                                  const min = Number(it.alreadyReceived || 0);
+                                  const val = Math.max(min, Math.min(Number(e.target.value) || min, Number(it.quantitySent)));
                                   setReceiveItems(prev => prev.map((p, j) => j === i ? { ...p, quantityReceived: val } : p));
                                 }}
-                                placeholder="0"
+                                aria-label={`Cumulative quantity received for ${it.productName || it.productId}`}
+                                placeholder={String(it.alreadyReceived || 0)}
                                 style={{ width: 72, padding: '6px 8px', border: '1.5px solid #fca5a5', borderRadius: 7, textAlign: 'center', fontSize: 15, fontWeight: 700, background: '#fef2f2' }} />
                             ) : (
                               <span style={{ fontSize: 16, fontWeight: 800, color: '#166534' }}>{it.quantitySent}</span>
+                            )}
+                            {Number(it.alreadyReceived || 0) > 0 && (
+                              <div style={{ marginTop: 3, fontSize: 10, color: '#64748b' }}>Previously received: {Number(it.alreadyReceived)}</div>
                             )}
                           </td>
                           <td style={{ padding: '8px 12px' }}>

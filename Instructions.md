@@ -2,7 +2,7 @@
 
 **Review date:** 9 October 2026  
 **Scope:** Existing import, warehouse, branch, sale, return, adjustment, expiry, barcode, valuation, and reporting code.  
-**Deliverable:** Research and implementation instructions only. This review did not change application behavior, stock records, configuration, or database schema.
+**Original deliverable:** Research and implementation instructions. The original review did not change application behavior or stock quantities. The user subsequently approved the proposed rules and incremental changes. Implementation is in progress; see [StockImplementationStatus.md](StockImplementationStatus.md) for verified changes and remaining scope. The entire repair plan is not yet complete.
 
 ## 1. Executive assessment
 
