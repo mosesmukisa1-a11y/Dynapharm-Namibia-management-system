@@ -13,3 +13,4 @@
 - [Browser runtime on Nix](browser-runtime-nix.md) — downloaded Playwright Chromium may lack shared libraries; prefer the environment’s Chromium wrapper for local browser checks.
 - [Linked return authorization](linked-reversal-rules.md) — returns never reset prescription entitlement; legacy matching needs review, and received branch goods return through a new transfer.
 - [Workflow listener ownership](workflow-listeners.md) — a running workflow can be a duplicate while an orphan process owns its intended port; verify managed open ports.
+- [Stock test isolation](stock-test-isolation.md) — receipt assertions require physical dispatch evidence; whole-database safety baselines cannot share parallel fixture writers.

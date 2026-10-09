@@ -1,151 +1,52 @@
 // @vitest-environment node
-/**
- * Branch receipt → inventory_balances end-to-end test (DB-backed)
- *
- * Verifies that after a branch submits a "received" stock movement through the
- * full POST /api/stock-movements handler:
- *   1. inventory_balances.closing_qty for the destination branch + product
- *      immediately reflects the received quantity (the recomputeLocationBalances
- *      call is awaited before the 201 is sent).
- *   2. A second POST with the same reference_id (stock_requests row) is blocked
- *      with HTTP 409 — the duplicate receipt guard works end-to-end.
- */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { query } from '../api/db.js';
-import handler from '../api/stock-movements.js';
-
-// ── Isolated test fixtures ─────────────────────────────────────────────────────
-
-const BRANCH      = 'test_receipt_balance_branch';
-const PRODUCT     = 'TEST_RECEIPT_BALANCE_PRODUCT';
-const BATCH       = 'BATCH-RB-001';
-const REQ_ID      = 'test-receipt-balance-req-001';
-const RECV_QTY    = 20;
-
-// ── Helpers ────────────────────────────────────────────────────────────────────
-
-/**
- * Build a minimal mock (req, res) pair for a POST to the stock-movements handler.
- * Returns { req, res, captured } where captured.status / captured.body are
- * filled in once the handler calls res.status(...).json(...) or res.json(...).
- */
-function buildMockReqRes(body) {
-  const captured = { status: null, body: null };
-
-  const res = {
-    setHeader: () => {},
-    status(code) {
-      captured.status = code;
-      return {
-        json(data) { captured.body = data; },
-        end()      { captured.body = null; },
-      };
-    },
-    json(data) {
-      if (captured.status === null) captured.status = 200;
-      captured.body = data;
-    },
-    end() { captured.body = null; },
-  };
-
-  const req = {
-    method: 'POST',
-    headers: { host: 'localhost' },
-    // Admin role → getBranchScope returns { enforced: false }
-    user: { id: 'test-admin', role: 'admin', fullName: 'Test Admin' },
-    body,
-  };
-
-  return { req, res, captured };
+import {describe,it,expect,beforeAll,afterAll} from 'vitest';
+import {query} from '../api/db.js';
+import handler from '../api/stock/receive-request.js';
+import journalHandler from '../api/stock-movements.js';
+import {receiptFixtures,invokeReceipt,destinationTotals,expiry} from './helpers/receiptStockFixtures.js';
+const fixture=receiptFixtures('REQ-RCPT');
+// A standalone received journal is not physical custody evidence. Exercise the
+// actual original-dispatch-linked request receipt, then its physical projection.
+const receive=f=>invokeReceipt(handler,'POST','/api/stock/receive-request',{
+  requestId:f.id,branchId:f.dest,status:'received',
+  items:[{productName:f.product,batchNo:f.lot,expiryDate:expiry,quantityReceived:f.qty}],
+},fixture.stockUser);
+async function assertEvidence(f){
+  expect(await destinationTotals(f)).toEqual({physical:f.qty,projected:f.qty});
+  const received=(await query(`SELECT COUNT(*) AS events,COALESCE(SUM(quantity),0) AS qty
+    FROM stock_movements WHERE reference_id=$1 AND movement_type='transfer_in' AND status='posted'
+      AND destination_location=$2 AND product_name=$3 AND batch_no=$4 AND expiry_date=$5`,
+    [f.id,f.dest,f.product,f.lot,expiry])).rows[0];
+  expect(Number(received.events)).toBe(1);expect(Number(received.qty)).toBe(f.qty);
+  expect((await query('SELECT status FROM stock_requests WHERE id=$1',[f.id])).rows[0].status).toBe('received');
+  expect(Number((await query('SELECT remaining_quantity FROM stock_batches WHERE id=$1',[f.sourceId])).rows[0].remaining_quantity)).toBe(30-f.qty);
 }
-
-async function cleanup() {
-  await query(
-    `DELETE FROM inventory_balances
-     WHERE location_type = 'branch'
-       AND location_id   = $1
-       AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))`,
-    [BRANCH, PRODUCT]
-  );
-  await query(
-    `DELETE FROM stock_movements
-     WHERE LOWER(TRIM(product_name)) = LOWER(TRIM($1))`,
-    [PRODUCT]
-  );
-  await query(
-    `DELETE FROM stock_requests WHERE id = $1`,
-    [REQ_ID]
-  );
-}
-
-// ── Tests ──────────────────────────────────────────────────────────────────────
-
-describe('POST /api/stock-movements (received) — inventory_balances update (DB-backed)', () => {
-  beforeAll(cleanup);
-  afterAll(cleanup);
-
-  it('returns 201 and inventory_balances.closing_qty equals the received quantity', async () => {
-    const { req, res, captured } = buildMockReqRes({
-      movementType:             'received',
-      productName:              PRODUCT,
-      batch_no:                 BATCH,
-      quantity:                 RECV_QTY,
-      destination_location:     BRANCH,
-      destination_location_type:'branch',
-      createdBy:                'test-admin',
-    });
-
-    await handler(req, res);
-
-    // Handler must respond 201
-    expect(captured.status).toBe(201);
-    expect(captured.body?.success).toBe(true);
-
-    // inventory_balances must have been updated synchronously before the 201
-    const { rows } = await query(
-      `SELECT inward_qty, outward_qty, closing_qty
-       FROM inventory_balances
-       WHERE location_type = 'branch'
-         AND location_id   = $1
-         AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))`,
-      [BRANCH, PRODUCT]
-    );
-
-    expect(rows.length).toBeGreaterThanOrEqual(1);
-    // Sum across any batch rows (no batch filter — covers both batched and no-batch rows)
-    const totalClosing = rows.reduce((s, r) => s + Number(r.closing_qty), 0);
-    expect(totalClosing).toBe(RECV_QTY);
+describe.sequential('isolated original request/dispatch receipts converge to branch balances',()=>{
+  beforeAll(fixture.initialize);afterAll(fixture.clean);
+  it('returns 200 and the confirmed fixture-specific physical quantity is projected after background updates settle',async()=>{
+    const f=await fixture.seedRequest('full',20);
+    expect((await destinationTotals(f)).projected).toBe(0);
+    const result=await receive(f);
+    expect(result.status,result.body?.error).toBe(200);
+    expect(result.body.success).toBe(true);
+    await assertEvidence(f);
   });
-
-  it('blocks a duplicate receipt for the same stock_requests row with 409', async () => {
-    // Seed a stock_requests row in an approvable state (not yet received)
-    await query(
-      `INSERT INTO stock_requests (id, requesting_branch, items, status, created_at, updated_at)
-       VALUES ($1, $2, $3::jsonb, 'approved', NOW(), NOW())
-       ON CONFLICT (id) DO UPDATE SET status = 'approved', updated_at = NOW()`,
-      [REQ_ID, BRANCH, JSON.stringify([])]
-    );
-
-    const firstBody = {
-      movementType:             'received',
-      productName:              PRODUCT,
-      batch_no:                 BATCH,
-      quantity:                 5,
-      destination_location:     BRANCH,
-      destination_location_type:'branch',
-      reference_id:             REQ_ID,
-      createdBy:                'test-admin',
-    };
-
-    // First receipt — must succeed
-    const first = buildMockReqRes(firstBody);
-    await handler(first.req, first.res);
-    expect(first.captured.status).toBe(201);
-
-    // Second receipt with the same reference_id — must be rejected
-    const second = buildMockReqRes(firstBody);
-    await handler(second.req, second.res);
-    expect(second.captured.status).toBe(409);
-    expect(second.captured.body?.success).toBe(false);
+  it('blocks a duplicate receipt with exactly 409 and does not add stock or a second posted receipt',async()=>{
+    const f=await fixture.seedRequest('duplicate',5);
+    expect((await receive(f)).status).toBe(200);
+    await assertEvidence(f);
+    const duplicate=await receive(f);
+    expect(duplicate.status).toBe(409);expect(duplicate.body.success).toBe(false);
+    // Preserve the old journal endpoint's duplicate guard coverage too: after
+    // confirmed receipt it must not append another inward stock event.
+    const journalDuplicate=await invokeReceipt(journalHandler,'POST','/api/stock-movements',{
+      movementType:'received',productName:f.product,batch_no:f.lot,expiry_date:expiry,
+      quantity:f.qty,destination_location:f.dest,destination_location_type:'branch',
+      reference_id:f.id,
+    },fixture.stockUser);
+    expect(journalDuplicate.status).toBe(409);
+    expect(Number((await query(`SELECT COUNT(*) AS events FROM stock_movements
+      WHERE reference_id=$1 AND movement_type='received'`,[f.id])).rows[0].events)).toBe(0);
+    await assertEvidence(f);
   });
 });

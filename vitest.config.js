@@ -5,6 +5,9 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: [],
     globals: true,
+    // DB-backed specs share one database; cost/count safety baselines intentionally
+    // inspect all physical rows. File concurrency would observe other fixtures.
+    fileParallelism: false,
     coverage: {
       reporter: ['text', 'lcov'],
       include: ['assets/js/stock-portal-handlers.js']
