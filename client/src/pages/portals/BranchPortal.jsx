@@ -18,6 +18,7 @@ import { MembershipAgreementForm } from '../../components/MembershipAgreementFor
 import StaffMessagesTab from '../../components/StaffMessagesTab';
 import BarcodeScanner from '../../components/BarcodeScanner';
 import QRCameraScanner from '../../components/QRCameraScanner';
+import ControlledStockOperations from '../../components/ControlledStockOperations';
 
 const DEFAULT_REFERRAL = { name: 'Dynapharm Namibia', nb_number: 'NB005676', id: 'DEFAULT_REFERRAL' };
 
@@ -534,6 +535,7 @@ export default function BranchPortal() {
     { id: 'walkIn', label: 'Walk-in Sales', icon: '🛒' },
     { id: 'prescriptions', label: 'Prescriptions', icon: '💊' },
     { id: 'stock', label: 'Stock', icon: '📦' },
+    { id: 'controlledOperations', label: 'Controlled Counts & Returns' },
     { id: 'banking', label: 'Banking', icon: '🏦' },
     { id: 'payments', label: 'Payments', icon: '💳' },
     { id: 'distProfit', label: 'Distributor Profit', icon: '💰' },
@@ -626,6 +628,7 @@ export default function BranchPortal() {
           {activeTab === 'walkIn' && <WalkInSalesTab />}
           {activeTab === 'prescriptions' && <PrescriptionsTab />}
           {activeTab === 'stock' && <BranchStockTab />}
+          {activeTab === 'controlledOperations' && <ControlledStockOperations mode="branch" />}
           {activeTab === 'banking' && <BankingTab />}
           {activeTab === 'payments' && <BranchPaymentsTab />}
           {activeTab === 'distProfit' && <DistributorProfitTab />}

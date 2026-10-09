@@ -9,6 +9,7 @@ import AccountsTab from '../../components/AccountsTab';
 import SalaryLedgerTab from '../../components/SalaryLedgerTab';
 import StaffServicesTab from '../../components/StaffServicesTab';
 import StaffMessagesTab from '../../components/StaffMessagesTab';
+import ControlledStockOperations from '../../components/ControlledStockOperations';
 
 const BRANCH_NAME_MAP = Object.fromEntries(BRANCH_DETAILS.map(b => [b.id, b.name]));
 const branchLabel = (id) => {
@@ -40,6 +41,7 @@ export default function FinancePortal() {
     { id: 'accounts', label: 'Accounts', icon: '📒' },
     { id: 'bonus', label: 'Bonus Workflow', icon: '💰' },
     { id: 'reports', label: 'Reports', icon: '📈' },
+    { id: 'controlledOperations', label: 'Supplier Credits' },
     { id: 'communication', label: 'Notices', icon: '📢' },
     { id: 'payments', label: 'Payment Vouchers', icon: '🧾' },
     { id: 'casReview', label: 'CAS Review', icon: '✅' },
@@ -64,6 +66,7 @@ export default function FinancePortal() {
         {activeTab === 'accounts' && <AccountsTab role="finance" />}
         {activeTab === 'bonus' && <BonusTab />}
         {activeTab === 'reports' && <ReportsTab />}
+        {activeTab === 'controlledOperations' && <ControlledStockOperations mode="finance" />}
         {activeTab === 'communication' && <CommunicationTab />}
         {activeTab === 'payments' && <PaymentVouchersTab />}
         {activeTab === 'casReview' && <CASReviewTab />}

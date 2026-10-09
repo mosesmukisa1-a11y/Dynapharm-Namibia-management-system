@@ -12,6 +12,7 @@ import { useStockRealtime } from '../../hooks/useStockRealtime';
 import AccountsTab from '../../components/AccountsTab';
 import CurrentStockTab from '../../components/CurrentStockTab';
 import StaffMessagesTab from '../../components/StaffMessagesTab';
+import ControlledStockOperations from '../../components/ControlledStockOperations';
 
 export default function GMPortal() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -45,6 +46,7 @@ export default function GMPortal() {
     { id: 'campaigns', label: 'Campaigns', icon: '📢' },
     { id: 'profitAnalysis', label: 'Profit Analysis', icon: '💰' },
     { id: 'currentStock', label: 'Current Stock', icon: '📦' },
+    { id: 'controlledOperations', label: 'Controlled Counts & Returns' },
     { id: 'accounts', label: 'Accounts', icon: '📒' },
     { id: 'bonus', label: 'Bonus History', icon: '🎁' },
     { id: 'statements', label: 'Statements', icon: '📄' },
@@ -77,6 +79,7 @@ export default function GMPortal() {
         {activeTab === 'campaigns' && <CampaignsTab key={tabVisits.campaigns || 0} />}
         {activeTab === 'profitAnalysis' && <ProfitAnalysisTab key={tabVisits.profitAnalysis || 0} />}
         {activeTab === 'currentStock' && <CurrentStockTab key={tabVisits.currentStock || 0} />}
+        {activeTab === 'controlledOperations' && <ControlledStockOperations key={tabVisits.controlledOperations || 0} mode="gm" />}
         {activeTab === 'accounts' && <AccountsTab key={tabVisits.accounts || 0} role="gm" />}
         {activeTab === 'bonus' && <BonusHistoryTab key={tabVisits.bonus || 0} />}
         {activeTab === 'statements' && <StatementsUploadTab key={tabVisits.statements || 0} />}

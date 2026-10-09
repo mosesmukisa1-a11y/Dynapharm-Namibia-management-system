@@ -1,3 +1,4 @@
+import { recordBranchSaleAllocationTx } from '../services/stockSaleAllocations.js';
 import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
 import { atomicStockRequest } from '../_lib/atomicStockRequest.js';
 import { query, getOne, getMany, withTransaction } from '../db.js';
@@ -72,7 +73,7 @@ export async function deductStock(client, branchId, productName, qty, movType, n
       `UPDATE branch_inventory_batches SET quantity = quantity - $1, updated_at = NOW() WHERE id = $2`,
       [take, batch.id]
     );
-    await client.query(`DELETE FROM branch_inventory_batches WHERE id = $1 AND quantity <= 0`, [batch.id]);
+    // Keep depleted batch identity for open count cutoffs and inspected returns.
     const ts1  = Date.now();
     const bimId = 'BIM-' + ts1 + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
     await client.query(
@@ -91,6 +92,7 @@ export async function deductStock(client, branchId, productName, qty, movType, n
       [smId1, batch.product_name, batch.batch_no || '', batch.expiry_date || null,
        take, movType, branchId, saleId, noteStr, unitPrice || null]
     );
+    await recordBranchSaleAllocationTx(client,{movementId:smId1,saleReference:saleId,batchId:batch.id,quantity:take});
     deductions.push({ product_name: batch.product_name, batch_no: batch.batch_no, quantity: take, movement_type: movType });
     remaining -= take;
   }

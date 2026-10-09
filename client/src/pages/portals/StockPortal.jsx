@@ -4,6 +4,7 @@ import { api } from '../../lib/api';
 import { useStockRealtime } from '../../hooks/useStockRealtime';
 import StaffServicesTab from '../../components/StaffServicesTab';
 import StaffMessagesTab from '../../components/StaffMessagesTab';
+import ControlledStockOperations from '../../components/ControlledStockOperations';
 import DispatchNote from '../../components/DispatchNote';
 import { getCIFPrice, getDPCPrice, getProductProfit, findProductPrice, getLiveProductList, setLivePrices } from '../../lib/pricing';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES, BRANCH_DETAILS } from '../../lib/constants';
@@ -1560,6 +1561,7 @@ export default function StockPortal() {
     { id: 'reorder', label: 'Reorder', icon: '🤖' },
     { id: 'batch', label: 'Batch', icon: '🔢' },
     { id: 'writeOffs', label: 'Write-Offs', icon: '❌' },
+    { id: 'controlledOperations', label: 'Controlled Counts & Returns' },
     { id: 'realtime', label: 'Realtime', icon: '⚡' },
     { id: 'fieldStock', label: 'Field Stock', icon: '👥' },
     { id: 'refundApprovals', label: 'Refund Approvals', icon: '↩️' },
@@ -1629,6 +1631,7 @@ export default function StockPortal() {
         {activeTab === 'reorder' && <SmartReorderTab branch={globalBranch} />}
         {activeTab === 'batch' && <BatchTab branch={globalBranch} />}
         {activeTab === 'writeOffs' && <WriteOffsTab branch={globalBranch} />}
+        {activeTab === 'controlledOperations' && <ControlledStockOperations mode="stock" />}
         {activeTab === 'realtime' && <RealtimeTab branch={globalBranch} />}
         {activeTab === 'fieldStock' && <FieldStockTab />}
         {activeTab === 'refundApprovals' && <RefundApprovalsTab />}

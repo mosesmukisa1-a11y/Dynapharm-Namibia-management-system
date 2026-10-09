@@ -2,9 +2,11 @@ import { applyAuthCors } from '../_lib/auth.js';
 import { getMany, getOne, query, withTransaction } from '../db.js';
 import { generateBatId } from '../_lib/activityCapture.js';
 import { recomputeLocationBalances } from '../services/stockEngine.js';
-import { normalizeBranchSlug } from '../_lib/branchUtils.js';
+import { normalizeBranchSlug, branchSearchTerms } from '../_lib/branchUtils.js';
+import { saleAllocationSchema, refundSourceSnapshotTx, preserveRestoredProvenanceTx } from '../services/stockSaleAllocations.js';
 import { atomicStockRequest } from '../_lib/atomicStockRequest.js';
 import { lockStockBatchTx } from '../services/stockLocks.js';
+import { registerRefundSegregationTx } from '../services/controlledStock.js';
 
 async function handler(req, res) {
   applyAuthCors(req, res);
@@ -153,6 +155,21 @@ async function handler(req, res) {
           const resolvedBatchNo = batchNo || null;
 
           let resolvedExpiry = null;
+          let originalExpiryFound = false;
+          await client.query(saleAllocationSchema);
+          if (refund.sale_reference) {
+            const aliases=[...new Set([branchId,...branchSearchTerms(branchId)].map(b=>String(b).toLowerCase().trim()))];
+            const originalExpiry=(await client.query(`SELECT DISTINCT sm.expiry_date FROM stock_movements sm
+              WHERE sm.reference_id=$1 AND LOWER(TRIM(sm.product_name))=LOWER(TRIM($2))
+                AND sm.batch_no IS NOT DISTINCT FROM $3 AND LOWER(TRIM(sm.source_location))=ANY($4::text[])
+                AND sm.status IN ('posted','approved')
+                AND (sm.movement_type IN ('walkin_sale','walkin_member_sale','walkin_non_member_sale',
+                  'walk_in_member_sale','walk_in_non_member_sale','campaign_sale','prescription_dispense','sale')
+                  OR EXISTS (SELECT 1 FROM stock_sale_allocations a WHERE a.movement_id=sm.id))`,
+              [refund.sale_reference,product,resolvedBatchNo,aliases])).rows;
+            if (originalExpiry.length>1) throw Object.assign(new Error('Original sale spans different expiry lots; identify the returned allocation before approval'),{statusCode:400});
+            if (originalExpiry.length===1) {originalExpiryFound=true;resolvedExpiry=originalExpiry[0].expiry_date;}
+          }
           // (a) existing batch row
           const expiryFromBib = await client.query(
             `SELECT expiry_date FROM branch_inventory_batches
@@ -162,11 +179,11 @@ async function handler(req, res) {
              ORDER BY expiry_date ASC NULLS LAST LIMIT 1`,
             [branchId, product, resolvedBatchNo]
           );
-          if (expiryFromBib.rows.length > 0) {
+          if (!originalExpiryFound && expiryFromBib.rows.length > 0) {
             resolvedExpiry = expiryFromBib.rows[0].expiry_date || null;
           }
           // (b) stock_movements for the original sale
-          if (!resolvedExpiry && refund.sale_reference) {
+          if (!originalExpiryFound && !resolvedExpiry && refund.sale_reference) {
             const expiryFromSm = await client.query(
               `SELECT expiry_date FROM stock_movements
                WHERE LOWER(TRIM(product_name)) = LOWER(TRIM($1))
@@ -183,6 +200,7 @@ async function handler(req, res) {
           // The refund row guards the operation; the logical batch lock protects
           // creation even when no row exists. FOR UPDATE protects existing stock.
           if (return_condition === 'saleable') {
+          const originalSource = await refundSourceSnapshotTx(client,refund,resolvedExpiry);
           await lockStockBatchTx(client, branchId, product, resolvedBatchNo, resolvedExpiry);
           const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Windhoek', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
           const expiryDay = resolvedExpiry instanceof Date ? resolvedExpiry.toISOString().slice(0, 10) : String(resolvedExpiry || '').slice(0, 10);
@@ -196,7 +214,9 @@ async function handler(req, res) {
              FOR UPDATE`,
             [branchId, product, resolvedBatchNo, resolvedExpiry]
           );
+          let restoredBatchId;
           if (lockedBib.rows.length > 0) {
+            restoredBatchId=lockedBib.rows[0].id;
             await client.query(
               `UPDATE branch_inventory_batches
                SET quantity   = quantity + $1,
@@ -207,6 +227,7 @@ async function handler(req, res) {
             );
           } else {
             const bibRestoreId = `BIB-RFND-${Date.now()}-${Math.random().toString(36).slice(2,6).toUpperCase()}`;
+            restoredBatchId=bibRestoreId;
             await client.query(
               `INSERT INTO branch_inventory_batches
                  (id, branch_id, product_name, batch_no, expiry_date,
@@ -215,7 +236,10 @@ async function handler(req, res) {
               [bibRestoreId, branchId, product, resolvedBatchNo, resolvedExpiry, qty, unitDp]
             );
           }
+          await preserveRestoredProvenanceTx(client,{batchId:restoredBatchId,snapshot:originalSource,receivedQuantity:qty});
 
+          } else {
+            await registerRefundSegregationTx(client, refund, resolvedExpiry, return_condition, req.user);
           }
           // ── 4. stock_movements — audit entry for stock engine ────────────────
           // expiry_date must match what was written to branch_inventory_batches

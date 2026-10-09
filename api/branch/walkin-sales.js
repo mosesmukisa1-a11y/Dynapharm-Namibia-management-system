@@ -1,3 +1,4 @@
+import { recordBranchSaleAllocationTx } from '../services/stockSaleAllocations.js';
 import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
 import { query, getMany, getOne, withTransaction } from '../db.js';
 import { atomicStockRequest } from '../_lib/atomicStockRequest.js';
@@ -588,10 +589,7 @@ async function handler(req, res) {
               );
               // Remove zero-qty rows immediately so they cannot be resurrected as
               // ghost stock by a stale inventory_balances entry before recompute runs.
-              await client.query(
-                `DELETE FROM branch_inventory_batches WHERE id = $1 AND quantity <= 0`,
-                [batch.id]
-              );
+              // Retain zero-quantity batches for count cutoffs and return provenance.
               const ts = Date.now();
               const bimId = 'BIM-' + ts + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
               await client.query(
@@ -609,6 +607,7 @@ async function handler(req, res) {
                 [smId, batch.product_name, batch.batch_no || '', batch.expiry_date || null,
                  take, saleMovType, branchId, saleId, 'Walk-in ' + customerType + ' sale', item.unitPrice || null]
               );
+              await recordBranchSaleAllocationTx(client,{movementId:smId,saleReference:saleId,batchId:batch.id,quantity:take});
               remaining -= take;
             }
             if (remaining > 0) {

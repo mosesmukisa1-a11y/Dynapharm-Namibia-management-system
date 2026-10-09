@@ -2908,6 +2908,8 @@ server.on('error', (error) => {
     if (schemaSynced > 0) {
       console.log(`Schema sync: applied ${schemaSynced} column additions`);
     }
+    const { ensureControlledStockSchema } = await import('./api/services/controlledStock.js');
+    await ensureControlledStockSchema();
     // ────────────────────────────────────────────────────────────────────────
 
     // ── Seed default stock automation config (idempotent ON CONFLICT DO NOTHING) ──

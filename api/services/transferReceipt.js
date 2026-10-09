@@ -12,6 +12,41 @@ function reject(message, statusCode = 409) {
   throw Object.assign(new Error(message), { statusCode });
 }
 
+const day = value => value instanceof Date ? value.toISOString().slice(0,10) : String(value || '').slice(0,10) || null;
+// A unique, exact source is evidence; FIFO's first similarly named batch is not.
+// Ambiguous legacy allocations remain explicitly unlinked rather than acquiring
+// an invented supplier or cost. New receipts freeze the verified original layer.
+async function originalSourceTx(client, transfer, line) {
+  // User-supplied transfer metadata is not proof of an actual reserved layer.
+  let specified = null;
+  if (inferLocationType(transfer.from_warehouse) === 'branch') {
+    const aliases = [...new Set([transfer.from_warehouse,...branchSearchTerms(transfer.from_warehouse)]
+      .map(value=>String(value).toLowerCase().trim()))];
+    const rows = (await client.query(`SELECT source_batch_id,metadata FROM branch_inventory_batches
+      WHERE LOWER(TRIM(branch_id))=ANY($1::text[]) AND LOWER(TRIM(product_name))=LOWER(TRIM($2))
+        AND COALESCE(batch_no,'')=COALESCE($3,'') AND expiry_date IS NOT DISTINCT FROM $4::date`,
+      [aliases,line.product_name,line.batch_no,day(line.expiry_date)])).rows;
+    if (rows.length !== 1 || !rows[0].source_batch_id || rows[0].metadata?.provenance_conflict) return null;
+    const frozen = rows[0].metadata?.original_source;
+    if (frozen && frozen.id === rows[0].source_batch_id && frozen.batch_no === line.batch_no
+      && day(frozen.expiry_date) === day(line.expiry_date)) return frozen;
+    specified = rows[0].source_batch_id;
+  }
+  const rows = (await client.query(`SELECT id,description,batch_no,expiry_date,dpc_unit_value,cif_unit_cost,
+      supplier_import_id,supplier_name FROM stock_batches
+    WHERE LOWER(TRIM(description))=LOWER(TRIM($2))
+      AND COALESCE(batch_no,'')=COALESCE($3,'') AND expiry_date IS NOT DISTINCT FROM $4::date
+      AND ($5::text IS NULL OR id=$5)
+      AND ($6::boolean OR location=$1 OR warehouse_id=$1) ORDER BY id`,
+    [transfer.from_warehouse,line.product_name,line.batch_no,day(line.expiry_date),specified,
+      inferLocationType(transfer.from_warehouse)==='branch'])).rows;
+  if (rows.length !== 1) return null;
+  const source = rows[0];
+  return {...source,expiry_date:day(source.expiry_date),
+    cif_unit_cost:source.cif_unit_cost == null ? null : Number(source.cif_unit_cost),
+    dpc_unit_value:source.dpc_unit_value == null ? null : Number(source.dpc_unit_value)};
+}
+
 // Used by both regular and barcode receipt. Quantities on the regular route
 // are cumulative; barcode quantities are increments with a repeat-safe key.
 export async function receiveTransferTx(client, { transferId, items = [], user, mode = 'cumulative', receiptId, requestedStatus }) {
@@ -77,21 +112,29 @@ export async function receiveTransferTx(client, { transferId, items = [], user, 
     if (delta > 0) {
       await lockStockBatchTx(client, branch, line.product_name, line.batch_no, line.expiry_date);
       const existing = (await client.query(
-        `SELECT id FROM branch_inventory_batches WHERE LOWER(TRIM(branch_id))=ANY($1::text[]) AND LOWER(TRIM(product_name))=LOWER(TRIM($2))
+        `SELECT id,quantity,source_batch_id,metadata FROM branch_inventory_batches WHERE LOWER(TRIM(branch_id))=ANY($1::text[]) AND LOWER(TRIM(product_name))=LOWER(TRIM($2))
          AND batch_no IS NOT DISTINCT FROM $3 AND expiry_date IS NOT DISTINCT FROM $4::date FOR UPDATE`,
         [branchAliases, line.product_name, line.batch_no || null, line.expiry_date || null]
       )).rows[0];
-      const cost = (await client.query(
-        `SELECT dpc_unit_value, cif_unit_cost FROM stock_batches WHERE location=$1
-         AND LOWER(TRIM(description))=LOWER(TRIM($2)) AND COALESCE(batch_no,'')=COALESCE($3,'')
-         AND expiry_date IS NOT DISTINCT FROM $4::date ORDER BY created_at LIMIT 1`,
-        [transfer.from_warehouse, line.product_name, line.batch_no || null, line.expiry_date || null]
-      )).rows[0];
-      if (existing) await client.query('UPDATE branch_inventory_batches SET quantity=quantity+$1, updated_at=NOW() WHERE id=$2', [delta, existing.id]);
+      const cost = await originalSourceTx(client,transfer,line);
+      const conflict = Number(existing?.quantity || 0)>0 &&
+        (existing.metadata?.provenance_conflict || !existing.source_batch_id || !cost || existing.source_batch_id !== cost.id
+          || (existing.metadata?.original_source && Number(existing.metadata.original_source.cif_unit_cost) !== Number(cost.cif_unit_cost)));
+      const original = conflict ? null : cost;
+      const metadata = {...(existing?.metadata || {}),original_source:original,
+        source_transfer_id:transferId,provenance_conflict:Boolean(conflict),
+        // Remove obsolete coarse cost hints when a physical row mixes unknown layers.
+        cif_unit_cost:original?.cif_unit_cost ?? null,unit_cif:original?.cif_unit_cost ?? null,
+        supplier_import_id:original?.supplier_import_id || null,supplier_name:original?.supplier_name || null};
+      if (existing) await client.query(`UPDATE branch_inventory_batches SET quantity=quantity+$1,
+        source_batch_id=$3,metadata=$4,updated_at=NOW() WHERE id=$2`,
+        [delta,existing.id,original?.id || null,JSON.stringify(metadata)]);
       else await client.query(
-        `INSERT INTO branch_inventory_batches (id,branch_id,product_name,batch_no,expiry_date,quantity,unit_price,source_warehouse,status,created_at,updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'in_stock',NOW(),NOW())`,
-        [`BIB-${randomUUID()}`, branch, line.product_name, line.batch_no || null, line.expiry_date || null, delta, cost?.dpc_unit_value || null, transfer.from_warehouse]
+        `INSERT INTO branch_inventory_batches (id,branch_id,product_name,batch_no,expiry_date,quantity,unit_price,
+          source_warehouse,source_batch_id,metadata,status,created_at,updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'in_stock',NOW(),NOW())`,
+        [`BIB-${randomUUID()}`, branch, line.product_name, line.batch_no || null, line.expiry_date || null, delta,
+          cost?.dpc_unit_value ?? null,transfer.from_warehouse,original?.id || null,JSON.stringify(metadata)]
       );
       const movementId = mode === 'increment' ? `RCPT-${eventKey}-${line.id}` : `RCPT-${randomUUID()}`;
       await client.query(
@@ -100,7 +143,7 @@ export async function receiveTransferTx(client, { transferId, items = [], user, 
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'branch',$10,$11,$12,'posted',$13,$14,NOW(),NOW(),NOW())`,
         [movementId, line.product_name, line.batch_no || null, line.expiry_date || null, delta, hasTransit ? 'transit_receipt' : 'transfer_in',
          hasTransit ? `in_transit:${transferId}` : transfer.from_warehouse, hasTransit ? 'in_transit' : inferLocationType(transfer.from_warehouse),
-         branch, transferId, user.fullName || user.username || user.id, `Staff-confirmed receipt ${receiptId || eventKey}`, cost?.dpc_unit_value || null, cost?.cif_unit_cost || null]
+         branch, transferId, user.fullName || user.username || user.id, `Staff-confirmed receipt ${receiptId || eventKey}`, cost?.dpc_unit_value ?? null, cost?.cif_unit_cost ?? null]
       );
       await client.query(
         `INSERT INTO branch_inventory_movements (id,branch_id,type,product_name,batch_no,quantity,reference,notes,created_by,created_at)
