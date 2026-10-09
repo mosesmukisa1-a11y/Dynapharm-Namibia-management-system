@@ -4,15 +4,34 @@ import { ALL_BRANCH_LOCATION_ALIASES } from '../_lib/branchUtils.js';
 
 // Read-only projection: never reconstruct physical stock from an incomplete ledger.
 // Reservation quantities are held separately from the legacy available counters.
-export async function getStockCostProjection(read=getMany) {
-  const [stock,branches,reservations,segregated]=await Promise.all([
-    read('SELECT * FROM stock_batches WHERE remaining_quantity>0'),
-    read('SELECT * FROM branch_inventory_batches WHERE quantity>0'),
-    read(`SELECT a.*,t.from_warehouse AS location,t.status FROM stock_transfer_allocations a
-      JOIN stock_transfers t ON t.id=a.transfer_id WHERE t.status IN ('approved','dispatched','in_transit','partially_received')
-      ORDER BY a.line_id,a.allocation_order`),
-    read(`SELECT * FROM stock_segregated_batches WHERE quantity>0`),
-  ]);
+export async function getStockCostProjection(options={},read=getMany) {
+  if(typeof options==='function'){read=options;options={};}
+  const locations=options.locations?.map(v=>String(v).toLowerCase().trim()) ?? null;
+  const product=options.productName?.toLowerCase().trim() ?? null;
+  // One statement gives every source the same MVCC snapshot, including received
+  // entitlements. Filters precede JSON materialization; no process-global cache.
+  const [snapshot]=await read(`SELECT
+    COALESCE((SELECT jsonb_agg(s) FROM stock_batches s WHERE remaining_quantity>0
+      AND ($1::text[] IS NULL OR LOWER(TRIM(COALESCE(NULLIF(location,''),warehouse_id)))=ANY($1))
+      AND ($2::text IS NULL OR LOWER(TRIM(description))=LOWER(TRIM($2)))),'[]'::jsonb) AS stock,
+    COALESCE((SELECT jsonb_agg(b) FROM branch_inventory_batches b WHERE quantity>0
+      AND ($1::text[] IS NULL OR LOWER(TRIM(branch_id))=ANY($1))
+      AND ($2::text IS NULL OR LOWER(TRIM(product_name))=LOWER(TRIM($2)))),'[]'::jsonb) AS branches,
+    COALESCE((SELECT jsonb_agg(to_jsonb(r)||jsonb_build_object('line_id',r.line_id::text) ORDER BY r.line_id,r.allocation_order) FROM (
+      SELECT a.*,t.from_warehouse AS location,t.status,i.quantity_received
+      FROM stock_transfer_allocations a JOIN stock_transfers t ON t.id=a.transfer_id
+      JOIN stock_transfer_items i ON i.id=a.line_id
+      WHERE t.status IN ('approved','dispatched','in_transit','partially_received')
+      AND ($1::text[] IS NULL OR LOWER(TRIM(CASE WHEN t.status='approved' THEN t.from_warehouse
+        ELSE 'in_transit:'||t.id END))=ANY($1))
+      AND ($2::text IS NULL OR a.line_id IN (SELECT line_id FROM stock_transfer_allocations
+        WHERE LOWER(TRIM(snapshot->>'product_name'))=LOWER(TRIM($2))))
+    ) r),'[]'::jsonb) AS reservations,
+    COALESCE((SELECT jsonb_agg(q) FROM stock_segregated_batches q WHERE quantity>0
+      AND ($1::text[] IS NULL OR LOWER(TRIM(location))=ANY($1))
+      AND ($2::text IS NULL OR LOWER(TRIM(snapshot->>'product_name'))=LOWER(TRIM($2)))),'[]'::jsonb) AS segregated`,
+    [locations,options.productName?.trim() ?? null]);
+  const {stock,branches,reservations,segregated}=snapshot;
   const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Africa/Windhoek',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
   const rows=[];
   const add=({id,location,productName,batchNo,expiryDate,quantity,source,condition='saleable',reserved=false,transit=false})=>{
@@ -36,9 +55,7 @@ export async function getStockCostProjection(read=getMany) {
   }
   // Remove cumulative received entitlements from transit, in allocation order.
   const received=new Map();
-  const lines=reservations.length ? await read('SELECT id,quantity_received FROM stock_transfer_items WHERE id=ANY($1::bigint[])',
-    [[...new Set(reservations.map(r=>r.line_id))]]) : [];
-  for (const line of lines) received.set(String(line.id),Number(line.quantity_received || 0));
+  for (const row of reservations) received.set(String(row.line_id),Number(row.quantity_received || 0));
   for (const row of reservations) {
     const reserved=row.status==='approved',before=reserved ? 0 : received.get(String(row.line_id)) || 0;
     const quantity=Math.max(0,Number(row.quantity)-before);
@@ -51,27 +68,52 @@ export async function getStockCostProjection(read=getMany) {
     batchNo:row.snapshot.batch_no,expiryDate:day(row.snapshot.expiry_date),quantity:Number(row.quantity),
     source:{id:row.snapshot.source_batch_id,cif_unit_cost:row.snapshot.unit_cost,dpc_unit_value:row.snapshot.unit_dp},
     condition:row.condition || 'quarantine'});
-  return rows;
+  return rows.filter(r=>!product || String(r.productName).toLowerCase().trim()===product);
 }
 
-export async function getSalesCostReport({aliases,from,to}={}) {
-  const rows=await getMany(`SELECT a.*,sm.unit_cif,sm.unit_dp FROM stock_sale_allocations a
+const salesSql=`WITH evidence AS (
+    SELECT a.movement_id,a.sale_reference,a.branch_id,a.product_name,a.batch_no,a.expiry_date,
+      a.quantity,a.snapshot,a.created_at,a.movement_id::text AS allocation_id FROM stock_sale_allocations a
     JOIN stock_movements sm ON sm.id=a.movement_id AND sm.status IN ('posted','approved')
     WHERE ($1::text[] IS NULL OR LOWER(TRIM(a.branch_id))=ANY($1))
       AND ($2::date IS NULL OR a.created_at >= $2::date)
-      AND ($3::date IS NULL OR a.created_at < $3::date + INTERVAL '1 day')
-    ORDER BY a.created_at,a.movement_id`,[aliases || null,from || null,to || null]);
-  const legacy=await getMany(`SELECT sm.id AS movement_id,sm.reference_id AS sale_reference,
-    sm.source_location AS branch_id,sm.product_name,sm.batch_no,sm.expiry_date,sm.quantity,'{}'::jsonb AS snapshot
+       AND ($3::date IS NULL OR a.created_at < $3::date + INTERVAL '1 day')
+       AND ($4::text IS NULL OR LOWER(TRIM(a.product_name))=LOWER(TRIM($4)))
+    UNION ALL
+    SELECT sm.id AS movement_id,sm.reference_id AS sale_reference,
+    sm.source_location AS branch_id,sm.product_name,sm.batch_no,sm.expiry_date,sm.quantity,
+      '{}'::jsonb AS snapshot,sm.created_at,'legacy:'||sm.id AS allocation_id
     FROM stock_movements sm LEFT JOIN stock_sale_allocations a ON a.movement_id=sm.id
     WHERE a.movement_id IS NULL AND sm.status IN ('posted','approved')
       AND sm.movement_type IN ('walkin_sale','walkin_member_sale','walkin_non_member_sale','walk_in_member_sale',
         'walk_in_non_member_sale','prescription_dispense','campaign_sale','campaign_free_item','online_order_fulfilment')
       AND ($1::text[] IS NULL OR LOWER(TRIM(sm.source_location))=ANY($1))
       AND ($2::date IS NULL OR sm.created_at >= $2::date)
-      AND ($3::date IS NULL OR sm.created_at < $3::date + INTERVAL '1 day')`,
-      [aliases || null,from || null,to || null]);
-  rows.push(...legacy);
+       AND ($3::date IS NULL OR sm.created_at < $3::date + INTERVAL '1 day')
+       AND ($4::text IS NULL OR LOWER(TRIM(sm.product_name))=LOWER(TRIM($4)))
+  ), valued AS (
+    SELECT e.*,cost.known_cost,cost.missing_cost,
+      CASE WHEN snapshot->>'revenue_unit' IS NOT NULL
+        THEN (snapshot->>'revenue_unit')::numeric*quantity END AS revenue
+    FROM evidence e CROSS JOIN LATERAL (
+      SELECT COALESCE(SUM(COALESCE((l->'source'->>'cif_unit_cost')::numeric,0)*(l->>'quantity')::numeric),0) AS known_cost,
+        COALESCE(SUM(CASE WHEN l->'source'->>'cif_unit_cost' IS NULL THEN (l->>'quantity')::numeric ELSE 0 END),0) AS missing_cost
+      FROM jsonb_array_elements(CASE WHEN jsonb_typeof(snapshot->'cost_layers')='array'
+        THEN snapshot->'cost_layers' ELSE jsonb_build_array(jsonb_build_object('quantity',quantity,
+          'source',jsonb_build_object('cif_unit_cost',snapshot->'unit_cost'))) END) l
+    ) cost
+  ) SELECT
+    COALESCE((SELECT jsonb_agg(p ORDER BY created_at,movement_id,allocation_id) FROM
+      (SELECT * FROM evidence ORDER BY created_at,movement_id,allocation_id LIMIT $5 OFFSET $6) p),'[]'::jsonb) AS rows,
+    (SELECT COUNT(*) FROM evidence)::integer AS total,
+    (SELECT jsonb_build_object('knownSalesCost',COALESCE(SUM(known_cost),0),
+      'missingSalesCostQuantity',COALESCE(SUM(missing_cost),0),
+      'knownSalesRevenue',COALESCE(SUM(revenue),0),
+      'missingSalesRevenueQuantity',COALESCE(SUM(CASE WHEN revenue IS NULL THEN quantity ELSE 0 END),0),
+      'grossProfit',CASE WHEN COUNT(*) FILTER(WHERE revenue IS NULL OR missing_cost>0)>0 THEN NULL
+        ELSE COALESCE(SUM(revenue-known_cost),0) END) FROM valued) AS summary`;
+
+export function mapSalesCostRows(rows) {
   return rows.map(row=>{
     const layers=row.snapshot.cost_layers || [{quantity:Number(row.quantity),source:{cif_unit_cost:row.snapshot.unit_cost,dpc_unit_value:row.snapshot.unit_dp}}];
     const revenue=row.snapshot.revenue_unit==null ? null : Number(row.snapshot.revenue_unit)*Number(row.quantity);
@@ -84,4 +126,14 @@ export async function getSalesCostReport({aliases,from,to}={}) {
       knownDPC:layers.reduce((sum,l)=>sum+Number(l.source?.dpc_unit_value ?? 0)*Number(l.quantity),0),
       missingCostQuantity};
   });
+}
+
+export async function getSalesCostPage({aliases,from,to,productName,limit=100,offset=0}={},read=getMany) {
+  const [result]=await read(salesSql,[aliases?.map(v=>String(v).toLowerCase().trim()) || null,
+    from || null,to || null,productName?.trim() || null,limit,offset]);
+  return {...result,rows:mapSalesCostRows(result.rows)};
+}
+
+export async function getSalesCostReport(options={}) {
+  return (await getSalesCostPage({...options,limit:null,offset:0})).rows;
 }

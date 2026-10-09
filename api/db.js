@@ -3,9 +3,14 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 
 const requestTransactions = new AsyncLocalStorage();
 
-export function deferUntilCommit(callback) {
+export function deferUntilCommit(callback, key) {
   const context = requestTransactions.getStore();
   if (!context?.active) return false;
+  if(key!==undefined){
+    context.afterCommitKeys ??= new Set();
+    if(context.afterCommitKeys.has(key))return true;
+    context.afterCommitKeys.add(key);
+  }
   context.afterCommit.push(callback);
   return true;
 }

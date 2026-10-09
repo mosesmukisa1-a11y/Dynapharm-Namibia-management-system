@@ -124,7 +124,7 @@ function normalizeBranchName(id) {
  * Stock summary for a location from inventory_balances.
  */
 export async function getLocationStockSummary(locationType, locationId) {
-  const layers=(await getStockCostProjection()).filter(r=>r.location===locationId);
+  const layers=(await getStockCostProjection({locations:[locationId]})).filter(r=>r.location===locationId);
   const rows=layers.map(r=>({product_name:r.productName,expiry_date:r.expiryDate,
     closing_qty:r.qty,stock_value_dp:r.qty*(r.unitDPC ?? 0)}));
 

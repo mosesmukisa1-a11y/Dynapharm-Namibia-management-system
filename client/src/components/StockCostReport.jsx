@@ -12,11 +12,12 @@ export default function StockCostReport({ branchId: initialBranchId = '' }) {
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const load = useCallback(async () => {
+  const load = useCallback(async (pages={}) => {
     setLoading(true);
     setError('');
     try {
-      const data = await api.stock.costReport({ branchId, from, to });
+      const data = await api.stock.costReport({ branchId, from, to, pageSize:100,
+        stockPage:pages.stockPage || 1,salesPage:pages.salesPage || 1 });
       setReport(data || { stock: [], sales: [], summary: {} });
     } catch (e) {
       setError(e.message || 'Cost report could not be loaded.');
@@ -33,6 +34,16 @@ export default function StockCostReport({ branchId: initialBranchId = '' }) {
     || (report != null && summary.grossProfit == null);
   const th = 'whitespace-nowrap border-b border-slate-200 px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-600';
   const td = 'border-b border-slate-100 px-3 py-2 text-sm text-slate-700';
+  const pager=kind=>{
+    const meta=report?.pagination?.[kind];if(!meta)return null;
+    const change=page=>load({stockPage:report.pagination.stock.page,salesPage:report.pagination.sales.page,
+      [`${kind}Page`]:page});
+    return <div className="flex items-center justify-between gap-3 text-sm text-slate-600">
+      <span>{qty(meta.total)} rows · Page {meta.page} of {Math.max(1,meta.pages)}. Totals and warnings cover all matching rows.</span>
+      <div className="flex gap-3"><button type="button" onClick={()=>change(meta.page-1)} disabled={loading||meta.page<=1} className="font-semibold text-rose-700 disabled:opacity-40">Previous {kind}</button>
+      <button type="button" onClick={()=>change(meta.page+1)} disabled={loading||meta.page>=meta.pages} className="font-semibold text-rose-700 disabled:opacity-40">Next {kind}</button></div>
+    </div>;
+  };
   return (
     <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 md:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -64,16 +75,18 @@ export default function StockCostReport({ branchId: initialBranchId = '' }) {
         </div>
         <div className="space-y-2">
           <h4 className="m-0 font-bold text-slate-800">Stock by location and batch</h4>
+          {pager('stock')}
           <div className="overflow-x-auto rounded-lg border border-slate-200"><table className="w-full min-w-[1120px] border-collapse"><thead><tr className="bg-slate-50">{['Location','Product','Batch','Expiry','Condition','Available','Reserved','On hand','In transit','Expired','Unit CIF','Unit DPC','Missing cost'].map(h => <th key={h} className={th}>{h}</th>)}</tr></thead><tbody>
             {(report.stock || []).map((r, i) => <tr key={`${r.location}-${r.productName}-${r.batchNo}-${i}`} className={Number(r.missingCostQuantity) > 0 ? 'bg-amber-50/70' : ''}><td className={td}>{r.location || '—'}</td><td className={td}>{r.productName || '—'}</td><td className={td}>{r.batchNo || '—'}</td><td className={td}>{r.missingExpiry ? 'Missing expiry' : r.expiryDate || '—'}</td><td className={td}>{r.condition || '—'}</td><td className={td}>{qty(r.availableQty)}</td><td className={td}>{qty(r.reservedQty)}</td><td className={td}>{qty(r.onHandQty)}</td><td className={`${td} ${Number(r.inTransitQty) > 0 ? 'font-semibold text-blue-800' : ''}`}>{qty(r.inTransitQty)}</td><td className={td}>{qty(r.expiredQty)}</td><td className={td}>{r.unitCIF == null ? 'Missing' : money(r.unitCIF)}</td><td className={td}>{r.unitDPC == null ? 'Missing' : money(r.unitDPC)}</td><td className={`${td} font-semibold ${Number(r.missingCostQuantity) > 0 ? 'text-amber-800' : ''}`}>{qty(r.missingCostQuantity)}</td></tr>)}
-            {!report.stock?.length && <tr><td colSpan="13" className="px-4 py-8 text-center text-sm text-slate-500">No stock rows for this report.</td></tr>}
+            {!report.stock?.length && <tr><td colSpan="13" className="px-4 py-8 text-center text-sm text-slate-500">No stock rows on this page.</td></tr>}
           </tbody></table></div>
         </div>
         <div className="space-y-2">
           <h4 className="m-0 font-bold text-slate-800">Sales cost detail</h4>
+          {pager('sales')}
           <div className="overflow-x-auto rounded-lg border border-slate-200"><table className="w-full min-w-[900px] border-collapse"><thead><tr className="bg-slate-50">{['Sale reference','Product','Quantity','Known received-CIF cost','Revenue','Gross profit','Missing-cost qty','Missing-revenue qty'].map(h => <th key={h} className={th}>{h}</th>)}</tr></thead><tbody>
             {(report.sales || []).map((r, i) => <tr key={`${r.saleReference}-${r.productName}-${i}`} className={Number(r.missingCostQuantity) > 0 || Number(r.missingRevenueQuantity) > 0 || r.grossProfit == null ? 'bg-amber-50/70' : ''}><td className={td}>{r.saleReference || '—'}</td><td className={td}>{r.productName || '—'}</td><td className={td}>{qty(r.quantity)}</td><td className={td}>{money(r.knownCost)}</td><td className={td}>{money(r.revenue)}</td><td className={`${td} font-semibold`}>{r.grossProfit == null ? <span className="text-amber-800">Incomplete</span> : money(r.grossProfit)}</td><td className={`${td} font-semibold ${Number(r.missingCostQuantity) > 0 ? 'text-amber-800' : ''}`}>{qty(r.missingCostQuantity)}</td><td className={`${td} font-semibold ${Number(r.missingRevenueQuantity) > 0 ? 'text-amber-800' : ''}`}>{qty(r.missingRevenueQuantity)}</td></tr>)}
-            {!report.sales?.length && <tr><td colSpan="8" className="px-4 py-8 text-center text-sm text-slate-500">No sales rows for this date range.</td></tr>}
+            {!report.sales?.length && <tr><td colSpan="8" className="px-4 py-8 text-center text-sm text-slate-500">No sales rows on this page.</td></tr>}
           </tbody></table></div>
         </div>
       </>}

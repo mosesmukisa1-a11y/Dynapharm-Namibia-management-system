@@ -10,7 +10,9 @@ import { lifecycleSchema,allocateExpenses,allocateTransferTx,restoreTransferAllo
 import { receiveTransferTx } from '../api/services/transferReceipt.js';
 import { reversalSchema } from '../api/services/linkedReversals.js';
 import { deductStock } from '../api/branch/campaign-sale.js';
-import { getStockCostProjection,getSalesCostReport } from '../api/services/stockCostReporting.js';
+import { getStockCostProjection,getSalesCostReport,getSalesCostPage } from '../api/services/stockCostReporting.js';
+import costReport from '../api/stock/cost-report.js';
+import {readFile} from 'node:fs/promises';
 import { ensureControlledStockSchema } from '../api/services/controlledStock.js';
 import { saleAllocationSchema } from '../api/services/stockSaleAllocations.js';
 
@@ -52,12 +54,52 @@ async function clean() {
   await query('DELETE FROM stock_import_receipts WHERE receipt_key LIKE $1',[`${prefix}%`]);
 }
 describe.sequential('carton receiving and actual source cost lifecycle',()=>{
-  beforeAll(async()=>{await query(lifecycleSchema);await query(saleAllocationSchema);await query(reversalSchema);await ensureControlledStockSchema();await clean();baseline=await physical();});
+  beforeAll(async()=>{await query(lifecycleSchema);await query(saleAllocationSchema);await query(reversalSchema);await ensureControlledStockSchema();
+    await query(await readFile(new URL('../migrations/028_stock_cost_reporting_indexes.sql',import.meta.url),'utf8'));
+    await clean();baseline=await physical();});
   afterAll(async()=>{await clean();expect(await physical()).toEqual(baseline);});
   it('reconciles expense cents by purchase value, with deterministic ties',()=>{
     expect(allocateExpenses([1,1,1],{freight:.01}).allocations).toEqual([.01,0,0]);
     expect(allocateExpenses([100,300],{freight:1.01,duty:.03}).allocations).toEqual([.26,.78]);
     expect(()=>allocateExpenses([null,20],{duty:2})).toThrow('Purchase costs');
+  });
+  it('uses one filtered snapshot and preserves cumulative receipts before product filtering',async()=>{
+    let calls=0,params;
+    const rows=await getStockCostProjection({locations:[' IN_TRANSIT:X '],productName:'Requested'},async(sql,values)=>{
+      calls++;params=values;expect(sql).toContain('a.line_id IN');return [{
+        stock:[],branches:[],segregated:[],reservations:[
+          {id:'a',line_id:'9007199254740993',transfer_id:'x',status:'partially_received',quantity:5,quantity_received:10,
+            snapshot:{product_name:'Other',source:{cif_unit_cost:1}}},
+          {id:'b',line_id:'9007199254740993',transfer_id:'x',status:'partially_received',quantity:10,quantity_received:10,
+            snapshot:{product_name:'Requested',source:{cif_unit_cost:.3333333333333333}}},
+        ],
+      }];
+    });
+    expect(calls).toBe(1);expect(params).toEqual([['in_transit:x'],'Requested']);
+    expect(rows).toHaveLength(1);expect(rows[0].qty).toBe(5);
+    expect(rows[0].unitCIF).toBe(.3333333333333333);
+  });
+  it('paginates SQL sale details but includes off-page missing evidence in full-scope totals',async()=>{
+    const paged=`${prefix}-PAGED`,known=`${prefix}-PAGE-KNOWN`,unknown=`${prefix}-PAGE-UNKNOWN`,
+      pageBranch=`${prefix.toLowerCase()}_paging_branch`;
+    for(const [id,quantity,date] of [[known,3,'2020-01-01'],[unknown,2,'2020-01-02']])
+      await query(`INSERT INTO stock_movements(id,movement_type,product_name,quantity,source_location,status,
+        reference_id,created_at,unit_cif) VALUES($1,'walkin_sale',$2,$3,$4,'posted',$1,$5,99)`,[id,paged,quantity,pageBranch,date]);
+    await query(`INSERT INTO stock_sale_allocations(movement_id,sale_reference,branch_batch_id,branch_id,
+      product_name,quantity,snapshot,created_at) VALUES($1,$1,'historical',$2,$3,3,$4,'2020-01-01')`,
+      [known,pageBranch,paged,JSON.stringify({revenue_unit:7,cost_layers:[{quantity:3,source:{cif_unit_cost:.3333333333333333}}]})]);
+    const options={aliases:[pageBranch],productName:paged,limit:1};
+    const first=await getSalesCostPage(options),second=await getSalesCostPage({...options,offset:1});
+    expect(first.rows).toHaveLength(1);expect(first.total).toBe(2);expect(second.rows).toHaveLength(1);
+    expect(first.summary).toEqual(second.summary);expect(first.summary.knownSalesCost).toBeCloseTo(1,12);
+    expect(first.summary.knownSalesRevenue).toBe(21);expect(first.summary.missingSalesCostQuantity).toBe(2);
+    expect(first.summary.missingSalesRevenueQuantity).toBe(2);expect(first.summary.grossProfit).toBeNull();
+    expect(second.rows[0].knownCost).toBe(0); // Never infer received CIF from movement/catalogue prices.
+    const report=await invoke(costReport,null,{role:'finance'},'GET',
+      `/api/stock/cost-report?branchId=${encodeURIComponent(pageBranch)}&productName=${encodeURIComponent(paged)}&pageSize=1`);
+    expect(report.status).toBe(200);expect(report.body.sales).toHaveLength(1);
+    expect(report.body.pagination.sales.total).toBe(2);expect(report.body.summary.grossProfit).toBeNull();
+    expect(report.body.summary.missingSalesCostQuantity).toBe(2);
   });
   it('requires explicit factors and converts entered carton prices without rounding unit cost',async()=>{
     const missing=await invoke(receive,{receiptKey:`${prefix}-missing`,items:[{productName:product,quantity:2,enteredUnit:'carton',batchNo:'LOT',expiryDate:'2035-12-31',unitCIF:10}]});

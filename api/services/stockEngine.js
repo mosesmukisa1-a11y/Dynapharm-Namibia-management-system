@@ -116,7 +116,9 @@ function advisoryLockKey(locationId, productName, batchNo) {
  * @param {string} [key.batchNo]
  * @param {string} [key.expiryDate]  - ISO date string or null
  */
-export async function recomputeInventoryBalanceTx(client, key) {
+// Shared layers must come from this client's stable transaction snapshot, never
+// from a request/global cache or a read preceding subsequent physical writes.
+export async function recomputeInventoryBalanceTx(client, key, sharedLayers) {
   const { locationType, locationId, productName, batchNo, expiryDate } = key;
   const batchNoVal = batchNo || '';
 
@@ -180,7 +182,8 @@ export async function recomputeInventoryBalanceTx(client, key) {
 
   const {getStockCostProjection}=await import('./stockCostReporting.js');
   const {day}=await import('./stockCostLayers.js');
-  const layers=(await getStockCostProjection(async(sql,params)=>(await client.query(sql,params)).rows)).filter(r=>
+  const layers=(sharedLayers ?? await getStockCostProjection({locations:[locationId],productName},
+    async(sql,params)=>(await client.query(sql,params)).rows)).filter(r=>
     r.location===locationId && String(r.productName).toLowerCase().trim()===productName.toLowerCase().trim()
       && (r.batchNo || '')===batchNoVal && day(r.expiryDate)===day(expiryVal));
   const sum=field=>layers.reduce((total,r)=>total+Number(r[field] || 0),0);
@@ -525,14 +528,18 @@ export async function getClosingStock(params) {
  * @param {string} locationId   - e.g. 'oshakati_branch'
  */
 export async function recomputeLocationBalances(locationType, locationId) {
-  if (deferUntilCommit(() => recomputeLocationBalances(locationType, locationId))) return;
+  if (deferUntilCommit(() => recomputeLocationBalances(locationType, locationId),
+    JSON.stringify(['stock-balances',locationType,locationId]))) return;
+  for(let attempt=0;attempt<3;attempt++){
+    try{return await withTransaction(async client=>{
+      await client.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
   // Discover ALL product+batch combinations that have EVER had a movement at
   // this location, regardless of status.  The recomputeInventoryBalance call
   // below already filters on status IN ('posted','approved'), so products whose
   // only remaining movements are cancelled/voided will correctly compute to
   // inward=0 / outward=0 / closing=0 and the stale balance row will be zeroed.
   // Filtering by status here would skip those products and leave stale balances.
-  const result = await query(
+  const result = await client.query(
     `SELECT DISTINCT product_name, COALESCE(batch_no,'') as batch_no, expiry_date
      FROM stock_movements
      WHERE (
@@ -544,18 +551,24 @@ export async function recomputeLocationBalances(locationType, locationId) {
     [locationType, locationId]
   );
 
-  for (const r of result.rows) {
-    try {
-      await recomputeInventoryBalance({
+  const {getStockCostProjection}=await import('./stockCostReporting.js');
+  const {day}=await import('./stockCostLayers.js');
+  const projection=await getStockCostProjection({locations:[locationId]},
+    async(sql,params)=>(await client.query(sql,params)).rows);
+  const identity=r=>JSON.stringify([String(r.productName).toLowerCase().trim(),r.batchNo || '',day(r.expiryDate)]);
+  const groups=new Map();
+  for(const row of projection){const id=identity(row);if(!groups.has(id))groups.set(id,[]);groups.get(id).push(row);}
+  // Deterministic lock order prevents opposite product discovery order deadlocks.
+  for (const r of result.rows.sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)))) {
+      await recomputeInventoryBalanceTx(client,{
         locationType,
         locationId,
         productName: r.product_name,
         batchNo: r.batch_no,
         expiryDate: r.expiry_date,
-      });
-    } catch (err) {
-      console.error(`[stockEngine] recomputeLocationBalances error for ${locationId}/${r.product_name}:`, err.message);
-    }
+      },groups.get(identity({productName:r.product_name,batchNo:r.batch_no,expiryDate:r.expiry_date})) || []);
+  }
+    });}catch(error){if(!['40001','40P01'].includes(error.code)||attempt===2)throw error;}
   }
 }
 

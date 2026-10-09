@@ -6,9 +6,11 @@ vi.mock('../api/services/stockCostReporting.js',()=>({
     {location:'swakopmund',qty:2,unitCIF:5,missingCostQuantity:0},
   ]),
   getSalesCostReport:vi.fn(async()=>[]),
+  getSalesCostPage:vi.fn(async()=>({rows:[],total:0,summary:{knownSalesCost:0,missingSalesCostQuantity:0,knownSalesRevenue:0,missingSalesRevenueQuantity:0,grossProfit:0}})),
 }));
+vi.mock('../api/db.js',()=>({withTransaction:async fn=>fn({query:async()=>({rows:[]})})}));
 import handler from '../api/stock/cost-report.js';
-import {getStockCostProjection,getSalesCostReport} from '../api/services/stockCostReporting.js';
+import {getStockCostProjection,getSalesCostReport,getSalesCostPage} from '../api/services/stockCostReporting.js';
 
 async function request(user,branch) {
   const output={status:200};
@@ -40,7 +42,7 @@ describe('original-cost reporting entitlement and branch isolation',()=>{
       const own=await request({role,branch:'townshop'},'townshop');
       expect(own.status).toBe(200);
       expect(own.body.stock.map(row=>row.location)).toEqual(['townshop']);
-      expect(getSalesCostReport).toHaveBeenCalledWith(expect.objectContaining({aliases:expect.arrayContaining(['townshop'])}));
+      expect(getSalesCostPage).toHaveBeenCalledWith(expect.objectContaining({aliases:expect.arrayContaining(['townshop'])}),expect.any(Function));
     });
   it.each(['stock','finance','finance_manager','mis','gm','general_manager','director','admin','superadmin','super_admin'])(
     'allows explicitly entitled company role %s',async role=>{

@@ -1,6 +1,7 @@
 import { getBranchScope } from '../_lib/auth.js';
 import { branchSearchTerms, normalizeBranchSlug } from '../_lib/branchUtils.js';
-import { getStockCostProjection, getSalesCostReport } from '../services/stockCostReporting.js';
+import { getStockCostProjection, getSalesCostPage } from '../services/stockCostReporting.js';
+import { withTransaction } from '../db.js';
 
 const COMPANY_REPORT_ROLES=new Set(['stock','finance','finance_manager','mis','gm','general_manager',
   'director','admin','superadmin','super_admin']);
@@ -25,17 +26,29 @@ export default async function handler(req,res) {
     if (allowed && (!branch || !allowed.includes(normalizeBranchSlug(branch) || branch)))
       return res.status(403).json({success:false,error:'Select an authorized branch'});
     const aliases=branch ? branchSearchTerms(branch).map(b=>b.toLowerCase().trim()) : null;
-    const stock=(await getStockCostProjection()).filter(r=>!aliases || aliases.includes(String(r.location).toLowerCase().trim()));
-    const sales=await getSalesCostReport({aliases,from:params.get('from'),to:params.get('to')});
-    return res.json({success:true,stock,sales,summary:{
+    const size=Number(params.get('pageSize') || 100),stockPage=Number(params.get('stockPage') || 1),salesPage=Number(params.get('salesPage') || 1);
+    if(!Number.isSafeInteger(size)||size<1||size>500 ||
+      ![stockPage,salesPage].every(n=>Number.isSafeInteger(n)&&n>=1&&n<=1000000))
+      return res.status(422).json({success:false,error:'Invalid report pagination'});
+    const productName=params.get('productName') || null;
+    const locations=aliases || (params.get('location') ? [params.get('location').toLowerCase().trim()] : null);
+    const report=await withTransaction(async client=>{
+    await client.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY');
+    const read=async(sql,values)=>(await client.query(sql,values)).rows;
+    const stock=(await getStockCostProjection({locations,productName},read)).filter(r=>!locations || locations.includes(String(r.location).toLowerCase().trim()));
+    stock.sort((a,b)=>JSON.stringify([a.location,a.productName,a.batchNo,a.expiryDate,String(a.id)]).localeCompare(
+      JSON.stringify([b.location,b.productName,b.batchNo,b.expiryDate,String(b.id)])));
+    const result=await getSalesCostPage({aliases:locations,productName,from:params.get('from'),to:params.get('to'),
+      limit:size,offset:(salesPage-1)*size},read);
+    const meta=(total,page)=>({total,page,pageSize:size,pages:Math.ceil(total/size)});
+    return {success:true,stock:stock.slice((stockPage-1)*size,stockPage*size),sales:result.rows,
+      pagination:{stock:meta(stock.length,stockPage),sales:meta(result.total,salesPage)},summary:{
       knownStockCost:stock.reduce((sum,r)=>sum+r.qty*(r.unitCIF ?? 0),0),
       missingStockCostQuantity:stock.reduce((sum,r)=>sum+r.missingCostQuantity,0),
-      knownSalesCost:sales.reduce((sum,r)=>sum+r.knownCost,0),
-      missingSalesCostQuantity:sales.reduce((sum,r)=>sum+r.missingCostQuantity,0),
-      knownSalesRevenue:sales.reduce((sum,r)=>sum+(r.revenue ?? 0),0),
-      missingSalesRevenueQuantity:sales.reduce((sum,r)=>sum+r.missingRevenueQuantity,0),
-      grossProfit:sales.some(r=>r.grossProfit==null) ? null : sales.reduce((sum,r)=>sum+r.grossProfit,0),
-    }});
+       ...result.summary,
+     }};
+    });
+    return res.json(report);
   } catch (err) {
     return res.status(err.statusCode || 500).json({success:false,error:err.message});
   }
