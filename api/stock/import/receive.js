@@ -28,8 +28,14 @@ async function handler(req,res) {
     const posted=[];
     for (const [index,line] of lines.entries()) {
       const expense=allocation.allocations[index];
-      const landedValue=line.purchaseValue==null ? null : line.purchaseValue+expense;
-      const unitCIF=landedValue==null ? null : landedValue/line.quantity;
+      // Calculate the received NUMERIC value before any Number conversion.
+      // A recurring carton-derived unit cost must survive JSON snapshots.
+      const exact=(await client.query(`SELECT
+        CASE WHEN $1::numeric IS NULL THEN NULL ELSE ($1::numeric+$2::numeric)::text END AS landed,
+        CASE WHEN $1::numeric IS NULL THEN NULL ELSE (($1::numeric+$2::numeric)/$3::numeric)::text END AS unit`,
+        [line.purchaseValue,expense,line.quantity])).rows[0];
+      const landedValue=exact.landed,unitCIFExact=exact.unit;
+      const unitCIF=unitCIFExact==null ? null : Number(unitCIFExact);
       const dpValue=line.unitDP==null ? null : line.unitDP*line.quantity;
       const importId=`IMP-${randomUUID()}`,batchId=`SB-IMP-${randomUUID()}`;
       const actor=req.user.fullName || req.user.username || req.user.id;
@@ -54,15 +60,15 @@ async function handler(req,res) {
         [batchId,`BC-${randomUUID()}`,line.productName,line.batchNo,line.expiryDate,line.quantity,line.productId,
           body.supplierId || body.supplier_name || null,referenceId,importId,line.unitDP,dpValue,unitCIF,landedValue,
           body.notes || null,JSON.stringify(metadata)]);
-      await client.query('UPDATE supplier_imports SET original_unit_cif=$1,original_unit_dp=$2 WHERE id=$3',[unitCIF,line.unitDP,importId]);
-      await client.query('UPDATE stock_batches SET original_unit_cif=$1,original_unit_dp=$2 WHERE id=$3',[unitCIF,line.unitDP,batchId]);
+      await client.query('UPDATE supplier_imports SET original_unit_cif=$1,original_unit_dp=$2 WHERE id=$3',[unitCIFExact,line.unitDP,importId]);
+      await client.query('UPDATE stock_batches SET original_unit_cif=$1,original_unit_dp=$2 WHERE id=$3',[unitCIFExact,line.unitDP,batchId]);
       const movement=await postStockMovementTx(client,{productName:line.productName,batchNo:line.batchNo,expiryDate:line.expiryDate,
         quantity:line.quantity,movementType:'supplier_import_receipt',sourceLocation:body.supplierId || 'supplier',
         sourceLocationType:'supplier',destinationLocation:'country_stock',destinationLocationType:'country',
         referenceId,notes:body.notes || 'Staff-confirmed import receipt',unitDP:line.unitDP,unitCIF,createdBy:actor});
       await client.query('UPDATE stock_movements SET original_unit_cif=$1,original_unit_dp=$2 WHERE id=$3',
-        [unitCIF,line.unitDP,movement.movementId]);
-      posted.push({...line,unitCIF,allocatedExpense:expense,landedValue,batchId,supplierImportId:importId,missingCost:unitCIF==null});
+        [unitCIFExact,line.unitDP,movement.movementId]);
+      posted.push({...line,unitCIF,allocatedExpense:expense,landedValue:landedValue==null ? null : Number(landedValue),batchId,supplierImportId:importId,missingCost:unitCIF==null});
     }
     const result={success:true,referenceId,destinationLocation:'country_stock',itemsPosted:posted.length,
       expenseTotal:allocation.total,items:posted,message:`${posted.length} lines received into Country Stock.`};

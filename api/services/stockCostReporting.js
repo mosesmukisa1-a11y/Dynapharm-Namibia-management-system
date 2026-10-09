@@ -71,7 +71,7 @@ export async function getStockCostProjection(options={},read=getMany) {
   return rows.filter(r=>!product || String(r.productName).toLowerCase().trim()===product);
 }
 
-const salesSql=`WITH evidence AS (
+export const salesEvidenceSql=`WITH evidence AS (
     SELECT a.movement_id,a.sale_reference,a.branch_id,a.product_name,a.batch_no,a.expiry_date,
       a.quantity,a.snapshot,a.created_at,a.movement_id::text AS allocation_id FROM stock_sale_allocations a
     JOIN stock_movements sm ON sm.id=a.movement_id AND sm.status IN ('posted','approved')
@@ -91,7 +91,8 @@ const salesSql=`WITH evidence AS (
       AND ($2::date IS NULL OR sm.created_at >= $2::date)
        AND ($3::date IS NULL OR sm.created_at < $3::date + INTERVAL '1 day')
        AND ($4::text IS NULL OR LOWER(TRIM(sm.product_name))=LOWER(TRIM($4)))
-  ), valued AS (
+  )`;
+const salesSql=`${salesEvidenceSql}, valued AS (
     SELECT e.*,cost.known_cost,cost.missing_cost,
       CASE WHEN snapshot->>'revenue_unit' IS NOT NULL
         THEN (snapshot->>'revenue_unit')::numeric*quantity END AS revenue

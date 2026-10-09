@@ -87,7 +87,16 @@ export async function convertImportItemTx(client,item) {
 }
 
 export function sourceSnapshot(row) {
+  const exact=row.received_unit_cif_exact ?? row.original_unit_cif ?? row.cif_unit_cost;
+  const parent=row.metadata?.original_source;
+  const received=row.received_source || (!row.metadata?.receipt_key && (parent?.received_source || parent)) || null;
   return {...row,expiry_date:day(row.expiry_date),
+    // Preserve the frozen import receipt behind a warehouse relocation.
+    // Its original quantity is the denominator for allocated receipt expenses.
+    received_source:received,
+    // Keep the database decimal alongside the legacy numeric accounting value.
+    // Frozen transfers/sales must carry this string unchanged through merges.
+    received_unit_cif_exact:exact==null ? null : String(exact),
     cif_unit_cost:nullableNumber(row.original_unit_cif ?? row.cif_unit_cost),
     dpc_unit_value:nullableNumber(row.original_unit_dp ?? row.dpc_unit_value)};
 }

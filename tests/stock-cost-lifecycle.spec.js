@@ -12,6 +12,7 @@ import { reversalSchema } from '../api/services/linkedReversals.js';
 import { deductStock } from '../api/branch/campaign-sale.js';
 import { getStockCostProjection,getSalesCostReport,getSalesCostPage } from '../api/services/stockCostReporting.js';
 import costReport from '../api/stock/cost-report.js';
+import {getStockCostAudit} from '../api/services/stockCostAudit.js';
 import {readFile} from 'node:fs/promises';
 import { ensureControlledStockSchema } from '../api/services/controlledStock.js';
 import { saleAllocationSchema } from '../api/services/stockSaleAllocations.js';
@@ -101,6 +102,39 @@ describe.sequential('carton receiving and actual source cost lifecycle',()=>{
     expect(report.body.pagination.sales.total).toBe(2);expect(report.body.summary.grossProfit).toBeNull();
     expect(report.body.summary.missingSalesCostQuantity).toBe(2);
   });
+  it('exports immutable received-source precision, expense shares and actual receipt revenue, including legacy gaps',async()=>{
+    const p=`${prefix}-AUDIT`,b=`${prefix.toLowerCase()}_audit_branch`,known=`${prefix}-AUDIT-K`,legacy=`${prefix}-AUDIT-L`;
+    for(const [id,qty] of [[known,3],[legacy,2]])
+      await query(`INSERT INTO stock_movements(id,movement_type,product_name,quantity,source_location,status,reference_id,created_at,unit_cif)
+        VALUES($1,'walkin_sale',$2,$3,$4,'posted',$1,'2020-02-01',99)`,[id,p,qty,b]);
+    const snapshot={id:'FROZEN-DEPLETED-BRANCH',quantity:3,revenue_total:'20.00',revenue_unit:'6.666666666666666',
+      cost_layers:[{quantity:3,source:{id:'FROZEN-DEPLETED-SOURCE',supplier_import_id:'FROZEN-IMPORT',
+        batch_no:'ORIGINAL',expiry_date:'2030-01-01',quantity:10,
+        original_unit_cif:'0.123456789012345678901',cif_unit_cost:'0.12345678901234568',
+        metadata:{allocated_expense:'0.20',purchase_value:'1.03456789012345678901',
+          landed_value:'1.23456789012345678901',base_unit:'piece',entered_unit:'carton',conversion_factor:10}}}]};
+    await query(`INSERT INTO stock_sale_allocations(movement_id,sale_reference,branch_batch_id,branch_id,product_name,quantity,snapshot,created_at)
+      VALUES($1,$1,$1,$2,$3,3,$4,'2020-02-01')`,[known,b,p,JSON.stringify(snapshot)]);
+    const data=await getStockCostAudit({aliases:[b],productName:p,from:'2020-02-01',to:'2020-02-01'});
+    expect(data.records).toHaveLength(2);
+    const row=data.records.find(r=>r.movement_id===known),unknown=data.records.find(r=>r.movement_id===legacy);
+    expect(row.source_batch_id).toBe('FROZEN-DEPLETED-SOURCE');
+    expect(row.exact_received_unit_cif).toBe('0.123456789012345678901');
+    expect(row.exact_received_layer_cost).toBe('0.370370367037037036703');
+    expect(row.actual_sale_revenue_first_layer).toBe('20.00');
+    expect(Number(row.landed_expenses_for_sold_layer)).toBe(.06);
+    expect(row.complete_audit_profit_first_layer).not.toBeNull();
+    expect(unknown.missing_cost).toBe(true);expect(unknown.missing_revenue).toBe(true);
+    expect(unknown.exact_received_unit_cif).toBeNull();
+    expect(unknown.complete_audit_profit_first_layer).toBeNull();
+    expect(data.summary.completeAuditProfit).toBeNull();
+    expect(data.summary.knownRevenueSubtotal).toBe('20.00');
+    const response=await invoke(costReport,{}, {role:'finance'},'GET',
+      `/api/stock/cost-report?audit=json&branchId=${encodeURIComponent(b)}&productName=${encodeURIComponent(p)}&from=2020-02-01&to=2020-02-01&pageSize=1`);
+    expect(response.status).toBe(200);
+    expect(JSON.parse(response.body.content).records).toHaveLength(2);
+    expect(response.body.filename).toMatch(/\.json$/);
+  });
   it('requires explicit factors and converts entered carton prices without rounding unit cost',async()=>{
     const missing=await invoke(receive,{receiptKey:`${prefix}-missing`,items:[{productName:product,quantity:2,enteredUnit:'carton',batchNo:'LOT',expiryDate:'2035-12-31',unitCIF:10}]});
     expect(missing.status).toBe(422);
@@ -124,6 +158,45 @@ describe.sequential('carton receiving and actual source cost lifecycle',()=>{
     const projection=(await getStockCostProjection()).filter(r=>r.productName.startsWith(prefix));
     expect(projection.find(r=>r.productName.endsWith('Unknown')).missingCostQuantity).toBe(1);
     expect(projection.find(r=>r.productName.endsWith('Free')).missingCostQuantity).toBe(0);
+  });
+  it('preserves the stored NUMERIC received cost through real import, partial warehouse/branch receipts, sale and both downloads',async()=>{
+    await invoke(packs,{productName:product,baseUnit:'unit',packs:[
+      {unit:'unit',factor:1},{unit:'carton',factor:12},{unit:'crate',factor:7},
+    ]},stockUser,'PUT');
+    const imported=await invoke(receive,{receiptKey:`${prefix}-precision`,expenses:{freight:.07},
+      items:[{productName:product,quantity:1,enteredUnit:'crate',batchNo:'PRECISION-LOT',
+        expiryDate:'2034-12-31',unitCIF:100,unitDP:70}]});
+    expect(imported.status).toBe(201);
+    const batch=imported.body.items[0].batchId,b=`${prefix.toLowerCase()}_pb`;
+    const exact=(await query('SELECT original_unit_cif::text AS exact FROM stock_batches WHERE id=$1',[batch])).rows[0].exact;
+    expect(exact).not.toBe(String(Number(exact))); // actually exceeds Number round-trip precision
+    const country=await makeTransfer(`${prefix}-pc`,'country_stock','windhoek_warehouse',3,
+      'PRECISION-LOT','2034-12-31','approved');
+    expect((await invoke(warehouseReceive,{transferId:country.transfer.id,action:'accept'})).status).toBe(200);
+    const shipment=await makeTransfer(`${prefix}-pb`,'windhoek_warehouse',b,2,'PRECISION-LOT','2034-12-31');
+    await withTransaction(client=>allocateTransferTx(client,shipment.transfer,shipment.line,2));
+    await withTransaction(client=>receiveTransferTx(client,{transferId:shipment.transfer.id,user:stockUser,
+      items:[{productName:product,batchNo:'PRECISION-LOT',expiryDate:'2034-12-31',quantity:2}]}));
+    await withTransaction(async client=>{
+      expect((await deductStock(client,b,product,1,'walk_in_non_member_sale','exact source proof',
+        `${prefix}-PS`,999,stockUser.id,50)).short).toBe(0);
+    });
+    const frozen=(await query('SELECT snapshot FROM stock_sale_allocations WHERE sale_reference=$1',[`${prefix}-PS`])).rows[0].snapshot;
+    expect(frozen.cost_layers[0].source.received_unit_cif_exact).toBe(exact);
+    for(const format of ['json','csv']){
+      const response=await invoke(costReport,{}, {role:'finance'},'GET',
+        `/api/stock/cost-report?audit=${format}&branchId=${encodeURIComponent(b)}`);
+      expect(response.status).toBe(200);
+      if(format==='json'){
+        const row=JSON.parse(response.body.content).records[0];
+        expect(row.exact_received_unit_cif).toBe(exact);
+        expect(row.source_batch_id).toBe(batch);
+        expect(typeof row.receipt_base_quantity).toBe('string');
+        expect(Number(row.receipt_base_quantity)).toBe(7); // not warehouse receipt 3 or branch receipt 2
+        expect(Number(row.landed_expenses_for_sold_layer)).toBe(.01);
+        expect(row.missing_expense_evidence).toBe(false);
+      }else expect(response.body.content).toContain(`"${exact}"`);
+    }
   });
   it('sells one base unit from a received carton without repricing its landed cost',async()=>{
     const cartonBranch=`${prefix.toLowerCase()}_carton_branch`;

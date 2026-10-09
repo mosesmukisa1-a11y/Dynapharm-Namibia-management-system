@@ -9,8 +9,12 @@ vi.mock('../api/services/stockCostReporting.js',()=>({
   getSalesCostPage:vi.fn(async()=>({rows:[],total:0,summary:{knownSalesCost:0,missingSalesCostQuantity:0,knownSalesRevenue:0,missingSalesRevenueQuantity:0,grossProfit:0}})),
 }));
 vi.mock('../api/db.js',()=>({withTransaction:async fn=>fn({query:async()=>({rows:[]})})}));
+vi.mock('../api/services/stockCostAudit.js',()=>({getStockCostAudit:vi.fn(async()=>({
+  generatedAt:'2026-10-09T00:00:00Z',records:[],csv:'',saleCount:0,sourceLayerCount:0,
+}))}));
 import handler from '../api/stock/cost-report.js';
 import {getStockCostProjection,getSalesCostReport,getSalesCostPage} from '../api/services/stockCostReporting.js';
+import {getStockCostAudit} from '../api/services/stockCostAudit.js';
 
 async function request(user,branch) {
   const output={status:200};
@@ -19,8 +23,27 @@ async function request(user,branch) {
   return output;
 }
 
+async function auditRequest(user,branch,extra=''){
+  const output={status:200};
+  await handler({method:'GET',user,url:`/api/stock/cost-report?audit=json${branch?`&branchId=${encodeURIComponent(branch)}`:''}${extra}`},
+    {status(value){output.status=value;return this;},json(body){output.body=body;return this;}});
+  return output;
+}
 describe('original-cost reporting entitlement and branch isolation',()=>{
   beforeEach(()=>vi.clearAllMocks());
+  it('enforces the same branch scope before querying or exporting audit evidence',async()=>{
+    expect((await auditRequest(null,'townshop')).status).toBe(401);
+    expect((await auditRequest({role:'member'},'townshop')).status).toBe(403);
+    expect((await auditRequest({role:'branch',branch:'townshop'},'swakopmund')).status).toBe(403);
+    expect((await auditRequest({role:'branch',branch:'townshop'})).status).toBe(403);
+    expect(getStockCostAudit).not.toHaveBeenCalled();
+    const own=await auditRequest({role:'branch',branch:'townshop'},'townshop','&location=swakopmund&stockPage=1');
+    expect(own.status).toBe(200);
+    expect(getStockCostAudit).toHaveBeenCalledWith(expect.objectContaining({
+      aliases:expect.arrayContaining(['townshop']),
+    }),expect.any(Function));
+    expect(getStockCostAudit.mock.calls[0][0].aliases).not.toContain('swakopmund');
+  });
   it('requires authentication',async()=>{
     expect((await request(null)).status).toBe(401);
     expect(getStockCostProjection).not.toHaveBeenCalled();

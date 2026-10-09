@@ -143,6 +143,7 @@ export const api = {
     saveProductPacks: (data) => api.put('/stock/product-packs', data),
     receiveImport: (data) => api.post('/stock/import/receive', data),
     costReport: (params = {}) => { const qs = new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([, value]) => value != null && value !== ''))).toString(); return api.get(`/stock/cost-report${qs ? `?${qs}` : ''}`); },
+    costAudit: (params = {}, format = 'json') => api.stock.costReport({ ...params, audit:format }),
     supplierOrders: (params = '') => api.get(`/stock/supplier-orders${params ? '?' + params : ''}`),
     createSupplierOrder: (data) => api.post('/stock/supplier-orders', data),
     updateSupplierOrder: (id, data) => api.patch('/stock/supplier-orders', { ...data, id }),

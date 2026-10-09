@@ -64,7 +64,7 @@ async function handler(req,res) {
             source.cif_unit_cost==null ? null : source.cif_unit_cost*Number(allocation.quantity),
             JSON.stringify({original_source:source,transfer_id:transferId,source_allocation_id:allocation.id})]);
         await client.query('UPDATE stock_batches SET original_unit_cif=$1,original_unit_dp=$2 WHERE id=$3',
-          [source.cif_unit_cost,source.dpc_unit_value,newBatchId]);
+          [source.received_unit_cif_exact ?? source.original_unit_cif ?? source.cif_unit_cost,source.dpc_unit_value,newBatchId]);
       }
       await client.query('UPDATE stock_transfer_items SET quantity_received=$1 WHERE id=$2',[qty,line.id]);
     }

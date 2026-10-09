@@ -2,6 +2,7 @@ import { getBranchScope } from '../_lib/auth.js';
 import { branchSearchTerms, normalizeBranchSlug } from '../_lib/branchUtils.js';
 import { getStockCostProjection, getSalesCostPage } from '../services/stockCostReporting.js';
 import { withTransaction } from '../db.js';
+import {getStockCostAudit} from '../services/stockCostAudit.js';
 
 const COMPANY_REPORT_ROLES=new Set(['stock','finance','finance_manager','mis','gm','general_manager',
   'director','admin','superadmin','super_admin']);
@@ -26,6 +27,9 @@ export default async function handler(req,res) {
     if (allowed && (!branch || !allowed.includes(normalizeBranchSlug(branch) || branch)))
       return res.status(403).json({success:false,error:'Select an authorized branch'});
     const aliases=branch ? branchSearchTerms(branch).map(b=>b.toLowerCase().trim()) : null;
+    const audit=params.get('audit');
+    if(audit && !['csv','json'].includes(audit))
+      return res.status(422).json({success:false,error:'Unsupported audit format'});
     const size=Number(params.get('pageSize') || 100),stockPage=Number(params.get('stockPage') || 1),salesPage=Number(params.get('salesPage') || 1);
     if(!Number.isSafeInteger(size)||size<1||size>500 ||
       ![stockPage,salesPage].every(n=>Number.isSafeInteger(n)&&n>=1&&n<=1000000))
@@ -35,6 +39,13 @@ export default async function handler(req,res) {
     const report=await withTransaction(async client=>{
     await client.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY');
     const read=async(sql,values)=>(await client.query(sql,values)).rows;
+    if(audit){
+      const evidence=await getStockCostAudit({aliases:locations,productName,from:params.get('from'),to:params.get('to')},read);
+      const filename=`stock-cost-audit-${evidence.generatedAt.slice(0,10)}.${audit}`;
+      const {csv,...data}=evidence;
+      return {success:true,filename,content:audit==='csv' ? csv : JSON.stringify(data,null,2),
+        mimeType:audit==='csv' ? 'text/csv;charset=utf-8' : 'application/json',metadata:{...data,records:undefined}};
+    }
     const stock=(await getStockCostProjection({locations,productName},read)).filter(r=>!locations || locations.includes(String(r.location).toLowerCase().trim()));
     stock.sort((a,b)=>JSON.stringify([a.location,a.productName,a.batchNo,a.expiryDate,String(a.id)]).localeCompare(
       JSON.stringify([b.location,b.productName,b.batchNo,b.expiryDate,String(b.id)])));

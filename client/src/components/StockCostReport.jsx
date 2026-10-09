@@ -9,22 +9,45 @@ export default function StockCostReport({ branchId: initialBranchId = '' }) {
   const [branchId, setBranchId] = useState(initialBranchId || '');
   const [from, setFrom] = useState(today);
   const [to, setTo] = useState(today);
+  const [productName,setProductName]=useState('');
+  const [loadedFilters,setLoadedFilters]=useState(null);
+  const [exporting,setExporting]=useState(false);
+  const [auditFormat,setAuditFormat]=useState('json');
+  const [downloadStatus,setDownloadStatus]=useState('');
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [errorAction,setErrorAction]=useState('report');
   const load = useCallback(async (pages={}) => {
     setLoading(true);
     setError('');
+    setErrorAction('report');
     try {
-      const data = await api.stock.costReport({ branchId, from, to, pageSize:100,
+      const filters={branchId:branchId.trim(),from,to,productName:productName.trim()};
+      const data = await api.stock.costReport({ ...filters, pageSize:100,
         stockPage:pages.stockPage || 1,salesPage:pages.salesPage || 1 });
       setReport(data || { stock: [], sales: [], summary: {} });
+      setLoadedFilters(filters);setDownloadStatus('');
     } catch (e) {
       setError(e.message || 'Cost report could not be loaded.');
     } finally {
       setLoading(false);
     }
-  }, [branchId, from, to]);
+  }, [branchId, from, to,productName]);
+  const downloadAudit=async()=>{
+    if(!loadedFilters)return;
+    setExporting(true);setError('');setErrorAction('audit');setDownloadStatus('');
+    try{
+      const result=await api.stock.costAudit(loadedFilters,auditFormat);
+      const content=auditFormat==='csv' ? '\uFEFF'+result.content : result.content;
+      const url=URL.createObjectURL(new Blob([content],{type:result.mimeType}));
+      const link=document.createElement('a');link.href=url;link.download=result.filename;
+      try{document.body.appendChild(link);link.click();}
+      finally{link.remove();setTimeout(URL.revokeObjectURL.bind(URL,url),1000);}
+      setDownloadStatus(`Downloaded evidence for ${result.metadata.saleCount} sales and ${result.metadata.sourceLayerCount} source layers.`);
+    }catch(e){setError(e.message || 'Audit download failed.');}
+    finally{setExporting(false);}
+  };
   useEffect(() => { if (initialBranchId) setBranchId(initialBranchId); }, [initialBranchId]);
 
   const summary = report?.summary || {};
@@ -48,15 +71,24 @@ export default function StockCostReport({ branchId: initialBranchId = '' }) {
     <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 md:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div><p className="m-0 text-xs font-bold uppercase tracking-widest text-rose-700">Cost integrity</p><h3 className="m-0 mt-1 text-lg font-bold text-slate-800">Stock & sales cost report</h3><p className="m-0 mt-1 text-sm text-slate-500">Gross profit uses matched sales revenue and received CIF cost, never DP catalogue prices.</p></div>
-        <button type="button" onClick={load} disabled={loading || !from || !to} className="rounded-lg bg-rose-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{loading ? 'Loading…' : report ? 'Refresh report' : 'Load report'}</button>
+        <button type="button" onClick={load} disabled={loading || exporting || !from || !to} className="rounded-lg bg-rose-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{loading ? 'Loading…' : report ? 'Refresh report' : 'Load report'}</button>
       </div>
       <div className="grid gap-3 rounded-lg bg-rose-50/70 p-3 sm:grid-cols-2 lg:grid-cols-4">
         <label className="text-xs font-semibold text-slate-600">Branch ID (optional)<input value={branchId} onChange={e => setBranchId(e.target.value)} placeholder="All branches" className="mt-1 block w-full rounded-md border border-rose-100 bg-white px-2.5 py-2 text-sm" /></label>
         <label className="text-xs font-semibold text-slate-600">From<input type="date" value={from} onChange={e => setFrom(e.target.value)} className="mt-1 block w-full rounded-md border border-rose-100 bg-white px-2.5 py-2 text-sm" /></label>
         <label className="text-xs font-semibold text-slate-600">To<input type="date" value={to} onChange={e => setTo(e.target.value)} className="mt-1 block w-full rounded-md border border-rose-100 bg-white px-2.5 py-2 text-sm" /></label>
-        <div className="flex items-end"><span className="pb-2 text-xs text-slate-500">Sales costs follow this date range.</span></div>
+        <label className="text-xs font-semibold text-slate-600">Product name (optional)<input value={productName} onChange={e=>setProductName(e.target.value)} placeholder="Exact product name" className="mt-1 block w-full rounded-md border border-rose-100 bg-white px-2.5 py-2 text-sm" /></label>
       </div>
-      {error && <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"><span>{error}</span><button type="button" onClick={load} className="font-semibold underline">Retry</button></div>}
+      <div className="flex flex-wrap items-center gap-3">
+        <select aria-label="Audit download format" value={auditFormat} onChange={e=>setAuditFormat(e.target.value)} disabled={exporting} className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm">
+          <option value="json">JSON · exact decimal strings</option><option value="csv">CSV · spreadsheet</option>
+        </select>
+        <button type="button" onClick={downloadAudit} disabled={!report||!loadedFilters||loading||exporting} className="rounded-lg border border-rose-700 px-4 py-2 text-sm font-semibold text-rose-700 disabled:opacity-40">{exporting?'Preparing audit…':'Download sale audit'}</button>
+        <span className="text-xs text-slate-500">All sales matching the last loaded filters, not only this page. JSON keeps stored decimal precision; import CSV costs as text to avoid spreadsheet rounding.</span>
+      </div>
+      {loadedFilters&&<p className="text-xs text-slate-500">Loaded filters: {loadedFilters.branchId||'all branches'} · {loadedFilters.from}–{loadedFilters.to}{loadedFilters.productName?` · ${loadedFilters.productName}`:''}. Refresh after changing filters.</p>}
+      {downloadStatus&&<p role="status" className="text-sm text-emerald-700">{downloadStatus}</p>}
+      {error && <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"><span>{error}</span><button type="button" onClick={errorAction==='audit'?downloadAudit:load} disabled={loading||exporting} className="font-semibold underline">{errorAction==='audit'?'Retry download':'Retry report'}</button></div>}
       {loading && !report && <div className="space-y-2">{[1, 2, 3].map(n => <div key={n} className="h-9 animate-pulse rounded bg-slate-100" />)}</div>}
       {report && <>
         {incomplete && <div role="status" className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"><strong>Incomplete revenue or costs:</strong> {qty(summary.missingStockCostQuantity)} stock units, {qty(summary.missingSalesCostQuantity)} sold units without received CIF cost, and {qty(summary.missingSalesRevenueQuantity)} sold units without matched revenue. Known totals exclude unknown amounts; gross profit is unavailable until all required revenue and cost values are known.</div>}

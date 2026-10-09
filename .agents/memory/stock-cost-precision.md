@@ -9,6 +9,20 @@ Keep per-base-unit received costs at full numeric precision and round only monet
 
 **How to apply:** New receipts and movements retain exact costs; dispatch/receipt/sale snapshots retain immutable source layers. Unknown historical provenance stays unknown. Read-only projections may be rebuilt, but migrations must not infer or rewrite historical physical quantities.
 
+## Audit exports and completeness
+
+Export stored decimals as strings, distinguish original received-unit precision from the frozen sale-accounting unit cost, and prefer a frozen actual revenue total over multiplying a fractional revenue unit. Separate matched cost/revenue profit from complete-source audit profit.
+
+**Why:** Unit division can introduce differences from the actual saved receipt amount. Known monetary values alone do not establish import, expiry or allocated-expense provenance; spreadsheet autoformatting can also change exact identifiers and decimals.
+
+**How to apply:** Never join current prices or surviving physical lots to fill historical export gaps. Keep unknown evidence explicit and source receipt totals nonadditive across sale layers. Downloads use the last loaded report scope, retain its authorization, and reject oversized exports explicitly rather than silently truncating.
+
+Preserve received NUMERIC strings before creating any Number-valued accounting snapshot, including across warehouse relocations. Allocate a sold layer's import expenses using the original frozen import quantity, not a partial warehouse/branch receipt quantity.
+
+**Why:** JSON cannot recover decimal digits after Number conversion, and a relocated subset is not the denominator of the original import expense allocation. Tests with hand-built string snapshots do not prove this production path.
+
+**How to apply:** Verify actual import → partial warehouse receipt → branch receipt → sale → download against the database NUMERIC text, and retain the original frozen receipt lineage independently of the consumed physical batch.
+
 ## Projection reuse and filtering
 
 Reuse current physical-cost projections only within a stable transaction snapshot, after the relevant physical writes. Do not use process-wide or time-based caches for balance correctness.
