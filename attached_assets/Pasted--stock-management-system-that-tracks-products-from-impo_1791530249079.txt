@@ -1,0 +1,97 @@
+ stock management system that tracks products from import and warehouse receipt through distribution to branches, sales, returns, stock adjustments, and reporting.
+
+The system should cover the following processes:
+
+Imports and receiving stock
+
+Record purchase orders, suppliers, shipments, and imported products.
+
+Capture quantities ordered, received, damaged, or missing.
+
+Calculate product costs, including freight, customs duties, and other import expenses.
+
+Record product barcodes, batch numbers, and expiry dates.
+
+Warehouse stock management
+
+Track stock held in each warehouse.
+
+Record every stock receipt, transfer, return, and adjustment.
+
+Separate available, reserved, damaged, and expired stock.
+
+Support physical stock counts and explain differences between counted and recorded quantities.
+
+Distribution to branches
+
+Record stock dispatched from warehouses to branches.
+
+Track stock in transit until the receiving branch confirms receipt.
+
+Identify shortages, damage, or differences between dispatched and received quantities.
+
+Support transfers between warehouses and between branches.
+
+Branch sales and stock deductions
+
+Record sales by product, quantity, price, branch, and date.
+
+Automatically deduct sold quantities from the correct branch’s stock.
+
+Use barcode scanning to identify products accurately.
+
+Handle cancelled sales and refunds without duplicating stock movements.
+
+Returns
+
+Handle customer returns, branch returns to warehouses, and returns to suppliers.
+
+Link returns to the original transaction where possible.
+
+Record the reason, quantity, condition, and refund or credit.
+
+Add saleable returns back to available stock and separate damaged or expired returns.
+
+Stock adjustments and calculations
+
+Record deductions for damage, expiry, theft, loss, and internal use.
+
+Require reasons and an audit trail for manual adjustments.
+
+Calculate stock for each product, location, and batch using:
+
+Closing stock = Opening stock + Receipts + Transfers in + Saleable returns − Sales − Transfers out − Supplier returns − Write-offs ± Other adjustments
+
+Prevent double counting when stock moves between locations.
+
+Expiry management
+
+Track expiry dates by batch.
+
+Prioritise selling or dispatching stock that expires first.
+
+Alert staff about products approaching expiry.
+
+Record expired stock and its removal from available inventory.
+
+Barcodes and product information
+
+Maintain a product catalogue with unique product codes and barcodes.
+
+Support different pack sizes and units, such as individual items, boxes, and cartons.
+
+Convert quantities correctly when receiving cartons and selling individual items.
+
+Link stock movements to the correct product and, where required, its batch.
+
+Sales and stock reporting
+
+Show current stock by product, warehouse, branch, and batch.
+
+Report sales quantities, revenue, returns, and gross profit.
+
+Show stock movement history and stock valuation.
+
+Identify low stock, out-of-stock products, slow-moving products, and stock approaching expiry.
+
+Allow reports to be filtered by date, product, supplier, and location.
