@@ -8,6 +8,7 @@ import { ensureControlledStockSchema, countDifference } from '../api/services/co
 import { deductStock } from '../api/branch/campaign-sale.js';
 import { receiveTransferTx } from '../api/services/transferReceipt.js';
 import { saleAllocationSchema } from '../api/services/stockSaleAllocations.js';
+import { lifecycleSchema } from '../api/services/stockCostLayers.js';
 import { reversalSchema } from '../api/services/linkedReversals.js';
 
 const prefix = `TEST-CTRL-${randomUUID()}`;
@@ -28,7 +29,7 @@ async function invoke(method, body, user = staff, handler = controlled) {
   const res = { setHeader() {},status(code) { result.status = code; return this; },
     json(value) { result.body=value; return this; },end() {} };
   const payload=handler===refunds ? {...body,physical_return_confirmed:true,inspection_reason:'Inspected isolated original sale fixture'} : body;
-  await handler({method,body:payload,user,url:'/api/stock/controlled-operations',headers:{host:'localhost'}},res);
+  await handler({method,body:payload,query:method==='GET'?body:{},user,url:'/api/stock/controlled-operations',headers:{host:'localhost'}},res);
   return result;
 }
 async function create(kind, lines, user = staff) {
@@ -130,9 +131,117 @@ async function receiveDifferentSupplier() {
   return {importId,batchId};
 }
 describe.sequential('controlled counts, inspection and supplier returns: isolated physical evidence',()=>{
-  beforeAll(async()=>{await ensureControlledStockSchema();await query(saleAllocationSchema);await query(reversalSchema); original=await baseline();});
+  beforeAll(async()=>{await query(lifecycleSchema);await ensureControlledStockSchema();await query(saleAllocationSchema);await query(reversalSchema); original=await baseline();});
   beforeEach(async()=>{await clean();await seed();});
   afterAll(async()=>{await clean();expect(await baseline()).toEqual(original);});
+
+  it('pages scoped physical stock, including depleted count rows, without losing original cost evidence',async()=>{
+    await query("UPDATE branch_inventory_batches SET quantity=0,status='out_of_stock' WHERE id=$1",[b1]);
+    const filters={view:'batches',batch_search:product,batch_page_size:'1'};
+    const first=(await invoke('GET',filters,scopedStaff)).body;
+    const second=(await invoke('GET',{...filters,batch_page:'2'},scopedStaff)).body;
+    expect(first.batch_pagination).toMatchObject({total:2,total_pages:2,page_size:1});
+    expect(first.batches).toHaveLength(1);expect(second.batches).toHaveLength(1);
+    expect(new Set([...first.batches,...second.batches].map(b=>b.id))).toEqual(new Set([b1,b2]));
+    const depleted=[...first.batches,...second.batches].find(b=>b.id===b1);
+    expect(depleted).toMatchObject({quantity:0,unit_cost:4.25,supplier_import_id:supplier,source_batch_id:source});
+    expect(first.locations).toEqual([branch]);
+    expect((await invoke('GET',{...filters,batch_status:'out_of_stock'},scopedStaff)).body.batches[0].id).toBe(b1);
+    expect((await count([b1])).lines[0].expected_quantity).toBe(0);
+  });
+
+  it('applies batch search, location and condition before paging and never exposes warehouse or foreign branch stock',async()=>{
+    await query("UPDATE branch_inventory_batches SET expiry_date='2020-01-01',metadata=$2 WHERE id=$1",
+      [b2,JSON.stringify({condition:'damaged',provenance_conflict:true})]);
+    const expired=(await invoke('GET',{view:'batches',batch_search:product,batch_status:'expired'},scopedStaff)).body;
+    expect(expired.batches.map(b=>b.id)).toEqual([b2]);
+    expect(expired.batches[0]).toMatchObject({condition:'damaged',expiry_date:'2020-01-01',available_quantity:0,unit_cost:null});
+    const hidden=(await invoke('GET',{view:'batches',batch_search:product,location:warehouse},scopedStaff)).body;
+    expect(hidden.batches).toEqual([]);expect(hidden.segregated).toEqual([]);expect(hidden.batch_pagination.total).toBe(0);
+    expect(hidden.locations).toEqual([branch]);
+    const outside={...scopedStaff,branch:`${prefix}_outside`};
+    const foreign=(await invoke('GET',{view:'batches',batch_search:product,location:branch},outside)).body;
+    expect(foreign.batches).toEqual([]);expect(foreign.locations).toEqual([]);
+    const unassigned=(await invoke('GET',{view:'batches',batch_search:product},{role:'branch_manager',id:'unassigned'})).body;
+    expect(unassigned.batches).toEqual([]);
+  });
+
+  it('keeps frozen original source evidence in the batched projection',async()=>{
+    const frozen=(await query('SELECT * FROM stock_batches WHERE id=$1',[source])).rows[0];
+    frozen.expiry_date=expiry;frozen.cif_unit_cost=0.123456789;
+    await query('UPDATE branch_inventory_batches SET metadata=$2 WHERE id=$1',[b1,JSON.stringify({original_source:frozen})]);
+    await query('UPDATE stock_batches SET cif_unit_cost=99 WHERE id=$1',[source]);
+    const view=(await invoke('GET',{view:'batches',batch_search:b1},scopedStaff)).body;
+    expect(view.batches[0]).toMatchObject({id:b1,unit_cost:0.123456789,supplier_import_id:supplier});
+  });
+
+  it('returns paginated summaries only and loads scoped lines, supplier credit and journal evidence on demand',async()=>{
+    const op=await create('supplier_return',[requestLine(b1)],scopedStaff);
+    await count([b2]);
+    await query(`INSERT INTO supplier_return_credits(operation_id,supplier_import_id,supplier_name,expected_amount)
+      VALUES ($1,$2,'Isolated Supplier',21.25)`,[op.id,supplier]);
+    await query(`INSERT INTO stock_control_financial_entries(id,operation_id,event,debit_account,credit_account,amount,reference,created_by)
+      VALUES ($1,$2,'test_evidence','supplier_return_receivable','inventory',21.25,'TEST-REF',$3)`,[`${prefix}-ENTRY`,op.id,staff.id]);
+    const filters={view:'operations',operation_search:product,operation_page_size:'1'};
+    const first=(await invoke('GET',filters,scopedStaff)).body;
+    const second=(await invoke('GET',{...filters,operation_page:'2'},scopedStaff)).body;
+    expect(first.operation_pagination.total).toBe(2);
+    expect(first.operations[0]).not.toHaveProperty('lines');
+    expect(first.operations[0]).not.toHaveProperty('review_history');
+    expect(first).not.toHaveProperty('credits');expect(first).not.toHaveProperty('financial_entries');
+    expect(first.operations[0].id).not.toBe(second.operations[0].id);
+    const submitted=(await invoke('GET',{...filters,operation_status:'submitted'},scopedStaff)).body;
+    expect(submitted.operations.map(o=>o.id)).toEqual([op.id]);
+    const detail=(await invoke('GET',{operation_id:op.id},scopedStaff)).body;
+    expect(detail.operation.lines).toHaveLength(1);
+    expect(detail.credits[0]).toMatchObject({expected_amount:'21.25',supplier_import_id:supplier});
+    expect(detail.financial_entries[0]).toMatchObject({reference:'TEST-REF',debit_account:'supplier_return_receivable'});
+    const denied=await invoke('GET',{operation_id:op.id},{...scopedStaff,branch:'unrelated'});
+    expect(denied.status).toBe(404);
+    expect((await invoke('GET',{...filters,location:warehouse},scopedStaff)).body.operations).toEqual([]);
+  });
+
+  it('hides the entire operation when any saved line is outside the branch scope',async()=>{
+    const op=await create('count',[{batch_type:'branch',batch_id:b1},{batch_type:'warehouse',batch_id:source}],staff);
+    const scopedView=(await invoke('GET',{view:'operations',operation_search:op.id},scopedStaff)).body;
+    expect(scopedView.operations).toEqual([]);
+    expect((await invoke('GET',{operation_id:op.id},scopedStaff)).status).toBe(404);
+    expect((await invoke('GET',{operation_id:op.id},finance)).body.operation.lines).toHaveLength(2);
+  });
+
+  it('treats SQL wildcard characters as literal search and rejects unbounded pages',async()=>{
+    const literal=(await invoke('GET',{view:'batches',batch_search:'%'},scopedStaff)).body;
+    expect(literal.batch_pagination.total).toBe(0);
+    expect((await invoke('GET',{view:'batches',batch_page_size:'101'},scopedStaff)).status).toBe(400);
+    expect((await invoke('GET',{view:'operations',operation_page:'0'},scopedStaff)).status).toBe(400);
+    expect((await invoke('GET',{view:'batches',batch_status:'invented'},scopedStaff)).status).toBe(400);
+  });
+
+  it('uses the same canonical branch aliases for paged lists and detail authorization',async()=>{
+    await query("UPDATE branch_inventory_batches SET branch_id=' WINDHOEK CBD ' WHERE id=$1",[b1]);
+    const townStaff={...scopedStaff,branch:'townshop'};
+    const op=await create('count',[{batch_type:'branch',batch_id:b1}],townStaff);
+    const view=(await invoke('GET',{view:'batches',batch_search:product,location:'cbd'},townStaff)).body;
+    expect(view.batches.map(b=>b.id)).toEqual([b1]);
+    expect((await invoke('GET',{operation_id:op.id},townStaff)).body.operation.id).toBe(op.id);
+    expect((await invoke('GET',{operation_id:op.id},scopedStaff)).status).toBe(404);
+  });
+
+  it('pages segregated evidence but excludes dispatched reservations and foreign locations before counting',async()=>{
+    const snapshot={product_name:product,batch_no:'CTRL-HELD',expiry_date:expiry,unit_cost:4.25,
+      supplier_import_id:supplier,supplier_name:'Isolated Supplier',source_type:'branch',location:branch};
+    for (const [suffix,location,purpose,sourceType] of [
+      ['visible',branch,'inspection','branch'],['foreign','elsewhere','inspection','branch'],
+      ['warehouse',warehouse,'inspection','warehouse'],['reserved',branch,'supplier_return','branch'],
+    ]) await query(`INSERT INTO stock_segregated_batches
+      (id,source_type,source_id,location,condition,quantity,snapshot,operation_id,line_id,purpose)
+      VALUES ($1,$2,$3,$4,'damaged',5,$5,$6,'fixture-line',$7)`,
+      [`${prefix}-${suffix}`,sourceType,b1,location,JSON.stringify({...snapshot,location,source_type:sourceType}),`${prefix}-HELD`,purpose]);
+    const view=(await invoke('GET',{view:'batches',batch_search:product,batch_type:'segregated',batch_status:'damaged'},scopedStaff)).body;
+    expect(view.batch_pagination.total).toBe(1);
+    expect(view.segregated).toHaveLength(1);
+    expect(view.segregated[0]).toMatchObject({id:`${prefix}-visible`,quantity:5,condition:'damaged',unit_cost:4.25,supplier_import_id:supplier});
+  });
 
   it('saves a cutoff, allows scoped staff submission, and posts only selected GM-reviewed lines',async()=>{
     const draft=await count([b1,b2]);

@@ -7,6 +7,7 @@ import { lockStockBatchTx } from './stockLocks.js';
 import { saleAllocationSchema, refundSourceSnapshotTx, preserveRestoredProvenanceTx } from './stockSaleAllocations.js';
 import { sourceSnapshot,branchLayers,takeLayers } from './stockCostLayers.js';
 import { postStockMovementTx, recomputeInventoryBalanceTx } from './stockEngine.js';
+import { readControlledStockRegister } from './controlledStockRegister.js';
 
 // Additive schema only: never derive or rewrite historical physical stock.
 export async function ensureControlledStockSchema() {
@@ -34,6 +35,10 @@ export async function ensureControlledStockSchema() {
     debit_account TEXT NOT NULL, credit_account TEXT NOT NULL,
     amount NUMERIC NOT NULL CHECK(amount >= 0), reference TEXT, created_by TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+  await query(`CREATE INDEX IF NOT EXISTS stock_control_register_order ON stock_control_operations(created_at DESC,id DESC);
+    CREATE INDEX IF NOT EXISTS stock_control_journal_operation ON stock_control_financial_entries(operation_id,created_at,id);
+    CREATE INDEX IF NOT EXISTS stock_segregated_register_location ON stock_segregated_batches(LOWER(BTRIM(location)),id) WHERE quantity>0;
+    CREATE INDEX IF NOT EXISTS controlled_branch_scope ON branch_inventory_batches(LOWER(BTRIM(branch_id)),id)`);
 }
 
 export function fail(message, statusCode = 400) {
@@ -97,6 +102,13 @@ async function loadBatch(client, type, id, user, lock = true) {
   let source = type === 'warehouse' ? row : null;
   if (type === 'branch' && row.source_batch_id)
     source = (await client.query('SELECT * FROM stock_batches WHERE id=$1', [row.source_batch_id])).rows[0];
+  return physicalBatchSnapshot(row, type, source);
+}
+
+// Shared by the locked command path and the paged read path. Source identity
+// checks and frozen evidence must not diverge between selection and submission.
+function physicalBatchSnapshot(row, type, source) {
+  const location = type === 'branch' ? row.branch_id : row.warehouse_id || row.location;
   if (source && type === 'branch' && (source.batch_no !== row.batch_no || date(source.expiry_date) !== date(row.expiry_date)
     || String(source.description || '').trim().toLowerCase() !== String(row.product_name || '').trim().toLowerCase())) {
     // A similar product/lot is not sufficient evidence of this original layer.
@@ -461,28 +473,9 @@ export async function updateOperation(user, body) {
   });
 }
 
-export async function listOperations(user) {
+export async function listOperations(user, filters = {}) {
   if (![...stockRoles,'finance','director','mis'].includes(roleOf(user))) fail('Access denied',403);
-  const permitted = batch => { try { scoped(user,batch.location,batch.source_type || batch.batch_type); return true; } catch { return false; } };
-  return withTransaction(async client => {
-    const batches = [];
-    const branchRows = (await client.query('SELECT id FROM branch_inventory_batches')).rows;
-    const warehouseRows = (await client.query("SELECT id FROM stock_batches WHERE COALESCE(warehouse_id,location,'') LIKE '%warehouse%'")).rows;
-    for (const [type,rows] of [['branch',branchRows],['warehouse',warehouseRows]]) {
-      for (const row of rows) {
-        try { batches.push(await loadBatch(client,type,row.id,user,false)); }
-        catch (error) { if (error.statusCode !== 403) throw error; }
-      }
-    }
-    const segregated = (await client.query('SELECT * FROM stock_segregated_batches WHERE quantity>0 ORDER BY created_at DESC')).rows
-      .map(r=>({...r.snapshot,...r,id:r.id,batch_type:'segregated',quantity:Number(r.quantity)})).filter(permitted);
-    const operations = (await client.query('SELECT * FROM stock_control_operations ORDER BY created_at DESC')).rows
-      .filter(op=>op.lines.every(l=>permitted(l.snapshot)));
-    const ids = operations.map(o=>o.id);
-    const credits = (await client.query('SELECT * FROM supplier_return_credits WHERE operation_id=ANY($1::text[])',[ids])).rows;
-    const financial_entries = (await client.query('SELECT * FROM stock_control_financial_entries WHERE operation_id=ANY($1::text[]) ORDER BY created_at',[ids])).rows;
-    return {operations,batches,segregated,credits,financial_entries,locations:[...new Set(batches.map(b=>b.location))]};
-  });
+  return withTransaction(client => readControlledStockRegister(client, user, filters, { fail, physicalBatchSnapshot }));
 }
 
 // Only called during a newly approved refund. Existing quarantine evidence is

@@ -25,6 +25,12 @@ Counts represent the saved session cutoff. Approval applies the counted-minus-ex
 
 **How to apply:** Keep the same cutoff/difference policy in any future count entry points and reporting. Preserve source identity after depletion, and keep damaged/expired/quarantine quantities separate from saleable stock. Do not manufacture missing historical supplier or cost links.
 
+Stock-register searches, location filters and page changes affect batch discovery, not session membership. Already selected lines must remain visible and included in submission until the staff member explicitly removes them. Depleted physical batches remain selectable for counts.
+
+**Why:** The user requires searches never to hide selected session lines. Treating a filtered result page as the whole session can silently omit counted batches, especially zero-stock discrepancies.
+
+**How to apply:** Preserve this distinction in future register changes. A cross-location selection is not permission to access another branch: list totals, detail reads and submission must all retain branch authorization.
+
 For a new accepted customer return whose depleted destination no longer exists, only the GM-approved inspection/release command may recreate an empty available destination and move returned stock into it. Missing supplier identity remains missing; original sale-cost evidence is not proof of supplier identity.
 
 **Why:** Restoring a destination for newly accepted physical goods is an expressly approved operational action, not authorization to backfill historical quantities or assign an arbitrary supplier credit.

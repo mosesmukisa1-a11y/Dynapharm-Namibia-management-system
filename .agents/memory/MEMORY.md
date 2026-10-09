@@ -12,3 +12,4 @@
 - [Publishing dependency state](publishing-dependency-state.md) — ENOTEMPTY installation conflicts require a clean dependency tree; distinguish them from older security-scan failures.
 - [Browser runtime on Nix](browser-runtime-nix.md) — downloaded Playwright Chromium may lack shared libraries; prefer the environment’s Chromium wrapper for local browser checks.
 - [Linked return authorization](linked-reversal-rules.md) — returns never reset prescription entitlement; legacy matching needs review, and received branch goods return through a new transfer.
+- [Workflow listener ownership](workflow-listeners.md) — a running workflow can be a duplicate while an orphan process owns its intended port; verify managed open ports.

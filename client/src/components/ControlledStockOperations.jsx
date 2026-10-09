@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ControlledStockFilters, ControlledStockPager } from './ControlledStockFilters';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { AlertTriangle, Archive, Check, ChevronDown, ClipboardCheck, Clock3, PackageSearch, Plus, RefreshCw, ShieldCheck, Truck, X } from 'lucide-react';
@@ -61,13 +62,37 @@ export default function ControlledStockOperations({ mode = 'stock' }) {
   const [reviewNotes, setReviewNotes] = useState({});
   const [dispatchFields, setDispatchFields] = useState({});
   const [creditFields, setCreditFields] = useState({});
+  const [batchFilters,setBatchFilters] = useState({search:'',location:'',status:'',page:1});
+  const [operationFilters,setOperationFilters] = useState({search:'',location:'',status:'',page:1});
+  const [selectedBatches,setSelectedBatches] = useState({});
+  const [details,setDetails] = useState({});
+  const [detailLoading,setDetailLoading] = useState({});
+  const [detailErrors,setDetailErrors] = useState({});
+  const requestVersion = useRef(0);
+  const detailVersion = useRef({});
+  const detailSequence = useRef(0);
+  const visibleOperationIds = useRef(new Set());
   const creatorIdentity = [user?.id, user?.username, user?.full_name, user?.fullName, user?.name].filter(v => v != null).map(String);
 
   const refresh = useCallback(async (quiet = false) => {
+    const version=++requestVersion.current;
     if (quiet) setRefreshing(true); else setLoading(true);
     setError('');
     try {
-      const response = await api.get('/stock/controlled-operations');
+      const params=new URLSearchParams({
+        batch_search:batchFilters.search,location:batchFilters.location,batch_status:batchFilters.status,
+        batch_page:String(batchFilters.page),
+      });
+      // The two lists have independent location filters and page controls.
+      const [batchResponse,operationResponse]=await Promise.all([
+        api.get(`/stock/controlled-operations?view=batches&${params}`),
+        api.get(`/stock/controlled-operations?view=operations&${new URLSearchParams({
+          operation_search:operationFilters.search,operation_status:operationFilters.status,
+          operation_page:String(operationFilters.page),location:operationFilters.location,
+        })}`),
+      ]);
+      if (version!==requestVersion.current) return;
+      const response={...batchResponse,...operationResponse};
       setData({
         operations: Array.isArray(response?.operations) ? response.operations : [],
         batches: Array.isArray(response?.batches) ? response.batches : [],
@@ -75,36 +100,68 @@ export default function ControlledStockOperations({ mode = 'stock' }) {
         credits: Array.isArray(response?.credits) ? response.credits : [],
         financial_entries: Array.isArray(response?.financial_entries) ? response.financial_entries : [],
         locations: Array.isArray(response?.locations) ? response.locations : [],
+        batch_pagination:response?.batch_pagination,
+        operation_pagination:response?.operation_pagination,
       });
+      const visible=new Set((response.operations || []).map(op=>op.id));
+      visibleOperationIds.current=visible;
+      detailVersion.current={};
+      setDetails({});
+      setExpanded({});
     } catch (e) {
-      setError(e.message || 'Controlled stock data could not be loaded.');
+      if (version===requestVersion.current) setError(e.message || 'Controlled stock data could not be loaded.');
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (version===requestVersion.current) {setLoading(false);setRefreshing(false);}
     }
-  }, []);
-  useEffect(() => { refresh(); }, [refresh]);
+  }, [batchFilters,operationFilters]);
+  useEffect(() => { refresh(true); return ()=>{requestVersion.current++;}; }, [refresh]);
+  const loadDetail = async id => {
+    const version=++detailSequence.current;
+    detailVersion.current[id]=version;
+    setDetailLoading(current=>({...current,[id]:true}));
+    setDetailErrors(current=>({...current,[id]:''}));
+    try {
+      const detail=await api.get(`/stock/controlled-operations?operation_id=${encodeURIComponent(id)}`);
+      if (detailVersion.current[id]===version && visibleOperationIds.current.has(id)) setDetails(current=>({...current,[id]:detail}));
+    } catch(e) {
+      if (detailVersion.current[id]===version) setDetailErrors(current=>({...current,[id]:e.message || 'Operation detail could not be loaded.'}));
+    } finally {
+      if (detailVersion.current[id]===version) setDetailLoading(current=>({...current,[id]:false}));
+    }
+  };
 
   const allBatches = useMemo(() => [...data.batches, ...data.segregated], [data.batches, data.segregated]);
   const eligibleBatches = useMemo(() => data.batches.filter(batch => batch.purpose !== 'supplier_return'), [data.batches]);
   const eligibleSegregated = useMemo(() => data.segregated.filter(batch => batch.purpose !== 'supplier_return'), [data.segregated]);
   const batchMap = useMemo(() => new Map(allBatches.map(b => [batchKey(b), b])), [allBatches]);
-  const chosenBatches = selected.map(key => batchMap.get(key)).filter(Boolean);
+  const chosenBatches = selected.map(key => selectedBatches[key]).filter(Boolean);
+  const openedDetails = Object.entries(details).filter(([id])=>expanded[id]).map(([,detail])=>detail);
+  const visibleCredits = openedDetails.flatMap(detail=>detail.credits || []);
+  const visibleEntries = openedDetails.flatMap(detail=>detail.financial_entries || []);
   const mutate = async (request) => {
     setBusy(true); setError(''); setNotice('');
     try {
       const result = await request();
       if (result?.operation) setNotice(`Operation ${result.operation.id} updated.`);
       await refresh(true);
+      if (result?.operation && expanded[result.operation.id] && visibleOperationIds.current.has(result.operation.id)) {
+        setExpanded(current=>({...current,[result.operation.id]:true}));
+        await loadDetail(result.operation.id);
+      }
       return result?.operation || null;
     } catch (e) {
       setError(e.message || 'The operation could not be saved.');
       return null;
     } finally { setBusy(false); }
   };
-  const resetComposer = () => { setSelected([]); setFormLines({}); setReason(''); };
+  const resetComposer = () => { setSelected([]); setSelectedBatches({}); setFormLines({}); setReason(''); };
   const toggleBatch = (b) => {
     const key = batchKey(b);
+    setSelectedBatches(current=>{
+      const next={...current};
+      if (selected.includes(key)) delete next[key]; else next[key]=b;
+      return next;
+    });
     setSelected(current => current.includes(key) ? current.filter(k => k !== key) : [...current, key]);
     setFormLines(current => ({
       ...current,
@@ -183,7 +240,7 @@ export default function ControlledStockOperations({ mode = 'stock' }) {
   };
   const creditOperation = (op) => {
     const f = creditFields[op.id] || {};
-    const creditRow = data.credits.find(credit => String(credit.operation_id) === String(op.id) && String(credit.supplier_import_id) === String(f.supplier_import_id) && credit.status === 'awaiting_credit');
+    const creditRow = (details[op.id]?.credits || []).find(credit => String(credit.supplier_import_id) === String(f.supplier_import_id) && credit.status === 'awaiting_credit');
     if (!creditRow || !f.credit_reference?.trim() || f.credited_amount == null || !String(f.credited_amount).trim() || !Number.isFinite(Number(f.credited_amount)) || Number(f.credited_amount) < 0) return setError('Choose a pending supplier import and enter its credit reference and credited amount.');
     return mutate(() => api.patch('/stock/controlled-operations', { id: op.id, action: 'credit', supplier_import_id: creditRow.supplier_import_id, credit_reference: f.credit_reference.trim(), credited_amount: Number(f.credited_amount) }));
   };
@@ -240,8 +297,10 @@ export default function ControlledStockOperations({ mode = 'stock' }) {
       </div>}
     </div>;
   };
-  const renderOperationCard = (operation) => {
-    const isOpen = expanded[operation.id] !== false;
+  const renderOperationCard = (summary) => {
+    const detail=details[summary.id];
+    const operation=detail?.operation || summary;
+    const isOpen = Boolean(expanded[operation.id]);
     const lines = operation.lines || [];
     const pendingLines = lines.filter(line => line.status === 'pending');
     const isCreator = creatorIdentity.includes(String(operation.created_by));
@@ -250,17 +309,22 @@ export default function ControlledStockOperations({ mode = 'stock' }) {
     const canDispatchThis = canDispatch && dispatchableStatus && operation.kind === 'supplier_return' && lines.some(line => line.status === 'approved' && Number(line.approved_quantity || 0) > Number(line.dispatched_quantity || 0));
     const approvedLines = lines.filter(line => line.status === 'approved');
     const isFullyDispatched = approvedLines.length > 0 && operation.status === 'dispatched';
-    const creditChoices = data.credits.filter(credit => String(credit.operation_id) === String(operation.id) && credit.status === 'awaiting_credit');
+    const creditChoices = (detail?.credits || []).filter(credit => credit.status === 'awaiting_credit');
     const canCreditThis = canCredit && operation.kind === 'supplier_return' && (isFullyDispatched || operation.status === 'credited') && creditChoices.length > 0;
     return <article key={operation.id} style={{ ...styles.panel, padding: 0, overflow: 'hidden' }}>
-      <button type="button" onClick={() => setExpanded(curr => ({ ...curr, [operation.id]: !isOpen }))} style={{ width: '100%', textAlign: 'left', padding: '16px 18px', border: 0, background: '#fff', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+      <button type="button" aria-expanded={isOpen} onClick={() => {
+        setExpanded(curr => ({ ...curr, [operation.id]: !isOpen }));
+        if (!isOpen) loadDetail(operation.id);
+      }} style={{ width: '100%', textAlign: 'left', padding: '16px 18px', border: 0, background: '#fff', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
         <span style={{ display: 'flex', flexWrap: 'wrap', gap: 9, alignItems: 'center' }}>
           <strong style={{ color: '#293b33', fontSize: 14 }}>{titleByKind[operation.kind] || statusName(operation.kind)} <span style={{ color: '#8a9790', fontWeight: 600 }}>#{operation.id}</span></strong>
           <span style={tagStyle(...(statusColors[operation.status] || ['#f0f2f1', '#59675f']))}>{statusName(operation.status)}</span>
-          <span style={{ color: '#718078', fontSize: 11 }}>{lines.length} line{lines.length === 1 ? '' : 's'} · {operation.created_by || 'Staff'} · {operation.created_at ? new Date(operation.created_at).toLocaleString() : 'Date unavailable'}</span>
+          <span style={{ color: '#718078', fontSize: 11 }}>{summary.line_count ?? lines.length} lines · {operation.created_by || 'Staff'} · {operation.created_at ? new Date(operation.created_at).toLocaleString() : 'Date unavailable'}</span>
         </span><ChevronDown size={17} color="#738179" style={{ transform: isOpen ? 'rotate(180deg)' : undefined, transition: 'transform .15s ease' }} />
       </button>
-      {isOpen && <div style={{ borderTop: '1px solid #edf0ee', padding: 16 }}>
+      {isOpen && detailLoading[operation.id] && <p style={{padding:16}}>Loading operation evidence…</p>}
+      {isOpen && detailErrors[operation.id] && <div role="alert" style={{padding:16}}>{detailErrors[operation.id]} <button type="button" style={styles.secondary} onClick={()=>loadDetail(operation.id)}>Retry operation detail</button></div>}
+      {isOpen && detail?.operation && !detailLoading[operation.id] && !detailErrors[operation.id] && <div style={{ borderTop: '1px solid #edf0ee', padding: 16 }}>
         <div style={{ color: '#53635b', fontSize: 13, marginBottom: 12 }}>{operation.reason || 'No operation reason recorded'}</div>
         {operation.kind === 'count' && <div style={{ padding: '10px 12px', background: '#f7f8f5', borderRadius: 9, color: '#59685f', fontSize: 12, marginBottom: 12 }}>
           Count against the saved cutoff quantities below. Approval applies the recorded delta to the current balance, preserving stock movements made after this snapshot.
@@ -336,20 +400,27 @@ export default function ControlledStockOperations({ mode = 'stock' }) {
     {error && <div role="alert" style={{ margin: '0 0 14px', padding: '11px 13px', border: '1px solid #edc3bd', borderRadius: 9, background: '#fff5f3', color: '#8f352d', fontSize: 13, display: 'flex', gap: 9, alignItems: 'flex-start' }}><AlertTriangle size={17} /> <span style={{ flex: 1 }}>{error}</span><button type="button" onClick={() => setError('')} aria-label="Dismiss error" style={{ border: 0, background: 'transparent', color: 'inherit', cursor: 'pointer' }}><X size={15} /></button></div>}
     {notice && <div role="status" style={{ margin: '0 0 14px', padding: '10px 13px', border: '1px solid #c4e2d0', borderRadius: 9, background: '#f0faf4', color: '#286747', fontSize: 13 }}>{notice}</div>}
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(135px,1fr))', gap: 9, marginBottom: 16 }}>
-      {[['Available batches', eligibleBatches.length, PackageSearch], ['Segregated batches', eligibleSegregated.length, Archive], ['Open operations', data.operations.filter(o => !['credited', 'rejected', 'cancelled'].includes(o.status)).length, Clock3], ['Supplier credits', data.credits.length, ShieldCheck]].map(([label, value, Icon]) => <div key={label} style={{ background: '#fff', border: '1px solid #e6ebe7', borderRadius: 11, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}><span style={{ color: theme.accent, background: theme.soft, borderRadius: 9, padding: 8 }}><Icon size={16} /></span><span><span style={{ display: 'block', fontSize: 17, fontWeight: 850, color: '#2d4136' }}>{value}</span><span style={{ color: '#78867e', fontSize: 11 }}>{label}</span></span></div>)}
+      {[['Available on this page', eligibleBatches.length, PackageSearch], ['Segregated on this page', eligibleSegregated.length, Archive], ['Matching operations', data.operation_pagination?.total ?? data.operations.length, Clock3], ['Credits in opened operations', visibleCredits.length, ShieldCheck]].map(([label, value, Icon]) => <div key={label} style={{ background: '#fff', border: '1px solid #e6ebe7', borderRadius: 11, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}><span style={{ color: theme.accent, background: theme.soft, borderRadius: 9, padding: 8 }}><Icon size={16} /></span><span><span style={{ display: 'block', fontSize: 17, fontWeight: 850, color: '#2d4136' }}>{value}</span><span style={{ color: '#78867e', fontSize: 11 }}>{label}</span></span></div>)}
     </div>
     {canCreate && <form onSubmit={createOperation} style={{ ...styles.panel, marginBottom: 18 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'center', marginBottom: 13 }}>
         <div><h3 style={{ margin: 0, fontSize: 16, color: '#2a3d33' }}>Start a stock session</h3><p style={{ ...styles.subdued, margin: '4px 0 0' }}>Select batches to create a complete multi-line operation.</p></div>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{[['count', 'Controlled count'], ['supplier_return', 'Supplier return'], ['inspection', 'Inspect stock']].map(([value, label]) => <button type="button" key={value} onClick={() => { setKind(value); setSelected([]); setFormLines({}); setError(''); }} style={{ ...styles.secondary, borderColor: kind === value ? theme.accent : '#dce3df', color: kind === value ? theme.ink : '#53635b', background: kind === value ? theme.soft : '#fff' }}>{label}</button>)}</div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{[['count', 'Controlled count'], ['supplier_return', 'Supplier return'], ['inspection', 'Inspect stock']].map(([value, label]) => <button type="button" key={value} onClick={() => { setKind(value); resetComposer(); setError(''); }} style={{ ...styles.secondary, borderColor: kind === value ? theme.accent : '#dce3df', color: kind === value ? theme.ink : '#53635b', background: kind === value ? theme.soft : '#fff' }}>{label}</button>)}</div>
       </div>
       {kind === 'count' && <div style={{ padding: '10px 12px', background: '#f8f8f3', borderLeft: `3px solid ${theme.accent}`, borderRadius: 6, fontSize: 12, color: '#59685f', marginBottom: 12 }}><b>Cutoff rule:</b> creation saves the batch quantities now. Record the physical count against that snapshot; approved deltas preserve sales and receipts posted after the cutoff.</div>}
       {kind === 'supplier_return' && <div style={{ padding: '10px 12px', background: '#fff9ef', borderLeft: '3px solid #d39a36', borderRadius: 6, fontSize: 12, color: '#765520', marginBottom: 12 }}>Only source-linked batches with supplier provenance and recorded unit cost qualify. Missing provenance is shown as an error; prices are never estimated.</div>}
       {kind === 'inspection' && <div style={{ padding: '10px 12px', background: '#f7f5fb', borderLeft: `3px solid ${theme.accent}`, borderRadius: 6, fontSize: 12, color: '#5f566b', marginBottom: 12 }}>Available stock enters quarantine for inspection. Segregated stock can be released only when marked saleable and not expired; damaged or expired stock must not be released.</div>}
       <label style={{ display: 'block', maxWidth: 650, marginBottom: 12 }}><span style={styles.label}>Session reason</span><input style={styles.input} value={reason} onChange={e => setReason(e.target.value)} placeholder="For example: monthly controlled-drug count" /></label>
+      {chosenBatches.length>0 && <section aria-label="Selected session lines" style={{marginBottom:16}}>
+        <h4>Selected session lines · {chosenBatches.length}</h4>
+        <p style={styles.subdued}>These lines stay selected across searches, locations and pages. Remove a line here to exclude it from this session.</p>
+        <div style={{display:'grid',gap:8}}>{chosenBatches.map(batch=>renderBatchCard(batch,batch.batch_type==='segregated' ? 'segregated' : 'available'))}</div>
+      </section>}
+      <ControlledStockFilters label="Batch" filters={batchFilters} onApply={setBatchFilters} locations={data.locations} styles={styles} />
+      <ControlledStockPager label="Batches" pagination={data.batch_pagination} onPage={page=>setBatchFilters(current=>({...current,page}))} disabled={refreshing} styles={styles} />
       {eligibleBatches.length + eligibleSegregated.length === 0 ? <div style={{ padding: 20, textAlign: 'center', background: '#f8faf8', borderRadius: 10, color: '#75827b', fontSize: 13 }}>No eligible batches are available in your server-scoped stock view.</div> : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,360px),1fr))', gap: 14 }}>
-        <div><div style={{ fontSize: 12, fontWeight: 800, color: '#42604f', marginBottom: 8 }}>Available stock · {eligibleBatches.length}</div><div style={{ display: 'grid', gap: 8, maxHeight: 420, overflowY: 'auto', paddingRight: 3 }}>{eligibleBatches.map(batch => renderBatchCard(batch, 'available'))}</div></div>
-        <div><div style={{ fontSize: 12, fontWeight: 800, color: '#8c592c', marginBottom: 8 }}>Segregated · {eligibleSegregated.length}</div><div style={{ display: 'grid', gap: 8, maxHeight: 420, overflowY: 'auto', paddingRight: 3 }}>{eligibleSegregated.map(batch => renderBatchCard(batch, 'segregated'))}</div></div>
+        <div><div style={{ fontSize: 12, fontWeight: 800, color: '#42604f', marginBottom: 8 }}>Available stock · {eligibleBatches.length}</div><div style={{ display: 'grid', gap: 8, maxHeight: 420, overflowY: 'auto', paddingRight: 3 }}>{eligibleBatches.filter(batch=>!selected.includes(batchKey(batch))).map(batch => renderBatchCard(batch, 'available'))}</div></div>
+        <div><div style={{ fontSize: 12, fontWeight: 800, color: '#8c592c', marginBottom: 8 }}>Segregated · {eligibleSegregated.length}</div><div style={{ display: 'grid', gap: 8, maxHeight: 420, overflowY: 'auto', paddingRight: 3 }}>{eligibleSegregated.filter(batch=>!selected.includes(batchKey(batch))).map(batch => renderBatchCard(batch, 'segregated'))}</div></div>
       </div>}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, borderTop: '1px solid #edf0ee', marginTop: 14, paddingTop: 12 }}>
         <span style={styles.subdued}>{selected.length} batch{selected.length === 1 ? '' : 'es'} selected</span>
@@ -358,15 +429,19 @@ export default function ControlledStockOperations({ mode = 'stock' }) {
     </form>}
     <section>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10, gap: 10, flexWrap: 'wrap' }}><h3 style={{ fontSize: 16, color: '#2b3e34', margin: 0 }}>Operation register</h3><span style={styles.subdued}>Server-scoped activity · newest first</span></div>
+      <ControlledStockFilters label="Operation" filters={operationFilters} onApply={setOperationFilters} locations={data.locations} styles={styles} operations />
+      <ControlledStockPager label="Operations" pagination={data.operation_pagination} onPage={page=>setOperationFilters(current=>({...current,page}))} disabled={refreshing} styles={styles} />
       {data.operations.length === 0 ? <div style={{ ...styles.panel, textAlign: 'center', padding: 32 }}><ClipboardCheck size={25} color={theme.accent} style={{ margin: '0 auto 8px' }} /><strong style={{ display: 'block', color: '#405249', fontSize: 14 }}>No controlled operations yet</strong><span style={styles.subdued}>New count sessions and supplier workflows will appear here.</span></div> : <div style={{ display: 'grid', gap: 10 }}>{[...data.operations].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)).map(op => renderOperationCard(op))}</div>}
     </section>
     <section style={{ marginTop: 18, ...styles.panel }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}><ShieldCheck size={17} color={theme.accent} /><h3 style={{ margin: 0, color: '#2b3e34', fontSize: 14 }}>Supplier credit ledger</h3></div>
-      {data.credits.length === 0 ? <span style={styles.subdued}>No supplier credits recorded.</span> : <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720, fontSize: 12 }}><thead><tr>{['Supplier', 'Import', 'Return operation', 'Expected', 'Credited', 'Reference', 'Status'].map(h => <th key={h} style={{ textAlign: 'left', color: '#748178', borderBottom: '1px solid #e8ece9', padding: '8px 7px', fontWeight: 750 }}>{h}</th>)}</tr></thead><tbody>{data.credits.map((credit, i) => <tr key={`${credit.operation_id}-${credit.supplier_import_id || i}`}>{[credit.supplier_name || '—', credit.supplier_import_id || '—', `#${credit.operation_id}`, amount(credit.expected_amount), amount(credit.credited_amount), credit.credit_reference || '—', statusName(credit.status)].map((value, j) => <td key={j} style={{ borderBottom: '1px solid #eff2ef', padding: '9px 7px', color: '#45564d' }}>{value}</td>)}</tr>)}</tbody></table></div>}
+      <p style={styles.subdued}>Evidence for opened operations only. Open a register card to load its credits.</p>
+      {visibleCredits.length === 0 ? <span style={styles.subdued}>No supplier credits loaded.</span> : <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720, fontSize: 12 }}><thead><tr>{['Supplier', 'Import', 'Return operation', 'Expected', 'Credited', 'Reference', 'Status'].map(h => <th key={h} style={{ textAlign: 'left', color: '#748178', borderBottom: '1px solid #e8ece9', padding: '8px 7px', fontWeight: 750 }}>{h}</th>)}</tr></thead><tbody>{visibleCredits.map((credit, i) => <tr key={`${credit.operation_id}-${credit.supplier_import_id || i}`}>{[credit.supplier_name || '—', credit.supplier_import_id || '—', `#${credit.operation_id}`, amount(credit.expected_amount), amount(credit.credited_amount), credit.credit_reference || '—', statusName(credit.status)].map((value, j) => <td key={j} style={{ borderBottom: '1px solid #eff2ef', padding: '9px 7px', color: '#45564d' }}>{value}</td>)}</tr>)}</tbody></table></div>}
     </section>
     <section style={{ marginTop: 12, ...styles.panel }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}><Archive size={17} color={theme.accent} /><h3 style={{ margin: 0, color: '#2b3e34', fontSize: 14 }}>Supplier return financial entries</h3></div>
-      {data.financial_entries.length === 0 ? <span style={styles.subdued}>No financial entries returned for this view.</span> : <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720, fontSize: 12 }}><thead><tr>{['Entry', 'Event', 'Debit account', 'Credit account', 'Amount', 'Reference'].map(h => <th key={h} style={{ textAlign: 'left', color: '#748178', borderBottom: '1px solid #e8ece9', padding: '8px 7px', fontWeight: 750 }}>{h}</th>)}</tr></thead><tbody>{data.financial_entries.map((entry, i) => <tr key={entry.id ?? `${entry.reference || 'entry'}-${i}`}>{[entry.id || '—', entry.event || '—', entry.debit_account || '—', entry.credit_account || '—', amount(entry.amount), entry.reference || '—'].map((value, j) => <td key={j} style={{ borderBottom: '1px solid #eff2ef', padding: '9px 7px', color: '#45564d' }}>{value}</td>)}</tr>)}</tbody></table></div>}
+      <p style={styles.subdued}>Journal evidence for opened operations only.</p>
+      {visibleEntries.length === 0 ? <span style={styles.subdued}>No financial entries loaded.</span> : <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720, fontSize: 12 }}><thead><tr>{['Entry', 'Event', 'Debit account', 'Credit account', 'Amount', 'Reference'].map(h => <th key={h} style={{ textAlign: 'left', color: '#748178', borderBottom: '1px solid #e8ece9', padding: '8px 7px', fontWeight: 750 }}>{h}</th>)}</tr></thead><tbody>{visibleEntries.map((entry, i) => <tr key={entry.id ?? `${entry.reference || 'entry'}-${i}`}>{[entry.id || '—', entry.event || '—', entry.debit_account || '—', entry.credit_account || '—', amount(entry.amount), entry.reference || '—'].map((value, j) => <td key={j} style={{ borderBottom: '1px solid #eff2ef', padding: '9px 7px', color: '#45564d' }}>{value}</td>)}</tr>)}</tbody></table></div>}
     </section>
   </div>;
 }

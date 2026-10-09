@@ -7,7 +7,7 @@ async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (!req.user) return res.status(401).json({error:'Authentication required'});
   try {
-    if (req.method === 'GET') return res.json(await listOperations(req.user));
+    if (req.method === 'GET') return res.json(await listOperations(req.user, req.query || {}));
     if (req.method === 'POST') return res.status(201).json({operation:await createOperation(req.user,req.body || {})});
     if (req.method === 'PATCH') return res.json({operation:await updateOperation(req.user,req.body || {})});
     return res.status(405).json({error:'Method not allowed'});
