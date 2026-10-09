@@ -14,6 +14,7 @@ const branch = 'test_stock_safety_branch';
 const product = 'TEST_STOCK_SAFETY_PRODUCT';
 const transferId = 'TEST-SAFETY-TRANSFER';
 const refundId = 'TEST-SAFETY-REFUND';
+const refundSaleId = 'TEST-SAFETY-REFUND-SALE';
 const batch = 'TEST-SAFETY-BATCH';
 const expiry = '2030-12-31';
 function invoke(handler, method, body, path = '/api/stock/transfers') {
@@ -31,6 +32,9 @@ async function cleanup() {
   await query('DELETE FROM stock_batches WHERE description=$1', [product]);
   await query("DELETE FROM notifications WHERE id LIKE 'NOTIF-RCPT-%' AND message LIKE $1", [`%${transferId}%`]);
   await query('DELETE FROM branch_refund_requests WHERE id=$1', [refundId]);
+  await query('DELETE FROM stock_linked_reversals WHERE original_reference=$1', [refundSaleId]);
+  await query('DELETE FROM stock_segregated_batches WHERE operation_id=$1', [refundId]);
+  await query('DELETE FROM stock_sale_allocations WHERE movement_id=$1', [refundSaleId]);
   await query('DELETE FROM branch_activity_transactions WHERE branch_id=$1', [branch]);
   await query('DELETE FROM branch_inventory_movements WHERE branch_id=$1', [branch]);
   await query('DELETE FROM branch_inventory_batches WHERE branch_id=$1', [branch]);
@@ -116,16 +120,44 @@ describe.sequential('stock safety: atomic operations, partial receipt and segreg
   });
 
   it('segregates a damaged refund and prevents a second approval', async () => {
-    await query(`INSERT INTO branch_refund_requests (id,branch_id,product_name,batch_no,quantity,unit_price,refund_amount,reason,status)
-      VALUES ($1,$2,$3,$4,3,10,30,'Damaged customer return','pending')`, [refundId, branch, product, batch]);
-    const result = await invoke(refunds, 'PATCH', { id: refundId, action: 'approve', return_condition: 'damaged' }, '/api/stock/refund-requests');
+    // A historical, depleted sale lot supplies evidence without creating new
+    // available stock. Current approvals require this link and a confirmed return.
+    const soldBatchId = 'TEST-SAFETY-SOLD-BATCH';
+    const saleSnapshot = {
+      id: soldBatchId, batch_type: 'branch', location: branch,
+      product_name: product, batch_no: batch, expiry_date: expiry,
+      quantity: 3, revenue_unit: 10, financial_dp_unit: 10, unit_dp: 10, unit_cost: null,
+      cost_layers: [{ quantity: 3, source: { id: null, cif_unit_cost: null, dpc_unit_value: 10 } }],
+    };
+    await query(`INSERT INTO stock_movements
+      (id,product_name,batch_no,expiry_date,quantity,movement_type,source_location,source_location_type,reference_id,status,unit_dp)
+      VALUES ($1,$2,$3,$4,3,'walk_in_member_sale',$5,'branch',$1,'posted',10)`,
+      [refundSaleId, product, batch, expiry, branch]);
+    await query(`INSERT INTO stock_sale_allocations
+      (movement_id,sale_reference,branch_batch_id,branch_id,product_name,batch_no,expiry_date,quantity,snapshot)
+      VALUES ($1,$1,$2,$3,$4,$5,$6,3,$7)`,
+      [refundSaleId, soldBatchId, branch, product, batch, expiry, JSON.stringify(saleSnapshot)]);
+    await query(`INSERT INTO branch_refund_requests
+      (id,branch_id,product_name,batch_no,quantity,unit_price,refund_amount,reason,status,
+       sale_reference,allocation_id,physical_return_confirmed,original_snapshot)
+      VALUES ($1,$2,$3,$4,3,10,30,'Damaged customer return','pending',$5::text,$5::text,true,$6)`,
+      [refundId, branch, product, batch, refundSaleId, JSON.stringify(saleSnapshot)]);
+    const approval = {
+      id: refundId, action: 'approve', return_condition: 'damaged',
+      physical_return_confirmed: true, inspection_reason: 'Original returned lot inspected and damaged',
+    };
+    const result = await invoke(refunds, 'PATCH', approval, '/api/stock/refund-requests');
     expect(result.status, JSON.stringify(result.body)).toBe(200);
-    expect(result.body.stock_disposition).toBe('segregated');
+    expect(result.body.success).toBe(true);
+    const approved = (await query('SELECT status,stock_disposition FROM branch_refund_requests WHERE id=$1', [refundId])).rows[0];
+    expect(approved).toEqual({ status: 'approved', stock_disposition: 'segregated' });
     expect(Number((await query('SELECT SUM(quantity) AS qty FROM branch_inventory_batches WHERE branch_id=$1', [branch])).rows[0].qty)).toBe(12);
     const hold = (await query("SELECT destination_location_type,quantity FROM stock_movements WHERE reference_id=$1 AND movement_type='refund_return'", [refundId])).rows[0];
     expect(hold.destination_location_type).toBe('quarantine');
     expect(Number(hold.quantity)).toBe(3);
-    expect((await invoke(refunds, 'PATCH', { id: refundId, action: 'approve', return_condition: 'saleable' })).status).toBe(400);
+    expect((await invoke(refunds, 'PATCH', { ...approval, return_condition: 'saleable' })).status).toBe(409);
+    expect(Number((await query('SELECT SUM(quantity) AS qty FROM branch_inventory_batches WHERE branch_id=$1', [branch])).rows[0].qty)).toBe(12);
+    expect((await query("SELECT 1 FROM stock_movements WHERE reference_id=$1 AND movement_type='refund_return'", [refundId])).rowCount).toBe(1);
   });
 
   it('does not create physical campaign stock from a cached balance', async () => {
