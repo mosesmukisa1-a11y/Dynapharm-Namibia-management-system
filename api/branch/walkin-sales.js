@@ -1,4 +1,4 @@
-import { recordBranchSaleAllocationTx } from '../services/stockSaleAllocations.js';
+import { recordBranchSaleAllocationTx, reconcileSaleFinancialsTx } from '../services/stockSaleAllocations.js';
 import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
 import { query, getMany, getOne, withTransaction } from '../db.js';
 import { atomicStockRequest } from '../_lib/atomicStockRequest.js';
@@ -546,7 +546,7 @@ async function handler(req, res) {
           }
         } else {
           const charged=item.unit_price ?? item.unitPrice ?? (isMemberSale ? item.dpPrice ?? item.dp : item.cpPrice ?? item.cp);
-          deductItems.push({ name: itemName, qty, unitPrice,revenueUnit:charged==null ? null : Number(charged) });
+          deductItems.push({ name: itemName, qty, unitPrice,revenueUnit:charged==null ? null : Number(charged),bvUnit:isMemberSale?Number(item.bv || item.bvPrice || 0):0 });
         }
       }
 
@@ -608,7 +608,7 @@ async function handler(req, res) {
                 [smId, batch.product_name, batch.batch_no || '', batch.expiry_date || null,
                  take, saleMovType, branchId, saleId, 'Walk-in ' + customerType + ' sale', item.unitPrice || null]
               );
-              await recordBranchSaleAllocationTx(client,{movementId:smId,saleReference:saleId,batchId:batch.id,quantity:take,branchMovementId:bimId,revenueUnit:item.revenueUnit});
+              await recordBranchSaleAllocationTx(client,{movementId:smId,saleReference:saleId,batchId:batch.id,quantity:take,branchMovementId:bimId,revenueUnit:item.revenueUnit,bvUnit:item.bvUnit || 0,financialDpUnit:item.unitPrice});
               remaining -= take;
             }
             if (remaining > 0) {
@@ -619,6 +619,7 @@ async function handler(req, res) {
           if (insufficientItems.length > 0) {
             throw new Error(`Insufficient stock for: ${insufficientItems.map(i => `${i.product_name} (need ${i.requested}, have ${i.available})`).join(', ')}`);
           }
+          await reconcileSaleFinancialsTx(client,saleId,record.total,record.total_bv);
 
           return result.rows[0];
         });
@@ -736,7 +737,7 @@ async function handler(req, res) {
         return res.status(400).json({ success: false, error: 'Sale id is required' });
       }
 
-      const existing = await getOne('SELECT * FROM branch_walkin_sales WHERE id = $1', [targetId]);
+      const existing = await getOne('SELECT * FROM branch_walkin_sales WHERE id = $1 FOR UPDATE', [targetId]);
       if (!existing) {
         return res.status(404).json({ success: false, error: 'Sale not found' });
       }
@@ -746,17 +747,25 @@ async function handler(req, res) {
       }
 
       const record = buildSaleRecord(salePayload, existing);
-      const immutableFields = ['branch_id','status','items','total_amount','total_dp','total_cp','payment_status'];
+      const nameOnlyEdit=Object.keys(salePayload).every(key=>['id','customer_name','customerName'].includes(key));
+      const immutableFields = ['branch_id','status','items','total_amount','total_dp','total_cp','payment_status',
+        'subtotal','discount','tax','total','total_bv','customer_type','distributor_nb','referral_nb','sale_number','sale_date','payment_method','data','metadata'];
       for (const field of immutableFields) {
-        if (record[field] != null && JSON.stringify(record[field]) !== JSON.stringify(existing[field])) {
+        if (nameOnlyEdit) continue;
+        const canonical=value=>{
+          if (typeof value==='string' && ['items','data','metadata'].includes(field)) {try {return JSON.parse(value);} catch {}}
+          return value;
+        };
+        if (record[field] != null && JSON.stringify(canonical(record[field])) !== JSON.stringify(canonical(existing[field]))) {
           return res.status(409).json({ success: false, error: 'Posted sale quantities, totals, branch and status cannot be edited. Use a linked refund or controlled reversal.' });
         }
       }
       if (branchScope.enforced) {
         record.branch_id = existing.branch_id;
       }
-      const columns = Object.keys(record);
-      const values = Object.values(record);
+      // An ordinary edit cannot rewrite price, BV, referral, or payment evidence.
+      const columns = ['customer_name','updated_at'].filter(col=>record[col]!==undefined);
+      const values = columns.map(col=>record[col]);
       const setClause = columns.map((col, idx) => `"${col}" = $${idx + 1}`).join(', ');
 
       const result = await query(

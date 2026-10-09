@@ -2655,6 +2655,8 @@ server.on('error', (error) => {
     // migrations were authored, without touching existing data.
     const schemaSyncs = [
       (await import('./api/services/stockCostLayers.js')).lifecycleSchema,
+      (await import('./api/services/stockSaleAllocations.js')).saleAllocationSchema,
+      (await import('./api/services/linkedReversals.js')).reversalSchema,
       // Migration 019: GM dispatch approval columns on stock_transfers
       `ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS prepared_by_id VARCHAR(255)`,
       `ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS prepared_by_role VARCHAR(100)`,

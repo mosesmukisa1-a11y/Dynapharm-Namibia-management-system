@@ -21,6 +21,7 @@ import BarcodeScanner from '../../components/BarcodeScanner';
 import QRCameraScanner from '../../components/QRCameraScanner';
 import ControlledStockOperations from '../../components/ControlledStockOperations';
 import StockCostReport from '../../components/StockCostReport';
+import { LinkedCustomerReturns } from '../../components/LinkedCustomerReturns';
 
 const DEFAULT_REFERRAL = { name: 'Dynapharm Namibia', nb_number: 'NB005676', id: 'DEFAULT_REFERRAL' };
 
@@ -1094,6 +1095,13 @@ function BranchPriceListTab() {
 
 // ── Credit Refund Requests Tab ─────────────────────────────────────────────────
 function RefundRequestsTab() {
+  const portalBranch = useContext(PortalBranchContext);
+  const { user } = useAuth();
+  const branchId = portalBranch || user?.branch || '';
+  return <LinkedCustomerReturns key={branchId} branchId={branchId} userRole={user?.role || ''} />;
+}
+
+function LegacyRefundRequestsTab() {
   const portalBranch = useContext(PortalBranchContext);
   const { user } = useAuth();
   const effectiveBranch = portalBranch || user?.branch || '';
@@ -4804,6 +4812,7 @@ function BranchStockTab() {
   const [requestNotes, setRequestNotes] = useState('');
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [receiveItems, setReceiveItems] = useState([]);
+  const [receiveOperationKey,setReceiveOperationKey]=useState('');
   const [receiveDeliveryNote, setReceiveDeliveryNote] = useState('');
   const [receiveReceivedBy, setReceiveReceivedBy] = useState('');
   const [receiveBatchPrefillStatus, setReceiveBatchPrefillStatus] = useState(null);
@@ -4978,6 +4987,7 @@ function BranchStockTab() {
 
     // Show the modal immediately with base items so the user isn't waiting on a blank screen.
     setSelectedRequest(req);
+    setReceiveOperationKey(globalThis.crypto?.randomUUID?.() || `receipt-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     setReceiveDeliveryNote('');
     setReceiveReceivedBy(user?.full_name || user?.username || '');
     setReceiveFormMsg(null);
@@ -5066,6 +5076,7 @@ function BranchStockTab() {
       // inventory records, and flips status to 'received' in one transaction.
       await api.stock.receiveRequest({
         requestId: selectedRequest.id,
+        receiptId: receiveOperationKey,
         branchId: selectedBranch || user?.branch || 'Branch',
         items: itemsToReceive.map(item => ({
           productName: safeLabel(item.product_name) || safeLabel(item.productName) || safeLabel(item.productId) || 'Unknown',

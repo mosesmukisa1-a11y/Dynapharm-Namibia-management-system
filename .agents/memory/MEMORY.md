@@ -11,3 +11,4 @@
 - [Dependency audit caveats](dependency-audit-caveats.md) — official patched SheetJS releases can trigger overbroad npm advisories; compare upstream fixed versions without suppressing future findings.
 - [Publishing dependency state](publishing-dependency-state.md) — ENOTEMPTY installation conflicts require a clean dependency tree; distinguish them from older security-scan failures.
 - [Browser runtime on Nix](browser-runtime-nix.md) — downloaded Playwright Chromium may lack shared libraries; prefer the environment’s Chromium wrapper for local browser checks.
+- [Linked return authorization](linked-reversal-rules.md) — returns never reset prescription entitlement; legacy matching needs review, and received branch goods return through a new transfer.

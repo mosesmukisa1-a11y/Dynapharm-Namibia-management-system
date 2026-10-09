@@ -191,7 +191,7 @@ export default async function handler(req, res) {
         `SELECT COUNT(*)::int AS refund_count,
                 -- Use bim.unit_price first: it stores the ACTUAL refunded (campaign) price.
                 -- Fall back to pp.dp only when unit_price is 0/null (legacy entries).
-                COALESCE(SUM(ABS(quantity) * COALESCE(NULLIF(unit_price, 0), NULLIF(pp.dp, 0), 0)), 0)::numeric AS refund_total
+                COALESCE(SUM(ABS(quantity) * COALESCE(charge_unit, NULLIF(unit_price, 0), NULLIF(pp.dp, 0), 0)), 0)::numeric AS refund_total
          FROM branch_inventory_movements
          LEFT JOIN product_prices pp ON LOWER(TRIM(pp.description)) = LOWER(TRIM(product_name))
          WHERE ${movConds.join(' AND ')} AND type = 'refund_return'`,

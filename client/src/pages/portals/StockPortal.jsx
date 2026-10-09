@@ -8,6 +8,7 @@ import ControlledStockOperations from '../../components/ControlledStockOperation
 import DispatchNote from '../../components/DispatchNote';
 import StockProductPacks from '../../components/StockProductPacks';
 import StockCostReport from '../../components/StockCostReport';
+import { CustomerReturnInspection, DispatchReturnsTab } from '../../components/LinkedCustomerReturns';
 import { buildReceiptPayload, clearReceiptDraft, readReceiptDraft, writeReceiptDraft, receiptMoney } from '../../lib/stockLifecycle';
 import { getCIFPrice, getDPCPrice, getProductProfit, findProductPrice, getLiveProductList, setLivePrices } from '../../lib/pricing';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES, BRANCH_DETAILS } from '../../lib/constants';
@@ -960,6 +961,8 @@ function RefundApprovalsTab() {
   const [filter, setFilter]               = useState('pending');
   const [acting, setActing]               = useState({});
   const [returnConditions, setReturnConditions] = useState({});
+  const [inspectionReasons, setInspectionReasons] = useState({});
+  const [physicalConfirmations, setPhysicalConfirmations] = useState({});
   const [rejectionReasons, setRejectionReasons] = useState({});
   const [showReject, setShowReject]       = useState({});
   const [alert, setAlert]                 = useState(null);
@@ -981,11 +984,19 @@ function RefundApprovalsTab() {
   };
 
   const handleApprove = async req => {
+    if (!physicalConfirmations[req.id] || !inspectionReasons[req.id]?.trim()) {
+      setAlert({ type: 'error', msg: 'Confirm physical custody and enter inspection notes before approving this return.' });
+      return;
+    }
     setActing(a => ({ ...a, [req.id]: 'approving' }));
     try {
-      const result = await api.stock.approveRefundRequest(req.id, {
+      const result = await api.patch('/stock/refund-requests', {
+        id: req.id,
+        action: 'approve',
         approved_by: user?.fullName || user?.username || 'Stock Manager',
         return_condition: returnConditions[req.id] || 'quarantine',
+        physical_return_confirmed: true,
+        inspection_reason: inspectionReasons[req.id].trim(),
       });
       setAlert({ type: 'success', msg: result?.message || 'Refund request approved.' });
       load();
@@ -1089,6 +1100,7 @@ function RefundApprovalsTab() {
                     <span>💳 Total Refund: <strong style={{ color: '#c41e3a', fontSize: '0.95rem' }}>{fmtN(req.refund_amount)}</strong></span>
                     {req.batch_no       && <span>🔖 Batch: <strong>{req.batch_no}</strong></span>}
                     {req.sale_reference && <span>🧾 Ref: <strong>{req.sale_reference}</strong></span>}
+                    {(req.allocation_id || req.movement_id) && <span>Sale allocation: <strong>{req.allocation_id || req.movement_id}</strong></span>}
                   </div>
                   <div style={{ marginTop: 8, fontSize: '0.85rem', color: '#374151' }}><strong>Reason:</strong> {req.reason}</div>
                   {req.status === 'approved' && (
@@ -1111,27 +1123,15 @@ function RefundApprovalsTab() {
                 {/* Action buttons (pending only) */}
                 {req.status === 'pending' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 170 }}>
-                    <div>
-                      <label htmlFor={`refund-condition-${req.id}`} style={{ display: 'block', marginBottom: 5, fontSize: '0.8rem', fontWeight: 800, color: '#334155' }}>
-                        Returned item condition
-                      </label>
-                      <select
-                        id={`refund-condition-${req.id}`}
-                        value={returnConditions[req.id] || 'quarantine'}
-                        onChange={e => setReturnConditions(s => ({ ...s, [req.id]: e.target.value }))}
-                        disabled={!!acting[req.id]}
-                        style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #cbd5e1', borderRadius: 8, background: '#fff', color: '#1e293b', fontSize: '0.84rem' }}
-                      >
-                        <option value="saleable">Saleable</option>
-                        <option value="damaged">Damaged</option>
-                        <option value="expired">Expired</option>
-                        <option value="quarantine">Quarantine — pending inspection</option>
-                      </select>
-                      <p style={{ margin: '5px 0 0', fontSize: '0.74rem', lineHeight: 1.45, color: '#64748b' }}>
-                        Only saleable returns restore available stock. Damaged, expired, and quarantined items are segregated.
-                      </p>
-                    </div>
-                    <button onClick={() => handleApprove(req)} disabled={!!acting[req.id]}
+                    <CustomerReturnInspection
+                      condition={returnConditions[req.id] || 'quarantine'}
+                      onConditionChange={value => setReturnConditions(s => ({ ...s, [req.id]: value }))}
+                      inspectionReason={inspectionReasons[req.id] || ''}
+                      onInspectionReasonChange={value => setInspectionReasons(s => ({ ...s, [req.id]: value }))}
+                      confirmed={!!physicalConfirmations[req.id]}
+                      onConfirmedChange={value => setPhysicalConfirmations(s => ({ ...s, [req.id]: value }))}
+                    />
+                    <button onClick={() => handleApprove(req)} disabled={!!acting[req.id] || !physicalConfirmations[req.id] || !inspectionReasons[req.id]?.trim()}
                       style={{ padding: '9px 20px', background: acting[req.id] === 'approving' ? '#d1fae5' : 'linear-gradient(135deg,#16a34a,#15803d)', color: acting[req.id] === 'approving' ? '#15803d' : '#fff', border: 'none', borderRadius: 9, fontWeight: 800, fontSize: '0.88rem', cursor: acting[req.id] ? 'default' : 'pointer' }}>
                       {acting[req.id] === 'approving' ? '⏳ Approving…' : '✅ Approve Refund'}
                     </button>
@@ -1547,6 +1547,7 @@ export default function StockPortal() {
   const [activeTab, setActiveTab] = useState('aiDashboard');
   const [globalBranch, setGlobalBranch] = useState(['admin', 'super_admin'].includes(user?.role) ? 'all' : (user?.branch || 'all'));
 
+  const canRecordDispatchReturns = ['stock', 'stock_manager', 'admin', 'superadmin', 'super_admin', 'gm', 'general_manager'].includes((user?.role || '').toLowerCase());
   const tabs = [
     { id: 'aiDashboard', label: 'Command Center', icon: '🧠' },
     { id: 'overview', label: 'Overview', icon: '📊' },
@@ -1569,6 +1570,7 @@ export default function StockPortal() {
     { id: 'realtime', label: 'Realtime', icon: '⚡' },
     { id: 'fieldStock', label: 'Field Stock', icon: '👥' },
     { id: 'refundApprovals', label: 'Refund Approvals', icon: '↩️' },
+    ...(canRecordDispatchReturns ? [{ id: 'dispatchReturns', label: 'Dispatch Returns', icon: '↩' }] : []),
     { id: 'adjustments', label: 'Edit Requests', icon: '✏️' },
     { id: 'campaigns', label: 'Campaigns', icon: '📢' },
     { id: 'staffServices', label: 'Staff Services', icon: '👤' },
@@ -1640,6 +1642,7 @@ export default function StockPortal() {
         {activeTab === 'realtime' && <RealtimeTab branch={globalBranch} />}
         {activeTab === 'fieldStock' && <FieldStockTab />}
         {activeTab === 'refundApprovals' && <RefundApprovalsTab />}
+        {activeTab === 'dispatchReturns' && canRecordDispatchReturns && <DispatchReturnsTab />}
         {activeTab === 'adjustments' && <AdjustmentsTab />}
         {activeTab === 'campaigns' && <StockCampaignsTab />}
         {activeTab === 'staffServices' && <StaffServicesTab accentColor="#92400e" />}

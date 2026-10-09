@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { restoreWarehouseReturnStockTx } from './warehouseReturnStock.js';
 import { query, withTransaction } from '../db.js';
 import { getBranchScope } from '../_lib/auth.js';
 import { normalizeBranchSlug, branchSearchTerms } from '../_lib/branchUtils.js';
@@ -140,6 +141,14 @@ function stableIdentity(a, b) {
 async function inspectionReleaseTargetTx(client, batch, user) {
   if (batch.purpose !== 'customer_return')
     return loadBatch(client,batch.source_type,batch.source_id,user);
+  if (batch.source_type==='warehouse') {
+    const target=await loadBatch(client,'warehouse',batch.source_id,user);
+    for (const key of ['location','product_name','batch_no','expiry_date','unit_cost','unit_dp'])
+      if ((target[key] ?? null)!==(batch[key] ?? null))
+        fail('Original warehouse return identity or cost changed; separate review is required',409);
+    return target;
+  }
+  if (batch.source_type!=='branch') fail('This return source does not support inspection release',409);
   // A new accepted customer return is already physical segregation. Only GM's
   // approved inspection may create its empty available destination, never startup
   // reconciliation or refund submission. Missing supplier/cost evidence stays null.
@@ -158,7 +167,6 @@ async function inspectionReleaseTargetTx(client, batch, user) {
     [id,branch,batch.product_name,batch.batch_no,batch.expiry_date,batch.source_batch_id || null,
       batch.unit_dp ?? null,JSON.stringify({unit_cif:batch.unit_cost,supplier_import_id:batch.supplier_import_id,
         original_source:batch.original_source || null,customer_return_reference:batch.refund_reference})]);
-  await preserveRestoredProvenanceTx(client,{batchId:id,snapshot:batch});
   const target = await loadBatch(client,'branch',id,user);
   // A sale can consume layer A, and the same physical row can later hold layer B.
   // GM may make inspected goods available, but this must not attribute A to B.
@@ -188,12 +196,12 @@ async function movement(client, batch, delta, operation, user, destination = nul
       batch.product_name,batch.batch_no, operation.kind === 'count' ? delta : Math.abs(delta),
       batch.id,operation.id,operation.reason,actor(user), JSON.stringify({expiry_date:batch.expiry_date,delta})]);
 }
-async function changePhysical(client, batch, delta, countAdjustment = false) {
+async function changePhysical(client, batch, delta, countAdjustment = false, restoredSnapshot = null) {
   const next = batch.quantity + delta;
   if (next < 0 || !Number.isSafeInteger(next)) fail('Insufficient locked current stock', 409);
   if (batch.batch_type === 'branch') {
     const row=(await client.query('SELECT * FROM branch_inventory_batches WHERE id=$1 FOR UPDATE',[batch.id])).rows[0];
-    if (Array.isArray(row.metadata?.cost_layers)) {
+    if (Array.isArray(row.metadata?.cost_layers) && !restoredSnapshot) {
       const layers=branchLayers(row);
       if (delta<0) takeLayers(layers,-delta);
       else if (delta>0) layers.push({quantity:delta,source:batch.original_source || null});
@@ -204,6 +212,9 @@ async function changePhysical(client, batch, delta, countAdjustment = false) {
       quantity_adjusted=COALESCE(quantity_adjusted,0)+$2,
       status=CASE WHEN status='out_of_stock' AND $1::numeric>0 THEN 'in_stock' ELSE status END,
       updated_at=NOW() WHERE id=$3`, [next,countAdjustment ? delta : 0,batch.id]);
+    if (restoredSnapshot) await preserveRestoredProvenanceTx(client,{
+      batchId:batch.id,snapshot:restoredSnapshot,receivedQuantity:delta,
+    });
   } else if (batch.batch_type === 'warehouse') {
     // Count differences correct the physical baseline. Segregation instead moves
     // stock to another location, preserving received quantity and original cost.
@@ -358,6 +369,7 @@ export async function updateOperation(user, body) {
           const qty = integer(decision.quantity ?? line.quantity);
           if (qty > line.quantity) fail('Approved quantity exceeds requested quantity');
           if (expired(batch) && line.condition !== 'expired') fail('Batch expired since submission; resubmit as expired',409);
+          const segregatedQuantityBefore=batch.quantity;
           await changePhysical(client,batch,-qty);
           line.approved_quantity = qty;
           line.rejected_quantity = line.quantity-qty;
@@ -373,7 +385,21 @@ export async function updateOperation(user, body) {
             // Compare original identity to the saved source rather than the segregated row id.
             if (batch.purpose !== 'customer_return') stableIdentity(original,line.snapshot);
             if (!['in_stock','available','active','out_of_stock',null,undefined].includes(original.status)) fail('Original batch is not available for release',409);
-            await changePhysical(client,original,qty);
+            let restoredSnapshot=null;
+            if (batch.purpose==='customer_return') {
+              const layers=structuredClone(batch.return_cost_layers || batch.cost_layers || []);
+              const originalQuantity=layers.reduce((sum,layer)=>sum+Number(layer.quantity),0);
+              if (layers.length) {
+                takeLayers(layers,Math.max(0,originalQuantity-segregatedQuantityBefore));
+                restoredSnapshot={...batch,return_cost_layers:takeLayers(layers,qty)};
+              } else restoredSnapshot={...batch,quantity:qty};
+            }
+            if (batch.purpose==='customer_return' && original.batch_type==='warehouse')
+              await restoreWarehouseReturnStockTx(client,{sourceId:original.id,location:original.location,
+                productName:batch.product_name,batchNo:batch.batch_no,expiryDate:batch.expiry_date,quantity:qty,
+                originalSource:batch.original_source || {cif_unit_cost:batch.unit_cost,dpc_unit_value:batch.unit_dp},
+                releaseDispatched:false});
+            else await changePhysical(client,original,qty,false,restoredSnapshot);
             await movement(client,batch,-qty,op,user);
             await movement(client,original,qty,op,user);
             if (batch.unit_cost !== null) await financial(client,op,line,'inspection_release','inventory','segregated_inventory',qty*batch.unit_cost,user);

@@ -79,6 +79,9 @@ export async function receiveTransferTx(client, { transferId, items = [], user, 
     const batchKey = key(row.product_name, row.batch_no, row.expiry_date);
     received.set(batchKey, (received.get(batchKey) || 0) + Number(row.quantity));
   }
+  const hasAllocations=(await client.query('SELECT 1 FROM stock_transfer_allocations WHERE transfer_id=$1 LIMIT 1',[transferId])).rowCount>0;
+  if (hasAllocations && prior.reduce((sum,row)=>sum+Number(row.quantity),0)>lines.reduce((sum,line)=>sum+Number(line.quantity_received || 0),0))
+    reject('Unlinked receipt evidence needs discrepancy review before another receipt.',409);
   const hasTransit = (await client.query("SELECT 1 FROM stock_movements WHERE reference_id = $1 AND movement_type = 'transit_dispatch' AND status = 'posted' LIMIT 1", [transferId])).rowCount > 0;
   const normalizedItems = items.map(item => ({
     product: item.product_name || item.productName || item.product || item.name,
@@ -101,16 +104,23 @@ export async function receiveTransferTx(client, { transferId, items = [], user, 
   let changed = 0;
   let allReceived = true;
   for (const line of lines) {
-    const allocations=(await client.query('SELECT * FROM stock_transfer_allocations WHERE line_id=$1 ORDER BY allocation_order',[line.id])).rows;
-    const before = allocations.length ? Number(line.quantity_received || 0) : received.get(key(line.product_name, line.batch_no, line.expiry_date)) || 0;
-    const expected = Number(line.quantity_approved ?? line.quantity);
+    const originalAllocations=(await client.query('SELECT * FROM stock_transfer_allocations WHERE line_id=$1 ORDER BY allocation_order',[line.id])).rows;
+    const returns=(await client.query(`SELECT allocation_id,SUM(quantity) AS quantity FROM stock_linked_reversals
+      WHERE kind='dispatch' AND original_reference=$1 GROUP BY allocation_id`,[transferId])).rows;
+    const returned=new Map(returns.map(row=>[row.allocation_id,Number(row.quantity)]));
+    const allocations=originalAllocations.map(a=>({...a,quantity:Number(a.quantity)-(returned.get(a.id)||0)}));
+    if (allocations.some(a=>a.quantity<0)) reject('Returned allocations exceed dispatch evidence. Review discrepancy.',409);
+    const matchingLines=lines.filter(other=>key(other.product_name,other.batch_no,other.expiry_date)===key(line.product_name,line.batch_no,line.expiry_date));
+    if (!allocations.length && matchingLines.length>1) reject('Ambiguous legacy receipt lines require discrepancy review.',409);
+    const before = allocations.length ? Number(line.quantity_received || 0) : Math.max(Number(line.quantity_received || 0),received.get(key(line.product_name, line.batch_no, line.expiry_date)) || 0);
+    const expected = allocations.length ? allocations.reduce((sum,a)=>sum+Number(a.quantity),0) : Number(line.quantity_approved ?? line.quantity);
     let delta = 0;
     if (selected.has(line.id)) delta = mode === 'increment' ? selected.get(line.id) : selected.get(line.id) - before;
     else if (!normalizedItems.length && mode === 'cumulative') {
       const target = requestedStatus === 'partially_received' && Number(line.quantity_received) > before ? Number(line.quantity_received) : expected;
       delta = target - before;
     }
-    if (!Number.isFinite(expected) || expected <= 0 || delta < 0 || before + delta > expected) reject('Receipt exceeds dispatched quantity or reduces an earlier receipt.', 400);
+    if (!Number.isFinite(expected) || expected < 0 || delta < 0 || before + delta > expected) reject('Receipt exceeds dispatched quantity after returns or reduces an earlier receipt.', 400);
     if (delta > 0) {
       if (allocations.length) {
         await receiveAllocatedBranchTx(client,{transfer,line,allocations,before,quantity:delta,branch,aliases:branchAliases,

@@ -12,7 +12,7 @@ export const saleAllocationSchema = `CREATE TABLE IF NOT EXISTS stock_sale_alloc
 const date = value => value instanceof Date ? value.toISOString().slice(0,10) : String(value || '').slice(0,10) || null;
 const equal = (a,b) => String(a || '').trim().toLowerCase()===String(b || '').trim().toLowerCase();
 
-export async function recordBranchSaleAllocationTx(client, {movementId,saleReference,batchId,quantity,branchMovementId,revenueUnit}) {
+export async function recordBranchSaleAllocationTx(client, {movementId,saleReference,batchId,quantity,branchMovementId,revenueUnit,bvUnit=0,financialDpUnit}) {
   await client.query(saleAllocationSchema);
   const row=(await client.query('SELECT * FROM branch_inventory_batches WHERE id=$1',[batchId])).rows[0];
   if (!row) throw new Error('Locked sale batch identity was lost');
@@ -39,6 +39,7 @@ export async function recordBranchSaleAllocationTx(client, {movementId,saleRefer
     original_source:original ? {...original,expiry_date:date(original.expiry_date)} : null,
     cost_layers:taken,missing_cost_quantity:taken.filter(l=>l.source?.cif_unit_cost==null).reduce((sum,l)=>sum+l.quantity,0),
     revenue_unit:revenueUnit ?? null,
+    bv_unit:bvUnit,financial_dp_unit:financialDpUnit ?? null,
     status:'in_stock',condition:'saleable',
   };
   await client.query('UPDATE branch_inventory_batches SET metadata=$1 WHERE id=$2',
@@ -55,7 +56,32 @@ export async function recordBranchSaleAllocationTx(client, {movementId,saleRefer
   return snapshot;
 }
 
+// Reconcile monetary allocations to the actual saved receipt, including
+// discounted bundles. This runs before posting commits, never against live
+// prices when approving a later return.
+export async function reconcileSaleFinancialsTx(client,saleReference,total,totalBv) {
+  const rows=(await client.query('SELECT * FROM stock_sale_allocations WHERE sale_reference=$1 ORDER BY created_at,movement_id',[saleReference])).rows;
+  const cents=Math.round(Number(total)*100);
+  if (!Number.isSafeInteger(cents) || cents<0) throw new Error('Original sale total must be finite and nonnegative');
+  const weights=rows.map(a=>Number(a.quantity)*Number(a.snapshot.revenue_unit ?? a.snapshot.financial_dp_unit ?? 0));
+  const sum=weights.reduce((s,n)=>s+n,0);
+  if (!rows.length || (cents>0 && !(sum>0))) throw new Error('Original sale revenue cannot be allocated to its products');
+  const amounts=weights.map(w=>sum ? Math.floor(cents*w/sum) : 0);
+  let left=cents-amounts.reduce((s,n)=>s+n,0);
+  const order=weights.map((w,i)=>({i,fraction:sum?cents*w/sum-amounts[i]:0}))
+    .sort((a,b)=>b.fraction-a.fraction || a.i-b.i);
+  for (const {i} of order) {if (!left) break;amounts[i]++;left--;}
+  for (let i=0;i<rows.length;i++) {
+    const a=rows[i];
+    const snapshot={...a.snapshot,revenue_total:amounts[i]/100,revenue_unit:amounts[i]/100/Number(a.quantity),
+      bv_unit:sum>0 ? Number(totalBv || 0)*weights[i]/sum/Number(a.quantity) : 0};
+    await client.query('UPDATE stock_sale_allocations SET snapshot=$1 WHERE movement_id=$2',[JSON.stringify(snapshot),a.movement_id]);
+  }
+}
+
 export async function refundSourceSnapshotTx(client,refund,expiry) {
+  if (refund.original_snapshot) return {...refund.original_snapshot,return_cost_layers:refund.original_snapshot.cost_layers,
+    refund_reference:refund.id,release_without_source:true};
   await client.query(saleAllocationSchema);
   const branch=normalizeBranchSlug(refund.branch_id) || refund.branch_id;
   const aliases=[...new Set([branch,refund.branch_id,...branchSearchTerms(branch)].map(value=>String(value).toLowerCase().trim()))];
@@ -113,11 +139,11 @@ export async function preserveRestoredProvenanceTx(client,{batchId,snapshot,rece
     supplier_import_id:mixed ? null : snapshot.supplier_import_id,
     supplier_name:mixed ? null : snapshot.supplier_name,customer_return_reference:snapshot.refund_reference};
   const layers=branchLayers({...row,metadata:prior},previousQuantity);
-  layers.push({quantity:Number(receivedQuantity),source:snapshot.original_source ||
+  layers.push(...(snapshot.return_cost_layers || [{quantity:Number(receivedQuantity),source:snapshot.original_source ||
     (snapshot.unit_cost==null && snapshot.unit_dp==null ? null : {
       id:snapshot.source_batch_id || null,cif_unit_cost:snapshot.unit_cost,dpc_unit_value:snapshot.unit_dp,
       supplier_import_id:snapshot.supplier_import_id || null,supplier_name:snapshot.supplier_name || null,
-      description:row.product_name,batch_no:row.batch_no,expiry_date:date(row.expiry_date)})});
+      description:row.product_name,batch_no:row.batch_no,expiry_date:date(row.expiry_date)})}]));
   metadata.cost_layers=layers.filter(l=>l.quantity>0);
   if (mixed) metadata.prior_original_source=prior.prior_original_source || priorSource || {
     source_batch_id:row.source_batch_id,quantity:previousQuantity,unverified:!row.source_batch_id,

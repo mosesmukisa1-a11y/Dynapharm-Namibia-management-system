@@ -114,6 +114,15 @@ export default async function handler(req, res) {
       bvMap[r.nb]         = (bvMap[r.nb] || 0) + (Number(r.bv) || 0);
       salesCountMap[r.nb] = (salesCountMap[r.nb] || 0) + (Number(r.sales_count) || 0);
     }
+    // Return BV is an append-only adjustment in the return period, not a
+    // rewrite of the member's original sale.
+    const returnBv=await query(`SELECT COALESCE(s.distributor_nb,s.referral_nb) AS nb,
+      SUM(r.quantity*COALESCE((r.snapshot->>'bv_unit')::numeric,0)) AS bv
+      FROM stock_linked_reversals r JOIN branch_walkin_sales s ON s.id=r.original_reference
+      WHERE r.kind='customer' AND r.created_at >= $1 AND r.created_at < $2
+      GROUP BY COALESCE(s.distributor_nb,s.referral_nb)`,
+      [periodStart.toISOString(),periodEnd.toISOString()]);
+    for (const r of returnBv.rows) if (r.nb) bvMap[r.nb]=(bvMap[r.nb] || 0)-Number(r.bv || 0);
     for (const r of onlineRes.rows) {
       if (!r.nb) continue;
       bvMap[r.nb]         = (bvMap[r.nb] || 0) + (Number(r.bv) || 0);

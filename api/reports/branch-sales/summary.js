@@ -298,7 +298,7 @@ export default async function handler(req, res) {
                 ABS(bim.quantity) *
                 -- Use bim.unit_price first: it stores the ACTUAL refunded (campaign) price.
                 -- Fall back to pp.dp only when bim.unit_price is 0/null (legacy entries).
-                COALESCE(NULLIF(bim.unit_price, 0), NULLIF(pp.dp, 0), 0)
+                COALESCE(bim.charge_unit, NULLIF(bim.unit_price, 0), NULLIF(pp.dp, 0), 0)
               ), 0)::numeric AS refund_total
        FROM branch_inventory_movements bim
        LEFT JOIN product_prices pp

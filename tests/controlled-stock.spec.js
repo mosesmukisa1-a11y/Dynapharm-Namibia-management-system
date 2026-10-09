@@ -7,6 +7,8 @@ import refunds from '../api/stock/refund-requests.js';
 import { ensureControlledStockSchema, countDifference } from '../api/services/controlledStock.js';
 import { deductStock } from '../api/branch/campaign-sale.js';
 import { receiveTransferTx } from '../api/services/transferReceipt.js';
+import { saleAllocationSchema } from '../api/services/stockSaleAllocations.js';
+import { reversalSchema } from '../api/services/linkedReversals.js';
 
 const prefix = `TEST-CTRL-${randomUUID()}`;
 const branch = `${prefix}_branch`;
@@ -25,7 +27,8 @@ async function invoke(method, body, user = staff, handler = controlled) {
   const result = { status: 200 };
   const res = { setHeader() {},status(code) { result.status = code; return this; },
     json(value) { result.body=value; return this; },end() {} };
-  await handler({method,body,user,url:'/api/stock/controlled-operations',headers:{host:'localhost'}},res);
+  const payload=handler===refunds ? {...body,physical_return_confirmed:true,inspection_reason:'Inspected isolated original sale fixture'} : body;
+  await handler({method,body:payload,user,url:'/api/stock/controlled-operations',headers:{host:'localhost'}},res);
   return result;
 }
 async function create(kind, lines, user = staff) {
@@ -66,6 +69,7 @@ async function clean() {
   await query('DELETE FROM stock_segregated_batches WHERE snapshot->>\'product_name\'=$1',[product]);
   await query('DELETE FROM stock_control_operations WHERE created_by LIKE $1',[`${prefix}%`]);
   await query('DELETE FROM branch_refund_requests WHERE id LIKE $1',[`${prefix}%`]);
+  await query('DELETE FROM stock_linked_reversals WHERE original_reference LIKE $1',[`${prefix}%`]);
   await query('DELETE FROM branch_activity_transactions WHERE branch_id=$1',[branch]);
   await query('DELETE FROM branch_inventory_movements WHERE product_name=$1',[product]);
   await query('DELETE FROM branch_inventory_batches WHERE product_name=$1',[product]);
@@ -89,6 +93,26 @@ async function seed() {
       quantity,source_batch_id,status) VALUES ($1,$2,$3,$6,$4,100,$5,'in_stock')`,[id,branch,product,expiry,id===b1?source:`${source}-2`,id===b1?'CTRL-LOT':'CTRL-LOT-2']);
   }
 }
+async function attachRefundEvidence(refundId, {movementId, soldQuantity=3, soldExpiry=expiry}={}) {
+  const refund=(await query('SELECT * FROM branch_refund_requests WHERE id=$1',[refundId])).rows[0];
+  const saleReference=refund.sale_reference;
+  let allocation=(await query('SELECT * FROM stock_sale_allocations WHERE sale_reference=$1 ORDER BY movement_id LIMIT 1',[saleReference])).rows[0];
+  if (!allocation) {
+    const costEvidence={id:null,description:product,batch_no:'CTRL-LOT',expiry_date:soldExpiry,cif_unit_cost:4.25,dpc_unit_value:8};
+    const snapshot={id:b1,batch_type:'branch',location:branch,product_name:product,batch_no:'CTRL-LOT',expiry_date:soldExpiry,
+      source_batch_id:null,supplier_import_id:null,original_source:null,unit_cost:4.25,unit_dp:8,revenue_unit:8,financial_dp_unit:8,
+      cost_layers:[{quantity:soldQuantity,source:costEvidence}]};
+    await query(`INSERT INTO stock_sale_allocations
+      (movement_id,sale_reference,branch_batch_id,branch_id,product_name,batch_no,expiry_date,quantity,snapshot)
+      VALUES ($1,$2,$3,$4,$5,'CTRL-LOT',$6,$7,$8)`,[movementId,saleReference,b1,branch,product,soldExpiry,soldQuantity,JSON.stringify(snapshot)]);
+    allocation={movement_id:movementId,snapshot};
+  } else {
+    allocation.snapshot={...allocation.snapshot,revenue_unit:8,financial_dp_unit:8};
+    await query('UPDATE stock_sale_allocations SET snapshot=$1 WHERE movement_id=$2',[JSON.stringify(allocation.snapshot),allocation.movement_id]);
+  }
+  await query(`UPDATE branch_refund_requests SET allocation_id=$1,physical_return_confirmed=true,
+    original_snapshot=$2 WHERE id=$3`,[allocation.movement_id,JSON.stringify(allocation.snapshot),refundId]);
+}
 async function receiveDifferentSupplier() {
   const importId=`${prefix}-IB`,batchId=`${prefix}-X`,transferId=`${prefix}-RB`,location=`${warehouse}-b`;
   await query(`INSERT INTO supplier_imports (id,supplier_name,product_name,batch_no,quantity,cif_unit_cost,invoice_number)
@@ -106,7 +130,7 @@ async function receiveDifferentSupplier() {
   return {importId,batchId};
 }
 describe.sequential('controlled counts, inspection and supplier returns: isolated physical evidence',()=>{
-  beforeAll(async()=>{await ensureControlledStockSchema(); original=await baseline();});
+  beforeAll(async()=>{await ensureControlledStockSchema();await query(saleAllocationSchema);await query(reversalSchema); original=await baseline();});
   beforeEach(async()=>{await clean();await seed();});
   afterAll(async()=>{await clean();expect(await baseline()).toEqual(original);});
 
@@ -268,6 +292,7 @@ describe.sequential('controlled counts, inspection and supplier returns: isolate
     await withTransaction(client=>deductStock(client,branch,product,3,'campaign_sale','Original sale fixture',saleId,8,staff.id));
     await query(`INSERT INTO branch_refund_requests (id,branch_id,product_name,batch_no,quantity,unit_price,refund_amount,status,reason,sale_reference)
       VALUES ($1,$2,$3,'CTRL-LOT',3,8,24,'pending','Quarantine fixture',$4)`,[refundId,branch,product,saleId]);
+    await attachRefundEvidence(refundId);
     const result=await invoke('PATCH',{id:refundId,action:'approve',return_condition:'quarantine'},staff,refunds);
     expect(result.status,JSON.stringify(result.body)).toBe(200);
     expect(await qty()).toBe(97);
@@ -345,6 +370,7 @@ describe.sequential('controlled counts, inspection and supplier returns: isolate
     await query(`INSERT INTO branch_refund_requests
       (id,branch_id,product_name,batch_no,quantity,unit_price,refund_amount,status,reason,sale_reference)
       VALUES ($1,$2,$3,'CTRL-LOT',3,8,24,'pending','Depleted return fixture',$4)`,[refundId,branch,product,saleId]);
+    await attachRefundEvidence(refundId,{movementId:saleId});
     const refund=await invoke('PATCH',{id:refundId,action:'approve',return_condition:'quarantine'},staff,refunds);
     expect(refund.status,JSON.stringify(refund.body)).toBe(200);
     const held=(await query('SELECT * FROM stock_segregated_batches WHERE operation_id=$1',[refundId])).rows[0];
@@ -390,6 +416,7 @@ describe.sequential('controlled counts, inspection and supplier returns: isolate
     const other=await receiveDifferentSupplier();
     await query(`INSERT INTO branch_refund_requests (id,branch_id,product_name,batch_no,quantity,unit_price,refund_amount,status,reason,sale_reference)
       VALUES ($1,$2,$3,'CTRL-LOT',3,8,24,'pending','Original supplier A goods',$4)`,[refundId,branch,product,saleId]);
+    await attachRefundEvidence(refundId);
     expect((await invoke('PATCH',{id:refundId,action:'approve',return_condition:'quarantine'},staff,refunds)).status).toBe(200);
     expect(await qty()).toBe(10);
     const held=(await query('SELECT * FROM stock_segregated_batches WHERE operation_id=$1',[refundId])).rows[0];
@@ -419,6 +446,7 @@ describe.sequential('controlled counts, inspection and supplier returns: isolate
     await receiveDifferentSupplier();
     await query(`INSERT INTO branch_refund_requests (id,branch_id,product_name,batch_no,quantity,unit_price,refund_amount,status,reason,sale_reference)
       VALUES ($1,$2,$3,'CTRL-LOT',3,8,24,'pending','Saleable original goods',$4)`,[refundId,branch,product,saleId]);
+    await attachRefundEvidence(refundId);
     const refund=await invoke('PATCH',{id:refundId,action:'approve',return_condition:'saleable'},staff,refunds);
     expect(refund.status,JSON.stringify(refund.body)).toBe(200);
     const row=(await query('SELECT * FROM branch_inventory_batches WHERE id=$1',[b1])).rows[0];
@@ -435,6 +463,7 @@ describe.sequential('controlled counts, inspection and supplier returns: isolate
       VALUES ($1,$2,'CTRL-LOT','2020-01-01',2,'campaign_sale',$3,'branch',$1,4.25,8,'posted')`,[saleId,product,branch]);
     await query(`INSERT INTO branch_refund_requests (id,branch_id,product_name,batch_no,quantity,unit_price,refund_amount,status,reason,sale_reference)
       VALUES ($1,$2,$3,'CTRL-LOT',2,8,16,'pending','Expired original sale goods',$4)`,[refundId,branch,product,saleId]);
+    await attachRefundEvidence(refundId,{movementId:saleId,soldQuantity:2,soldExpiry:'2020-01-01'});
     const rejected=await invoke('PATCH',{id:refundId,action:'approve',return_condition:'saleable'},staff,refunds);
     expect(rejected.status).toBe(400);expect(await qty()).toBe(100);
     const approved=await invoke('PATCH',{id:refundId,action:'approve',return_condition:'expired'},staff,refunds);

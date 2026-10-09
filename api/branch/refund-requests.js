@@ -1,58 +1,59 @@
-import { applyAuthCors } from '../_lib/auth.js';
-import { getMany, query } from '../db.js';
+import { randomUUID } from 'node:crypto';
+import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
+import { getMany, withTransaction } from '../db.js';
+import { atomicStockRequest } from '../_lib/atomicStockRequest.js';
+import { authorizeBranchReturn, returnEvidence, saleReturnRemainingTx } from '../services/linkedReversals.js';
+import { branchSearchTerms } from '../_lib/branchUtils.js';
+import { fail } from '../services/stockCostLayers.js';
 
-export default async function handler(req, res) {
-  applyAuthCors(req, res);
-  if (req.method === 'OPTIONS') return res.status(200).end();
-
-  if (req.method === 'GET') {
-    try {
-      const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-      const branchId = url.searchParams.get('branch_id') || '';
-      const status   = url.searchParams.get('status')    || '';
-
-      const conds = []; const params = [];
-      if (branchId) {
-        params.push(branchId.toLowerCase().replace(/ /g, '_'));
-        conds.push(`LOWER(REPLACE(branch_id,' ','_')) = $${params.length}`);
-      }
-      if (status) { params.push(status); conds.push(`status = $${params.length}`); }
-
-      const rows = await getMany(
-        `SELECT * FROM branch_refund_requests
-         ${conds.length ? 'WHERE ' + conds.join(' AND ') : ''}
-         ORDER BY created_at DESC LIMIT 200`,
-        params
-      );
-      return res.json({ success: true, requests: rows });
-    } catch (err) {
-      return res.status(500).json({ success: false, error: err.message });
+async function handler(req,res) {
+  applyAuthCors(req,res);
+  if (req.method==='OPTIONS') return res.status(200).end();
+  if (!req.user) return res.status(401).json({success:false,error:'Authentication required'});
+  try {
+    if (req.method==='GET') {
+      const url=new URL(req.url,`http://${req.headers.host || 'localhost'}`);
+      const scope=getBranchScope(req.user);
+      const branch=url.searchParams.get('branch_id') || scope.primaryBranch;
+      if (!branch) fail('Select a branch',400);
+      authorizeBranchReturn(req.user,branch);
+      const requests=await getMany(`SELECT * FROM branch_refund_requests
+        WHERE LOWER(REPLACE(branch_id,' ','_'))=ANY($1) AND ($2::text IS NULL OR status=$2)
+        ORDER BY created_at DESC LIMIT 200`,[branchSearchTerms(branch),url.searchParams.get('status') || null]);
+      return res.json({success:true,requests});
     }
-  }
-
-  if (req.method === 'POST') {
-    try {
-      const { branch_id, sale_reference, product_name, batch_no,
-              quantity, unit_price, reason, requested_by } = req.body || {};
-
-      if (!branch_id || !product_name || !quantity || !unit_price || !reason)
-        return res.status(400).json({ success: false, error: 'branch_id, product_name, quantity, unit_price and reason are required' });
-
-      const id = `REF-${Date.now()}-${Math.random().toString(36).slice(2,6).toUpperCase()}`;
-      const refund_amount = (parseFloat(quantity) * parseFloat(unit_price)).toFixed(2);
-
-      await query(
-        `INSERT INTO branch_refund_requests
-           (id, branch_id, sale_reference, product_name, batch_no, quantity, unit_price, refund_amount, reason, requested_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-        [id, branch_id, sale_reference || null, product_name, batch_no || null,
-         quantity, unit_price, refund_amount, reason, requested_by || null]
-      );
-      return res.json({ success: true, id, refund_amount });
-    } catch (err) {
-      return res.status(500).json({ success: false, error: err.message });
+    if (req.method==='POST') {
+      const body=req.body || {};
+      const qty=returnEvidence(body);
+      if (!body.allocation_id) fail('Select an original sale allocation. Unlinked refunds require reviewed evidence',400);
+      if (!body.operation_key || String(body.operation_key).length>200) fail('A stable operation key is required',400);
+      const result=await withTransaction(async client=>{
+        const allocation=(await client.query('SELECT * FROM stock_sale_allocations WHERE movement_id=$1',[body.allocation_id])).rows[0];
+        if (!allocation) fail('Original sale allocation not found',404);
+        authorizeBranchReturn(req.user,allocation.branch_id);
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[`refund-sale:${allocation.sale_reference}`]);
+        const prior=(await client.query('SELECT * FROM branch_refund_requests WHERE operation_key=$1',[body.operation_key])).rows[0];
+        if (prior) {
+          if (prior.allocation_id!==body.allocation_id || Number(prior.quantity)!==qty || prior.reason!==body.reason.trim())
+            fail('Operation key already used for a different refund',409);
+          return {success:true,id:prior.id,refund_amount:prior.refund_amount};
+        }
+        if (qty>await saleReturnRemainingTx(client,allocation,null,true)) fail('Quantity exceeds unrefunded original allocation (including pending requests)',409);
+        const price=allocation.snapshot.revenue_unit;
+        if (price==null || !Number.isFinite(Number(price)) || Number(price)<0) fail('Original selling price is missing; reviewed evidence is required',409);
+        const amount=Math.round(qty*Number(price)*100)/100;
+        const id=`REF-${randomUUID()}`;
+        await client.query(`INSERT INTO branch_refund_requests
+          (id,branch_id,sale_reference,product_name,batch_no,quantity,unit_price,refund_amount,reason,requested_by,
+            allocation_id,physical_return_confirmed,original_snapshot,operation_key)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,true,$12,$13)`,
+          [id,allocation.branch_id,allocation.sale_reference,allocation.product_name,allocation.batch_no,qty,price,amount,
+            body.reason.trim(),req.user.fullName || req.user.id,allocation.movement_id,JSON.stringify(allocation.snapshot),body.operation_key]);
+        return {success:true,id,refund_amount:amount};
+      });
+      return res.json(result);
     }
-  }
-
-  return res.status(405).json({ success: false, error: 'Method not allowed' });
+    return res.status(405).json({success:false,error:'Method not allowed'});
+  } catch(err) {return res.status(err.statusCode || 500).json({success:false,error:err.message});}
 }
+export default atomicStockRequest(handler,['POST']);

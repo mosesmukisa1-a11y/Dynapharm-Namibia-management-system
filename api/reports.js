@@ -1,6 +1,7 @@
 import { applyAuthCors } from './_lib/auth.js';
 import { query, getMany, getOne, insert, update, remove, publishRealtimeEvent } from './db.js';
 import { postActivityRecord, generateBatId } from './_lib/activityCapture.js';
+import { atomicStockRequest } from './_lib/atomicStockRequest.js';
 
 async function parseRequestBody(req) {
   if (req.body) {
@@ -76,7 +77,7 @@ function buildReportInsert(body) {
   };
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   applyAuthCors(req, res);
 
   if (req.method === 'OPTIONS') {
@@ -207,7 +208,7 @@ export default async function handler(req, res) {
         return res.status(400).json({ success: false, error: 'Report id is required' });
       }
 
-      const existing = await getOne('SELECT * FROM reports WHERE id = $1', [body.id]);
+      const existing = await getOne('SELECT * FROM reports WHERE id = $1 FOR UPDATE', [body.id]);
       if (!existing) {
         return res.status(404).json({ success: false, error: 'Report not found' });
       }
@@ -216,6 +217,17 @@ export default async function handler(req, res) {
         ...buildReportInsert({ ...normalizeReportRow(existing), ...body }),
         updated_at: new Date().toISOString()
       };
+      const posted=(await query('SELECT 1 FROM stock_sale_allocations WHERE sale_reference=$1 LIMIT 1',[body.id])).rowCount>0;
+      if (posted) {
+        const oldData=typeof existing.data==='string'?JSON.parse(existing.data):existing.data || {};
+        const newData=typeof updatePayload.data==='string'?JSON.parse(updatePayload.data):updatePayload.data || {};
+        const stockFields=data=>(data.medicines || []).map(m=>({
+          name:m.name || m.product_name,quantity:m.quantity,dispensed_qty:m.dispensed_qty,dispensed:m.dispensed,
+          dp:m.dp,cp:m.cp,bv:m.bv,unit_price:m.unit_price,is_free:m.is_free,
+        }));
+        if (existing.branch!==updatePayload.branch || JSON.stringify(stockFields(oldData))!==JSON.stringify(stockFields(newData)))
+          return res.status(409).json({success:false,error:'Posted dispensing quantities, products and prices cannot be edited. Use a linked return and a new prescription authorization.'});
+      }
 
       const updated = await update('reports', body.id, updatePayload, 'id');
       const report = normalizeReportRow(updated);
@@ -227,6 +239,8 @@ export default async function handler(req, res) {
       if (!id) {
         return res.status(400).json({ success: false, error: 'Report id is required' });
       }
+      if ((await query('SELECT 1 FROM stock_sale_allocations WHERE sale_reference=$1 LIMIT 1',[id])).rowCount)
+        return res.status(409).json({success:false,error:'Dispensed reports cannot be deleted. Preserve the history and use a linked return.'});
       await remove('reports', id, 'id');
       await publishRealtimeEvent('reports', 'delete', { id });
       return res.status(200).json({ success: true });
@@ -238,4 +252,5 @@ export default async function handler(req, res) {
     return res.status(500).json({ success: false, error: 'Internal server error' });
   }
 }
+export default atomicStockRequest(handler,['PUT','PATCH','DELETE']);
 

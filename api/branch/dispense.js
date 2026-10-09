@@ -1,8 +1,9 @@
 import { recordBranchSaleAllocationTx } from '../services/stockSaleAllocations.js';
 import { applyAuthCors } from '../_lib/auth.js';
+import { authorizeBranchReturn } from '../services/linkedReversals.js';
 import { atomicStockRequest } from '../_lib/atomicStockRequest.js';
 import { query, getMany, getOne, withTransaction } from '../db.js';
-import { branchSearchTerms } from '../_lib/branchUtils.js';
+import { branchSearchTerms, normalizeBranchSlug } from '../_lib/branchUtils.js';
 import { recomputeLocationBalances } from '../services/stockEngine.js';
 import { broadcastStockEvent } from '../services/stockEvents.js';
 import { postActivityRecord, generateBatId } from '../_lib/activityCapture.js';
@@ -38,6 +39,7 @@ async function handler(req, res) {
       if (!reportId || !branchId || !Array.isArray(items) || items.length === 0) {
         return res.status(400).json({ success: false, error: 'reportId, branchId, and items are required' });
       }
+      authorizeBranchReturn(req.user,branchId);
 
       const movType = 'prescription_dispense';
       const deductions = [];
@@ -52,8 +54,9 @@ async function handler(req, res) {
       const resolvedItems = [];
       for (const item of items) {
         const productName = item.product_name || item.name || '';
-        const qty = Number(item.quantity || 1);
-        if (!productName || qty <= 0) continue;
+        const qty = Number(item.quantity ?? 1);
+        if (!productName || !Number.isSafeInteger(qty) || qty <= 0)
+          throw Object.assign(new Error('Dispensing requires product names and positive whole base-unit quantities'),{statusCode:400});
 
         // Free items (buy-X-get-Y companion) bypass normal pricing and go out at zero charge.
         if (item.is_free || item.campaign_free) {
@@ -67,6 +70,7 @@ async function handler(req, res) {
             cif_unit: 0,
             from_package: null,
             is_free: true,
+            campaign_bxgy: item.campaign_bxgy || null,
           });
           continue;
         }
@@ -125,6 +129,53 @@ async function handler(req, res) {
       const dispenseBranchCandidates = branchSearchTerms(branchId);
 
       await withTransaction(async (client) => {
+        const report=(await client.query('SELECT * FROM reports WHERE id=$1 FOR UPDATE',[reportId])).rows[0];
+        if (!report) throw Object.assign(new Error('Prescription report not found'),{statusCode:404});
+        const rptData=typeof report.data==='string'?JSON.parse(report.data):report.data || {};
+        const prescribed=new Map((rptData.medicines || []).map(m=>[String(m.name || m.product_name || '').toLowerCase().trim(),Number(m.quantity || 1)]));
+        const prior=(await client.query(`SELECT a.product_name,SUM(a.quantity) AS quantity FROM stock_sale_allocations a
+          JOIN stock_movements m ON m.id=a.movement_id
+          WHERE a.sale_reference=$1 AND m.movement_type<>'campaign_free_item' GROUP BY a.product_name`,[reportId])).rows;
+        const already=new Map(prior.map(row=>[row.product_name.toLowerCase().trim(),Number(row.quantity)]));
+        const session=new Map();
+        for (const item of resolvedItems) {
+          if (item.is_free) continue;
+          const key=item.product_name.toLowerCase().trim();
+          session.set(key,(session.get(key)||0)+Number(item.quantity));
+          // Original posted dispensing remains evidence even after a return.
+          // Replacement dispensing requires a new prescription authorization.
+          const prescribedName=String(item.from_package || item.product_name).toLowerCase().trim();
+          const maximum=prescribed.get(key) ?? (item.from_package ? (getPackageComponents(item.from_package)?.products.find(p=>p.name.toLowerCase().trim()===key)?.quantity || 0)*(prescribed.get(prescribedName)||0) : null);
+          if (maximum==null || (already.get(key)||0)+session.get(key)>maximum)
+            throw Object.assign(new Error('Dispensing exceeds the unissued prescription quantity; posted issues cannot be replaced by editing the prescription'),{statusCode:409});
+        }
+        const freeClaims=new Map();
+        for (const item of resolvedItems.filter(item=>item.is_free)) {
+          const evidence=item.campaign_bxgy;
+          const campaign=evidence?.campId ? (await client.query('SELECT * FROM campaigns WHERE id=$1 FOR SHARE',[evidence.campId])).rows[0] : null;
+          const now=new Date();
+          if (!campaign || campaign.campaign_type!=='buy_x_get_y' || campaign.is_active===false ||
+            !['approved','active'].includes(campaign.status) ||
+            now<new Date(campaign.start_date) || now>new Date(campaign.end_date))
+            throw Object.assign(new Error('Free dispensing requires an active linked campaign and its paid items in the same issue'),{statusCode:409});
+          const conditions=typeof campaign.conditions==='string'?JSON.parse(campaign.conditions):campaign.conditions || {};
+          if (!['','nationwide','countrywide','all'].includes(String(campaign.scope || '').toLowerCase()) &&
+            !(conditions.stock_assignments || []).some(assignment=>
+              normalizeBranchSlug(assignment.branch)===normalizeBranchSlug(branchId)))
+            throw Object.assign(new Error('The free-item campaign is not assigned to this branch'),{statusCode:403});
+          const prize=typeof campaign.prize==='string'?JSON.parse(campaign.prize):campaign.prize || {};
+          const paid=String(evidence.paidProduct || '').trim().toLowerCase();
+          const eligible=(conditions.products_text || (Array.isArray(conditions.products)?conditions.products.join(','):''))
+            .split(',').map(value=>value.trim().toLowerCase()).filter(Boolean);
+          const freeProduct=String(prize.free_product || evidence.paidProduct || '').trim().toLowerCase();
+          const buy=Number(conditions.buy_qty || 1),get=Number(conditions.get_qty || 1);
+          const claimKey=`${campaign.id}:${paid}`;
+          freeClaims.set(claimKey,(freeClaims.get(claimKey)||0)+Number(item.quantity));
+          if ((eligible.length && !eligible.includes(paid)) || item.product_name.trim().toLowerCase()!==freeProduct ||
+            !Number.isSafeInteger(buy) || buy<=0 || !Number.isSafeInteger(get) || get<=0 ||
+            freeClaims.get(claimKey)>Math.floor((session.get(paid)||0)/buy)*get)
+            throw Object.assign(new Error('Free dispensing exceeds this issue’s verified paid campaign entitlement'),{statusCode:409});
+        }
         for (const item of resolvedItems) {
           const productName = item.product_name;
           const qty = item.quantity;
@@ -185,7 +236,7 @@ async function handler(req, res) {
               [smId, batch.product_name, batch.batch_no || '', batch.expiry_date || null, take, itemMovType, branchId, reportId, dispenseNote, unitPrice]
             );
 
-            const actualCost=await recordBranchSaleAllocationTx(client,{movementId:smId,saleReference:reportId,batchId:batch.id,quantity:take,branchMovementId:bimId,revenueUnit:chargeUnit});
+            const actualCost=await recordBranchSaleAllocationTx(client,{movementId:smId,saleReference:reportId,batchId:batch.id,quantity:take,branchMovementId:bimId,revenueUnit:chargeUnit,bvUnit:customerType==='member'?item.bv_unit:0,financialDpUnit:unitPrice});
             deductions.push({ product_name: batch.product_name, batch_no: batch.batch_no, quantity: take, unit_price: actualCost.unit_dp, unit_cif:actualCost.unit_cost, missing_cost_quantity:actualCost.missing_cost_quantity, charge_unit: chargeUnit, bv_unit: item.bv_unit || 0, from_package: fromPackage, is_free: isFreeItem });
             remaining -= take;
           }
@@ -204,6 +255,7 @@ async function handler(req, res) {
       // Build a map: product name (lower) → total qty dispensed in this session
       const dispensedQtyMap = {};
       for (const d of deductions) {
+        if (d.is_free) continue;
         const k = (d.product_name || '').toLowerCase().trim();
         dispensedQtyMap[k] = (dispensedQtyMap[k] || 0) + Number(d.quantity || 0);
       }
@@ -361,7 +413,7 @@ async function handler(req, res) {
     if (error.message?.startsWith('Insufficient stock')) {
       return res.status(409).json({ success: false, error: error.message });
     }
-    return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
+    return res.status(error.statusCode || 500).json({ success: false, error: error.message || 'Internal server error' });
   }
 }
 export default atomicStockRequest(handler);

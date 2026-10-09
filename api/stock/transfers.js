@@ -819,8 +819,12 @@ async function handler(req, res) {
       if (['received', 'delivered', 'partially_received'].includes(receiptTarget)) {
         const target = await getOne('SELECT to_branch FROM stock_transfers WHERE id=$1', [id]);
         if (target && inferLocationType(target.to_branch) === 'branch') {
+          const submittedItems=body.items ?? body.itemsArray;
+          const receiptItems=typeof submittedItems==='string'?safeParseJson(submittedItems):submittedItems;
+          if (submittedItems!==undefined && !Array.isArray(receiptItems))
+            return res.status(400).json({success:false,error:'Receipt items must be an array of actual received quantities'});
           const result = await withTransaction(client => receiveTransferTx(client, {
-            transferId: id, items: parseItems(body.items || body.itemsArray), user: currentUser,
+            transferId: id, items: receiptItems || [], user: currentUser,
             requestedStatus: receiptTarget, receiptId: body.receiptId || req.headers['idempotency-key'],
           }));
           recomputeLocationBalances('branch', result.branchId).catch(error => console.error('[receipt-balance]', error.message));
@@ -1018,6 +1022,11 @@ async function handler(req, res) {
       const oldTransfer = await getOne('SELECT * FROM stock_transfers WHERE id = $1 FOR UPDATE', [id]);
       if (!oldTransfer) return res.status(404).json({ success: false, error: 'Transfer not found' });
       const previousStatus = oldTransfer?.status;
+      if (['dispatched','in_transit','partially_received','received','delivered','completed','returned'].includes(previousStatus)) {
+        if (updatePayload.from_warehouse!==undefined || updatePayload.to_branch!==undefined ||
+          ((updatePayload.status || body.status) && !['dispatched','in_transit','partially_received','received','delivered','completed'].includes(updatePayload.status || body.status)))
+          return res.status(409).json({success:false,error:'Posted dispatch ownership and allocations are immutable. Use a linked physical return.'});
+      }
       if (previousStatus==='approved' && (body.items!==undefined || body.itemsArray!==undefined
         || body.fromWarehouse!==undefined || body.from_warehouse!==undefined
         || body.toBranch!==undefined || body.to_branch!==undefined)) {

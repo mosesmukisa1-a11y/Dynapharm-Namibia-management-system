@@ -4,6 +4,7 @@ import { atomicStockRequest } from '../_lib/atomicStockRequest.js';
 import { query, getOne, getMany, withTransaction } from '../db.js';
 import { recomputeLocationBalances } from '../services/stockEngine.js';
 import { postActivityRecord, generateBatId } from '../_lib/activityCapture.js';
+import { authorizeBranchReturn } from '../services/linkedReversals.js';
 
 async function parseJsonBody(req) {
   if (req.body && typeof req.body === 'object') return req.body;
@@ -51,7 +52,7 @@ async function resolveBranchId(raw) {
 }
 
 // Only locked physical batches are sellable. Cached balances cannot create stock.
-export async function deductStock(client, branchId, productName, qty, movType, noteStr, saleId, unitPrice, createdBy, revenueUnit) {
+export async function deductStock(client, branchId, productName, qty, movType, noteStr, saleId, unitPrice, createdBy, revenueUnit,bvUnit=0,financialDpUnit) {
   let remaining = qty;
   const deductions = [];
 
@@ -92,7 +93,7 @@ export async function deductStock(client, branchId, productName, qty, movType, n
       [smId1, batch.product_name, batch.batch_no || '', batch.expiry_date || null,
        take, movType, branchId, saleId, noteStr, unitPrice || null]
     );
-    await recordBranchSaleAllocationTx(client,{movementId:smId1,saleReference:saleId,batchId:batch.id,quantity:take,branchMovementId:bimId,revenueUnit});
+    await recordBranchSaleAllocationTx(client,{movementId:smId1,saleReference:saleId,batchId:batch.id,quantity:take,branchMovementId:bimId,revenueUnit,bvUnit,financialDpUnit});
     deductions.push({ product_name: batch.product_name, batch_no: batch.batch_no, quantity: take, movement_type: movType });
     remaining -= take;
   }
@@ -139,6 +140,7 @@ async function handler(req, res) {
       // Resolve branch ID to the exact value stored in branch_inventory_batches
       // (handles 'oshakati' vs 'oshakati_branch', capitalisation differences, etc.)
       const branch = await resolveBranchId(rawBranch);
+      authorizeBranchReturn(req.user,branch);
 
       const campaign = await getOne(`SELECT * FROM campaigns WHERE id = $1`, [campaign_id]);
       if (!campaign) return res.status(404).json({ success: false, error: 'Campaign not found' });
@@ -190,13 +192,15 @@ async function handler(req, res) {
         free_product = firstFree.product_name || firstFree.name || null;
       }
 
-      if (!paid_product || paid_qty <= 0) {
+      if (!paid_product || !Number.isSafeInteger(paid_qty) || paid_qty <= 0) {
         return res.status(400).json({ success: false, error: 'paid_product and a positive paid_qty are required' });
       }
 
       if (campaign.campaign_type === 'buy_x_get_y') {
         const buyQty = Number(campConditions.buy_qty || 1);
         const getQty = Number(campConditions.get_qty || 1);
+        if (!Number.isSafeInteger(buyQty) || buyQty<=0 || !Number.isSafeInteger(getQty) || getQty<=0)
+          return res.status(400).json({success:false,error:'Campaign quantities must be positive whole base units'});
         const campaignFreeProduct = campPrize.free_product || free_product || '';
 
         // Normalise products
@@ -309,7 +313,7 @@ async function handler(req, res) {
           client, branch, paid_product, paid_qty,
           isMember ? 'campaign_sale' : 'walk_in_non_member_sale',
           `Campaign: ${campaign.name} — paid item`,
-          saleId, paidUnitPrice || null, processed_by,paidUnitPrice
+          saleId, paidUnitPrice || null, processed_by,paidUnitPrice,isMember?paidBv:0,paidDpDiscounted
         );
         allDeductions.push(...paidResult.deductions);
         if (paidResult.short > 0) insufficientItems.push({ product_name: paid_product, short: paidResult.short });
@@ -475,7 +479,7 @@ async function handler(req, res) {
     if (err.message?.startsWith('Insufficient stock')) {
       return res.status(409).json({ success: false, error: err.message });
     }
-    return res.status(500).json({ success: false, error: err.message || 'Internal server error' });
+    return res.status(err.statusCode || 500).json({ success: false, error: err.message || 'Internal server error' });
   }
 }
 export default atomicStockRequest(handler);
