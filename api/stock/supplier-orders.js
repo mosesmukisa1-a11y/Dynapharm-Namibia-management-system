@@ -4,6 +4,11 @@ import { getMany, getOne, query } from '../db.js';
 export default async function handler(req, res) {
   applyAuthCors(req, res);
   if (req.method === 'OPTIONS') return res.status(200).end();
+  if(!req.user)return res.status(401).json({success:false,error:'Authentication required'});
+  const role=String(req.user.role || '').toLowerCase();
+  const operators=new Set(['stock','gm','general_manager','director','admin','superadmin','super_admin']);
+  if(!operators.has(role) && !(req.method==='GET' && ['finance','finance_manager','mis'].includes(role)))
+    return res.status(403).json({success:false,error:'Central stock access required'});
 
   try {
     if (req.method === 'GET') {
@@ -25,8 +30,8 @@ export default async function handler(req, res) {
         notes, requested_by, requested_by_name, location
       } = req.body || {};
 
-      if (!product_name || !quantity) {
-        return res.status(400).json({ success: false, error: 'product_name and quantity are required' });
+      if (!String(product_name || '').trim() || !Number.isSafeInteger(Number(quantity)) || Number(quantity)<=0) {
+        return res.status(400).json({ success: false, error: 'Product and positive whole-unit quantity are required' });
       }
 
       const ref = `SPO-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2,5).toUpperCase()}`;

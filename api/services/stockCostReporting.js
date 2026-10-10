@@ -47,7 +47,7 @@ export async function getStockCostProjection(options={},read=getMany) {
       missingCostQuantity:source?.cif_unit_cost==null ? quantity : 0,
       missingDPCQuantity:source?.dpc_unit_value==null ? quantity : 0,sourceBatchId:source?.id || null});
   };
-  for (const row of stock.filter(r=>!ALL_BRANCH_LOCATION_ALIASES.includes(String(r.location || '').toLowerCase()) && !String(r.location || '').endsWith('_branch'))) add({id:row.id,location:row.location || row.warehouse_id,productName:row.description,
+  for (const row of stock.filter(r=>!options.branchOnly && !ALL_BRANCH_LOCATION_ALIASES.includes(String(r.location || '').toLowerCase()) && !String(r.location || '').endsWith('_branch'))) add({id:row.id,location:row.location || row.warehouse_id,productName:row.description,
     batchNo:row.batch_no,expiryDate:day(row.expiry_date),quantity:Number(row.remaining_quantity),source:sourceSnapshot(row),
     condition:['available','in_stock','active'].includes(row.status || 'available') ? 'saleable' : row.status});
   for (const row of branches) {
@@ -59,6 +59,7 @@ export async function getStockCostProjection(options={},read=getMany) {
   const received=new Map();
   for (const row of reservations) received.set(String(row.line_id),Number(row.quantity_received || 0));
   for (const row of reservations) {
+    if(options.branchOnly && (row.source_kind ?? row.source_type)!=='branch')continue;
     const reserved=row.status==='approved',before=reserved ? 0 : received.get(String(row.line_id)) || 0;
     const quantity=Math.max(0,Number(row.quantity)-before);
     received.set(String(row.line_id),Math.max(0,before-Number(row.quantity)));
@@ -66,7 +67,7 @@ export async function getStockCostProjection(options={},read=getMany) {
       productName:row.snapshot.product_name,batchNo:row.snapshot.batch_no,expiryDate:day(row.snapshot.expiry_date),
       quantity,source:row.snapshot.source,reserved,transit:!reserved});
   }
-  for (const row of segregated) add({id:row.id,location:row.location,productName:row.snapshot.product_name,
+  for (const row of segregated.filter(r=>!options.branchOnly || r.location_type==='branch')) add({id:row.id,location:row.location,productName:row.snapshot.product_name,
     batchNo:row.snapshot.batch_no,expiryDate:day(row.snapshot.expiry_date),quantity:Number(row.quantity),
     source:{id:row.snapshot.source_batch_id,cif_unit_cost:row.snapshot.unit_cost,dpc_unit_value:row.snapshot.unit_dp},
     condition:row.condition || 'quarantine'});
@@ -75,29 +76,31 @@ export async function getStockCostProjection(options={},read=getMany) {
 
 export const salesEvidenceSql=`WITH evidence AS (
     SELECT a.movement_id,a.sale_reference,a.branch_id,a.product_name,a.batch_no,a.expiry_date,
-      a.quantity,a.snapshot,a.created_at,a.movement_id::text AS allocation_id FROM stock_sale_allocations a
+      a.quantity,a.snapshot,COALESCE(sale.sale_date,sm.movement_date,a.created_at) AS created_at,
+      a.movement_id::text AS allocation_id FROM stock_sale_allocations a
     JOIN stock_movements sm ON sm.id=a.movement_id AND sm.status IN ('posted','approved')
+    LEFT JOIN branch_walkin_sales sale ON sale.id=a.sale_reference
     WHERE ($1::text[] IS NULL OR LOWER(TRIM(a.branch_id))=ANY($1))
-      AND ($2::date IS NULL OR a.created_at >= $2::date)
-       AND ($3::date IS NULL OR a.created_at < $3::date + INTERVAL '1 day')
+      AND ($2::date IS NULL OR COALESCE(sale.sale_date,sm.movement_date,a.created_at) >= ($2::date::timestamp AT TIME ZONE 'Africa/Windhoek'))
+       AND ($3::date IS NULL OR COALESCE(sale.sale_date,sm.movement_date,a.created_at) < (($3::date+1)::timestamp AT TIME ZONE 'Africa/Windhoek'))
        AND ($4::text IS NULL OR LOWER(TRIM(a.product_name))=LOWER(TRIM($4)))
     UNION ALL
     SELECT sm.id AS movement_id,sm.reference_id AS sale_reference,
     sm.source_location AS branch_id,sm.product_name,sm.batch_no,sm.expiry_date,sm.quantity,
-      '{}'::jsonb AS snapshot,sm.created_at,'legacy:'||sm.id AS allocation_id
+      '{}'::jsonb AS snapshot,COALESCE(sale.sale_date,sm.movement_date,sm.created_at) AS created_at,'legacy:'||sm.id AS allocation_id
     FROM stock_movements sm LEFT JOIN stock_sale_allocations a ON a.movement_id=sm.id
+    LEFT JOIN branch_walkin_sales sale ON sale.id=sm.reference_id
     WHERE a.movement_id IS NULL AND sm.status IN ('posted','approved')
       AND sm.movement_type IN ('walkin_sale','walkin_member_sale','walkin_non_member_sale','walk_in_member_sale',
         'walk_in_non_member_sale','prescription_dispense','campaign_sale','campaign_free_item','online_order_fulfilment')
       AND ($1::text[] IS NULL OR LOWER(TRIM(sm.source_location))=ANY($1))
-      AND ($2::date IS NULL OR sm.created_at >= $2::date)
-       AND ($3::date IS NULL OR sm.created_at < $3::date + INTERVAL '1 day')
+      AND ($2::date IS NULL OR COALESCE(sale.sale_date,sm.movement_date,sm.created_at) >= ($2::date::timestamp AT TIME ZONE 'Africa/Windhoek'))
+       AND ($3::date IS NULL OR COALESCE(sale.sale_date,sm.movement_date,sm.created_at) < (($3::date+1)::timestamp AT TIME ZONE 'Africa/Windhoek'))
        AND ($4::text IS NULL OR LOWER(TRIM(sm.product_name))=LOWER(TRIM($4)))
   )`;
 const salesSql=`${salesEvidenceSql}, valued AS (
     SELECT e.*,cost.known_cost,cost.missing_cost,
-      CASE WHEN snapshot->>'revenue_unit' IS NOT NULL
-        THEN (snapshot->>'revenue_unit')::numeric*quantity END AS revenue
+      COALESCE((snapshot->>'revenue_total')::numeric,(snapshot->>'revenue_unit')::numeric*quantity) AS revenue
     FROM evidence e CROSS JOIN LATERAL (
       SELECT COALESCE(SUM(COALESCE((l->'source'->>'cif_unit_cost')::numeric,0)*(l->>'quantity')::numeric),0) AS known_cost,
         COALESCE(SUM(CASE WHEN l->'source'->>'cif_unit_cost' IS NULL THEN (l->>'quantity')::numeric ELSE 0 END),0) AS missing_cost
@@ -119,7 +122,8 @@ const salesSql=`${salesEvidenceSql}, valued AS (
 export function mapSalesCostRows(rows) {
   return rows.map(row=>{
     const layers=row.snapshot.cost_layers || [{quantity:Number(row.quantity),source:{cif_unit_cost:row.snapshot.unit_cost,dpc_unit_value:row.snapshot.unit_dp}}];
-    const revenue=row.snapshot.revenue_unit==null ? null : Number(row.snapshot.revenue_unit)*Number(row.quantity);
+    const revenue=row.snapshot.revenue_total!=null ? Number(row.snapshot.revenue_total) :
+      row.snapshot.revenue_unit==null ? null : Number(row.snapshot.revenue_unit)*Number(row.quantity);
     const knownCost=layers.reduce((sum,l)=>sum+Number(l.source?.cif_unit_cost ?? 0)*Number(l.quantity),0);
     const missingCostQuantity=layers.filter(l=>l.source?.cif_unit_cost==null).reduce((sum,l)=>sum+Number(l.quantity),0);
     return {saleReference:row.sale_reference,branchId:row.branch_id,productName:row.product_name,batchNo:row.batch_no,

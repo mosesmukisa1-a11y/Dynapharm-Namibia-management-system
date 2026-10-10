@@ -603,7 +603,7 @@ function DashboardTab() {
 
   const beTotalSales = gmSummary?.sales?.totalSales || 0;
   const beCIFCost = gmSummary?.finance?.cifCostOfSales || 0;
-  const beGrossProfit = gmSummary?.finance?.grossProfit || 0;
+  const beGrossProfit = gmSummary?.finance?.grossProfit ?? null;
   const beRemittanceDue = gmSummary?.finance?.remittanceDue || 0;
   const beTotalTransactions = gmSummary?.sales?.totalTransactions || 0;
   const beTotalBV = gmSummary?.sales?.totalBV || 0;
@@ -613,7 +613,7 @@ function DashboardTab() {
   const kpiCards = [
     { label: 'Total Sales', value: formatCurrency(beTotalSales), icon: '💰', gradient: 'linear-gradient(135deg, #43e97b, #38f9d7)' },
     { label: 'CIF Cost of Sales', value: formatCurrency(beCIFCost), icon: '🚢', gradient: 'linear-gradient(135deg, #f093fb, #f5576c)' },
-    { label: 'Gross Profit', value: formatCurrency(beGrossProfit), icon: '📊', gradient: beGrossProfit >= 0 ? 'linear-gradient(135deg, #43e97b, #38f9d7)' : 'linear-gradient(135deg, #f5576c, #f093fb)' },
+    { label: 'Gross Profit · net charged revenue less original CIF', value: beGrossProfit==null?'Incomplete evidence':formatCurrency(beGrossProfit), icon: '📊', gradient: beGrossProfit >= 0 ? 'linear-gradient(135deg, #43e97b, #38f9d7)' : 'linear-gradient(135deg, #f5576c, #f093fb)' },
     { label: 'Remittance Due', value: formatCurrency(beRemittanceDue), icon: '📦', gradient: beRemittanceDue > 0 ? 'linear-gradient(135deg, #fa709a, #fee140)' : 'linear-gradient(135deg, #43e97b, #38f9d7)' },
   ];
 
@@ -653,6 +653,8 @@ function DashboardTab() {
       {gmSummary && (
         <Card className="mb-6 border-primary/30 bg-gradient-to-r from-red-50 to-rose-50">
           <CardBody>
+            <p className="mb-3 text-xs text-gray-600">DP means distributor selling price, not consumer receipts or received CIF. DP totals use saved sale/return evidence; gross profit uses net amounts charged less returned original CIF cost.</p>
+            {(gmSummary.sales?.dpComplete===false || gmSummary.finance?.financialComplete===false) && <p role="status" className="mb-3 rounded bg-amber-50 p-3 text-sm text-amber-900">Incomplete financial evidence: {gmSummary.sales?.missingDPRecords || 0} records lack original DP. Known CIF/revenue subtotals exclude unknown amounts. Gross profit is unavailable when original cost or charged amounts are missing. Open Original Costs for the scoped details and exports.</p>}
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-bold text-gray-900 flex items-center gap-2">
                 <BarChart3 size={18} className="text-primary" /> Company Live Summary

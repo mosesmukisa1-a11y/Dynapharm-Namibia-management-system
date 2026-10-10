@@ -5,18 +5,23 @@ import {
   getAllBranchesSalesRevenue,
 } from '../services/gmFinanceMisEngine.js';
 import { getOne } from '../db.js';
+import {getSalesReturnsSummary} from '../services/stockFinancialReports.js';
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+  if(!req.user)return res.status(401).json({success:false,error:'Authentication required'});
+  if(!['gm','general_manager','director','admin','superadmin','super_admin','finance','finance_manager','mis','stock'].includes(String(req.user.role).toLowerCase()))
+    return res.status(403).json({success:false,error:'Company reporting access required'});
 
   try {
     const { start, end } = getDateRange(req.query);
 
-    const [companyStock, sales] = await Promise.all([
+    const [companyStock, sales,financial] = await Promise.all([
       getCompanyStockSummary(),
       getAllBranchesSalesRevenue(start, end),
+      getSalesReturnsSummary({from:start,to:end}),
     ]);
 
     // Consultation fees: BAT rows for non-dispensing paid activities (walk-in and member check-ups).
@@ -28,29 +33,15 @@ export default async function handler(req, res) {
          AND workflow_source IS DISTINCT FROM 'dispense_draft'
          AND payment_status = 'paid'
          AND service_date >= $1::date
-         AND service_date <= ($2 || 'T23:59:59')::timestamp`,
+         AND service_date <= $2::date`,
       [start, end]
     );
     const consultationFees = Number(consultRow?.total || 0);
 
-    // CIF cost of sales: actual batch unit_cif from stock_movements, fallback to product_prices.cif
-    const cifRow = await getOne(
-      `SELECT COALESCE(SUM(sm.quantity * COALESCE(sm.unit_cif, pp.cif, 0)), 0) as cif_cost
-       FROM stock_movements sm
-       LEFT JOIN live_product_prices pp ON LOWER(TRIM(sm.product_name)) = LOWER(TRIM(pp.description))
-       WHERE sm.status = 'posted'
-         AND sm.movement_type IN (
-           'walkin_sale','walkin_member_sale','walkin_non_member_sale',
-           'walk_in_member_sale','walk_in_non_member_sale','sale',
-           'online_order_fulfilment','online_order_sale','prescription_dispense'
-         )
-         AND sm.created_at >= $1::date
-         AND sm.created_at <= ($2 || 'T23:59:59')::timestamp`,
-      [start, end]
-    );
-    const cifCostOfSales = Number(cifRow?.cif_cost || 0);
-
-    const grossProfit = sales.totalSales - cifCostOfSales;
+    // Actual paid revenue and returned original CIF are a different basis
+    // from DP dashboard totals. Never substitute today's catalogue CIF.
+    const cifCostOfSales=Number(financial.netCostOfGoodsSold);
+    const grossProfit=financial.grossProfitAfterReturns==null?null:Number(financial.grossProfitAfterReturns);
 
     // Verified bank deposits in the period (status='approved' is set by Finance verifyDeposit)
     const depositRow = await getOne(
@@ -109,6 +100,7 @@ export default async function handler(req, res) {
         expiringCount: companyStock.expiringCount,
       },
       sales: {
+        ...sales,
         consultationFees,
         walkinSales: sales.walkinSales,
         memberSales: sales.memberSales,
@@ -120,6 +112,7 @@ export default async function handler(req, res) {
         totalBV,
       },
       finance: {
+        ...financial,
         cifCostOfSales,
         grossProfit,
         totalDeposits,
@@ -133,6 +126,6 @@ export default async function handler(req, res) {
     });
   } catch (err) {
     console.error('[gm/summary]', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(err.statusCode || 500).json({ success: false, error: err.message });
   }
 }

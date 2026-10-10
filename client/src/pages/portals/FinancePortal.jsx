@@ -10,6 +10,7 @@ import SalaryLedgerTab from '../../components/SalaryLedgerTab';
 import StaffServicesTab from '../../components/StaffServicesTab';
 import StaffMessagesTab from '../../components/StaffMessagesTab';
 import ControlledStockOperations from '../../components/ControlledStockOperations';
+import StockCostReport from '../../components/StockCostReport';
 
 const BRANCH_NAME_MAP = Object.fromEntries(BRANCH_DETAILS.map(b => [b.id, b.name]));
 const branchLabel = (id) => {
@@ -18,9 +19,9 @@ const branchLabel = (id) => {
   return BRANCH_NAME_MAP[id] || id;
 };
 
-const localDate  = (d = new Date()) => { const dt = d instanceof Date ? d : new Date(d); return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`; };
-const localMonth = (d = new Date()) => { const dt = d instanceof Date ? d : new Date(d); return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`; };
-const firstOfCurrentMonth = () => { const n = new Date(); return localDate(new Date(n.getFullYear(), n.getMonth(), 1)); };
+const localDate=(d=new Date())=>new Intl.DateTimeFormat('en-CA',{timeZone:'Africa/Windhoek',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(d));
+const localMonth=(d=new Date())=>localDate(d).slice(0,7);
+const firstOfCurrentMonth=()=>`${localMonth()}-01`;
 
 export default function FinancePortal() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -41,6 +42,7 @@ export default function FinancePortal() {
     { id: 'accounts', label: 'Accounts', icon: '📒' },
     { id: 'bonus', label: 'Bonus Workflow', icon: '💰' },
     { id: 'reports', label: 'Reports', icon: '📈' },
+    { id: 'originalCosts', label: 'Original Costs' },
     { id: 'controlledOperations', label: 'Supplier Credits' },
     { id: 'communication', label: 'Notices', icon: '📢' },
     { id: 'payments', label: 'Payment Vouchers', icon: '🧾' },
@@ -66,6 +68,7 @@ export default function FinancePortal() {
         {activeTab === 'accounts' && <AccountsTab role="finance" />}
         {activeTab === 'bonus' && <BonusTab />}
         {activeTab === 'reports' && <ReportsTab />}
+      {activeTab === 'originalCosts' && <StockCostReport />}
         {activeTab === 'controlledOperations' && <ControlledStockOperations mode="finance" />}
         {activeTab === 'communication' && <CommunicationTab />}
         {activeTab === 'payments' && <PaymentVouchersTab />}
@@ -148,6 +151,8 @@ function DashboardTab() {
       {financeSummary && (
         <Card className="bg-gradient-to-r from-indigo-50 to-blue-50 border-indigo-200">
           <CardBody>
+            <p className="mb-3 text-xs text-gray-600">DP means distributor selling price, not consumer receipts or received CIF. Net charged revenue: {formatCurrency(financeSummary.financial?.netSalesRevenue || 0)}. Gross profit after returns: {financeSummary.financial?.grossProfitAfterReturns==null?'Incomplete evidence':formatCurrency(financeSummary.financial.grossProfitAfterReturns)}.</p>
+            {(financeSummary.revenue?.dpComplete===false || financeSummary.financial?.financialComplete===false) && <p role="status" className="mb-3 rounded bg-amber-50 p-3 text-sm text-amber-900">Incomplete original financial evidence. Known totals exclude unknown amounts; open Original Costs for missing-evidence quantities and exports. Historical sales are not repriced from today's catalogue.</p>}
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-bold text-gray-900 flex items-center gap-2">
                 <FileSpreadsheet size={16} className="text-indigo-600" /> Finance Summary
@@ -157,7 +162,7 @@ function DashboardTab() {
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div className="bg-white/80 rounded-lg p-3 text-center">
-                <p className="text-xs text-gray-500">Total Revenue</p>
+                <p className="text-xs text-gray-500">Net Sales (original DP)</p>
                 <p className="text-lg font-bold text-green-700">{formatCurrency(financeSummary.revenue?.totalSales || 0)}</p>
                 <p className="text-xs text-gray-400">Walk-in: {formatCurrency(financeSummary.revenue?.walkinSales || 0)}{(financeSummary.revenue?.prescriptionSales || 0) > 0 ? ` · Rx: ${formatCurrency(financeSummary.revenue?.prescriptionSales || 0)}` : ''}</p>
               </div>

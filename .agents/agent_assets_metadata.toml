@@ -14,3 +14,45 @@ mtime_ms = 1791625037573
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/351f9bf4-45d7-4bc2-9618-8433091fbdda/bf99d91a-ac73-4b66-8178-1cf5d0f094ad"
 storage_version_token = "1791625068903495"
 content_type = "text/html"
+
+[[outputs]]
+id = "PoYRgQ506W_mN7KQTStmV"
+uri = "file://generated-artifacts/stock-audit/stock-audit-continuation.html"
+type = "html"
+title = "Updated stock audit — 138 passing checks"
+description = "Expected/actual workflow and financial results, fixes, production findings, and separate verification statuses."
+logical_id = "df9d6e9d-216a-4961-ae95-8a9d5d23f68f"
+content_hash = "sha256:8a57d297baec8a1ddc430d1691223622d5ef7c704949ca5f18f5c5ae312d4f51"
+size = 22815
+mtime_ms = 1791629328865
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/df9d6e9d-216a-4961-ae95-8a9d5d23f68f/e510161b-6963-4889-a423-9bec91687370"
+storage_version_token = "1791629368452449"
+content_type = "text/html"
+
+[[outputs]]
+id = "jHm-5tqqSn9fRvKVLLNiU"
+uri = "file://generated-artifacts/stock-audit/production-stock-reconciliation.csv"
+type = "table"
+title = "Production stock reconciliation — CSV"
+description = "Read-only location/type/product/lot/expiry comparison. Flagged differences require evidence review; no balances were changed."
+logical_id = "8bedec40-82b0-4c4b-835c-030387d8813e"
+content_hash = "sha256:7b883dca51b14e013076c283afcd70240774a9d89debd3a8877871943fd07020"
+size = 588268
+mtime_ms = 1791629026833
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/8bedec40-82b0-4c4b-835c-030387d8813e/481e831e-221a-4440-a981-10f88a7ef250"
+storage_version_token = "1791629369483727"
+content_type = "text/csv"
+
+[[outputs]]
+id = "DCSocEFbBU4rsrxx9PV1n"
+uri = "file://generated-artifacts/stock-audit/production-stock-reconciliation.json"
+type = "unspecified"
+title = "Production stock reconciliation — detailed evidence"
+description = "Status/source-layer details, missing-evidence flags and limitations. Recorded quantities are not certified physical counts."
+logical_id = "af0e3c30-cc96-4f2e-b784-506cfc2f6f75"
+content_hash = "sha256:7cd057bbab625f66b868bc5b92279b6da6582ba3b5acb6e4719c0cf69168f9a6"
+size = 2496575
+mtime_ms = 1791629026813
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/af0e3c30-cc96-4f2e-b784-506cfc2f6f75/c69db7d1-3a0a-4109-9bb8-ac025649c008"
+storage_version_token = "1791629370753822"
+content_type = "application/octet-stream"

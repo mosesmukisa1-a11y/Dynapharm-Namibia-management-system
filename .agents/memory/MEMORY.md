@@ -16,3 +16,4 @@
 - [Workflow listener ownership](workflow-listeners.md) — a running workflow can be a duplicate while an orphan process owns its intended port; verify managed open ports.
 - [Stock test isolation](stock-test-isolation.md) — receipt assertions require physical dispatch evidence; whole-database safety baselines cannot share parallel fixture writers.
 - [Mixed stock history](stock-history-coverage.md) — a central movement does not prove complete branch-history coverage; retain unmatched legacy evidence.
+- [Read-only reconciliation](read-only-reconciliation.md) — bounded production extracts need matching fingerprints; warehouse and branch aliases must remain separate namespaces.

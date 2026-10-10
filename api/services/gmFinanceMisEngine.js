@@ -5,9 +5,11 @@
  * and branch_walkin_sales (sales engine). No independent calculations.
  */
 import { query, getMany, getOne } from '../db.js';
-import { ALL_BRANCH_LOCATION_ALIASES } from '../_lib/branchUtils.js';
+import { ALL_BRANCH_LOCATION_ALIASES, branchSearchTerms } from '../_lib/branchUtils.js';
 import { getStockCostProjection } from './stockCostReporting.js';
 import { inferLocationType } from './stockEngine.js';
+import {getLegacyDPRevenue} from './stockFinancialReports.js';
+import {businessDay,validateBusinessDates} from './businessDates.js';
 
 const LOW_STOCK_THRESHOLD = 10;
 const EXPIRY_WARN_DAYS = 90;
@@ -27,14 +29,10 @@ const RECEIVED_TYPES = new Set([
 const DISPATCH_TYPES = new Set(['warehouse_dispatch', 'transfer_out']);
 
 export function getDateRange(query_params) {
-  const now = new Date();
-  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const start = query_params.startDate
-    ? query_params.startDate
-    : firstOfMonth.toISOString().slice(0, 10);
-  const end = query_params.endDate
-    ? query_params.endDate
-    : now.toISOString().slice(0, 10);
+  const today=businessDay();
+  const start=query_params.startDate || `${today.slice(0,7)}-01`;
+  const end=query_params.endDate || today;
+  validateBusinessDates(start,end);
   return { start, end };
 }
 
@@ -171,8 +169,8 @@ export async function getLocationMovements(locationType, locationId, start, end)
     `SELECT movement_type, quantity, source_location, destination_location, unit_dp
      FROM stock_movements
      WHERE status = 'posted'
-       AND created_at >= $1::date
-       AND created_at < ($2::date + INTERVAL '1 day')
+       AND created_at >= ($1::date::timestamp AT TIME ZONE 'Africa/Windhoek')
+       AND created_at < (($2::date+1)::timestamp AT TIME ZONE 'Africa/Windhoek')
        AND (
          (source_location = $3 AND (source_location_type = $4 OR source_location_type IS NULL))
          OR
@@ -206,96 +204,7 @@ export async function getLocationMovements(locationType, locationId, start, end)
  * Sales revenue from branch_walkin_sales (completed sales only).
  */
 export async function getBranchSalesRevenue(branchId, start, end) {
-  const [rows, refundRows, rxRows, priceListRows] = await Promise.all([
-    getMany(
-      `SELECT customer_type, payment_method, total, subtotal, items, data
-       FROM branch_walkin_sales
-       WHERE branch_id = $1
-         AND status = 'completed'
-         AND sale_date >= $2::date
-         AND sale_date < ($3::date + INTERVAL '1 day')`,
-      [branchId, start, end]
-    ),
-    getMany(
-      `SELECT COALESCE(SUM(refund_amount), 0) AS refund_total
-       FROM branch_refund_requests
-       WHERE status = 'approved'
-         AND LOWER(REPLACE(branch_id,' ','_')) = LOWER(REPLACE($1,' ','_'))
-         AND processed_at::date >= $2::date
-         AND processed_at::date <= $3::date`,
-      [branchId, start, end]
-    ),
-    // Prescription dispensing DP revenue from BAT (authoritative, excludes drafts)
-    getMany(
-      `SELECT grand_total, product_total_dp, client_type
-       FROM branch_activity_transactions
-       WHERE branch_id = $1
-         AND activity_type = 'prescription_dispensing'
-         AND workflow_source != 'dispense_draft'
-         AND payment_status = 'paid'
-         AND service_date >= $2::date
-         AND service_date <= $3::date`,
-      [branchId, start, end]
-    ),
-    // GM price list — authoritative DP source
-    getMany(`SELECT description, dp FROM live_product_prices`),
-  ]);
-
-  // Build price-map from GM price list
-  const priceMapBSR = {};
-  for (const p of priceListRows) {
-    if (p.description) priceMapBSR[p.description.toLowerCase().trim()] = Number(p.dp || 0);
-  }
-  const lookupDpBSR = (name) => (name ? (priceMapBSR[name.toLowerCase().trim()] || 0) : 0);
-
-  const refundTotal = Number(refundRows[0]?.refund_total || 0);
-  let walkinSales = 0, memberSales = 0, nonMemberSales = 0, onlineSales = 0;
-  let cashTotal = 0, swipeTotal = 0, eftTotal = 0;
-
-  for (const r of rows) {
-    const ct = (r.customer_type || '').toLowerCase();
-    let amt;
-    // Non-member walk-in: branch_walkin_sales.total = CP (consumer price).
-    // Parse item-level DP to get the true distributor-price basis.
-    if (ct.includes('non') || (!ct.includes('member') && !ct.includes('online'))) {
-      let items = [], discountPct = 0;
-      try { items = typeof r.items === 'string' ? JSON.parse(r.items) : (Array.isArray(r.items) ? r.items : []); } catch {}
-      try { const d = typeof r.data === 'string' ? JSON.parse(r.data) : (r.data || {}); discountPct = Number(d.discount_pct || 0); } catch {}
-      amt = items.reduce((s, i) => {
-        const nm = (i.product_name || i.name || i.description || '').trim();
-        // Non-member walk-in: i.unit_price is the consumer price (CP), not DP.
-        // Never use it as a DP fallback — it inflates the revenue figure.
-        const listDp = lookupDpBSR(nm) || Number(i.dpPrice || i.dp || 0);
-        return s + (discountPct > 0 ? listDp * (1 - discountPct / 100) : listDp) * Number(i.quantity || i.qty || 1);
-      }, 0);
-    } else {
-      // Member and online sales: total = DP (members pay at DP)
-      amt = Number(r.total || r.subtotal || 0);
-    }
-    walkinSales += amt;
-    if (ct.includes('member') && !ct.includes('non')) memberSales += amt;
-    else if (ct.includes('online')) onlineSales += amt;
-    else nonMemberSales += amt;
-
-    const pm = (r.payment_method || '').toLowerCase();
-    if (pm === 'cash') cashTotal += amt;
-    else if (pm === 'swipe' || pm === 'card') swipeTotal += amt;
-    else if (pm === 'eft') eftTotal += amt;
-  }
-
-  // Prescription dispensing DP — always use product_total_dp (DP from price list = company money).
-  // grand_total for non-member Rx = CP (patient charge), excluded from company revenue.
-  let prescriptionSales = 0;
-  for (const r of rxRows) {
-    prescriptionSales += Number(r.product_total_dp || r.grand_total || 0);
-  }
-
-  // Deduct approved refunds processed in this period
-  walkinSales    = Math.max(0, walkinSales    - refundTotal);
-  nonMemberSales = Math.max(0, nonMemberSales - refundTotal);
-  const totalSales = walkinSales + prescriptionSales;
-
-  return { totalSales, walkinSales, memberSales, nonMemberSales, onlineSales, prescriptionSales, cashTotal, swipeTotal, eftTotal };
+  return getLegacyDPRevenue(branchSearchTerms(branchId),start,end);
 }
 
 /**
@@ -366,92 +275,7 @@ export async function getCompanyStockSummary() {
  * All sales across the company (all branches).
  */
 export async function getAllBranchesSalesRevenue(start, end) {
-  const [rows, refundRow, rxRows, priceListRows] = await Promise.all([
-    getMany(
-      `SELECT branch_id, customer_type, payment_method, total, items, data
-       FROM branch_walkin_sales
-       WHERE status = 'completed'
-         AND sale_date >= $1::date
-         AND sale_date < ($2::date + INTERVAL '1 day')`,
-      [start, end]
-    ),
-    getOne(
-      `SELECT COALESCE(SUM(refund_amount), 0) AS refund_total
-       FROM branch_refund_requests
-       WHERE status = 'approved'
-         AND processed_at::date >= $1::date
-         AND processed_at::date <= $2::date`,
-      [start, end]
-    ),
-    // Prescription DP from BAT — product_total_dp is the DP value of medicines dispensed,
-    // which is the company's income from prescription sales (uniform DP basis throughout).
-    getMany(
-      `SELECT grand_total, product_total_dp, client_type
-       FROM branch_activity_transactions
-       WHERE activity_type = 'prescription_dispensing'
-         AND workflow_source != 'dispense_draft'
-         AND payment_status = 'paid'
-         AND service_date >= $1::date
-         AND service_date <= $2::date`,
-      [start, end]
-    ),
-    getMany(`SELECT description, dp FROM live_product_prices`),
-  ]);
-
-  // Build DP price map — authoritative source for non-member DP recalculation.
-  const dpMap = {};
-  for (const p of priceListRows) {
-    if (p.description) dpMap[p.description.toLowerCase().trim()] = Number(p.dp || 0);
-  }
-  const lookupDp = (name) => (name ? (dpMap[name.toLowerCase().trim()] || 0) : 0);
-
-  const refundTotal = Number(refundRow?.refund_total || 0);
-  let walkinSales = 0, memberSales = 0, nonMemberSales = 0, onlineSales = 0;
-
-  for (const r of rows) {
-    const ct = (r.customer_type || '').toLowerCase();
-    let amt;
-    // Non-member walk-in receipts are stored at CP (consumer price).
-    // Re-compute at DP so the sale value is uniform: every sale = DP × qty.
-    if (ct.includes('non') || (!ct.includes('member') && !ct.includes('online'))) {
-      let items = [], discountPct = 0;
-      try { items = typeof r.items === 'string' ? JSON.parse(r.items) : (Array.isArray(r.items) ? r.items : []); } catch {}
-      try { const d = typeof r.data === 'string' ? JSON.parse(r.data) : (r.data || {}); discountPct = Number(d.discount_pct || 0); } catch {}
-      if (items.length > 0) {
-        amt = items.reduce((s, i) => {
-          const nm = (i.product_name || i.name || i.description || '').trim();
-          // Non-member walk-in: i.unit_price is the consumer price (CP), not DP.
-          // Never use it as a DP fallback — it inflates the revenue figure.
-          const listDp = lookupDp(nm) || Number(i.dpPrice || i.dp || 0);
-          // Apply campaign/promotion discount if one was active for this sale.
-          return s + (discountPct > 0 ? listDp * (1 - discountPct / 100) : listDp) * Number(i.quantity || i.qty || 1);
-        }, 0);
-      } else {
-        amt = Number(r.total || 0);
-      }
-    } else {
-      // Member and online: stored total = DP (members pay at DP, campaign discount already in total).
-      amt = Number(r.total || 0);
-    }
-    const isMember = ct.includes('member') && !ct.includes('non');
-    if (isMember) memberSales += amt;
-    else if (ct.includes('online')) onlineSales += amt;
-    else nonMemberSales += amt;
-    walkinSales += amt;
-  }
-
-  // Deduct approved refunds processed in this period
-  walkinSales    = Math.max(0, walkinSales    - refundTotal);
-  nonMemberSales = Math.max(0, nonMemberSales - refundTotal);
-
-  // Prescription sales at DP — product_total_dp is the DP value (company income).
-  let prescriptionSales = 0;
-  for (const r of rxRows) {
-    prescriptionSales += Number(r.product_total_dp || r.grand_total || 0);
-  }
-
-  const totalSales = walkinSales + prescriptionSales;
-  return { walkinSales, memberSales, nonMemberSales, onlineSales, prescriptionSales, totalSales };
+  return getLegacyDPRevenue(null,start,end);
 }
 
 /**
@@ -489,8 +313,8 @@ export async function getWriteOffs(start, end, locationId = null) {
      FROM stock_movements
      WHERE status = 'posted'
        AND movement_type IN ('write_off', 'field_use')
-       AND created_at >= $1::date
-       AND created_at < ($2::date + INTERVAL '1 day')
+        AND created_at >= ($1::date::timestamp AT TIME ZONE 'Africa/Windhoek')
+        AND created_at < (($2::date+1)::timestamp AT TIME ZONE 'Africa/Windhoek')
        ${locFilter}
      ORDER BY created_at DESC`,
     params

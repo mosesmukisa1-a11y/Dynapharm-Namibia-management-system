@@ -518,9 +518,11 @@ async function handler(req, res) {
         const itemName = item.product_name || item.name || item.description || '';
         const itemLivePrice = livePriceMap[itemName.toLowerCase()];
         // Prefer: (1) live product_prices.dp, (2) frontend dpPrice/dp, (3) unit_price fallback
-        const unitPrice = itemLivePrice
-          ? (Number(itemLivePrice.dp) || Number(item.dpPrice || item.dp || 0))
-          : Number(item.dpPrice || item.dp || item.unit_price || item.unitPrice || 0);
+        const originalDP=itemLivePrice?.dp ?? item.dpPrice ?? item.dp ??
+          (isMemberSale ? item.unit_price ?? item.unitPrice : null);
+        // CP is not evidence of distributor price. An unknown original DP
+        // remains unknown; received CIF/source layers still determine COGS.
+        const unitPrice=originalDP==null ? null : Number(originalDP);
         const pkg = getPackageComponents(itemName);
         if (pkg) {
           for (const comp of pkg.products) {

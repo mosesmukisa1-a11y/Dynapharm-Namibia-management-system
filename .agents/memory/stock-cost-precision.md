@@ -36,3 +36,11 @@ Cumulative receipt quantities must be consumed in allocation order before narrow
 **Why:** A line's received quantity is cumulative, not per cost layer. Removing earlier allocations makes receipts get subtracted from later layers incorrectly; historical source names can differ.
 
 **How to apply:** Include all allocations of a matching line for entitlement accounting, then filter the projected results. Never fix this by rewriting physical quantities or source names.
+
+## Financial bases and returns
+
+Keep charged customer revenue, commercial DP after the original recorded discount, and received CIF/DPC as distinct bases. Reverse each return using its own original basis. Refund-only periods may legitimately have negative net sales.
+
+**Why:** Subtracting consumer-price refunds from DP-valued sales produces inconsistent income. Original member/online receipts and retail DP discount evidence can differ from a received stock layer's DPC; neither today's catalogue prices nor zero-clamping can correct that mismatch.
+
+**How to apply:** Define the basis in labels/exports, preserve original charge totals, and reverse original returned CIF separately from damaged-stock write-off expense. Disclose unmatched receipts and incomplete evidence before calling known subtotals full totals.

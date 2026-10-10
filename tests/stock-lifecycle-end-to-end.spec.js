@@ -108,7 +108,7 @@ it('runs the requested 100-unit import-to-two-branches, sale, refund, damage and
     items:[{productName:product,batchNo:lot,expiryDate:expiry,quantityReceived:20}]},{...staff,branch:b}));
   await checkpoint('D. Branch B receives 20 units',{warehouse:50,branchA:30,branchB:20,transit:0,company:100});
   const saleBody={id:'ISOLATED-SALE-8',branch:a,customerType:'non_member',
-    customerName:'Isolated customer',products:[{name:product,quantity:8,unitPrice:9}],
+    customerName:'Isolated customer',products:[{name:product,quantity:8,unitPrice:9,dpPrice:7}],
     subtotal:72,total:72,offline_id:'ISOLATED-OFFLINE-8'};
   success(await invoke(walkinSales,'POST',saleBody,staff),201);
   await checkpoint('E. Sell 8 units at Branch A',{warehouse:50,branchA:22,branchB:20,company:92});
@@ -173,7 +173,7 @@ it('concurrent completed sales cannot oversell and consume eligible stock in FEF
 
 it('sales reports include fractional seconds on the selected end date and exclude the next day',async()=>{
   const branch='test_date_boundary_branch';
-  for(const [id,date,total] of [['first','2030-01-01 10:00:00',1],['late','2030-01-01 23:59:59.999999',2],['next','2030-01-02 00:00:00',4]])
+  for(const [id,date,total] of [['first','2030-01-01 10:00:00+02',1],['late','2030-01-01 23:59:59.999999+02',2],['next','2030-01-02 00:00:00+02',4]])
     await query(`INSERT INTO branch_walkin_sales(id,branch_id,sale_date,customer_type,
       payment_method,total,subtotal,status) VALUES($1,$2,$3,'member','cash',$4,$4,'completed')`,
       [`ISOLATED-DATE-${id}`,branch,date,total]);

@@ -1,0 +1,53 @@
+The report shows **the core stock workflow passed its automated tests, but the full system is still PARTIALLY VERIFIED**. I’ve reviewed the report; I haven’t independently run its tests or inspected the application.
+
+According to the report:
+
+- **129 checks passed** across 14 test files.
+- Import, warehouse distribution, branch receipts, sales, returns, damage, and write-offs produced the expected balances.
+- The example correctly ended with **93 units: warehouse 50, Branch A 23, Branch B 20**.
+- Duplicate transactions, overselling, expiry selection, and several reporting errors were tested and fixed.
+
+The main remaining gaps are staff screens and actual login permissions, configurable alerts, refund revenue/profit consistency, and reconciliation with real stock records.
+
+Paste this into Replit Agent to finish the verification:
+
+Continue from the Stock lifecycle audit dated 10 October 2026. The reported result is PARTIALLY VERIFIED, with 129 passing automated checks. Inspect the existing audit scripts and test results before relying on that baseline.
+
+Complete the remaining verification in an isolated test environment using synthetic records.
+
+1. Test the full workflow through authenticated staff screens:
+   - Import and warehouse receipt.
+   - Dispatch, partial receipt, and branch receipt.
+   - Barcode sale.
+   - Saleable and damaged customer returns.
+   - Damage segregation and write-off.
+   - Stock and sales reports.
+
+Use the actual login and session middleware. Verify stock staff, branch staff, and GM permissions, including attempts to access another branch’s records. Confirm screen balances agree with the underlying records after each action.
+
+2. Replace the fixed low-stock and expiry alert thresholds with saved, configurable settings. Preserve 10 units and 90 days as initial defaults. Verify that changing settings changes the alerts correctly.
+
+3. Verify purchase orders do not increase physical stock before receipt. Test and document slow-moving stock reporting, including its inactivity period.
+
+4. Verify gross sales, refunds, net revenue, cost of goods sold, and gross profit across all relevant screens and exports, including legacy DP-based dashboards. Define what DP means in this application. Keep gross and net measures clearly labelled and reconcile them using original sale and return cost evidence.
+
+5. Test date filters using Africa/Windhoek, including transactions near midnight, fractional seconds, and backdated transactions. Test offline behaviour if supported; otherwise mark it as unsupported.
+
+6. Produce a read-only stock reconciliation report showing:
+   - Recorded physical stock by location, product, batch, and status.
+   - Stock in transit and reservations.
+   - Differences between movement history, stored balances, and reporting projections.
+   - Missing or ambiguous historical source evidence.
+
+Do not change historical business balances or automatically backfill records. If production data is unavailable, mark production reconciliation as unverified. Physical-count accuracy requires actual count evidence and cannot be certified by software tests alone.
+
+7. Rerun the existing isolated audit and new tests after fixing defects. Preserve business data and keep all stock-changing tests away from the live database.
+
+Deliver an updated report with:
+- Problems found and fixes made.
+- Expected versus actual results.
+- Evidence from authenticated screen tests.
+- Remaining limitations.
+- Separate statuses for automated workflow verification, staff-screen verification, and production stock reconciliation.
+
+Only mark a category VERIFIED when its checks have actually passed. Do not use passing automated tests as proof that real stock balances are correct.
