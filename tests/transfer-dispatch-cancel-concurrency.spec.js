@@ -92,11 +92,15 @@ async function cleanup(){
   }
   fixtures.length=0;
 }
-describe.sequential('real PATCH dispatch versus cancellation row-lock race',()=>{
+describe.sequential('real PATCH dispatch versus cancellation/rejection row-lock race',()=>{
   beforeAll(()=>db.query(lifecycleSchema));afterEach(cleanup);
-  it.each(['dispatched','cancelled'])('%s wins while the competing action waits on the same approved transfer',async winner=>{
-    const loser=winner==='dispatched'?'cancelled':'dispatched';
-    const f=await seed(winner);
+  const races=['cancelled','rejected'].flatMap(action=>[
+    {winner:'dispatched',loser:action},
+    {winner:action,loser:'dispatched'},
+  ]);
+  it.each(races)('$winner wins while $loser waits on the same approved transfer',async({winner,loser})=>{
+    // Keep location IDs within the legacy warehouse_locations varchar(60).
+    const f=await seed(`${winner}-${loser[0]}`);
     const initial=await snapshot(f);
     expect(initial.transfer.status).toBe('approved');
     expect(Number(initial.batches[0].remaining_quantity)).toBe(12);
@@ -147,7 +151,12 @@ describe.sequential('real PATCH dispatch versus cancellation row-lock race',()=>
     }
     const [won,lost]=await Promise.all([winning,losing]);
     expect(won.status,won.body?.error).toBe(200);
+    expect(won.body?.success).toBe(true);
     expect(lost.status,lost.body?.error).toBe(409);
+    expect(lost.body?.success).toBe(false);
+    expect(lost.body?.error).toMatch(winner==='dispatched'
+      ? /linked physical return|controlled return\/reversal/i
+      : /approve the transfer before dispatching/i);
     const final=await snapshot(f);
     expect(final.transfer.status).toBe(winner);
     expect(Number(final.batches[0].quantity)).toBe(20);
@@ -170,14 +179,21 @@ describe.sequential('real PATCH dispatch versus cancellation row-lock race',()=>
       expect(final.movements).toHaveLength(1);
       expect(final.movements[0]).toMatchObject({movement_type:'reserved',status:'cancelled'});
       expect(final.notes).toHaveLength(0);
-      // Frozen allocations remain as original evidence; the cancelled transfer
+      // Frozen allocations remain as original evidence; the cancelled/rejected transfer
       // and voided reservation, not deletion of history, release their custody.
       expect(final.allocations).toEqual(initial.allocations);
-      // Repeated successful cancellation must not release the reservation twice.
-      expect((await patch(f,'cancelled')).status).toBe(200);
+    }
+    // Successful retries must not release twice or duplicate dispatch evidence.
+    // Losing retries must still respect the persisted winner's custody status.
+    for(let attempt=0;attempt<2;attempt++){
+      const retryWinner=await patch(f,winner);
+      expect(retryWinner.status,retryWinner.body?.error).toBe(200);
+      expect(retryWinner.body?.success).toBe(true);
+      expect(await snapshot(f)).toEqual(final);
+      const retryLoser=await patch(f,loser);
+      expect(retryLoser.status,retryLoser.body?.error).toBe(409);
+      expect(retryLoser.body?.success).toBe(false);
       expect(await snapshot(f)).toEqual(final);
     }
-    expect((await patch(f,loser)).status).toBe(409);
-    expect(await snapshot(f)).toEqual(final);
   },15000);
 });
