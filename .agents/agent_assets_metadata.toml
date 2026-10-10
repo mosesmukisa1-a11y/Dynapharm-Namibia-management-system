@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "ghcR1V5KnDlcnpC1mEAFa"
+uri = "file://generated-artifacts/stock-audit/stock-lifecycle-audit.html"
+type = "html"
+title = "Stock lifecycle audit — 129 checks passed"
+description = "Expected versus actual results, fixes, safe rerun instructions, and remaining verification gaps. Overall status: PARTIALLY VERIFIED."
+logical_id = "351f9bf4-45d7-4bc2-9618-8433091fbdda"
+content_hash = "sha256:a688ff2b3736702d7b6ac851f33ff8b38f6f8ee89a20b44487d08b4821eaebe4"
+size = 23812
+mtime_ms = 1791625037573
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/351f9bf4-45d7-4bc2-9618-8433091fbdda/bf99d91a-ac73-4b66-8178-1cf5d0f094ad"
+storage_version_token = "1791625068903495"
+content_type = "text/html"

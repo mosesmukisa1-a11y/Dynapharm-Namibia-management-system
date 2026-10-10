@@ -1,0 +1,129 @@
+Paste this into **Replit Agent** to check your existing stock system, fix problems, and confirm the setup works:
+
+Debug and verify this stock management application from end to end. Inspect the existing code, database, and user interface before making changes. Work with the application’s current technology stack.
+
+The required workflow is:
+Import → Warehouse receipt → Branch dispatch → Stock in transit → Branch receipt → Sales → Returns and adjustments → Stock and sales reports.
+
+Do not delete or overwrite existing business data. Use a separate test database or isolated test environment. Do not connect tests to live payments or other live external services.
+
+1. CHECK THE CURRENT SETUP
+
+Identify:
+- The application framework and database.
+- How products, suppliers, warehouses, branches, batches, barcodes, and expiry dates are stored.
+- How purchases, receipts, transfers, sales, returns, and adjustments are recorded.
+- How current stock balances and sales reports are calculated.
+- Missing features, broken connections, and incorrect calculations.
+
+2. DEBUG STOCK MOVEMENTS
+
+Verify and fix these rules:
+- Purchase orders do not increase physical stock before receipt.
+- Receiving an import increases stock at the receiving warehouse once.
+- Dispatch reduces warehouse stock and increases stock in transit.
+- Branch receipt reduces stock in transit and increases branch stock.
+- Internal transfers do not change total company stock.
+- Partial receipts, damaged deliveries, and shortages are recorded explicitly.
+- A completed sale deducts the correct quantity from the correct branch and batch.
+- Saleable customer returns increase available stock once.
+- Damaged or expired returns go into unavailable stock.
+- Supplier returns remove stock from the correct location.
+- Damage, expiry, loss, and other adjustments require reasons and an audit trail.
+- Repeated requests, double clicks, or retries cannot create duplicate movements.
+- Concurrent sales cannot sell the same remaining stock twice.
+- Related transaction updates either succeed together or roll back together.
+- Corrections preserve transaction history through reversals or traceable adjustments.
+
+Distinguish physical stock, available stock, reserved stock, unavailable stock, and stock in transit. Prevent negative available stock unless an explicit business rule allows it.
+
+3. CHECK PRODUCTS, BARCODES, AND EXPIRY
+
+Verify:
+- Barcodes identify the correct product and pack size.
+- Barcode values retain leading zeros.
+- Duplicate barcode assignments are prevented.
+- Carton, box, and individual-item quantities convert correctly.
+- Batch numbers and expiry dates follow stock through every movement.
+- Earliest-expiring eligible stock is selected first.
+- Expired stock cannot be sold.
+- Expiry and low-stock alerts use configurable thresholds.
+
+4. CHECK CALCULATIONS AND REPORTS
+
+For each location, verify:
+Closing physical stock =
+Opening physical stock
++ Receipts
++ Transfers in
++ Customer returns received
+− Sales
+− Transfers out
+− Supplier returns
+− Write-offs
+± Approved adjustments.
+
+Moving stock from available to damaged or expired status must not remove it from physical stock until it is written off or otherwise leaves the business.
+
+Verify reports for:
+- Current stock by product, location, batch, and stock status.
+- Stock in transit.
+- Stock movement history.
+- Sales quantities, refunds, and net sales.
+- Stock valuation and cost of goods sold using the configured costing method.
+- Gross profit using consistent costs and revenue.
+- Low stock, slow-moving stock, and approaching expiry.
+
+Use the same underlying stock records for dashboards and reports. Check date filters and the configured business timezone.
+
+5. RUN AN AUTOMATED END-TO-END TEST
+
+Create isolated test data:
+- Product: TEST-ITEM.
+- Barcode: 0001234567895.
+- Pack conversion: 1 carton = 10 units.
+- One warehouse and two branches.
+- A batch with a future expiry date.
+
+Execute:
+A. Receive 100 units into the warehouse.
+B. Dispatch 30 units to Branch A.
+   Expected: Warehouse 70, in transit 30, Branch A 0.
+C. Confirm Branch A receives all 30 units.
+   Expected: Warehouse 70, in transit 0, Branch A 30.
+D. Dispatch and receive 20 units at Branch B.
+   Expected: Warehouse 50, Branch A 30, Branch B 20.
+E. Sell 8 units at Branch A.
+   Expected: Branch A 22.
+F. Receive a saleable customer return of 2 units at Branch A.
+   Expected: Branch A 24.
+G. Move 1 unit at Branch A into damaged stock.
+   Expected: Branch A physical stock 24, available stock 23, damaged stock 1.
+H. Write off that damaged unit.
+   Expected: Branch A physical and available stock 23, damaged stock 0.
+
+Final expected figures:
+- Warehouse: 50 units.
+- Branch A: 23 units.
+- Branch B: 20 units.
+- In transit: 0 units.
+- Total company physical stock: 93 units.
+- Gross quantity sold: 8 units.
+- Quantity returned: 2 units.
+- Net quantity sold: 6 units.
+- Written-off quantity: 1 unit.
+
+Also test carton conversion, partial transfers, duplicate submissions, concurrent sales, insufficient stock, expired stock, cancelled transactions, damaged returns, and unauthorised adjustments.
+
+6. FIX AND CONFIRM
+
+Fix discovered defects and rerun the relevant tests. Do not claim a feature works without verification. Flag any missing business decisions instead of silently inventing rules.
+
+Provide:
+- A concise list of problems found and fixes made.
+- A pass/fail table with expected and actual results.
+- Instructions to run the tests again.
+- Any remaining gaps or blockers.
+- A final status: VERIFIED, PARTIALLY VERIFIED, or FAILED.
+
+Only mark the setup VERIFIED if all required workflows and checks pass. If the application cannot be run, clearly state that verification is incomplete.

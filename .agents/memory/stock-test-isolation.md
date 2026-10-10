@@ -19,3 +19,9 @@ Concurrency regression tests must prove actual contention and cover both valid w
 **Why:** Starting two requests with Promise.all does not guarantee their database transactions overlap; a sequential execution can falsely appear to validate a race safeguard.
 
 **How to apply:** Control scheduling without mocking SQL results or handler behavior, verify the competing real database transaction is blocked by the winning row lock, release it, and await both requests before assertions and cleanup.
+
+Whole-system audits must use a separate test database or isolated environment, not merely uniquely named rows in the business database. Never connect their fixtures to live payment or other external services.
+
+**Why:** The user explicitly requires business records to remain untouched during an end-to-end stock audit. Prefixes and cleanup do not prevent a mis-scoped handler or failing assertion from changing unrelated records.
+
+**How to apply:** Use an empty schema-only clone, synthetic actors and fixtures, and isolated application connections; remove only the disposable environment afterward. Treat historical reconciliation as a separate approved action.

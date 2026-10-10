@@ -172,7 +172,7 @@ export async function getLocationMovements(locationType, locationId, start, end)
      FROM stock_movements
      WHERE status = 'posted'
        AND created_at >= $1::date
-       AND created_at <= ($2 || 'T23:59:59')::timestamp
+       AND created_at < ($2::date + INTERVAL '1 day')
        AND (
          (source_location = $3 AND (source_location_type = $4 OR source_location_type IS NULL))
          OR
@@ -213,7 +213,7 @@ export async function getBranchSalesRevenue(branchId, start, end) {
        WHERE branch_id = $1
          AND status = 'completed'
          AND sale_date >= $2::date
-         AND sale_date <= ($3 || 'T23:59:59')::timestamp`,
+         AND sale_date < ($3::date + INTERVAL '1 day')`,
       [branchId, start, end]
     ),
     getMany(
@@ -372,7 +372,7 @@ export async function getAllBranchesSalesRevenue(start, end) {
        FROM branch_walkin_sales
        WHERE status = 'completed'
          AND sale_date >= $1::date
-         AND sale_date <= ($2 || 'T23:59:59')::timestamp`,
+         AND sale_date < ($2::date + INTERVAL '1 day')`,
       [start, end]
     ),
     getOne(
@@ -490,7 +490,7 @@ export async function getWriteOffs(start, end, locationId = null) {
      WHERE status = 'posted'
        AND movement_type IN ('write_off', 'field_use')
        AND created_at >= $1::date
-       AND created_at <= ($2 || 'T23:59:59')::timestamp
+       AND created_at < ($2::date + INTERVAL '1 day')
        ${locFilter}
      ORDER BY created_at DESC`,
     params

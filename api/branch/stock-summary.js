@@ -1,6 +1,7 @@
 import { applyAuthCors } from '../_lib/auth.js';
 import { getMany } from '../db.js';
 import { ALL_BRANCH_IDS, normalizeBranchSlug } from '../_lib/branchUtils.js';
+import {getStockCostProjection} from '../services/stockCostReporting.js';
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
@@ -18,14 +19,14 @@ export default async function handler(req, res) {
       `SELECT * FROM branch_inventory_batches ORDER BY branch_id, product_name, expiry_date ASC NULLS LAST`
     );
 
-    let bimQuery = `SELECT branch_id, product_name, batch_no, type, SUM(quantity) as total_qty, MAX(created_at) as last_date, (array_agg(DISTINCT source_branch_id))[1] as source FROM branch_inventory_movements`;
+    let bimQuery = `SELECT branch_id, product_name, batch_no, reference, type, SUM(quantity) as total_qty, MAX(created_at) as last_date, (array_agg(DISTINCT source_branch_id))[1] as source FROM branch_inventory_movements`;
     const bimParams = [];
     const bimWhere = [];
     if (dateFrom) { bimParams.push(dateFrom); bimWhere.push(`created_at >= $${bimParams.length}::timestamp`); }
     if (dateTo) { bimParams.push(dateTo); bimWhere.push(`created_at < ($${bimParams.length}::date + interval '1 day')`); }
     if (branchFilter) { bimParams.push(branchFilter); bimWhere.push(`branch_id = $${bimParams.length}`); }
     if (bimWhere.length) bimQuery += ' WHERE ' + bimWhere.join(' AND ');
-    bimQuery += ' GROUP BY branch_id, product_name, batch_no, type';
+    bimQuery += ' GROUP BY branch_id, product_name, batch_no, reference, type';
     const bimAgg = await getMany(bimQuery, bimParams);
 
     // For opening-qty calculation: fetch individual movements BEFORE date_from.
@@ -37,8 +38,8 @@ export default async function handler(req, res) {
     let smPrePeriodRows  = [];
     if (dateFrom) {
       const smPrePs = [dateFrom];
-      let smPreQ = `SELECT movement_type, quantity, source_location, destination_location, reference_id, product_name, batch_no FROM stock_movements WHERE created_at < $1::timestamp`;
-      if (branchFilter) { smPrePs.push(branchFilter); smPrePs.push(branchFilter); smPreQ += ` AND (source_location = $${smPrePs.length - 1} OR destination_location = $${smPrePs.length})`; }
+      let smPreQ = `SELECT movement_type, quantity, source_location, destination_location, reference_id, product_name, batch_no FROM stock_movements WHERE status IN ('posted','approved') AND created_at < $1::timestamp`;
+      if (branchFilter) { smPrePs.push(branchFilter); smPrePs.push(`quarantine:${branchFilter}`); smPreQ += ` AND (source_location IN ($${smPrePs.length - 1},$${smPrePs.length}) OR destination_location IN ($${smPrePs.length - 1},$${smPrePs.length}))`; }
 
       const bimPrePs = [dateFrom];
       let bimPreQ = `SELECT branch_id, type, quantity, reference, product_name, batch_no FROM branch_inventory_movements WHERE created_at < $1::timestamp`;
@@ -52,12 +53,12 @@ export default async function handler(req, res) {
 
     let smQuery = `SELECT product_name, batch_no, expiry_date, movement_type, quantity, source_location, destination_location, reference_id, notes, created_by, created_at FROM stock_movements`;
     const smParams = [];
-    const smWhere = [];
+    const smWhere = ["status IN ('posted','approved')"];
     if (dateFrom) { smParams.push(dateFrom); smWhere.push(`created_at >= $${smParams.length}::timestamp`); }
     if (dateTo) { smParams.push(dateTo); smWhere.push(`created_at < ($${smParams.length}::date + interval '1 day')`); }
     if (branchFilter) {
-      smParams.push(branchFilter); smParams.push(branchFilter);
-      smWhere.push(`(source_location = $${smParams.length - 1} OR destination_location = $${smParams.length})`);
+      smParams.push(branchFilter); smParams.push(`quarantine:${branchFilter}`);
+      smWhere.push(`(source_location IN ($${smParams.length - 1},$${smParams.length}) OR destination_location IN ($${smParams.length - 1},$${smParams.length}))`);
     }
     if (smWhere.length) smQuery += ' WHERE ' + smWhere.join(' AND ');
     smQuery += ' ORDER BY created_at DESC';
@@ -139,14 +140,26 @@ export default async function handler(req, res) {
       if (qty > 0 && qty < 10) br.low_stock_count++;
     }
 
-    const smBranches = new Set();
-    const norm = (s) => (s || '').toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+    const smSaleBranches = new Set(),bimSaleBranches = new Set(),periodMirrorKeys = new Set();
+    // Quarantine is still physically owned at its original branch. Transit is not.
+    const norm = (s) => (s || '').replace(/^quarantine:/i,'').toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+    const conditionShift = sm => norm(sm.source_location) && norm(sm.source_location)===norm(sm.destination_location)
+      && [sm.source_location,sm.destination_location].some(location=>/^quarantine:/i.test(location || ''));
+    const periodMirrorKey=(branch,reference,product,batch)=>[branch,reference,product || '',batch || ''].join('|');
+    // Include owned reservations and segregated stock, not just available batches.
+    for(const br of Object.values(branchMap)) br.closing_qty=0;
+    for(const layer of await getStockCostProjection({locations:branchFilter?[branchFilter]:null})){
+      const key=normalizeBranchSlug(layer.location) || norm(layer.location);
+      if(branchMap[key] && !layer.inTransitQty) branchMap[key].closing_qty+=layer.onHandQty;
+    }
 
     for (const sm of stockMovements) {
       const src = norm(sm.source_location);
       const dst = norm(sm.destination_location);
       const q = Math.abs(Number(sm.quantity || 0));
       const t = (sm.movement_type || '').toLowerCase();
+      if(sm.reference_id && t!=='reserved') for(const location of [src,dst])
+        periodMirrorKeys.add(periodMirrorKey(location,sm.reference_id,sm.product_name,sm.batch_no));
       const fmtDt = (d) => d instanceof Date ? d.toISOString() : d;
       const movRecord = {
         product_name: sm.product_name,
@@ -162,14 +175,14 @@ export default async function handler(req, res) {
         created_at: fmtDt(sm.created_at),
       };
 
-      const isBranchLoc = (loc) => loc && !loc.includes('warehouse') && loc !== 'country_stock' && loc !== 'branch' && loc !== 'written_off' && loc !== 'customer' && loc !== 'patient';
+      const isBranchLoc = (loc) => loc && !loc.startsWith('in_transit') && !loc.includes('warehouse') && loc !== 'country_stock' && loc !== 'branch' && loc !== 'written_off' && loc !== 'customer' && loc !== 'patient';
 
       const isWarehouseLoc = (loc) => !loc || loc.includes('warehouse') || loc === 'country_stock';
 
       if (isBranchLoc(dst)) {
         const br = ensureBranch(dst);
-        smBranches.add(dst);
         br.movements.push(movRecord);
+        if (conditionShift(sm)) continue;
         // Warehouse dispatch/transfer to branch → qty_transferred_in only (not also qty_received)
         if ((t === 'transfer_out' && isWarehouseLoc(src)) || t === 'dispatched' ||
             t === 'warehouse_dispatch' || t === 'country_release') {
@@ -178,24 +191,23 @@ export default async function handler(req, res) {
         }
         // Direct receipts (branch_receipt, import, transfer_in) → qty_received only
         else if (t === 'transfer_in' || t === 'received' || t === 'receive' ||
-                 t === 'branch_receipt' || t === 'import_received') {
+                 t === 'branch_receipt' || t === 'import_received' || t === 'transit_receipt') {
           br.qty_received += q;
           if (sm.source_location) br.source_warehouse = sm.source_location;
         }
         else if (t === 'positive_adjustment') br.qty_adjusted += q;
-        else if (t === 'return' || t === 'return_in') br.qty_returned += q;
+        else if (t === 'return' || t === 'return_in' || t === 'refund_return') br.qty_returned += q;
         const ld = fmtDt(sm.created_at);
         if (!br.last_movement || (ld && ld > br.last_movement)) br.last_movement = ld;
       }
       if (isBranchLoc(src)) {
         const br = ensureBranch(src);
-        smBranches.add(src);
         if (!br.movements.includes(movRecord)) br.movements.push(movRecord);
-        if (t === 'transfer_out' || t === 'dispatched') br.qty_transferred_out += q;
+        if (t === 'transfer_out' || t === 'dispatched' || t === 'transit_dispatch') br.qty_transferred_out += q;
         else if (t === 'write_off' || t === 'field_use') br.qty_written_off += q;
-        else if (t === 'negative_adjustment') br.qty_written_off += q;
-        else if (t === 'campaign_free_item') br.qty_sold += q;
-        else if (t === 'sale' || t === 'campaign_sale' || t.includes('sale')) br.qty_sold += q;
+        else if (t === 'negative_adjustment') br.qty_adjusted -= q;
+        else if (t === 'campaign_free_item') {br.qty_sold += q;smSaleBranches.add(src);}
+        else if (t === 'sale' || t === 'campaign_sale' || t.includes('sale')) {br.qty_sold += q;smSaleBranches.add(src);}
         else if (t === 'dispense' || t === 'prescription_dispense') br.qty_dispensed += q;
         else if (t === 'positive_adjustment' || t === 'adjustment') br.qty_adjusted += q;
         const ld = fmtDt(sm.created_at);
@@ -205,7 +217,7 @@ export default async function handler(req, res) {
 
     for (const agg of bimAgg) {
       const normBimId = normalizeBranchSlug(agg.branch_id) || norm(agg.branch_id);
-      if (smBranches.has(normBimId) || smBranches.has(agg.branch_id)) continue;
+      if (agg.reference && periodMirrorKeys.has(periodMirrorKey(normBimId,agg.reference,agg.product_name,agg.batch_no))) continue;
       const br = ensureBranch(agg.branch_id);
       // Use Math.abs: direction is encoded in the type, not the stored quantity sign.
       const q = Math.abs(Number(agg.total_qty || 0));
@@ -216,13 +228,15 @@ export default async function handler(req, res) {
       }
       else if (t === 'sale' || t === 'walkin_sale' || t === 'walkin_member_sale' || t === 'walkin_non_member_sale' ||
                t === 'walk_in_member_sale' || t === 'walk_in_non_member_sale' ||
-               t === 'campaign_sale' || t === 'online_order_sale' || t === 'online_order_fulfilment') br.qty_sold += q;
-      else if (t === 'campaign_free_item') br.qty_sold += q;
-      else if (t === 'dispense' || t === 'prescription_dispense' || t === 'field_use') br.qty_dispensed += q;
+                t === 'campaign_sale' || t === 'online_order_sale' || t === 'online_order_fulfilment') {br.qty_sold += q;bimSaleBranches.add(normBimId);}
+      else if (t === 'campaign_free_item') {br.qty_sold += q;bimSaleBranches.add(normBimId);}
+      else if (t === 'dispense' || t === 'prescription_dispense') br.qty_dispensed += q;
       else if (t === 'transfer_out' || t === 'transfer') br.qty_transferred_out += q;
-      else if (t === 'write_off' || t === 'negative_adjustment') br.qty_written_off += q;
-      else if (t === 'return' || t === 'return_in') br.qty_returned += q;
-      else if (t === 'adjustment' || t === 'positive_adjustment') br.qty_adjusted += q;
+      else if (t === 'write_off' || t === 'field_use') br.qty_written_off += q;
+      else if (t === 'negative_adjustment') br.qty_adjusted -= q;
+      else if (t === 'return' || t === 'return_in' || t === 'refund_return') br.qty_returned += q;
+      else if (t === 'adjustment') br.qty_adjusted += Number(agg.total_qty || 0);
+      else if (t === 'positive_adjustment') br.qty_adjusted += q;
       const ld = agg.last_date instanceof Date ? agg.last_date.toISOString() : agg.last_date;
       if (!br.last_movement || (ld && ld > br.last_movement)) br.last_movement = ld;
     }
@@ -233,7 +247,7 @@ export default async function handler(req, res) {
       const br = ensureBranch(brId);
       br.sales_count++;
       br.sales_revenue += Number(sale.total || 0);
-      if (!smBranches.has(brId)) {
+      if (!smSaleBranches.has(brId) && !bimSaleBranches.has(brId)) {
         let items = [];
         try { items = typeof sale.items === 'string' ? JSON.parse(sale.items) : (sale.items || []); } catch {}
         const saleQty = items.reduce((s, i) => s + Number(i.quantity || 0), 0);
@@ -284,6 +298,7 @@ export default async function handler(req, res) {
         const dst = norm(sm.destination_location);
         const q   = Math.abs(Number(sm.quantity || 0)); // SM stores positive magnitudes
         const t   = (sm.movement_type || '').toLowerCase();
+        if (conditionShift(sm)) continue;
         if (isBranchLocO(dst)) {
           // Dispatch-type movements only count as inward when the SOURCE is not a branch
           // (warehouse→branch or country→branch). Branch-to-branch dispatches debit the
@@ -294,15 +309,15 @@ export default async function handler(req, res) {
             ensureOpeningNet(dst);
             openingNet[dst] += q;
           } else if (t === 'transfer_in' || t === 'received' || t === 'receive' ||
-                     t === 'branch_receipt' || t === 'import_received' ||
+                     t === 'branch_receipt' || t === 'import_received' || t === 'transit_receipt' ||
                      t === 'positive_adjustment' || t === 'adjustment' ||
-                     t === 'return' || t === 'return_in') {
+                     t === 'return' || t === 'return_in' || t === 'refund_return') {
             ensureOpeningNet(dst);
             openingNet[dst] += q;
           }
         }
         if (isBranchLocO(src)) {
-          if (t === 'transfer_out' || t === 'dispatched' || t === 'warehouse_dispatch' ||
+          if (t === 'transfer_out' || t === 'dispatched' || t === 'warehouse_dispatch' || t === 'transit_dispatch' ||
               t === 'write_off' || t === 'field_use' || t === 'negative_adjustment' ||
               t === 'campaign_free_item' || t === 'sale' || t === 'campaign_sale' ||
               t.includes('sale') || t === 'dispense' || t === 'prescription_dispense') {
@@ -316,7 +331,7 @@ export default async function handler(req, res) {
       // In-types contribute +signedQ; out-types contribute −signedQ.
       // This correctly handles adjustments where signedQ may be negative.
       const bimInTypes  = new Set(['receive','received','stock_receipt','transfer_in',
-                                   'return','return_in','positive_adjustment','adjustment']);
+                                   'return','return_in','refund_return','positive_adjustment','adjustment']);
       const bimOutTypes = new Set(['sale','walkin_sale','walkin_member_sale','walkin_non_member_sale',
                                    'walk_in_member_sale','walk_in_non_member_sale','campaign_sale',
                                    'online_order_sale','online_order_fulfilment','campaign_free_item',

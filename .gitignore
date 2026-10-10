@@ -8,3 +8,4 @@ version.json
 # from the current source files, preventing stale bundles reaching production.
 dist/
 client/dist/
+/generated-artifacts/
