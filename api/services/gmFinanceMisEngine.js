@@ -217,9 +217,9 @@ export async function getCompanyStockSummary() {
   const alertPolicy = await getStockAlertPolicy();
   const { lowStockThreshold: LOW_STOCK_THRESHOLD, expiryWarningDays: EXPIRY_WARN_DAYS } = alertPolicy;
   const layers=await getStockCostProjection();
-  const ibRows=layers.filter(r=>inferLocationType(r.location)==='branch').map(r=>({
+  const ibRows=layers.filter(r=>r.locationType==='branch').map(r=>({
     product_name:r.productName,expiry_date:r.expiryDate,closing_qty:r.qty,stock_value_dp:r.qty*(r.unitDPC ?? 0)}));
-  const batchRows=layers.filter(r=>inferLocationType(r.location)==='warehouse').map(r=>({
+  const batchRows=layers.filter(r=>r.locationType==='warehouse').map(r=>({
     product_name:r.productName,expiry_date:r.expiryDate,qty:r.qty,val_dp:r.qty*(r.unitDPC ?? 0)}));
 
   let totalQty = 0, totalValueDP = 0;

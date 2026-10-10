@@ -219,24 +219,51 @@ export async function publishRealtimeEvent(resource, action, data) {
   }
 }
 
-export async function withTransaction(fn) {
+// A session lock acquired before BEGIN protects the first MVCC snapshot.
+// Taking a transaction advisory lock via SELECT inside REPEATABLE READ is too
+// late: that SELECT establishes a snapshot even while it waits for the lock.
+export async function withTransaction(fn, { advisoryLockBeforeBegin } = {}) {
   const context = requestTransactions.getStore();
-  if (context?.active) return fn(context.client);
+  if (context?.active) {
+    if (advisoryLockBeforeBegin !== undefined)
+      throw new Error('A pre-snapshot lock requires a new transaction');
+    return fn(context.client);
+  }
   const pool = getPool();
   const client = await pool.connect();
+  let lockHeld = false, lockAttempted = false, transactionStarted = false, releaseError;
   try {
+    if (advisoryLockBeforeBegin !== undefined) {
+      lockAttempted = true;
+      await client.query('SELECT pg_advisory_lock($1)', [advisoryLockBeforeBegin]);
+      lockHeld = true;
+    }
     await client.query('BEGIN');
+    transactionStarted = true;
     const result = await fn(client);
     await client.query('COMMIT');
+    transactionStarted = false;
     return result;
   } catch (error) {
+    if (lockAttempted && !lockHeld) releaseError = error;
     try {
-      await client.query('ROLLBACK');
+      if (transactionStarted) await client.query('ROLLBACK');
     } catch (rollbackError) {
+      releaseError = rollbackError;
       console.error('Rollback error:', rollbackError.message);
     }
     throw error;
   } finally {
-    client.release();
+    if (lockHeld) {
+      try {
+        const result = await client.query('SELECT pg_advisory_unlock($1) AS unlocked', [advisoryLockBeforeBegin]);
+        if (!result.rows[0]?.unlocked) releaseError = new Error('Pre-snapshot lock was not released');
+      } catch (error) {
+        // Destroy rather than pool a connection which may still own a lock.
+        // Do not retry a callback whose COMMIT has already succeeded.
+        releaseError = error;
+      }
+    }
+    client.release(releaseError);
   }
 }

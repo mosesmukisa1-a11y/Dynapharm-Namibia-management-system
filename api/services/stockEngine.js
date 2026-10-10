@@ -86,6 +86,10 @@ function advisoryLockKey(locationId, productName, batchNo) {
   return h | 0; // signed 32-bit integer
 }
 
+function locationBalanceLockKey(locationType, locationId) {
+  return advisoryLockKey(`LOCATION:${locationType}:${locationId}`, '', '');
+}
+
 /**
  * Recompute inventory_balances for a given location + product + batch
  * using an *already-open* database client/transaction.
@@ -122,6 +126,11 @@ export async function recomputeInventoryBalanceTx(client, key, sharedLayers) {
   const { locationType, locationId, productName, batchNo, expiryDate } = key;
   const batchNoVal = batchNo || '';
 
+  // Coordinate single-key/embedded READ COMMITTED writers with the location
+  // refresh's pre-BEGIN session lock. Same connection acquisition is reentrant.
+  await client.query('SELECT pg_advisory_xact_lock($1)', [
+    locationBalanceLockKey(locationType, locationId),
+  ]);
   // Serialise concurrent recomputes for the same (locationId, productName, batchNo).
   // pg_advisory_xact_lock auto-releases on COMMIT/ROLLBACK — no leak risk.
   const lockKey = advisoryLockKey(locationId, productName, batchNoVal);
@@ -568,7 +577,8 @@ export async function recomputeLocationBalances(locationType, locationId) {
         expiryDate: r.expiry_date,
       },groups.get(identity({productName:r.product_name,batchNo:r.batch_no,expiryDate:r.expiry_date})) || []);
   }
-    });}catch(error){if(!['40001','40P01'].includes(error.code)||attempt===2)throw error;}
+    }, {advisoryLockBeforeBegin:locationBalanceLockKey(locationType,locationId)});
+    }catch(error){if(!['40001','40P01'].includes(error.code)||attempt===2)throw error;}
   }
 }
 
