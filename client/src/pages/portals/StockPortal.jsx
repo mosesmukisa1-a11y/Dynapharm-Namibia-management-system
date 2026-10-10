@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import QRCodeLib from 'qrcode';
 import { api } from '../../lib/api';
+import {stockOverviewLocation} from '../../lib/stockOverviewLocation';
+import {stockCartQuantity,validStockCart} from '../../lib/stockCartQuantity';
 import { useStockRealtime } from '../../hooks/useStockRealtime';
 import StaffServicesTab from '../../components/StaffServicesTab';
 import StaffMessagesTab from '../../components/StaffMessagesTab';
@@ -1669,7 +1671,8 @@ function StockPortalContent() {
 // ── AI Command Center ─────────────────────────────────────────────────────────
 function AICommandCenter({ branch }) {
   const { expiryWarningDays } = useStockAlertPolicy();
-  const [data, setData] = useState({ batches: [], movements: [], transfers: [], sales: [], branchData: [] });
+  const [data, setData] = useState({ batches: [], movements: [], transfers: [], sales: [], branchData: [],companySnapshot:null });
+  const [snapshotError,setSnapshotError]=useState('');
   const [loading, setLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState(new Date());
   const [alertFilter, setAlertFilter] = useState('all');
@@ -1683,11 +1686,13 @@ function AICommandCenter({ branch }) {
       api.stock.transfers().then(d => Array.isArray(d) ? d : d.transfers || []).catch(() => []),
       api.branch.walkinSales().then(d => Array.isArray(d) ? d : d.sales || d.walkin_sales || []).catch(() => []),
       api.branch.stockSummary().then(d => d.branches || []).catch(() => []),
-    ]).then(([priceData, batches, movements, transfers, sales, branchData]) => {
+      api.get('/stock/current-overview'),
+    ]).then(([priceData, batches, movements, transfers, sales, branchData,companySnapshot]) => {
       if (Array.isArray(priceData) && priceData.length > 0) setLivePrices(priceData);
-      setData({ batches, movements, transfers, sales, branchData });
+      setData({ batches, movements, transfers, sales, branchData,companySnapshot });
+      setSnapshotError('');
       setLastRefresh(new Date());
-    }).finally(() => setLoading(false));
+    }).catch(error=>setSnapshotError(error.message || 'Could not load original-cost stock snapshot')).finally(() => setLoading(false));
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -1697,7 +1702,7 @@ function AICommandCenter({ branch }) {
   const filterBatch = (b) => branch === 'all' || (b.location || '').toLowerCase().replace(/\s+/g, '_') === branch;
   const filteredBatches = data.batches.filter(filterBatch);
 
-  const branchBatchesFlat = data.branchData.flatMap(br => (br.inventory || []).map(inv => ({
+  const branchBatchesFlat = data.branchData.flatMap(br => (br.physical_inventory || br.inventory || []).map(inv => ({
     product_name: inv.product_name, description: inv.product_name,
     batch_no: inv.batch_no, expiry_date: inv.expiry_date,
     quantity: inv.quantity, unit_price: inv.unit_price || getCIFPrice(inv.product_name || ''),
@@ -1708,9 +1713,10 @@ function AICommandCenter({ branch }) {
   const now = new Date();
   const thirtyFwd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
   const ninetyFwd = new Date(Date.now() + expiryWarningDays * 24 * 60 * 60 * 1000);
-  const effQty = (b) => Number(b.remaining_quantity || b.quantity || 0);
-  const totalQty = allBatches.reduce((s, b) => s + effQty(b), 0);
-  const totalValue = allBatches.reduce((s, b) => s + effQty(b) * (Number(b.unit_price || 0) || getDPCPrice(b.product_name || '')), 0);
+  const effQty = (b) => Number(b.remaining_quantity ?? b.quantity ?? 0);
+  const physicalSummary=stockOverviewLocation(data.companySnapshot,branch);
+  const totalQty = Number(physicalSummary?.totalQtyUnits || 0);
+  const totalValue = Number(physicalSummary?.totalValueDP || 0);
   const expiredBatches = allBatches.filter(b => b.expiry_date && new Date(b.expiry_date) < now && effQty(b) > 0);
   const expiringBatches = allBatches.filter(b => b.expiry_date && new Date(b.expiry_date) > now && new Date(b.expiry_date) <= thirtyFwd);
 
@@ -1749,8 +1755,8 @@ function AICommandCenter({ branch }) {
   });
 
   // ── Expiry Timeline ──────────────────────────────────────────
-  const expiry30 = filteredBatches.filter(b => b.expiry_date && new Date(b.expiry_date) >= now && new Date(b.expiry_date) <= ninetyFwd);
-  const expiry60 = filteredBatches.filter(b => b.expiry_date && new Date(b.expiry_date) > thirtyFwd && new Date(b.expiry_date) <= ninetyFwd);
+  const expiry30 = filteredBatches.filter(b => effQty(b)>0 && b.expiry_date && new Date(b.expiry_date) >= now && new Date(b.expiry_date) <= ninetyFwd);
+  const expiry60 = filteredBatches.filter(b => effQty(b)>0 && b.expiry_date && new Date(b.expiry_date) > thirtyFwd && new Date(b.expiry_date) <= ninetyFwd);
 
   const insightColors = { critical: '#dc2626', danger: '#dc2626', warning: '#d97706', info: '#2563eb', success: '#16a34a' };
   const insightBgs = { critical: '#fef2f2', danger: '#fef2f2', warning: '#fffbeb', info: '#eff6ff', success: '#f0fdf4' };
@@ -1772,12 +1778,14 @@ function AICommandCenter({ branch }) {
           </div>
           <div className="flex gap-3 flex-wrap">
             <div style={{ textAlign: 'center', background: 'rgba(255,255,255,0.12)', borderRadius: 10, padding: '8px 16px' }}>
-              <div style={{ fontSize: '1.4rem', fontWeight: 900 }}>{totalQty.toLocaleString()}</div>
+              <div style={{ fontSize: '1.4rem', fontWeight: 900 }}>{physicalSummary?totalQty.toLocaleString():'Unavailable'}</div>
               <div style={{ fontSize: '0.7rem', opacity: 0.8 }}>Total Units</div>
             </div>
             <div style={{ textAlign: 'center', background: 'rgba(255,255,255,0.12)', borderRadius: 10, padding: '8px 16px' }}>
-              <div style={{ fontSize: '1.4rem', fontWeight: 900 }}>{formatCurrency(totalValue)}</div>
-              <div style={{ fontSize: '0.7rem', opacity: 0.8 }}>Stock Value</div>
+              <div style={{ fontSize: '1.4rem', fontWeight: 900 }}>{physicalSummary?formatCurrency(totalValue):'Unavailable'}</div>
+              <div style={{ fontSize: '0.7rem', opacity: 0.8 }}>{physicalSummary?.missingDPQuantity?'Known original DP subtotal':'Original DP Stock Value'}</div>
+              {!physicalSummary && <div role="alert">Stock snapshot unavailable</div>}
+              {snapshotError && <div role="alert">{snapshotError}</div>}
             </div>
             <div style={{ textAlign: 'center', background: outProducts.length > 0 ? 'rgba(220,38,38,0.3)' : 'rgba(255,255,255,0.12)', borderRadius: 10, padding: '8px 16px' }}>
               <div style={{ fontSize: '1.4rem', fontWeight: 900 }}>{criticalProducts.length + outProducts.length}</div>
@@ -3420,6 +3428,7 @@ function WarehouseTab({ name }) {
     e.preventDefault();
     if (!dispatchBranch) { setAlert({ type: 'error', msg: 'Please select a destination branch' }); return; }
     if (dispatchCart.length === 0) { setAlert({ type: 'error', msg: 'Add at least one product to dispatch' }); return; }
+    if (!validStockCart(dispatchCart)) { setAlert({type:'error',msg:'Enter a positive whole-unit quantity for every selected product.'}); return; }
     for (const c of dispatchCart) {
       const available = getAvailableBatchesForProduct(c.description);
       if (available.length === 0) {
@@ -5076,6 +5085,7 @@ function WarehouseTab({ name }) {
                           <span style={{ fontFamily: 'monospace', fontSize: '0.74rem', color: '#1d4ed8' }}>{batch?.batch_no || '—'}</span>
                           <span style={{ margin: '0 4px', color: '#94a3b8' }}>×</span>
                           <input type="number" min={1} max={Number(batch?.remaining_quantity ?? 999)}
+                            aria-label={`Dispatch quantity for ${c.description}`}
                             value={c.qty}
                             onChange={e => setDispatchCart(prev => prev.map(p => p.description === c.description ? { ...p, qty: Math.max(1, Number(e.target.value) || 1) } : p))}
                             style={{ width: 52, padding: '2px 5px', border: '1px solid #86efac', borderRadius: 5, fontWeight: 700, fontSize: '0.82rem', textAlign: 'center' }}
@@ -6534,8 +6544,7 @@ function ProductMultiCart({ cart, onCartChange }) {
   };
 
   const setQty = (desc, qty) => {
-    if (qty < 1) { onCartChange(cart.filter(c => c.description !== desc)); return; }
-    onCartChange(cart.map(c => c.description === desc ? { ...c, qty } : c));
+    onCartChange(stockCartQuantity(cart,desc,qty));
   };
 
   const removeItem = (desc) => onCartChange(cart.filter(c => c.description !== desc));
@@ -6584,11 +6593,11 @@ function ProductMultiCart({ cart, onCartChange }) {
             : cart.map(item => (
               <div key={item.description} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 0', borderBottom: '1px solid #f1f5f9' }}>
                 <span style={{ flex: 1, fontSize: '0.77rem', fontWeight: 600, color: '#1e293b', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.description}>{item.description}</span>
-                <button onClick={() => setQty(item.description, item.qty - 1)} style={{ width: 20, height: 20, border: '1px solid #fecaca', borderRadius: 4, background: '#fff', cursor: 'pointer', color: '#c41e3a', fontWeight: 700, fontSize: '0.8rem', lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
-                <input type="number" min="1" value={item.qty} onChange={e => setQty(item.description, Number(e.target.value))}
+                <button type="button" onClick={() => setQty(item.description, Math.max(1,Number(item.qty || 1) - 1))} style={{ width: 20, height: 20, border: '1px solid #fecaca', borderRadius: 4, background: '#fff', cursor: 'pointer', color: '#c41e3a', fontWeight: 700, fontSize: '0.8rem', lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
+                <input type="number" min="1" step="1" required aria-label={`Dispatch quantity for ${item.description}`} value={item.qty} onChange={e => setQty(item.description, e.target.value)}
                   style={{ width: 36, textAlign: 'center', border: '1px solid #e2e8f0', borderRadius: 4, fontSize: '0.8rem', fontWeight: 700, padding: '1px 2px' }} />
-                <button onClick={() => setQty(item.description, item.qty + 1)} style={{ width: 20, height: 20, border: '1px solid #fecaca', borderRadius: 4, background: '#fff', cursor: 'pointer', color: '#c41e3a', fontWeight: 700, fontSize: '0.8rem', lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
-                <button onClick={() => removeItem(item.description)} style={{ width: 18, height: 18, border: 'none', borderRadius: 4, background: '#fef2f2', cursor: 'pointer', color: '#ef4444', fontWeight: 800, fontSize: '0.75rem', lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+                <button type="button" onClick={() => setQty(item.description, Number(item.qty || 0) + 1)} style={{ width: 20, height: 20, border: '1px solid #fecaca', borderRadius: 4, background: '#fff', cursor: 'pointer', color: '#c41e3a', fontWeight: 700, fontSize: '0.8rem', lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                <button type="button" onClick={() => removeItem(item.description)} style={{ width: 18, height: 18, border: 'none', borderRadius: 4, background: '#fef2f2', cursor: 'pointer', color: '#ef4444', fontWeight: 800, fontSize: '0.75rem', lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
               </div>
             ))}
         </div>
@@ -11731,29 +11740,36 @@ function StockReportsTab({ branch }) {
   const [loading, setLoading] = useState(true);
   const [selectedBranch, setSelectedBranch] = useState(branch && branch !== 'all' ? branch : 'all');
   const [misReport, setMisReport] = useState(null);
+  const [companySnapshot,setCompanySnapshot]=useState(null);
+  const [reportError,setReportError]=useState('');
   const [period, setPeriod] = useState(getDefaultPeriod);
 
   const loadData = useCallback(() => {
     setLoading(true);
+    setReportError('');
     const params = new URLSearchParams();
     if (period.from) params.set('date_from', period.from);
     if (period.to) params.set('date_to', period.to);
     Promise.all([
-      api.branch.stockSummary(params.toString()).then(d => d.branches || []).catch(() => []),
+      api.branch.stockSummary(params.toString()).then(d => d.branches || []),
       api.stock.batches().then(d => Array.isArray(d) ? d : d.batches || []).catch(() => []),
       api.mis.stockReport().catch(() => null),
       api.stock.movements().then(d => Array.isArray(d) ? d : d.movements || []).catch(() => []),
-    ]).then(([bd, b, mis, m]) => {
+      api.get('/stock/current-overview'),
+    ]).then(([bd, b, mis, m,current]) => {
       setBranchData(bd);
       setBatches(b);
       setMisReport(mis);
       setMovements(m);
-    }).finally(() => setLoading(false));
+      setCompanySnapshot(current.summary);
+    }).catch(error=>setReportError(error.message || 'Stock report could not be loaded'))
+      .finally(() => setLoading(false));
   }, [period.from, period.to]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
   if (loading) return <LoadingSpinner />;
+  if(reportError)return <Card><Alert type="error" message={reportError} /><Button onClick={loadData}>Retry stock report</Button></Card>;
 
   const now = new Date();
   const periodLabel = fmtPeriodLabel(period.from, period.to);
@@ -11765,10 +11781,7 @@ function StockReportsTab({ branch }) {
     const b = br.name;
     const data = branchData.find(d => d.branch_id === key);
     if (!data) return { name: b, key, formula: { opening: 0, issued: 0, salesQty: 0, dispensed: 0, writeoffs: 0, transferredOut: 0, returns: 0, closing: 0, closingValue: 0, salesRevenue: 0, expiringQty: 0, expiredQty: 0 } };
-    const closingDPC = (data.inventory || []).reduce((s, inv) => {
-      const qty = Number(inv.quantity || 0);
-      return s + qty * (getDPCPrice(inv.product_name || '') || Number(inv.unit_price || 0));
-    }, 0);
+    const closingDPC=Number(data.dp_value || 0);
     return {
       name: b, key,
       formula: {
@@ -11849,7 +11862,7 @@ function StockReportsTab({ branch }) {
     <table><thead><tr><th>Branch</th><th>Opening</th><th>+ Received</th><th>− Sales</th><th>− Dispensed</th><th>− Write-offs</th><th>− Transferred Out</th><th>+ Returns</th><th>= Closing Qty</th><th>Closing Value (DP)</th></tr></thead>
     <tbody>${brRows}
     <tr class="total-row">
-      <td><strong>COMPANY TOTAL</strong></td>
+      <td><strong>ALL BRANCHES TOTAL</strong></td>
       <td><strong>${cs.opening.toLocaleString()}</strong></td>
       <td><strong style="color:#166534">+${cs.issued.toLocaleString()}</strong></td>
       <td><strong style="color:#c41e3a">−${cs.salesQty.toLocaleString()}</strong></td>
@@ -11882,9 +11895,23 @@ function StockReportsTab({ branch }) {
       {/* Period filter */}
       <PeriodFilter period={period} onChange={setPeriod} />
 
+      {companySnapshot && <Card>
+        <h3 className="font-bold text-gray-800 mb-3">Current Company Stock — All Locations</h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div>Owned stock <strong>{companySnapshot.totalQtyUnits.toLocaleString()} units</strong></div>
+          <div>Available <strong>{companySnapshot.availableQty.toLocaleString()}</strong></div>
+          <div>Quarantined <strong>{companySnapshot.quarantinedQty.toLocaleString()}</strong></div>
+          <div>In transit <strong>{companySnapshot.inTransitQty.toLocaleString()}</strong></div>
+          <div>Original CIF <strong>N$ {companySnapshot.totalValueCIF.toFixed(2)}</strong></div>
+          <div>Original DP <strong>N$ {companySnapshot.totalValueDP.toFixed(2)}</strong></div>
+        </div>
+        <p className="text-xs text-gray-500 mt-3">Current owned stock includes warehouse, branch and held stock. The movement formula below is the branch subtotal only, not company-wide stock.</p>
+        {!companySnapshot.valuationComplete && <Alert type="warning" message="Source-cost evidence is incomplete. Displayed values are known subtotals, not complete company valuations." />}
+      </Card>}
+
       {/* Company summary formula */}
       <div style={{ background: '#fff', border: '1.5px solid #f0e8ea', borderRadius: 14, padding: '16px 20px', marginBottom: 18 }}>
-        <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#c41e3a', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: 12, borderBottom: '1px solid #fecaca', paddingBottom: 8 }}>📐 Company-Wide Formula — {periodLabel}</div>
+        <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#c41e3a', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: 12, borderBottom: '1px solid #fecaca', paddingBottom: 8 }}>📐 All-Branch Movement Formula — {periodLabel}</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(110px,1fr))', gap: 8 }}>
           {[
             { label: 'Opening Stock',       value: companySummary.opening,        color: '#1e3a5f', bg: '#f4f7fb' },
@@ -11945,7 +11972,7 @@ function StockReportsTab({ branch }) {
         />
         {/* Total row */}
         <div style={{ padding: '10px 16px', background: '#fff0f3', borderTop: '2px solid #fecaca', display: 'flex', gap: 18, fontSize: '0.81rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ fontWeight: 800, color: '#c41e3a' }}>COMPANY TOTAL</span>
+          <span style={{ fontWeight: 800, color: '#c41e3a' }}>ALL BRANCHES TOTAL</span>
           <span>Opening: <strong>{companySummary.opening.toLocaleString()}</strong></span>
           <span>+Received: <strong style={{ color: '#166534' }}>{companySummary.issued.toLocaleString()}</strong></span>
           <span>−Sales: <strong style={{ color: '#c41e3a' }}>{companySummary.salesQty.toLocaleString()}</strong></span>

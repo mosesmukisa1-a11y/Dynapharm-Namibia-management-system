@@ -1,6 +1,6 @@
-import { applyAuthCors } from '../_lib/auth.js';
+import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
 import { getMany } from '../db.js';
-import { ALL_BRANCH_IDS, normalizeBranchSlug } from '../_lib/branchUtils.js';
+import { ALL_BRANCH_IDS, normalizeBranchSlug,branchSearchTerms } from '../_lib/branchUtils.js';
 import {getStockCostProjection} from '../services/stockCostReporting.js';
 import { getStockAlertPolicy } from '../services/stockAlertPolicy.js';
 
@@ -8,6 +8,13 @@ export default async function handler(req, res) {
   applyAuthCors(req, res);
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+  if (!req.user) return res.status(401).json({success:false,error:'Authentication required'});
+  const role=String(req.user.role || '').trim().toLowerCase();
+  const branchScoped=['branch','branch_manager','branch_staff','branch_sales','dispenser',
+    'consultant','frontdesk','stock_manager'].includes(role);
+  if(!branchScoped && !['stock','finance','finance_manager','mis','gm','general_manager',
+    'director','admin','superadmin','super_admin'].includes(role))
+    return res.status(403).json({success:false,error:'Stock reporting access required'});
 
   try {
     const alertPolicy = await getStockAlertPolicy();
@@ -15,7 +22,15 @@ export default async function handler(req, res) {
     const dateFrom = url.searchParams.get('date_from') || null;
     const dateTo = url.searchParams.get('date_to') || null;
     const branchFilterRaw = url.searchParams.get('branch') || null;
-    const branchFilter = branchFilterRaw ? (normalizeBranchSlug(branchFilterRaw) || branchFilterRaw) : null;
+    let branchFilter = branchFilterRaw ? (normalizeBranchSlug(branchFilterRaw) || branchFilterRaw) : null;
+    if(branchScoped){
+      const scope=getBranchScope({...req.user,role:'branch_manager'});
+      const allowed=new Set((scope.branches || []).map(normalizeBranchSlug));
+      if(!allowed.size)return res.status(403).json({success:false,error:'An assigned branch is required'});
+      branchFilter=branchFilter || normalizeBranchSlug(scope.primaryBranch) || [...allowed][0];
+      if(!allowed.has(branchFilter))
+        return res.status(403).json({success:false,error:'Access to this branch is not permitted'});
+    }
 
     const branchInventory = await getMany(
       `SELECT * FROM branch_inventory_batches ORDER BY branch_id, product_name, expiry_date ASC NULLS LAST`
@@ -149,10 +164,29 @@ export default async function handler(req, res) {
       && [sm.source_location,sm.destination_location].some(location=>/^quarantine:/i.test(location || ''));
     const periodMirrorKey=(branch,reference,product,batch)=>[branch,reference,product || '',batch || ''].join('|');
     // Include owned reservations and segregated stock, not just available batches.
-    for(const br of Object.values(branchMap)) br.closing_qty=0;
-    for(const layer of await getStockCostProjection({locations:branchFilter?[branchFilter]:null})){
+    for(const br of Object.values(branchMap)){
+      br.closing_qty=0;br.dp_value=0;br.cif_value=0;
+      br.available_qty=0;br.quarantined_qty=0;br.reserved_qty=0;
+      br.physical_inventory=[];
+      br.missing_cost_qty=0;br.missing_dp_qty=0;
+    }
+    for(const layer of await getStockCostProjection({locations:branchFilter?branchSearchTerms(branchFilter):null,branchOnly:true})){
       const key=normalizeBranchSlug(layer.location) || norm(layer.location);
-      if(branchMap[key] && !layer.inTransitQty) branchMap[key].closing_qty+=layer.onHandQty;
+      const br=branchMap[key];
+      if(br && !layer.inTransitQty){
+        br.physical_inventory.push({
+          id:layer.id,product_name:layer.productName,batch_no:layer.batchNo,expiry_date:layer.expiryDate,
+          quantity:layer.onHandQty,available_qty:layer.availableQty,reserved_qty:layer.reservedQty,
+          quarantined_qty:layer.quarantinedQty,expired_qty:layer.expiredQty,condition:layer.condition,
+          unit_dp:layer.unitDPC,unit_cif:layer.unitCIF,dp_value:layer.onHandQty*(layer.unitDPC ?? 0),
+          cif_value:layer.onHandQty*(layer.unitCIF ?? 0),source_batch_id:layer.sourceBatchId,
+        });
+        br.closing_qty+=layer.onHandQty;br.available_qty+=layer.availableQty;
+        br.quarantined_qty+=layer.quarantinedQty;br.reserved_qty+=layer.reservedQty;
+        br.cif_value+=layer.onHandQty*(layer.unitCIF ?? 0);
+        br.dp_value+=layer.onHandQty*(layer.unitDPC ?? 0);
+        br.missing_cost_qty+=layer.missingCostQuantity;br.missing_dp_qty+=layer.missingDPCQuantity;
+      }
     }
 
     for (const sm of stockMovements) {
@@ -376,8 +410,8 @@ export default async function handler(req, res) {
     res.json({
       success: true,
       alertPolicy,
-      branches: Object.values(branchMap),
-      total_branches: Object.keys(branchMap).length,
+      branches: Object.values(branchMap).filter(br=>!branchFilter || br.branch_id===branchFilter),
+      total_branches: Object.values(branchMap).filter(br=>!branchFilter || br.branch_id===branchFilter).length,
     });
   } catch (err) {
     console.error('Branch stock summary error:', err);

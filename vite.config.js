@@ -12,6 +12,11 @@ export default defineConfig({
     port: 5000,
     host: '0.0.0.0',
     allowedHosts: true,
+    watch: {
+      // Audit metadata and workflow logs are not browser source. Watching them
+      // causes full-page reloads which discard staff forms during verification.
+      ignored: [/(?:^|\/)(?:\.local|\.agents|\.cache|generated-artifacts|attached_assets)(?:\/|$)/],
+    },
     proxy: {
       '/api': {
         target: 'http://localhost:3001',

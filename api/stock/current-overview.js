@@ -11,16 +11,16 @@
  *     remaining_quantity > 0 are included — zero-qty batches are excluded
  *     so they don't inflate totals via any fallback.
  *
- *   Branches   → inventory_balances WHERE location_type = 'branch'
- *     Derived from posted stock_movements. Falls back to product_prices
- *     unit prices where stored stock_value_* is zero.
+ *   Branches → canonical physical source layers, reservations and segregation.
+ *     Original received costs are retained; unmatched cached balances and current
+ *     catalogue prices never supply physical stock or historical source costs.
  *
- *   Field      → field_stock balances, priced via product_prices.
- *     origin_location shown as source branch.
+ *   Field → legacy custody quantities; source costs explicitly unverified.
  */
 import { applyAuthCors } from '../_lib/auth.js';
 import { getMany } from '../db.js';
-import { ALL_BRANCH_LOCATION_ALIASES, normalizeBranchSlug } from '../_lib/branchUtils.js';
+import { normalizeBranchSlug } from '../_lib/branchUtils.js';
+import {getStockCostProjection} from '../services/stockCostReporting.js';
 
 const ALLOWED = new Set(['admin', 'gm', 'director', 'mis', 'stock', 'finance']);
 
@@ -36,94 +36,12 @@ export default async function handler(req, res) {
   if (!ALLOWED.has(req.user.role)) return res.status(403).json({ success: false, error: 'Access denied' });
 
   try {
-    const [branchRows, ibRows, warehouseRows, fieldRows, priceRows] = await Promise.all([
+    const [layers, fieldRows, priceRows, branchNames] = await Promise.all([
+      // One physical/status snapshot, with immutable received source costs.
+      // Cached closing balances and today's price list are not physical evidence.
+      getStockCostProjection(),
 
-      // ── Branches primary: branch_inventory_batches (authoritative source) ──
-      // Reading branch_inventory_batches directly always reflects the exact physical
-      // quantities because every movement path (sales, write-offs, transfers, returns,
-      // dispenses) transactionally updates this table.
-      getMany(
-        `SELECT b.branch_id AS location_id,
-                COALESCE(br.name, b.branch_id) AS location_name,
-                b.product_name,
-                SUM(b.quantity)                                AS qty,
-                SUM(b.quantity * COALESCE(p.dp,  0))          AS val_dp,
-                SUM(b.quantity * COALESCE(p.cif, 0))          AS val_cif,
-                MAX(p.dp)                                      AS unit_dp,
-                MAX(p.cif)                                     AS unit_cif
-         FROM branch_inventory_batches b
-         LEFT JOIN branches br ON br.id = b.branch_id
-            OR br.id = CASE b.branch_id
-              WHEN 'oshakati_branch' THEN 'oshakati'
-              WHEN 'oshakati'        THEN 'oshakati_branch'
-              WHEN 'katima_mulilo'   THEN 'katima'
-              WHEN 'katima'          THEN 'katima_mulilo'
-              ELSE NULL END
-         LEFT JOIN live_product_prices p
-               ON LOWER(TRIM(p.description)) = LOWER(TRIM(b.product_name))
-         WHERE b.quantity > 0
-         GROUP BY b.branch_id, br.name, b.product_name`
-      ),
-
-      // ── Branches fallback: inventory_balances for products not in branch_inventory_batches ──
-      // Catches any edge case where a movement updated inventory_balances (via stockEngine
-      // recompute) but the corresponding branch_inventory_batches row is missing or was
-      // not yet created (e.g. older import paths, legacy data).
-      getMany(
-        `SELECT ib.location_id,
-                COALESCE(br.name, ib.location_id) AS location_name,
-                ib.product_name,
-                ib.closing_qty                            AS qty,
-                ib.closing_qty * COALESCE(p.dp,  0)      AS val_dp,
-                ib.closing_qty * COALESCE(p.cif, 0)      AS val_cif,
-                COALESCE(p.dp,  0)                        AS unit_dp,
-                COALESCE(p.cif, 0)                        AS unit_cif
-         FROM inventory_balances ib
-         LEFT JOIN branches br ON LOWER(TRIM(br.id)) = LOWER(TRIM(ib.location_id))
-         LEFT JOIN live_product_prices p ON LOWER(TRIM(p.description)) = LOWER(TRIM(ib.product_name))
-         WHERE ib.location_type = 'branch'
-           AND ib.closing_qty > 0
-           AND NOT EXISTS (
-             SELECT 1 FROM branch_inventory_batches bib
-             WHERE LOWER(REPLACE(bib.branch_id,' ','_')) = LOWER(REPLACE(ib.location_id,' ','_'))
-               AND LOWER(TRIM(bib.product_name)) = LOWER(TRIM(ib.product_name))
-               AND bib.quantity > 0
-           )`
-      ),
-
-      // ── Warehouses + Country Stock: stock_batches.remaining_quantity ──
-      // LEFT JOIN product_prices so batches without an exact price-catalogue
-      // match are still included (prices fall back to 0 / lookupCif/Dp).
-      // Country stock is included so the GM sees the complete picture.
-      // IMPORTANT: exclude all known branch IDs from stock_batches so that
-      // any batch that was mistakenly imported under a branch location, or whose
-      // remaining_quantity was not zeroed after dispatch, does not double-count
-      // with the branch_inventory_batches query above.
-      getMany(
-        // Fix #1 + #2: apply per-batch price fallback using the product_prices JOIN
-        // so batches with a zero/null stored cost use the catalogue price for their
-        // share of the value total, not zero.  This replaces the old whole-aggregate
-        // JS fallback (val || qty * cataloguePrice) which silently undercounted when
-        // only *some* batches in a group had stored costs.
-        // NULLIF(…, 0) treats a stored cost of 0 as "not set" so the catalogue price
-        // fills in — same assumption used elsewhere in the pricing pipeline.
-        `SELECT sb.location, sb.description AS product_name,
-                SUM(sb.remaining_quantity)                                                            AS qty,
-                SUM(sb.remaining_quantity * COALESCE(NULLIF(sb.cif_unit_cost,  0), pp.cif,  0))  AS val_cif,
-                SUM(sb.remaining_quantity * COALESCE(NULLIF(sb.dpc_unit_value, 0), pp.dp,   0))  AS val_dp,
-                COALESCE(MAX(NULLIF(sb.cif_unit_cost,  0)), MAX(pp.cif),  0)                      AS unit_cif,
-                COALESCE(MAX(NULLIF(sb.dpc_unit_value, 0)), MAX(pp.dp),   0)                      AS unit_dp
-         FROM stock_batches sb
-         LEFT JOIN live_product_prices pp
-               ON LOWER(TRIM(pp.description)) = LOWER(TRIM(sb.description))
-         WHERE sb.remaining_quantity > 0
-           AND COALESCE(sb.status, '') != 'expired'
-           AND sb.location != ALL($1::text[])
-         GROUP BY sb.location, sb.description`,
-        [ALL_BRANCH_LOCATION_ALIASES]
-      ),
-
-      // ── Field stock: priced via GM price list ──
+      // ── Legacy field custody, without inferred cost provenance ──
       getMany(
         `SELECT product_name,
                 officer_name,
@@ -136,18 +54,20 @@ export default async function handler(req, res) {
 
       // ── Price lookup for fallback / field stock pricing + zero-stock product list ──
       getMany(`SELECT description, cif, dp FROM live_product_prices WHERE dp > 0 OR cif > 0 ORDER BY description`),
+      getMany('SELECT id,name FROM branches'),
     ]);
-
-    // Price lookup keyed by lowercase product name
-    const priceMap = {};
-    for (const p of priceRows) {
-      priceMap[(p.description || '').toLowerCase().trim()] = {
-        cif: Number(p.cif || 0),
-        dp:  Number(p.dp  || 0),
-      };
-    }
-    const lookupCif = n => priceMap[(n || '').toLowerCase().trim()]?.cif || 0;
-    const lookupDp  = n => priceMap[(n || '').toLowerCase().trim()]?.dp  || 0;
+    const names=new Map(branchNames.map(r=>[normalizeBranchSlug(r.id),r.name]));
+    const stats=r=>({availableQty:r.availableQty,reservedQty:r.reservedQty,
+      quarantinedQty:r.quarantinedQty,expiredQty:r.expiredQty,inTransitQty:r.inTransitQty,
+      missingCostQuantity:r.missingCostQuantity,missingDPQuantity:r.missingDPCQuantity});
+    const branchRows=layers.filter(r=>r.locationType==='branch').map(r=>({
+      location_id:r.location,location_name:names.get(normalizeBranchSlug(r.location)) || locLabel(r.location),
+      product_name:r.productName,qty:r.qty,val_dp:r.qty*(r.unitDPC ?? 0),val_cif:r.qty*(r.unitCIF ?? 0),...stats(r)}));
+    const ibRows=[]; // Unmatched cached quantities stay in read-only reconciliation, not added stock.
+    const warehouseRows=layers.filter(r=>r.locationType!=='branch').map(r=>({
+      location:r.location,location_type:r.locationType,product_name:r.productName,
+      qty:r.qty,val_dp:r.qty*(r.unitDPC ?? 0),val_cif:r.qty*(r.unitCIF ?? 0),...stats(r)}));
+    const statusKeys=['availableQty','reservedQty','quarantinedQty','expiredQty','inTransitQty','missingCostQuantity','missingDPQuantity'];
 
     // Location-type classifier for stock_batches rows
     const COUNTRY_LOCS  = new Set(['country_stock']);
@@ -160,7 +80,7 @@ export default async function handler(req, res) {
 
     const products = new Map();
 
-    function upsert(productName, locationType, locationName, qty, cif, dp) {
+    function upsert(productName, locationType, locationName, qty, cif, dp, state={}) {
       const key = (productName || '').toLowerCase().trim();
       if (!key || qty <= 0) return;
       if (!products.has(key)) {
@@ -171,12 +91,15 @@ export default async function handler(req, res) {
       p.totalQty      += qty;
       p.totalValueCIF += cif;
       p.totalValueDP  += dp;
+      for(const name of statusKeys)p[name]=(p[name] || 0)+Number(state[name] || 0);
       p.locations.push({
         locationType,
         locationName,
+        locationId:locationType==='branch'?state.location_id:(state.location || null),
         qty,
         valueCIF: parseFloat(cif.toFixed(2)),
         valueDP:  parseFloat(dp.toFixed(2)),
+        ...Object.fromEntries(statusKeys.map(name=>[name,Number(state[name] || 0)])),
       });
     }
 
@@ -208,6 +131,7 @@ export default async function handler(req, res) {
       agg.qty     += Number(r.qty     || 0);
       agg.val_dp  += Number(r.val_dp  || 0);
       agg.val_cif += Number(r.val_cif || 0);
+      for(const name of statusKeys)agg[name]=(agg[name] || 0)+Number(r[name] || 0);
       if (Number(r.unit_dp  || 0) > 0) agg.unit_dp  = Number(r.unit_dp);
       if (Number(r.unit_cif || 0) > 0) agg.unit_cif = Number(r.unit_cif);
       // Prefer the real branch name from the branches table over a raw slug
@@ -243,20 +167,18 @@ export default async function handler(req, res) {
     // ── Branch rows ──
     for (const r of branchMerged.values()) {
       const qty     = Number(r.qty     || 0);
-      const unitDP  = Number(r.unit_dp  || 0) || lookupDp(r.product_name);
-      const unitCIF = Number(r.unit_cif || 0) || lookupCif(r.product_name);
-      const valDP   = Number(r.val_dp  || 0) || qty * unitDP;
-      const valCIF  = Number(r.val_cif || 0) || qty * unitCIF;
+      const valDP   = Number(r.val_dp || 0);
+      const valCIF  = Number(r.val_cif || 0);
       // Use the real branch name from the branches table (r.location_name)
-      upsert(r.product_name, 'branch', r.location_name || locLabel(r.location_id), qty, valCIF, valDP);
+      upsert(r.product_name, 'branch', r.location_name || locLabel(r.location_id), qty, valCIF, valDP,r);
     }
 
     // ── Warehouse + Country Stock rows (from stock_batches) ──
     for (const r of warehouseRows) {
       const qty    = Number(r.qty     || 0);
-      const valDP  = Number(r.val_dp  || 0) || qty * lookupDp(r.product_name);
-      const valCIF = Number(r.val_cif || 0) || qty * lookupCif(r.product_name);
-      upsert(r.product_name, batchLocType(r.location), locLabel(r.location), qty, valCIF, valDP);
+      const valDP  = Number(r.val_dp || 0);
+      const valCIF = Number(r.val_cif || 0);
+      upsert(r.product_name, r.location_type || batchLocType(r.location), locLabel(r.location), qty, valCIF, valDP,r);
     }
 
     // ── Field stock ──
@@ -266,10 +188,8 @@ export default async function handler(req, res) {
       const label    = r.officer_name
         ? `${r.officer_name} (from ${srcLabel})`
         : `Field — ${srcLabel}`;
-      upsert(r.product_name, 'field', label, qty,
-        qty * lookupCif(r.product_name),
-        qty * lookupDp(r.product_name),
-      );
+      // Legacy field custody has no frozen source-cost evidence in this register.
+      upsert(r.product_name, 'field', label, qty,0,0,{missingCostQuantity:qty,missingDPQuantity:qty});
     }
 
     const productList = Array.from(products.values())
@@ -304,7 +224,9 @@ export default async function handler(req, res) {
       totalValueDP:         parseFloat(productList.reduce((s, p) => s + p.totalValueDP,  0).toFixed(2)),
       zeroStockCount:       zeroStockProducts.length,
       totalProductsInCatalogue: productList.length + zeroStockProducts.length,
+      ...Object.fromEntries(statusKeys.map(name=>[name,productList.reduce((n,p)=>n+(p[name] || 0),0)])),
     };
+    summary.valuationComplete=!summary.missingCostQuantity && !summary.missingDPQuantity;
 
     res.json({ success: true, summary, products: productList, zeroStockProducts });
   } catch (err) {

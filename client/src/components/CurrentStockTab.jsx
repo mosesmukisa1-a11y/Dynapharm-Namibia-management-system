@@ -10,6 +10,7 @@
  *   field    → field_stock balances
  */
 import { useState, useEffect, useCallback, Fragment } from 'react';
+import {buildStockOverviewCSV,stockValuationDisclosure} from '../lib/stockOverviewExport.js';
 import { api } from '../lib/api';
 import { formatCurrency } from '../lib/constants';
 import { Card, CardBody, CardHeader, LoadingSpinner, Alert } from './ui';
@@ -113,15 +114,7 @@ export default function CurrentStockTab() {
 
   const exportCSV = () => {
     if (!data) return;
-    const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const rows = [['Product', 'Total Qty', 'CIF Value (N$)', 'DP Value (N$)', 'Location Type', 'Location', 'Loc Qty', 'Loc CIF', 'Loc DP']];
-    for (const p of data.products) {
-      rows.push([p.productName, p.totalQty, p.totalValueCIF, p.totalValueDP, '', '', '', '', '']);
-      for (const l of p.locations) {
-        rows.push(['', '', '', '', l.locationType, l.locationName, l.qty, l.valueCIF, l.valueDP]);
-      }
-    }
-    const csv = rows.map(r => r.map(q).join(',')).join('\n');
+    const csv=buildStockOverviewCSV(data);
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
     a.download = `Dynapharm-Stock-Overview-${new Date().toISOString().slice(0, 10)}.csv`;
@@ -130,6 +123,7 @@ export default function CurrentStockTab() {
 
   const exportSummaryPDF = () => {
     if (!data) return;
+    const valuation=stockValuationDisclosure(data.summary);
     const esc  = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const fmtN = v => 'N$ ' + Number(v || 0).toLocaleString('en-NA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const fmtQ = v => Number(v || 0).toLocaleString('en-NA', { minimumFractionDigits: 0, maximumFractionDigits: 1 });
@@ -235,11 +229,12 @@ export default function CurrentStockTab() {
 </div>
 
 <!-- KPI Cards -->
+${valuation.incomplete?`<div role="alert" style="border:2px solid #b45309;background:#fffbeb;padding:12px;margin-bottom:16px;font-weight:bold">${esc(valuation.notice)}</div>`:''}
 <div class="kpi-grid">
-  <div class="kpi g"><div class="kpi-lbl">Total Value (DP)</div><div class="kpi-val">${fmtN(data.summary.totalValueDP)}</div><div class="kpi-sub">All locations</div></div>
-  <div class="kpi a"><div class="kpi-lbl">Total Value (CIF)</div><div class="kpi-val">${fmtN(data.summary.totalValueCIF)}</div><div class="kpi-sub">Landed cost</div></div>
+  <div class="kpi g"><div class="kpi-lbl">${valuation.dpLabel}</div><div class="kpi-val">${fmtN(data.summary.totalValueDP)}</div><div class="kpi-sub">All locations</div></div>
+  <div class="kpi a"><div class="kpi-lbl">${valuation.cifLabel}</div><div class="kpi-val">${fmtN(data.summary.totalValueCIF)}</div><div class="kpi-sub">Landed cost</div></div>
   <div class="kpi p"><div class="kpi-lbl">Total Units</div><div class="kpi-val">${fmtQ(data.summary.totalQtyUnits)}</div><div class="kpi-sub">All locations</div></div>
-  <div class="kpi b"><div class="kpi-lbl">In Operations (DP)</div><div class="kpi-val">${fmtN(inOpsDP)}</div><div class="kpi-sub">${fmtQ(inOpsQty)} units · WH + Branch + Field</div></div>
+  <div class="kpi b"><div class="kpi-lbl">${valuation.incomplete?'Known In Operations DP subtotal':'In Operations (DP)'}</div><div class="kpi-val">${fmtN(inOpsDP)}</div><div class="kpi-sub">${fmtQ(inOpsQty)} units · WH + Branch + Field</div></div>
 </div>
 
 <!-- Location-type breakdown -->
@@ -248,8 +243,8 @@ export default function CurrentStockTab() {
   <thead><tr>
     <th>Location Type</th>
     <th class="num">Total Units</th>
-    <th class="num">CIF Value (N$)</th>
-    <th class="num">DP Value (N$)</th>
+    <th class="num">${valuation.cifLabel} (N$)</th>
+    <th class="num">${valuation.dpLabel} (N$)</th>
   </tr></thead>
   <tbody>
     ${locBreakdownRows}
@@ -269,8 +264,8 @@ export default function CurrentStockTab() {
     <th class="idx">#</th>
     <th>Product</th>
     <th class="num">Total Units</th>
-    <th class="num">CIF Value (N$)</th>
-    <th class="num">DP Value (N$)</th>
+    <th class="num">${valuation.cifLabel} (N$)</th>
+    <th class="num">${valuation.dpLabel} (N$)</th>
   </tr></thead>
   <tbody>${productSummaryRows}</tbody>
   <tfoot><tr>
@@ -292,6 +287,7 @@ export default function CurrentStockTab() {
 
   const exportPDF = () => {
     if (!data) return;
+    const valuation=stockValuationDisclosure(data.summary);
     const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const fmtN = v => 'N$ ' + Number(v || 0).toLocaleString('en-NA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const fmtQ = v => Number(v || 0).toLocaleString('en-NA', { minimumFractionDigits: 0, maximumFractionDigits: 1 });
@@ -303,10 +299,10 @@ export default function CurrentStockTab() {
 
     const summaryCards = `
       <div class="summary-grid">
-        <div class="card green"><div class="card-label">Total Value (DP)</div><div class="card-val">${fmtN(data.summary.totalValueDP)}</div><div class="card-sub">All locations</div></div>
-        <div class="card amber"><div class="card-label">Total Value (CIF)</div><div class="card-val">${fmtN(data.summary.totalValueCIF)}</div><div class="card-sub">Landed cost</div></div>
+        <div class="card green"><div class="card-label">${valuation.dpLabel}</div><div class="card-val">${fmtN(data.summary.totalValueDP)}</div><div class="card-sub">All locations</div></div>
+        <div class="card amber"><div class="card-label">${valuation.cifLabel}</div><div class="card-val">${fmtN(data.summary.totalValueCIF)}</div><div class="card-sub">Landed cost</div></div>
         <div class="card purple"><div class="card-label">Total Units</div><div class="card-val">${fmtQ(data.summary.totalQtyUnits)}</div><div class="card-sub">All locations</div></div>
-        <div class="card blue"><div class="card-label">In Operations (DP)</div><div class="card-val">${fmtN(inOpsDP)}</div><div class="card-sub">${fmtQ(inOpsQty)} units · WH + Branch + Field</div></div>
+        <div class="card blue"><div class="card-label">${valuation.incomplete?'Known In Operations DP subtotal':'In Operations (DP)'}</div><div class="card-val">${fmtN(inOpsDP)}</div><div class="card-sub">${fmtQ(inOpsQty)} units · WH + Branch + Field</div></div>
       </div>`;
 
     const productRows = data.products.map((p, idx) => {
@@ -374,14 +370,15 @@ export default function CurrentStockTab() {
     <div><b>Scope:</b> Country · Warehouses · Branches · Field</div>
   </div>
 </div>
+${valuation.incomplete?`<div role="alert" style="border:2px solid #b45309;background:#fffbeb;padding:12px;margin-bottom:16px;font-weight:bold">${esc(valuation.notice)}</div>`:''}
 ${summaryCards}
 <table>
   <thead>
     <tr>
       <th>Product / Location</th>
       <th class="num">Units</th>
-      <th class="num">CIF Value (N$)</th>
-      <th class="num">DP Value (N$)</th>
+      <th class="num">${valuation.cifLabel} (N$)</th>
+      <th class="num">${valuation.dpLabel} (N$)</th>
     </tr>
   </thead>
   <tbody>${productRows}</tbody>
@@ -439,16 +436,25 @@ ${summaryCards}
       {data && (
         <>
           {/* Grand summary cards */}
+          <div className="flex flex-wrap gap-5 text-sm text-gray-700 mb-3" aria-label="Company stock condition totals">
+            <span>Available: <strong>{qty(data.summary.availableQty)}</strong></span>
+            <span>Reserved: <strong>{qty(data.summary.reservedQty)}</strong></span>
+            <span>Quarantined: <strong>{qty(data.summary.quarantinedQty)}</strong></span>
+            <span>In transit: <strong>{qty(data.summary.inTransitQty)}</strong></span>
+          </div>
+          {!data.summary.valuationComplete && <div role="alert" className="bg-amber-50 border border-amber-300 text-amber-900 rounded-lg p-3 mb-3">
+            Original source-cost evidence is incomplete: {qty(data.summary.missingCostQuantity)} units lack CIF and {qty(data.summary.missingDPQuantity)} lack DP. Values below are known subtotals, not complete valuations.
+          </div>}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <SummaryCard
-              title="Total Stock Value (DP)"
+              title={data.summary.valuationComplete?"Total Stock Value (DP)":"Known Stock Value (DP)"}
               value={fmt(data.summary.totalValueDP)}
               sub="All locations combined"
               color="green"
               icon={<TrendingUp size={22} />}
             />
             <SummaryCard
-              title="Total Stock Value (CIF)"
+              title={data.summary.valuationComplete?"Total Stock Value (CIF)":"Known Stock Value (CIF)"}
               value={fmt(data.summary.totalValueCIF)}
               sub="Landed cost — all locations"
               color="amber"

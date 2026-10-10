@@ -93,6 +93,7 @@ export default async function handler(req, res) {
       companyStock: {
         totalQty: companyStock.totalQty,
         totalValueDP: companyStock.totalValueDP,
+        countryQty: companyStock.countryQty,
         warehouseQty: companyStock.warehouseQty,
         branchQty: companyStock.branchQty,
         inTransitQty: companyStock.inTransitQty,

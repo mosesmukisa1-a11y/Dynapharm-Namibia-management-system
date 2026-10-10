@@ -56,3 +56,73 @@ mtime_ms = 1791629026813
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/af0e3c30-cc96-4f2e-b784-506cfc2f6f75/c69db7d1-3a0a-4109-9bb8-ac025649c008"
 storage_version_token = "1791629370753822"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "hKXAenylMSVcgfD6T51WX"
+uri = "file://generated-artifacts/stock-ui-verification/staff-stock-screen-verification.html"
+type = "html"
+title = "Updated Staff Stock Verification"
+description = "Final evidence includes legacy-alias held stock and incomplete-cost disclosure in CSV and both GM PDF exports; 135 database checks plus 10 focused unit checks pass."
+logical_id = "fcc9fb08-5f04-43d2-a86f-8023c41f377a"
+content_hash = "sha256:1055f5fcbbe48f9fce41fabb2b16ade83efbe997dda621dc7fd8fc040dbba083"
+size = 5062
+mtime_ms = 1791632986861
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/fcc9fb08-5f04-43d2-a86f-8023c41f377a/024f73db-1f61-4b88-b6d4-d8cac6175428"
+storage_version_token = "1791633063902778"
+content_type = "text/html"
+
+[[outputs]]
+id = "djVaIlCZA8Gp87q1HcP-D"
+uri = "file://generated-artifacts/stock-ui-verification/corrected-physical-stock-preview.html"
+type = "html"
+title = "Corrected Branch Physical Stock Preview"
+description = "Actual isolated held fixture: 23 owned, 22 available, 1 quarantined; original DP N$161, including the held row."
+logical_id = "5ca0b593-7c44-4f5f-bc0e-2bc97a3aeefa"
+content_hash = "sha256:1dafe5a057328c13a0f61d708172886c982622f671e46e0a50e46f99ff75f829"
+size = 1604
+mtime_ms = 1791631733041
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/5ca0b593-7c44-4f5f-bc0e-2bc97a3aeefa/04082661-7a79-497c-8121-d399da7747c2"
+storage_version_token = "1791632126089923"
+content_type = "text/html"
+
+[[outputs]]
+id = "SGU1ORBkQ0IrpLU_w-YQ0"
+uri = "file://generated-artifacts/stock-audit/production-discrepancy-register.csv"
+type = "table"
+title = "Production stock discrepancy register — read-only"
+description = "10 Oct 2026 snapshot: 2,524 review rows with priorities, evidence, confidence and required documents. Missing source layers are unknown, not assumed zero; no historical repairs have been applied."
+logical_id = "ca5108ba-2def-432e-b818-517e89dd98ca"
+content_hash = "sha256:1ac6f94c97dea12a9cc8956c2ac321cda603a086952baa7b7eacb6c0882083e0"
+size = 2854660
+mtime_ms = 1791634379721
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/ca5108ba-2def-432e-b818-517e89dd98ca/8c0d0769-550a-48eb-ad63-0b1746eab33a"
+storage_version_token = "1791636145476905"
+content_type = "text/csv"
+
+[[outputs]]
+id = "LRkfttI6NgJ6vX-VGp0Py"
+uri = "file://generated-artifacts/stock-audit/stock-audit-status.html"
+type = "html"
+title = "Stock audit status — PARTIALLY VERIFIED"
+description = "Separate automated, staff UI, alerts, offline, financial, production and physical-count statuses, with confirmed fixes and exact unresolved blockers."
+logical_id = "14c44d6f-9287-43f6-8cb1-d39e565284f5"
+content_hash = "sha256:a0bfdd62ccc14a1af49683c0dba0f6b6cd8e13bb22a8f92ade3b866146cc2432"
+size = 7240
+mtime_ms = 1791638415733
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/14c44d6f-9287-43f6-8cb1-d39e565284f5/6364d3ee-80b2-4389-80be-367deeb1ddae"
+storage_version_token = "1791638423368816"
+content_type = "text/html"
+
+[[outputs]]
+id = "b9QujbEfNrdPLfn2IGzVr"
+uri = "file://generated-artifacts/stock-ui-verification/report.md"
+type = "text"
+title = "Staff stock browser audit — detailed evidence"
+description = "Actual stage results, expected-versus-observed quantities, operation references, screenshot IDs and exact unverified or blocked checks."
+logical_id = "36a9d1f5-1d6d-49fb-8345-208f8baba4f1"
+content_hash = "sha256:e88aa445c1d833438b3b64f96b90ce02f35e417966b59eb0ad89d23120d2dd12"
+size = 11751
+mtime_ms = 1791638236117
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/36a9d1f5-1d6d-49fb-8345-208f8baba4f1/3468b36d-2271-4df8-a73d-c49f5fac675e"
+storage_version_token = "1791638463969088"
+content_type = "text/markdown"

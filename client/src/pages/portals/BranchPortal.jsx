@@ -23,6 +23,7 @@ import QRCameraScanner from '../../components/QRCameraScanner';
 import ControlledStockOperations from '../../components/ControlledStockOperations';
 import StockCostReport from '../../components/StockCostReport';
 import { LinkedCustomerReturns } from '../../components/LinkedCustomerReturns';
+import {buildBranchPhysicalStockReport} from '../../lib/branchPhysicalStockReport.js';
 
 const DEFAULT_REFERRAL = { name: 'Dynapharm Namibia', nb_number: 'NB005676', id: 'DEFAULT_REFERRAL' };
 
@@ -4496,38 +4497,9 @@ function printStockDocument(title, htmlBody, branch = '') {
   win.document.close();
 }
 
-function printPhysicalStockReport(inventory, branch) {
-  const safeStr = (v, fallback = '[missing]') => (v != null && String(v).trim() !== '') ? String(v) : fallback;
-  let totalDP = 0;
-  const rows = inventory.map(r => {
-    const pName = safeStr(r.product_name || r.productName || r.description, '[no product name]');
-    const batchNo = safeStr(r.batch_no || r.batchNo || r.batch_number, '—');
-    const q = Number(r.quantity || 0);
-    const p = findProductPrice(pName !== '[no product name]' ? pName : '');
-    const dpUnit = p?.dp ? Number(p.dp) : 0;
-    const dpVal = dpUnit * q;
-    totalDP += dpVal;
-    const expRaw = r.expiry_date || r.expiryDate;
-    let expLabel = '—';
-    let isExp = false;
-    if (expRaw) {
-      const expDate = new Date(expRaw);
-      if (!Number.isNaN(expDate.getTime())) {
-        expLabel = expDate.toLocaleDateString('en-NA');
-        isExp = expDate < new Date();
-      } else {
-        expLabel = '[invalid date]';
-      }
-    }
-    const statusLabel = q <= 0 ? 'Out' : q < 10 ? 'Low' : isExp ? 'Expired' : 'OK';
-    const statusColor = q <= 0 || isExp ? '#c41e3a' : q < 10 ? '#d97706' : '#166534';
-    const qColor = q <= 0 ? '#c41e3a' : q < 10 ? '#d97706' : '#166534';
-    return `<tr><td>${pName}</td><td>${batchNo}</td><td style="font-weight:700;color:${qColor}">${q}</td><td style="color:${statusColor};font-weight:600">${statusLabel}</td><td>${dpUnit > 0 ? `N$ ${Math.round(dpUnit).toLocaleString("en-ZA")}` : '—'}</td><td style="font-weight:700">${dpVal > 0 ? `N$ ${Math.round(dpVal).toLocaleString("en-ZA")}` : '—'}</td><td>${expLabel}</td></tr>`;
-  }).join('');
-  const total = inventory.reduce((s, r) => s + Number(r.quantity||0), 0);
-  printStockDocument('Physical Stock Report (DP Valued)', `
-    <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:10px;color:#166534;font-weight:600">All values use Distributor Price (DP)</div>
-    <table><thead><tr><th>Product</th><th>Batch</th><th>Qty</th><th>Status</th><th>DP Unit</th><th>DP Value</th><th>Expiry</th></tr></thead><tbody>${rows}<tr class="total-row"><td colspan="2"><strong>TOTALS</strong></td><td><strong>${total}</strong></td><td></td><td></td><td style="font-weight:800;color:#c41e3a"><strong>N$ ${Math.round(totalDP).toLocaleString("en-ZA")}</strong></td><td></td></tr></tbody></table>`, branch);
+function printPhysicalStockReport(snapshot, branch) {
+  try{printStockDocument('Physical Stock Report (Original DP)',buildBranchPhysicalStockReport(snapshot),branch);}
+  catch(error){alert(error.message);}
 }
 
 function printStockMovementsReport(movements, branch) {
@@ -4827,6 +4799,7 @@ function BranchStockTab() {
   const navigate = useNavigate();
   const portalBranch = useContext(PortalBranchContext);
   const [inventory, setInventory] = useState([]);
+  const [physicalStock,setPhysicalStock]=useState(null);
   const [loading, setLoading] = useState(true);
   const [subTab, setSubTab] = useState('inventory');
   const [showRequestForm, setShowRequestForm] = useState(false);
@@ -4920,22 +4893,25 @@ function BranchStockTab() {
     if (!selectedBranch) { setLoading(false); return; }
     const loadId = ++loadDataRef.current;
     setLoading(true);
+    setPhysicalStock(null);
     try {
       const activeBranch = selectedBranch;
       const branchParam = activeBranch ? `branch=${encodeURIComponent(activeBranch)}` : '';
       const movBranchParam = activeBranch ? `branch=${encodeURIComponent(activeBranch)}&limit=10000` : 'limit=10000';
-      const [inv, reqs, trans, movs, prods, sl] = await Promise.all([
+      const [inv, reqs, trans, movs, prods, sl,physical] = await Promise.all([
         api.branch.inventory(branchParam ? branchParam + '&include_movements=1&limit=10000' : 'include_movements=1&limit=10000').catch(() => ({ inventory: [], movements: [] })),
         api.stock.requests(branchParam).catch(() => ({ requests: [] })),
         api.stock.transfers(branchParam ? branchParam + '&limit=500' : 'limit=500').catch(() => ({ transfers: [] })),
         api.get(`/stock-movements?${movBranchParam}`).catch(() => ({ movements: [] })),
         api.products.list().catch(() => []),
         api.branch.walkinSales(branchParam).catch(() => []),
+        api.branch.stockSummary(branchParam),
       ]);
       if (loadId !== loadDataRef.current) return;
       const invData = Array.isArray(inv) ? inv : inv.inventory || [];
       const branchMovs = inv.movements || [];
       setInventory(invData);
+      setPhysicalStock(physical.branches?.find(br=>normalizeBranchSlug(br.branch_id)===normalizeBranchSlug(activeBranch)) || null);
       setBranchMovements(branchMovs);
       setRequests(Array.isArray(reqs) ? reqs : reqs.requests || []);
       const transferRows = Array.isArray(trans) ? trans : trans.transfers || [];
@@ -5441,12 +5417,15 @@ function BranchStockTab() {
       {/* KPI Summary Strip */}
       {(() => {
         const totalProducts = [...new Set(inventory.map(i => (i.product_name || i.productName || '').trim().toLowerCase()).filter(Boolean))].length;
-        const totalDpValue = inventory.reduce((s, i) => { const p = findProductPrice(i.product_name || i.productName || ''); return s + (p?.dp ? Number(p.dp) : 0) * Number(i.quantity || 0); }, 0);
+        const totalDpValue = inventory.reduce((s,i)=>s+Number(i.stock_value_dp || 0),0);
         const openReqs = requests.filter(r => r.status === 'pending' || r.status === 'submitted').length;
         const totalAlerts = outOfStock.length + expiredItems.length + lowStock.length + expiringItems.length;
         const kpis = [
+          {label:'Owned Units',value:physicalStock?.closing_qty ?? 'Unavailable',icon:'📦',color:'#1e3a5f',bg:'#f0f4ff',tab:'reports'},
+          {label:'Available Units',value:physicalStock?.available_qty ?? 'Unavailable',icon:'📦',color:'#166534',bg:'#f0fdf4',tab:'inventory'},
+          {label:'Quarantined Units',value:physicalStock?.quarantined_qty ?? 'Unavailable',icon:'⚠️',color:'#92400e',bg:'#fffbeb',tab:'reports'},
           { label: 'Products', value: totalProducts, icon: '📦', color: '#1e3a5f', bg: '#f0f4ff', tab: 'inventory' },
-          { label: 'Stock Value (DP)', value: `N$ ${Math.round(totalDpValue).toLocaleString('en-ZA')}`, icon: '💰', color: '#166534', bg: '#f0fdf4', tab: 'inventory' },
+          { label: 'Available Stock Value (DP)', value: inventory.some(i=>Number(i.missing_dpc_quantity)>0)?'Incomplete source evidence':`N$ ${totalDpValue.toLocaleString('en-ZA',{minimumFractionDigits:2,maximumFractionDigits:2})}`, icon: '💰', color: '#166534', bg: '#f0fdf4', tab: 'inventory' },
           { label: 'Pending Deliveries', value: totalPendingReceive, icon: '📥', color: totalPendingReceive > 0 ? '#1e40af' : '#94a3b8', bg: totalPendingReceive > 0 ? '#eff6ff' : '#f8fafc', tab: 'receive' },
           { label: 'Active Alerts', value: totalAlerts, icon: '⚠️', color: totalAlerts > 0 ? '#c41e3a' : '#94a3b8', bg: totalAlerts > 0 ? '#fef2f2' : '#f8fafc', tab: 'alerts' },
           { label: 'Open Requests', value: openReqs, icon: '📋', color: openReqs > 0 ? '#d97706' : '#94a3b8', bg: openReqs > 0 ? '#fffbeb' : '#f8fafc', tab: 'requests' },
@@ -5681,8 +5660,8 @@ function BranchStockTab() {
               <p className="text-xs text-gray-500 m-0 mt-1">Batch-level live stock with movement aggregates and DP valuations</p>
             </div>
             <button onClick={() => {
-              if (!inventory || inventory.length === 0) { alert('No inventory data loaded yet. Please wait a moment and try again.'); return; }
-              printPhysicalStockReport(inventory, selectedBranch || user?.branch || '');
+              if (!physicalStock) { alert('Physical stock snapshot is not loaded. Refresh before printing.'); return; }
+              printPhysicalStockReport(physicalStock, selectedBranch || user?.branch || '');
             }} className="px-3 py-1.5 rounded-lg text-xs font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>Print Report</button>
           </CardHeader>
           <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0e8ea', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -7264,8 +7243,8 @@ function BranchStockTab() {
               { icon: '📊', title: 'Daily DP Sales Report', desc: "Today's sales — all categories including Rx dispenses with payment method breakdown. Server-side aggregation covers all records.", action: handleDailyReport },
               { icon: '📈', title: 'Monthly DP Sales Report', desc: `${monthLabel} — complete DP report with payment breakdown and Rx patient detail lines. No data load limits.`, action: handleMonthlyReport },
               { icon: '📦', title: 'Physical Stock Report', desc: 'Current batch-level inventory with movement aggregates & DP values', action: () => {
-                if (!inventory || inventory.length === 0) { alert('No inventory data loaded for this branch. Please wait for data to load or select a branch first.'); return; }
-                printPhysicalStockReport(inventory, branchName);
+                if (!physicalStock) { alert('Physical stock snapshot is not loaded. Refresh before printing.'); return; }
+                printPhysicalStockReport(physicalStock, branchName);
               }},
               { icon: '🔢', title: 'Stock Formula Report', desc: 'Opening + Received − Sold − Dispensed − Transfers − Write-offs = Closing (server-side per product)', action: handleStockFormulaReport },
               { icon: '🔄', title: 'Stock Movements Report', desc: 'Full movement ledger: receipts, sales, write-offs, transfers, dispenses', action: () => {

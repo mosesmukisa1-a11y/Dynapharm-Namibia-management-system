@@ -40,6 +40,8 @@ export function normalizeBranchSlug(branch) {
   if (!branch || typeof branch !== 'string') return null;
   const lower = branch.trim().toLowerCase();
   if (!lower) return null;
+  const knownCanonical=BRANCH_CANONICAL_BY_ALIAS.get(lower);
+  if(knownCanonical)return knownCanonical;
   if (WINDHOEK_CBD_ALIASES.has(lower)) return CANONICAL_WINDHOEK_CBD;
   if (KATIMA_ALIASES.has(lower)) return CANONICAL_KATIMA;
   if (OSHAKATI_ALIASES.has(lower)) return CANONICAL_OSHAKATI;
@@ -115,6 +117,14 @@ const BRANCH_SEARCH_TERMS = {
   okongo:          ['okongo'],
   nkurenkuru:      ['nkurenkuru'],
 };
+
+// Search, authorization and grouping share the same documented branch aliases.
+// Only callers holding branch-typed locations should use this normalization.
+const BRANCH_CANONICAL_BY_ALIAS=new Map(
+  Object.entries(BRANCH_SEARCH_TERMS)
+    .filter(([canonical])=>ALL_BRANCH_IDS.includes(canonical))
+    .flatMap(([canonical,aliases])=>aliases.map(alias=>[alias,canonical]))
+);
 
 /**
  * Given a branch ID (canonical or alias), returns ALL lowercase text forms

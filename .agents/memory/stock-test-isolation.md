@@ -37,3 +37,21 @@ The workspace PostgreSQL transport may use a non-local hostname without supporti
 **Why:** Hostname-based SSL inference broke connections to a successfully created schema-only clone even though PostgreSQL's own connection defaults worked.
 
 **How to apply:** Disposable test connections should preserve the source connection's transport settings explicitly; do not infer SSL support solely from whether the host is named localhost.
+
+Isolated browser environments also require a fresh disposable authentication signing key, not just a cloned database and different ports. Persist only a non-secret ownership manifest so the disposable database can be positively identified and removed.
+
+**Why:** Browser cookies are not port-scoped, and a synthetic GM token signed with an inherited business key could be accepted by another local service. Supervising shells can also force-kill a test process before asynchronous socket shutdown finishes.
+
+**How to apply:** Override signing keys only in the disposable child process; never print or persist them. Remove its owned database before waiting for frontend shutdown, and use recorded ownership rather than deleting every database with a test-looking name.
+
+Canonical-only branch fixtures do not establish legacy-location coverage. Include a persisted legacy branch alias with a held or reserved unit when validating stock-report agreement.
+
+**Why:** Different report reads can normalize owner names at different stages: available inventory can be positive while a canonical-only physical projection returns zero. Ordinary canonical lifecycle fixtures miss this failure.
+
+**How to apply:** Verify canonical and authorized legacy-alias requests produce the same owned, available, held and original-cost totals, without treating warehouse aliases as branch owners.
+
+Freeze source edits and builds during an interactive browser journey.
+
+**Why:** Development-server reloads can discard open forms and active tabs, confusing an audit interruption with an application defect. A timed-out locator alone does not establish a stock-dispatch failure.
+
+**How to apply:** Finish the coherent code batch before resuming the tester at its stopping point. Distinguish locator/reload interruptions from submitted transactions and preserve the disposable database when reloading its API.

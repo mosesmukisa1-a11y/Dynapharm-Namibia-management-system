@@ -17,3 +17,4 @@
 - [Stock test isolation](stock-test-isolation.md) — receipt assertions require physical dispatch evidence; whole-database safety baselines cannot share parallel fixture writers.
 - [Mixed stock history](stock-history-coverage.md) — a central movement does not prove complete branch-history coverage; retain unmatched legacy evidence.
 - [Read-only reconciliation](read-only-reconciliation.md) — bounded production extracts need matching fingerprints; warehouse and branch aliases must remain separate namespaces.
+- [Stock audit status](stock-audit-status.md) — keep overall PARTIALLY VERIFIED until each audit area has evidence; discrepancies are not proof of missing goods.

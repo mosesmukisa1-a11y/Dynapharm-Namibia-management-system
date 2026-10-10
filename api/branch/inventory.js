@@ -4,6 +4,7 @@ import { recomputeLocationBalances } from '../services/stockEngine.js';
 import { normalizeBranchSlug } from '../_lib/branchUtils.js';
 import { atomicStockRequest } from '../_lib/atomicStockRequest.js';
 import { lockStockBatchTx } from '../services/stockLocks.js';
+import {branchLayers} from '../services/stockCostLayers.js';
 
 function parseNumber(value, fallback = 0) {
   if (value === null || value === undefined || value === '') return fallback;
@@ -61,8 +62,13 @@ function normalizeInventoryRow(row) {
   const uPrice = row.unit_price !== null ? Number(row.unit_price) : null;
   const createdAt = row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at;
   const updatedAt = row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at;
+  const originalLayers=branchLayers(row);
+  const originalValue=(field)=>originalLayers.reduce((n,l)=>n+l.quantity*Number(l.source?.[field] ?? 0),0);
+  const missing=(field)=>originalLayers.reduce((n,l)=>n+(l.source?.[field]==null?l.quantity:0),0);
   return {
     id: row.id,
+    stock_value_dp:originalValue('dpc_unit_value'),stock_value_cif:originalValue('cif_unit_cost'),
+    missing_dpc_quantity:missing('dpc_unit_value'),missing_cif_quantity:missing('cif_unit_cost'),
     branchId: row.branch_id, branch_id: row.branch_id,
     productName: row.product_name, product_name: row.product_name,
     productCode: row.product_code, product_code: row.product_code,

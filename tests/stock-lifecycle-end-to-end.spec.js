@@ -12,11 +12,15 @@ import requestRefund from '../api/branch/refund-requests.js';
 import approveRefund from '../api/stock/refund-requests.js';
 import controlled from '../api/stock/controlled-operations.js';
 import branchSummary from '../api/branch/stock-summary.js';
+import currentOverview from '../api/stock/current-overview.js';
+import {buildBranchPhysicalStockReport} from '../client/src/lib/branchPhysicalStockReport.js';
 import {getCompanyStockSummary,getLocationStockSummary,getBranchSalesRevenue} from '../api/services/gmFinanceMisEngine.js';
 import {getStockCostProjection,getSalesCostPage} from '../api/services/stockCostReporting.js';
 
 const product='TEST-ITEM',lot='TEST-LOT',expiry='2035-12-31';
-const warehouse='windhoek_warehouse',a='test_a_branch',b='test_b_branch';
+// UI fixtures still run under the mandatory isolated-database guard below.
+const uiFixture=process.env.STOCK_AUDIT_UI_FIXTURE==='1';
+const warehouse='windhoek_warehouse',a=uiFixture?'townshop':'test_a_branch',b=uiFixture?'swakopmund':'test_b_branch';
 // Central Stock Portal staff use "stock"; "stock_manager" is branch-scoped.
 const stock={id:'ISOLATED-STOCK',role:'stock',fullName:'Isolated stock tester'};
 const gm={id:'ISOLATED-GM',role:'gm',fullName:'Isolated GM tester'};
@@ -129,7 +133,13 @@ it('runs the requested 100-unit import-to-two-branches, sale, refund, damage and
   await checkpoint('G. Segregate 1 damaged unit',{branchA:24,availableA:23,damagedA:1,company:94});
   expect(await getLocationStockSummary('branch',a)).toMatchObject({closingStock:24,availableStock:23});
   const damagedSummary=success(await invoke(branchSummary,'GET',{},staff,`/api/branch/stock-summary?branch=${a}`));
-  expect(damagedSummary.branches.find(row=>row.branch_id===a)).toMatchObject({closing_qty:24,qty_returned:2,qty_written_off:0});
+  expect(damagedSummary.branches.find(row=>row.branch_id===a)).toMatchObject({
+    closing_qty:24,available_qty:23,quarantined_qty:1,qty_returned:2,qty_written_off:0,dp_value:168,cif_value:48});
+  const heldReport=buildBranchPhysicalStockReport(damagedSummary.branches.find(row=>row.branch_id===a));
+  expect(heldReport).toContain('Owned: 24 · Available: 23 · Reserved: 0 · Quarantined: 1');
+  expect(heldReport).toContain('damaged');expect(heldReport).toMatch(/N\$ 168[,.]00/);
+  expect(success(await invoke(currentOverview,'GET',{},gm)).summary).toMatchObject({
+    totalQtyUnits:94,totalValueCIF:188,totalValueDP:658,availableQty:93,quarantinedQty:1,valuationComplete:true});
   await inspection('segregated',damaged,'damaged','write_off');
   await checkpoint('H. Write off the damaged unit',{warehouse:50,branchA:23,availableA:23,branchB:20,transit:0,damagedA:0,company:93});
   const valued=await getStockCostProjection({productName:product});
@@ -138,6 +148,9 @@ it('runs the requested 100-unit import-to-two-branches, sale, refund, damage and
   const sales=await getSalesCostPage({aliases:[a],productName:product});
   expect(sales.summary).toMatchObject({knownSalesCost:16,knownSalesRevenue:72,grossProfit:56});
   expect(await getCompanyStockSummary()).toMatchObject({totalQty:93,inTransitQty:0});
+  expect(success(await invoke(currentOverview,'GET',{},gm)).summary).toMatchObject({
+    totalQtyUnits:93,totalValueCIF:186,totalValueDP:651,availableQty:93,quarantinedQty:0,valuationComplete:true});
+  expect((await invoke(currentOverview,'GET',{},staff)).status).toBe(403);
   const summary=success(await invoke(branchSummary,'GET',{},staff,`/api/branch/stock-summary?branch=${a}`));
   const branchReport=summary.branches.find(row=>row.branch_id===a);
   expect(branchReport).toMatchObject({
@@ -171,6 +184,16 @@ it('concurrent completed sales cannot oversell and consume eligible stock in FEF
       expiredUnsold:Number(rows[0].quantity),remainingEligible:Number(rows[2].quantity)},pass:true});
 });
 
+it('limits authenticated branch summary requests to the assigned branch and omits other inventory',async()=>{
+  expect((await invoke(branchSummary,'GET',{},null,'/api/branch/stock-summary')).status).toBe(401);
+  expect((await invoke(branchSummary,'GET',{},staff,`/api/branch/stock-summary?branch=${b}`)).status).toBe(403);
+  const own=success(await invoke(branchSummary,'GET',{},staff,'/api/branch/stock-summary'));
+  expect(own.branches.map(r=>r.branch_id)).toEqual([a]);
+  expect(own.branches[0]).toMatchObject({closing_qty:23,qty_returned:2,qty_written_off:1});
+  const company=success(await invoke(branchSummary,'GET',{},gm,'/api/branch/stock-summary'));
+  expect(company.branches.find(r=>r.branch_id===b).closing_qty).toBe(20);
+});
+
 it('sales reports include fractional seconds on the selected end date and exclude the next day',async()=>{
   const branch='test_date_boundary_branch';
   for(const [id,date,total] of [['first','2030-01-01 10:00:00+02',1],['late','2030-01-01 23:59:59.999999+02',2],['next','2030-01-02 00:00:00+02',4]])
@@ -191,4 +214,44 @@ it('keeps unmirrored legacy branch receipts when newer central movements exist',
   const response=success(await invoke(branchSummary,'GET',{},staff,`/api/branch/stock-summary?branch=${a}`));
   const measured=response.branches.find(row=>row.branch_id===a);
   expect(measured).toMatchObject({closing_qty:28,qty_received:35,qty_sold:8,qty_returned:2,qty_written_off:1});
+});
+
+it.each([['katima','katima_mulilo'],['hochlandpark','hochland-park'],['walvis_bay','walvisbay']])(
+  'groups legacy branch %s with canonical %s and includes held source layers',async(legacy,canonical)=>{
+  const aliasBatch=`ISOLATED-ALIAS-${canonical}`,aliasProduct=`ALIAS-${canonical}`;
+  const sourceId=(await query('SELECT id FROM stock_batches ORDER BY id LIMIT 1')).rows[0].id;
+  const metadata={cif_unit_cost:2,cost_layers:[{quantity:5,source:{id:sourceId,cif_unit_cost:2,dpc_unit_value:7}}]};
+  await query(`INSERT INTO branch_inventory_batches(id,branch_id,product_name,batch_no,expiry_date,quantity,unit_price,metadata)
+    VALUES($1,$3,$4,'ALIAS-LOT','2035-12-31',5,7,$2::jsonb)`,
+    [aliasBatch,JSON.stringify(metadata),legacy,aliasProduct]);
+  await inspection('branch',aliasBatch,'damaged','quarantine');
+  const actor={role:'branch_manager',branch:canonical};
+  for(const alias of [canonical,legacy]){
+    const report=success(await invoke(branchSummary,'GET',{},actor,`/api/branch/stock-summary?branch=${alias}`));
+    expect(report.branches).toHaveLength(1);
+    const br=report.branches[0];
+    expect(br).toMatchObject({branch_id:canonical,closing_qty:5,available_qty:4,quarantined_qty:1,cif_value:10,dp_value:35});
+    expect(buildBranchPhysicalStockReport(br)).toContain('Owned: 5 · Available: 4 · Reserved: 0 · Quarantined: 1');
+    expect(buildBranchPhysicalStockReport(br)).toMatch(/N\$ 35[,.]00/);
+  }
+  expect((await invoke(branchSummary,'GET',{},staff,`/api/branch/stock-summary?branch=${legacy}`)).status).toBe(403);
+  await query(`INSERT INTO branch_inventory_batches(id,branch_id,product_name,batch_no,expiry_date,quantity,unit_price,metadata)
+    VALUES($1,$2,$3,'ALIAS-LOT','2035-12-31',2,7,$4::jsonb)`,
+    [`${aliasBatch}-CANONICAL`,canonical,aliasProduct,JSON.stringify({cost_layers:[{quantity:2,source:metadata.cost_layers[0].source}]})]);
+  const overview=success(await invoke(currentOverview,'GET',{},gm));
+  const stockProduct=overview.products.find(row=>row.productName===aliasProduct);
+  expect(stockProduct.locations.filter(row=>row.locationType==='branch')).toHaveLength(1);
+  expect(stockProduct).toMatchObject({totalQty:7,totalValueCIF:14,totalValueDP:49});
+});
+
+it('prints fully held branch stock when there are no available inventory rows',async()=>{
+  await query(`INSERT INTO branch_inventory_batches(id,branch_id,product_name,batch_no,expiry_date,quantity,unit_price,metadata)
+    VALUES('ISOLATED-HELD-ONLY','outapi','HELD-ONLY','HELD-LOT','2035-12-31',1,7,$1::jsonb)`,
+    [JSON.stringify({cif_unit_cost:2,cost_layers:[{quantity:1,source:{cif_unit_cost:2,dpc_unit_value:7}}]})]);
+  await inspection('branch','ISOLATED-HELD-ONLY','damaged','quarantine');
+  const report=success(await invoke(branchSummary,'GET',{}, {role:'branch_manager',branch:'outapi'},'/api/branch/stock-summary?branch=outapi'));
+  const br=report.branches[0];
+  expect(br).toMatchObject({closing_qty:1,available_qty:0,quarantined_qty:1,dp_value:7});
+  expect(br.inventory.filter(row=>Number(row.quantity)>0)).toHaveLength(0);
+  expect(buildBranchPhysicalStockReport(br)).toContain('Owned: 1 · Available: 0 · Reserved: 0 · Quarantined: 1');
 });

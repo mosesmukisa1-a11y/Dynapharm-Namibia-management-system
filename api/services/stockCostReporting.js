@@ -36,10 +36,10 @@ export async function getStockCostProjection(options={},read=getMany) {
   const {stock,branches,reservations,segregated}=snapshot;
   const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Africa/Windhoek',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
   const rows=[];
-  const add=({id,location,productName,batchNo,expiryDate,quantity,source,condition='saleable',reserved=false,transit=false})=>{
+  const add=({id,location,locationType,productName,batchNo,expiryDate,quantity,source,condition='saleable',reserved=false,transit=false})=>{
     const expired=expiryDate && expiryDate<today;
     const eligible=condition==='saleable' && !expired && !reserved && !transit;
-    rows.push({id,location,productName,batchNo,expiryDate,condition,
+    rows.push({id,location,locationType,productName,batchNo,expiryDate,condition,
       availableQty:eligible ? quantity : 0,reservedQty:reserved ? quantity : 0,
       onHandQty:transit ? 0 : quantity,inTransitQty:transit ? quantity : 0,
       quarantinedQty:condition!=='saleable' ? quantity : 0,expiredQty:expired ? quantity : 0,missingExpiry:!expiryDate,
@@ -47,11 +47,11 @@ export async function getStockCostProjection(options={},read=getMany) {
       missingCostQuantity:source?.cif_unit_cost==null ? quantity : 0,
       missingDPCQuantity:source?.dpc_unit_value==null ? quantity : 0,sourceBatchId:source?.id || null});
   };
-  for (const row of stock.filter(r=>!options.branchOnly && !ALL_BRANCH_LOCATION_ALIASES.includes(String(r.location || '').toLowerCase()) && !String(r.location || '').endsWith('_branch'))) add({id:row.id,location:row.location || row.warehouse_id,productName:row.description,
+  for (const row of stock.filter(r=>!options.branchOnly && !ALL_BRANCH_LOCATION_ALIASES.includes(String(r.location || '').toLowerCase()) && !String(r.location || '').endsWith('_branch'))) add({id:row.id,location:row.location || row.warehouse_id,locationType:row.location==='country_stock'?'country':'warehouse',productName:row.description,
     batchNo:row.batch_no,expiryDate:day(row.expiry_date),quantity:Number(row.remaining_quantity),source:sourceSnapshot(row),
     condition:['available','in_stock','active'].includes(row.status || 'available') ? 'saleable' : row.status});
   for (const row of branches) {
-    for (const [index,layer] of branchLayers(row).entries()) add({id:`${row.id}:${index}`,location:row.branch_id,
+    for (const [index,layer] of branchLayers(row).entries()) add({id:`${row.id}:${index}`,location:row.branch_id,locationType:'branch',
       productName:row.product_name,batchNo:row.batch_no,expiryDate:day(row.expiry_date),quantity:layer.quantity,source:layer.source,
       condition:['available','in_stock','active'].includes(row.status || 'in_stock') ? 'saleable' : row.status});
   }
@@ -63,11 +63,11 @@ export async function getStockCostProjection(options={},read=getMany) {
     const reserved=row.status==='approved',before=reserved ? 0 : received.get(String(row.line_id)) || 0;
     const quantity=Math.max(0,Number(row.quantity)-before);
     received.set(String(row.line_id),Math.max(0,before-Number(row.quantity)));
-    if (quantity) add({id:row.id,location:reserved ? row.location : `in_transit:${row.transfer_id}`,
+    if (quantity) add({id:row.id,location:reserved ? row.location : `in_transit:${row.transfer_id}`,locationType:!reserved?'in_transit':row.source_type==='branch'?'branch':row.location==='country_stock'?'country':'warehouse',
       productName:row.snapshot.product_name,batchNo:row.snapshot.batch_no,expiryDate:day(row.snapshot.expiry_date),
       quantity,source:row.snapshot.source,reserved,transit:!reserved});
   }
-  for (const row of segregated.filter(r=>!options.branchOnly || r.location_type==='branch')) add({id:row.id,location:row.location,productName:row.snapshot.product_name,
+  for (const row of segregated.filter(r=>!options.branchOnly || r.source_type==='branch')) add({id:row.id,location:row.location,locationType:row.source_type==='branch'?'branch':row.location==='country_stock'?'country':'warehouse',productName:row.snapshot.product_name,
     batchNo:row.snapshot.batch_no,expiryDate:day(row.snapshot.expiry_date),quantity:Number(row.quantity),
     source:{id:row.snapshot.source_batch_id,cif_unit_cost:row.snapshot.unit_cost,dpc_unit_value:row.snapshot.unit_dp},
     condition:row.condition || 'quarantine'});

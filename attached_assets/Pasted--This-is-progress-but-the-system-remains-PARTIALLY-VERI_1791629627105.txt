@@ -1,0 +1,45 @@
+**This is progress, but the system remains PARTIALLY VERIFIED.** The report says 138 tests passed; it also found unresolved differences in real stock records. I’ve reviewed the report, not independently tested the application.
+
+| Area | What the report confirms |
+|---|---|
+| Stock movements | Automated example passes, ending with **93 units** |
+| Financial calculations | Example passes: net revenue **54**, net cost **12**, profit after returns **42** |
+| Staff screens and login | Still unverified |
+| Alert settings | Completed separately, awaiting merge and verification |
+| Real stock records | **929 stored-balance differences**, **1,656 history differences** |
+| Original source/cost evidence | Missing for **8,899 recorded units** |
+| Physical stock counts | Still unverified |
+
+**The differences are not proof of missing goods.** They need investigation against receipts, transfers, opening balances, and physical counts. The two difference counts may overlap.
+
+Paste this next instruction into Replit Agent:
+
+Finish the outstanding work from the 10 October 2026 stock audit. Keep the current overall status PARTIALLY VERIFIED until the remaining checks have evidence.
+
+1. Inspect and integrate the completed alert-settings change into the development application. Verify the 10-unit and 90-day defaults, saved settings after reload, authorised editing, and matching alerts on the main screens.
+
+2. Complete the authenticated browser workflow in an isolated test environment using actual login/session middleware and synthetic stock. Test stock staff, branch staff, and GM roles through import, receipt, dispatch, partial branch receipt, barcode sale, return, quarantine, write-off, and reporting. Record expected and actual screen balances after every step. Verify branch access restrictions and changed financial screens and exports.
+
+3. Test actual browser disconnect/reconnect and queued transaction replay. Include duplicate, delayed, and out-of-order submissions. Confirm each accepted transaction changes stock only once and rejected transactions remain visible to staff.
+
+4. Investigate the production reconciliation findings using read-only access:
+   - 929 stored-balance differences.
+   - 1,656 central-history differences.
+   - 8,899 units missing original source/cost evidence.
+
+Check the export logic first, especially country-versus-warehouse classifications, location aliases, expiry keys, overlapping statuses, and missing opening history. Do not interpret an absent projection as proof of zero physical stock.
+
+Produce a prioritised discrepancy register with location, product, batch, compared quantities, difference, likely cause, supporting evidence, confidence, and the document or physical count needed to resolve it. Separate confirmed software defects from historical evidence gaps. Explain any overlap between the discrepancy counts.
+
+5. Do not automatically repair, backfill, delete, or reprice historical business records. Prepare proposed corrections separately for review. Do not invent missing costs or opening quantities.
+
+6. Rerun the relevant isolated tests after changes and update the audit. Report separate statuses for:
+   - Automated workflows.
+   - Authenticated staff screens.
+   - Alert settings.
+   - Offline replay.
+   - Financial screens and exports.
+   - Production reconciliation.
+   - Physical counts.
+
+Provide concrete evidence for each status. If blocked, identify the exact missing access, document, or business decision. Do not describe queued or unmerged work as complete.

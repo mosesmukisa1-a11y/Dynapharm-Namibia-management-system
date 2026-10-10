@@ -74,7 +74,8 @@ export async function buildStockReconciliation(snapshot,{environment='developmen
   for(const layer of layers){
     const branch=branchIds.some(id=>String(layer.id).startsWith(id)) ||
       (!stockIds.has(layer.id) && branchLocations.has(String(layer.location).toLowerCase().trim()));
-    const row=group(layer.location,layer.productName,layer.batchNo,layer.expiryDate,branch?'branch':undefined);
+    const row=group(layer.location,layer.productName,layer.batchNo,layer.expiryDate,
+      layer.locationType || (branch?'branch':undefined));
     for(const name of ['availableQty','reservedQty','quarantinedQty','expiredQty','inTransitQty'])row[name]+=Number(layer[name] || 0);
     row.physicalQty+=Number(layer.qty);
     if(!layer.sourceBatchId)row.missingSourceQty+=layer.qty;
