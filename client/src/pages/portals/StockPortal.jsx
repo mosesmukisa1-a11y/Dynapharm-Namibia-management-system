@@ -8,6 +8,8 @@ import ControlledStockOperations from '../../components/ControlledStockOperation
 import DispatchNote from '../../components/DispatchNote';
 import StockProductPacks from '../../components/StockProductPacks';
 import StockCostReport from '../../components/StockCostReport';
+import StockAlertSettings from '../../components/StockAlertSettings';
+import StockAlertPolicyProvider, { useStockAlertPolicy } from '../../components/StockAlertPolicyProvider';
 import {HistoricalRefundLinkForm} from '../../components/HistoricalRefundEvidence';
 import { CustomerReturnInspection, DispatchReturnsTab } from '../../components/LinkedCustomerReturns';
 import { buildReceiptPayload, clearReceiptDraft, readReceiptDraft, writeReceiptDraft, receiptMoney } from '../../lib/stockLifecycle';
@@ -1548,6 +1550,11 @@ function AdjustmentsTab() {
   );
 }
 export default function StockPortal() {
+  return <StockAlertPolicyProvider><StockPortalContent /></StockAlertPolicyProvider>;
+}
+
+function StockPortalContent() {
+  const { policy, canEdit, onSaved } = useStockAlertPolicy();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('aiDashboard');
   const [globalBranch, setGlobalBranch] = useState(['admin', 'super_admin'].includes(user?.role) ? 'all' : (user?.branch || 'all'));
@@ -1560,6 +1567,7 @@ export default function StockPortal() {
     { id: 'stockReports', label: 'Stock Reports', icon: '📋' },
     { id: 'supplierImport', label: 'Supplier Import', icon: '🚢' },
     { id: 'costReport', label: 'Cost Report' },
+    { id: 'alertSettings', label: 'Alert Settings' },
     { id: 'countryStock', label: 'Country Stock', icon: '🌍' },
     { id: 'warehouses', label: 'Warehouses', icon: '🏭' },
     { id: 'distribution', label: 'Distribution', icon: '🚚' },
@@ -1626,6 +1634,7 @@ export default function StockPortal() {
 
       <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
       <div className="mt-6">
+        {activeTab === 'alertSettings' && <StockAlertSettings policy={policy} canEdit={canEdit} onSaved={onSaved} />}
         {activeTab === 'aiDashboard' && <AICommandCenter branch={globalBranch} />}
         {activeTab === 'overview' && <OverviewTab branch={globalBranch} />}
         {activeTab === 'branchStock' && <BranchStockTab branch={globalBranch} />}
@@ -1659,6 +1668,7 @@ export default function StockPortal() {
 
 // ── AI Command Center ─────────────────────────────────────────────────────────
 function AICommandCenter({ branch }) {
+  const { expiryWarningDays } = useStockAlertPolicy();
   const [data, setData] = useState({ batches: [], movements: [], transfers: [], sales: [], branchData: [] });
   const [loading, setLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState(new Date());
@@ -1697,7 +1707,7 @@ function AICommandCenter({ branch }) {
 
   const now = new Date();
   const thirtyFwd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-  const ninetyFwd = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
+  const ninetyFwd = new Date(Date.now() + expiryWarningDays * 24 * 60 * 60 * 1000);
   const effQty = (b) => Number(b.remaining_quantity || b.quantity || 0);
   const totalQty = allBatches.reduce((s, b) => s + effQty(b), 0);
   const totalValue = allBatches.reduce((s, b) => s + effQty(b) * (Number(b.unit_price || 0) || getDPCPrice(b.product_name || '')), 0);
@@ -1739,7 +1749,7 @@ function AICommandCenter({ branch }) {
   });
 
   // ── Expiry Timeline ──────────────────────────────────────────
-  const expiry30 = filteredBatches.filter(b => b.expiry_date && new Date(b.expiry_date) > now && new Date(b.expiry_date) <= thirtyFwd);
+  const expiry30 = filteredBatches.filter(b => b.expiry_date && new Date(b.expiry_date) >= now && new Date(b.expiry_date) <= ninetyFwd);
   const expiry60 = filteredBatches.filter(b => b.expiry_date && new Date(b.expiry_date) > thirtyFwd && new Date(b.expiry_date) <= ninetyFwd);
 
   const insightColors = { critical: '#dc2626', danger: '#dc2626', warning: '#d97706', info: '#2563eb', success: '#16a34a' };
@@ -1812,7 +1822,7 @@ function AICommandCenter({ branch }) {
         </div>
         <div style={{ background: expiry30.length > 0 ? '#fffbeb' : '#f8fafc', border: '1.5px solid #e2e8f0', borderRadius: 12, padding: '12px 14px', textAlign: 'center' }}>
           <div style={{ fontSize: '1.6rem', fontWeight: 900, color: expiry30.length > 0 ? '#d97706' : '#475569' }}>{expiry30.length}</div>
-          <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>Expiring &lt;30d</div>
+          <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>Expiring ≤{expiryWarningDays}d</div>
         </div>
         <div style={{ background: pendingTransfers.length > 0 ? '#eff6ff' : '#f8fafc', border: '1.5px solid #e2e8f0', borderRadius: 12, padding: '12px 14px', textAlign: 'center' }}>
           <div style={{ fontSize: '1.6rem', fontWeight: 900, color: pendingTransfers.length > 0 ? '#2563eb' : '#475569' }}>{pendingTransfers.length}</div>
@@ -1955,6 +1965,7 @@ function AICommandCenter({ branch }) {
 
 // ── Overview Tab (branch-aware) ───────────────────────────────────────────────
 function OverviewTab({ branch }) {
+  const { lowStockThreshold, expiryWarningDays } = useStockAlertPolicy();
   const [data, setData] = useState({ batches: [], movements: [], transfers: [], imports: [], fieldStock: [], branchData: [], locationBreakdown: [] });
   const [loading, setLoading] = useState(true);
 
@@ -2060,7 +2071,7 @@ function OverviewTab({ branch }) {
   const fieldQty = data.fieldStock.reduce((s, f) => s + Number(f.balance || 0), 0);
 
   const now = new Date();
-  const expiryThreshold = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
+  const expiryThreshold = new Date(now.getTime() + expiryWarningDays * 24 * 60 * 60 * 1000);
 
   const allBatchesForExpiry = [
     ...filteredBatches,
@@ -2088,7 +2099,7 @@ function OverviewTab({ branch }) {
       if (!byProduct[name]) byProduct[name] = 0;
       byProduct[name] += Number(b.remaining_quantity || b.quantity || 0);
     });
-    return Object.entries(byProduct).filter(([, qty]) => qty > 0 && qty <= 10).sort((a, b) => a[1] - b[1]);
+    return Object.entries(byProduct).filter(([, qty]) => qty > 0 && qty < lowStockThreshold).sort((a, b) => a[1] - b[1]);
   })();
 
   return (
@@ -2167,7 +2178,7 @@ function OverviewTab({ branch }) {
                 )}
                 {soonExpiring.length > 0 && (
                   <div>
-                    <p className="text-xs font-bold text-orange-600 mb-1">EXPIRING WITHIN 90 DAYS ({soonExpiring.length})</p>
+                    <p className="text-xs font-bold text-orange-600 mb-1">EXPIRING WITHIN {expiryWarningDays} DAYS ({soonExpiring.length})</p>
                     {soonExpiring.slice(0, 5).map((b, i) => (
                       <div key={i} className="flex justify-between text-xs py-1 border-b border-orange-100">
                         <span className="text-orange-700">{b.description || b.product_name} — Batch {b.batch_no || b.batch_number || '-'}</span>
@@ -2673,6 +2684,7 @@ function SupplierImportTab() {
 }
 
 function CountryStockTab() {
+  const { lowStockThreshold, expiryWarningDays } = useStockAlertPolicy();
   const { user } = useAuth();
   const [data, setData] = useState({ items: [], summary: {}, locationBreakdown: [] });
   const [loading, setLoading] = useState(true);
@@ -2883,10 +2895,10 @@ function CountryStockTab() {
               { header: 'Expiry', render: r => {
                 if (!r.expiryDate) return '—';
                 const days = Math.floor((new Date(r.expiryDate) - new Date()) / 86400000);
-                return <span className={days <= 30 ? 'text-red-600 font-bold text-xs' : days <= 90 ? 'text-amber-600 font-semibold text-xs' : 'text-xs'}>{formatDate(r.expiryDate)}{days <= 90 ? ` (${days}d)` : ''}</span>;
+                return <span className={days <= expiryWarningDays ? 'text-amber-600 font-semibold text-xs' : 'text-xs'}>{formatDate(r.expiryDate)}{days <= expiryWarningDays ? ` (${days}d)` : ''}</span>;
               }},
               { header: 'Available at Country', render: r => (
-                <span className={r.closingQty < 10 ? 'text-red-600 font-bold' : r.closingQty < 50 ? 'text-amber-600 font-semibold' : 'text-green-700 font-semibold'}>
+                <span className={r.closingQty < lowStockThreshold ? 'text-red-600 font-bold' : 'text-green-700 font-semibold'}>
                   {r.closingQty.toLocaleString()}
                 </span>
               )},
@@ -2942,7 +2954,7 @@ function CountryStockTab() {
                     { header: 'Product', render: r => <span className="text-sm font-medium text-gray-800">{r.productName}</span> },
                     { header: 'Batch', render: r => <span className="font-mono text-xs text-gray-500">{r.batchNo || '—'}</span> },
                     { header: 'Units On-Hand', render: r => (
-                      <span className={r.closingQty < 10 ? 'text-red-600 font-bold' : r.closingQty < 50 ? 'text-amber-600 font-semibold' : 'text-green-700 font-semibold'}>
+                      <span className={r.closingQty < lowStockThreshold ? 'text-red-600 font-bold' : 'text-green-700 font-semibold'}>
                         {r.closingQty.toLocaleString()}
                       </span>
                     )},
@@ -3187,6 +3199,7 @@ function AdminCountryStockEditModal({ open, record, onClose, onSaved }) {
 }
 
 function WarehouseTab({ name }) {
+  const { lowStockThreshold, expiryWarningDays } = useStockAlertPolicy();
   const { user } = useAuth();
   const [batches, setBatches] = useState([]);
   const [incomingTransfers, setIncomingTransfers] = useState([]);
@@ -3676,12 +3689,12 @@ function WarehouseTab({ name }) {
                   : 'Country Stock';
                 return <span style={{ background: '#eff6ff', color: '#1d4ed8', padding: '2px 8px', borderRadius: 5, fontSize: '0.72rem', fontWeight: 700, whiteSpace: 'nowrap' }}>📦 {fromLabel}</span>;
               }},
-              { header: 'Available', render: r => <span className={Number(r.remaining_quantity ?? r.quantity ?? 0) < 10 ? 'text-red-600 font-bold' : 'font-medium'}>{Number(r.remaining_quantity ?? 0)}</span> },
+              { header: 'Available', render: r => <span className={Number(r.remaining_quantity ?? r.quantity ?? 0) < lowStockThreshold ? 'text-red-600 font-bold' : 'font-medium'}>{Number(r.remaining_quantity ?? 0)}</span> },
               { header: 'Dispatched', render: r => r.dispatched_quantity || 0 },
               { header: 'Expiry', render: r => {
                 if (!r.expiry_date) return '—';
                 const days = Math.floor((new Date(r.expiry_date) - new Date()) / 86400000);
-                return <span className={days <= 30 ? 'text-red-600 font-bold' : days <= 90 ? 'text-amber-600' : ''}>{formatDate(r.expiry_date)}{days <= 90 ? ` (${days}d)` : ''}</span>;
+                return <span className={days < 0 ? 'text-red-600 font-bold' : days <= expiryWarningDays ? 'text-amber-600' : ''}>{formatDate(r.expiry_date)}{days <= expiryWarningDays ? ` (${days}d)` : ''}</span>;
               }},
               { header: 'CIF/Unit', render: r => formatCurrency(getBatchCIF(r)) },
               { header: 'DPC/Unit', render: r => formatCurrency(Number(r.dpc_unit_value || 0) || getDPCPrice(r.description || r.product_name || '')) },
@@ -3840,7 +3853,7 @@ function WarehouseTab({ name }) {
                               const d = item.expiryDate || item.expiry_date;
                               if (!d) return <span style={{ color: '#94a3b8' }}>—</span>;
                               const days = Math.floor((new Date(d) - new Date()) / 86400000);
-                              return <span style={{ color: days <= 30 ? '#dc2626' : days <= 90 ? '#d97706' : '#16a34a', fontWeight: days <= 90 ? 700 : 400 }}>{formatDate(d)}{days <= 90 ? ` (${days}d)` : ''}</span>;
+                              return <span style={{ color: days < 0 ? '#dc2626' : days <= expiryWarningDays ? '#d97706' : '#16a34a', fontWeight: days <= expiryWarningDays ? 700 : 400 }}>{formatDate(d)}{days <= expiryWarningDays ? ` (${days}d)` : ''}</span>;
                             })()}
                           </td>
                           <td style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 800, color: '#7c3aed', fontSize: '0.95rem' }}>
@@ -3920,7 +3933,7 @@ function WarehouseTab({ name }) {
                               const d = item.expiryDate || item.expiry_date;
                               if (!d) return <span style={{ color: '#94a3b8' }}>—</span>;
                               const days = Math.floor((new Date(d) - new Date()) / 86400000);
-                              return <span style={{ color: days <= 30 ? '#dc2626' : days <= 90 ? '#d97706' : '#16a34a', fontWeight: days <= 90 ? 700 : 400 }}>{formatDate(d)}{days <= 90 ? ` (${days}d)` : ''}</span>;
+                              return <span style={{ color: days < 0 ? '#dc2626' : days <= expiryWarningDays ? '#d97706' : '#16a34a', fontWeight: days <= expiryWarningDays ? 700 : 400 }}>{formatDate(d)}{days <= expiryWarningDays ? ` (${days}d)` : ''}</span>;
                             })()}
                           </td>
                           <td style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 800, color: '#7c3aed', fontSize: '0.95rem' }}>
@@ -4532,8 +4545,8 @@ function WarehouseTab({ name }) {
                             </td>
                             <td style={{ padding: '8px 12px' }}>
                               {expiry ? (
-                                <span style={{ color: expiryDays <= 30 ? '#dc2626' : expiryDays <= 90 ? '#d97706' : '#374151', fontWeight: expiryDays <= 90 ? 700 : 400, fontSize: '0.78rem' }}>
-                                  {formatDate(expiry)}{expiryDays <= 90 ? ` (${expiryDays}d)` : ''}
+                                <span style={{ color: expiryDays < 0 ? '#dc2626' : expiryDays <= expiryWarningDays ? '#d97706' : '#374151', fontWeight: expiryDays <= expiryWarningDays ? 700 : 400, fontSize: '0.78rem' }}>
+                                  {formatDate(expiry)}{expiryDays <= expiryWarningDays ? ` (${expiryDays}d)` : ''}
                                 </span>
                               ) : <span style={{ color: '#cbd5e1' }}>—</span>}
                             </td>
@@ -6223,6 +6236,7 @@ function WarehousesTab() {
 }
 
 function DistributionTab({ branch }) {
+  const { expiryWarningDays } = useStockAlertPolicy();
   const { user } = useAuth();
   const [cart, setCart] = useState([]);
   const [destination, setDestination] = useState('');
@@ -6388,7 +6402,7 @@ function DistributionTab({ branch }) {
                               const exp = b.expiry_date ? new Date(b.expiry_date) : null;
                               const daysLeft = exp ? Math.ceil((exp - new Date()) / 86400000) : null;
                               return (
-                                <span key={i} className="px-1.5 py-0.5 rounded text-xs" style={{ background: daysLeft !== null && daysLeft < 90 ? '#fef2f2' : '#f0fdf4', border: '1px solid', borderColor: daysLeft !== null && daysLeft < 90 ? '#fecaca' : '#bbf7d0', color: '#374151' }}>
+                                <span key={i} className="px-1.5 py-0.5 rounded text-xs" style={{ background: daysLeft !== null && daysLeft <= expiryWarningDays ? '#fef2f2' : '#f0fdf4', border: '1px solid', borderColor: daysLeft !== null && daysLeft <= expiryWarningDays ? '#fecaca' : '#bbf7d0', color: '#374151' }}>
                                   B:{b.batch_no || b.batch_number || '-'} | {Number(b.remaining_quantity || b.quantity || 0)}u{exp ? ` | Exp:${formatDate(b.expiry_date)}` : ''}
                                 </span>
                               );
@@ -6783,6 +6797,7 @@ function TransfersTab({ branch }) {
 }
 
 function InventoryTab({ branch }) {
+  const { expiryWarningDays } = useStockAlertPolicy();
   const { user } = useAuth();
 
   // ── data state ──────────────────────────────────────────────
@@ -7225,8 +7240,8 @@ function InventoryTab({ branch }) {
                         </td>
                         <td style={{ padding: '8px 12px' }}>
                           {expiry ? (
-                            <span style={{ color: days != null && days <= 0 ? '#dc2626' : days != null && days <= 30 ? '#ea580c' : days != null && days <= 90 ? '#d97706' : '#374151', fontWeight: days != null && days <= 90 ? 700 : 400, fontSize: '0.78rem' }}>
-                              {formatDate(expiry)}{days != null && days <= 90 && days > 0 ? ` (${days}d)` : days != null && days <= 0 ? ' EXPIRED' : ''}
+                            <span style={{ color: days != null && days < 0 ? '#dc2626' : days != null && days <= expiryWarningDays ? '#d97706' : '#374151', fontWeight: days != null && days <= expiryWarningDays ? 700 : 400, fontSize: '0.78rem' }}>
+                              {formatDate(expiry)}{days != null && days <= expiryWarningDays && days >= 0 ? ` (${days}d)` : days != null && days < 0 ? ' EXPIRED' : ''}
                             </span>
                           ) : <span style={{ color: '#cbd5e1' }}>—</span>}
                         </td>
@@ -8633,6 +8648,7 @@ function QRThumb({ value }) {
 }
 
 function BarcodeTab() {
+  const { expiryWarningDays } = useStockAlertPolicy();
   const [batches, setBatches]         = useState([]);
   const [loading, setLoading]         = useState(true);
   const [search, setSearch]           = useState('');
@@ -9227,7 +9243,7 @@ function BarcodeTab() {
                       const dp      = getDP(name) || Number(b.unit_price || 0);
                       const isEditing = assigningId === b.id;
                       const expDate = b.expiry_date ? new Date(b.expiry_date) : null;
-                      const isExpiringSoon = expDate && expDate < new Date(Date.now() + 90 * 86400000);
+                      const isExpiringSoon = expDate && expDate <= new Date(Date.now() + expiryWarningDays * 86400000);
                       return (
                         <tr key={b.id} style={{ background: selected[b.id] ? '#fef2f2' : i % 2 === 0 ? '#fff' : '#fafafa' }}>
                           <td className="px-3 py-2.5 border-b">
@@ -9241,7 +9257,7 @@ function BarcodeTab() {
                           <td className="px-3 py-2.5 border-b font-mono text-xs text-gray-600">{bno}</td>
                           <td className="px-3 py-2.5 border-b text-xs" style={{ color: isExpiringSoon ? '#dc2626' : '#374151', fontWeight: isExpiringSoon ? 700 : 400 }}>
                             {fmtDate(b.expiry_date)}
-                            {isExpiringSoon && <div className="text-xs text-red-500">⚠ &lt;90 days</div>}
+                            {isExpiringSoon && <div className="text-xs text-red-500">⚠ ≤{expiryWarningDays} days</div>}
                           </td>
                           <td className="px-3 py-2.5 border-b text-xs text-gray-600">{fmtLoc(b.location)}</td>
                           <td className="px-3 py-2.5 border-b font-bold text-gray-800">{rem.toLocaleString()}</td>
@@ -9350,6 +9366,7 @@ function BarcodeTab() {
 }
 
 function SmartReorderTab({ branch }) {
+  const { lowStockThreshold } = useStockAlertPolicy();
   const { user } = useAuth();
   const [batches, setBatches]         = useState([]);
   const [movements, setMovements]     = useState([]);
@@ -9409,7 +9426,7 @@ function SmartReorderTab({ branch }) {
     const dailyRate = stockAI.getDailyRate(p.product_name, movements, branch === 'all' ? null : branch);
     const daysOfStock = stockAI.getDaysOfStock(p.qty, dailyRate);
     const priority = stockAI.getPriority(daysOfStock, p.qty);
-    const threshold = thresholds[p.product_name] || 10;
+    const threshold = thresholds[p.product_name] ?? lowStockThreshold;
     // Suggested order = 6-month supply minus current stock
     const sixMonthNeed = dailyRate > 0 ? Math.ceil(dailyRate * 180) : (p.qty < 5 ? 180 : 0);
     const suggestedOrder = Math.max(0, sixMonthNeed - p.qty);
@@ -9759,6 +9776,7 @@ function SmartReorderTab({ branch }) {
 }
 
 function BatchTab({ branch }) {
+  const { lowStockThreshold, expiryWarningDays } = useStockAlertPolicy();
   const [rawBatches, setRawBatches]   = useState([]);
   const [loading, setLoading]         = useState(true);
   const [search, setSearch]           = useState('');
@@ -9799,8 +9817,8 @@ function BatchTab({ branch }) {
   const expiryBadge = days => {
     if (days === null) return { label: 'No expiry', color: '#94a3b8', bg: '#f8fafc' };
     if (days <= 0)  return { label: 'EXPIRED',   color: '#dc2626', bg: '#fef2f2' };
-    if (days <= 30) return { label: '< 30 days', color: '#dc2626', bg: '#fef2f2' };
-    if (days <= 90) return { label: '< 90 days', color: '#d97706', bg: '#fffbeb' };
+    if (days <= Math.min(30, expiryWarningDays)) return { label: `≤ ${Math.min(30, expiryWarningDays)} days`, color: '#dc2626', bg: '#fef2f2' };
+    if (days <= expiryWarningDays) return { label: `≤ ${expiryWarningDays} days`, color: '#d97706', bg: '#fffbeb' };
     return { label: 'Good', color: '#16a34a', bg: '#f0fdf4' };
   };
   const fmtDate = d => { try { return d ? new Date(d).toLocaleDateString('en-ZA',{day:'2-digit',month:'short',year:'numeric'}) : '—'; } catch { return d||'—'; } };
@@ -9831,7 +9849,7 @@ function BatchTab({ branch }) {
     if (statusFilter === 'active')   return b.status !== 'depleted' && b.status !== 'written_off' && b.remaining > 0 && (daysLeft(b.expiry_date) === null || daysLeft(b.expiry_date) > 0);
     if (statusFilter === 'expired')  return daysLeft(b.expiry_date) !== null && daysLeft(b.expiry_date) <= 0;
     if (statusFilter === 'depleted') return b.remaining <= 0 || b.status === 'depleted';
-    if (statusFilter === 'expiring') { const d = daysLeft(b.expiry_date); return d !== null && d > 0 && d <= 90; }
+    if (statusFilter === 'expiring') { const d = daysLeft(b.expiry_date); return d !== null && d >= 0 && d <= expiryWarningDays; }
     return true;
   });
 
@@ -9871,7 +9889,7 @@ function BatchTab({ branch }) {
   const totalBatches   = statusFiltered.length;
   const totalRemaining = statusFiltered.reduce((s,b) => s + b.remaining, 0);
   const expiredCount   = statusFiltered.filter(b => daysLeft(b.expiry_date) !== null && daysLeft(b.expiry_date) <= 0).length;
-  const expiringCount  = statusFiltered.filter(b => { const d = daysLeft(b.expiry_date); return d !== null && d > 0 && d <= 90; }).length;
+  const expiringCount  = statusFiltered.filter(b => { const d = daysLeft(b.expiry_date); return d !== null && d >= 0 && d <= expiryWarningDays; }).length;
   const totalCIF       = statusFiltered.reduce((s,b) => s + b.remaining * b.cif, 0);
 
   const handleSubmit = async (e) => {
@@ -9905,7 +9923,7 @@ function BatchTab({ branch }) {
           { label: 'Total Batches',    value: totalBatches,                                  color: '#374151', bg: '#f8fafc',  border: '#e2e8f0' },
           { label: 'Total Units',      value: totalRemaining.toLocaleString(),                color: '#1d4ed8', bg: '#eff6ff',  border: '#bfdbfe' },
           { label: 'Expired Batches',  value: expiredCount,                                   color: expiredCount  > 0 ? '#dc2626' : '#374151', bg: expiredCount  > 0 ? '#fef2f2' : '#f8fafc', border: expiredCount  > 0 ? '#fecaca' : '#e2e8f0' },
-          { label: '< 90 Days Expiry', value: expiringCount,                                  color: expiringCount > 0 ? '#d97706' : '#374151', bg: expiringCount > 0 ? '#fffbeb' : '#f8fafc', border: expiringCount > 0 ? '#fde68a' : '#e2e8f0' },
+          { label: `≤ ${expiryWarningDays} Days Expiry`, value: expiringCount,                                  color: expiringCount > 0 ? '#d97706' : '#374151', bg: expiringCount > 0 ? '#fffbeb' : '#f8fafc', border: expiringCount > 0 ? '#fde68a' : '#e2e8f0' },
           { label: 'CIF Value (N$)',   value: `${Math.round(totalCIF).toLocaleString('en-ZA')}`, color: '#16a34a', bg: '#f0fdf4',  border: '#86efac' },
         ].map(s => (
           <div key={s.label} style={{ borderRadius: 10, padding: '11px 14px', background: s.bg, border: `1.5px solid ${s.border}` }}>
@@ -9947,7 +9965,7 @@ function BatchTab({ branch }) {
             <select className="px-3 py-2 rounded-lg border border-gray-300 text-sm bg-white focus:outline-none focus:ring-2 focus:border-primary"
               value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
               <option value="active">Active batches</option>
-              <option value="expiring">Expiring &lt; 90d</option>
+              <option value="expiring">Expiring ≤ {expiryWarningDays}d</option>
               <option value="expired">Expired</option>
               <option value="depleted">Depleted</option>
               <option value="all">All batches</option>
@@ -10064,7 +10082,7 @@ function BatchTab({ branch }) {
                           </span>
                         </td>
                         <td style={{ padding:'9px 11px', color:'#94a3b8' }}>{b.original_qty.toLocaleString()}</td>
-                        <td style={{ padding:'9px 11px', fontWeight:900, color: b.remaining <= 0 ? '#dc2626' : b.remaining < 10 ? '#d97706' : '#16a34a' }}>{b.remaining.toLocaleString()}</td>
+                        <td style={{ padding:'9px 11px', fontWeight:900, color: b.remaining <= 0 ? '#dc2626' : b.remaining < lowStockThreshold ? '#d97706' : '#16a34a' }}>{b.remaining.toLocaleString()}</td>
                         <td style={{ padding:'9px 11px', color:'#94a3b8' }}>{b.consumed.toLocaleString()}</td>
                         <td style={{ padding:'9px 11px', minWidth:90 }}>
                           <div style={{ display:'flex', alignItems:'center', gap:5 }}>
@@ -10075,9 +10093,9 @@ function BatchTab({ branch }) {
                           </div>
                         </td>
                         <td style={{ padding:'9px 11px', fontWeight:700, color:'#374151' }}>{cifVal > 0 ? `N$ ${Math.round(cifVal).toLocaleString('en-ZA')}` : '—'}</td>
-                        <td style={{ padding:'9px 11px', whiteSpace:'nowrap', fontWeight: days !== null && days <= 30 ? 700 : 400, color: days !== null && days <= 30 ? '#dc2626' : '#374151' }}>
+                        <td style={{ padding:'9px 11px', whiteSpace:'nowrap', fontWeight: days !== null && days <= expiryWarningDays ? 700 : 400, color: days !== null && days <= expiryWarningDays ? '#dc2626' : '#374151' }}>
                           {fmtDate(b.expiry_date)}
-                          {days !== null && days > 0 && days <= 30 && <div style={{ fontSize:'0.65rem', color:'#dc2626' }}>{days}d left</div>}
+                          {days !== null && days >= 0 && days <= expiryWarningDays && <div style={{ fontSize:'0.65rem', color:'#dc2626' }}>{days}d left</div>}
                         </td>
                         <td style={{ padding:'9px 11px' }}>
                           <span style={{ background:eb.bg, color:eb.color, borderRadius:99, padding:'2px 8px', fontSize:'0.69rem', fontWeight:800, whiteSpace:'nowrap' }}>{eb.label}</span>
@@ -10132,9 +10150,9 @@ function BatchTab({ branch }) {
                           </div>
                         </td>
                         <td style={{ padding:'10px 12px', color:'#64748b' }}>{p.batches.length}</td>
-                        <td style={{ padding:'10px 12px', whiteSpace:'nowrap', fontWeight: days !== null && days <= 30 ? 700 : 400, color: days !== null && days <= 30 ? '#dc2626' : '#374151' }}>
+                        <td style={{ padding:'10px 12px', whiteSpace:'nowrap', fontWeight: days !== null && days <= expiryWarningDays ? 700 : 400, color: days !== null && days <= expiryWarningDays ? '#dc2626' : '#374151' }}>
                           {earliest ? fmtDate(earliest.expiry_date) : '—'}
-                          {days !== null && days > 0 && days <= 30 && <div style={{ fontSize:'0.65rem', color:'#dc2626' }}>{days}d left</div>}
+                          {days !== null && days >= 0 && days <= expiryWarningDays && <div style={{ fontSize:'0.65rem', color:'#dc2626' }}>{days}d left</div>}
                           {days !== null && days <= 0 && <div style={{ fontSize:'0.65rem', color:'#dc2626', fontWeight:800 }}>EXPIRED</div>}
                         </td>
                         <td style={{ padding:'10px 12px', fontWeight:700, color:'#374151' }}>{totalCIF > 0 ? `N$ ${Math.round(totalCIF).toLocaleString('en-ZA')}` : '—'}</td>
@@ -10849,6 +10867,7 @@ function fmtPeriodLabel(from, to) {
 
 // ─── Branch Stock Tab ─────────────────────────────────────────────────────────
 function BranchStockTab({ branch }) {
+  const { lowStockThreshold, expiryWarningDays } = useStockAlertPolicy();
   const [branchData, setBranchData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -10872,7 +10891,7 @@ function BranchStockTab({ branch }) {
       .then(d => { setBranchData(d.branches || []); setLastRefresh(new Date()); })
       .catch(() => setBranchData([]))
       .finally(() => { setLoading(false); setRefreshing(false); });
-  }, [period.from, period.to]);
+  }, [period.from, period.to, lowStockThreshold, expiryWarningDays]);
 
   // Real-time: refresh immediately on any stock WebSocket event
   useStockRealtime({ onUpdate: () => loadData(true) });
@@ -10888,7 +10907,7 @@ function BranchStockTab({ branch }) {
 
   const fmtBranch = (b) => b ? b.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '-';
   const now = new Date();
-  const thirtyFwd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+  const thirtyFwd = new Date(Date.now() + expiryWarningDays * 24 * 60 * 60 * 1000);
   const periodLabel = fmtPeriodLabel(period.from, period.to);
 
   const EMPTY_BRANCH = (b) => ({ name: b.name, key: b.id, noData: true, closingQty: 0, closingDPC: 0, closingValue: 0, products: [], movements: [], salesQty: 0, salesRevenue: 0, salesCount: 0, issued: 0, dispensedQty: 0, transferredOut: 0, transferredIn: 0, returns: 0, writeoffs: 0, expiryQty: 0, expiredQty: 0, expiringQty: 0, opening: 0, batchCount: 0, lowStockCount: 0, lastMovement: null, sourceWarehouse: null });
@@ -10962,7 +10981,7 @@ function BranchStockTab({ branch }) {
   const printBranchReport = (br) => {
     const win = window.open('', '_blank');
     if (!win) return;
-    const pRows = br.products.map(p => `<tr><td>${p.product_name}</td><td>${p.batchNo||'-'}</td><td>${p.expiryDate?formatDate(p.expiryDate):'-'}</td><td style="font-weight:800;color:${p.qty===0?'#c41e3a':p.qty<10?'#d97706':'#166534'}">${p.qty}</td><td>${p.expiring?'<span style="color:#c41e3a;font-weight:700">Expiring</span>':'-'}</td><td>N$ ${(p.dpcValue||0).toFixed(2)}</td></tr>`).join('');
+    const pRows = br.products.map(p => `<tr><td>${p.product_name}</td><td>${p.batchNo||'-'}</td><td>${p.expiryDate?formatDate(p.expiryDate):'-'}</td><td style="font-weight:800;color:${p.qty===0?'#c41e3a':p.qty<lowStockThreshold?'#d97706':'#166534'}">${p.qty}</td><td>${p.expiring?'<span style="color:#c41e3a;font-weight:700">Expiring</span>':'-'}</td><td>N$ ${(p.dpcValue||0).toFixed(2)}</td></tr>`).join('');
     win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Branch Stock — ${br.name}</title>
     <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;padding:24px}.header{display:flex;justify-content:space-between;border-bottom:3px solid #c41e3a;padding-bottom:10px;margin-bottom:16px}.company{color:#c41e3a;font-weight:900;font-size:15px}.formula-box{border:1.5px solid #f0e8ea;border-radius:10px;padding:14px;margin-bottom:14px}.formula-row{display:flex;justify-content:space-between;padding:8px 12px;border-bottom:1px solid #f1f5f9}.formula-label{font-weight:600;color:#374151}.formula-val{font-weight:900;font-size:14px}.closing-row{display:flex;justify-content:space-between;padding:10px 12px;background:linear-gradient(135deg,#f0fdf4,#dcfce7);border-top:2px solid #86efac}.closing-label{font-weight:800;color:#166534;font-size:13px}.closing-val{font-weight:900;font-size:18px;color:#15803d}table{width:100%;border-collapse:collapse;margin-top:8px}th{background:#c41e3a;color:#fff;font-weight:700;padding:6px 8px;text-align:left;font-size:10px}td{padding:5px 8px;border-bottom:1px solid #f1f5f9;font-size:10px}tr:nth-child(even) td{background:#fdf7f8}.print-btn{position:fixed;top:12px;right:12px;background:#c41e3a;color:#fff;border:none;padding:8px 18px;border-radius:8px;font-weight:700;cursor:pointer}@media print{.print-btn{display:none}}</style></head><body>
     <button class="print-btn" onclick="window.print()">Print</button>
@@ -11266,8 +11285,8 @@ function BranchStockTab({ branch }) {
                       <td style={{ padding: '7px 10px', fontWeight: 600, color: '#1e293b', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.product_name}>{p.product_name}</td>
                       <td style={{ padding: '7px 10px', fontFamily: 'monospace', color: '#6b7280', fontSize: '0.74rem' }}>{p.batchNo || '-'}</td>
                       <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', color: p.expired ? '#c41e3a' : p.expiring ? '#d97706' : '#6b7280', fontWeight: (p.expired || p.expiring) ? 700 : 400, fontSize: '0.74rem' }}>{p.expiryDate ? formatDate(p.expiryDate) : '-'}{p.expired ? ' (EXPIRED)' : p.expiring ? ' (EXPIRING)' : ''}</td>
-                      <td style={{ padding: '7px 10px', fontWeight: 800, color: p.qty === 0 ? '#c41e3a' : p.qty < 10 ? '#d97706' : '#166534', textAlign: 'right' }}>{p.qty}</td>
-                      <td style={{ padding: '7px 10px' }}>{p.qty === 0 ? <span style={{ color: '#c41e3a', fontWeight: 700 }}>Out</span> : p.expired ? <span style={{ color: '#c41e3a', fontWeight: 700 }}>Expired</span> : p.qty < 10 ? <span style={{ color: '#d97706', fontWeight: 700 }}>Low</span> : <span style={{ color: '#166534', fontWeight: 600 }}>OK</span>}</td>
+                      <td style={{ padding: '7px 10px', fontWeight: 800, color: p.qty === 0 ? '#c41e3a' : p.qty < lowStockThreshold ? '#d97706' : '#166534', textAlign: 'right' }}>{p.qty}</td>
+                      <td style={{ padding: '7px 10px' }}>{p.qty === 0 ? <span style={{ color: '#c41e3a', fontWeight: 700 }}>Out</span> : p.expired ? <span style={{ color: '#c41e3a', fontWeight: 700 }}>Expired</span> : p.qty < lowStockThreshold ? <span style={{ color: '#d97706', fontWeight: 700 }}>Low</span> : <span style={{ color: '#166534', fontWeight: 600 }}>OK</span>}</td>
                       <td style={{ padding: '7px 10px', textAlign: 'right', color: '#374151' }}>N$ {dpUnit.toFixed(2)}</td>
                       <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700, color: '#c41e3a' }}>N$ {(p.qty * dpUnit).toFixed(2)}</td>
                       <td style={{ padding: '7px 10px', color: '#6b7280', fontSize: '0.74rem' }}>{p.source_warehouse ? fmtBranch(p.source_warehouse) : '-'}</td>
@@ -11670,7 +11689,7 @@ function BranchStockTab({ branch }) {
               <h3 className="font-bold text-gray-800">Product Stock by Branch</h3>
               <Button size="sm" variant="secondary" onClick={() => {
                 const allProds = displayBranches.flatMap(br => br.products.map(p => ({ ...p, branch: br.name })));
-                const rows = allProds.map(p => { const dpU = getDPCPrice(p.product_name); return `<tr><td>${p.product_name}</td><td>${p.branch}</td><td>${p.batchNo||'-'}</td><td>${p.expiryDate?formatDate(p.expiryDate):'-'}</td><td style="font-weight:800;color:${p.qty===0?'#c41e3a':p.qty<10?'#d97706':'#166534'}">${p.qty}</td><td>${p.expiring?'<span style="color:#c41e3a">Expiring</span>':'-'}</td><td>N$ ${dpU.toFixed(2)}</td><td>N$ ${(p.qty*dpU).toFixed(2)}</td></tr>`; }).join('');
+                const rows = allProds.map(p => { const dpU = getDPCPrice(p.product_name); return `<tr><td>${p.product_name}</td><td>${p.branch}</td><td>${p.batchNo||'-'}</td><td>${p.expiryDate?formatDate(p.expiryDate):'-'}</td><td style="font-weight:800;color:${p.qty===0?'#c41e3a':p.qty<lowStockThreshold?'#d97706':'#166534'}">${p.qty}</td><td>${p.expiring?'<span style="color:#c41e3a">Expiring</span>':'-'}</td><td>N$ ${dpU.toFixed(2)}</td><td>N$ ${(p.qty*dpU).toFixed(2)}</td></tr>`; }).join('');
                 printDocument('Per-Branch Product Stock', `<table><thead><tr><th>Product</th><th>Branch</th><th>Batch</th><th>Expiry</th><th>Qty</th><th>Status</th><th>DP Unit</th><th>DP Value</th></tr></thead><tbody>${rows}</tbody></table>`, true);
               }}><Printer size={14} /> Print</Button>
             </div>
@@ -11687,7 +11706,7 @@ function BranchStockTab({ branch }) {
                 if (!r.expiryDate) return '-';
                 const exp = new Date(r.expiryDate);
                 const daysLeft = Math.ceil((exp - new Date()) / 86400000);
-                return <span style={{ color: daysLeft < 0 ? '#c41e3a' : daysLeft < 90 ? '#d97706' : '#166534', fontWeight: 700, fontSize: '0.78rem' }}>{formatDate(r.expiryDate)}{daysLeft < 0 ? ' (EXPIRED)' : daysLeft < 90 ? ` (${daysLeft}d)` : ''}</span>;
+                return <span style={{ color: daysLeft < 0 ? '#c41e3a' : daysLeft <= expiryWarningDays ? '#d97706' : '#166534', fontWeight: 700, fontSize: '0.78rem' }}>{formatDate(r.expiryDate)}{daysLeft < 0 ? ' (EXPIRED)' : daysLeft <= expiryWarningDays ? ` (${daysLeft}d)` : ''}</span>;
               }},
               { header: 'Qty', render: r => <span style={{ fontWeight: 800, color: r.qty === 0 ? '#c41e3a' : r.qty < 10 ? '#d97706' : '#166534' }}>{r.qty}</span> },
               { header: 'Status', render: r => r.qty === 0 ? <Badge variant="danger">Out of Stock</Badge> : r.qty < 10 ? <Badge variant="warning">Low</Badge> : <Badge variant="success">OK</Badge> },
@@ -11705,6 +11724,7 @@ function BranchStockTab({ branch }) {
 
 // ─── Stock Reports Tab ─────────────────────────────────────────────────────────
 function StockReportsTab({ branch }) {
+  const { expiryWarningDays } = useStockAlertPolicy();
   const [branchData, setBranchData] = useState([]);
   const [batches, setBatches] = useState([]);
   const [movements, setMovements] = useState([]);
@@ -11947,8 +11967,8 @@ function StockReportsTab({ branch }) {
               const rows = expiringBatches.map(b => {
                 const exp = new Date(b.expiry_date);
                 const daysLeft = Math.ceil((exp - now) / 86400000);
-                const status = daysLeft < 0 ? 'EXPIRED' : daysLeft < 30 ? 'CRITICAL' : daysLeft < 90 ? 'WARNING' : 'OK';
-                return `<tr><td>${b.description || b.product_name || ''}</td><td>${b.batch_no || b.batch_number || '-'}</td><td>${fmtLocation(b.location)}</td><td>${Number(b.remaining_quantity || b.quantity || 0)}</td><td style="color:${daysLeft<0?'#c41e3a':daysLeft<90?'#d97706':'#166534'};font-weight:700">${formatDate(b.expiry_date)}</td><td style="font-weight:700;color:${daysLeft<0?'#c41e3a':daysLeft<90?'#d97706':'#166534'}">${daysLeft < 0 ? daysLeft + 'd (EXPIRED)' : daysLeft + 'd'}</td><td style="font-weight:700;color:${status==='EXPIRED'?'#c41e3a':status==='CRITICAL'?'#dc2626':status==='WARNING'?'#d97706':'#166534'}">${status}</td></tr>`;
+                const status = daysLeft < 0 ? 'EXPIRED' : daysLeft <= expiryWarningDays ? (daysLeft < 30 ? 'CRITICAL' : 'WARNING') : 'OK';
+                return `<tr><td>${b.description || b.product_name || ''}</td><td>${b.batch_no || b.batch_number || '-'}</td><td>${fmtLocation(b.location)}</td><td>${Number(b.remaining_quantity || b.quantity || 0)}</td><td style="color:${daysLeft<0?'#c41e3a':daysLeft<=expiryWarningDays?'#d97706':'#166534'};font-weight:700">${formatDate(b.expiry_date)}</td><td style="font-weight:700;color:${daysLeft<0?'#c41e3a':daysLeft<=expiryWarningDays?'#d97706':'#166534'}">${daysLeft < 0 ? daysLeft + 'd (EXPIRED)' : daysLeft + 'd'}</td><td style="font-weight:700;color:${status==='EXPIRED'?'#c41e3a':status==='CRITICAL'?'#dc2626':status==='WARNING'?'#d97706':'#166534'}">${status}</td></tr>`;
               }).join('');
               printDocument('Expiry & Shelf-Life Report', `<table><thead><tr><th>Product</th><th>Batch</th><th>Location</th><th>Qty</th><th>Expiry Date</th><th>Days Left</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>`);
             }}><Printer size={14} /> Print Expiry Report</Button>
@@ -11963,15 +11983,15 @@ function StockReportsTab({ branch }) {
             { header: 'Expiry', render: r => {
               const exp = new Date(r.expiry_date);
               const d = Math.ceil((exp - now) / 86400000);
-              return <span style={{ color: d < 0 ? '#c41e3a' : d < 90 ? '#d97706' : '#166534', fontWeight: 700, fontSize: '0.78rem' }}>{formatDate(r.expiry_date)}</span>;
+              return <span style={{ color: d < 0 ? '#c41e3a' : d <= expiryWarningDays ? '#d97706' : '#166534', fontWeight: 700, fontSize: '0.78rem' }}>{formatDate(r.expiry_date)}</span>;
             }},
             { header: 'Days Left', render: r => {
               const d = Math.ceil((new Date(r.expiry_date) - now) / 86400000);
-              return <span style={{ fontWeight: 800, color: d < 0 ? '#c41e3a' : d < 30 ? '#dc2626' : d < 90 ? '#d97706' : '#166534' }}>{d < 0 ? `${d}d (EXPIRED)` : `${d}d`}</span>;
+              return <span style={{ fontWeight: 800, color: d < 0 ? '#c41e3a' : d <= expiryWarningDays ? '#d97706' : '#166534' }}>{d < 0 ? `${d}d (EXPIRED)` : `${d}d`}</span>;
             }},
             { header: 'Status', render: r => {
               const d = Math.ceil((new Date(r.expiry_date) - now) / 86400000);
-              return d < 0 ? <Badge variant="danger">EXPIRED</Badge> : d < 30 ? <Badge variant="danger">CRITICAL</Badge> : d < 90 ? <Badge variant="warning">WARNING</Badge> : <Badge variant="success">OK</Badge>;
+              return d < 0 ? <Badge variant="danger">EXPIRED</Badge> : d <= expiryWarningDays ? <Badge variant="warning">WARNING</Badge> : <Badge variant="success">OK</Badge>;
             }},
           ]}
           data={batches.filter(b => b.expiry_date).sort((a,b) => new Date(a.expiry_date) - new Date(b.expiry_date))}

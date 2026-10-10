@@ -11,6 +11,12 @@ The user approved these rules on 2026-10-09: reserve at approval, deduct once at
 
 ## Commercial price corrections
 
+Stock alert thresholds are warning policy, not reorder rules or authority to move stock.
+
+**Why:** Staff requested configurable low-stock and expiry warnings while explicitly excluding automatic receipt and historical repair. Reusing warning values as automation triggers would change operational behavior without approval.
+
+**How to apply:** Keep warning settings separate from reorder quantities, staff-confirmed receipts, and GM-controlled write-off approval.
+
 A current price list is not authority to reprice historical sales or received stock. Catalogue identity reconciliation must preserve the original physical-stock and sale names as evidence, even when a canonical price-list description includes a product code.
 
 **Why:** Today's DP/CIF cannot prove what a customer was charged or what a received layer cost. Keeping original row IDs alone is insufficient when historical evidence identifies goods by their original name; replacing those names would also discard source evidence.

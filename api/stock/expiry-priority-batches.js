@@ -9,7 +9,7 @@
 import { applyAuthCors } from '../_lib/auth.js';
 import { getMany } from '../db.js';
 
-const EXPIRY_WARNING_DAYS = 90;
+import { getStockAlertPolicy } from '../services/stockAlertPolicy.js';
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
@@ -23,6 +23,7 @@ export default async function handler(req, res) {
   }
 
   try {
+    const { expiryWarningDays: EXPIRY_WARNING_DAYS } = await getStockAlertPolicy();
     const url       = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const product   = url.searchParams.get('product') || url.searchParams.get('product_name') || null;
     const warehouse = url.searchParams.get('warehouse') || url.searchParams.get('location') || null;

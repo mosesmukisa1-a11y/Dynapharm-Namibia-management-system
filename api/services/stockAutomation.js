@@ -11,6 +11,7 @@
 import { query, withTransaction, getMany, getOne } from '../db.js';
 import { recomputeLocationBalances } from './stockEngine.js';
 import { normalizeBranchSlug } from '../_lib/branchUtils.js';
+import { getStockAlertPolicy } from './stockAlertPolicy.js';
 
 function genId(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
@@ -923,6 +924,7 @@ export async function runNightlyStockHealthDigest() {
   if (enabled !== 'true') return;
 
   const today = new Date().toISOString().slice(0, 10);
+  const alertPolicy = await getStockAlertPolicy();
 
   const [expiredRows, lowStockRows, stuckRows, pendingRows, inTransitRows, writeOffRows] = await Promise.all([
     getMany(
@@ -931,7 +933,8 @@ export async function runNightlyStockHealthDigest() {
     ),
     getMany(
       `SELECT COUNT(DISTINCT location_id) AS cnt FROM inventory_balances
-       WHERE location_type='branch' AND closing_qty > 0 AND closing_qty < 10`
+       WHERE location_type='branch' AND closing_qty > 0 AND closing_qty < $1`,
+      [alertPolicy.lowStockThreshold]
     ),
     getMany(
       `SELECT COUNT(*) AS cnt FROM stock_transfers
@@ -971,7 +974,7 @@ export async function runNightlyStockHealthDigest() {
       ? `🔴 ${expiredBatches} expired batch(es) | ${expiredQty} units | pending GM write-off approval`
       : `✅ No expired batches awaiting write-off`,
     lowStockCount > 0
-      ? `🟡 ${lowStockCount} branch(es) with critically low stock (< 10 units per product)`
+      ? `🟡 ${lowStockCount} branch(es) with low stock (< ${alertPolicy.lowStockThreshold} units per product)`
       : `✅ All branches above critical stock threshold`,
     stuckCount > 0
       ? `⚠️  ${stuckCount} transfer(s) approved but not dispatched for > 8 hours — stock is reserved`

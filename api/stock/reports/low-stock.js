@@ -1,5 +1,7 @@
 import { applyAuthCors } from '../../_lib/auth.js';
 import { getMany } from '../../db.js';
+import { getStockAlertPolicy } from '../../services/stockAlertPolicy.js';
+import { validateStockAlertPolicy } from '../../../shared/stockAlertPolicy.js';
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
@@ -9,7 +11,10 @@ export default async function handler(req, res) {
 
   try {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-    const threshold = parseInt(url.searchParams.get('threshold') || '10', 10);
+    const alertPolicy = await getStockAlertPolicy();
+    const threshold = url.searchParams.has('threshold') ? Number(url.searchParams.get('threshold')) : alertPolicy.lowStockThreshold;
+    try { validateStockAlertPolicy({ ...alertPolicy, lowStockThreshold: threshold }); }
+    catch (error) { return res.status(422).json({ success: false, error: error.message }); }
     const location = url.searchParams.get('location') || '';
 
     const batchParams = [threshold];
@@ -51,6 +56,8 @@ export default async function handler(req, res) {
 
     res.status(200).json({
       success: true,
+      alertPolicy,
+      threshold,
       items: allItems,
       summary: {
         totalLowStock: allItems.length,

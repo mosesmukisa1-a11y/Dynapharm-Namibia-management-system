@@ -11,8 +11,8 @@ import { inferLocationType } from './stockEngine.js';
 import {getLegacyDPRevenue} from './stockFinancialReports.js';
 import {businessDay,validateBusinessDates} from './businessDates.js';
 
-const LOW_STOCK_THRESHOLD = 10;
-const EXPIRY_WARN_DAYS = 90;
+import { getStockAlertPolicy } from './stockAlertPolicy.js';
+import { validateExpiryWarningDays } from '../../shared/stockAlertPolicy.js';
 
 // Movement type classification (mirrors stockEngine.js OUTWARD_TYPES)
 const SALE_TYPES = new Set([
@@ -122,6 +122,8 @@ function normalizeBranchName(id) {
  * Stock summary for a location from inventory_balances.
  */
 export async function getLocationStockSummary(locationType, locationId) {
+  const alertPolicy = await getStockAlertPolicy();
+  const { lowStockThreshold: LOW_STOCK_THRESHOLD, expiryWarningDays: EXPIRY_WARN_DAYS } = alertPolicy;
   const layers=(await getStockCostProjection({locations:[locationId]})).filter(r=>r.location===locationId);
   const rows=layers.map(r=>({product_name:r.productName,expiry_date:r.expiryDate,
     closing_qty:r.qty,stock_value_dp:r.qty*(r.unitDPC ?? 0)}));
@@ -149,6 +151,7 @@ export async function getLocationStockSummary(locationType, locationId) {
   });
 
   return {
+    alertPolicy,
     productCount: productSet.size,
     closingStock: closingQty,
     stockValueDP,
@@ -211,6 +214,8 @@ export async function getBranchSalesRevenue(branchId, start, end) {
  * Company-wide stock summary aggregated from inventory_balances.
  */
 export async function getCompanyStockSummary() {
+  const alertPolicy = await getStockAlertPolicy();
+  const { lowStockThreshold: LOW_STOCK_THRESHOLD, expiryWarningDays: EXPIRY_WARN_DAYS } = alertPolicy;
   const layers=await getStockCostProjection();
   const ibRows=layers.filter(r=>inferLocationType(r.location)==='branch').map(r=>({
     product_name:r.productName,expiry_date:r.expiryDate,closing_qty:r.qty,stock_value_dp:r.qty*(r.unitDPC ?? 0)}));
@@ -263,6 +268,7 @@ export async function getCompanyStockSummary() {
   totalValueDP=layers.reduce((sum,r)=>sum+r.qty*(r.unitDPC ?? 0),0);
 
   return {
+    alertPolicy,
     totalQty, totalValueDP, warehouseQty, branchQty, inTransitQty,
     countryQty, lowStockCount, expiringCount,
     availableQty:layers.reduce((sum,r)=>sum+r.availableQty,0),reservedQty:layers.reduce((sum,r)=>sum+r.reservedQty,0),
@@ -336,7 +342,10 @@ export async function getWriteOffs(start, end, locationId = null) {
 /**
  * Low stock and expiring stock alerts.
  */
-export async function getStockAlerts(thresholdDays = 90) {
+export async function getStockAlerts(thresholdDays) {
+  const alertPolicy = await getStockAlertPolicy();
+  const LOW_STOCK_THRESHOLD = alertPolicy.lowStockThreshold;
+  thresholdDays = thresholdDays === undefined ? alertPolicy.expiryWarningDays : validateExpiryWarningDays(thresholdDays);
   const now = new Date();
   const warnDate = new Date(now.getTime() + thresholdDays * 86400 * 1000);
 
@@ -377,7 +386,7 @@ export async function getStockAlerts(thresholdDays = 90) {
     daysToExpiry: Math.round((new Date(r.expiry_date) - now) / 86400000),
   }));
 
-  return { lowStock, expiring, writeOffRisk: expiring.filter(e => e.daysToExpiry <= 30) };
+  return { alertPolicy, thresholdDays, lowStock, expiring, writeOffRisk: expiring.filter(e => e.daysToExpiry <= 30) };
 }
 
 export { normalizeBranchName };

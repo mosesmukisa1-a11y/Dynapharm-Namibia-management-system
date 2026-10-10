@@ -2,6 +2,7 @@ import { applyAuthCors } from '../_lib/auth.js';
 import { getMany, getOne, query } from '../db.js';
 import { recomputeInventoryBalance, recomputeLocationBalances, inferLocationType } from '../services/stockEngine.js';
 import { publishRealtimeEvent } from '../db.js';
+import { getStockAlertPolicy } from '../services/stockAlertPolicy.js';
 
 /**
  * Recompute inventory_balances for every location that has ever had
@@ -109,7 +110,8 @@ export default async function handler(req, res) {
       const distinctProducts = new Set(countryRows.map(r => r.product_name)).size;
       const totalUnits    = countryRows.reduce((s, r) => s + Number(r.closing_qty || 0), 0);
       const stockValueDP  = countryRows.reduce((s, r) => s + Number(r.stock_value_dp || 0), 0);
-      const lowStockItems = countryRows.filter(r => Number(r.closing_qty || 0) < 10).length;
+      const alertPolicy = await getStockAlertPolicy();
+      const lowStockItems = countryRows.filter(r => Number(r.closing_qty || 0) < alertPolicy.lowStockThreshold).length;
 
       const items = countryRows.map(r => ({
         productName:      r.product_name,

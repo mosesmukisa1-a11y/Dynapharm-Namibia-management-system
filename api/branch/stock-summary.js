@@ -2,6 +2,7 @@ import { applyAuthCors } from '../_lib/auth.js';
 import { getMany } from '../db.js';
 import { ALL_BRANCH_IDS, normalizeBranchSlug } from '../_lib/branchUtils.js';
 import {getStockCostProjection} from '../services/stockCostReporting.js';
+import { getStockAlertPolicy } from '../services/stockAlertPolicy.js';
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
@@ -9,6 +10,7 @@ export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
+    const alertPolicy = await getStockAlertPolicy();
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const dateFrom = url.searchParams.get('date_from') || null;
     const dateTo = url.searchParams.get('date_to') || null;
@@ -112,7 +114,7 @@ export default async function handler(req, res) {
     for (const id of seedBranches) ensureBranch(id);
 
     const now = new Date();
-    const thirtyFwd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const thirtyFwd = new Date(Date.now() + alertPolicy.expiryWarningDays * 24 * 60 * 60 * 1000);
 
     for (const inv of branchInventory) {
       if (!inv.branch_id) continue;
@@ -137,7 +139,7 @@ export default async function handler(req, res) {
         if (exp < now && qty > 0) br.expired_qty += qty;
         else if (exp <= thirtyFwd && qty > 0) br.expiring_qty += qty;
       }
-      if (qty > 0 && qty < 10) br.low_stock_count++;
+      if (qty > 0 && qty < alertPolicy.lowStockThreshold) br.low_stock_count++;
     }
 
     const smSaleBranches = new Set(),bimSaleBranches = new Set(),periodMirrorKeys = new Set();
@@ -373,6 +375,7 @@ export default async function handler(req, res) {
 
     res.json({
       success: true,
+      alertPolicy,
       branches: Object.values(branchMap),
       total_branches: Object.keys(branchMap).length,
     });

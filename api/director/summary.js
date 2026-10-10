@@ -16,7 +16,7 @@ export default async function handler(req, res) {
     clientRegs, distRegs, writeOffRows, salesUnitsRow] = await Promise.all([
     getCompanyStockSummary(),
     getAllBranchesSalesRevenue(start, end),
-    getStockAlerts(90),
+    getStockAlerts(),
     getOne(`SELECT COUNT(*) as cnt FROM branches WHERE status = 'active'`),
     getOne(`SELECT COUNT(*) as cnt FROM distributors WHERE status = 'active' OR status IS NULL`),
     getOne(`SELECT COUNT(DISTINCT description) as cnt FROM live_product_prices WHERE catalogue_entry`),
