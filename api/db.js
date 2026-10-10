@@ -1,5 +1,6 @@
 import { Pool } from 'pg';
 import { AsyncLocalStorage } from 'node:async_hooks';
+import {isTestProcess, assertIsolatedTestDatabase, verifyIsolatedTestConnection} from './testDatabaseGuard.js';
 
 const requestTransactions = new AsyncLocalStorage();
 
@@ -48,6 +49,7 @@ export async function withRequestTransaction(fn) {
 }
 
 let pool = null;
+let poolConnectionString;
 
 function resolveSslConfig() {
   const envOverride = process.env.DATABASE_SSL;
@@ -78,6 +80,13 @@ function resolveSslConfig() {
 }
 
 function getPool() {
+  const testing = isTestProcess();
+  if (testing) {
+    assertIsolatedTestDatabase();
+    if (pool && poolConnectionString !== process.env.DATABASE_URL) {
+      throw new Error('Test database connection changed after pool creation. Use npm run test:db.');
+    }
+  }
   if (!pool) {
     const sslConfig = resolveSslConfig();
     const connectionTimeout = Number(process.env.DB_CONNECTION_TIMEOUT || 10000);
@@ -87,7 +96,10 @@ function getPool() {
       max: Number(process.env.DB_POOL_MAX || 5),
       idleTimeoutMillis: Number(process.env.DB_IDLE_TIMEOUT || 30000),
       connectionTimeoutMillis: Number.isFinite(connectionTimeout) ? connectionTimeout : 10000,
+      // pg awaits this hook before any caller receives the client or runs SQL.
+      onConnect: testing ? verifyIsolatedTestConnection : undefined,
     });
+    poolConnectionString = process.env.DATABASE_URL;
     pool.on('error', (err) => {
       console.error('Unexpected error on idle client', err);
     });

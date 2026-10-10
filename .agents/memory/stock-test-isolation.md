@@ -25,3 +25,15 @@ Whole-system audits must use a separate test database or isolated environment, n
 **Why:** The user explicitly requires business records to remain untouched during an end-to-end stock audit. Prefixes and cleanup do not prevent a mis-scoped handler or failing assertion from changing unrelated records.
 
 **How to apply:** Use an empty schema-only clone, synthetic actors and fixtures, and isolated application connections; remove only the disposable environment afterward. Treat historical reconciliation as a separate approved action.
+
+Routine database-backed regression tests have the same business-data isolation requirement as whole-system audits; no-database unit tests should remain independent of database provisioning.
+
+**Why:** The user requires ordinary test invocations to be unable to modify business records, not just the main lifecycle audit. Fixture prefixes and cleanup are not sufficient protection.
+
+**How to apply:** Preserve fail-closed isolation for all database test entry points, including direct test-runner invocations and custom PostgreSQL pools. Keep unrelated failing legacy regressions visible rather than changing stock business logic merely to make an isolation task green.
+
+The workspace PostgreSQL transport may use a non-local hostname without supporting SSL.
+
+**Why:** Hostname-based SSL inference broke connections to a successfully created schema-only clone even though PostgreSQL's own connection defaults worked.
+
+**How to apply:** Disposable test connections should preserve the source connection's transport settings explicitly; do not infer SSL support solely from whether the host is named localhost.

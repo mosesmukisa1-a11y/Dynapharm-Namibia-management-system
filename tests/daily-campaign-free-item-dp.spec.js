@@ -6,7 +6,7 @@
  * handler so any future drift between the two report files is caught immediately.
  *
  * This test inserts REAL rows into branch_inventory_movements and product_prices
- * and calls the handler against the live database, proving the SQL CASE guard and
+ * and calls the handler against an isolated database, proving the SQL CASE guard and
  * the JS accumulator guard both work correctly end-to-end for the daily path.
  *
  * Scenario
@@ -31,17 +31,12 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import pg from 'pg';
+import {createIsolatedTestPool} from './helpers/isolated-test-pool.js';
 import handler from '../api/reports/branch-sales/daily.js';
 
 // ─── DB pool ──────────────────────────────────────────────────────────────────
 
-const pool = new pg.Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL && !process.env.DATABASE_URL.includes('localhost')
-    ? { rejectUnauthorized: false }
-    : false,
-});
+const pool = createIsolatedTestPool();
 
 // ─── Test constants ───────────────────────────────────────────────────────────
 
