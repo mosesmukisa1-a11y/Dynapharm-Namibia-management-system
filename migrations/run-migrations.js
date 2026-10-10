@@ -117,6 +117,7 @@ async function main() {
       '027_price_import_identity.sql',
   '028_stock_cost_reporting_indexes.sql',
   '029_historical_refund_evidence.sql',
+  '030_publish_safe_stock_location_index.sql',
     ];
     
     for (const migration of migrations) {

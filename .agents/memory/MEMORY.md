@@ -10,6 +10,7 @@
 - [Auth user field naming](auth-user-field-naming.md) — sanitizeUser() returns fullName (camelCase), not full_name; reading user.full_name silently gives undefined.
 - [Dependency audit caveats](dependency-audit-caveats.md) — official patched SheetJS releases can trigger overbroad npm advisories; compare upstream fixed versions without suppressing future findings.
 - [Publishing dependency state](publishing-dependency-state.md) — ENOTEMPTY installation conflicts require a clean dependency tree; distinguish them from older security-scan failures.
+- [Publishing index expressions](publishing-index-expressions.md) — valid index DDL can produce truncated publishing SQL; validate the generated diff, not just the migration source.
 - [Browser runtime on Nix](browser-runtime-nix.md) — downloaded Playwright Chromium may lack shared libraries; prefer the environment’s Chromium wrapper for local browser checks.
 - [Linked return authorization](linked-reversal-rules.md) — returns never reset prescription entitlement; legacy matching needs review, and received branch goods return through a new transfer.
 - [Workflow listener ownership](workflow-listeners.md) — a running workflow can be a duplicate while an orphan process owns its intended port; verify managed open ports.

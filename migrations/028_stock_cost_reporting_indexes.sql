@@ -14,8 +14,11 @@ CREATE TABLE IF NOT EXISTS stock_segregated_batches (
  purpose TEXT NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS cost_stock_location_product ON stock_batches
- (LOWER(TRIM(COALESCE(NULLIF(location,''),warehouse_id))),LOWER(TRIM(description)))
+  (LOWER(TRIM(location)),LOWER(TRIM(description)))
  WHERE remaining_quantity>0;
+CREATE INDEX IF NOT EXISTS cost_stock_warehouse_product ON stock_batches
+  (LOWER(TRIM(warehouse_id)),LOWER(TRIM(description)))
+  WHERE remaining_quantity>0 AND (location IS NULL OR location='');
 CREATE INDEX IF NOT EXISTS cost_branch_location_product ON branch_inventory_batches
  (LOWER(TRIM(branch_id)),LOWER(TRIM(product_name))) WHERE quantity>0;
 CREATE INDEX IF NOT EXISTS cost_segregated_location_product ON stock_segregated_batches

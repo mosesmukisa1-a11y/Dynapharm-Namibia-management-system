@@ -12,7 +12,9 @@ export async function getStockCostProjection(options={},read=getMany) {
   // entitlements. Filters precede JSON materialization; no process-global cache.
   const [snapshot]=await read(`SELECT
     COALESCE((SELECT jsonb_agg(s) FROM stock_batches s WHERE remaining_quantity>0
-      AND ($1::text[] IS NULL OR LOWER(TRIM(COALESCE(NULLIF(location,''),warehouse_id)))=ANY($1))
+      AND ($1::text[] IS NULL OR
+        (location<>'' AND LOWER(TRIM(location))=ANY($1)) OR
+        ((location IS NULL OR location='') AND LOWER(TRIM(warehouse_id))=ANY($1)))
       AND ($2::text IS NULL OR LOWER(TRIM(description))=LOWER(TRIM($2)))),'[]'::jsonb) AS stock,
     COALESCE((SELECT jsonb_agg(b) FROM branch_inventory_batches b WHERE quantity>0
       AND ($1::text[] IS NULL OR LOWER(TRIM(branch_id))=ANY($1))
