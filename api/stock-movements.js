@@ -2,6 +2,15 @@ import { applyAuthCors, getBranchScope } from './_lib/auth.js';
 import { query, getMany, getOne, withTransaction } from './db.js';
 import { recomputeLocationBalances, recomputeInventoryBalance, inferLocationType } from './services/stockEngine.js';
 import { branchSearchTerms } from './_lib/branchUtils.js';
+import { branchLayers, takeLayers } from './services/stockCostLayers.js';
+
+async function deductBranchBatchTx(client, batch, quantity) {
+  const layers = branchLayers(batch);
+  takeLayers(layers, quantity);
+  await client.query(`UPDATE branch_inventory_batches
+    SET quantity=quantity-$1, metadata=$3::jsonb, updated_at=NOW() WHERE id=$2`,
+  [quantity, batch.id, JSON.stringify({...batch.metadata, cost_layers:layers.filter(layer=>layer.quantity>0)})]);
+}
 
 function normalizeMovement(row) {
   if (!row) return null;
@@ -449,7 +458,7 @@ export default async function handler(req, res) {
               // If a specific batch_no is given, deduct from it first before falling back to FEFO
               if (batchNo) {
                 const specificBatch = await client.query(
-                  `SELECT id, quantity FROM branch_inventory_batches
+                  `SELECT * FROM branch_inventory_batches
                    WHERE LOWER(REPLACE(branch_id, ' ', '_')) = ANY($1)
                      AND LOWER(product_name) = LOWER($2)
                      AND LOWER(COALESCE(batch_no,'')) = LOWER($3)
@@ -461,14 +470,14 @@ export default async function handler(req, res) {
                 for (const b of specificBatch.rows) {
                   if (remaining <= 0) break;
                   const take = Math.min(remaining, Number(b.quantity));
-                  await client.query(`UPDATE branch_inventory_batches SET quantity = quantity - $1, updated_at = NOW() WHERE id = $2`, [take, b.id]);
+                  await deductBranchBatchTx(client, b, take);
                   await client.query(`DELETE FROM branch_inventory_batches WHERE id = $1 AND quantity <= 0`, [b.id]);
                   remaining -= take;
                 }
               }
               if (remaining > 0) {
                 const batches = await client.query(
-                  `SELECT id, quantity FROM branch_inventory_batches
+                  `SELECT * FROM branch_inventory_batches
                    WHERE LOWER(REPLACE(branch_id, ' ', '_')) = ANY($1)
                      AND LOWER(product_name) = LOWER($2)
                      AND quantity > 0
@@ -480,7 +489,7 @@ export default async function handler(req, res) {
                 for (const b of batches.rows) {
                   if (remaining <= 0) break;
                   const take = Math.min(remaining, Number(b.quantity));
-                  await client.query(`UPDATE branch_inventory_batches SET quantity = quantity - $1, updated_at = NOW() WHERE id = $2`, [take, b.id]);
+                  await deductBranchBatchTx(client, b, take);
                   await client.query(`DELETE FROM branch_inventory_batches WHERE id = $1 AND quantity <= 0`, [b.id]);
                   remaining -= take;
                 }
@@ -749,7 +758,7 @@ export default async function handler(req, res) {
             // Use ANY(branchCandidates) so rows stored under any alias form are matched.
             // FOR UPDATE locks the row to prevent race conditions under concurrent approvals.
             const specific = await client.query(
-              `SELECT id, quantity FROM branch_inventory_batches
+              `SELECT * FROM branch_inventory_batches
                WHERE LOWER(REPLACE(branch_id,' ','_')) = ANY($1)
                  AND LOWER(product_name) = LOWER($2)
                  AND LOWER(COALESCE(batch_no,'')) = LOWER($3)
@@ -760,7 +769,7 @@ export default async function handler(req, res) {
             );
             for (const b of specific.rows) {
               const take = Math.min(remaining, Number(b.quantity));
-              await client.query(`UPDATE branch_inventory_batches SET quantity = quantity - $1, updated_at = NOW() WHERE id = $2`, [take, b.id]);
+              await deductBranchBatchTx(client, b, take);
               await client.query(`DELETE FROM branch_inventory_batches WHERE id = $1 AND quantity <= 0`, [b.id]);
               remaining -= take;
             }
@@ -768,7 +777,7 @@ export default async function handler(req, res) {
           if (remaining > 0) {
             // FOR UPDATE prevents concurrent approvals from reading the same rows and over-deducting.
             const fifo = await client.query(
-              `SELECT id, quantity FROM branch_inventory_batches
+              `SELECT * FROM branch_inventory_batches
                WHERE LOWER(REPLACE(branch_id,' ','_')) = ANY($1)
                  AND LOWER(product_name) = LOWER($2)
                  AND quantity > 0
@@ -780,7 +789,7 @@ export default async function handler(req, res) {
             for (const b of fifo.rows) {
               if (remaining <= 0) break;
               const take = Math.min(remaining, Number(b.quantity));
-              await client.query(`UPDATE branch_inventory_batches SET quantity = quantity - $1, updated_at = NOW() WHERE id = $2`, [take, b.id]);
+              await deductBranchBatchTx(client, b, take);
               await client.query(`DELETE FROM branch_inventory_batches WHERE id = $1 AND quantity <= 0`, [b.id]);
               remaining -= take;
             }

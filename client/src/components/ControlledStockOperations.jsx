@@ -290,6 +290,9 @@ export default function ControlledStockOperations({ mode = 'stock' }) {
         </div>
       </div>
       {isChosen && kind !== 'count' && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(130px,1fr))', gap: 8, margin: '12px 0 0 25px' }}>
+        {batch.batch_type === 'segregated' && kind === 'inspection' && <p style={{ gridColumn: '1 / -1', margin: 0 }}>
+          To dispose of these held units, choose Write Off below and submit for GM approval. This removes the selected segregated stock, not available stock.
+        </p>}
         <label><span style={styles.label}>Quantity (base units)</span><input style={styles.input} type="number" min="1" max={batch.quantity} step="1" value={line.quantity ?? ''} onChange={e => setLineField(key, 'quantity', e.target.value)} /></label>
         <label><span style={styles.label}>Condition</span><select style={styles.input} value={line.condition || 'saleable'} onChange={e => setLineField(key, 'condition', e.target.value)}>{['saleable', 'damaged', 'expired', 'quarantine'].map(v => <option key={v} value={v}>{statusName(v)}</option>)}</select></label>
         <label><span style={styles.label}>Disposition</span><select style={styles.input} value={line.disposition || 'quarantine'} onChange={e => setLineField(key, 'disposition', e.target.value)}>{(batch.batch_type === 'segregated' ? ['release', 'write_off', 'quarantine'] : ['quarantine']).map(v => <option key={v} value={v} disabled={v === 'release' && releaseUnavailable}>{statusName(v)}{v === 'release' && releaseUnavailable ? ' — unavailable' : ''}</option>)}</select></label>

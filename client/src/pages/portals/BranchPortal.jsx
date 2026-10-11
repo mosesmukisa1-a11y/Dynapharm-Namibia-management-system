@@ -4800,6 +4800,7 @@ function BranchStockTab() {
   const portalBranch = useContext(PortalBranchContext);
   const [inventory, setInventory] = useState([]);
   const [physicalStock,setPhysicalStock]=useState(null);
+  const [stockLoadError, setStockLoadError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [subTab, setSubTab] = useState('inventory');
   const [showRequestForm, setShowRequestForm] = useState(false);
@@ -4893,13 +4894,14 @@ function BranchStockTab() {
     if (!selectedBranch) { setLoading(false); return; }
     const loadId = ++loadDataRef.current;
     setLoading(true);
+    setStockLoadError(null);
     setPhysicalStock(null);
     try {
       const activeBranch = selectedBranch;
       const branchParam = activeBranch ? `branch=${encodeURIComponent(activeBranch)}` : '';
       const movBranchParam = activeBranch ? `branch=${encodeURIComponent(activeBranch)}&limit=10000` : 'limit=10000';
       const [inv, reqs, trans, movs, prods, sl,physical] = await Promise.all([
-        api.branch.inventory(branchParam ? branchParam + '&include_movements=1&limit=10000' : 'include_movements=1&limit=10000').catch(() => ({ inventory: [], movements: [] })),
+        api.branch.inventory(branchParam ? branchParam + '&include_movements=1&limit=10000' : 'include_movements=1&limit=10000'),
         api.stock.requests(branchParam).catch(() => ({ requests: [] })),
         api.stock.transfers(branchParam ? branchParam + '&limit=500' : 'limit=500').catch(() => ({ transfers: [] })),
         api.get(`/stock-movements?${movBranchParam}`).catch(() => ({ movements: [] })),
@@ -4925,7 +4927,9 @@ function BranchStockTab() {
       setMovements(allMovs);
       setProducts(Array.isArray(prods) ? prods : prods.products || []);
       setSales(Array.isArray(sl) ? sl : sl.sales || []);
-    } catch {}
+    } catch (error) {
+      if (loadId === loadDataRef.current) setStockLoadError(error.message || 'Stock could not be loaded');
+    }
     if (loadId === loadDataRef.current) setLoading(false);
   };
 
@@ -5391,6 +5395,12 @@ function BranchStockTab() {
 
   const sectionLabel = (txt) => <div style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '.12em', color: '#c41e3a', textTransform: 'uppercase', marginBottom: 10 }}>{txt}</div>;
 
+  if (stockLoadError) return <div role="alert" className="p-6 rounded-lg bg-red-50 text-red-800">
+    <h3 className="font-bold">Stock information unavailable</h3>
+    <p>{stockLoadError}. Balances and alerts have not been verified.</p>
+    <button onClick={loadData} className="mt-3 underline">Retry loading stock</button>
+  </div>;
+
   return (
     <div>
       <div className="rounded-xl p-5 mb-5 flex justify-between items-center flex-wrap gap-3" style={{ background: 'linear-gradient(135deg,#c41e3a 0%,#8b0000 100%)', boxShadow: '0 4px 20px rgba(196,30,58,0.28)' }}>
@@ -5660,7 +5670,7 @@ function BranchStockTab() {
               <p className="text-xs text-gray-500 m-0 mt-1">Batch-level live stock with movement aggregates and DP valuations</p>
             </div>
             <button onClick={() => {
-              if (!physicalStock) { alert('Physical stock snapshot is not loaded. Refresh before printing.'); return; }
+              if (!physicalStock) { window.alert('Physical stock snapshot is not loaded. Refresh before printing.'); return; }
               printPhysicalStockReport(physicalStock, selectedBranch || user?.branch || '');
             }} className="px-3 py-1.5 rounded-lg text-xs font-bold border-none cursor-pointer" style={{ background: '#c41e3a', color: '#fff' }}>Print Report</button>
           </CardHeader>
@@ -7243,7 +7253,7 @@ function BranchStockTab() {
               { icon: '📊', title: 'Daily DP Sales Report', desc: "Today's sales — all categories including Rx dispenses with payment method breakdown. Server-side aggregation covers all records.", action: handleDailyReport },
               { icon: '📈', title: 'Monthly DP Sales Report', desc: `${monthLabel} — complete DP report with payment breakdown and Rx patient detail lines. No data load limits.`, action: handleMonthlyReport },
               { icon: '📦', title: 'Physical Stock Report', desc: 'Current batch-level inventory with movement aggregates & DP values', action: () => {
-                if (!physicalStock) { alert('Physical stock snapshot is not loaded. Refresh before printing.'); return; }
+                if (!physicalStock) { window.alert('Physical stock snapshot is not loaded. Refresh before printing.'); return; }
                 printPhysicalStockReport(physicalStock, branchName);
               }},
               { icon: '🔢', title: 'Stock Formula Report', desc: 'Opening + Received − Sold − Dispensed − Transfers − Write-offs = Closing (server-side per product)', action: handleStockFormulaReport },

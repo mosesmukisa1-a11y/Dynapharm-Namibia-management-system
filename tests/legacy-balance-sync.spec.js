@@ -101,9 +101,7 @@ it('serializes case and whitespace variants before any normalized identity can c
   } finally {release();}
   await holder;
   const outcomes=await work;
-  expect(outcomes.filter(r=>r.status==='fulfilled')).toHaveLength(1);
-  expect(outcomes.filter(r=>r.status==='rejected').map(r=>r.reason.code))
-    .toEqual(['STOCK_BALANCE_IDENTITY_REVIEW','STOCK_BALANCE_IDENTITY_REVIEW']);
+  expect(outcomes.filter(r=>r.status==='fulfilled')).toHaveLength(3);
   const found=(await query(`SELECT * FROM inventory_balances
     WHERE LOWER(TRIM(location_id))=LOWER(TRIM($1)) AND product_name=$2`,[branch,variantProduct])).rows;
   expect(found).toHaveLength(1);
@@ -125,6 +123,17 @@ it('refreshes vanished physical rows to zero without manufacturing stock from jo
   expect(Number(found[0].inward_qty)).toBe(100);
   expect(Number(found[0].closing_qty)).toBe(0);
   expect(Number(found[1].closing_qty)).toBe(4);
+});
+it('refreshes a unique spelling variant using real physical stock and normalized movement evidence',async()=>{
+  const before=await balances();
+  await syncInventoryBalances(rows.map(row=>({...row,branch_id:` ${branch.toUpperCase()} `})));
+  await syncBranchProductBalance(` ${branch.toUpperCase()} `,product);
+  const after=await balances();
+  expect(after.map(r=>r.id)).toEqual(before.map(r=>r.id));
+  expect(after.map(r=>Number(r.closing_qty))).toEqual([0,4,5]);
+  expect(after.map(r=>Number(r.inward_qty))).toEqual([100,100,100]);
+  expect(after.map(r=>Number(r.stock_value_dp))).toEqual([0,32,45]);
+  expect(after.every(r=>r.last_movement_date && r.location_id===branch)).toBe(true);
 });
 it('refuses ambiguous historical identities without deleting or repricing them',async()=>{
   await query(`INSERT INTO inventory_balances

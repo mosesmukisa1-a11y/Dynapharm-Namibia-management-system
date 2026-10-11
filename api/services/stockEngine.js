@@ -167,11 +167,11 @@ export async function recomputeInventoryBalanceTx(client, key, sharedLayers) {
     const qty = Number(m.quantity || 0);
 
     const isInbound = dstType === locationType &&
-      m.destination_location === locationId &&
+      String(m.destination_location || '').trim().toLowerCase() === String(locationId).trim().toLowerCase() &&
       INWARD_TYPES.has(m.movement_type);
 
     const isOutbound = srcType === locationType &&
-      m.source_location === locationId &&
+      String(m.source_location || '').trim().toLowerCase() === String(locationId).trim().toLowerCase() &&
       OUTWARD_TYPES.has(m.movement_type);
 
     if (isInbound || isOutbound) {

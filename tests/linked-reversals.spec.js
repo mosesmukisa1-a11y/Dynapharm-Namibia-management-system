@@ -13,6 +13,7 @@ import walkinSales from '../api/branch/walkin-sales.js';
 import dispensing from '../api/branch/dispense.js';
 import controlledStock from '../api/stock/controlled-operations.js';
 import { sourceSnapshot } from '../api/services/stockCostLayers.js';
+import refundAllocations from '../api/branch/refund-allocations.js';
 
 const prefix=`TEST-LINKED-${randomUUID().slice(0,8)}`;
 const product=prefix;
@@ -24,10 +25,10 @@ const admin={id:prefix,role:'admin',fullName:'Isolated admin tester'};
 const source={id:`${prefix}-source`,description:product,batch_no:'ORIGINAL',expiry_date:'2031-06-30',
   cif_unit_cost:2.345678,dpc_unit_value:7.25};
 
-async function call(handler,method,body,user=stockUser) {
+async function call(handler,method,body,user=stockUser,url='/api/test') {
   const result={status:200};
   const res={setHeader(){},getHeader(){},status(n){result.status=n;return this;},json(body){result.body=body;return this;},end(){return this;},send(body){result.body=body;return this;}};
-  await handler({method,url:'/api/test',headers:{host:'localhost'},body,user},res);
+  await handler({method,url,headers:{host:'localhost'},body,user},res);
   return result;
 }
 async function seedSale(suffix,expiry='2031-06-30',layers=null) {
@@ -52,6 +53,18 @@ async function seedSale(suffix,expiry='2031-06-30',layers=null) {
 async function submit(sale,quantity,key=`${prefix}-${randomUUID()}`,extras={}) {
   return call(requestRefund,'POST',{allocation_id:sale.movement,quantity,reason:'Goods physically returned',physical_return_confirmed:true,operation_key:key,...extras},branchUser);
 }
+it('finds original refundable allocations by displayed receipt only within the authorized branch',async()=>{
+  const sale=await seedSale('receipt-lookup');
+  const receipt=`${prefix}-TW-2026-000001`;
+  await query(`INSERT INTO branch_walkin_sales(id,branch_id,sale_number,status)
+    VALUES($1,$2,$3,'completed')`,[sale.sale,branch,receipt]);
+  const url=`/api/branch/refund-allocations?branch_id=${encodeURIComponent(branch)}&sale_reference=${encodeURIComponent(receipt)}`;
+  const found=await call(refundAllocations,'GET',null,branchUser,url);
+  expect(found.status,JSON.stringify(found.body)).toBe(200);
+  expect(found.body.allocations.map(a=>a.sale_reference)).toEqual([sale.sale]);
+  expect(Number(found.body.allocations[0].remaining_quantity)).toBe(8);
+  expect((await call(refundAllocations,'GET',null,{...branchUser,branch:'different_branch'},url)).status).toBe(403);
+});
 async function approve(id,condition='saleable',extras={}) {
   return call(approveRefund,'PATCH',{id,action:'approve',return_condition:condition,physical_return_confirmed:true,inspection_reason:'Inspected original lot and sealed packaging',...extras});
 }

@@ -325,6 +325,7 @@ export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
   if (!transfer) return null;
 
   const t = transfer;
+  const autoAdjustedProducts = t.autoAdjustedProducts || t.auto_adjusted_products || {};
   const meta = t.metadata || {};
   const items = Array.isArray(t.items) ? t.items : [];
   // effectiveItems: movement-enriched rows (with batch data) when available;
@@ -388,7 +389,6 @@ export default function DispatchNote({ transfer, onClose, mode = 'view' }) {
   const branchNote = t.branchReceiptNote || t.branch_receipt_note || null;
   const hasDiscrepancy = t.discrepancyFlag || t.discrepancy_flag || false;
   const dispatchNotes = t.dispatchNotes || t.dispatch_notes || null;
-  const autoAdjustedProducts = t.autoAdjustedProducts || t.auto_adjusted_products || {};
   const createdBy = t.createdBy || t.created_by || null;
   const dispatchedBy = t.dispatchedBy || t.dispatched_by || null;
   const receivedBy = t.receivedBy || t.received_by || signatureName || null;

@@ -15,10 +15,27 @@ export default async function handler(req,res) {
     if (!branch) return res.status(400).json({success:false,error:'Select a branch'});
     authorizeBranchReturn(req.user,branch);
     const allocations=await withTransaction(async client=>{
+      const reference=url.searchParams.get('sale_reference') || null;
+      if(reference) {
+        const matches=(await client.query(`SELECT id FROM branch_walkin_sales
+          WHERE LOWER(REPLACE(branch_id,' ','_'))=ANY($1)
+            AND (id=$2 OR sale_number=$2) AND status='completed'`,
+        [branchSearchTerms(branch),reference])).rows;
+        if(matches.length>1) {
+          const error=new Error('This receipt number matches multiple sales; select the original internal sale reference for review');
+          error.statusCode=409;
+          throw error;
+        }
+      }
       const rows=(await client.query(`SELECT a.* FROM stock_sale_allocations a JOIN stock_movements sm ON sm.id=a.movement_id
-        WHERE LOWER(REPLACE(a.branch_id,' ','_'))=ANY($1) AND ($2::text IS NULL OR a.sale_reference=$2)
+        WHERE LOWER(REPLACE(a.branch_id,' ','_'))=ANY($1)
+        AND ($2::text IS NULL OR a.sale_reference=$2 OR a.sale_reference IN (
+          SELECT s.id FROM branch_walkin_sales s
+          WHERE LOWER(REPLACE(s.branch_id,' ','_'))=ANY($1)
+            AND s.sale_number=$2 AND s.status='completed'
+        ))
         AND sm.status IN ('posted','approved') ORDER BY a.created_at DESC LIMIT 200`,
-        [branchSearchTerms(branch),url.searchParams.get('sale_reference') || null])).rows;
+        [branchSearchTerms(branch),reference])).rows;
       const result=[];
       for (const a of rows) result.push({...a,remaining_quantity:await saleReturnRemainingTx(client,a,null,true)});
       return result;

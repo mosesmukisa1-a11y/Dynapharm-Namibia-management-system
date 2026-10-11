@@ -29,7 +29,7 @@ export async function syncInventoryBalances(rows) {
         AND LOWER(TRIM(product_name))=LOWER(TRIM($2)) AND COALESCE(batch_no,'')=$3
         AND expiry_date IS NOT DISTINCT FROM $4::date`,
     [key.locationId,key.productName,key.batchNo,key.expiryDate]);
-    if (existing.rows.length>1 || existing.rows.some(row=>row.location_id!==key.locationId)) {
+    if (existing.rows.length>1) {
       const error = new Error('Existing balance identity requires review before syncing; no rows were deleted');
       error.code = 'STOCK_BALANCE_IDENTITY_REVIEW';
       error.statusCode = 409;
@@ -39,14 +39,14 @@ export async function syncInventoryBalances(rows) {
   for (const key of ordered) await withTransaction(async client=>{
     await recomputeInventoryBalanceTx(client,key);
     // Recheck under the central writer's location lock. A concurrently inserted
-    // case/whitespace variant must roll this transaction back, not create a
-    // second normalized identity after the earlier preflight passed.
+    // genuine duplicate must roll this transaction back. A unique spelling
+    // variant is reusable; the central writer retains its stored spelling.
     const result=await client.query(`SELECT location_id FROM inventory_balances
       WHERE location_type='branch' AND LOWER(TRIM(location_id))=LOWER(TRIM($1))
         AND LOWER(TRIM(product_name))=LOWER(TRIM($2)) AND COALESCE(batch_no,'')=$3
         AND expiry_date IS NOT DISTINCT FROM $4::date`,
     [key.locationId,key.productName,key.batchNo,key.expiryDate]);
-    if(result.rows.length!==1 || result.rows[0].location_id!==key.locationId){
+    if(result.rows.length!==1){
       const error=new Error('Existing balance identity requires review before syncing; no rows were deleted');
       error.code='STOCK_BALANCE_IDENTITY_REVIEW';
       error.statusCode=409;
