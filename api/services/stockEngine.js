@@ -87,7 +87,7 @@ function advisoryLockKey(locationId, productName, batchNo) {
 }
 
 function locationBalanceLockKey(locationType, locationId) {
-  return advisoryLockKey(`LOCATION:${locationType}:${locationId}`, '', '');
+  return advisoryLockKey(`LOCATION:${locationType}:${String(locationId || '').trim()}`, '', '');
 }
 
 /**
@@ -193,7 +193,8 @@ export async function recomputeInventoryBalanceTx(client, key, sharedLayers) {
   const {day}=await import('./stockCostLayers.js');
   const layers=(sharedLayers ?? await getStockCostProjection({locations:[locationId],productName},
     async(sql,params)=>(await client.query(sql,params)).rows)).filter(r=>
-    r.location===locationId && String(r.productName).toLowerCase().trim()===productName.toLowerCase().trim()
+    String(r.location).trim().toLowerCase()===String(locationId).trim().toLowerCase()
+      && String(r.productName).toLowerCase().trim()===productName.toLowerCase().trim()
       && (r.batchNo || '')===batchNoVal && day(r.expiryDate)===day(expiryVal));
   const sum=field=>layers.reduce((total,r)=>total+Number(r[field] || 0),0);
   const physicalLocation=['branch','warehouse','country','in_transit'].includes(locationType);
@@ -205,15 +206,23 @@ export async function recomputeInventoryBalanceTx(client, key, sharedLayers) {
 
   // Expiry is part of the logical key; unknown expiry is its own identity.
   const existingRow = await client.query(
-    `SELECT id FROM inventory_balances
+    `SELECT id, location_id FROM inventory_balances
      WHERE location_type = $1
-       AND location_id = $2
+       AND LOWER(TRIM(location_id)) = LOWER(TRIM($2))
        AND LOWER(TRIM(product_name)) = LOWER(TRIM($3))
        AND COALESCE(batch_no, '') = $4
        AND expiry_date IS NOT DISTINCT FROM $5::date`,
     [locationType, locationId, productName, batchNoVal,expiryVal]
   );
   const existing = existingRow.rows[0] || null;
+  // Keep an existing row's spelling; do not create a second normalized identity
+  // or choose an arbitrary historical duplicate.
+  if (existingRow.rows.length > 1) {
+    const error = new Error('Existing balance identity requires review before syncing; no rows were deleted');
+    error.code = 'STOCK_BALANCE_IDENTITY_REVIEW';
+    error.statusCode = 409;
+    throw error;
+  }
 
   if (existing) {
     await client.query(
@@ -253,7 +262,7 @@ export async function recomputeInventoryBalanceTx(client, key, sharedLayers) {
   await client.query(`UPDATE inventory_balances SET
     on_hand_qty=$6,available_qty=$7,reserved_qty=$8,quarantined_qty=$9,expired_qty=$10,in_transit_qty=$11,
     missing_cost_qty=$12,missing_dp_qty=$13,projection_version=1
-    WHERE location_type=$1 AND location_id=$2 AND LOWER(TRIM(product_name))=LOWER(TRIM($3))
+    WHERE location_type=$1 AND LOWER(TRIM(location_id))=LOWER(TRIM($2)) AND LOWER(TRIM(product_name))=LOWER(TRIM($3))
       AND COALESCE(batch_no,'')=$4 AND expiry_date IS NOT DISTINCT FROM $5::date`,
     [locationType,locationId,productName,batchNoVal,expiryVal,sum('onHandQty'),sum('availableQty'),sum('reservedQty'),
       sum('quarantinedQty'),sum('expiredQty'),sum('inTransitQty'),sum('missingCostQuantity'),sum('missingDPCQuantity')]);

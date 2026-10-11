@@ -2,6 +2,12 @@
 name: Stock safety test isolation
 description: Why receipt evidence and full-database safety baselines need different isolation from ordinary unit tests.
 ---
+Serial execution alone does not establish fixture isolation for company-wide assertions.
+
+**Why:** A company-wide low-stock assertion has failed with extra products under one full-suite order while passing under another. A single successful run or a coincident production-code change does not establish that the contributing fixtures were cleaned up.
+
+**How to apply:** Identify the extra projected identities in the disposable database and trace their owning fixtures before changing alert business logic or weakening assertions. Include retained status/ownership layers in cleanup investigations, not just physical batch rows.
+
 Tests that intentionally compare all real physical stock before and after must run without other DB fixture suites changing the same database.
 
 **Why:** An unrelated suite's temporary fixture changes look identical to unintended stock changes in a whole-database safety baseline. Parallel execution can produce false corruption failures.

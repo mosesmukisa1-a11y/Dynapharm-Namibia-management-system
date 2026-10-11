@@ -22,6 +22,7 @@ export const databaseSuites = [
   'tests/campaign-free-item-dp.spec.js',
   'tests/daily-campaign-free-item-dp.spec.js',
   'tests/concurrent-recompute.spec.js',
+  'tests/legacy-balance-sync.spec.js',
   'tests/import-partial-failure.spec.js',
   'tests/price-list-import.spec.js',
   'tests/publish-safe-stock-index.spec.js',
