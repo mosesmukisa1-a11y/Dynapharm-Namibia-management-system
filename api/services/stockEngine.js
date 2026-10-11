@@ -193,7 +193,8 @@ export async function recomputeInventoryBalanceTx(client, key, sharedLayers) {
   const {day}=await import('./stockCostLayers.js');
   const layers=(sharedLayers ?? await getStockCostProjection({locations:[locationId],productName},
     async(sql,params)=>(await client.query(sql,params)).rows)).filter(r=>
-    String(r.location).trim().toLowerCase()===String(locationId).trim().toLowerCase()
+    r.locationType===locationType
+      && String(r.location).trim().toLowerCase()===String(locationId).trim().toLowerCase()
       && String(r.productName).toLowerCase().trim()===productName.toLowerCase().trim()
       && (r.batchNo || '')===batchNoVal && day(r.expiryDate)===day(expiryVal));
   const sum=field=>layers.reduce((total,r)=>total+Number(r[field] || 0),0);
@@ -571,8 +572,10 @@ export async function recomputeLocationBalances(locationType, locationId) {
 
   const {getStockCostProjection}=await import('./stockCostReporting.js');
   const {day}=await import('./stockCostLayers.js');
-  const projection=await getStockCostProjection({locations:[locationId]},
-    async(sql,params)=>(await client.query(sql,params)).rows);
+  const projection=(await getStockCostProjection({locations:[locationId]},
+    async(sql,params)=>(await client.query(sql,params)).rows))
+    .filter(row=>row.locationType===locationType
+      && String(row.location).trim().toLowerCase()===String(locationId).trim().toLowerCase());
   const identity=r=>JSON.stringify([String(r.productName).toLowerCase().trim(),r.batchNo || '',day(r.expiryDate)]);
   const groups=new Map();
   for(const row of projection){const id=identity(row);if(!groups.has(id))groups.set(id,[]);groups.get(id).push(row);}
