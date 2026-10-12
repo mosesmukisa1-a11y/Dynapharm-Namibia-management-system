@@ -15,8 +15,9 @@ const navigationAudit=process.argv.includes('--navigation');
 const lifecycleAudit=process.argv.includes('--lifecycle');
 const continuation=process.argv.includes('--continuation');
 const release=process.argv.includes('--release-audit');
-const apiPort=release?3006:continuation?3005:lifecycleAudit?3004:navigationAudit?3003:3002;
-const uiPort=release?5177:continuation?5176:lifecycleAudit?5175:navigationAudit?5174:5173;
+const clientHistory=process.argv.includes('--client-history');
+const apiPort=clientHistory?3007:release?3006:continuation?3005:lifecycleAudit?3004:navigationAudit?3003:3002;
+const uiPort=clientHistory?5178:release?5177:continuation?5176:lifecycleAudit?5175:navigationAudit?5174:5173;
 const env={...process.env,DATABASE_URL:isolated.toString(),STOCK_AUDIT_ISOLATED:'1',
   STOCK_AUDIT_DATABASE:name,STOCK_AUDIT_UI_FIXTURE:'1',NODE_ENV:'test',REPLIT_DEPLOYMENT:'',
   AUTH_SECRET:auditAuthKey,JWT_SECRET:auditAuthKey,SESSION_SECRET:auditAuthKey,
@@ -24,7 +25,7 @@ const env={...process.env,DATABASE_URL:isolated.toString(),STOCK_AUDIT_ISOLATED:
 assertIsolatedTestDatabase(env);
 const admin=new pg.Pool({connectionString:source.toString(),max:1});
 let target,backend,frontend,created=false,cleaning=false;
-const base=release?'generated-artifacts/stock-release-verification':continuation?'generated-artifacts/stock-continuation-stages':lifecycleAudit?'generated-artifacts/stock-lifecycle-stages':navigationAudit?'generated-artifacts/stock-navigation-audit':'generated-artifacts/stock-ui-verification';
+const base=clientHistory?'generated-artifacts/client-history':release?'generated-artifacts/stock-release-verification':continuation?'generated-artifacts/stock-continuation-stages':lifecycleAudit?'generated-artifacts/stock-lifecycle-stages':navigationAudit?'generated-artifacts/stock-navigation-audit':'generated-artifacts/stock-ui-verification';
 const emptyFixture=process.argv.includes('--empty');
 const clean=async()=>{
   if(cleaning)return;cleaning=true;
@@ -80,6 +81,7 @@ try{
   for(const [id,username,role,branch] of [
     ['UI-BRANCH-A','ui_branch_a','branch_manager','townshop'],
     ['UI-BRANCH-B','ui_branch_b','branch_manager','swakopmund'],
+    ...(clientHistory?[['CH-FD','ch_fd','frontdesk','townshop'],['CH-C','ch_c','consultant','townshop']]:[]),
     ['UI-STOCK','ui_stock','stock',null],['UI-GM','ui_gm','gm',null]]){
     await target.query(`INSERT INTO users(id,username,password_hash,role,full_name,branch,
       is_active,must_change_password,metadata) VALUES($1,$2,$3,$4,$5,$6,true,false,'{"disposable_ui_audit":true}')`,

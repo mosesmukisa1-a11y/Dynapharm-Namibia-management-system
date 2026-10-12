@@ -7,6 +7,7 @@ import { Calendar, UserPlus, CreditCard, Search, Users, Truck, Bell, MessageSqua
 import { useAuth } from '../../contexts/AuthContext';
 import StaffServicesTab from '../../components/StaffServicesTab';
 import StaffMessagesTab from '../../components/StaffMessagesTab';
+import {ClientHistoryDirectory} from '../../components/ClientHistory';
 
 export default function FrontDeskPortal() {
   const [activeTab, setActiveTab] = useState('appointments');
@@ -36,10 +37,10 @@ export default function FrontDeskPortal() {
       <div className="mt-6">
         {activeTab === 'appointments' && <AppointmentsTab />}
         {activeTab === 'checkup' && <CheckupTab />}
-        {activeTab === 'registration' && <RegistrationTab />}
+        {activeTab === 'registration' && <ClientHistoryDirectory initialRegistration />}
         {activeTab === 'orders' && <OrdersTab />}
         {activeTab === 'payments' && <PaymentsTab />}
-        {activeTab === 'lookup' && <ClientLookupTab />}
+        {activeTab === 'lookup' && <ClientHistoryDirectory allowRegistration={false} />}
         {activeTab === 'delivery' && <DeliveryTab />}
         {activeTab === 'visitors' && <VisitorsTab />}
         {activeTab === 'crm' && <CRMTab />}

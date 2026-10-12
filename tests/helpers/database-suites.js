@@ -18,6 +18,7 @@ export const stockAuditSuites = [
 ];
 
 export const databaseSuites = [
+  'tests/client-history.spec.js',
   'tests/offline-failure.spec.js',
   'tests/member-preview.spec.js',
   'tests/reorder-evidence.spec.js',

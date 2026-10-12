@@ -115,6 +115,8 @@ export default async function handler(req, res) {
   const requestedBranch = searchParams.get('branch');
   const search = searchParams.get('search');
   const branchScope = getBranchScope(req.user);
+  const actor=req.user.sub||req.user.id;
+  const presentClient=normalizeClient;
 
   try {
     if (method === 'GET') {
@@ -126,7 +128,7 @@ export default async function handler(req, res) {
         if (branchScope.enforced && !branchScope.branches.includes(client.branch)) {
           return res.status(403).json({ error: 'Access denied' });
         }
-        return res.json(normalizeClient(client));
+        return res.json(presentClient(client));
       } else if (reference) {
         const client = await getOne('SELECT * FROM clients WHERE reference_number = $1', [reference]);
         if (!client) {
@@ -135,7 +137,7 @@ export default async function handler(req, res) {
         if (branchScope.enforced && !branchScope.branches.includes(client.branch)) {
           return res.status(403).json({ error: 'Access denied' });
         }
-        return res.json(normalizeClient(client));
+        return res.json(presentClient(client));
       } else if (phone) {
         let clients;
         if (branchScope.enforced) {
@@ -143,7 +145,7 @@ export default async function handler(req, res) {
         } else {
           clients = await getMany('SELECT * FROM clients WHERE phone = $1 ORDER BY created_at DESC', [phone]);
         }
-        return res.json(clients.map(normalizeClient).filter(Boolean));
+        return res.json(clients.map(presentClient).filter(Boolean));
       } else {
         let queryText = 'SELECT * FROM clients';
         const params = [];
@@ -165,7 +167,7 @@ export default async function handler(req, res) {
         queryText += ' ORDER BY created_at DESC';
         
         const clients = await getMany(queryText, params);
-        return res.json(clients.map(normalizeClient).filter(Boolean));
+        return res.json(clients.map(presentClient).filter(Boolean));
       }
     }
 
@@ -221,6 +223,17 @@ export default async function handler(req, res) {
           return res.status(403).json({ success: false, error: 'Access denied: cannot create client for this branch' });
         }
         const effectiveBranch = branchScope.enforced ? (requestedBranch || branchScope.branches[0] || null) : requestedBranch;
+        if(body.id){
+          const existing=await getOne('SELECT * FROM clients WHERE id=$1',[body.id]);
+          if(existing){
+            if(branchScope.enforced&&!branchScope.branches.includes(existing.branch))return res.status(403).json({error:'Access denied'});
+            if(existing.data?._registeredBy!==actor || existing.full_name!==(body.full_name||body.fullName) ||
+              (existing.phone||'')!==(body.phone||'') || (existing.email||'')!==(body.email||'') || existing.branch!==effectiveBranch)
+              return res.status(409).json({error:'This client ID already exists; open the existing profile'});
+            return res.json({success:true,client:presentClient(existing)});
+          }
+        }
+        const registrationData=typeof body.data==='string'?JSON.parse(body.data):body.data||{};
         const clientData = {
           id: body.id || body.reference_number || `CLT-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           reference_number: body.reference_number || body.referenceNumber,
@@ -232,7 +245,7 @@ export default async function handler(req, res) {
           address: body.address || null,
           city: body.city || null,
           branch: effectiveBranch,
-          data: body.data ? (typeof body.data === 'string' ? body.data : JSON.stringify(body.data)) : null
+          data: JSON.stringify({...registrationData,_registeredBy:actor})
         };
         
         Object.keys(clientData).forEach(key => {
@@ -272,6 +285,7 @@ export default async function handler(req, res) {
       const mergedData = { ...existingData };
       healthFields.forEach(f => { if (body[f] !== undefined) mergedData[f] = body[f]; });
       if (body.data && typeof body.data === 'object') Object.assign(mergedData, body.data);
+      if(existingData._registeredBy)mergedData._registeredBy=existingData._registeredBy;
 
       const clientPayload = {
         ...(body.referenceNumber !== undefined && { reference_number: body.referenceNumber }),

@@ -119,6 +119,7 @@ async function main() {
   '029_historical_refund_evidence.sql',
   '030_publish_safe_stock_location_index.sql',
   '031_stock_request_audit_fields.sql',
+  '032_client_history.sql',
     ];
     
     for (const migration of migrations) {

@@ -7,8 +7,9 @@ import {assertIsolatedTestDatabase} from '../api/testDatabaseGuard.js';
 // Reload only the owned disposable API; preserve its UI-created test stock.
 const lifecycle=process.argv.includes('--lifecycle');
 const release=process.argv.includes('--release-audit');
-const port=release?3006:lifecycle?3004:3002;
-const path=release?'generated-artifacts/stock-release-verification/environment.json':lifecycle?'generated-artifacts/stock-lifecycle-stages/environment.json':'generated-artifacts/stock-ui-verification/environment.json';
+const clientHistory=process.argv.includes('--client-history');
+const port=clientHistory?3007:release?3006:lifecycle?3004:3002;
+const path=clientHistory?'generated-artifacts/client-history/environment.json':release?'generated-artifacts/stock-release-verification/environment.json':lifecycle?'generated-artifacts/stock-lifecycle-stages/environment.json':'generated-artifacts/stock-ui-verification/environment.json';
 const owned=JSON.parse(await readFile(path,'utf8'));
 if(!owned.disposable || !/^stock_audit_[a-f0-9]{32}$/.test(owned.isolatedDatabase) || owned.backendPort!==port)
   throw Error('Untrusted isolated UI ownership manifest');
@@ -26,7 +27,7 @@ assertIsolatedTestDatabase(env);
 const pool=new pg.Pool({connectionString:target.toString(),ssl:env.DATABASE_SSL==='1'?{rejectUnauthorized:false}:undefined});
 const actors=await pool.query(`SELECT current_database() AS db,COUNT(*) AS qty FROM users WHERE metadata->>'disposable_ui_audit'='true'`);
 await pool.end();
-if(actors.rows[0].db!==owned.isolatedDatabase || Number(actors.rows[0].qty)!==4)throw Error('Disposable user ownership proof missing');
+if(actors.rows[0].db!==owned.isolatedDatabase || Number(actors.rows[0].qty)!==(clientHistory?6:4))throw Error('Disposable user ownership proof missing');
 const backendOwner=owned.resumedBackendHarnessPid || owned.harnessPid;
 if(backendOwner!==owned.harnessPid){
   const ownerCommand=execFileSync('ps',['-ww','-p',String(backendOwner),'-o','args='],{encoding:'utf8'});
@@ -45,7 +46,11 @@ for(let i=0;i<100;i++){
 }
 const backend=spawn('node',['server.js'],{env,stdio:['ignore','pipe','pipe']});
 backend.stdout.on('data',()=>{});
-backend.stderr.on('data',()=>{}); // Never echo bootstrap credentials or connections.
+backend.stderr.on('data',data=>{
+  const text=String(data);
+  if(!/password|credential|postgres:\/\//i.test(text))
+    console.error(text.replaceAll(source.toString(),'[database]').replaceAll(target.toString(),'[isolated database]').trim());
+}); // Never echo bootstrap credentials or connections.
 await writeFile(path,JSON.stringify({...owned,resumedBackendHarnessPid:process.pid,backendPid:backend.pid},null,2));
 const stop=()=>backend.kill('SIGTERM');
 process.on('SIGTERM',stop);process.on('SIGINT',stop);

@@ -1,0 +1,22 @@
+---
+name: Client history safety boundaries
+description: Front Desk off-system form filing only; existing prescription ordering must remain unchanged.
+---
+
+Retrospective outreach, paper and outage records must not invent appointments, clinical approval, stock deductions, sales, payments, BV or profit. Membership and email are optional; keep the existing shared client identity and never merge clients by name.
+
+**Why:** The user needs records of work already performed outside the system, not a second stock/accounting transaction or an implied clinical decision.
+
+**How to apply:** Keep actual service date and capture actor/time separate. Front Desk files existing off-system forms without a new Consultant approval pipeline; recorded prescriber is source attribution, not electronic approval. Consultants have authorized read-only visibility. Keep prescribed/already-dispensed quantities as historical transcription only and preserve originals through amendment snapshots.
+
+The user corrected the scope: “the only change I asked for is the front desk to add off-system prescription forms; the original prescription order was fine.”
+
+**Why:** The earlier expansion into prescription authoring and live dispensing changed a workflow the user wanted to retain.
+
+**How to apply:** Never create orders, payments, BV/profit, reservations or stock deductions through this profile. Leave original ordering, pricing, membership, payment and dispensing behavior unchanged. Do not delete earlier evidence when narrowing scope.
+
+Tests must exercise actual login claims and real HTTP request contracts when composing handlers.
+
+**Why:** Plain-object handler tests passed while real staff sessions and inherited Express headers failed during the authenticated browser flow.
+
+**How to apply:** Use real session middleware for critical browser checks; do not assume sanitized frontend user fields or enumerable plain objects represent server requests.

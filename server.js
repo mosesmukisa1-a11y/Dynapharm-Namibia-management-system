@@ -75,8 +75,11 @@ setInterval(() => {
 
 app.get('/api/obj/*', async (req, res) => {
   try {
-    const client = await getStorageClient();
     const objectName = req.path.replace(/^\/api\/obj\//, '');
+    // Clinical attachments are served only by the scoped authenticated endpoint.
+    if(decodeURIComponent(objectName).includes('client-history-private'))
+      return res.status(404).json({error:'File not found'});
+    const client = await getStorageClient();
     if (!objectName) return res.status(400).json({ error: 'No object path specified' });
 
     const ext = path.extname(objectName).toLowerCase();
@@ -2577,6 +2580,9 @@ server.on('error', (error) => {
     // They repair any production databases that were created before these
     // migrations were authored, without touching existing data.
     const schemaSyncs = [
+      ...(process.env.REPLIT_DEPLOYMENT==='1'?[]:[
+        await (await import('node:fs/promises')).readFile(
+          new URL('./migrations/032_client_history.sql',import.meta.url),'utf8')]),
       (await import('./api/services/stockCostLayers.js')).lifecycleSchema,
       (await import('./api/services/stockSaleAllocations.js')).saleAllocationSchema,
       (await import('./api/services/linkedReversals.js')).reversalSchema,

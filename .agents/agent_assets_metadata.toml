@@ -308,3 +308,17 @@ mtime_ms = 1791813378295
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/d82f1d2a-ddea-409d-896d-33faf9ec192d/1809a2eb-9b28-4543-af8b-4b8cbb267d72"
 storage_version_token = "1791813563645479"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "-S7CzKV8YjtE_q5DtUoIE"
+uri = "file://generated-artifacts/client-history/report.md"
+type = "text"
+title = "Off-system form filing — verification and release review"
+description = "Final narrowed scope, restored original prescription behavior, isolated staff-browser evidence, additive schema review and the remaining backup/recovery release gate."
+logical_id = "c81f2bf5-611a-441a-81f8-8ebcc71689c6"
+content_hash = "sha256:8d15f607df4b20bc28ff43a814b762d2c9ed696ffd428faddafec16957bf5391"
+size = 21036
+mtime_ms = 1791818412342
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/c81f2bf5-611a-441a-81f8-8ebcc71689c6/00f8dc01-ed1a-4bb7-8063-da385e2763f1"
+storage_version_token = "1791818450820333"
+content_type = "text/markdown"

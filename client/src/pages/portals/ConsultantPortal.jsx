@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, Component } from 'react';
 import { api } from '../../lib/api';
+import ClientHistory from '../../components/ClientHistory';
 import { formatDateTime, formatDate, BRANCHES, BRANCH_DETAILS, COMPANY_INFO, getBranchId } from '../../lib/constants';
 import { PACKAGE_DATABASE, BODY_SYSTEMS_DATABASE, RECOMMENDATION_DATABASE, findProductPrice, getLiveProductList, setLivePrices } from '../../lib/pricing';
 import { Button, Input, Badge, LoadingSpinner, Modal, Alert, Textarea } from '../../components/ui';
@@ -2568,7 +2569,7 @@ function ClientsSection() {
               {editMode ? (
                 <ClientEditForm form={editForm} setForm={setEditForm} />
               ) : (
-                <ClientViewDetails client={selectedClient} />
+                <><ClientHistory clientId={selectedClient.id} /><details><summary>Original registration details</summary><ClientViewDetails client={selectedClient} /></details></>
               )}
             </div>
             <div style={{ textAlign: 'center', padding: '16px 24px', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' }}>
