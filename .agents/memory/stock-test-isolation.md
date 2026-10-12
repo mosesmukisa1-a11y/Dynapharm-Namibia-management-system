@@ -2,6 +2,24 @@
 name: Stock safety test isolation
 description: Why receipt evidence and full-database safety baselines need different isolation from ordinary unit tests.
 ---
+Run long authenticated stock audits in short resumable stages and persist reports and screenshots after each stage.
+
+**Why:** The user explicitly requires that interruptions must not lose results, following stalled full browser runs without saved evidence.
+
+**How to apply:** Reuse the existing browser test session, save action/endpoint/status/error and observed balances on failure, fix reproducible defects, and resume only the affected stage. Older automated results are not fresh browser evidence.
+
+A stalled delegated browser session does not establish that the app or browser runtime is broken. Bounded local authenticated rendering checks can still succeed using the environment Chromium wrapper.
+
+**Why:** A resumed session returned no traces, while a focused local check subsequently authenticated through the real session middleware and captured desktop/mobile screenshots without moving stock.
+
+**How to apply:** Save the stall as missing evidence, not an application error. Keep any subsequent read-only rendering evidence separate from the uncompleted stock journey; do not count screenshots as transaction, export or offline-replay verification.
+
+Verify disposable-database removal after stopping a supervised audit process; a terminated harness is not proof of cleanup.
+
+**Why:** Both a workspace restart and a supervised SIGTERM left owned audit databases behind despite the harness having a cleanup handler.
+
+**How to apply:** Check only the exact database names recorded for the current audit. If cleanup was interrupted, verify the strict disposable-name pattern and that each differs from the business database before removing it. Never sweep all similarly named databases.
+
 Serial execution alone does not establish fixture isolation for company-wide assertions.
 
 **Why:** A company-wide low-stock assertion has failed with extra products under one full-suite order while passing under another. A single successful run or a coincident production-code change does not establish that the contributing fixtures were cleaned up.

@@ -806,100 +806,9 @@ export default async function handler(req, res) {
         const existingReason = r.write_off_reason;
         const derivedReason = existingReason || (r.notes ? r.notes.split(' — ')[0].split('|')[0].trim() : null);
 
-        // Determine if this batch is expired — expired stock is disposed at branch, non-expired is returned to warehouse
-        const expiryDate = r.expiry_date ? new Date(r.expiry_date) : null;
-        const isExpired = (expiryDate && expiryDate < new Date()) ||
-          ['expired'].includes((derivedReason || '').toLowerCase().trim());
-
-        let disposalStatus = 'dispose_off';
-        let returnedWarehouseId = null;
-
-        if (!isExpired && qty > 0) {
-          // Find the warehouse that last dispatched this product to this branch
-          const dispatchSrc = await client.query(
-            `SELECT source_location FROM stock_movements
-             WHERE movement_type = 'warehouse_dispatch'
-               AND LOWER(REPLACE(destination_location,' ','_')) = LOWER(REPLACE($1,' ','_'))
-               AND LOWER(product_name) = LOWER($2)
-             ORDER BY created_at DESC LIMIT 1`,
-            [branchId, productName]
-          );
-          returnedWarehouseId = dispatchSrc.rows[0]?.source_location || 'country_stock';
-
-          // Try to add quantity back to an existing warehouse_inventory row
-          const upd = await client.query(
-            `UPDATE warehouse_inventory
-             SET quantity = quantity + $1, updated_at = NOW()
-             WHERE warehouse_id = $2
-               AND LOWER(product_name) = LOWER($3)
-               AND LOWER(COALESCE(batch_no,'')) = LOWER($4)`,
-            [qty, returnedWarehouseId, productName, batchNo || '']
-          );
-          if (upd.rowCount === 0) {
-            // No matching row — insert a new inventory entry for this product/batch.
-            // product_id is NOT NULL: reuse the id from an existing row for this product,
-            // falling back to a URL-slug generated from the product name.
-            const existingPid = await client.query(
-              `SELECT product_id FROM warehouse_inventory
-               WHERE LOWER(product_name) = LOWER($1) AND product_id IS NOT NULL LIMIT 1`,
-              [productName]
-            );
-            const productId = existingPid.rows[0]?.product_id
-              || productName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-            const wiId = `WI-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
-            await client.query(
-              `INSERT INTO warehouse_inventory
-                 (id, warehouse_id, product_id, product_name, batch_no, expiry_date, quantity, status, created_at, updated_at)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, 'available', NOW(), NOW())
-               ON CONFLICT (warehouse_id, product_id, batch_no, expiry_date) DO UPDATE
-                 SET quantity = warehouse_inventory.quantity + EXCLUDED.quantity, updated_at = NOW()`,
-              [wiId, returnedWarehouseId, productId, productName, batchNo || null, r.expiry_date || null, qty]
-            );
-          }
-
-          // Log the return movement in warehouse_inventory_movements
-          const wimId = `WIM-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
-          await client.query(
-            `INSERT INTO warehouse_inventory_movements
-               (id, warehouse_id, product_name, batch_no, movement_type, quantity, reference, notes, created_by, created_at)
-             VALUES ($1, $2, $3, $4, 'write_off_return', $5, $6, $7, $8, NOW())`,
-            [wimId, returnedWarehouseId, productName, batchNo || '', qty,
-              r.reference_id, `Returned from branch write-off. Branch: ${branchId}. Reason: ${derivedReason || 'N/A'}. ${r.notes || ''}`.trim(), gmName]
-          );
-
-          // Credit stock_batches — this is the table the warehouse portal display reads from.
-          // Try to increment remaining_quantity on an existing batch first.
-          const sbUpd = await client.query(
-            `UPDATE stock_batches
-             SET remaining_quantity = remaining_quantity + $1,
-                 quantity = quantity + $1,
-                 updated_at = NOW()
-             WHERE location = $2
-               AND LOWER(description) = LOWER($3)
-               AND LOWER(COALESCE(batch_no,'')) = LOWER($4)`,
-            [qty, returnedWarehouseId, productName, batchNo || '']
-          );
-          if (sbUpd.rowCount === 0) {
-            // No existing batch — create a new stock_batches row so it appears in
-            // the warehouse inventory immediately, with pricing from the write-off record.
-            const sbId = `SB-WO-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
-            const cifCost = Number(r.unit_cif || 0);
-            const dpcCost = Number(r.unit_dp || 0);
-            await client.query(
-              `INSERT INTO stock_batches
-                 (id, description, batch_no, expiry_date, quantity, remaining_quantity,
-                  location, status, cif_unit_cost, dpc_unit_value,
-                  cif_total_value, dpc_total_value, created_at, updated_at)
-               VALUES ($1,$2,$3,$4::date,$5,$5,$6,'available',$7,$8,$9,$10,NOW(),NOW())
-               ON CONFLICT DO NOTHING`,
-              [sbId, productName, batchNo || null, r.expiry_date || null, qty,
-               returnedWarehouseId, cifCost, dpcCost,
-               qty * cifCost, qty * dpcCost]
-            );
-          }
-
-          disposalStatus = 'returned_to_warehouse';
-        }
+        // Approval records disposal, never a physical warehouse receipt.
+        // Returnable goods must use a separate transfer and confirmed receipt.
+        const disposalStatus = 'dispose_off';
 
         await client.query(
           `UPDATE stock_movements
@@ -911,8 +820,7 @@ export default async function handler(req, res) {
            WHERE id = $5`,
           [gmName, gmNote ? ` | GM: ${gmNote}` : '', disposalStatus, derivedReason, id]
         );
-        // Return all branch-id variants + warehouseId so callers recompute everything
-        return { branchId: branchId || null, effectiveBranchId: effectiveBranchId || null, warehouseId: returnedWarehouseId };
+        return { branchId: branchId || null, effectiveBranchId: effectiveBranchId || null, warehouseId: null };
       };
 
       const reject = async (client, id) => {

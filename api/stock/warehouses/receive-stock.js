@@ -3,6 +3,7 @@ import { query, withTransaction } from '../../db.js';
 import { atomicStockRequest } from '../../_lib/atomicStockRequest.js';
 import { postStockMovementTx, recomputeLocationBalances } from '../../services/stockEngine.js';
 import { allocateTransferTx, restoreTransferAllocationTx, fail } from '../../services/stockCostLayers.js';
+import {normalizeBranchSlug} from '../../_lib/branchUtils.js';
 
 async function handler(req,res) {
   if (!req.user) return res.status(401).json({success:false,error:'Authentication required'});
@@ -13,7 +14,13 @@ async function handler(req,res) {
   if (!transferId || !['accept','reject'].includes(action)) fail('transferId and accept/reject action are required',400);
   const transfer=(await query('SELECT * FROM stock_transfers WHERE id=$1 FOR UPDATE',[transferId])).rows[0];
   if (!transfer) fail('Transfer not found',404);
-  if (transfer.from_warehouse!=='country_stock' || !['windhoek_warehouse','ondangwa_warehouse'].includes(transfer.to_branch))
+  await query("SELECT pg_advisory_xact_lock(hashtext('country-distribution-create'))");
+  const role=String(req.user.role).toLowerCase();
+  if (['warehouse','warehouse_manager','stock_manager'].includes(role) &&
+      (!req.user.branch || normalizeBranchSlug(req.user.branch)!==normalizeBranchSlug(transfer.to_branch)))
+    fail('This warehouse is outside your assigned location',403);
+  const destination=(await query("SELECT id FROM warehouse_locations WHERE id=$1 AND type='warehouse'",[transfer.to_branch])).rows[0];
+  if (transfer.from_warehouse!=='country_stock' || !destination)
     fail('This receipt requires a Country Stock to Warehouse dispatch',400);
   if (action==='reject') {
     if (!['approved','pending_approval'].includes(transfer.status)) fail('Only an undispatched transfer may be rejected',409);
@@ -22,7 +29,11 @@ async function handler(req,res) {
       for (const line of lines) await restoreTransferAllocationTx(client,line);
       await client.query("UPDATE stock_movements SET status='reversed',updated_at=NOW() WHERE reference_id=$1 AND movement_type='reserved' AND status='posted'",[transferId]);
     });
-    await query("UPDATE stock_transfers SET status='rejected',dispatch_notes=$1,updated_at=NOW() WHERE id=$2",[rejectionReason || null,transferId]);
+    await query(`UPDATE stock_transfers SET status='rejected',
+      metadata=COALESCE(metadata,'{}'::jsonb) || jsonb_build_object('warehouse_rejection',
+        jsonb_build_object('reason',$1::text,'actor',$3::text,'at',NOW())),
+      updated_at=NOW() WHERE id=$2`,
+      [rejectionReason || null,transferId,req.user.fullName || req.user.username || req.user.id]);
     await recomputeLocationBalances('country','country_stock');
     return res.json({success:true,action:'rejected',transferId});
   }

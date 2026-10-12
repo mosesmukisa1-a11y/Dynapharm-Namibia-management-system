@@ -11,13 +11,15 @@ import DispatchNote from '../../components/DispatchNote';
 import StockProductPacks from '../../components/StockProductPacks';
 import StockCostReport from '../../components/StockCostReport';
 import StockAlertSettings from '../../components/StockAlertSettings';
+import StockPortalShell from '../../components/stock/StockPortalShell';
+import DistributionTab from '../../components/stock/DistributionTab';
 import StockAlertPolicyProvider, { useStockAlertPolicy } from '../../components/StockAlertPolicyProvider';
 import {HistoricalRefundLinkForm} from '../../components/HistoricalRefundEvidence';
 import { CustomerReturnInspection, DispatchReturnsTab } from '../../components/LinkedCustomerReturns';
 import { buildReceiptPayload, clearReceiptDraft, readReceiptDraft, writeReceiptDraft, receiptMoney } from '../../lib/stockLifecycle';
 import { getCIFPrice, getDPCPrice, getProductProfit, findProductPrice, getLiveProductList, setLivePrices } from '../../lib/pricing';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES, BRANCH_DETAILS } from '../../lib/constants';
-import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
+import { Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
 import { Package, Warehouse, Truck, ArrowLeftRight, Globe, BarChart3, ClipboardList, FileSpreadsheet, Zap, Share2, ShoppingCart, Plus, Download, Filter, Search, DollarSign, TrendingUp, Ship, Calendar, CheckCircle, Printer, Tag, Edit2, Clock, XCircle, Brain, AlertTriangle, TrendingDown, MapPin, Users, Activity, Shield, Bell, RefreshCw, Target, Cpu, Megaphone } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -1593,48 +1595,31 @@ function StockPortalContent() {
   ];
 
   const branchOptions = [
-    { value: 'all', label: '🌍 All Branches' },
-    ...BRANCH_DETAILS.map(b => ({ value: b.id, label: `📍 ${b.name}` })),
-    { value: 'windhoek_warehouse', label: '🏢 Windhoek Warehouse' },
-    { value: 'ondangwa_warehouse', label: '🏬 Ondangwa Warehouse' },
-    { value: 'country_stock', label: '📦 Country Stock' },
+    { value: 'all', label: 'All branches' },
+    ...BRANCH_DETAILS.map(b => ({ value: b.id, label: b.name })),
+    { value: 'windhoek_warehouse', label: 'Windhoek Warehouse' },
+    { value: 'ondangwa_warehouse', label: 'Ondangwa Warehouse' },
+    { value: 'country_stock', label: 'Country Stock' },
   ];
 
   const activeBranchLabel = branchOptions.find(o => o.value === globalBranch)?.label || 'All Branches';
 
-  return (
-    <div>
-      {/* ── Header with Branch Selector ──────────────────────── */}
-      <div className="mb-4 flex flex-wrap gap-4 items-start justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-            <Brain size={24} className="text-primary" /> Stock Management System
-          </h1>
-          <p className="text-sm text-gray-500">Intelligent inventory control · Branch-connected · Real-time insights</p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <MapPin size={16} className="text-primary shrink-0" />
-          <span className="text-sm font-semibold text-gray-600 whitespace-nowrap">Branch Filter:</span>
-          <select value={globalBranch} onChange={e => setGlobalBranch(e.target.value)}
-            style={{ padding: '7px 12px', border: '2px solid #c41e3a', borderRadius: 10, fontWeight: 700, fontSize: '0.85rem', color: '#8b0000', background: '#fff0f3', cursor: 'pointer', minWidth: 180 }}>
-            {branchOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-          {globalBranch !== 'all' && (
-            <button onClick={() => setGlobalBranch('all')}
-              style={{ padding: '6px 10px', background: '#f1f5f9', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>× All</button>
-          )}
-          {user?.full_name && <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontStyle: 'italic' }}>👤 {user.full_name}</span>}
-        </div>
+  const branchFilter = (
+    <div className="sp-field-stack" style={{ marginBottom: 20 }}>
+      <div className="sp-actions">
+        <MapPin size={16} aria-hidden="true" />
+        <label className="sp-label" htmlFor="stock-global-branch">Location filter</label>
+        <select id="stock-global-branch" className="sp-input" style={{ width: 'auto', minWidth: 180 }} value={globalBranch} onChange={e => setGlobalBranch(e.target.value)}>
+          {branchOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+        {globalBranch !== 'all' && <button type="button" className="sp-btn" onClick={() => setGlobalBranch('all')}>All locations</button>}
       </div>
+      {globalBranch !== 'all' && <div className="sp-alert sp-alert-success" style={{ marginBottom: 0 }}><MapPin size={13} style={{ display: 'inline', marginRight: 6 }} />Location scope: <strong>{activeBranchLabel}</strong>. Applied to location-aware views.</div>}
+    </div>
+  );
 
-      {/* ── Active filter banner ──────────────────────────────── */}
-      {globalBranch !== 'all' && (
-        <div style={{ marginBottom: 12, padding: '8px 16px', background: 'linear-gradient(135deg,#fff0f3,#ffe4e8)', border: '1.5px solid #fecaca', borderRadius: 10, fontSize: '0.82rem', color: '#9b1c2e', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
-          <MapPin size={13} /> Showing data for: <strong>{activeBranchLabel}</strong> &nbsp;—&nbsp; All tabs filtered to this location
-        </div>
-      )}
-
-      <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
+  return (
+    <StockPortalShell tabs={tabs} activeTab={activeTab} onChange={setActiveTab} user={user} globalBranch={globalBranch} branchFilter={branchFilter}>
       <div className="mt-6">
         {activeTab === 'alertSettings' && <StockAlertSettings policy={policy} canEdit={canEdit} onSaved={onSaved} />}
         {activeTab === 'aiDashboard' && <AICommandCenter branch={globalBranch} />}
@@ -1645,7 +1630,7 @@ function StockPortalContent() {
         {activeTab === 'costReport' && <StockCostReport />}
         {activeTab === 'countryStock' && <CountryStockTab />}
         {activeTab === 'warehouses' && <WarehousesTab />}
-        {activeTab === 'distribution' && <DistributionTab branch={globalBranch} />}
+        {activeTab === 'distribution' && <DistributionTab AdjustmentModal={RequestAdjustmentModal} />}
         {activeTab === 'transfers' && <TransfersTab branch={globalBranch} />}
         {activeTab === 'inventory' && <InventoryTab branch={globalBranch} />}
         {activeTab === 'orders' && <OrdersTab branch={globalBranch} />}
@@ -1664,7 +1649,7 @@ function StockPortalContent() {
         {activeTab === 'staffServices' && <StaffServicesTab accentColor="#92400e" />}
         {activeTab === 'messages' && <StaffMessagesTab accentColor="#92400e" />}
       </div>
-    </div>
+    </StockPortalShell>
   );
 }
 
@@ -2705,6 +2690,7 @@ function CountryStockTab() {
   const [releaseNotes, setReleaseNotes] = useState('');
   const [releasing, setReleasing] = useState(false);
   const [releaseAlert, setReleaseAlert] = useState(null);
+  const releaseOperations=useRef({});
 
   const [editRecord, setEditRecord] = useState(null);
 
@@ -2756,6 +2742,7 @@ function CountryStockTab() {
   const { distinctProducts = 0, totalUnits = 0, stockValueDP = 0, lowStockItems = 0 } = data.summary;
 
   const openReleaseModal = (item) => {
+    releaseOperations.current={};
     setReleaseItems([{ productName: item.productName, batchNo: item.batchNo, expiryDate: item.expiryDate, qtyWindhoek: '', qtyOndangwa: '', availableQty: item.closingQty }]);
     setReleaseNotes('');
     setReleaseAlert(null);
@@ -2791,12 +2778,19 @@ function CountryStockTab() {
     setReleasing(true);
     try {
       const refs = [];
+      const submitRelease=async data=>{
+        const fingerprint=JSON.stringify(data);
+        const previous=releaseOperations.current[data.warehouseId];
+        const operation=previous?.fingerprint===fingerprint?previous:{fingerprint,key:crypto.randomUUID()};
+        releaseOperations.current[data.warehouseId]=operation;
+        return api.stock.releaseToWarehouse({...data,operation_key:operation.key});
+      };
       if (windhoekItems.length > 0) {
-        const r = await api.stock.releaseToWarehouse({ warehouseId: 'windhoek_warehouse', items: windhoekItems, releasedBy: actor, notes: releaseNotes || undefined });
+        const r = await submitRelease({ warehouseId: 'windhoek_warehouse', items: windhoekItems, releasedBy: actor, notes: releaseNotes || undefined });
         refs.push(`Windhoek: ${r.referenceId}`);
       }
       if (ondangwaItems.length > 0) {
-        const r = await api.stock.releaseToWarehouse({ warehouseId: 'ondangwa_warehouse', items: ondangwaItems, releasedBy: actor, notes: releaseNotes || undefined });
+        const r = await submitRelease({ warehouseId: 'ondangwa_warehouse', items: ondangwaItems, releasedBy: actor, notes: releaseNotes || undefined });
         refs.push(`Ondangwa: ${r.referenceId}`);
       }
       const destLabel = refs.length === 2 ? 'both warehouses' : refs.length === 1 && windhoekItems.length > 0 ? 'Windhoek Warehouse' : 'Ondangwa Warehouse';
@@ -6241,287 +6235,6 @@ function WarehousesTab() {
       </div>
 
       <WarehouseTab name={selected === 'windhoek' ? 'Windhoek' : 'Ondangwa'} />
-    </div>
-  );
-}
-
-function DistributionTab({ branch }) {
-  const { expiryWarningDays } = useStockAlertPolicy();
-  const { user } = useAuth();
-  const [cart, setCart] = useState([]);
-  const [destination, setDestination] = useState('');
-  const [transferNote, setTransferNote] = useState('');
-  const [adjRecord, setAdjRecord] = useState(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [alert, setAlert] = useState(null);
-  const [recentTransfers, setRecentTransfers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [countryBatches, setCountryBatches] = useState([]);
-
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [transferData, batchData] = await Promise.allSettled([
-        api.stock.transfers(),
-        api.stock.batches(),
-      ]);
-      if (transferData.status === 'fulfilled') {
-        const all = Array.isArray(transferData.value) ? transferData.value : transferData.value?.transfers || [];
-        setRecentTransfers(all);
-      }
-      if (batchData.status === 'fulfilled') {
-        const all = Array.isArray(batchData.value) ? batchData.value : batchData.value?.batches || [];
-        setCountryBatches(all.filter(b => b.location === 'country_stock'));
-      }
-    } catch (_) {}
-    finally { setLoading(false); }
-  }, []);
-
-  useEffect(() => { loadData(); }, [loadData]);
-
-  // Real-time: country stock release creates a transfer → refresh immediately
-  useStockRealtime({ onUpdate: loadData });
-
-  useEffect(() => {
-    const iv = setInterval(loadData, 60000);
-    return () => clearInterval(iv);
-  }, [loadData]);
-
-  const warehouseDestinations = [
-    { value: '', label: 'Select destination warehouse...' },
-    { value: 'windhoek_warehouse', label: '🏢 Windhoek Warehouse' },
-    { value: 'ondangwa_warehouse', label: '🏬 Ondangwa Warehouse' },
-  ];
-
-  const availableByProduct = {};
-  const batchesByProduct = {};
-  countryBatches.forEach(b => {
-    const name = b.product_name || '';
-    if (!availableByProduct[name]) availableByProduct[name] = 0;
-    availableByProduct[name] += Number(b.remaining_quantity || b.quantity || 0);
-    if (!batchesByProduct[name]) batchesByProduct[name] = [];
-    batchesByProduct[name].push(b);
-  });
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!destination) { setAlert({ type: 'error', msg: 'Please select a destination warehouse' }); return; }
-    if (cart.length === 0) { setAlert({ type: 'error', msg: 'Add at least one product to distribute' }); return; }
-    const overAllocated = cart.filter(c => c.qty > (availableByProduct[c.description] || 0));
-    if (overAllocated.length > 0) {
-      setAlert({ type: 'error', msg: `Insufficient Country Stock for: ${overAllocated.map(c => `${c.description} (need ${c.qty}, available ${availableByProduct[c.description] || 0})`).join(', ')}` });
-      return;
-    }
-    setSubmitting(true);
-    try {
-      const items = cart.map(c => ({ productName: c.description, quantity: c.qty }));
-      await api.stock.createTransfer({
-        from_location: 'country_stock',
-        to_location: destination,
-        items,
-        status: 'pending_approval',
-        dispatchNotes: transferNote || undefined,
-        created_by: user?.full_name || user?.username,
-        preparedByRole: user?.role || null,
-      });
-      setAlert({ type: 'success', msg: `Distribution of ${cart.length} product(s) to ${fmtLocation(destination)} submitted for GM approval` });
-      setCart([]);
-      setDestination('');
-      setTransferNote('');
-      await loadData();
-    } catch (err) {
-      setAlert({ type: 'error', msg: err.message });
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const WAREHOUSE_KEYS = ['windhoek_warehouse', 'ondangwa_warehouse'];
-  const distTransfers = recentTransfers.filter(t => {
-    const from = (t.fromWarehouse || t.from_location || '').toLowerCase().replace(/\s+/g, '_');
-    const to = (t.toBranch || t.to_location || '').toLowerCase().replace(/\s+/g, '_');
-    return from === 'country_stock' && WAREHOUSE_KEYS.includes(to);
-  });
-
-  const statusBadge = (status) => {
-    const s = (status || 'pending').toLowerCase();
-    if (s === 'received') return <Badge variant="success">Received</Badge>;
-    if (s === 'in_transit' || s === 'submitted') return <Badge variant="info">{s === 'submitted' ? 'Submitted' : 'In Transit'}</Badge>;
-    if (s === 'cancelled' || s === 'rejected') return <Badge variant="danger">{s === 'cancelled' ? 'Cancelled' : 'Rejected'}</Badge>;
-    return <Badge variant="warning">{status || 'Pending'}</Badge>;
-  };
-
-  const totalCartQty = cart.reduce((s, c) => s + c.qty, 0);
-
-  return (
-    <div className="space-y-6">
-      {alert && <Alert type={alert.type} className="mb-4">{alert.msg}</Alert>}
-
-      <Card className="bg-gradient-to-r from-green-50 to-emerald-50 border-green-200">
-        <CardBody>
-          <div className="flex items-start gap-4">
-            <Truck size={32} className="text-green-600 mt-1" />
-            <div>
-              <h3 className="font-bold text-green-900">Distribution — Country Stock → Warehouses</h3>
-              <p className="text-sm text-green-700 mt-1">
-                Distribute imported stock from the national Country Stock pool to Windhoek or Ondangwa Warehouse.
-                Warehouse managers will confirm receipt, then dispatch to branches.
-              </p>
-              <p className="text-xs text-green-600 mt-1 font-semibold">
-                Flow: Country Stock → Warehouse Receipt → Warehouse Dispatch to Branch → GM Approval → Branch Receipt
-              </p>
-            </div>
-          </div>
-        </CardBody>
-      </Card>
-
-      <Card>
-        <CardHeader><h3 className="font-bold text-gray-800">Create Distribution Transfer</h3></CardHeader>
-        <CardBody>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="block text-sm font-medium text-gray-700">Source</label>
-                <div className="px-3 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm font-semibold text-gray-700">
-                  🌍 Country Stock
-                </div>
-              </div>
-              <Select label="Destination Warehouse" options={warehouseDestinations} value={destination} onChange={e => setDestination(e.target.value)} />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Select Products & Quantities</label>
-              <ProductMultiCart cart={cart} onCartChange={setCart} />
-              {cart.length > 0 && (
-                <div className="mt-2 space-y-1">
-                  {cart.map(c => {
-                    const avail = availableByProduct[c.description] || 0;
-                    const over = c.qty > avail;
-                    const pBatches = batchesByProduct[c.description] || [];
-                    return (
-                      <div key={c.description} className={`px-3 py-2 rounded text-xs ${over ? 'bg-red-50 border border-red-200' : 'bg-gray-50 border border-gray-100'}`}>
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium">{c.description}</span>
-                          <span className={over ? 'text-red-600 font-bold' : 'text-gray-500'}>
-                            Qty: {c.qty} / Available: {avail}{over ? ' OVER' : ''}
-                          </span>
-                        </div>
-                        {pBatches.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {pBatches.slice(0, 3).map((b, i) => {
-                              const exp = b.expiry_date ? new Date(b.expiry_date) : null;
-                              const daysLeft = exp ? Math.ceil((exp - new Date()) / 86400000) : null;
-                              return (
-                                <span key={i} className="px-1.5 py-0.5 rounded text-xs" style={{ background: daysLeft !== null && daysLeft <= expiryWarningDays ? '#fef2f2' : '#f0fdf4', border: '1px solid', borderColor: daysLeft !== null && daysLeft <= expiryWarningDays ? '#fecaca' : '#bbf7d0', color: '#374151' }}>
-                                  B:{b.batch_no || b.batch_number || '-'} | {Number(b.remaining_quantity || b.quantity || 0)}u{exp ? ` | Exp:${formatDate(b.expiry_date)}` : ''}
-                                </span>
-                              );
-                            })}
-                            {pBatches.length > 3 && <span className="text-gray-400">+{pBatches.length - 3} more</span>}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Transfer Note (optional)</label>
-              <textarea
-                className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:border-primary focus:ring-primary/20 resize-y"
-                rows={2} value={transferNote} onChange={e => setTransferNote(e.target.value)}
-                placeholder="Add notes for this distribution..."
-              />
-            </div>
-
-            <div className="flex items-center gap-4">
-              <Button type="submit" disabled={submitting || cart.length === 0}>
-                <Truck size={16} /> {submitting ? 'Distributing...' : `Distribute ${totalCartQty} Unit${totalCartQty !== 1 ? 's' : ''} to Warehouse`}
-              </Button>
-              {cart.length > 0 && <span className="text-sm text-gray-500">{cart.length} product(s), {totalCartQty} total units</span>}
-            </div>
-          </form>
-        </CardBody>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <div className="flex justify-between items-center flex-wrap gap-2">
-            <h3 className="font-bold text-gray-800">Distribution History <span className="text-xs font-normal text-gray-400">(Country Stock → Warehouses)</span></h3>
-            <div className="flex gap-2">
-              <Button size="sm" variant="secondary" onClick={loadData}>↺ Refresh</Button>
-              <Button size="sm" variant="secondary" onClick={() => {
-                const rows = distTransfers.map(r => {
-                  const items = Array.isArray(r.items) ? r.items : [];
-                  const prodList = items.length > 0 ? items.map(i => `${i.productName || i.product_name} × ${i.quantity}`).join(', ') : (r.product_name || '—');
-                  const totalQ = items.length > 0 ? items.reduce((s, i) => s + Number(i.quantity || 0), 0) : (r.quantity || 0);
-                  return `<tr><td>${formatDateTime(r.created_at)}</td><td>${fmtLocation(r.fromWarehouse || r.from_location)}</td><td>${fmtLocation(r.toBranch || r.to_location)}</td><td>${prodList}</td><td>${totalQ}</td><td>${r.status || 'Pending'}</td></tr>`;
-                }).join('');
-                printDocument('Distribution History — Country Stock → Warehouses', `<table><thead><tr><th>Date</th><th>From</th><th>To</th><th>Products</th><th>Total Qty</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>`);
-              }}><Printer size={14} /> Print</Button>
-            </div>
-          </div>
-        </CardHeader>
-        {loading ? <LoadingSpinner /> : (
-          <Table
-            columns={[
-              { header: 'Date', render: r => formatDateTime(r.created_at) },
-              { header: 'To Warehouse', render: r => <span className="text-xs font-medium text-blue-700">{fmtLocation(r.toBranch || r.to_location)}</span> },
-              { header: 'Products', render: r => {
-                const items = Array.isArray(r.items) ? r.items : [];
-                if (items.length > 0) return <span className="text-xs">{items.map(i => `${i.productName || i.product_name} × ${i.quantity}`).join(', ')}</span>;
-                return <span className="text-xs">{r.product_name || '—'}</span>;
-              }},
-              { header: 'Total Qty', render: r => {
-                const items = Array.isArray(r.items) ? r.items : [];
-                return items.length > 0 ? items.reduce((s, i) => s + Number(i.quantity || 0), 0) : (r.quantity || 0);
-              }},
-              { header: 'Status', render: r => statusBadge(r.status) },
-              { header: 'Notes', render: r => <span className="text-xs text-gray-500 truncate max-w-[120px] block">{r.dispatchNotes || r.dispatch_notes || '—'}</span> },
-              { header: '', render: r => (
-                <div className="flex gap-1">
-                  <Button size="sm" variant="ghost" onClick={() => {
-                    const items = Array.isArray(r.items) ? r.items : [];
-                    const prodRows = items.length > 0
-                      ? items.map(i => `<tr><td>${i.productName || i.product_name}</td><td>${i.batch_no || i.batchNo || '-'}</td><td>${(i.expiry_date || i.expiryDate) ? formatDate(i.expiry_date || i.expiryDate) : '-'}</td><td>${i.quantity}</td></tr>`).join('')
-                      : `<tr><td>${r.product_name || '—'}</td><td>${r.batch_no || r.batchNo || '-'}</td><td>${(r.expiry_date || r.expiryDate) ? formatDate(r.expiry_date || r.expiryDate) : '-'}</td><td>${r.quantity || 0}</td></tr>`;
-                    const totalQ = items.length > 0 ? items.reduce((s, i) => s + Number(i.quantity || 0), 0) : (r.quantity || 0);
-                    const win = window.open('', '_blank');
-                    if (!win) return;
-                    win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Dispatch Note — ${r.id}</title>
-                    <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;padding:24px}.header{display:flex;justify-content:space-between;border-bottom:3px solid #c41e3a;padding-bottom:10px;margin-bottom:16px}.company{color:#c41e3a;font-weight:900;font-size:15px}.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;border:1.5px solid #f0e8ea;border-radius:10px;padding:14px}.detail-item{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dotted #e2e8f0}.detail-label{font-weight:600;color:#64748b;font-size:10px}.detail-val{font-weight:800;color:#1e293b;font-size:10px}table{width:100%;border-collapse:collapse;margin-top:10px}th{background:#c41e3a;color:#fff;font-weight:700;padding:6px 8px;text-align:left;font-size:10px}td{padding:5px 8px;border-bottom:1px solid #f1f5f9;font-size:10px}tr:nth-child(even) td{background:#fdf7f8}.total-row td{font-weight:800;background:#fff0f3!important;border-top:2px solid #fecaca}.sig-section{margin-top:30px;display:grid;grid-template-columns:1fr 1fr;gap:40px}.sig-box{border-top:1.5px solid #1e293b;padding-top:8px;font-size:10px;color:#64748b}.print-btn{position:fixed;top:12px;right:12px;background:#c41e3a;color:#fff;border:none;padding:8px 18px;border-radius:8px;font-weight:700;cursor:pointer}@media print{.print-btn{display:none}}</style></head><body>
-                    <button class="print-btn" onclick="window.print()">Print</button>
-                    <div class="header"><div><div class="company">DYNAPHARM INTERNATIONAL NAMIBIA</div><div style="font-size:14px;font-weight:800;color:#8b0000;margin-top:4px">DISPATCH NOTE</div></div><div style="text-align:right;color:#64748b;font-size:10px;line-height:1.6">Date: ${new Date().toLocaleDateString('en-NA',{day:'2-digit',month:'long',year:'numeric'})}<br>DN#: ${r.id || ''}</div></div>
-                    <div class="detail-grid"><div class="detail-item"><span class="detail-label">Transfer ID</span><span class="detail-val">${r.id||''}</span></div><div class="detail-item"><span class="detail-label">Date Created</span><span class="detail-val">${formatDateTime(r.created_at)}</span></div><div class="detail-item"><span class="detail-label">From</span><span class="detail-val">Country Stock</span></div><div class="detail-item"><span class="detail-label">To</span><span class="detail-val">${fmtLocation(r.toBranch || r.to_location)}</span></div><div class="detail-item"><span class="detail-label">Status</span><span class="detail-val">${r.status||'Pending'}</span></div><div class="detail-item"><span class="detail-label">Total Items</span><span class="detail-val">${totalQ} units</span></div></div>
-                    <div style="font-weight:800;color:#c41e3a;font-size:11px;margin-bottom:4px;border-bottom:1px solid #fecaca;padding-bottom:4px">PRODUCTS DISPATCHED</div>
-                    <table><thead><tr><th>Product Description</th><th>Batch No.</th><th>Expiry</th><th>Qty Sent</th></tr></thead><tbody>${prodRows}<tr class="total-row"><td colspan="3"><strong>TOTAL</strong></td><td><strong>${totalQ}</strong></td></tr></tbody></table>
-                    ${r.dispatchNotes || r.dispatch_notes ? `<div style="margin-top:14px;padding:8px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:10px;color:#374151"><strong>Notes:</strong> ${r.dispatchNotes || r.dispatch_notes}</div>` : ''}
-                    <div class="sig-section"><div class="sig-box">Dispatched By (Name & Signature)</div><div class="sig-box">Received By (Name & Signature)</div></div>
-                    <div style="margin-top:16px;font-size:9px;color:#94a3b8;text-align:center;border-top:1px solid #e2e8f0;padding-top:8px">Dynapharm International Namibia — Stock Management System</div>
-                    </body></html>`);
-                    win.document.close();
-                  }}>
-                    <Printer size={12} />
-                  </Button>
-                  <button onClick={() => setAdjRecord(r)} title="Request correction"
-                    style={{ padding: '3px 8px', background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d', borderRadius: 6, cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700 }}>
-                    <Edit2 size={11} />
-                  </button>
-                </div>
-              )},
-            ]}
-            data={distTransfers}
-            emptyMessage="No distribution transfers yet. Use the form above to distribute Country Stock to warehouses."
-          />
-        )}
-      </Card>
-
-      <RequestAdjustmentModal
-        open={!!adjRecord} onClose={() => setAdjRecord(null)}
-        record={adjRecord} targetType="distribution" location={adjRecord?.from_location || ''}
-      />
     </div>
   );
 }

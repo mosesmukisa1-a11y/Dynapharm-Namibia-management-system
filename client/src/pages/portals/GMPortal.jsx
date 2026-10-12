@@ -1573,13 +1573,7 @@ function ApprovalsTab() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                           <span style={{ background: '#fef3c7', color: '#92400e', fontWeight: 700, fontSize: '0.72rem', padding: '2px 8px', borderRadius: 20, border: '1px solid #fcd34d' }}>⏳ Pending GM Approval</span>
                           <span style={{ fontFamily: 'monospace', fontSize: '0.72rem', color: '#6b7280' }}>{wo.reference_id || wo.referenceId || wo.id}</span>
-                          {(() => {
-                            const expRaw = wo.expiry_date || wo.expiryDate;
-                            const isExpiredBatch = (expRaw && new Date(expRaw) < new Date()) || (wo.write_off_reason || '').toLowerCase() === 'expired';
-                            return isExpiredBatch
-                              ? <span style={{ background: '#fef2f2', color: '#991b1b', fontWeight: 700, fontSize: '0.68rem', padding: '2px 8px', borderRadius: 20, border: '1px solid #fecaca' }}>🗑️ Approval → Dispose Off</span>
-                              : <span style={{ background: '#f0fdf4', color: '#166534', fontWeight: 700, fontSize: '0.68rem', padding: '2px 8px', borderRadius: 20, border: '1px solid #bbf7d0' }}>↩ Approval → Return to Warehouse</span>;
-                          })()}
+                          <span title="Returning goods requires a separate transfer and confirmed warehouse receipt." style={{ background: '#fef2f2', color: '#991b1b', fontWeight: 700, fontSize: '0.68rem', padding: '2px 8px', borderRadius: 20, border: '1px solid #fecaca' }}>Approval → Write off stock</span>
                         </div>
                         <span style={{ fontSize: '0.75rem', color: '#92400e' }}>Submitted {submittedAt} by <strong>{submittedBy}</strong></span>
                       </div>

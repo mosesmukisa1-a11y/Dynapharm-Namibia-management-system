@@ -17,6 +17,7 @@ export const stockAuditSuites = [
 ];
 
 export const databaseSuites = [
+  'tests/country-distribution.spec.js',
   ...stockAuditSuites,
   'tests/stock-alert-policy.spec.js',
   'tests/campaign-free-item-dp.spec.js',

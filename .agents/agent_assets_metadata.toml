@@ -126,3 +126,101 @@ mtime_ms = 1791638236117
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/36a9d1f5-1d6d-49fb-8345-208f8baba4f1/3468b36d-2271-4df8-a73d-c49f5fac675e"
 storage_version_token = "1791638463969088"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "JIf8BjRwE6yYG8pAIkw0R"
+uri = "file://generated-artifacts/stock-ui-verification/resumption-status.md"
+type = "text"
+title = "Stock audit — partial verification status"
+description = "Saved fixes, passing checks, interrupted browser audit, and remaining verification requirements."
+logical_id = "f9cc173d-0893-4536-80d9-46665d5c92d4"
+content_hash = "sha256:52f5fa4f12c6fa2cc7301be2ec976f5d511437eb5182d63da152be04e86ee57d"
+size = 3625
+mtime_ms = 1791798658497
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/f9cc173d-0893-4536-80d9-46665d5c92d4/5355f36e-f253-4edc-bdf4-ae71f692bcab"
+storage_version_token = "1791798665622764"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "yevnd96Zd9ly9WedxrfVl"
+uri = "file://generated-artifacts/stock-ui-verification/staged-audit/stage-1.md"
+type = "text"
+title = "Stage 1 checkpoint — blocked"
+description = "Stall details, observed zero-stock snapshot, endpoint responses, and the exact resume boundary. No authenticated stage pass is claimed."
+logical_id = "3c3557bc-116c-480e-ba15-dae01768d4b3"
+content_hash = "sha256:232a863eb5b732ef241d7e3dc5dba9fab95f01e0a263c1de9da939fede6296c0"
+size = 3116
+mtime_ms = 1791800229294
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/3c3557bc-116c-480e-ba15-dae01768d4b3/b1ef55c4-851e-4a5f-8401-b318a14b3cbc"
+storage_version_token = "1791800245567598"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "VYLcKUXFGr8jClxfFf8rs"
+uri = "file://generated-artifacts/stock-ui-verification/staged-audit/screenshots/stage-1-public-diagnostic.jpg"
+type = "image"
+title = "Isolated app diagnostic screenshot"
+description = "Public landing page only; not evidence of authenticated staff actions."
+logical_id = "d277a109-9506-49be-93fa-3f986505400c"
+content_hash = "sha256:eacdf111f575546b4d985d4aae8204692f257bfc6635bb7364e90c61cd013803"
+size = 53803
+mtime_ms = 1791800195689
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/d277a109-9506-49be-93fa-3f986505400c/2a0407a7-ac5e-46eb-855e-d206e4e7cf1f"
+storage_version_token = "1791800246322150"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "AGdiz6_dxRYlNLYIpXvwT"
+uri = "file://generated-artifacts/distribution-ui/implementation-report.md"
+type = "text"
+title = "Distribution changes and verification"
+description = "Confirmed defects, implemented safeguards, test results, and unresolved historical evidence."
+logical_id = "0b100163-a520-4e4b-8d53-b80814ed5515"
+content_hash = "sha256:c6aca6b98f4c9e4ec16aa4733f93e652c6099504c9eb0656acaefce75c5dd578"
+size = 4400
+mtime_ms = 1791801197961
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/0b100163-a520-4e4b-8d53-b80814ed5515/b5686893-2ace-4b88-8715-fb3b1d839330"
+storage_version_token = "1791801303578142"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "Wg_TRibKH3MQj4djPxIu-"
+uri = "file://generated-artifacts/distribution-ui/desktop-viewport.png"
+type = "image"
+title = "Distribution — desktop"
+description = "Authenticated rendering in the isolated test environment."
+logical_id = "e40097df-376a-41b9-bfa0-604107db6719"
+content_hash = "sha256:d5b480a5bc95e1ebed983c5bd8256192dae4a43c3d5a73f615e48f8b3ac81608"
+size = 169028
+mtime_ms = 1791801096937
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/e40097df-376a-41b9-bfa0-604107db6719/3e71dea5-3559-42e4-b715-27f303ad88c9"
+storage_version_token = "1791801304703790"
+content_type = "image/png"
+
+[[outputs]]
+id = "DVCZ8PEvw1QGDBpupksfB"
+uri = "file://generated-artifacts/distribution-ui/mobile-viewport.png"
+type = "image"
+title = "Distribution — mobile"
+description = "Mobile layout with direct access to the transfer summary."
+logical_id = "6fd82232-fcc4-4504-8af8-abe729210cbe"
+content_hash = "sha256:b74a743b6fcf06e45b1a95a47f286d88dd17fb86a222920839276289021a9189"
+size = 55359
+mtime_ms = 1791801097245
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/6fd82232-fcc4-4504-8af8-abe729210cbe/f2119e8c-bfb5-4015-b348-f9ea08e7ec46"
+storage_version_token = "1791801305489303"
+content_type = "image/png"
+
+[[outputs]]
+id = "F_F5d2NJ6P3xRa5q08M1s"
+uri = "file://generated-artifacts/distribution-ui/production-zero-units-investigation.md"
+type = "text"
+title = "Published zero-unit transfer — cause and fix"
+description = "Read-only production evidence, the display correction, and regression results. No historical stock was changed."
+logical_id = "fd4f3a09-b9f9-408e-822a-1023985efb21"
+content_hash = "sha256:0858cfa78563f34f05c3a0dba008784d388beecd0a9340cce94bb5254d37a753"
+size = 2587
+mtime_ms = 1791801636181
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/fd4f3a09-b9f9-408e-822a-1023985efb21/bbd1955e-4ff6-4126-9a1e-2c8c2ce89a55"
+storage_version_token = "1791801704902022"
+content_type = "text/markdown"

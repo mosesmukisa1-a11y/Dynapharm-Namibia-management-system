@@ -73,6 +73,8 @@ beforeAll(async()=>{
   if(current!==process.env.STOCK_AUDIT_DATABASE || !/^stock_audit_[a-f0-9]{32}$/.test(current))
     throw Error('The audit must run in its own empty database');
   expect(Number((await query('SELECT COUNT(*) AS count FROM stock_batches')).rows[0].count)).toBe(0);
+  await query(`INSERT INTO products(id,sku,name,unit,dp,cp,is_active)
+    VALUES('ISOLATED-TEST-ITEM','TEST-ITEM',$1,'unit',7,9,true) ON CONFLICT(id) DO NOTHING`,[product]);
 });
 afterAll(async()=>{
   await writeFile('generated-artifacts/stock-audit/lifecycle-results.json',JSON.stringify({product,barcode:'0001234567895',conversion:'1 carton = 10 units',steps},null,2));

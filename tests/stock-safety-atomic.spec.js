@@ -9,6 +9,7 @@ import refunds from '../api/stock/refund-requests.js';
 import reconciliation from '../api/admin/stock-reconciliation.js';
 import { deductStock } from '../api/branch/campaign-sale.js';
 import { recomputeInventoryBalance } from '../api/services/stockEngine.js';
+import stockMovements from '../api/stock-movements.js';
 
 const branch = 'test_stock_safety_branch';
 const product = 'TEST_STOCK_SAFETY_PRODUCT';
@@ -177,6 +178,32 @@ describe.sequential('stock safety: atomic operations, partial receipt and segreg
     const result = await invoke(reconciliation, 'GET', null, '/api/admin/stock-reconciliation');
     expect(result.status, JSON.stringify(result.body)).toBe(200);
     expect(result.body.branches.some(row => row.branchId === branch)).toBe(true);
+  });
+  it.each(['2020-01-01','2099-01-01'])('consumes received cost layers without creating warehouse stock on a %s write-off', async (writeoffExpiry) => {
+    const id=`TEST-SAFETY-COST-WRITEOFF-${writeoffExpiry}`, lot=`COST-WRITEOFF-${writeoffExpiry}`;
+    const source={id:'TEST-SAFETY-COST-SOURCE',cif_unit_cost:2,dpc_unit_value:7};
+    await query(`INSERT INTO branch_inventory_batches
+      (id,branch_id,product_name,batch_no,expiry_date,quantity,status,metadata)
+      VALUES($1,$2,$3,$4,$6::date,4,'in_stock',$5::jsonb)`,
+    [id,branch,product,lot,JSON.stringify({cost_layers:[{quantity:4,source}]}),writeoffExpiry]);
+    await query(`INSERT INTO stock_movements
+      (id,product_name,batch_no,expiry_date,quantity,movement_type,source_location,source_location_type,status,write_off_reason)
+      VALUES($1,$2,$3,$5::date,1,'write_off',$4,'branch','pending_approval','damaged')`,
+    [id,product,lot,branch,writeoffExpiry]);
+    const approved=await invoke(stockMovements,'PUT',{id,action:'approve'},'/api/stock-movements');
+    expect(approved.status,JSON.stringify(approved.body)).toBe(200);
+    const row=(await query('SELECT quantity,metadata FROM branch_inventory_batches WHERE id=$1',[id])).rows[0];
+    expect(Number(row.quantity)).toBe(3);
+    expect(row.metadata.cost_layers).toEqual([{quantity:3,source}]);
+    const balance=(await query(`SELECT closing_qty,stock_value_cif,stock_value_dp FROM inventory_balances
+      WHERE location_type='branch' AND location_id=$1 AND product_name=$2 AND batch_no=$3`,
+    [branch,product,lot])).rows[0];
+    expect(Number(balance.closing_qty)).toBe(3);
+    expect(Number(balance.stock_value_cif)).toBe(6);
+    expect(Number(balance.stock_value_dp)).toBe(21);
+    expect((await query('SELECT 1 FROM stock_batches WHERE description=$1 AND batch_no=$2',[product,lot])).rowCount).toBe(0);
+    expect((await query('SELECT 1 FROM warehouse_inventory WHERE product_name=$1 AND batch_no=$2',[product,lot])).rowCount).toBe(0);
+    expect((await query('SELECT disposal_status FROM stock_movements WHERE id=$1',[id])).rows[0].disposal_status).toBe('dispose_off');
   });
   it('does not reserve a different physical lot even when the requested lot has a cached balance', async () => {
     const id='TEST-SAFETY-MISMATCHED-LOT';

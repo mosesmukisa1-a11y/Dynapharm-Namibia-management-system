@@ -1,0 +1,84 @@
+Improve the existing Dynapharm Namibia stock portal, starting with the
+Country Stock → Warehouse Distribution page.
+
+First inspect the current code, APIs, database schema, permissions, and
+transfer workflow. Preserve existing records and business rules. Identify
+confirmed defects separately from suspected data issues.
+
+LAYOUT
+1. Use a collapsible left sidebar grouped into:
+   - Overview
+   - Inventory: Country Stock, Warehouses, Branch Stock, Batches
+   - Transfers: Distribution, Warehouse Dispatch, Branch Transfers, Returns
+   - Approvals: Refunds, Edit Requests, Counts and Write-offs
+   - Reports: Stock, Cost, Valuation
+   - Administration: relevant staff and configuration tools
+   Preserve access to every existing feature.
+
+2. Use a page header:
+   Title: “Distribute stock”
+   Subtitle: “Country Stock → Warehouse”
+   Show the signed-in user, role, and relevant location scope.
+   Keep unrelated branch filters off this form.
+
+3. Show a simple workflow indicator:
+   Create → Awaiting warehouse receipt → Received
+   Explain the subsequent warehouse-to-branch process separately.
+   Verify actual approval order from existing business rules before changing it.
+
+4. Build a two-column desktop form:
+   Left, approximately 65%:
+   - Destination warehouse
+   - Product search by name, SKU, or barcode
+   - Searchable, paginated product table
+   - Columns: Product, SKU, Available, Unit, Quantity, Add
+   - Show all catalog products through search/pagination
+   - Disable unavailable products with an explanation
+
+   Right, approximately 35%, sticky:
+   - Selected products
+   - Editable quantities and Remove actions
+   - Number of product lines and total units
+   - Transfer note
+   - Clear primary action: “Review transfer”
+   - Final review displays source, destination, quantities, and note
+
+5. Put transfer history below the form:
+   Search plus destination, status, and date filters.
+   Columns: Reference, Date, Destination, Product count, Total units,
+   Status, Created by, Actions.
+   Open a detail drawer for product lines, notes, and status history.
+   Provide pagination and a clear empty state.
+
+VISUAL STYLE
+Use a light neutral background, white panels, dark readable text, and
+Dynapharm green for primary actions. Use consistent icons, spacing,
+sentence case, and readable product names. Use text labels alongside
+status colors. Provide visible keyboard focus and labelled form fields.
+On mobile, stack the form and keep the transfer summary easy to reach.
+
+DEBUGGING AND DATA INTEGRITY
+- Investigate the Received transfer containing zero units and no products.
+- Investigate apparent duplicate product names using IDs and SKUs;
+  never automatically merge or delete products.
+- Verify whether the 100-product limit prevents selecting the remaining six.
+- Standardize status display without changing historical meaning.
+- Validate destination, product IDs, and positive whole-number quantities
+  on both client and server.
+- Enforce sufficient available stock on the server.
+- Make stock updates atomic and protect against duplicate submissions
+  and concurrent transfers.
+- Verify when stock is reserved, deducted, received, or released after
+  rejection; prevent double deduction or stock loss.
+- Enforce role and location permissions on the server.
+- Record who performed each action and when.
+- Show loading, success, empty, and recoverable error states.
+
+ACCEPTANCE CHECKS
+Confirm every product is searchable; invalid or empty transfers cannot
+submit; excessive quantities are rejected; double-clicking creates only
+one transfer; concurrent transfers cannot overdraw stock; rejection
+handles reservations correctly; and desktop/mobile layouts are usable.
+
+Return the confirmed bugs, changes made, verification results, and any
+remaining questions about business rules.

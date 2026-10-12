@@ -8,6 +8,7 @@ import { branchSearchTerms, normalizeBranchSlug } from '../_lib/branchUtils.js';
 import { checkAutoApproveTransfer } from '../services/stockAutomation.js';
 import { allocateTransferTx, restoreTransferAllocationTx, postAllocatedTransferMovementTx } from '../services/stockCostLayers.js';
 import receiveWarehouse from './warehouses/receive-stock.js';
+import {prepareCountryDistribution,authorizeCountryDistribution} from '../services/countryDistribution.js';
 
 async function fefoDeductStockBatches(client, locationFilter, productName, totalQty, batchNo = null, expiryDate = null) {
   const batches = await client.query(
@@ -460,8 +461,20 @@ async function createDispatchNote(transfer, actor, metadata = {}) {
 }
 
 function normalizeTransfer(row, itemsMap, notesMap) {
-  const items = itemsMap.get(row.id) || [];
+  const storedItems = itemsMap.get(row.id) || [];
   const meta = safeParseJson(row.metadata) || {};
+  const legacyProduct = row.product_name || meta.product_name || null;
+  const legacyQuantity = row.quantity ?? meta.quantity ?? null;
+  // Some old releases stored their single product on the transfer header,
+  // not in stock_transfer_items. Project that existing evidence for display;
+  // never insert a line, allocate stock, or manufacture a catalogue identity.
+  const legacyItem = !storedItems.length && legacyProduct && legacyQuantity !== null
+    && Number.isFinite(Number(legacyQuantity)) ? {
+      productId: null, productName: legacyProduct, quantity: Number(legacyQuantity),
+      batchNo: meta.batch_no ?? null, expiryDate: meta.expiry_date ?? null,
+      metadata: { evidenceSource: 'legacy_transfer_header', displayOnly: true },
+    } : null;
+  const items = storedItems.length ? storedItems : legacyItem ? [legacyItem] : [];
   const firstItem = items[0] || null;
   return {
     id: row.id,
@@ -472,8 +485,9 @@ function normalizeTransfer(row, itemsMap, notesMap) {
     fromWarehouse: row.from_warehouse,
     toBranch: row.to_branch,
     status: row.status,
-    product_name: meta.product_name || (firstItem ? firstItem.productName : null),
-    quantity: meta.quantity || (firstItem ? firstItem.quantity : null),
+    product_name: firstItem?.productName ?? legacyProduct,
+    quantity: firstItem?.quantity ?? legacyQuantity,
+    itemsSource: storedItems.length ? 'item_rows' : legacyItem ? 'legacy_transfer_header' : 'none',
     dispatchReference: row.dispatch_reference,
     dispatchNotes: row.dispatch_notes,
     dispatchedBy: row.dispatched_by,
@@ -507,7 +521,7 @@ function normalizeTransfer(row, itemsMap, notesMap) {
   };
 }
 
-async function listTransfers(searchParams) {
+export async function listTransfers(searchParams, withPagination=false) {
   const id = searchParams.get('id');
   if (id) {
     const row = await getOne('SELECT * FROM stock_transfers WHERE id = $1', [id]);
@@ -547,16 +561,39 @@ async function listTransfers(searchParams) {
     params.push(requestId);
     conditions.push(`request_id = $${params.length}`);
   }
+  if(withPagination) {
+    const search=searchParams.get('search');
+    if(search) {
+      params.push(`%${search}%`);
+      const n=params.length;
+      conditions.push(`(id ILIKE $${n} OR COALESCE(dispatch_reference,'') ILIKE $${n}
+        OR COALESCE(product_name,'') ILIKE $${n}
+        OR COALESCE(dispatch_notes,'') ILIKE $${n} OR COALESCE(created_by,'') ILIKE $${n}
+        OR EXISTS (SELECT 1 FROM stock_transfer_items si WHERE si.transfer_id=stock_transfers.id
+          AND (si.product_name ILIKE $${n} OR si.product_id ILIKE $${n})))`);
+    }
+    for(const field of ['dateFrom','dateTo']) {
+      const value=searchParams.get(field);
+      if(value) {
+        params.push(value);
+        conditions.push(field==='dateFrom'
+          ? `created_at >= ($${params.length}::date::timestamp AT TIME ZONE 'Africa/Windhoek')`
+          : `created_at < (($${params.length}::date + 1)::timestamp AT TIME ZONE 'Africa/Windhoek')`);
+      }
+    }
+  }
 
   let queryText = 'SELECT * FROM stock_transfers';
   if (conditions.length > 0) {
     queryText += ' WHERE ' + conditions.join(' AND ');
   }
-  queryText += ' ORDER BY created_at DESC';
+  const total=withPagination ? Number((await getOne(`SELECT COUNT(*) AS total FROM stock_transfers${conditions.length?' WHERE '+conditions.join(' AND '):''}`,params)).total) : null;
+  queryText += ' ORDER BY created_at DESC, id DESC';
 
   if (!Number.isNaN(limit) && limit > 0) {
     queryText += ` LIMIT ${Math.min(limit, 1000)}`;
   }
+  if(withPagination) queryText+=` OFFSET ${Math.max(0,Number(searchParams.get('offset')) || 0)}`;
 
   const rows = await getMany(queryText, params);
   const ids = rows.map((row) => row.id);
@@ -565,7 +602,8 @@ async function listTransfers(searchParams) {
     loadDispatchNotes(ids),
   ]);
 
-  return rows.map((row) => normalizeTransfer(row, itemsMap, notesMap));
+  const transfers=rows.map((row) => normalizeTransfer(row, itemsMap, notesMap));
+  return withPagination?{transfers,total}:transfers;
 }
 
 async function handler(req, res) {
@@ -589,6 +627,17 @@ async function handler(req, res) {
     if (req.method === 'POST') {
       const body = await parseBody(req);
       if (!['pending','pending_approval','prepared','draft','awaiting_gm'].includes(String(body.status || 'prepared'))) return res.status(409).json({ success:false, error:'Create a prepared transfer first, then approve and dispatch it through the stock workflow.' });
+      let countryPrepared=null;
+      const countrySource=body.fromWarehouse || body.from_warehouse || body.from_location || body.fromLocation;
+      if(countrySource==='country_stock') {
+        countryPrepared=await prepareCountryDistribution(body,currentUser);
+        if(countryPrepared.existingId) {
+          const existing=await listTransfers(new URLSearchParams({id:countryPrepared.existingId}));
+          return res.status(200).json({success:true,transfer:existing[0],replayed:true});
+        }
+        body.items=countryPrepared.items;
+        body.metadata=countryPrepared.metadata;
+      }
       const items = parseItems(body.items || body.itemsArray);
 
       const toLocation = body.toBranch || body.to_branch || body.to_location || body.toWarehouse || body.to_warehouse || null;
@@ -1020,6 +1069,10 @@ async function handler(req, res) {
       }
 
       const oldTransfer = await getOne('SELECT * FROM stock_transfers WHERE id = $1 FOR UPDATE', [id]);
+      if(oldTransfer?.from_warehouse==='country_stock') {
+        authorizeCountryDistribution(currentUser);
+        await query("SELECT pg_advisory_xact_lock(hashtext('country-distribution-create'))");
+      }
       if (!oldTransfer) return res.status(404).json({ success: false, error: 'Transfer not found' });
       const previousStatus = oldTransfer?.status;
       if (['dispatched','in_transit','partially_received','received','delivered','completed','returned'].includes(previousStatus)) {
@@ -1741,7 +1794,11 @@ async function handler(req, res) {
       if (!id) {
         return res.status(400).json({ success: false, error: 'id query parameter is required' });
       }
-      const deleting = await getOne('SELECT status FROM stock_transfers WHERE id=$1 FOR UPDATE', [id]);
+      const deleting = await getOne('SELECT status,from_warehouse FROM stock_transfers WHERE id=$1 FOR UPDATE', [id]);
+      if(deleting?.from_warehouse==='country_stock') {
+        authorizeCountryDistribution(currentUser);
+        return res.status(409).json({success:false,error:'Cancel the distribution instead of deleting it, to preserve its audit trail.'});
+      }
       if (deleting && !['pending','draft','prepared','awaiting_gm','pending_approval'].includes(deleting.status)) return res.status(409).json({ success: false, error: 'Posted transfers cannot be deleted. Preserve the audit trail and use a linked correction.' });
       await remove('stock_transfers', id, 'id');
       await query('DELETE FROM stock_transfer_items WHERE transfer_id = $1', [id]);

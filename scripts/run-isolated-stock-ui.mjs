@@ -60,6 +60,13 @@ try{
   await mkdir(base,{recursive:true});
   if(!emptyFixture)await run('npx',['vitest','run','tests/stock-lifecycle-end-to-end.spec.js','--project=database',
     '-t','runs the requested 100-unit','--reporter=json',`--outputFile=${base}/fixture-results.json`]);
+  if(emptyFixture) {
+    // Reference catalogue only; every physical unit is entered by staff in the audit.
+    await target.query(`INSERT INTO products(id,sku,name,unit,dp,cp,is_active)
+      VALUES('ISOLATED-TEST-ITEM','TEST-ITEM','TEST-ITEM','unit',7,9,true)`);
+    await target.query(`INSERT INTO product_prices(description,product_code,dp,cp,cif,bv,updated_by)
+      VALUES('TEST-ITEM','TEST-ITEM',7,9,2,0,'isolated-audit-fixture')`);
+  }
   const passwordHash=await bcrypt.hash('DisposableStockUi-2026!',10);
   for(const [id,username,role,branch] of [
     ['UI-BRANCH-A','ui_branch_a','branch_manager','townshop'],
