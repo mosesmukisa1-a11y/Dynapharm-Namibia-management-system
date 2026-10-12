@@ -224,3 +224,31 @@ mtime_ms = 1791801636181
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/fd4f3a09-b9f9-408e-822a-1023985efb21/bbd1955e-4ff6-4126-9a1e-2c8c2ce89a55"
 storage_version_token = "1791801704902022"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "qYYJtfiT1HMm7PmvvwTYj"
+uri = "file://generated-artifacts/public-landing/report.md"
+type = "text"
+title = "Public website redesign — changes and verification"
+description = "Completed changes, passing checks, image sources, and the outlet/product details still needing business confirmation."
+logical_id = "aefc2a80-6555-47aa-9a73-7d570f3f98bd"
+content_hash = "sha256:95c3e2bac59bb43c66ba928e8dd21295a846f4721941110918fb76f2e85445b5"
+size = 5193
+mtime_ms = 1791804260545
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/aefc2a80-6555-47aa-9a73-7d570f3f98bd/43729ad5-fdc3-44e6-90a0-2db509bf2f8b"
+storage_version_token = "1791804316041135"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "mwuORv2W-q3xkjYhZYjpm"
+uri = "file://generated-artifacts/public-landing/desktop-full.jpg"
+type = "image"
+title = "Redesigned Dynapharm Namibia homepage"
+description = "Full desktop preview with authentic manufacturer photographs and the red-and-white layout."
+logical_id = "56dc16a7-3fa0-4ba6-bd09-98cc18a6c588"
+content_hash = "sha256:be6c616d71fe206eb69a90b1d2c67f1f8339e470cc15e4ff5429dc07a0b1bf7b"
+size = 392457
+mtime_ms = 1791804194005
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/56dc16a7-3fa0-4ba6-bd09-98cc18a6c588/cb216cce-cee3-49bb-8c64-0b648e14657a"
+storage_version_token = "1791804317102605"
+content_type = "image/jpeg"

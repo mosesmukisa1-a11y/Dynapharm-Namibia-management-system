@@ -1,0 +1,150 @@
+Redesign the existing Dynapharm Namibia public landing page to feel
+organized, welcoming, and professional.
+
+Inspect the existing implementation first. Preserve working shop,
+health check-up, outlet, distributor, and staff links.
+
+BRAND AND VISUAL DIRECTION
+Use Dynapharm Namibia’s RED AND WHITE theme.
+Reuse the existing official logo and brand red where available.
+If no brand colour is defined, use #C8102E as a provisional red.
+
+- White should dominate the page.
+- Use red for primary buttons, active navigation, and key accents.
+- Use dark charcoal for readable body text.
+- Use pale grey and very light red backgrounds to separate sections.
+- Avoid large amounts of solid red or red body text.
+- Use consistent typography, generous spacing, subtle borders, and
+  restrained shadows.
+- Use authentic product and branch photographs where available.
+- Do not invent certifications, testimonials, or product benefits.
+
+PAGE STRUCTURE
+
+1. CLEAN HEADER
+White header with the Dynapharm Namibia logo on the left.
+Navigation:
+Home | Products | Our Outlets | About | Health Check-Up
+
+Use a prominent red “Shop Products” button.
+Put Staff Login and Distributor Login in a small secondary menu.
+Keep the header compact and use a clear mobile menu.
+
+2. FOCUSED HERO
+Use a two-column layout:
+Left: short headline, supporting text, and two actions.
+Right: a high-quality authentic product or branch photograph.
+
+Suggested headline:
+“Natural wellness, closer to home.”
+
+Suggested supporting text:
+“Explore Dynapharm products and find your nearest outlet in Namibia.”
+
+Primary red button: “Shop Products”
+Secondary outlined button: “Find an Outlet”
+
+Keep the existing “Health, Wealth & Freedom” brand slogan as a small
+supporting line. Avoid repeating similar headlines.
+On mobile, stack the content with the headline and actions first.
+Avoid an automatic image carousel.
+
+3. SIMPLE QUICK LINKS
+Below the hero, show three compact cards:
+- Explore Products
+- Find an Outlet
+- Health Check-Up
+
+Use a consistent icon, one short explanation, and one clear link per card.
+For Health Check-Up, accurately explain the service and link to its
+existing booking or information page.
+
+4. PRODUCT CATEGORIES
+Show a clean grid of the actual product categories.
+Each card should contain an appropriate image or icon, category name,
+and a “Browse” link.
+
+Make category cards open the relevant filtered product listing.
+Verify product classifications, especially Compact Powder.
+Keep product categories driven by the existing catalog.
+
+5. FEATURED PRODUCTS
+Show only 4–6 products on the homepage.
+Use consistent image proportions and readable product names.
+Display category and pack size; show price only when reliable live
+pricing exists.
+
+Use “View product” actions and a “View all products” link.
+Only label products “Popular” or “Best sellers” if supported by data.
+Remove generic health-benefit descriptions unless verified and approved.
+Keep full catalog search and filters on the Products page.
+
+6. SHORT ABOUT SECTION
+Use one authentic image and a concise paragraph about Dynapharm Namibia.
+Include a “Learn about us” link.
+Show only verified facts, such as outlet coverage or years established.
+Remove unsupported claims about scientific backing, certifications,
+or quality testing until evidence is supplied.
+
+7. OUTLET FINDER PREVIEW
+Replace the long homepage address list with a compact outlet finder:
+- Search by town or outlet name
+- Optional region filter
+- Cards showing outlet name, address, and phone
+- “Call” and “Directions” actions
+
+Show a small initial selection with “View all outlets”.
+Keep the complete directory on the Our Outlets page.
+Use verified map destinations; do not invent coordinates.
+Review outlet region assignments for accuracy.
+
+8. FINAL CALL TO ACTION
+Use a restrained red section with white text:
+“Find your next Dynapharm product.”
+Include “Browse Products” and “Find an Outlet” buttons.
+Keep wording concise and avoid promising health outcomes.
+
+9. ORGANIZED FOOTER
+Use clear columns:
+- Brand and short description
+- Customer links
+- Distributor and staff access
+- Head-office contact details
+
+Use recognizable social icons with accessible names and working links.
+Remove placeholder social links.
+Clarify or remove “Cloud Health Management System” if it is unrelated
+to the public website.
+
+CONTENT AND DATA FIXES
+- Resolve the conflicting 15-versus-17 outlet counts.
+- Derive outlet totals from verified active public outlets.
+- Make product totals consistent across the homepage and catalog,
+  using the same rule for active public products.
+- Review apparent duplicate products using IDs and SKUs; do not
+  automatically merge or delete records.
+- Standardize product names and pack-size formatting.
+- Preserve official product names where required.
+
+RESPONSIVE AND ACCESSIBLE DESIGN
+Use a centered content area approximately 1200px wide.
+Use consistent spacing and comfortable text sizes.
+On mobile, use stacked sections and appropriately sized touch targets.
+Ensure red/white combinations have sufficient contrast.
+Provide keyboard focus, labelled controls, meaningful image alt text,
+and a logical heading structure.
+Respect reduced-motion preferences.
+Optimize images and lazy-load those below the first screen.
+
+ACCEPTANCE CHECKS
+Verify:
+- Navigation and every call-to-action reach the correct destination.
+- Product category links apply the correct filter.
+- Outlet search, Call, and Directions work.
+- Public counts are consistent.
+- No horizontal overflow occurs on mobile.
+- Images load without stretching or major layout shifts.
+- Keyboard navigation and text contrast are usable.
+
+Return a summary of the changes, verification results, and any content
+that still needs business confirmation.

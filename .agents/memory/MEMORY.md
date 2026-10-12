@@ -19,3 +19,4 @@
 - [Read-only reconciliation](read-only-reconciliation.md) — bounded production extracts need matching fingerprints; warehouse and branch aliases must remain separate namespaces.
 - [Stock audit status](stock-audit-status.md) — keep overall PARTIALLY VERIFIED until each audit area has evidence; discrepancies are not proof of missing goods.
 - [Balance snapshot locks](balance-snapshot-locks.md) — wait before starting repeatable-read; coordinate embedded writers and safely release pooled session locks.
+- [Public website policy](public-site-policy.md) — red-and-white public branding; evidence-based claims and counts; retain unconfirmed outlets without declaring them active.

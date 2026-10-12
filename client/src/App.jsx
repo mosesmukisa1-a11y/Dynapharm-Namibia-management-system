@@ -3,6 +3,8 @@ import { Routes, Route } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import Landing from './pages/Landing';
+import PublicOutlets from './pages/PublicOutlets';
+import PublicAbout from './pages/PublicAbout';
 import Shop from './pages/Shop';
 import HealthCheckup from './pages/HealthCheckup';
 import DistributorRefPage from './pages/DistributorRefPage';
@@ -48,6 +50,8 @@ export default function App() {
       <OfflineBanner />
       <Routes>
         <Route path="/" element={<Landing />} />
+        <Route path="/outlets" element={<PublicOutlets />} />
+        <Route path="/about" element={<PublicAbout />} />
       <Route element={<Layout />}>
         <Route path="/shop" element={<Shop />} />
         <Route path="/checkup" element={<HealthCheckup />} />

@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
-import { formatCurrency, BRANCHES, COMPANY_INFO, DELIVERY_FEE_RULES } from '../lib/constants';
-import { buildCatalogFromPriceList, calculateCartTotals, setLivePrices } from '../lib/pricing';
-import { Card, Button, Input, Modal, Badge, LoadingSpinner, EmptyState, Alert, Select } from '../components/ui';
+import { formatCurrency, BRANCHES, COMPANY_INFO } from '../lib/constants';
+import { calculateCartTotals } from '../lib/pricing';
+import { loadPublicCatalog, getPublicCategories, getPackSize } from '../lib/publicCatalog';
+import { ProductPhoto } from '../components/public/CatalogPreview';
+import { Card, Button, Input, Modal, Badge, EmptyState, Alert } from '../components/ui';
 import { ShoppingCart, Search, Plus, Minus, Package, User, Users, Truck, Store, UserPlus } from 'lucide-react';
 import { MembershipAgreementForm } from '../components/MembershipAgreementForm';
 
@@ -10,12 +13,15 @@ const DEFAULT_REFERRAL_NAME = COMPANY_INFO.defaultReferralName;
 const DEFAULT_REFERRAL_NB = COMPANY_INFO.defaultReferralNB;
 
 export default function Shop() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [catalogError, setCatalogError] = useState('');
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [search, setSearch] = useState('');
   const [cart, setCart] = useState([]);
   const [cartOpen, setCartOpen] = useState(false);
-  const [category, setCategory] = useState('all');
+  const [category, setCategory] = useState(searchParams.get('category') || 'all');
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState('');
   const [orderError, setOrderError] = useState('');
@@ -46,13 +52,15 @@ export default function Shop() {
   }, []);
 
   useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setCatalogError('');
     Promise.all([
-      api.prices.list().catch(() => []),
-      api.products.list().catch(() => []),
+      loadPublicCatalog(),
       api.distributors.list().catch(() => []),
-    ]).then(([priceData, prodData, distData]) => {
-      if (Array.isArray(priceData) && priceData.length > 0) setLivePrices(priceData);
-      setProducts(buildCatalogFromPriceList(priceData, prodData));
+    ]).then(([prodData, distData]) => {
+      if (!alive) return;
+      setProducts(prodData);
       const raw = Array.isArray(distData) ? distData : distData.distributors || [];
       setDistributors(raw);
       const savedRefNB = localStorage.getItem('ref_nb');
@@ -60,10 +68,34 @@ export default function Shop() {
         const match = raw.find(d => d.distributor_code === savedRefNB);
         if (match) setSelectedDistributor(match);
       }
-    }).finally(() => setLoading(false));
-  }, []);
+    }).catch(() => {
+      if (alive) setCatalogError('The product catalogue could not be loaded. Please try again.');
+    }).finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [loadAttempt]);
 
-  const categories = ['all', ...new Set(products.map(p => p.category || 'General').filter(Boolean))];
+  const categoryParam = searchParams.get('category') || 'all';
+  useEffect(() => { setCategory(categoryParam); }, [categoryParam]);
+  const categories = ['all', ...getPublicCategories(products)];
+  const detailId = searchParams.get('product');
+  const detailProduct = products.find(product => String(product.id) === detailId);
+  const closeProduct = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete('product');
+    setSearchParams(next, { replace: true });
+  };
+  const viewProduct = product => {
+    const next = new URLSearchParams(searchParams);
+    next.set('product', String(product.id));
+    setSearchParams(next);
+  };
+  const selectCategory = value => {
+    setCategory(value);
+    const next = new URLSearchParams(searchParams);
+    if (value === 'all') next.delete('category');
+    else next.set('category', value);
+    setSearchParams(next);
+  };
 
   const filtered = products.filter(p => {
     const matchesSearch = !search || (p.name || p.description || '').toLowerCase().includes(search.toLowerCase());
@@ -144,14 +176,29 @@ export default function Shop() {
     }
   };
 
-  if (loading) return <LoadingSpinner />;
+  const productDetail = <Modal open={Boolean(detailId)} onClose={closeProduct} title={detailProduct?.name || 'Product details'} size="md">
+    <div className="p-6">
+      {detailProduct ? <>
+        <div className="h-64 flex items-center justify-center bg-gray-50 rounded-lg mb-5"><ProductPhoto product={detailProduct} className="w-full h-full object-contain p-5" lazy={false} /></div>
+        <h2 className="text-xl font-bold text-gray-900">{detailProduct.name}</h2>
+        <p className="text-sm text-gray-500 mt-2">{detailProduct.category || 'General'}</p>
+        {getPackSize(detailProduct) && <p className="text-sm text-gray-600 mt-2">Pack size: {getPackSize(detailProduct)}</p>}
+        {detailProduct.sku && <p className="text-xs text-gray-500 mt-2">SKU: {detailProduct.sku}</p>}
+        <p className="text-lg font-bold text-primary mt-4">{formatCurrency(isMember ? detailProduct.dp : detailProduct.cp)}</p>
+        <p className="text-xs text-gray-500 mt-1">{isMember ? 'Distributor Price (DP)' : 'Consumer Price (CP)'}</p>
+        <div className="mt-5"><Button onClick={() => { if (customerType) addToCart(detailProduct); closeProduct(); }}>{customerType ? 'Add to cart' : 'Choose customer type to shop'}</Button></div>
+      </> : <><p>This product is not currently available in the public catalogue.</p><Button className="mt-4" onClick={closeProduct}>Return to catalogue</Button></>}
+    </div>
+  </Modal>;
 
-  if (!customerType) {
-    return (
+  if (loading) return <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-6" role="status" aria-label="Loading product catalogue">{[0, 1, 2, 3].map(value => <div key={value} className="h-64 rounded-xl bg-gray-100" />)}</div>;
+  if (catalogError) return <Alert type="error">{catalogError}<Button className="mt-3" onClick={() => setLoadAttempt(value => value + 1)}>Try again</Button></Alert>;
+
+  const customerChoice = !customerType ? (
       <div className="max-w-2xl mx-auto py-12 px-4">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Dynapharm Online Shop</h1>
-          <p className="text-gray-500">Please select your customer type to continue</p>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Ready to shop?</h2>
+          <p className="text-gray-500">Browse the catalogue below. Select your customer type before adding products to your cart.</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <button onClick={() => setCustomerType('member')}
@@ -182,19 +229,20 @@ export default function Shop() {
           </button>
         </div>
 
-        <div className="mt-10 border-t pt-8">
+        <details className="mt-6 border-t pt-4">
+          <summary className="cursor-pointer font-semibold">Become a Dynapharm Distributor</summary>
           <div className="text-center mb-6">
             <h2 className="text-2xl font-bold text-gray-900">Become a Dynapharm Distributor</h2>
             <p className="text-gray-500 text-sm mt-1">Join our network and earn with Dynapharm products. Registration kit starts at N$ 1,200.00</p>
           </div>
           <BecomeDistributorSection />
-        </div>
+        </details>
       </div>
-    );
-  }
+    ) : null;
 
   return (
     <div>
+      {productDetail}
       {orderSuccess && (
         <Alert type="success" className="mb-4">
           {orderSuccess}
@@ -309,13 +357,14 @@ export default function Shop() {
         </div>
       )}
 
+      {customerChoice}
       <div className="mb-3 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
         Showing <strong>{isMember ? 'Distributor Price (DP)' : 'Consumer Price (CP)'}</strong> — Toggle above to switch pricing.
       </div>
 
       <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
         {categories.map(cat => (
-          <button key={cat} onClick={() => setCategory(cat)}
+          <button key={cat} onClick={() => selectCategory(cat)}
             className={`px-4 py-1.5 text-sm rounded-full whitespace-nowrap transition-all cursor-pointer ${category === cat ? 'bg-primary text-white font-semibold' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
             {cat === 'all' ? 'All Products' : cat}
           </button>
@@ -344,6 +393,8 @@ export default function Shop() {
                     {isMember && product.bv > 0 && <Badge variant="info">{product.bv} BV</Badge>}
                   </div>
                   {product.category && <Badge variant="default" className="mb-2">{product.category}</Badge>}
+                  {getPackSize(product) && <p className="text-xs text-gray-500">{getPackSize(product)}</p>}
+                  <button className="text-xs text-primary underline mt-2 cursor-pointer" onClick={() => viewProduct(product)}>View product</button>
                   <div className="flex items-center justify-between mt-2">
                     <div>
                       <span className="text-lg font-bold text-primary">{formatCurrency(displayPrice)}</span>

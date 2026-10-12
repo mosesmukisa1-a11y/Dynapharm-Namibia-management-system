@@ -141,7 +141,7 @@ export function Modal({ open, onClose, title, children, size = 'md', className }
         {title && (
           <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
             <h2 className="text-lg font-bold text-gray-900">{title}</h2>
-            <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer">
+            <button onClick={onClose} aria-label="Close dialog" className="p-1 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer">
               <X size={20} className="text-gray-500" />
             </button>
           </div>
