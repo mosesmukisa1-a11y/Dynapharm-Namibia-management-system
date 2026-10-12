@@ -1,0 +1,43 @@
+import fs from 'node:fs/promises';
+import {dir,manifest,db,b,report,save,balances,login,call} from './check-stock-lifecycle-stage1.mjs';
+let stock,admin,original;
+try{
+ stock=await login('ui_stock');
+ await stock.context().addInitScript(()=>{window.print=()=>{};});
+ await stock.goto(manifest.frontend+'/stock?view=transfers',{waitUntil:'domcontentloaded'});
+ await stock.getByTitle('View dispatch note',{exact:true}).first().click();
+ await stock.getByRole('button',{name:/Print \/ PDF/}).waitFor();
+ const note=await stock.locator('body').innerText();
+ if(!note.includes('TEST-ITEM'))throw Error('Dispatch note lacks actual items');
+ await stock.screenshot({path:`${dir}/dispatch-note.jpg`,fullPage:true});
+ const popupPromise=stock.waitForEvent('popup');await stock.getByRole('button',{name:/Print \/ PDF/}).click();
+ const popup=await popupPromise;await popup.waitForLoadState('domcontentloaded');
+ await fs.writeFile(`${dir}/dispatch-note.html`,await popup.content());
+ await popup.pdf({path:`${dir}/dispatch-note.pdf`,printBackground:true,preferCSSPageSize:true});await popup.close();
+ report.actions.push({action:'Dispatch note actual modal and print',status:'PASS',text:note});await save();
+ await stock.getByRole('button',{name:/Close/}).last().click();
+ const previewPromise=stock.waitForEvent('popup');
+ await stock.getByRole('button',{name:/Print Report/}).click();
+ const preview=await previewPromise;await preview.waitForLoadState('domcontentloaded');
+ await fs.writeFile(`${dir}/stock-transfer-print.html`,await preview.content());
+ await preview.pdf({path:`${dir}/stock-transfer-print.pdf`,printBackground:true});
+ report.actions.push({action:'Stock transfer print',status:'PASS',text:await preview.locator('body').innerText()});await save();
+ original=(await db.query("SELECT role FROM users WHERE username='ui_gm'")).rows[0];
+ await db.query("UPDATE users SET role='admin' WHERE username='ui_gm'");
+ admin=await login('ui_gm');
+ await admin.goto(manifest.frontend+'/distributor',{waitUntil:'domcontentloaded'});
+ await admin.getByText(/Preview access only/).waitFor();
+ await admin.screenshot({path:`${dir}/admin-preview-no-membership.jpg`});
+ const denied=await admin.request.post(manifest.frontend+'/api/orders',{data:{customer_type:'member',distributor_code:'UI_GM'}});
+ if(denied.status()!==403)throw Error('Admin without membership can write member order');
+ report.actions.push({action:'Admin member order without approved membership',status:denied.status(),response:await denied.json()});await save();
+ await db.query("INSERT INTO branches(id,name,status) VALUES('townshop','Windhoek CBD','active') ON CONFLICT(id) DO NOTHING");
+ await db.query("INSERT INTO distributors(id,distributor_code,distributor_name,status) VALUES('AUDIT-MEMBER','UI_GM','Synthetic member','active') ON CONFLICT(id) DO NOTHING");
+ await db.query("INSERT INTO distributor_agreements(id,nb_number,first_name,last_name,processing_branch,status) VALUES('AUDIT-MEMBER','UI_GM','Synthetic','Member','townshop','approved') ON CONFLICT(id) DO NOTHING");
+ await admin.reload({waitUntil:'domcontentloaded'});await admin.getByText('Approved membership: UI_GM',{exact:true}).waitFor();
+ await admin.screenshot({path:`${dir}/admin-preview-approved.jpg`});
+ await call(admin,'POST','/orders',{customer_type:'member',distributor_code:'UI_GM',customer_name:'Synthetic member',branch_id:'townshop',delivery_method:'pickup',subtotal:7,items:[{product_name:'TEST-ITEM',quantity:1,unit_price:7}],payment_method:'cash'});
+ report.status='PASS';
+}catch(error){report.status='FAIL';report.error=error.message;await (admin||stock)?.screenshot({path:`${dir}/prints-preview-failure.jpg`}).catch(()=>{});}
+finally{if(original)await db.query("UPDATE users SET role=$1 WHERE username='ui_gm'",[original.role]);report.after=await balances();await save();await b.close();await db.end();}
+console.log(JSON.stringify(report,null,2));if(report.status!=='PASS')process.exitCode=1;

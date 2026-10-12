@@ -252,3 +252,59 @@ mtime_ms = 1791804194005
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/56dc16a7-3fa0-4ba6-bd09-98cc18a6c588/cb216cce-cee3-49bb-8c64-0b648e14657a"
 storage_version_token = "1791804317102605"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "v0kRbCYNo1Q9RVjNahMw0"
+uri = "file://generated-artifacts/stock-navigation-audit/report.md"
+type = "text"
+title = "Stock audit — findings, fixes and verification limits"
+description = "Confirmed defects, final navigation, test results, unresolved decisions and explicitly unverified workflows."
+logical_id = "0b1c9a29-0eb6-46d4-9e11-2cc588d7b14d"
+content_hash = "sha256:8b5d914990fc3a762614e3a4fa69f1ebe42746f5c763fb02e1be0435ebf504ea"
+size = 8897
+mtime_ms = 1791807540760
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/0b1c9a29-0eb6-46d4-9e11-2cc588d7b14d/0c278027-f656-44b1-be48-d8e728035f01"
+storage_version_token = "1791807706436241"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "eVBoP_7ousLCG7ieOZ-Ml"
+uri = "file://generated-artifacts/stock-navigation-audit/final-matrix.csv"
+type = "table"
+title = "27-destination stock portal audit matrix"
+description = "Per-tab purpose, source, actions, permissions, dependencies, recommendations and available evidence."
+logical_id = "553ddff9-70af-469a-af15-fd22c8fe424c"
+content_hash = "sha256:b4d22e11ca5a0e33b4d629c351ce99b5d74e12482842fa0a0cd8fc41e222f9f0"
+size = 30035
+mtime_ms = 1791807572888
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/553ddff9-70af-469a-af15-fd22c8fe424c/8a00dbd2-e1a6-46b8-9e4b-e9e6d594367b"
+storage_version_token = "1791807707456246"
+content_type = "text/csv"
+
+[[outputs]]
+id = "nXp5S7DaiuunSOSjCU_-w"
+uri = "file://generated-artifacts/cross-portal-reconciliation/report.md"
+type = "text"
+title = "Updated stock audit — final review corrections included"
+description = "Lifecycle, migration, authorization, public member checkout and export evidence, with explicit verification limits."
+logical_id = "85b8d483-14e0-4bd1-9f1b-95592c2eb1b6"
+content_hash = "sha256:5b1638f1b0397a387543bd26936f30f1f3bda5eb28b00ba7c11246d6f1e5ebf3"
+size = 40214
+mtime_ms = 1791814473686
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/85b8d483-14e0-4bd1-9f1b-95592c2eb1b6/423e2dfd-b713-47d6-9d5b-77780b1c9793"
+storage_version_token = "1791814527134606"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "asQD8YoEKYSQFys3s6Zjh"
+uri = "file://generated-artifacts/cross-portal-reconciliation/release-checklist.md"
+type = "text"
+title = "Release checklist and migration plan"
+description = "Review gates, additive migration procedure and safe rollback instructions. No production execution authorized."
+logical_id = "d82f1d2a-ddea-409d-896d-33faf9ec192d"
+content_hash = "sha256:80392dd5b498be254c1cd9eb15d2489feae9fd2115ded6fed83edb7b980d717e"
+size = 3525
+mtime_ms = 1791813378295
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/d82f1d2a-ddea-409d-896d-33faf9ec192d/1809a2eb-9b28-4543-af8b-4b8cbb267d72"
+storage_version_token = "1791813563645479"
+content_type = "text/markdown"

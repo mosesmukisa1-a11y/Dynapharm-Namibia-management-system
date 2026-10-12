@@ -564,7 +564,7 @@ export default function BranchPortal() {
   ];
 
   return (
-    <PortalBranchContext.Provider value={selectedPortalBranch || null}>
+    <PortalBranchContext.Provider value={effectiveBranch || null}>
       <div>
         {/* ── Branded Portal Header ── */}
         <div style={{ background: 'linear-gradient(135deg,#8b0000 0%,#c41e3a 55%,#a01530 100%)', borderRadius: 16, padding: '0', marginBottom: 20, overflow: 'hidden', boxShadow: '0 6px 28px rgba(139,0,0,0.22)' }}>
@@ -591,11 +591,12 @@ export default function BranchPortal() {
             <div style={{ margin: '14px 24px 18px', padding: '10px 14px', background: 'rgba(0,0,0,0.18)', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ fontSize: '0.7rem', fontWeight: 800, color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', letterSpacing: '.07em', whiteSpace: 'nowrap' }}>Act as Branch</span>
               <select
-                value={selectedPortalBranch}
+                value={effectiveBranch}
                 onChange={e => setSelectedPortalBranch(e.target.value)}
                 style={{ flex: 1, maxWidth: 260, padding: '6px 10px', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 7, fontSize: '0.86rem', outline: 'none', background: 'rgba(255,255,255,0.1)', color: '#fff', cursor: 'pointer' }}
               >
                 <option value="" style={{ background: '#8b0000' }}>— Select branch —</option>
+                {effectiveBranch && !BRANCH_DETAILS.some(b=>b.id===effectiveBranch) && <option value={effectiveBranch}>{getBranchDisplayName(effectiveBranch)}</option>}
                 {BRANCH_DETAILS.map(b => (
                   <option key={b.id} value={b.id} style={{ background: '#8b0000' }}>{b.name}</option>
                 ))}

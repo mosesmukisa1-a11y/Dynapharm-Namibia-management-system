@@ -15,6 +15,7 @@
  */
 import { applyAuthCors } from '../_lib/auth.js';
 import { getMany } from '../db.js';
+import {getDailySales,businessToday,COMPANY_REPORT_ROLES} from '../services/dailySales.js';
 
 const STATIC_NAMES = {
   country_stock:      'Country Stock',
@@ -34,6 +35,9 @@ export default async function handler(req, res) {
   applyAuthCors(req, res);
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'GET') return res.status(405).json({ success: false, error: 'Method not allowed' });
+  if(!req.user)return res.status(401).json({success:false,error:'Authentication required'});
+  if(!COMPANY_REPORT_ROLES.has(String(req.user.role).toLowerCase()))
+    return res.status(403).json({success:false,error:'Company reporting access required'});
 
   try {
     const [warehouseRows, branchRows, branchNames, recentMovements, branchMovements, recentSales] = await Promise.all([
@@ -81,11 +85,7 @@ export default async function handler(req, res) {
          FROM branch_inventory_movements bm
          ORDER BY bm.created_at DESC LIMIT 40`
       ),
-      getMany(
-        `SELECT branch_id, total, customer_type, created_at
-         FROM branch_walkin_sales
-         WHERE sale_date = CURRENT_DATE AND status = 'completed'`
-      ),
+      getDailySales(businessToday()),
     ]);
 
     const branchNameMap = Object.fromEntries(branchNames.map(b => [b.id, b.name]));
@@ -135,18 +135,23 @@ export default async function handler(req, res) {
       ...branchMovements.map(m => ({ ...m, _source: 'branch' })),
     ].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)).slice(0, 60);
 
-    const todayRevenue = recentSales.reduce((s, r) => s + Number(r.total || 0), 0);
-
     return res.status(200).json({
       success: true,
       timestamp: new Date().toISOString(),
       products,
       totalProducts: products.length,
       totalUnits: products.reduce((s, p) => s + p.totalQty, 0),
-      recentMovements: allMovements,
+      recentMovements: allMovements.map(m=>({...m,
+        sourceLocationName:resolveLocationName(m.source_location),
+        destinationLocationName:m.destination_location?resolveLocationName(m.destination_location):null})),
       todayStats: {
-        salesCount: recentSales.length,
-        revenue: parseFloat(todayRevenue.toFixed(2)),
+        salesCount: recentSales.summary.totalTransactions,
+        revenue: recentSales.summary.totalRevenue,
+        date:recentSales.date,scope:recentSales.scope,timezone:recentSales.timezone,
+        revenueBasis:recentSales.summary.revenueBasis,
+        walkinCustomerReceipts:recentSales.summary.walkinCustomerReceipts,
+        matchedOriginalChargedRevenue:recentSales.summary.matchedOriginalChargedRevenue,
+        dpComplete:recentSales.summary.dpComplete,
       },
     });
   } catch (err) {

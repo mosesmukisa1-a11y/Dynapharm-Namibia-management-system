@@ -893,31 +893,11 @@ app.patch('/api/stock-adjustments/:id/reject', async (req, res) => {
 // ── End Stock Adjustment Routes ────────────────────────────────────────────────
 
 // ── Stock Request Status Update (GM Approval) ──────────────────────────────────
-app.put('/api/stock-requests/:id', async (req, res) => {
-  try {
-    const { query, getOne } = await import('./api/db.js');
-    const id = req.params.id;
-    const { status, notes } = req.body || {};
-    if (!status) return res.status(400).json({ error: 'status is required' });
-    const actorName = req.user?.name || req.user?.sub || 'gm';
-    // Atomic idempotency guard: the WHERE clause rejects the UPDATE if the request
-    // is already in 'received' status, eliminating the race window of a separate
-    // SELECT-then-UPDATE check. rowCount===0 means it was already received.
-    const guardClause = status === 'received' ? `AND status != 'received'` : '';
-    const updateResult = await query(
-      `UPDATE stock_requests SET status=$1, notes=COALESCE($2, notes), approved_by=$3, approved_at=NOW(), updated_at=NOW(), last_status_change=NOW() WHERE id=$4 ${guardClause}`,
-      [status, notes || null, actorName, id]
-    );
-    if (status === 'received' && updateResult.rowCount === 0) {
-      return res.status(409).json({ error: 'This stock request has already been received.' });
-    }
-    const updated = await getOne('SELECT * FROM stock_requests WHERE id=$1', [id]);
-    res.json({ success: true, request: updated });
-  } catch (err) {
-    console.error('stock-requests PUT/:id', err);
-    res.status(500).json({ error: err.message });
-  }
-});
+app.put('/api/stock-requests/:id', atomicStockRequest(async (req,res)=>{
+  const {default: handler}=await import('./api/stock-requests.js');
+  req.body={...req.body,id:req.params.id};
+  return handler(req,res);
+}));
 // ── End Stock Request Update Route ─────────────────────────────────────────────
 
 // ── Product Price Routes ────────────────────────────────────────────────────────
@@ -2629,6 +2609,8 @@ server.on('error', (error) => {
       `ALTER TABLE distributors ADD COLUMN IF NOT EXISTS photo_updated_at TEXT`,
       // CAS: finance_cash_requests updated_at column (unblocks Finance PATCH)
       `ALTER TABLE stock_requests ADD COLUMN IF NOT EXISTS dispatch_warehouse VARCHAR(100)`,
+      `ALTER TABLE stock_requests ADD COLUMN IF NOT EXISTS updated_by VARCHAR(255)`,
+      `ALTER TABLE stock_requests ADD COLUMN IF NOT EXISTS last_status_change TIMESTAMPTZ`,
       `ALTER TABLE stock_requests ADD COLUMN IF NOT EXISTS dispatched_by VARCHAR(255)`,
       `ALTER TABLE stock_requests ADD COLUMN IF NOT EXISTS dispatched_at TIMESTAMPTZ`,
       `ALTER TABLE online_orders ADD COLUMN IF NOT EXISTS stock_deducted BOOLEAN DEFAULT FALSE`,

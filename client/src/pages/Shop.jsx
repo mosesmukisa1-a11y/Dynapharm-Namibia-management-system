@@ -8,11 +8,30 @@ import { ProductPhoto } from '../components/public/CatalogPreview';
 import { Card, Button, Input, Modal, Badge, EmptyState, Alert } from '../components/ui';
 import { ShoppingCart, Search, Plus, Minus, Package, User, Users, Truck, Store, UserPlus } from 'lucide-react';
 import { MembershipAgreementForm } from '../components/MembershipAgreementForm';
+import {useAuth} from '../contexts/AuthContext';
 
 const DEFAULT_REFERRAL_NAME = COMPANY_INFO.defaultReferralName;
 const DEFAULT_REFERRAL_NB = COMPANY_INFO.defaultReferralNB;
 
 export default function Shop() {
+  const {user,login}=useAuth();
+  const [memberLoginOpen,setMemberLoginOpen]=useState(false);
+  const [memberCredentials,setMemberCredentials]=useState({username:'',password:''});
+  const [memberLoginBusy,setMemberLoginBusy]=useState(false);
+  const selectMember=async()=>{
+    try{
+      const eligibility=await api.get('/member-eligibility');
+      if(!eligibility.eligible)throw Error('This account has no approved active membership. Choose Non-Member checkout or ask staff to review your membership.');
+      setSelectedDistributor({distributor_code:eligibility.code,distributor_name:user?.fullName || 'Your approved membership'});
+      setCustomerType('member');setOrderError('');setMemberLoginOpen(false);
+    }catch(error){setOrderError(error.message);}
+  };
+  const memberSignIn=async(e)=>{
+    e.preventDefault();setMemberLoginBusy(true);
+    try{await login(memberCredentials.username,memberCredentials.password);setMemberCredentials({username:'',password:''});await selectMember();}
+    catch(error){setOrderError(error.message);}
+    finally{setMemberLoginBusy(false);}
+  };
   const [searchParams, setSearchParams] = useSearchParams();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -201,7 +220,7 @@ export default function Shop() {
           <p className="text-gray-500">Browse the catalogue below. Select your customer type before adding products to your cart.</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <button onClick={() => setCustomerType('member')}
+          <button onClick={() => user ? selectMember() : setMemberLoginOpen(true)}
             className="p-8 bg-white rounded-2xl border-2 border-gray-200 hover:border-primary hover:shadow-lg transition-all cursor-pointer text-left group">
             <div className="w-14 h-14 bg-primary/10 rounded-xl flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-colors">
               <Users size={28} className="text-primary" />
@@ -242,6 +261,15 @@ export default function Shop() {
 
   return (
     <div>
+      <Modal open={memberLoginOpen} onClose={()=>setMemberLoginOpen(false)} title="Sign in for member pricing">
+        <form onSubmit={memberSignIn} className="space-y-4">
+          <p>Sign in to your approved membership account. Your cart stays on this page.</p>
+          <Input label="Member username" aria-label="Member username" autoComplete="username" value={memberCredentials.username} onChange={e=>setMemberCredentials({...memberCredentials,username:e.target.value})} required />
+          <Input label="Member password" aria-label="Member password" type="password" autoComplete="current-password" value={memberCredentials.password} onChange={e=>setMemberCredentials({...memberCredentials,password:e.target.value})} required />
+          {orderError && <Alert type="error">{orderError}</Alert>}
+          <Button type="submit" disabled={memberLoginBusy}>{memberLoginBusy?'Signing in…':'Sign in and continue shopping'}</Button>
+        </form>
+      </Modal>
       {productDetail}
       {orderSuccess && (
         <Alert type="success" className="mb-4">
@@ -267,7 +295,7 @@ export default function Shop() {
               className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-all cursor-pointer ${!isMember ? 'bg-white text-primary shadow-sm' : 'text-gray-500'}`}>
               <User size={14} /> Non-Member
             </button>
-            <button onClick={() => setCustomerType('member')}
+            <button onClick={() => user ? selectMember() : setMemberLoginOpen(true)}
               className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-all cursor-pointer ${isMember ? 'bg-white text-primary shadow-sm' : 'text-gray-500'}`}>
               <Users size={14} /> Member (DP)
             </button>
@@ -277,7 +305,7 @@ export default function Shop() {
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search products..."
               className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20" />
           </div>
-          <button onClick={() => setCartOpen(true)}
+          <button aria-label={`Cart (${cartCount} items)`} onClick={() => setCartOpen(true)}
             className="relative px-4 py-2 bg-primary text-white rounded-lg hover:opacity-90 flex items-center gap-2 cursor-pointer">
             <ShoppingCart size={18} />
             {cartCount > 0 && (
@@ -302,7 +330,7 @@ export default function Shop() {
                 <span className="text-gray-600 ml-2">{selectedDistributor.distributor_name}</span>
                 {selectedDistributor.branch && <span className="text-gray-400 ml-2 text-xs">({selectedDistributor.branch})</span>}
               </div>
-              <button onClick={() => setSelectedDistributor(null)} className="text-xs text-primary underline cursor-pointer">Change</button>
+              <button onClick={() => setMemberLoginOpen(true)} className="text-xs text-primary underline cursor-pointer">Sign in with another membership</button>
             </div>
           ) : (
             <div>

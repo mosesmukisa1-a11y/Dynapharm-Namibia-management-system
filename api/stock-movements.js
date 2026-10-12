@@ -612,14 +612,22 @@ export default async function handler(req, res) {
     if (req.method === 'PUT') {
       // Approve or reject pending write-off(s) — GM only
       const body = req.body || {};
-      const gmName = body.approved_by || req.user?.full_name || req.user?.username || 'GM';
+      const gmName = req.user?.fullName || req.user?.full_name || req.user?.username || req.user?.id;
       const gmNote = body.notes || body.note || null;
       const action = body.action; // 'approve' | 'reject' | 'approve_all' | 'reject_all'
+      const role = String(req.user?.role || '').toLowerCase();
+      const approvalRoles = ['gm', 'general_manager', 'admin', 'super_admin', 'superadmin', 'director'];
+      const isDisposal = ['dispose', 'dispose_all'].includes(action);
+      const permittedRoles = isDisposal ? [...approvalRoles, 'stock', 'stock_manager'] : approvalRoles;
+      if (!permittedRoles.includes(role)) {
+        return res.status(403).json({ success: false, error: isDisposal
+          ? 'Stock disposal permission required' : 'GM approval permission required' });
+      }
 
       const approve = async (client, id) => {
         // Fetch the pending record
         const { rows } = await client.query(
-          `SELECT * FROM stock_movements WHERE id = $1 AND movement_type = 'write_off' AND status = 'pending_approval' LIMIT 1`,
+          `SELECT * FROM stock_movements WHERE id = $1 AND movement_type = 'write_off' AND status = 'pending_approval' LIMIT 1 FOR UPDATE`,
           [id]
         );
         if (rows.length === 0) return null;
@@ -912,11 +920,19 @@ export default async function handler(req, res) {
 
       // Dispose action — stock manager marks written-off stock as physically disposed
       if (action === 'dispose' || action === 'dispose_all') {
-        const disposedBy = body.disposed_by || req.user?.full_name || req.user?.username || 'Stock Manager';
-        const ids = action === 'dispose_all'
+        const disposedBy = gmName;
+        const requestedIds = action === 'dispose_all'
           ? (Array.isArray(body.ids) ? body.ids : [])
           : (body.id ? [body.id] : []);
-        if (ids.length === 0) return res.status(400).json({ success: false, error: 'No id(s) provided' });
+        if (!requestedIds.length || requestedIds.length > 1000 ||
+            requestedIds.some(id => typeof id !== 'string' || !id.trim())) {
+          return res.status(400).json({ success: false, error: 'Provide between 1 and 1000 valid movement IDs' });
+        }
+        const ids = [...new Set(requestedIds)];
+        const scope = branchScope.enforced
+          ? branchScope.branches.flatMap(branchSearchTerms).map(s => s.toLowerCase().replaceAll(' ', '_'))
+          : null;
+        if (scope && !scope.length) return res.status(403).json({ success: false, error: 'No permitted stock location' });
         const { rowCount } = await query(
           `UPDATE stock_movements
            SET disposal_status = 'disposed',
@@ -925,10 +941,14 @@ export default async function handler(req, res) {
                updated_at = NOW()
            WHERE id = ANY($2::text[])
              AND movement_type = 'write_off'
-             AND disposal_status = 'pending_disposal'`,
-          [disposedBy, ids]
+             AND status IN ('approved', 'posted')
+             AND disposal_status IN ('pending_disposal', 'dispose_off')
+             AND ($3::text[] IS NULL OR LOWER(REPLACE(COALESCE(source_location, ''),' ','_')) = ANY($3::text[]))`,
+          [disposedBy, ids, scope]
         );
-        return res.json({ success: true, disposed: rowCount });
+        if (!rowCount) return res.status(409).json({ success: false, disposed: 0,
+          requested: ids.length, error: 'No eligible records changed. Refresh: records may already be disposed, awaiting approval, or outside your permitted location.' });
+        return res.json({ success: true, disposed: rowCount, requested: ids.length, unchanged: ids.length - rowCount });
       }
 
       return res.status(400).json({ success: false, error: 'Invalid action — use approve, reject, approve_all, reject_all, dispose, or dispose_all' });

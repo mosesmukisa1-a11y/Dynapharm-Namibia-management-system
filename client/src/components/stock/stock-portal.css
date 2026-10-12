@@ -1,14 +1,14 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap');
 
 .stock-workspace, .distribution-page {
-  --sp-primary: #187344;
-  --sp-primary-hover: #105a33;
+  --sp-primary: #c41e3a;
+  --sp-primary-hover: #9f1830;
   --sp-surface: #ffffff;
-  --sp-background: #f5f7f3;
-  --sp-border: #dfe6dc;
-  --sp-text: #23352a;
-  --sp-muted: #627267;
-  --sp-tint: #eaf3e9;
+  --sp-background: #ffffff;
+  --sp-border: #e5e0e1;
+  --sp-text: #292629;
+  --sp-muted: #696369;
+  --sp-tint: #fff1f3;
   --sp-danger: #a83131;
   color: var(--sp-text);
   font-family: 'DM Sans', sans-serif;
@@ -131,5 +131,5 @@
 .sp-summary { scroll-margin-top: 70px; }
 .sp-mobile-summary-link:focus-visible { outline: 3px solid #62a779; outline-offset: 3px; }
 @media (max-width: 760px) {
-  .sp-mobile-summary-link { display: block; position: sticky; top: 8px; z-index: 15; margin-bottom: 14px; text-align: center; text-decoration: none; background: #eaf3e9; }
+  .sp-mobile-summary-link { display: block; position: sticky; top: 8px; z-index: 15; margin-bottom: 14px; text-align: center; text-decoration: none; background: var(--sp-tint); }
 }

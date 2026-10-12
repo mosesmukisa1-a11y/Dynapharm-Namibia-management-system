@@ -146,11 +146,18 @@ function DashboardTab({ start, end }) {
   return (
     <div>
       <DailySalesCard className="mb-6" />
+      {finance.originalEvidence && <div className="mb-6 rounded-lg border border-red-100 bg-white p-3 text-sm text-gray-700">
+        <strong>Original-evidence gross profit: </strong>
+        {finance.originalEvidence.financialComplete
+          ? formatCurrency(finance.originalEvidence.grossProfitAfterReturns)
+          : `Unavailable — ${finance.originalEvidence.missingFinancialCostQuantity || 0} units missing original cost, ${finance.originalEvidence.missingFinancialRevenueQuantity || 0} units missing charged revenue, ${finance.originalEvidence.unmatchedSaleRecords || 0} unmatched receipts.`}
+        <span> This is separate from the estimated DP margin below.</span>
+      </div>}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <StatCard title="Total Sales Revenue" value={formatCurrency(totalSalesRevenue)} subtitle={`${totalOrders} transactions`} color="blue" icon={<TrendingUp size={24} />} />
-        <StatCard title="CIF Cost of Sales" value={formatCurrency(cifCostOfSales)} subtitle="Import cost" color="red" icon={<Ship size={24} />} />
-        <StatCard title="Gross Profit" value={formatCurrency(grossProfit)} subtitle={totalSalesRevenue > 0 ? `${((grossProfit / totalSalesRevenue) * 100).toFixed(1)}% margin` : ''} color={grossProfit >= 0 ? 'green' : 'red'} icon={<BarChart3 size={24} />} />
+        <StatCard title="Estimated CIF Cost" value={formatCurrency(cifCostOfSales)} subtitle="May use current price-list cost" color="red" icon={<Ship size={24} />} />
+        <StatCard title="Estimated DP Margin" value={formatCurrency(grossProfit)} subtitle="Not original-evidence gross profit" color={grossProfit >= 0 ? 'green' : 'red'} icon={<BarChart3 size={24} />} />
         <StatCard title="Remittance Due" value={formatCurrency(remittanceDue)} color={remittanceDue > 0 ? 'red' : 'green'} icon={<AlertTriangle size={24} />} />
       </div>
 
@@ -183,7 +190,7 @@ function DashboardTab({ start, end }) {
             <div className="flex gap-4 text-xs text-gray-500 mt-2">
               <span>Today's sales: {liveStockSummary.todayStats?.salesCount || 0} transactions</span>
               <span>•</span>
-              <span>Revenue: {formatCurrency(liveStockSummary.todayStats?.revenue || 0)}</span>
+              <span>Net DP: {formatCurrency(liveStockSummary.todayStats?.revenue || 0)}{liveStockSummary.todayStats?.dpComplete===false?' · incomplete evidence':''}</span>
             </div>
           </CardBody>
         </Card>
@@ -195,8 +202,8 @@ function DashboardTab({ start, end }) {
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
             {[
               { label: 'Total Revenue (DP)', value: formatCurrency(totalSalesRevenue), cls: 'text-blue-700' },
-              { label: 'CIF Cost', value: formatCurrency(cifCostOfSales), cls: 'text-red-600' },
-              { label: 'Gross Profit', value: formatCurrency(grossProfit), cls: grossProfit >= 0 ? 'text-green-700' : 'text-red-600' },
+              { label: 'Estimated CIF Cost', value: formatCurrency(cifCostOfSales), cls: 'text-red-600' },
+              { label: 'Estimated DP Margin', value: formatCurrency(grossProfit), cls: grossProfit >= 0 ? 'text-green-700' : 'text-red-600' },
               { label: 'Deposits Received', value: formatCurrency(totalDeposits), cls: 'text-teal-700' },
               { label: 'Remittance', value: remittanceDue <= 0 ? 'Clear' : formatCurrency(remittanceDue), cls: remittanceDue <= 0 ? 'text-green-700' : 'text-orange-600' },
               { label: 'Bonus Payout', value: formatCurrency(bonusPayout), cls: 'text-purple-700' },
@@ -208,7 +215,7 @@ function DashboardTab({ start, end }) {
             ))}
           </div>
           <p className="text-xs text-indigo-600 mt-2 font-medium">
-            Gross Profit = DP Revenue − CIF Cost &nbsp;|&nbsp; Net = Gross Profit − Rent − Overheads − Bonus
+            Estimated DP margin = DP revenue − estimated CIF cost. This is not matched-original charged-revenue gross profit.
           </p>
         </CardBody>
       </Card>

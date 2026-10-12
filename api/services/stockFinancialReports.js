@@ -2,6 +2,26 @@ import {getMany} from '../db.js';
 import {salesEvidenceSql} from './stockCostReporting.js';
 import {validateBusinessDates} from './businessDates.js';
 
+// Keep inventory losses separate from COGS and gross profit. Never substitute
+// today's catalogue cost for a write-off's frozen received cost.
+export async function getWriteOffExpenseSummary({aliases,from,to,productName}={},read=getMany){
+  validateBusinessDates(from,to);
+  const [row]=await read(`SELECT
+    COALESCE(SUM(quantity),0)::text AS "writeOffQuantity",
+    COALESCE(SUM(quantity*original_unit_cif) FILTER (WHERE original_unit_cif IS NOT NULL),0)::text AS "writeOffExpense",
+    COALESCE(SUM(quantity) FILTER (WHERE original_unit_cif IS NULL),0)::text AS "missingWriteOffCostQuantity"
+    FROM stock_movements
+    WHERE movement_type='write_off' AND status IN ('posted','approved')
+      AND ($1::text[] IS NULL OR LOWER(TRIM(CASE WHEN source_location_type='quarantine'
+        THEN REGEXP_REPLACE(source_location,'^quarantine:','') ELSE source_location END))=ANY($1))
+      AND ($2::date IS NULL OR movement_date>=($2::date::timestamp AT TIME ZONE 'Africa/Windhoek'))
+      AND ($3::date IS NULL OR movement_date<(($3::date+1)::timestamp AT TIME ZONE 'Africa/Windhoek'))
+      AND ($4::text IS NULL OR LOWER(TRIM(product_name))=LOWER(TRIM($4)))`,
+    [aliases || null,from || null,to || null,productName || null]);
+  return {...row,writeOffCostComplete:Number(row.missingWriteOffCostQuantity)===0,
+    writeOffBasis:'Separate inventory expense at frozen original cost; movement posting date; unknown costs excluded and disclosed'};
+}
+
 // DP is distributor selling price, NOT received CIF cost or consumer receipts.
 // Preserve NUMERIC totals as strings in downloadable financial reconciliation.
 export async function getSalesReturnsSummary({aliases,from,to,productName}={},read=getMany){

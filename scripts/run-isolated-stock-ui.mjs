@@ -11,20 +11,29 @@ const source=new URL(process.env.DATABASE_URL),name=`stock_audit_${randomUUID().
 const isolated=new URL(source);isolated.pathname=`/${name}`;isolated.search='';isolated.hash='';
 // Disposable sessions must never be valid on the business application.
 const auditAuthKey=randomBytes(48).toString('hex');
+const navigationAudit=process.argv.includes('--navigation');
+const lifecycleAudit=process.argv.includes('--lifecycle');
+const continuation=process.argv.includes('--continuation');
+const release=process.argv.includes('--release-audit');
+const apiPort=release?3006:continuation?3005:lifecycleAudit?3004:navigationAudit?3003:3002;
+const uiPort=release?5177:continuation?5176:lifecycleAudit?5175:navigationAudit?5174:5173;
 const env={...process.env,DATABASE_URL:isolated.toString(),STOCK_AUDIT_ISOLATED:'1',
   STOCK_AUDIT_DATABASE:name,STOCK_AUDIT_UI_FIXTURE:'1',NODE_ENV:'test',REPLIT_DEPLOYMENT:'',
   AUTH_SECRET:auditAuthKey,JWT_SECRET:auditAuthKey,SESSION_SECRET:auditAuthKey,
-  PORT:'3002',DATABASE_SSL:new pg.Client({connectionString:source.toString()}).connectionParameters.ssl?'1':'0'};
+  PORT:String(apiPort),DATABASE_SSL:new pg.Client({connectionString:source.toString()}).connectionParameters.ssl?'1':'0'};
 assertIsolatedTestDatabase(env);
 const admin=new pg.Pool({connectionString:source.toString(),max:1});
 let target,backend,frontend,created=false,cleaning=false;
-const base='generated-artifacts/stock-ui-verification';
+const base=release?'generated-artifacts/stock-release-verification':continuation?'generated-artifacts/stock-continuation-stages':lifecycleAudit?'generated-artifacts/stock-lifecycle-stages':navigationAudit?'generated-artifacts/stock-navigation-audit':'generated-artifacts/stock-ui-verification';
 const emptyFixture=process.argv.includes('--empty');
 const clean=async()=>{
   if(cleaning)return;cleaning=true;
   // Remove our disposable database before waiting on browser/socket shutdown.
   // A supervising shell may force-kill a process after a short grace period.
   if(backend && backend.exitCode===null)backend.kill('SIGTERM');
+  // Close the fixture's idle pool before DROP FORCE terminates its connections.
+  await target?.end();
+  target=null;
   if(created){await admin.query(`DROP DATABASE ${name} WITH (FORCE)`);created=false;}
   await frontend?.close();
   if(backend && backend.exitCode===null){
@@ -84,26 +93,26 @@ try{
   });
   for(let attempt=0;attempt<120;attempt++){
     if(backend.exitCode!==null)throw Error('Isolated backend exited during startup');
-    try{const response=await fetch('http://127.0.0.1:3002/api/auth/me');if(response.status===401 || response.ok)break;}catch{}
+    try{const response=await fetch(`http://127.0.0.1:${apiPort}/api/auth/me`);if(response.status===401 || response.ok)break;}catch{}
     if(attempt===119)throw Error('Isolated backend did not start');
     await new Promise(resolve=>setTimeout(resolve,500));
   }
-  const proxy=Object.fromEntries(['/api','/assets','/uploads'].map(path=>[path,{target:'http://127.0.0.1:3002',changeOrigin:true}]));
+  const proxy=Object.fromEntries(['/api','/assets','/uploads'].map(path=>[path,{target:`http://127.0.0.1:${apiPort}`,changeOrigin:true}]));
   if(emptyFixture){
     const result=await target.query(`SELECT
       COALESCE((SELECT SUM(remaining_quantity) FROM stock_batches),0)+
       COALESCE((SELECT SUM(quantity) FROM branch_inventory_batches),0) AS qty`);
     if(Number(result.rows[0].qty)!==0)throw Error('Empty UI fixture was unexpectedly seeded with stock');
   }
-  frontend=await createServer({server:{host:'0.0.0.0',port:5173,strictPort:true,allowedHosts:true,proxy}});
+  frontend=await createServer({server:{host:'0.0.0.0',port:uiPort,strictPort:true,allowedHosts:true,proxy}});
   await frontend.listen();
   await writeFile(`${base}/environment.json`,JSON.stringify({
-    disposable:true,frontend:'http://127.0.0.1:5173',backendPort:3002,
+    disposable:true,frontend:`http://127.0.0.1:${uiPort}`,backendPort:apiPort,
     isolatedDatabase:name,harnessPid:process.pid,
     product:'TEST-ITEM',branchA:'townshop',branchB:'swakopmund',
     baseline:emptyFixture?{warehouse:0,branchA:0,branchB:0,company:0,returned:0,writeOff:0}:{warehouse:50,branchA:23,branchB:20,company:93,returned:2,writeOff:1}
   },null,2));
-  console.log('ISOLATED STOCK UI READY: http://127.0.0.1:5173 — backend 3002 — synthetic TEST-ITEM only');
+  console.log(`ISOLATED STOCK UI READY: port ${uiPort} — backend ${apiPort} — synthetic TEST-ITEM only`);
 }catch(error){
   console.error(error.message.replaceAll(source.toString(),'[database]').replaceAll(isolated.toString(),'[isolated database]'));
   await clean();process.exitCode=1;

@@ -1,6 +1,7 @@
 import { applyAuthCors, getBranchScope } from './_lib/auth.js';
 import { query, getMany, getOne, insert, update, remove, publishRealtimeEvent } from './db.js';
 import { branchSearchTerms, branchSearchTermsForMany, normalizeBranchSlug } from './_lib/branchUtils.js';
+import {atomicStockRequest} from './_lib/atomicStockRequest.js';
 
 function safeParseJson(value) {
   if (value === null || value === undefined) return null;
@@ -224,7 +225,7 @@ function normalizeRequestRow(row, itemsMap, approvalsMap) {
   };
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   applyAuthCors(req, res);
 
   if (req.method === 'OPTIONS') {
@@ -284,6 +285,19 @@ export default async function handler(req, res) {
 
     if (method === 'POST') {
       const body = await parseBody(req);
+      const actor=req.user.id || req.user.sub || req.user.username;
+      if(!actor || !['admin','gm','director','stock','warehouse','branch_manager','dispenser','superadmin','super_admin'].includes(String(req.user.role).toLowerCase()))
+        return res.status(403).json({error:'Stock request creation access required'});
+      for(const entry of Array.isArray(body)?body:[body]){
+        if(!entry || (entry.status && entry.status!=='pending'))
+          return res.status(409).json({error:'New requests must be pending; use the authorized review workflow'});
+        const branch=normalizeBranchSlug(entry.requesting_branch || entry.requestingBranch || entry.branch || '') || entry.requesting_branch;
+        if(!branch)return res.status(400).json({error:'Requesting branch is required'});
+        if(branchScope.enforced && !branchSearchTerms(branch).some(t=>branchSearchTermsForMany(branchScope.branches).includes(t)))
+          return res.status(403).json({error:'Access denied: cannot create stock requests for this branch'});
+        for(const key of ['approved_by','approvedBy','approved_at','approvedAt','reviewed_by','reviewedBy','reviewed_at','reviewedAt','history','last_status_change'])delete entry[key];
+        entry.created_by=actor;entry.createdBy=actor;entry.status='pending';entry.requesting_branch=branch;
+      }
       
       if (Array.isArray(body)) {
         // Bulk insert — skip entries for branches outside user's scope
@@ -333,9 +347,7 @@ export default async function handler(req, res) {
             await replaceRequestItems(result.id, items);
             results.push(result);
           } catch (error) {
-            if (error.code !== '23505') {
-              console.error('Error inserting stock request:', error);
-            }
+            throw error; // The entire bulk request must roll back, not silently skip a failed row.
           }
         }
         
@@ -367,7 +379,7 @@ export default async function handler(req, res) {
         }
         const historyEntry = {
           action: 'created',
-          actor: body.created_by || body.createdBy || null,
+          actor: req.user.id || req.user.sub || req.user.username,
           timestamp: new Date().toISOString(),
           status: body.status || 'pending',
           notes: body.notes || null,
@@ -382,7 +394,7 @@ export default async function handler(req, res) {
           priority: body.priority || 'normal',
           items: JSON.stringify(items),
           notes: body.notes || null,
-          created_by: body.created_by || body.createdBy || null,
+          created_by: req.user.id || req.user.sub || req.user.username,
           approved_by: body.approved_by || body.approvedBy || null,
           approved_at: body.approved_at || body.approvedAt || null,
           reviewed_by: body.reviewed_by || body.reviewedBy || null,
@@ -410,9 +422,28 @@ export default async function handler(req, res) {
 
     if (method === 'PUT') {
       const body = await parseBody(req);
+      const role=String(req.user.role || '').toLowerCase();
+      if(!['admin','gm','director','stock','warehouse','branch_manager','dispenser','superadmin','super_admin'].includes(role))
+        return res.status(403).json({error:'Stock request update access required'});
+      const managers=['admin','gm','director','superadmin','super_admin'];
+      if(body.approval && (![...managers,'stock','warehouse'].includes(role) || !['approved','rejected','reviewed','dispatched'].includes(body.status)))
+        return res.status(403).json({error:'Approval evidence requires an authorized review transition'});
+      if(body.status && !['pending','approved','rejected','reviewed','dispatched','partially_dispatched','in_transit','received','cancelled'].includes(body.status))
+        return res.status(422).json({error:'Unsupported request status'});
+      if(['reviewed','dispatched','partially_dispatched','in_transit'].includes(body.status) && ![...managers,'stock','warehouse'].includes(role))
+        return res.status(403).json({error:'Stock dispatch access required'});
+      if((body.status==='approved' && !managers.includes(role)) ||
+         (body.status==='rejected' && ![...managers,'stock','warehouse'].includes(role)))
+        return res.status(403).json({error:'Management approval access required'});
       if (!body?.id) {
         return res.status(400).json({ error: 'id is required' });
       }
+      const locked=await getOne('SELECT * FROM stock_requests WHERE id=$1 FOR UPDATE',[body.id]);
+      if(!locked)return res.status(404).json({error:'Stock request not found'});
+      if(locked.status!=='pending' && (body.items!==undefined || body.itemsArray!==undefined))
+        return res.status(409).json({error:'Reviewed request items must be retained; create a new request'});
+      if(['received','cancelled'].includes(locked.status) && body.status && body.status!==locked.status)
+        return res.status(409).json({error:'Completed requests cannot be reopened through a status update'});
 
       if (branchScope.enforced) {
         const existing = await getOne('SELECT requesting_branch FROM stock_requests WHERE id = $1', [body.id]);
@@ -434,22 +465,37 @@ export default async function handler(req, res) {
         }
       }
 
-      const updatePayload = { ...body };
+      const editable=['status','notes','priority','rejection_reason','dispatch_warehouse','data'];
+      const updatePayload = Object.fromEntries(editable.filter(key=>body[key]!==undefined).map(key=>[key,body[key]]));
       delete updatePayload.items;
       delete updatePayload.itemsArray;
       delete updatePayload.approval;
+      // Never trust an actor or audit timestamp supplied by the browser.
+      const actor = req.user.id || req.user.sub || req.user.username;
+      if (!actor) return res.status(403).json({ error: 'Authenticated actor identity required' });
+      updatePayload.updated_by = actor;
+      delete updatePayload.last_status_change;
+      delete updatePayload.rejected_by;
+      delete updatePayload.rejected_at;
 
-      if (body.status) {
+      if (body.status && body.status!==locked.status) {
         updatePayload.last_status_change = new Date().toISOString();
       }
 
       // Set rejected_at timestamp when status transitions to rejected
-      if (body.status === 'rejected' && !updatePayload.rejected_at) {
+      if (body.status === 'rejected' && locked.status!=='rejected') {
         updatePayload.rejected_at = new Date().toISOString();
-        if (!updatePayload.rejected_by) {
-          updatePayload.rejected_by = req.user?.full_name || req.user?.username || null;
-        }
+        updatePayload.rejected_by = actor;
       }
+      if(body.status==='approved' && locked.status!=='approved'){
+        updatePayload.approved_by=actor;
+        updatePayload.approved_at=new Date().toISOString();
+      }
+      if(body.status==='dispatched' && locked.status!=='dispatched'){
+        updatePayload.dispatched_by=actor;
+        updatePayload.dispatched_at=new Date().toISOString();
+      }
+      if(body.approval) body.approval={...body.approval,actor,role,approved:body.status!=='rejected'};
 
       const request = await update('stock_requests', body.id, updatePayload, 'id');
 
@@ -458,7 +504,7 @@ export default async function handler(req, res) {
         await replaceRequestItems(body.id, normalizedItems);
       }
 
-      if (body.approval) {
+      if (body.approval && (!body.status || body.status!==locked.status)) {
         await appendApproval(body.id, body.approval);
       }
 
@@ -469,6 +515,12 @@ export default async function handler(req, res) {
     }
 
     if (method === 'DELETE') {
+      const actor=req.user.id || req.user.sub || req.user.username;
+      if(!actor || !['admin','gm','director','stock','warehouse','branch_manager','dispenser','superadmin','super_admin'].includes(String(req.user.role).toLowerCase()))
+        return res.status(403).json({error:'Stock request cancellation access required'});
+      if(!id)return res.status(400).json({error:'id is required'});
+      const locked=await getOne('SELECT * FROM stock_requests WHERE id=$1 FOR UPDATE',[id]);
+      if(!locked)return res.status(404).json({error:'Stock request not found'});
       if (branchScope.enforced && id) {
         const existing = await getOne('SELECT requesting_branch FROM stock_requests WHERE id = $1', [id]);
         if (existing) {
@@ -480,9 +532,14 @@ export default async function handler(req, res) {
           }
         }
       }
-      await remove('stock_requests', id, 'id');
-      await publishRealtimeEvent('stock_requests', 'delete', { id });
-      return res.json({ success: true });
+      if(!['pending','cancelled'].includes(locked.status))
+        return res.status(409).json({error:'Reviewed requests must be retained with their audit history'});
+      if(locked.status!=='cancelled'){
+        await query("UPDATE stock_requests SET status='cancelled',updated_by=$2,last_status_change=NOW(),updated_at=NOW(),history=COALESCE(history,'[]'::jsonb) || $3::jsonb WHERE id=$1",
+          [id,actor,JSON.stringify([{action:'cancelled',actor,timestamp:new Date().toISOString(),status:'cancelled'}])]);
+        await publishRealtimeEvent('stock_requests','update',{id,status:'cancelled'});
+      }
+      return res.json({ success: true, retained:true, status:'cancelled' });
     }
 
     return res.status(405).json({ error: 'Method not allowed' });
@@ -491,5 +548,7 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Internal server error' });
   }
 }
+
+export default atomicStockRequest(handler);
 
 

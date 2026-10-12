@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { disposalFeedback, expiryReasonConflict, stockView } from '../../lib/stockAuditPresentation';
 import QRCodeLib from 'qrcode';
 import { api } from '../../lib/api';
 import {stockOverviewLocation} from '../../lib/stockOverviewLocation';
@@ -10,6 +12,7 @@ import ControlledStockOperations from '../../components/ControlledStockOperation
 import DispatchNote from '../../components/DispatchNote';
 import StockProductPacks from '../../components/StockProductPacks';
 import StockCostReport from '../../components/StockCostReport';
+import {expiryWindows,expiryDays,stockAsOfDate} from '../../lib/expiryWindows.js';
 import StockAlertSettings from '../../components/StockAlertSettings';
 import StockPortalShell from '../../components/stock/StockPortalShell';
 import DistributionTab from '../../components/stock/DistributionTab';
@@ -59,13 +62,15 @@ const stockAI = {
     return { label: 'OK', color: '#16a34a', bg: '#f0fdf4', score: 0 };
   },
 
-  getBranchHealth: (branchBatches) => {
-    if (!branchBatches.length) return { score: 50, label: 'No Data', color: '#94a3b8' };
+  getBranchHealth: (branchBatches,asOf=stockAsOfDate()) => {
+    if (!branchBatches.length) return { score: null, label: 'No Data', color: '#94a3b8' };
     const now = new Date();
     const thirtyFwd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     const totalQty = branchBatches.reduce((s, b) => s + Number(b.quantity || 0), 0);
-    const expiredQty = branchBatches.filter(b => b.expiry_date && new Date(b.expiry_date) < now).reduce((s, b) => s + Number(b.quantity || 0), 0);
-    const expiringSoon = branchBatches.filter(b => b.expiry_date && new Date(b.expiry_date) > now && new Date(b.expiry_date) <= thirtyFwd).reduce((s, b) => s + Number(b.quantity || 0), 0);
+    const windows=expiryWindows(branchBatches,asOf);
+    if(windows.missing.length)return {score:null,label:'Missing expiry evidence',color:'#94a3b8'};
+    const expiredQty = windows.expired.reduce((s,b)=>s+Number(b.quantity || 0),0);
+    const expiringSoon = windows.within30.reduce((s,b)=>s+Number(b.quantity || 0),0);
     const productMap = {};
     branchBatches.forEach(b => { if (!productMap[b.product_name]) productMap[b.product_name] = 0; productMap[b.product_name] += Number(b.quantity || 0); });
     const criticalCount = Object.values(productMap).filter(q => q < 5).length;
@@ -1560,7 +1565,7 @@ export default function StockPortal() {
 function StockPortalContent() {
   const { policy, canEdit, onSaved } = useStockAlertPolicy();
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState('aiDashboard');
+  const [viewParams, setViewParams] = useSearchParams();
   const [globalBranch, setGlobalBranch] = useState(['admin', 'super_admin'].includes(user?.role) ? 'all' : (user?.branch || 'all'));
 
   const canRecordDispatchReturns = ['stock', 'stock_manager', 'admin', 'superadmin', 'super_admin', 'gm', 'general_manager'].includes((user?.role || '').toLowerCase());
@@ -1593,6 +1598,13 @@ function StockPortalContent() {
     { id: 'staffServices', label: 'Staff Services', icon: '👤' },
     { id: 'messages', label: 'My Messages', icon: '📨' },
   ];
+  const activeTab = stockView(viewParams, tabs.map(tab => tab.id));
+  const setActiveTab = (id) => setViewParams(previous => {
+    const next = new URLSearchParams(previous);
+    next.set('view', id);
+    next.delete('tab');
+    return next;
+  });
 
   const branchOptions = [
     { value: 'all', label: 'All branches' },
@@ -1693,7 +1705,8 @@ function AICommandCenter({ branch }) {
     quantity: inv.quantity, unit_price: inv.unit_price || getCIFPrice(inv.product_name || ''),
     location: br.branch_id,
   })));
-  const allBatches = [...filteredBatches, ...branchBatchesFlat];
+  const allBatches = [...filteredBatches, ...branchBatchesFlat.filter(filterBatch)];
+  const expirySnapshot=expiryWindows(allBatches,stockAsOfDate());
 
   const now = new Date();
   const thirtyFwd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
@@ -1702,8 +1715,8 @@ function AICommandCenter({ branch }) {
   const physicalSummary=stockOverviewLocation(data.companySnapshot,branch);
   const totalQty = Number(physicalSummary?.totalQtyUnits || 0);
   const totalValue = Number(physicalSummary?.totalValueDP || 0);
-  const expiredBatches = allBatches.filter(b => b.expiry_date && new Date(b.expiry_date) < now && effQty(b) > 0);
-  const expiringBatches = allBatches.filter(b => b.expiry_date && new Date(b.expiry_date) > now && new Date(b.expiry_date) <= thirtyFwd);
+  const expiredBatches = expirySnapshot.expired;
+  const expiringBatches = expirySnapshot.within30;
 
   const productTotals = {};
   allBatches.forEach(b => {
@@ -1733,15 +1746,15 @@ function AICommandCenter({ branch }) {
     const brBatches = brData ? (brData.inventory || []).map(inv => ({
       product_name: inv.product_name, quantity: inv.quantity, expiry_date: inv.expiry_date,
     })) : [];
-    const health = stockAI.getBranchHealth(brBatches);
+    const health = stockAI.getBranchHealth(brBatches,expirySnapshot.asOf);
     const totalStk = brData ? (brData.closing_qty || 0) : 0;
     const pendingReqs = data.transfers.filter(t => (t.to_location || '') === key && (t.status === 'pending' || t.status === 'requested')).length;
     return { name: br.name, key, health, totalStk, pendingReqs };
   });
 
   // ── Expiry Timeline ──────────────────────────────────────────
-  const expiry30 = filteredBatches.filter(b => effQty(b)>0 && b.expiry_date && new Date(b.expiry_date) >= now && new Date(b.expiry_date) <= ninetyFwd);
-  const expiry60 = filteredBatches.filter(b => effQty(b)>0 && b.expiry_date && new Date(b.expiry_date) > thirtyFwd && new Date(b.expiry_date) <= ninetyFwd);
+  const expiry30 = allBatches.filter(b => {const d=expiryDays(b.expiry_date,expirySnapshot.asOf);return effQty(b)>0 && d!==null && d>=0 && d<=expiryWarningDays;});
+  const expiry60 = allBatches.filter(b => {const d=expiryDays(b.expiry_date,expirySnapshot.asOf);return effQty(b)>0 && d!==null && d>30 && d<=expiryWarningDays;});
 
   const insightColors = { critical: '#dc2626', danger: '#dc2626', warning: '#d97706', info: '#2563eb', success: '#16a34a' };
   const insightBgs = { critical: '#fef2f2', danger: '#fef2f2', warning: '#fffbeb', info: '#eff6ff', success: '#f0fdf4' };
@@ -1839,13 +1852,13 @@ function AICommandCenter({ branch }) {
                 <div key={b.key} style={{ border: `2px solid ${b.health.color}30`, borderRadius: 12, padding: '12px 14px', background: b.health.score >= 80 ? '#f0fdf4' : b.health.score >= 60 ? '#fefce8' : '#fef2f2' }}>
                   <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#374151', marginBottom: 4 }}>📍 {b.name}</div>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                    <span style={{ fontSize: '1.8rem', fontWeight: 900, color: b.health.color }}>{b.health.score}</span>
+                    <span style={{ fontSize: '1.8rem', fontWeight: 900, color: b.health.color }}>{b.health.score ?? '—'}</span>
                     <span style={{ fontSize: '0.75rem', color: b.health.color, fontWeight: 700 }}>/100</span>
                   </div>
                   <div style={{ fontSize: '0.72rem', fontWeight: 800, color: b.health.color, marginBottom: 6 }}>{b.health.label}</div>
                   {/* Health bar */}
                   <div style={{ height: 5, background: '#e5e7eb', borderRadius: 99, overflow: 'hidden', marginBottom: 6 }}>
-                    <div style={{ height: '100%', width: `${b.health.score}%`, background: b.health.color, borderRadius: 99, transition: 'width 0.5s' }} />
+                    <div style={{ height: '100%', width: `${b.health.score ?? 0}%`, background: b.health.color, borderRadius: 99, transition: 'width 0.5s' }} />
                   </div>
                   <div style={{ fontSize: '0.68rem', color: '#64748b' }}>{b.totalStk} units {b.pendingReqs > 0 && <span style={{ color: '#2563eb', fontWeight: 700 }}>· {b.pendingReqs} pending</span>}</div>
                 </div>
@@ -9948,6 +9961,7 @@ function getReasonCfg(reason) {
 
 function WriteOffsTab({ branch }) {
   const { user } = useAuth();
+  const [loadError, setLoadError] = useState(null);
   const [movements, setMovements]   = useState([]);
   const [batches, setBatches]       = useState([]);
   const [loading, setLoading]       = useState(true);
@@ -9965,11 +9979,12 @@ function WriteOffsTab({ branch }) {
 
   const load = useCallback(() => {
     setLoading(true);
-    Promise.all([
-      api.stock.movements('limit=2000').then(d => Array.isArray(d) ? d : d.movements || []).catch(() => []),
-      api.stock.batches().then(d => Array.isArray(d) ? d : d.batches || []).catch(() => []),
+    setLoadError(null);
+    return Promise.all([
+      api.stock.movements('type=write_off&limit=1000').then(d => Array.isArray(d) ? d : d.movements || []),
+      api.stock.batches().then(d => Array.isArray(d) ? d : d.batches || []),
       branch && branch !== 'all'
-        ? api.get(`/branch/inventory?branch=${encodeURIComponent(branch)}`).then(d => Array.isArray(d) ? d : d.inventory || d.batches || []).catch(() => [])
+        ? api.get(`/branch/inventory?branch=${encodeURIComponent(branch)}`).then(d => Array.isArray(d) ? d : d.inventory || d.batches || [])
         : Promise.resolve([]),
     ]).then(([mvs, centralBts, branchBts]) => {
       setMovements(mvs);
@@ -9984,9 +9999,14 @@ function WriteOffsTab({ branch }) {
         status: b.status || 'in_stock',
       }));
       setBatches([...centralBts, ...branchMapped]);
+    }).catch(err => {
+      setMovements([]);
+      setBatches([]);
+      setLoadError(err.message || 'Unable to load write-offs');
+      setAlert({ type: 'error', msg: `Write-off data could not be loaded. Totals are unavailable, not zero. ${err.message || ''} Reload this view to retry.` });
     }).finally(() => setLoading(false));
   }, [branch]);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { setAlert(null); load(); }, [load]);
 
   const writeoffs = movements.filter(m => {
     const t = (m.movement_type || '').toLowerCase();
@@ -10055,9 +10075,9 @@ function WriteOffsTab({ branch }) {
   const handleDispose = async (id) => {
     setDisposing(d => ({ ...d, [id]: true }));
     try {
-      await api.stock.disposeWriteoff(id, { disposed_by: user?.full_name || user?.username });
-      setAlert({ type: 'success', msg: 'Item marked as disposed.' });
-      load();
+      const result = await api.stock.disposeWriteoff(id);
+      setAlert(disposalFeedback(result, 1));
+      await load();
     } catch (err) {
       setAlert({ type: 'error', msg: err.message || 'Failed to mark disposed' });
     } finally {
@@ -10070,9 +10090,9 @@ function WriteOffsTab({ branch }) {
     if (!ids.length) return;
     setDisposing(d => ({ ...d, [`group_${reason}`]: true }));
     try {
-      await api.stock.disposeAllWriteoffs(ids, { disposed_by: user?.full_name || user?.username });
-      setAlert({ type: 'success', msg: `All ${reason} items marked as disposed.` });
-      load();
+      const result = await api.stock.disposeAllWriteoffs(ids);
+      setAlert(disposalFeedback(result, ids.length));
+      await load();
     } catch (err) {
       setAlert({ type: 'error', msg: err.message || 'Failed to dispose group' });
     } finally {
@@ -10113,16 +10133,13 @@ function WriteOffsTab({ branch }) {
           created_by:        user?.full_name || user?.username,
           reference:         batchRef,
         });
-        if (sel && Number(it.quantity) >= getMaxQty(it)) {
-          await api.stock.updateBatch(sel.id, { status: 'written_off' });
-        }
+        // Approval owns stock deduction and batch state. Submitting a request
+        // must not prematurely hide a still-available physical batch.
       }
       const productList = validItems.map(it => `${Number(it.quantity)} × ${it.product_name}`).join(', ');
       setAlert({
         type: 'success',
-        msg: isRedistrib
-          ? `Redistribution recorded: ${productList} — stock removed from source, pending receipt at ${form.target_location}.`
-          : `Write-off recorded: ${productList} — ${validItems.length > 1 ? 'items' : 'item'} awaiting disposal confirmation.`,
+        msg: `Submitted: ${productList}. Review each record's approval status before confirming physical disposal. This submission is not confirmation of a destination receipt.`,
       });
       setForm({ reason: '', notes: '', location: '', target_location: '', items: [emptyItem()] });
       setShowForm(false);
@@ -10147,6 +10164,7 @@ function WriteOffsTab({ branch }) {
   const woShowLocationPicker = !form.items.every(it => getBatch(it)?.location) && branch === 'all';
 
   if (loading) return <LoadingSpinner />;
+  if (loadError) return <div role="alert"><Alert type="error">Write-off totals unavailable: {loadError}</Alert><Button onClick={load}>Retry loading write-offs</Button></div>;
 
   return (
     <div className="space-y-4">
@@ -10166,12 +10184,13 @@ function WriteOffsTab({ branch }) {
       </div>
 
       {/* Summary cards */}
+      <p className="text-sm text-gray-600">Scope: loaded write-off records for the selected location, capped at 1,000 records per source — not lifetime totals. Cards include every loaded status; the audit table below follows its own status/search filters. Pending and disposed counts are records, not units. CIF estimates use current list prices, not original batch costs.</p>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
           { label: 'Pending Disposal', value: pendingDisposal.length, color: '#b45309', bg: '#fffbeb', border: '#fde68a' },
           { label: 'Disposed', value: disposedItems.length, color: '#166534', bg: '#f0fdf4', border: '#bbf7d0' },
-          { label: 'Total Units Written Off', value: totalQty.toLocaleString(), color: '#9b1c1c', bg: '#fef2f2', border: '#fecaca' },
-          { label: 'CIF Value Lost', value: formatCurrency(totalCIF), color: '#b45309', bg: '#fffbeb', border: '#fde68a' },
+          { label: 'Units in loaded write-off records', value: totalQty.toLocaleString(), color: '#9b1c1c', bg: '#fef2f2', border: '#fecaca' },
+          { label: 'Current-list CIF estimate (not original loss)', value: formatCurrency(totalCIF), color: '#b45309', bg: '#fffbeb', border: '#fde68a' },
         ].map(s => (
           <div key={s.label} style={{ borderRadius: 10, padding: '12px 16px', background: s.bg, border: `1.5px solid ${s.border}` }}>
             <div style={{ fontSize: '1.4rem', fontWeight: 900, color: s.color }}>{s.value}</div>
@@ -10446,7 +10465,7 @@ function WriteOffsTab({ branch }) {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                 <thead>
                   <tr style={{ background: '#fef2f2' }}>
-                    {['Date', 'Product', 'Batch', 'Branch / Location', 'Reason', 'Qty', 'CIF Value', 'Status', 'Recorded By'].map(h => (
+                    {['Date / Movement ID', 'Product', 'Batch / Expiry', 'Branch / Location', 'Reason', 'Qty', 'Current-list CIF estimate', 'Status', 'Recorded By'].map(h => (
                       <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, color: '#7f1d1d', borderBottom: '1.5px solid #fecaca', whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
@@ -10461,9 +10480,9 @@ function WriteOffsTab({ branch }) {
                     const isPending  = m.disposal_status === 'pending_disposal';
                     return (
                       <tr key={m.id || i} style={{ background: i % 2 === 0 ? '#fff' : '#fafafa', borderBottom: '1px solid #f1f5f9', opacity: isDisposed ? 0.75 : 1 }}>
-                        <td style={{ padding: '8px 12px', whiteSpace: 'nowrap', color: '#374151' }}>{fmtDate(m.created_at)}</td>
+                        <td style={{ padding: '8px 12px', color: '#374151' }}>{fmtDate(m.created_at)}<div className="text-xs font-mono">{m.id || 'Missing movement ID'}</div><div className="text-xs">{m.reference_id || m.reference || ''}</div></td>
                         <td style={{ padding: '8px 12px', fontWeight: 600, color: '#111827' }}>{m.product_name || '—'}</td>
-                        <td style={{ padding: '8px 12px', color: '#6b7280', fontFamily: 'monospace', fontSize: '0.75rem' }}>{m.batch_no || '—'}</td>
+                        <td style={{ padding: '8px 12px', color: '#6b7280', fontFamily: 'monospace', fontSize: '0.75rem' }}>{m.batch_no || '—'}<div>Expiry: {fmtDate(m.expiry_date)}</div>{expiryReasonConflict(m) && <strong className="text-red-700">Review: expiry is after write-off date</strong>}</td>
                         <td style={{ padding: '8px 12px' }}><span style={{ padding: '2px 8px', borderRadius: 6, background: '#eff6ff', color: '#1d4ed8', fontSize: '0.75rem', fontWeight: 600 }}>{fmtLoc(m.source_location || m.location)}</span></td>
                         <td style={{ padding: '8px 12px' }}>
                           <span style={{ padding: '2px 8px', borderRadius: 6, background: cfg.bg, color: cfg.color, fontSize: '0.72rem', fontWeight: 700, border: `1px solid ${cfg.border}` }}>
@@ -10478,7 +10497,7 @@ function WriteOffsTab({ branch }) {
                               ✔ Disposed {m.disposed_by ? `by ${m.disposed_by}` : ''} {m.disposed_at ? `· ${fmtDate(m.disposed_at)}` : ''}
                             </span>
                           ) : m.disposal_status === 'dispose_off' ? (
-                            <span style={{ padding: '2px 8px', borderRadius: 9999, background: '#fef2f2', color: '#991b1b', fontSize: '0.72rem', fontWeight: 700, border: '1px solid #fecaca' }}>🗑️ Dispose Off (Expired)</span>
+                            <span style={{ padding: '2px 8px', borderRadius: 9999, background: '#fef2f2', color: '#991b1b', fontSize: '0.72rem', fontWeight: 700, border: '1px solid #fecaca' }}>Awaiting physical disposal</span>
                           ) : (m.disposal_status === 'returned_to_warehouse' || m.disposal_status === 'warehouse_stock_credited') ? (
                             <span style={{ padding: '2px 8px', borderRadius: 9999, background: '#f0fdf4', color: '#166534', fontSize: '0.72rem', fontWeight: 700, border: '1px solid #bbf7d0' }}>↩ Returned to Warehouse</span>
                           ) : isPending ? (
@@ -12175,9 +12194,9 @@ function RealtimeTab({ branch }) {
                       <div style={{ flex:1, minWidth:0 }}>
                         <div style={{ fontWeight:800, color:'#1e293b', fontSize:'0.78rem', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={prod}>{prod}</div>
                         <div style={{ fontSize:'0.7rem', color:'#64748b', marginTop:1, display:'flex', flexWrap:'wrap', gap:'3px 8px' }}>
-                          {src && <span><span style={{ color:locColor(srcType) }}>●</span> {fmtLoc(src)}</span>}
+                          {src && <span><span style={{ color:locColor(srcType) }}>●</span> {m.sourceLocationName || fmtLoc(src)}</span>}
                           {src && dst && <span style={{ color:'#cbd5e1' }}>→</span>}
-                          {dst && <span><span style={{ color:locColor(dstType) }}>●</span> {fmtLoc(dst)}</span>}
+                          {dst && <span><span style={{ color:locColor(dstType) }}>●</span> {m.destinationLocationName || fmtLoc(dst)}</span>}
                           {who && <span style={{ color:'#94a3b8' }}>· {who}</span>}
                         </div>
                         {m.reference_id && <div style={{ fontSize:'0.65rem', color:'#94a3b8', marginTop:1, fontFamily:'monospace' }}>{m.reference_id}</div>}

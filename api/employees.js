@@ -119,7 +119,7 @@ function normalizeEmployeeRow(row) {
   };
 }
 
-function buildEmployeeRecord(body, existing = {}) {
+export function buildEmployeeRecord(body, existing = {}) {
   const now = new Date().toISOString();
   const id = body.id || existing.id || generateEmployeeId('EMP');
   const employeeId =
@@ -143,7 +143,9 @@ function buildEmployeeRecord(body, existing = {}) {
   const basic = {
     id,
     employee_id: employeeId,
-    user_id: employeeId,
+    // Record ID, employee number and linked user are separate identity domains.
+    // Ordinary HR edits must not silently relink an existing employee.
+    user_id: existing.user_id ?? employeeId,
     full_name: body.full_name || body.name || body.fullName || existing.full_name || 'Team Member',
     role: body.role || existing.role || null,
     branch: body.branch || existing.branch || null,

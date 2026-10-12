@@ -14,3 +14,15 @@ already supplies compatible runtime dependencies.
 **How to apply:** Discover the current wrapper with `which chromium`, then pass
 that path as Playwright's `executablePath`. Check availability each session
 rather than treating an old path or browser revision as permanent.
+
+When a login form disappears or a locator times out, inspect main-frame navigation before blaming authentication.
+
+**Why:** First service-worker activation caused a reload between opening the staff login form and filling it during an isolated audit. Repeated selector changes did not address the underlying navigation race.
+
+**How to apply:** Record navigation/controller events during diagnosis. Do not disable service workers to make a genuine offline/reconnect audit pass.
+
+Offline replay verification must await the sync HTTP response and verify persisted transaction identity and balances, not merely an empty pending queue. Re-import queue helpers after navigation.
+
+**Why:** A queue can become empty before the database observation is synchronized, and a genuine service-worker reload clears window globals without losing the persisted queued sale. Both caused misleading audit failures.
+
+**How to apply:** Preserve failed evidence, capture response status/body, and test a repeat of the same offline identity without another deduction.

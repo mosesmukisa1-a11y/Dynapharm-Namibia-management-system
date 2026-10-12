@@ -20,6 +20,9 @@ function parseItems(raw) {
 }
 
 export default function DistributorPortal() {
+  const {user:portalUser}=useAuth();
+  const [membership,setMembership]=useState(null);
+  useEffect(()=>{let active=true;api.get('/member-eligibility').then(r=>{if(active)setMembership(r);}).catch(()=>{if(active)setMembership({eligible:false,reason:'Membership verification unavailable'});});return()=>{active=false;};},[portalUser?.id]);
   const [activeTab, setActiveTab] = useState('dashboard');
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
@@ -41,6 +44,10 @@ export default function DistributorPortal() {
 
   return (
     <div>
+      {membership && !membership.eligible && <div className="mb-4 rounded-lg border border-red-200 bg-white p-3 text-sm text-red-800">
+        Preview access only — {membership.reason}. Member purchases require an approved membership linked to this login.
+      </div>}
+      {membership?.eligible && <div className="mb-4 rounded-lg border border-red-200 bg-white p-3 text-sm">Approved membership: {membership.code}</div>}
       <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
       <div className="mt-6">
         {activeTab === 'dashboard' && <DashboardTab />}

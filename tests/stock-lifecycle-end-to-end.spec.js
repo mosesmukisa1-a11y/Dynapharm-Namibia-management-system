@@ -13,6 +13,7 @@ import approveRefund from '../api/stock/refund-requests.js';
 import controlled from '../api/stock/controlled-operations.js';
 import branchSummary from '../api/branch/stock-summary.js';
 import currentOverview from '../api/stock/current-overview.js';
+import costReport from '../api/stock/cost-report.js';
 import {buildBranchPhysicalStockReport} from '../client/src/lib/branchPhysicalStockReport.js';
 import {getCompanyStockSummary,getLocationStockSummary,getBranchSalesRevenue} from '../api/services/gmFinanceMisEngine.js';
 import {getStockCostProjection,getSalesCostPage} from '../api/services/stockCostReporting.js';
@@ -143,7 +144,15 @@ it('runs the requested 100-unit import-to-two-branches, sale, refund, damage and
   expect(success(await invoke(currentOverview,'GET',{},gm)).summary).toMatchObject({
     totalQtyUnits:94,totalValueCIF:188,totalValueDP:658,availableQty:93,quarantinedQty:1,valuationComplete:true});
   await inspection('segregated',damaged,'damaged','write_off');
+  const disposalQueue=(await query(`SELECT disposal_status,write_off_reason
+    FROM stock_movements WHERE product_name=$1 AND movement_type='write_off'
+    ORDER BY created_at DESC LIMIT 1`,[product])).rows[0];
+  expect(disposalQueue).toMatchObject({disposal_status:'pending_disposal',write_off_reason:'damaged'});
   await checkpoint('H. Write off the damaged unit',{warehouse:50,branchA:23,availableA:23,branchB:20,transit:0,damagedA:0,company:93});
+  const expenseReport=success(await invoke(costReport,'GET',{},stock,`/api/stock/cost-report?productName=${product}`));
+  expect(Number(expenseReport.summary.writeOffExpense)).toBe(2);
+  expect(Number(expenseReport.summary.grossProfitAfterReturns)).toBe(42);
+  expect(Number(expenseReport.summary.netSoldQuantity)).toBe(6);
   const valued=await getStockCostProjection({productName:product});
   expect(valued.every(row=>row.unitCIF===2)).toBe(true);
   expect(valued.reduce((n,row)=>n+row.qty*row.unitCIF,0)).toBe(186);

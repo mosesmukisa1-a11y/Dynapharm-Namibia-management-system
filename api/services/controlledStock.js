@@ -199,6 +199,15 @@ async function movement(client, batch, delta, operation, user, destination = nul
     unitCIF: batch.unit_cost, unitDP: batch.unit_dp,
     referenceType: operation.kind, referenceId: operation.id, createdBy: actor(user), notes: operation.reason,
   });
+  if (type === 'write_off') {
+    // This newly posted movement has already deducted the held unit. Queue
+    // physical disposal in the same transaction; disposal must not deduct again.
+    await client.query(
+      `UPDATE stock_movements SET disposal_status='pending_disposal',
+         write_off_reason=$2 WHERE id=$1`,
+      [result.movementId,batch.condition || operation.reason]
+    );
+  }
   for (const target of result.recomputeTargets) await recomputeInventoryBalanceTx(client, target);
   if (batch.batch_type === 'branch') await client.query(
     `INSERT INTO branch_inventory_movements

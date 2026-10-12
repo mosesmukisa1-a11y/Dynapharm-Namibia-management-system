@@ -160,8 +160,8 @@ function MaterialsTab({ isTrainer, onUpload }) {
                   </div>
                 </div>
               </div>
-              <Button size="sm" variant="secondary" className="w-full mt-3">
-                <Eye size={14} /> View Material
+              <Button size="sm" variant="secondary" className="w-full mt-3" disabled title="No document has been uploaded for this reference material">
+                <Eye size={14} /> Document not uploaded
               </Button>
             </CardBody>
           </Card>

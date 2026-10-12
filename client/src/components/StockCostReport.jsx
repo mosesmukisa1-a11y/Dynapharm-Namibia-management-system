@@ -45,7 +45,7 @@ export default function StockCostReport({ branchId: initialBranchId = '' }) {
       const link=document.createElement('a');link.href=url;link.download=result.filename;
       try{document.body.appendChild(link);link.click();}
       finally{link.remove();setTimeout(URL.revokeObjectURL.bind(URL,url),1000);}
-      setDownloadStatus(auditFormat.startsWith('financial_')?'Downloaded original-price sales and approved-return totals.':
+      setDownloadStatus(auditFormat==='stock_csv'?'Downloaded current physical stock; date filters apply to sales, not this snapshot.':auditFormat.startsWith('financial_')?'Downloaded original-price sales and approved-return totals.':
         `Downloaded evidence for ${result.metadata.saleCount} sales and ${result.metadata.sourceLayerCount} source layers.`);
     }catch(e){setError(e.message || 'Audit download failed.');}
     finally{setExporting(false);}
@@ -87,6 +87,7 @@ export default function StockCostReport({ branchId: initialBranchId = '' }) {
           <option value="json">JSON · exact decimal strings</option><option value="csv">CSV · spreadsheet</option>
            <option value="financial_json">Financial totals JSON · sales and returns</option>
            <option value="financial_csv">Financial totals CSV · sales and returns</option>
+           <option value="stock_csv">Current stock CSV · physical source layers</option>
         </select>
         <button type="button" onClick={downloadAudit} disabled={!report||!loadedFilters||loading||exporting} className="rounded-lg border border-rose-700 px-4 py-2 text-sm font-semibold text-rose-700 disabled:opacity-40">{exporting?'Preparing audit…':'Download sale audit'}</button>
         <span className="text-xs text-slate-500">Totals cover all matching records, not only this page. Sale-evidence exports are gross, before returns; financial-total exports include approved returns. Import CSV amounts as text to preserve precision.</span>
@@ -109,6 +110,9 @@ export default function StockCostReport({ branchId: initialBranchId = '' }) {
             ['Gross profit · before returns', summary.grossProfit, false, true],
             ['Approved customer refunds',summary.refunds],
             ['Net charged revenue',summary.netSalesRevenue],
+            ['Net sold units',summary.netSoldQuantity,true],
+            ['Write-off expense · known original cost',summary.writeOffExpense],
+            ['Write-off units missing original cost',summary.missingWriteOffCostQuantity,true],
             ['Returned original CIF cost',summary.returnedOriginalCost],
             ['Net cost of goods sold',summary.netCostOfGoodsSold],
             ['Gross profit · after returns',summary.grossProfitAfterReturns,false,true],

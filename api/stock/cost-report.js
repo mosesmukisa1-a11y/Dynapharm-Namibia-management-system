@@ -3,7 +3,7 @@ import { branchSearchTerms, normalizeBranchSlug } from '../_lib/branchUtils.js';
 import { getStockCostProjection, getSalesCostPage } from '../services/stockCostReporting.js';
 import { withTransaction } from '../db.js';
 import {getStockCostAudit} from '../services/stockCostAudit.js';
-import {getSalesReturnsSummary} from '../services/stockFinancialReports.js';
+import {getSalesReturnsSummary,getWriteOffExpenseSummary} from '../services/stockFinancialReports.js';
 import {validateBusinessDates} from '../services/businessDates.js';
 import {csvCell} from '../services/stockCostAudit.js';
 import {getSlowMovingStock} from '../services/slowMovingStock.js';
@@ -33,7 +33,7 @@ export default async function handler(req,res) {
       return res.status(403).json({success:false,error:'Select an authorized branch'});
     const aliases=branch ? branchSearchTerms(branch).map(b=>b.toLowerCase().trim()) : null;
     const audit=params.get('audit');
-    if(audit && !['csv','json','financial_csv','financial_json'].includes(audit))
+    if(audit && !['csv','json','financial_csv','financial_json','stock_csv'].includes(audit))
       return res.status(422).json({success:false,error:'Unsupported audit format'});
     const size=Number(params.get('pageSize') || 100),stockPage=Number(params.get('stockPage') || 1),salesPage=Number(params.get('salesPage') || 1);
     if(!Number.isSafeInteger(size)||size<1||size>500 ||
@@ -45,6 +45,14 @@ export default async function handler(req,res) {
     await client.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY');
     const read=async(sql,values)=>(await client.query(sql,values)).rows;
     const financial=await getSalesReturnsSummary({aliases:locations,productName,from:params.get('from'),to:params.get('to')},read);
+    Object.assign(financial,await getWriteOffExpenseSummary({aliases:locations,productName,from:params.get('from'),to:params.get('to')},read));
+    if(audit==='stock_csv'){
+      const rows=await getStockCostProjection({locations,productName},read);
+      const columns=['id','location','locationType','productName','batchNo','expiryDate','condition','qty','availableQty','reservedQty','quarantinedQty','expiredQty'];
+      return {success:true,filename:'current-stock.csv',mimeType:'text/csv;charset=utf-8',
+        content:columns.join(',')+'\r\n'+rows.map(r=>columns.map(k=>csvCell(r[k]??'')).join(',')).join('\r\n'),
+        metadata:{basis:'Current physical source layers; not a historical stock snapshot',stockRows:rows.length,saleCount:0,sourceLayerCount:rows.length}};
+    }
     if(audit?.startsWith('financial_')){
       const format=audit.slice('financial_'.length);
       return {success:true,filename:`sales-returns-reconciliation.${format}`,

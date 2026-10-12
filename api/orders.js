@@ -2,6 +2,7 @@ import { applyAuthCors, getBranchScope } from './_lib/auth.js';
 import { getMany, getOne, insert, update, query, withTransaction, publishRealtimeEvent } from './db.js';
 import { postActivityRecord, generateBatId } from './_lib/activityCapture.js';
 import { recomputeLocationBalances } from './services/stockEngine.js';
+import {requireMemberWrite} from './services/memberEligibility.js';
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
@@ -83,6 +84,10 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'POST') {
+      if(['member','distributor'].includes(String(req.body?.customer_type || '').toLowerCase())){
+        try{await requireMemberWrite(req.user,req.body.distributor_code);}
+        catch(error){return res.status(error.statusCode || 503).json({error:error.statusCode?error.message:'Membership verification unavailable'});}
+      }
       const {
         customer_name,
         customer_email,

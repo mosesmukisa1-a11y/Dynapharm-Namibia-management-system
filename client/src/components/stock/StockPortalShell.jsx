@@ -7,9 +7,12 @@ const groups = [
   { title: 'Overview', ids: ['aiDashboard', 'overview', 'realtime'] },
   { title: 'Inventory', ids: ['countryStock', 'warehouses', 'branchStock', 'inventory', 'batch', 'fieldStock', 'barcode'] },
   { title: 'Transfers', ids: ['distribution', 'orders', 'transfers', 'dispatchReturns'] },
-  { title: 'Approvals', ids: ['refundApprovals', 'adjustments', 'controlledOperations', 'writeOffs'] },
-  { title: 'Reports', ids: ['stockReports', 'costReport', 'valuation', 'reorder'] },
-  { title: 'Administration', ids: ['supplierImport', 'alertSettings', 'campaigns', 'staffServices', 'messages'] },
+  { title: 'Approvals', ids: ['refundApprovals', 'adjustments', 'controlledOperations'] },
+  { title: 'Adjustments & Disposal', ids: ['writeOffs'] },
+  { title: 'Stock Intake', ids: ['supplierImport'] },
+  { title: 'Reports', ids: ['stockReports', 'costReport', 'valuation'] },
+  { title: 'Replenishment', ids: ['reorder'] },
+  { title: 'Administration', ids: ['alertSettings', 'campaigns', 'staffServices', 'messages'] },
 ];
 const icons = {
   aiDashboard: LayoutDashboard, overview: BarChart3, realtime: Activity,

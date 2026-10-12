@@ -6,11 +6,17 @@ import {
   getDateRange, getCompanyStockSummary, getAllBranchesSalesRevenue, getStockAlerts, getWriteOffs,
 } from '../services/gmFinanceMisEngine.js';
 import { getMany, getOne } from '../db.js';
+import {getSalesReturnsSummary} from '../services/stockFinancialReports.js';
+import {COMPANY_REPORT_ROLES} from '../services/dailySales.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ success: false, error: 'Method not allowed' });
+  if(!req.user)return res.status(401).json({success:false,error:'Authentication required'});
+  if(!COMPANY_REPORT_ROLES.has(String(req.user.role).toLowerCase()))
+    return res.status(403).json({success:false,error:'Company reporting access required'});
 
   const { start, end } = getDateRange(req.query);
+  const originalEvidence=await getSalesReturnsSummary({from:start,to:end});
 
   const [stock, salesRevenue, alerts, branchCount, distributorCount, productCount,
     clientRegs, distRegs, writeOffRows, salesUnitsRow] = await Promise.all([
@@ -116,6 +122,10 @@ export default async function handler(req, res) {
       expiringCount: alerts.expiring.length,
     },
     finance: {
+      originalEvidence,
+      estimateBasis:'DP revenue minus movement CIF with current price-list fallback; not matched-original charged-revenue gross profit',
+      estimatedCifCostOfSales:cifCostOfSales,
+      estimatedDpMargin:grossProfit,
       cifCostOfSales,
       grossProfit,
       totalDeposits,

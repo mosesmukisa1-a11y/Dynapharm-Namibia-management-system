@@ -20,3 +20,5 @@
 - [Stock audit status](stock-audit-status.md) — keep overall PARTIALLY VERIFIED until each audit area has evidence; discrepancies are not proof of missing goods.
 - [Balance snapshot locks](balance-snapshot-locks.md) — wait before starting repeatable-read; coordinate embedded writers and safely release pooled session locks.
 - [Public website policy](public-site-policy.md) — red-and-white public branding; evidence-based claims and counts; retain unconfirmed outlets without declaring them active.
+- [Stock navigation audit](stock-navigation-audit.md) — evidence before removing workflows; red/white stock branding; disposal state is not an expiry reason.
+- [Cross-portal bases](cross-portal-bases.md) — reconcile equal scopes/bases; preserve original-evidence gaps rather than forcing DP, cash and estimated profit to agree.

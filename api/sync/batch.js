@@ -1,4 +1,5 @@
-import { applyAuthCors } from '../_lib/auth.js';
+import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
+import {branchSearchTerms} from '../_lib/branchUtils.js';
 import { query, getOne } from '../db.js';
 
 async function parseJsonBody(req) {
@@ -43,8 +44,12 @@ export default async function handler(req, res) {
       }
 
       if (type === 'walkin_sale' || url?.includes('/branch/walkin-sales')) {
-        const dup = await getOne('SELECT id FROM branch_walkin_sales WHERE offline_id = $1', [offlineId]);
+        const dup = await getOne('SELECT id,branch_id FROM branch_walkin_sales WHERE offline_id = $1', [offlineId]);
         if (dup) {
+          const scope=getBranchScope(req.user);
+          if(scope.enforced && !scope.branches.some(b=>branchSearchTerms(b).some(t=>branchSearchTerms(dup.branch_id).includes(t)))){
+            results.push({offlineId,success:false,status:403,error:'Branch access denied'});continue;
+          }
           results.push({ offlineId, success: true, duplicate: true, recordId: dup.id });
           continue;
         }
@@ -53,7 +58,7 @@ export default async function handler(req, res) {
         const mockRes = buildMockRes();
         await wHandler(mockReq, mockRes);
         const respData = mockRes.getData();
-        results.push({ offlineId, success: respData?.success ?? true, duplicate: !!respData?.duplicate, recordId: respData?.sale?.id || null, data: respData });
+        results.push({ offlineId, success: mockRes.getStatus()<400 && respData?.success!==false, status:mockRes.getStatus(), error:respData?.error, duplicate: !!respData?.duplicate, recordId: respData?.sale?.id || null, data: respData });
 
       } else if (type === 'expense' || url?.includes('/branch/expenses')) {
         const dup = await getOne('SELECT id FROM branch_expenses WHERE offline_id = $1', [offlineId]);
@@ -66,7 +71,7 @@ export default async function handler(req, res) {
         const mockRes = buildMockRes();
         await eHandler(mockReq, mockRes);
         const respData = mockRes.getData();
-        results.push({ offlineId, success: respData?.success ?? true, duplicate: !!respData?.duplicate, recordId: respData?.expense?.id || null, data: respData });
+        results.push({ offlineId, success: mockRes.getStatus()<400 && respData?.success!==false, status:mockRes.getStatus(), error:respData?.error, duplicate: !!respData?.duplicate, recordId: respData?.expense?.id || null, data: respData });
 
       } else {
         results.push({ offlineId, success: false, error: `Unknown operation type: ${type}` });

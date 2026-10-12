@@ -24,7 +24,14 @@ if ('serviceWorker' in navigator) {
     // once so the user actually sees the new build instead of having to
     // manually refresh.
     let hasReloaded = false;
+    let wasControlled = Boolean(navigator.serviceWorker.controller);
     navigator.serviceWorker.addEventListener('controllerchange', () => {
+      // First installation has no older controlled build to replace. Reloading
+      // then discards freshly opened login dialogs and in-progress staff forms.
+      if (!wasControlled) {
+        wasControlled = Boolean(navigator.serviceWorker.controller);
+        return;
+      }
       if (hasReloaded) return;
       hasReloaded = true;
       window.location.reload();

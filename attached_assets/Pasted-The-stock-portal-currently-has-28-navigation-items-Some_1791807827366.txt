@@ -1,0 +1,205 @@
+The stock portal currently has **28 navigation items**. Some are candidates for consolidation, but functionality must be tested before deciding what to remove.
+
+I could read the navigation and Write-Offs page; browser control is blocked by a connection error, so I haven’t tested every tab.
+
+The Write-Offs page already shows issues worth investigating:
+
+- “All Expired items marked as disposed” appears alongside **31 pending disposal** and **0 disposed**.
+- Some records marked “expired” show expiry dates in **2027–2030**, later than their write-off dates.
+- Several entries look repeated. Record IDs are needed to distinguish duplicate display from duplicate transactions.
+- Summary totals and the visible audit table need reconciliation, with their reporting scope clearly labelled.
+
+Copy this complete audit instruction into Replit:
+
+```text
+Audit ALL tabs in the Dynapharm Namibia stock portal. Verify that each
+functions correctly, serves a necessary purpose, and does not duplicate
+another feature. Then fix defects and simplify navigation based on evidence.
+
+Keep Dynapharm Namibia’s RED AND WHITE theme.
+
+AUDIT SCOPE: ALL 28 CURRENT NAVIGATION ITEMS
+
+Overview:
+1. Command Center
+2. Overview
+3. Realtime
+
+Inventory:
+4. Country Stock
+5. Warehouses
+6. Branch Stock
+7. Inventory
+8. Batches
+9. Field Stock
+10. Barcode
+
+Transfers:
+11. Distribution
+12. Warehouse dispatch
+13. Branch transfers
+14. Dispatch returns
+
+Approvals:
+15. Refund Approvals
+16. Edit Requests
+17. Counts & returns
+18. Write-offs
+
+Reports:
+19. Stock Reports
+20. Cost Report
+21. Valuation
+22. Reorder
+
+Administration:
+23. Supplier Import
+24. Alert Settings
+25. Campaigns
+26. Staff Services
+27. My Messages
+
+Also audit any existing Orders feature, hidden tab, legacy route, or
+navigation item discovered in the code. The visible list above contains
+27 named items; reconcile the actual inventory rather than assuming
+a fixed total.
+
+FOR EACH TAB
+Document:
+- Purpose and intended users
+- Route/component and APIs used
+- Data source
+- Read and write actions
+- Required permissions
+- Dependencies on other modules
+- Overlap with other tabs
+- Test results
+- Recommendation: KEEP, MERGE, MOVE, FIX, or REMOVE
+- Evidence and reason for the recommendation
+
+FUNCTIONAL CHECKS
+Verify:
+- Navigation opens the correct view and highlights the active item.
+- Direct links, refresh, and browser back/forward work as intended.
+- Data loads without console or API errors.
+- Location filters apply consistently to tables, totals, and exports.
+- Search, sorting, pagination, and date filters work.
+- Detail views and linked records open correctly.
+- Forms validate input on both client and server.
+- Success messages reflect confirmed server results.
+- Failures preserve input and explain how to recover.
+- Refreshing or double-clicking cannot duplicate an operation.
+- Role and location restrictions are enforced on the server.
+- Loading, empty, error, and disconnected states are usable.
+- Desktop, mobile, and keyboard navigation work.
+- Printing and exports respect filters and permissions.
+
+Test stock-changing actions in an isolated test environment with fixtures.
+Do not create transfers, approve refunds, write off stock, or confirm
+physical disposal in production merely to test functionality.
+Mark checks that cannot be executed as NOT VERIFIED.
+
+CONSOLIDATION CANDIDATES — VERIFY BEFORE IMPLEMENTING
+
+1. Command Center + Overview + Realtime
+Consider one “Overview” page with:
+- Stock summary
+- Needs-action queue
+- Alerts
+- Recent activity
+Retain a separate specialist view only if it provides a distinct workflow.
+
+2. Country Stock + Warehouses + Branch Stock + Inventory + Field Stock
+Consider one “Stock” workspace with location-type and location filters.
+Preserve unique warehouse, branch, and field-stock workflows as subviews.
+Avoid forcing different permissions or operations into an unsuitable table.
+
+3. Batches + Barcode
+Consider contextual tools within Stock or Product Details.
+Keep dedicated batch or barcode workspaces if bulk tasks justify them.
+
+4. Distribution + Warehouse dispatch + Branch transfers
+Consider one “Transfers” workspace with transfer-type filters and a
+shared history/detail interface.
+Preserve each transfer type’s approval and receipt rules.
+
+5. Dispatch returns + Counts & returns
+Compare their actual workflows.
+Consolidate overlapping returns functionality.
+Keep stock counting distinct from returns even if they share a parent menu.
+
+6. Refund Approvals + Edit Requests + other approval queues
+Consider one “Approvals” inbox with type filters.
+Preserve separate validation rules, permissions, and audit histories.
+
+7. Stock Reports + Cost Report + Valuation
+Consider one “Reports” workspace with named report subviews.
+Preserve distinct quantity, cost, and valuation calculations.
+
+8. Reorder + Alert Settings
+Move Reorder to “Replenishment” if it is an operational workflow.
+Put relevant alert settings within that workspace or Settings.
+Do not classify an actionable ordering tool only as a report.
+
+9. Campaigns + Staff Services + My Messages
+Check whether they belong to shared system modules.
+If so, move their entry points to the global navigation and remove
+duplicate stock-sidebar entries while retaining stock-specific links.
+
+10. Supplier Import
+Keep accessible under “Stock Intake” or “Imports” if it records incoming
+inventory. Verify whether its current Administration placement is suitable.
+
+11. Write-offs
+Preserve quarantine, approval, disposal confirmation, and audit records.
+Place it under “Adjustments & Disposal” if that better matches the workflow.
+
+REMOVAL RULES
+Remove redundant navigation entries when their complete functionality is
+available in the retained destination.
+Preserve old links with redirects or compatible view mappings.
+Do not delete historical records, database tables, APIs, or audit trails
+as part of menu cleanup.
+A broken or empty tab is not automatically unnecessary.
+An absence of usage analytics is not proof that a feature is unused.
+If business necessity is uncertain, document the specific question and
+continue independent audit and fixes.
+
+PRIORITY WRITE-OFF INVESTIGATION
+The observed page contains:
+- A disposal-success message alongside pending disposal records.
+- Entries marked expired whose displayed expiry dates are later than
+  the write-off date.
+- Repeated-looking product/batch/location entries.
+- Summary figures and audit-table totals with unclear reporting scopes.
+
+Trace these to source records and code.
+Check date parsing, expiry rules, reason selection, status transitions,
+toast persistence, duplicate joins, duplicate submissions, pagination,
+and location filters.
+Distinguish legitimate separate events from duplicated records.
+Clearly label lifetime totals versus filtered or pending totals.
+Confirm that write-off removes operational availability only once and
+physical disposal does not deduct stock a second time.
+Do not silently correct historical quantities or disposal status.
+
+IMPLEMENTATION
+First produce the audit matrix.
+Then fix confirmed defects and implement supported navigation merges.
+Use shared components where behavior is genuinely the same.
+Preserve existing business rules, permissions, and historical access.
+Keep a rollback path for navigation changes.
+
+DELIVERABLES
+Return:
+1. A complete tab audit matrix.
+2. Confirmed bugs with severity and reproduction steps.
+3. The final navigation structure.
+4. What was kept, merged, moved, fixed, or removed, and why.
+5. Tests run and their results.
+6. Anything not verified and the exact blocker.
+7. Specific unresolved business decisions.
+
+Do not claim a tab works solely because it renders.
+Verify its relevant workflow and resulting data.
+```
