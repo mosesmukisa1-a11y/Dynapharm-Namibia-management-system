@@ -2,6 +2,8 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { createHash } from 'node:crypto';
+import { pathToFileURL } from 'node:url';
 import { once } from 'node:events';
 import express from 'express';
 import multer from 'multer';
@@ -86,6 +88,27 @@ describe('SheetJS advisory remediation', () => {
         );
         expect(installed.integrity).toMatch(/^sha512-[A-Za-z0-9+/]{86}==$/);
       }
+    }
+  });
+
+  it('runs the exact patched SheetJS distribution verified against the official archive', () => {
+    // Independently verified against the official 0.20.3 tarball. Refresh these
+    // fingerprints from upstream when upgrading; version strings alone are not
+    // proof that the installed parser contains the upstream security fixes.
+    const require = createRequire(import.meta.url);
+    const packageUrl = pathToFileURL(require.resolve('xlsx'));
+    expect(rootLock.packages['node_modules/xlsx'].integrity).toBe(
+      'sha512-oLDq3jw7AcLqKWH2AhCpVTZl8mf6X2YReP+Neh0SJUzV/BdZYjth94tG5toiMB1PPrYtxOCfaoUCkvtuH+3AJA==',
+    );
+    for (const [file, expectedHash] of [
+      ['xlsx.js', 'fd159f1e2d694e12cd0709c1ec1b63c6e1f045d2c4ce857a346f9b965798cbfa'],
+      ['xlsx.mjs', '1a0fb062ee9781b13f6687371b202aaefc53b6ce55b530c027e01f9c087b77db'],
+      ['dist/xlsx.full.min.js', 'cc015130aa8521e7f088f88898eba949ccdcbfb38df0bd129b44b7273c3a6f41'],
+    ]) {
+      const actualHash = createHash('sha256')
+        .update(readFileSync(new URL(file, packageUrl)))
+        .digest('hex');
+      expect(actualHash, `${file} must match the verified upstream parser`).toBe(expectedHash);
     }
   });
 });

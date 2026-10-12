@@ -68,6 +68,25 @@ integrity entries for every locked SheetJS copy. Existing round-trip tests cover
 CSV, XLS and XLSX compatibility. These guards do not suppress scanner findings;
 OSV can still report the two unbounded npm advisories.
 
+### Distribution verification (2026-10-12)
+
+The current GitHub advisory pages explicitly list affected versions as
+`<0.19.3` and `<0.20.2`, respectively. The fresh Replit dependency audit still
+returns both findings with an unbounded OSV range beginning at `0`. The installed
+official `0.20.3` distribution is outside both actual affected ranges.
+
+Independently streamed the official tarball and confirmed its SHA-512 matches
+the committed lockfile. Its CommonJS parser (`xlsx.js`), ESM parser (`xlsx.mjs`),
+and full browser bundle (`dist/xlsx.full.min.js`) also match the installed files
+byte-for-byte by SHA-256. The security regression suite now checks those
+fingerprints offline, in addition to version floors and CSV/XLS/XLSX round trips.
+Refresh the fingerprints from the official archive when upgrading SheetJS.
+
+No package change is needed to fix these already-remediated CVEs, and no
+scanner exclusions, dependency aliases, or package renaming were introduced.
+The two scanner warnings remain visible; this verification does not claim a
+clean Replit dependency audit.
+
 ## Verification
 
 - `npm audit` and `npm audit --prefix realtime-gateway`: no vulnerabilities.
