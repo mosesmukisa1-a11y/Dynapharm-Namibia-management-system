@@ -11,6 +11,12 @@ Retrospective outreach, paper and outage records must not invent appointments, c
 
 The user corrected the scope: “the only change I asked for is the front desk to add off-system prescription forms; the original prescription order was fine.”
 
+Admin must also be able to file and view these forms while using the existing Front Desk portal.
+
+**Why:** The user uses an Admin login for Front Desk registration; accepting registration but rejecting that same client's history breaks the intended workflow.
+
+**How to apply:** Preserve the real Admin session actor and existing cross-branch Admin permissions, scoped to a selected persisted client. Do not infer extra permissions for unrelated roles from their ability to open a portal.
+
 **Why:** The earlier expansion into prescription authoring and live dispensing changed a workflow the user wanted to retain.
 
 **How to apply:** Never create orders, payments, BV/profit, reservations or stock deductions through this profile. Leave original ordering, pricing, membership, payment and dispensing behavior unchanged. Do not delete earlier evidence when narrowing scope.

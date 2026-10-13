@@ -55,7 +55,7 @@ function Attachments({ items, clientId }) {
 /** Filing existing off-system forms only. Original portal ordering remains separate. */
 export default function ClientHistory({ clientId, onBack, onClientUpdated }) {
   const { user } = useAuth();
-  const canFile = user?.role === 'frontdesk';
+  const canFile = ['frontdesk','admin'].includes(user?.role);
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');

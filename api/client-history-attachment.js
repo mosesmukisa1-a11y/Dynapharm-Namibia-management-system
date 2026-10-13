@@ -1,14 +1,14 @@
 import {randomUUID} from 'node:crypto';
 import multer from 'multer';
 import {getOne,insert} from './db.js';
-import {historyAccess,deny} from './services/clientHistoryAccess.js';
+import {historyAccess,historyRoles,canFileHistory,deny} from './services/clientHistoryAccess.js';
 
 const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:5*1024*1024},
   fileFilter:(_req,file,cb)=>cb(null,['application/pdf','image/png','image/jpeg'].includes(file.mimetype))}).single('file');
 export default async function handler(req,res){
  try{
   if(!req.user)deny('Authentication required',401);
-  if(!['frontdesk','consultant'].includes(req.user.role))deny('Client history access denied');
+  if(!historyRoles.includes(req.user.role))deny('Client history access denied');
   const params=new URL(req.url,'http://local').searchParams;
   const client=await getOne('SELECT id,branch FROM clients WHERE id=$1',[params.get('clientId')]);
   if(!client)deny('Client not found',404);
@@ -18,7 +18,7 @@ export default async function handler(req,res){
   const available=process.env.CLIENT_HISTORY_PRIVATE_ATTACHMENTS_VERIFIED==='true'&&
     !!process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID&&process.env.STOCK_AUDIT_ISOLATED!=='1';
   if(req.method==='GET'&&params.get('capabilities')==='true')return res.json({available});
-  if(req.method==='POST'&&req.user.role!=='frontdesk')deny('Only Front Desk may attach a source form');
+  if(req.method==='POST'&&!canFileHistory(req.user))deny('Only Front Desk or Admin may attach a source form');
   if(!['GET','POST'].includes(req.method))return res.status(405).json({error:'Method not allowed'});
   if(!available)deny('Private attachments unavailable here; use manual transcription',503);
   const {Client}=await import('@replit/object-storage');

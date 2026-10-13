@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {getOne,getMany,query,insert} from './db.js';
 import {atomicStockRequest} from './_lib/atomicStockRequest.js';
-import {historyAccess,deny} from './services/clientHistoryAccess.js';
+import {historyAccess,historyRoles,canFileHistory,deny} from './services/clientHistoryAccess.js';
 
 function text(value,max=10000){return String(value||'').trim().slice(0,max);}
 function date(value){
@@ -44,7 +44,7 @@ async function handler(req,res){
   if(!actor)deny('Session actor is required',401);
   const body=req.body||{},params=new URL(req.url,'http://local').searchParams;
   const clientId=req.method==='GET'?params.get('clientId'):body.clientId;
-  if(!['frontdesk','consultant'].includes(req.user.role))deny('Client history access denied');
+  if(!historyRoles.includes(req.user.role))deny('Client history access denied');
   const client=await getOne('SELECT * FROM clients WHERE id=$1',[clientId]);
   if(!client)deny('Client not found',404);
   historyAccess(req.user,client.branch);
@@ -61,7 +61,7 @@ async function handler(req,res){
     return res.json({client,encounters,appointments:[],reports:[]});
   }
   if(req.method!=='POST')return res.status(405).json({error:'Method not allowed'});
-  if(req.user.role!=='frontdesk')deny('Only Front Desk may file or amend an off-system form');
+  if(!canFileHistory(req.user))deny('Only Front Desk or Admin may file or amend an off-system form');
   // Check before replay: old operation responses must never re-enable removed actions.
   if(!['create','amend'].includes(body.action))deny('Only off-system form filing and amendments are supported',400);
   if(!body.operationId||! /^[\w-]{8,100}$/.test(body.operationId))deny('A stable operation ID is required',400);

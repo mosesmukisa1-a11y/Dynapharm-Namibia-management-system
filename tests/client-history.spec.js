@@ -103,3 +103,14 @@ it('registers email-free shared clients with session-attributed idempotent retry
  expect(retry.body.client.id).toBe(created.body.client.id);
  expect((await invoke(clients,'POST',{...body,full_name:'Different'},fd,'/api/clients')).status).toBe(409);
 });
+it('allows actual admin role to file/read/amend using client scope and session actor without stock or financial writes',async()=>{
+ const admin={sub:'CH-ADMIN',role:'admin'},before=await balances();
+ const result=await post({...source,branch:'swakopmund',captured_by:'forged'},admin);
+ expect(result.status,JSON.stringify(result.body)).toBe(200);
+ const record=result.body.encounter;
+ expect(record.branch).toBe('townshop');expect(record.captured_by).toBe(admin.sub);
+ expect((await invoke(handler,'GET',null,admin,'/api/client-history?clientId=CH-CLIENT')).status).toBe(200);
+ expect((await post({...source,action:'amend',encounterId:record.id,version:record.version,reason:'Admin transcription correction'},admin)).status).toBe(200);
+ expect((await invoke(attachment,'GET',null,admin,'/api/client-history-attachment?clientId=CH-CLIENT&capabilities=true')).status).toBe(200);
+ expect(await balances()).toEqual(before);
+});
