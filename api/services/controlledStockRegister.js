@@ -44,7 +44,7 @@ export async function readControlledStockRegister(client, user, input, { fail, p
   if (input.operation_id) {
     const operation = (await client.query(`SELECT o.* FROM stock_control_operations o
       WHERE o.id=$3 AND (${operationScope})`, [...values.slice(0,2), String(input.operation_id)])).rows[0];
-    if (!operation) fail('Operation not found', 404);
+    if (!operation || operation.kind==='branch_clearance') fail('Operation not found; use the dedicated GM clearance view', 404);
     const credits = (await client.query('SELECT * FROM supplier_return_credits WHERE operation_id=$1 ORDER BY supplier_import_id', [operation.id])).rows;
     const financial_entries = (await client.query('SELECT * FROM stock_control_financial_entries WHERE operation_id=$1 ORDER BY created_at,id', [operation.id])).rows;
     return { operation, credits, financial_entries };
@@ -118,7 +118,7 @@ export async function readControlledStockRegister(client, user, input, { fail, p
     const search = String(input.operation_search || '').trim().slice(0,200);
     const status = String(input.operation_status || '');
     if (status && !operationStatuses.includes(status)) fail('Unknown operation status');
-    const where = `(${operationScope})
+    const where = `(${operationScope}) AND o.kind<>'branch_clearance'
       AND (cardinality($3::text[])=0 OR EXISTS (SELECT 1 FROM jsonb_array_elements(o.lines) l
         WHERE ${sqlLocation("l->'snapshot'->>'location'")}=ANY($3::text[])))
       AND ($4='' OR o.status=$4)

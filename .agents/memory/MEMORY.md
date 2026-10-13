@@ -23,3 +23,4 @@
 - [Stock navigation audit](stock-navigation-audit.md) — evidence before removing workflows; red/white stock branding; disposal state is not an expiry reason.
 - [Cross-portal bases](cross-portal-bases.md) — reconcile equal scopes/bases; preserve original-evidence gaps rather than forcing DP, cash and estimated profit to agree.
 - [Client history safety](client-history-safety.md) — captured-source history is not clinical approval or a second stock/accounting posting; test real session and HTTP contracts.
+- [Bulk stock maintenance](bulk-stock-maintenance.md) — operator execution, exact scope freezing, stale staff authority and safe audit-resource cleanup.

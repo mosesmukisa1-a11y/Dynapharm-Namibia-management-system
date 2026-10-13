@@ -15,6 +15,7 @@ import StockCostReport from '../../components/StockCostReport';
 import HistoricalRefundReview from '../../components/HistoricalRefundEvidence';
 import StaffMessagesTab from '../../components/StaffMessagesTab';
 import ControlledStockOperations from '../../components/ControlledStockOperations';
+import BranchStockClearance from '../../components/BranchStockClearance';
 import { parsePriceListText, businessToday } from '../../../../shared/price-list-import.js';
 
 export default function GMPortal() {
@@ -307,6 +308,7 @@ export function StockAdjustmentsTab({ onCountChange }) {
 
   return (
     <div className="space-y-4">
+      <BranchStockClearance />
       {message && <Alert type={message.type} className="mb-4">{message.text}</Alert>}
 
       <div style={{ background: 'linear-gradient(135deg,#c41e3a,#8b0000)', borderRadius: 14, padding: '16px 20px', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>

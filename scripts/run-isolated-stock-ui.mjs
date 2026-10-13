@@ -16,8 +16,9 @@ const lifecycleAudit=process.argv.includes('--lifecycle');
 const continuation=process.argv.includes('--continuation');
 const release=process.argv.includes('--release-audit');
 const clientHistory=process.argv.includes('--client-history');
-const apiPort=clientHistory?3007:release?3006:continuation?3005:lifecycleAudit?3004:navigationAudit?3003:3002;
-const uiPort=clientHistory?5178:release?5177:continuation?5176:lifecycleAudit?5175:navigationAudit?5174:5173;
+const branchClearance=process.argv.includes('--branch-clearance');
+const apiPort=branchClearance?3008:clientHistory?3007:release?3006:continuation?3005:lifecycleAudit?3004:navigationAudit?3003:3002;
+const uiPort=branchClearance?5179:clientHistory?5178:release?5177:continuation?5176:lifecycleAudit?5175:navigationAudit?5174:5173;
 const env={...process.env,DATABASE_URL:isolated.toString(),STOCK_AUDIT_ISOLATED:'1',
   STOCK_AUDIT_DATABASE:name,STOCK_AUDIT_UI_FIXTURE:'1',NODE_ENV:'test',REPLIT_DEPLOYMENT:'',
   AUTH_SECRET:auditAuthKey,JWT_SECRET:auditAuthKey,SESSION_SECRET:auditAuthKey,
@@ -25,7 +26,7 @@ const env={...process.env,DATABASE_URL:isolated.toString(),STOCK_AUDIT_ISOLATED:
 assertIsolatedTestDatabase(env);
 const admin=new pg.Pool({connectionString:source.toString(),max:1});
 let target,backend,frontend,created=false,cleaning=false;
-const base=clientHistory?'generated-artifacts/client-history':release?'generated-artifacts/stock-release-verification':continuation?'generated-artifacts/stock-continuation-stages':lifecycleAudit?'generated-artifacts/stock-lifecycle-stages':navigationAudit?'generated-artifacts/stock-navigation-audit':'generated-artifacts/stock-ui-verification';
+const base=branchClearance?'generated-artifacts/branch-stock-clearance/ui':clientHistory?'generated-artifacts/client-history':release?'generated-artifacts/stock-release-verification':continuation?'generated-artifacts/stock-continuation-stages':lifecycleAudit?'generated-artifacts/stock-lifecycle-stages':navigationAudit?'generated-artifacts/stock-navigation-audit':'generated-artifacts/stock-ui-verification';
 const emptyFixture=process.argv.includes('--empty');
 const clean=async()=>{
   if(cleaning)return;cleaning=true;

@@ -21,6 +21,7 @@ export const databaseSuites = [
   'tests/client-history.spec.js',
   'tests/checkup-clients.spec.js',
   'tests/gm-decisions.spec.js',
+  'tests/branch-stock-clearance.spec.js',
   'tests/offline-failure.spec.js',
   'tests/member-preview.spec.js',
   'tests/reorder-evidence.spec.js',

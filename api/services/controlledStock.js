@@ -344,6 +344,7 @@ export async function updateOperation(user, body) {
   return withTransaction(async client => {
     const op = (await client.query('SELECT * FROM stock_control_operations WHERE id=$1 FOR UPDATE',[body.id])).rows[0];
     if (!op) fail('Operation not found',404);
+    if (op.kind === 'branch_clearance') fail('Branch clearance requires the dedicated authenticated GM confirmation action',403);
     for (const l of op.lines) scoped(user,l.snapshot.location,l.snapshot.source_type || l.snapshot.batch_type);
     if (action === 'submit' || action === 'cancel') {
       if (op.status !== 'draft') fail('Only draft counts can be submitted or cancelled',409);

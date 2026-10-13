@@ -3,6 +3,7 @@ import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 vi.mock('../client/src/lib/api', () => ({ api: { get: vi.fn(), post: vi.fn(), patch: vi.fn() } }));
+vi.mock('../client/src/components/BranchStockClearance', () => ({ default: () => null }));
 import { api } from '../client/src/lib/api';
 import { StockAdjustmentsTab } from '../client/src/pages/portals/GMPortal';
 

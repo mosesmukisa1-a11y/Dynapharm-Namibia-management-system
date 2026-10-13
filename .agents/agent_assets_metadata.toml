@@ -364,3 +364,17 @@ mtime_ms = 1791889179423
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/feffb7f0-4864-4ae6-b22c-5bc8957ec539/eae40fc6-4cef-4d51-884c-6ec2ff1dfb0d"
 storage_version_token = "1791889303884966"
 content_type = "text/html"
+
+[[outputs]]
+id = "snFdxbyEdFqqqMTgZzpo0"
+uri = "file://generated-artifacts/branch-stock-clearance/implementation-report.html"
+type = "html"
+title = "GM branch stock clearance — review report"
+description = "How the GM clearance works, safeguards, isolated test evidence, exact commands and release checks. No live stock was changed."
+logical_id = "11b349a0-c3a2-45f7-8174-87289d4bc26a"
+content_hash = "sha256:9436cd90a3be3a9df49b137bf3489d633e00828365e0fd72c47b836f61638563"
+size = 13509
+mtime_ms = 1791894906807
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/11b349a0-c3a2-45f7-8174-87289d4bc26a/1fb4f4b2-191f-4d5f-97f6-5bebf80b63af"
+storage_version_token = "1791894940254380"
+content_type = "text/html"
