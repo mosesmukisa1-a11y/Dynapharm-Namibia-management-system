@@ -706,7 +706,7 @@ app.post('/api/stock-adjustments', async (req, res) => {
   }
 });
 
-app.patch('/api/stock-adjustments/:id/approve', atomicStockRequest(async (req, res) => {
+const approveStockAdjustment = atomicStockRequest(async (req, res) => {
   try {
     const { query, getOne } = await import('./api/db.js');
     const { recomputeLocationBalances } = await import('./api/services/stockEngine.js');
@@ -788,6 +788,7 @@ app.patch('/api/stock-adjustments/:id/approve', atomicStockRequest(async (req, r
           const batchLoc = batchRow?.location || adj.location || target_type;
           const batchLocType = toLocType(target_type);
           const movId = 'MOV-ADJ-' + Date.now() + '-' + Math.floor(Math.random() * 9999);
+          if (qtyDelta !== 0) {
           try {
             await query(
               `INSERT INTO stock_movements
@@ -806,6 +807,7 @@ app.patch('/api/stock-adjustments/:id/approve', atomicStockRequest(async (req, r
             );
           } catch (movErr) {
             console.warn('stock_movements insert skipped:', movErr.message);
+          }
           }
         } else {
           await query(`UPDATE stock_batches SET ${dbCol} = $1, updated_at = NOW() WHERE id = $2`, [new_value, target_id]);
@@ -875,9 +877,10 @@ app.patch('/api/stock-adjustments/:id/approve', atomicStockRequest(async (req, r
     console.error('stock-adjustments approve:', err);
     res.status(500).json({ error: err.message });
   }
-}));
+});
+app.patch('/api/stock-adjustments/:id/approve', approveStockAdjustment);
 
-app.patch('/api/stock-adjustments/:id/reject', atomicStockRequest(async (req, res) => {
+const rejectStockAdjustment = atomicStockRequest(async (req, res) => {
   try {
     const { query } = await import('./api/db.js');
     const adjId = req.params.id;
@@ -904,6 +907,43 @@ app.patch('/api/stock-adjustments/:id/reject', atomicStockRequest(async (req, re
     console.error('stock-adjustments reject:', err);
     res.status(500).json({ error: err.message });
   }
+});
+app.patch('/api/stock-adjustments/:id/reject', rejectStockAdjustment);
+
+// One confirmed bulk decision is one transaction. Nested decision handlers
+// share its connection, locks and deduplicated after-commit balance refreshes.
+app.post('/api/stock-adjustments/bulk-decision', atomicStockRequest(async (req, res) => {
+  const role = (req.user?.role || '').toLowerCase();
+  if (!['gm', 'admin', 'superadmin', 'super_admin'].includes(role)) {
+    return res.status(403).json({ error: 'GM or admin access required to review stock adjustments' });
+  }
+  const { action, ids } = req.body || {};
+  if (!['approve', 'reject'].includes(action) || !Array.isArray(ids) || !ids.length ||
+      ids.length > 500 || ids.some(id => typeof id !== 'string' || !id.trim())) {
+    return res.status(400).json({ error: 'Choose approve or reject and between 1 and 500 stock edit request IDs.' });
+  }
+  // Stable lock order prevents opposing concurrent batches from deadlocking.
+  const uniqueIds = [...new Set(ids)].sort();
+  const decide = action === 'approve' ? approveStockAdjustment : rejectStockAdjustment;
+  for (const id of uniqueIds) {
+    let status = 200;
+    let result;
+    const response = {
+      status(code) { status = code; return this; },
+      json(body) { result = body; return this; },
+      getHeader() {},
+      setHeader() {},
+    };
+    await decide({ ...req, method: 'PATCH', params: { id },
+      body: { gm_notes: req.body.gm_notes || `Bulk ${action} by GM` } }, response);
+    if (status >= 400 || result?.success !== true) {
+      return res.status(status >= 400 ? status : 500).json({
+        success: false, failed_id: id, applied: 0,
+        error: `No stock edits were ${action === 'approve' ? 'approved' : 'rejected'}. Request ${id}: ${result?.error || 'Decision failed'}`,
+      });
+    }
+  }
+  res.json({ success: true, action, applied: uniqueIds.length, ids: uniqueIds });
 }));
 // ── End Stock Adjustment Routes ────────────────────────────────────────────────
 

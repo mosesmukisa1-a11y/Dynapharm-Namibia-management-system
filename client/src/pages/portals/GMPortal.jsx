@@ -227,7 +227,7 @@ function DiscrepancyInboxTab() {
 }
 
 // ── Stock Adjustments Approval Tab (GM only) ─────────────────────────────────
-function StockAdjustmentsTab({ onCountChange }) {
+export function StockAdjustmentsTab({ onCountChange }) {
   const [adjustments, setAdjustments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('pending');
@@ -238,16 +238,18 @@ function StockAdjustmentsTab({ onCountChange }) {
   const [bulkProcessing, setBulkProcessing] = useState(false);
   const [bulkConfirm, setBulkConfirm] = useState(null);
 
-  const load = () => {
+  const load = async () => {
     setLoading(true);
-    api.get('/stock-adjustments')
-      .then(d => {
+    try {
+        const d = await api.get('/stock-adjustments');
         const list = Array.isArray(d) ? d : [];
         setAdjustments(list);
         if (onCountChange) onCountChange(list.filter(a => a.status === 'pending').length);
-      })
-      .catch(() => setAdjustments([]))
-      .finally(() => setLoading(false));
+    } catch (err) {
+      setMessage({ type: 'error', text: `Could not refresh stock edits: ${err.message || 'Request failed'}. Please refresh before reviewing.` });
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { load(); }, []);
@@ -256,7 +258,7 @@ function StockAdjustmentsTab({ onCountChange }) {
   const pendingCount = adjustments.filter(a => a.status === 'pending').length;
 
   const handleDecision = async (action) => {
-    if (!actionModal) return;
+    if (!actionModal || bulkProcessing || processing) return;
     setProcessing(true);
     try {
       await api.patch(`/stock-adjustments/${actionModal.id}/${action}`, { gm_notes: gmNotes });
@@ -272,25 +274,26 @@ function StockAdjustmentsTab({ onCountChange }) {
   };
 
   const handleBulkAction = async (action) => {
+    if (bulkProcessing || processing) return;
     const pending = adjustments.filter(a => a.status === 'pending');
     if (pending.length === 0) return;
     setBulkConfirm(null);
     setBulkProcessing(true);
-    let done = 0; let failed = 0;
-    for (const adj of pending) {
-      try {
-        await api.patch(`/stock-adjustments/${adj.id}/${action}`, { gm_notes: `Bulk ${action} by GM` });
-        done++;
-      } catch {
-        failed++;
+    setMessage({ type: 'info', text: `${action === 'approve' ? 'Approving' : 'Rejecting'} all ${pending.length} pending stock edits. Please wait for the result before leaving this tab.` });
+    try {
+      const result = await api.post('/stock-adjustments/bulk-decision', {
+        action, ids: pending.map(a => a.id), gm_notes: `Bulk ${action} by GM`,
+      });
+      if (result?.success !== true || result.applied !== new Set(pending.map(a => a.id)).size) {
+        throw new Error(result?.error || 'Bulk result could not be confirmed. Refresh the list before retrying.');
       }
+      setMessage({ type: 'success', text: `${action === 'approve' ? 'Approved' : 'Rejected'} all ${result.applied} stock edit requests successfully.` });
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message || 'Bulk decision failed. Refresh before retrying.' });
+    } finally {
+      await load();
+      setBulkProcessing(false);
     }
-    setMessage({
-      type: failed === 0 ? 'success' : 'error',
-      text: `${action === 'approve' ? '✅ Approved' : '❌ Rejected'} ${done} request${done !== 1 ? 's' : ''}${failed > 0 ? ` — ${failed} failed, please review` : '.'}`,
-    });
-    setBulkProcessing(false);
-    load();
   };
 
   const statusBadge = (s) => {
@@ -324,19 +327,19 @@ function StockAdjustmentsTab({ onCountChange }) {
             <>
               <button
                 onClick={() => setBulkConfirm('approve')}
-                disabled={bulkProcessing}
+                disabled={bulkProcessing || processing}
                 style={{ padding: '7px 16px', background: 'rgba(134,239,172,0.25)', color: '#dcfce7', border: '1px solid rgba(134,239,172,0.5)', borderRadius: 99, fontSize: '0.82rem', fontWeight: 700, cursor: bulkProcessing ? 'not-allowed' : 'pointer', opacity: bulkProcessing ? 0.6 : 1 }}>
-                ✓ Approve All
+                ✓ Approve All ({pendingCount})
               </button>
               <button
                 onClick={() => setBulkConfirm('reject')}
-                disabled={bulkProcessing}
+                disabled={bulkProcessing || processing}
                 style={{ padding: '7px 16px', background: 'rgba(252,165,165,0.25)', color: '#fee2e2', border: '1px solid rgba(252,165,165,0.5)', borderRadius: 99, fontSize: '0.82rem', fontWeight: 700, cursor: bulkProcessing ? 'not-allowed' : 'pointer', opacity: bulkProcessing ? 0.6 : 1 }}>
                 ✕ Reject All
               </button>
             </>
           )}
-          <button onClick={load} style={{ padding: '7px 16px', background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 99, fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer' }}>
+          <button onClick={load} disabled={bulkProcessing || processing} style={{ padding: '7px 16px', background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 99, fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer' }}>
             🔄 Refresh
           </button>
         </div>
@@ -394,11 +397,11 @@ function StockAdjustmentsTab({ onCountChange }) {
               <span className="text-xs text-gray-400 italic">{r.approved_by_name || '—'}</span>
             ) : (
               <div className="flex gap-1">
-                <button onClick={() => setActionModal({ ...r, _action: 'approve' })}
+                <button onClick={() => setActionModal({ ...r, _action: 'approve' })} disabled={bulkProcessing || processing}
                   style={{ padding: '4px 12px', background: '#dcfce7', color: '#166534', border: '1px solid #86efac', borderRadius: 6, cursor: 'pointer', fontSize: '0.76rem', fontWeight: 700 }}>
                   ✓ Approve
                 </button>
-                <button onClick={() => setActionModal({ ...r, _action: 'reject' })}
+                <button onClick={() => setActionModal({ ...r, _action: 'reject' })} disabled={bulkProcessing || processing}
                   style={{ padding: '4px 10px', background: '#fee2e2', color: '#991b1b', border: '1px solid #fca5a5', borderRadius: 6, cursor: 'pointer', fontSize: '0.76rem', fontWeight: 700 }}>
                   ✕ Reject
                 </button>

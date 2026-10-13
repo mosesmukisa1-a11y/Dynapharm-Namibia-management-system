@@ -2,6 +2,12 @@
 name: Stock safety test isolation
 description: Why receipt evidence and full-database safety baselines need different isolation from ordinary unit tests.
 ---
+Metadata-only approval evidence does not establish quantity-edit safety.
+
+**Why:** Earlier GM browser checks approved expiry changes, while the subsequently reported Approve All failure involved warehouse quantities. These exercise different writes, movements and balance refreshes.
+
+**How to apply:** When reviewing approval evidence, distinguish metadata edits from quantity corrections; include unchanged/zero targets and a later-item failure without using live requests as test fixtures.
+
 Compare before/after balances only within the same disposable audit phase.
 
 **Why:** An interrupted backend recovery required a fresh empty phase after a 10-unit fixture. Combining their totals would falsely report a 10-unit loss although both phases preserved stock.
