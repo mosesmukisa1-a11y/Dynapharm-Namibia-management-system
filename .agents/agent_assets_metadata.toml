@@ -322,3 +322,45 @@ mtime_ms = 1791818412342
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/c81f2bf5-611a-441a-81f8-8ebcc71689c6/00f8dc01-ed1a-4bb7-8063-da385e2763f1"
 storage_version_token = "1791818450820333"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "mNE6L5K9Ibdwkpe3dtt1b"
+uri = "file://generated-artifacts/branch-stock-clearance/review-worklist.csv"
+type = "table"
+title = "Branch clearance review — 108 batches"
+description = "690 non-exempt recorded units, with exact branch/batch IDs, confirmed reason and blocking review flags. Review-only; no live posting."
+logical_id = "01f9fd40-eb84-4b3d-a80f-27e287de3652"
+content_hash = "sha256:cf85d6862018b75f45dfbce2ce965d9dc3b878b2c5e3dfc1df80175c93f0c615"
+size = 35236
+mtime_ms = 1791888947394
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/01f9fd40-eb84-4b3d-a80f-27e287de3652/b86e2f6f-eb44-47bc-afc9-8aa638b2772f"
+storage_version_token = "1791889302290096"
+content_type = "text/csv"
+
+[[outputs]]
+id = "yqkn0oHqmoUpFNh_7T9gI"
+uri = "file://generated-artifacts/branch-stock-clearance/protected-stock.csv"
+type = "table"
+title = "Protected stock — 1,156 units"
+description = "D.I GROW, HERBA WARISAN MAHARANI and DYNA SERENOA stock to preserve."
+logical_id = "439c8f97-e2e8-4b34-be4d-578f50876dae"
+content_hash = "sha256:6a97a6a52f0056e59677c37df4abe69fb683dbe518d3b890a7e6cba36d95789c"
+size = 11994
+mtime_ms = 1791888947894
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/439c8f97-e2e8-4b34-be4d-578f50876dae/4a73d2db-3b3a-428d-bb16-b9ee7a330e80"
+storage_version_token = "1791889303229202"
+content_type = "text/csv"
+
+[[outputs]]
+id = "1-PUYlj_jqhB414xRtmnM"
+uri = "file://generated-artifacts/branch-stock-clearance/review-report.html"
+type = "html"
+title = "GM clearance review and execution checklist"
+description = "Branch totals, blockers, source-snapshot details and safe execution checks. Nothing has been written off."
+logical_id = "feffb7f0-4864-4ae6-b22c-5bc8957ec539"
+content_hash = "sha256:948b610784fad0cc677965e7efc74ddcfa8a712edc892e25835ad4f608ccb5d8"
+size = 10028
+mtime_ms = 1791889179423
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/feffb7f0-4864-4ae6-b22c-5bc8957ec539/eae40fc6-4cef-4d51-884c-6ec2ff1dfb0d"
+storage_version_token = "1791889303884966"
+content_type = "text/html"

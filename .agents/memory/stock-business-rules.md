@@ -48,3 +48,11 @@ Supplier origin is historical evidence, not the identity of the lot currently re
 **Why:** Identical product/lot/expiry labels can occur across different imports. Assigning one source to a mixed row can issue supplier credits for another supplier's goods or for untraceable historical units.
 
 **How to apply:** Keep unknown/mixed rows ineligible for supplier credit until distinct original layers are proved. Preserve original-sale evidence before depleted rows are reused or removed. Approved release may add saleable physical goods, but must not fabricate cost/import identity for the combined row.
+
+## Confirmed product terminology
+
+The user confirmed that “herbal warisan maharani” refers to HERBA WARISAN MAHARANI and “dynaseronoa” refers to DYNA SERENOA tablets.
+
+**Why:** These user-supplied spellings differed from the live catalogue and were explicitly confirmed during branch-clearance scope review.
+
+**How to apply:** Use these as reviewed terminology when interpreting requests; preserve original product names/IDs. A one-off clearance exemption does not create a permanent ban on separately authorized future write-offs.
