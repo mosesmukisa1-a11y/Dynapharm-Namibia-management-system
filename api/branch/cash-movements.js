@@ -49,6 +49,7 @@ function normalizeMovementRow(row) {
     reference: row.reference || '',
     notes: row.notes || '',
     metadata: typeof row.metadata === 'object' ? row.metadata : null,
+    status: row.metadata?.status || 'posted',
   };
 }
 
@@ -93,6 +94,28 @@ export default async function handler(req, res) {
   const currentUser = req.user || null;
 
   try {
+    if (req.method === 'PUT' || req.method === 'PATCH') {
+      if (!currentUser) return res.status(401).json({error:'Authentication required'});
+      if (!['gm','admin','director'].includes(currentUser.role)) return res.status(403).json({error:'GM approval access required'});
+      const body=await parseJsonBody(req);
+      const id=body.id || searchParams.get('id') || url.pathname.split('/').filter(Boolean).at(-1);
+      if (!id || id==='cash-movements') return res.status(400).json({error:'id is required'});
+      if (!['approved','rejected'].includes(body.status)) return res.status(400).json({error:'Status must be approved or rejected'});
+      const movement=await withTransaction(async db=>{
+        const {rows}=await db.query('SELECT * FROM branch_cash_movements WHERE id=$1 FOR UPDATE',[id]);
+        const row=rows[0];
+        if (!row) throw Object.assign(new Error('Cash movement not found'),{statusCode:404});
+        const metadata=row.metadata || {};
+        if (metadata.status===body.status) return row;
+        if (metadata.status!=='pending') throw Object.assign(new Error('Cash movement is not pending review'),{statusCode:409});
+        const result=await db.query(`UPDATE branch_cash_movements SET metadata=$2::jsonb, notes=COALESCE($3,notes) WHERE id=$1 RETURNING *`,
+          [id,JSON.stringify({...metadata,status:body.status,reviewedBy:currentUser.sub||currentUser.id||currentUser.username,
+            reviewedByName:currentUser.fullName||currentUser.full_name||currentUser.username,reviewedAt:new Date().toISOString()}),body.notes || null]);
+        return result.rows[0];
+      });
+      // Reviewing an already recorded movement must not post cash a second time.
+      return res.json({success:true,movement:normalizeMovementRow(movement)});
+    }
     if (req.method === 'GET') {
       const sessionId = searchParams.get('sessionId') || searchParams.get('session');
       const branchScope = getBranchScope(currentUser);
@@ -227,7 +250,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ success: false, error: 'Method not allowed' });
   } catch (error) {
     console.error('Cash movements API error:', error);
-    return res.status(500).json({ success: false, error: 'Internal server error' });
+    return res.status(error.statusCode || 500).json({ success: false, error: error.statusCode ? error.message : 'Internal server error' });
   }
 }
 

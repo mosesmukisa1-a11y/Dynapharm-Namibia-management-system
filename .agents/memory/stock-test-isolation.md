@@ -2,6 +2,12 @@
 name: Stock safety test isolation
 description: Why receipt evidence and full-database safety baselines need different isolation from ordinary unit tests.
 ---
+Compare before/after balances only within the same disposable audit phase.
+
+**Why:** An interrupted backend recovery required a fresh empty phase after a 10-unit fixture. Combining their totals would falsely report a 10-unit loss although both phases preserved stock.
+
+**How to apply:** Retain earlier evidence, label each phase's baseline and source environment, and never interpret a new fixture's zero balance as a deduction from the previous fixture.
+
 Run long authenticated stock audits in short resumable stages and persist reports and screenshots after each stage.
 
 **Why:** The user explicitly requires that interruptions must not lose results, following stalled full browser runs without saved evidence.

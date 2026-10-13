@@ -1,5 +1,6 @@
 import { applyAuthCors } from '../_lib/auth.js';
 import { query } from '../db.js';
+import { atomicStockRequest } from '../_lib/atomicStockRequest.js';
 
 function workingDays(startDate, endDate) {
   let count = 0;
@@ -13,7 +14,7 @@ function workingDays(startDate, endDate) {
   return count;
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   applyAuthCors(req, res);
   if (req.method === 'OPTIONS') return res.status(200).end();
 
@@ -130,7 +131,15 @@ export default async function handler(req, res) {
 
       if (!id) return res.status(400).json({ success: false, error: 'id is required' });
 
-      const { status, approved_by, notes, rejection_reason } = body;
+      if (!req.user) return res.status(401).json({error:'Authentication required'});
+      if (!['gm','admin','director','finance'].includes(req.user.role)) return res.status(403).json({error:'Leave review access required'});
+      const { status, notes, rejection_reason } = body;
+      if (!['approved','rejected'].includes(status)) return res.status(400).json({error:'Status must be approved or rejected'});
+      const prior=(await query('SELECT * FROM hr_leave_requests WHERE id=$1 FOR UPDATE',[id])).rows[0];
+      if (!prior) return res.status(404).json({error:'Leave request not found'});
+      if (prior.status===status) return res.json({success:true,leave:prior});
+      if (prior.status!=='pending') return res.status(409).json({error:'Leave request is already reviewed'});
+      const approved_by=req.user.sub || req.user.id || req.user.username;
       const result = await query(
         `UPDATE hr_leave_requests
          SET status           = COALESCE($1, status),
@@ -157,3 +166,4 @@ export default async function handler(req, res) {
     return res.status(500).json({ success: false, error: err.message });
   }
 }
+export default atomicStockRequest(handler);

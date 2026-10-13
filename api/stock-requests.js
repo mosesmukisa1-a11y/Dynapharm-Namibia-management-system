@@ -458,6 +458,13 @@ async function handler(req, res) {
       }
 
       // Idempotency guard: reject transition to 'received' if already received
+      if (['approved','rejected'].includes(body.status) && !['pending','reviewed'].includes(locked.status)) {
+        if (body.status!==locked.status)
+          return res.status(409).json({error:'Request is already reviewed; normal approval/rejection cannot replace the decision'});
+        const itemsMap=await loadItemsForRequests([body.id]);
+        const approvalsMap=await loadApprovalsForRequests([body.id]);
+        return res.json({success:true,unchanged:true,request:normalizeRequestRow(locked,itemsMap,approvalsMap)});
+      }
       if (body.status === 'received') {
         const current = await getOne('SELECT status FROM stock_requests WHERE id = $1', [body.id]);
         if (current?.status === 'received') {

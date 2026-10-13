@@ -155,7 +155,8 @@ function normalizeRow(row) {
   return { nb_number: nbNumber, distributor_name: name, amount_earned: amount, period, area, stockist };
 }
 
-export default async function handler(req, res) {
+import { atomicStockRequest } from '../_lib/atomicStockRequest.js';
+async function handler(req, res) {
   applyAuthCors(req, res);
   if (req.method === 'OPTIONS') return res.status(200).end();
 
@@ -240,13 +241,13 @@ export default async function handler(req, res) {
         return res.status(400).json({ success: false, error: "action must be 'approve' or 'reject'" });
       }
 
-      const deleteReq = await getOne(`SELECT * FROM bonus_period_delete_requests WHERE id = $1`, [reqId]);
+      const deleteReq = await getOne(`SELECT * FROM bonus_period_delete_requests WHERE id = $1 FOR UPDATE`, [reqId]);
       if (!deleteReq) return res.status(404).json({ success: false, error: 'Delete request not found.' });
       if (deleteReq.status !== 'pending_gm') {
         return res.status(409).json({ success: false, error: `Request is already ${deleteReq.status}.` });
       }
 
-      const gmName = req.user.full_name || req.user.username || req.user.id;
+      const gmName = req.user.sub || req.user.id || req.user.username;
       const newStatus = action === 'approve' ? 'approved' : 'rejected';
 
       await query(
@@ -324,6 +325,7 @@ export default async function handler(req, res) {
     return res.status(500).json({ success: false, error: err.message });
   }
 }
+export default atomicStockRequest(handler);
 
 async function handleUpload(req, res) {
   return new Promise((resolve) => {

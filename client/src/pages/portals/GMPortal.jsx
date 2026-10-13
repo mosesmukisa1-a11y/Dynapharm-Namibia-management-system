@@ -856,25 +856,27 @@ function ApprovalsTab() {
 
   const loadData = async () => {
     setLoading(true);
+    const loadErrors=[];
+    const reportError=label=>error=>{loadErrors.push(`${label}: ${error.message || 'Unable to load'}`);return [];};
     try {
       const [cash, leaves, stock, transfers, fieldReqs, pcReqs, rentReqs, salaryReqs, casReqs, adminLeaves, bonusDelReqs, staffChangeReqs, writeOffs] = await Promise.all([
-        api.branch.cashMovements().then(d => toArr(d?.movements ?? d)).catch(() => []),
-        api.get('/hr/leaves?status=pending').then(d => toArr(d?.leaves ?? d)).catch(() => []),
-        api.stock.requests().then(d => toArr(d?.requests ?? d)).catch(() => []),
-        api.stock.transfers('status=pending_approval').then(d => toArr(d?.transfers ?? d)).catch(() => []),
-        api.get('/field_program_requests').then(d => toArr(d?.requests ?? d)).catch(() => []),
-        api.finance.pettyCash.requests().then(d => toArr(d?.requests)).catch(() => []),
-        api.finance.rent.editRequests('pending').then(d => toArr(d?.requests)).catch(() => []),
-        api.hr.salaryLedger.editRequests('pending').then(d => toArr(d?.requests)).catch(() => []),
-        api.get('/cash-requests/admin?status=finance_reviewed').then(d => toArr(d)).catch(() => []),
-        api.get('/leave-requests/admin').then(d => toArr(d)).catch(() => []),
-        api.finance.getBonusPeriodDeleteRequests('pending_gm').then(d => toArr(d?.requests)).catch(() => []),
-        api.hr.staffChangeRequests.list('pending').then(d => toArr(d?.requests)).catch(() => []),
-        api.get('/stock-movements?type=write_off&status=pending_approval&limit=200').then(d => toArr(d?.movements)).catch(() => []),
+        api.branch.cashMovements().then(d => toArr(d?.movements ?? d)).catch(reportError('Cash movements')),
+        api.get('/hr/leaves?status=pending').then(d => toArr(d?.leaves ?? d)).catch(reportError('HR leave')),
+        api.stock.requests().then(d => toArr(d?.requests ?? d)).catch(reportError('Stock requests')),
+        api.stock.transfers('status=pending_approval').then(d => toArr(d?.transfers ?? d)).catch(reportError('Transfers')),
+        api.get('/field_program_requests').then(d => toArr(d?.requests ?? d)).catch(reportError('Field requests')),
+        api.finance.pettyCash.requests().then(d => toArr(d?.requests)).catch(reportError('Petty cash')),
+        api.finance.rent.editRequests('pending').then(d => toArr(d?.requests)).catch(reportError('Rent edits')),
+        api.hr.salaryLedger.editRequests('pending').then(d => toArr(d?.requests)).catch(reportError('Salary edits')),
+        api.get('/cash-requests/admin?status=finance_reviewed').then(d => toArr(d)).catch(reportError('Finance cash requests')),
+        api.get('/leave-requests/admin').then(d => toArr(d)).catch(reportError('Staff leave')),
+        api.finance.getBonusPeriodDeleteRequests('pending_gm').then(d => toArr(d?.requests)).catch(reportError('Bonus deletion')),
+        api.hr.staffChangeRequests.list('pending').then(d => toArr(d?.requests)).catch(reportError('Staff changes')),
+        api.get('/stock-movements?type=write_off&status=pending_approval&limit=200').then(d => toArr(d?.movements)).catch(reportError('Write-offs')),
       ]);
       setCashRequests(cash.filter(c => c.status === 'pending'));
       setLeaveRequests(leaves.filter(l => l.status === 'pending'));
-      setStockRequests(stock.filter(s => s.status === 'pending'));
+      setStockRequests(stock.filter(s => ['pending','reviewed'].includes(s.status)));
       setPendingTransfers(transfers);
       setFieldRequests(fieldReqs.filter(r => r.status === 'pending'));
       setAllFieldRequests(fieldReqs);
@@ -887,6 +889,7 @@ function ApprovalsTab() {
       setBonusDeleteRequests(bonusDelReqs);
       setStaffChangeRequests(staffChangeReqs);
       setPendingWriteOffs(writeOffs.filter(w => w.status === 'pending_approval'));
+      if(loadErrors.length) setMessage('Error loading approval queues — '+loadErrors.join('; '));
     } catch (err) {
       setMessage('Error: ' + err.message);
     } finally {
@@ -905,11 +908,13 @@ function ApprovalsTab() {
       } else if (type === 'leave') {
         await api.hr.updateLeave(id, { status: action, approved_by: user?.full_name || user?.username || 'GM' });
         setLeaveRequests(prev => prev.filter(r => r.id !== id));
+        setAdminLeaveRequests(prev => prev.filter(r => r.id !== id));
+        setAllLeaveHistory(prev => prev.map(r => r.id===id ? {...r,status:action} : r));
       } else if (type === 'stock') {
-        await api.put(`/stock-requests/${id}`, { status: action, notes: note });
+        await api.put(`/stock-requests/${id}`, { status: action, notes: note, ...(action==='rejected' ? {rejection_reason:note} : {}) });
         setStockRequests(prev => prev.filter(r => r.id !== id));
       } else if (type === 'fieldstock') {
-        const gmName = user?.full_name || user?.username || 'GM';
+        const gmName = user?.fullName || user?.full_name || user?.username || 'GM';
         await api.put('/field_program_requests', {
           id, status: action,
           approved_by: action === 'approved' ? gmName : null,
@@ -930,7 +935,7 @@ function ApprovalsTab() {
         setPettyCashRequests(prev => prev.filter(r => r.id !== id));
       } else if (type === 'transfer') {
         const newStatus = action === 'approved' ? 'approved' : 'rejected';
-        const gmName = user?.full_name || user?.username || 'GM';
+        const gmName = user?.fullName || user?.full_name || user?.username || 'GM';
         await api.stock.updateTransfer(id, {
           status: newStatus,
           approved_by: gmName,
@@ -1162,8 +1167,9 @@ function ApprovalsTab() {
         ? `✅ Leave request approved for ${leaveApprovalModal.staffName || leaveApprovalModal.staff}.`
         : `❌ Leave request rejected.`;
       setMessage(msg);
-      const actorName = user?.full_name || user?.username || 'GM';
+      const actorName = user?.fullName || user?.full_name || user?.username || 'GM';
       setAdminLeaveRequests(prev => prev.filter(r => r.id !== leaveApprovalModal.id));
+      setLeaveRequests(prev => prev.filter(r => r.id !== leaveApprovalModal.id));
       setAllLeaveHistory(prev => prev.map(r => r.id !== leaveApprovalModal.id ? r : {
         ...r,
         status: action === 'approved' ? 'Approved' : 'Rejected',

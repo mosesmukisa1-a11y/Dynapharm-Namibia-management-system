@@ -18,7 +18,8 @@ function genId(prefix = 'CAMP') {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
 }
 
-export default async function handler(req, res) {
+import { atomicStockRequest } from './_lib/atomicStockRequest.js';
+async function handler(req, res) {
   applyAuthCors(req, res);
   if (req.method === 'OPTIONS') return res.status(200).end();
 
@@ -321,11 +322,13 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'action must be "approve" or "reject"' });
       }
 
-      const existing = await getOne(`SELECT * FROM campaigns WHERE id = $1`, [id]);
+      const existing = await getOne(`SELECT * FROM campaigns WHERE id = $1 FOR UPDATE`, [id]);
       if (!existing) return res.status(404).json({ error: 'Campaign not found' });
 
+      const decision=action==='approve'?'upcoming':'rejected';
+      if(existing.status===decision) return res.json({success:true,campaign:existing});
       if (existing.status !== 'pending_approval') {
-        return res.status(400).json({ error: 'Campaign is not pending approval' });
+        return res.status(409).json({ error: 'Campaign is not pending approval' });
       }
 
       const newStatus = action === 'approve' ? 'upcoming' : 'rejected';
@@ -547,3 +550,4 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: err.message || 'Internal server error' });
   }
 }
+export default atomicStockRequest(handler);

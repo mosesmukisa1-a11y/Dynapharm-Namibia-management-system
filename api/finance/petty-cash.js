@@ -1,10 +1,11 @@
 import { applyAuthCors } from '../_lib/auth.js';
 import { query, getMany, getOne } from '../db.js';
+import { atomicStockRequest } from '../_lib/atomicStockRequest.js';
 
 function nowIso() { return new Date().toISOString(); }
 function shortId() { return `PC-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`; }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   applyAuthCors(req, res);
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (!req.user) return res.status(401).json({ error: 'Authentication required' });
@@ -55,13 +56,18 @@ export default async function handler(req, res) {
 
     // PUT /api/finance/petty-cash/requests/:id/approve — GM approves
     if (req.method === 'PUT' && sub === 'requests' && id && parts[2] === 'approve') {
+      if (!['gm','admin','director'].includes(req.user.role)) return res.status(403).json({error:'GM approval access required'});
       const body = req.body || {};
+      const existing=await getOne('SELECT * FROM petty_cash_requests WHERE id=$1 FOR UPDATE',[id]);
+      if (!existing) return res.status(404).json({error:'Request not found'});
+      if (existing.status==='pending_director') return res.json({success:true,request:existing});
+      if (existing.status!=='pending_gm') return res.status(409).json({error:'Request is already processed'});
       const rec = await query(
         `UPDATE petty_cash_requests
          SET status = 'pending_director', gm_approved_by = $1, gm_approved_at = $2, notes = COALESCE($3, notes), updated_at = $2
          WHERE id = $4 AND status = 'pending_gm'
          RETURNING *`,
-        [req.user?.fullName || req.user?.username || 'GM', nowIso(), body.notes || null, id]
+        [req.user.sub || req.user.id || req.user.username, nowIso(), body.notes || null, id]
       );
       if (!rec.rows.length) return res.status(404).json({ error: 'Request not found or already processed' });
       return res.json({ success: true, request: rec.rows[0] });
@@ -69,13 +75,19 @@ export default async function handler(req, res) {
 
     // PUT /api/finance/petty-cash/requests/:id/reject — GM or Director rejects
     if (req.method === 'PUT' && sub === 'requests' && id && parts[2] === 'reject') {
+      if (!['gm','director','admin'].includes(req.user.role)) return res.status(403).json({error:'GM or Director access required'});
       const body = req.body || {};
+      const existing=await getOne('SELECT * FROM petty_cash_requests WHERE id=$1 FOR UPDATE',[id]);
+      if (!existing) return res.status(404).json({error:'Request not found'});
+      if (existing.status==='rejected') return res.json({success:true,request:existing});
+      if (!['pending_gm','pending_director'].includes(existing.status)) return res.status(409).json({error:'Request is already processed'});
+      if (existing.status==='pending_director' && req.user.role==='gm') return res.status(403).json({error:'Request is already forwarded to Director'});
       const rec = await query(
         `UPDATE petty_cash_requests
          SET status = 'rejected', rejected_by = $1, rejected_at = $2, notes = COALESCE($3, notes), updated_at = $2
          WHERE id = $4 AND status IN ('pending_gm', 'pending_director')
          RETURNING *`,
-        [req.user?.fullName || req.user?.username, nowIso(), body.notes || null, id]
+        [req.user.sub || req.user.id || req.user.username, nowIso(), body.notes || null, id]
       );
       if (!rec.rows.length) return res.status(404).json({ error: 'Request not found or already processed' });
       return res.json({ success: true, request: rec.rows[0] });
@@ -207,3 +219,4 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: err.message });
   }
 }
+export default atomicStockRequest(handler);

@@ -70,7 +70,8 @@ async function ensureTables() {
   }
 }
 
-export default async function handler(req, res) {
+import { atomicStockRequest } from '../_lib/atomicStockRequest.js';
+async function handler(req, res) {
   applyAuthCors(req, res);
   if (req.method === 'OPTIONS') return res.status(200).end();
 
@@ -152,10 +153,13 @@ export default async function handler(req, res) {
       const { action, review_notes = '' } = req.body;
       if (!['approve', 'reject'].includes(action)) return res.status(400).json({ success: false, error: 'action must be approve or reject' });
 
-      const editReq = await getOne(`SELECT * FROM rent_edit_requests WHERE id = $1`, [parts[1]]);
+      const editReq = await getOne(`SELECT * FROM rent_edit_requests WHERE id = $1 FOR UPDATE`, [parts[1]]);
       if (!editReq) return res.status(404).json({ success: false, error: 'Edit request not found' });
+      const decision=action==='approve'?'approved':'rejected';
+      if (editReq.status===decision) return res.json({success:true,message:'Request already '+decision});
+      if (editReq.status!=='pending') return res.status(409).json({error:'Request is already reviewed'});
 
-      const reviewer = req.user.username || req.user.id || 'gm';
+      const reviewer = req.user.sub || req.user.id || req.user.username;
 
       if (action === 'approve') {
         const changes = editReq.proposed_changes;
@@ -194,3 +198,4 @@ export default async function handler(req, res) {
     return res.status(500).json({ success: false, error: err.message });
   }
 }
+export default atomicStockRequest(handler);

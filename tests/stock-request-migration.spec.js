@@ -67,18 +67,25 @@ it('attributes rejection to session, keeps retry timestamps, denies roles and br
   expect(failed.status).toBe(500);
   expect((await query('SELECT status FROM stock_requests WHERE id=$1',[id])).rows[0].status).toBe('pending');
   expect((await invoke(user,{id,status:'approved',items:[{productName:'Synthetic',quantity:1,unit:'unit'}]})).status).toBe(200);
-  expect((await invoke(user,{id,status:'rejected',updated_by:'spoof',rejected_by:'spoof'})).status).toBe(200);
-  const before=(await query('SELECT * FROM stock_requests WHERE id=$1',[id])).rows[0];
+  expect((await invoke(user,{id,status:'rejected',updated_by:'spoof',rejected_by:'spoof'})).status).toBe(409);
+  const rejectedId=id+'-REJECT';
+  await query("INSERT INTO stock_requests(id,requesting_branch,status,items) VALUES($1,'townshop','pending','[]')",[rejectedId]);
+  expect((await invoke(user,{id:rejectedId,status:'rejected',updated_by:'spoof',rejected_by:'spoof'})).status).toBe(200);
+  const before=(await query('SELECT * FROM stock_requests WHERE id=$1',[rejectedId])).rows[0];
   expect(before.updated_by).toBe('session-gm');expect(before.rejected_by).toBe('session-gm');
-  expect((await invoke(user,{id,status:'rejected'})).status).toBe(200);
-  const after=(await query('SELECT * FROM stock_requests WHERE id=$1',[id])).rows[0];
+  expect((await invoke(user,{id:rejectedId,status:'rejected'})).status).toBe(200);
+  const after=(await query('SELECT * FROM stock_requests WHERE id=$1',[rejectedId])).rows[0];
   expect(after.rejected_at).toEqual(before.rejected_at);
   expect(after.last_status_change).toEqual(before.last_status_change);
+  expect((await invoke(user,{id:rejectedId,status:'approved'})).status).toBe(409);
   expect((await invoke(user,{id,status:'approved'})).status).toBe(200);
   expect((await invoke({id:'session-stock',role:'stock'},{id,status:'dispatched',dispatched_by:'spoof'})).status).toBe(200);
   const dispatched=(await query('SELECT * FROM stock_requests WHERE id=$1',[id])).rows[0];
   expect(dispatched.dispatched_by).toBe('session-stock');
   expect(dispatched.dispatched_at).toBeTruthy();
-  expect((await invoke({id:'session-stock',role:'stock'},{id,status:'rejected'})).status).toBe(200);
- }finally{await query('DELETE FROM stock_requests WHERE id=$1',[id]);}
+  expect((await invoke({id:'session-stock',role:'stock'},{id,status:'rejected'})).status).toBe(409);
+  const reviewedId=id+'-REVIEWED';
+  await query("INSERT INTO stock_requests(id,requesting_branch,status,items) VALUES($1,'townshop','reviewed','[]')",[reviewedId]);
+  expect((await invoke(user,{id:reviewedId,status:'approved'})).status).toBe(200);
+ }finally{await query('DELETE FROM stock_requests WHERE id=ANY($1::text[])',[[id,id+'-REJECT',id+'-REVIEWED']]);}
 });

@@ -1,5 +1,6 @@
 import { applyAuthCors } from './_lib/auth.js';
 import { query, getMany, getOne } from './db.js';
+import { atomicStockRequest } from './_lib/atomicStockRequest.js';
 
 function normalizeRow(row) {
   if (!row) return null;
@@ -51,7 +52,7 @@ async function parseJsonBody(req) {
   });
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   applyAuthCors(req, res);
   if (req.method === 'OPTIONS') return res.status(200).end();
 
@@ -108,6 +109,18 @@ export default async function handler(req, res) {
       const body = await parseJsonBody(req);
       const id = body.id;
       if (!id) return res.status(400).json({ success: false, error: 'id is required' });
+      const existing=await getOne('SELECT * FROM field_program_requests WHERE id=$1 FOR UPDATE',[id]);
+      if (!existing) return res.status(404).json({error:'Field request not found'});
+      if (['approved','rejected'].includes(body.status)) {
+        if (!req.user) return res.status(401).json({error:'Authentication required'});
+        if (!['gm','admin','director'].includes(req.user.role)) return res.status(403).json({error:'GM approval access required'});
+        if (existing.status===body.status) return res.json({success:true,request:normalizeRow(existing)});
+        if (existing.status!=='pending') return res.status(409).json({error:'Field request is already reviewed'});
+        body.approved_by=req.user.sub || req.user.id || req.user.username;
+        body.approved_at=new Date().toISOString();
+      } else if (body.approved_by !== undefined || body.approved_at !== undefined) {
+        return res.status(400).json({error:'Review attribution is set by the server'});
+      }
 
       const sets = [];
       const vals = [];
@@ -137,3 +150,4 @@ export default async function handler(req, res) {
     return res.status(500).json({ success: false, error: 'Internal server error' });
   }
 }
+export default atomicStockRequest(handler);

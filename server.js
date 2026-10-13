@@ -425,7 +425,7 @@ app.get('/api/leave-requests/admin', async (req, res) => {
 });
 
 // Admin/GM/Finance: approve or reject a leave request
-app.patch('/api/leave-requests/:id', async (req, res) => {
+app.patch('/api/leave-requests/:id', atomicStockRequest(async (req, res) => {
   try {
     const { query, getOne } = await import('./api/db.js');
     const role = req.user?.role || '';
@@ -436,9 +436,11 @@ app.patch('/api/leave-requests/:id', async (req, res) => {
     if (!['approved', 'rejected'].includes(status)) {
       return res.status(400).json({ error: 'Status must be approved or rejected' });
     }
-    const existing = await getOne('SELECT * FROM hr_leave_requests WHERE id = $1', [id]);
+    const existing = await getOne('SELECT * FROM hr_leave_requests WHERE id = $1 FOR UPDATE', [id]);
     if (!existing) return res.status(404).json({ error: 'Leave request not found' });
-    const actorName = req.user?.full_name || req.user?.username || role;
+    if (existing.status===status) return res.json({success:true,status});
+    if (existing.status!=='pending') return res.status(409).json({error:'Leave request is already reviewed'});
+    const actorName = req.user?.sub || req.user?.id || req.user?.username;
     await query(
       `UPDATE hr_leave_requests SET status = $1, approved_by = $2, notes = $3, approved_at = NOW(), updated_at = NOW() WHERE id = $4`,
       [status, actorName, note || null, id]
@@ -448,7 +450,7 @@ app.patch('/api/leave-requests/:id', async (req, res) => {
     console.error('leave-requests PATCH:', err);
     res.status(500).json({ error: err.message });
   }
-});
+}));
 
 app.get('/api/cash-requests', async (req, res) => {
   try {
@@ -541,7 +543,7 @@ app.get('/api/cash-requests/admin', async (req, res) => {
 });
 
 // Finance marks as reviewed; GM approves/rejects
-app.patch('/api/cash-requests/:id', async (req, res) => {
+app.patch('/api/cash-requests/:id', atomicStockRequest(async (req, res) => {
   try {
     const { query, getOne } = await import('./api/db.js');
     const role = req.user?.role || '';
@@ -549,9 +551,14 @@ app.patch('/api/cash-requests/:id', async (req, res) => {
     if (!allowed.includes(role)) return res.status(403).json({ error: 'Access denied' });
     const { id } = req.params;
     const { status, note } = req.body;
-    const actorName = req.user?.full_name || req.user?.username || role;
-    const existing = await getOne('SELECT * FROM finance_cash_requests WHERE id = $1', [id]);
+    if (!['finance_reviewed','approved','rejected'].includes(status)) return res.status(400).json({error:'Invalid review status'});
+    if (['approved','rejected'].includes(status) && role==='finance') return res.status(403).json({error:'GM approval access required'});
+    if (status==='finance_reviewed' && !['finance','admin'].includes(role)) return res.status(403).json({error:'Finance review access required'});
+    const actorName = req.user?.sub || req.user?.id || req.user?.username;
+    const existing = await getOne('SELECT * FROM finance_cash_requests WHERE id = $1 FOR UPDATE', [id]);
     if (!existing) return res.status(404).json({ error: 'Request not found' });
+    if (existing.status===status) return res.json({success:true,status});
+    if (!['pending','finance_reviewed'].includes(existing.status)) return res.status(409).json({error:'Cash request is already reviewed'});
     // Merge additional tracking into JSONB data
     const currentData = existing.data || {};
     const dataUpdates = { ...currentData };
@@ -577,7 +584,7 @@ app.patch('/api/cash-requests/:id', async (req, res) => {
     console.error('cash-requests PATCH:', err);
     res.status(500).json({ error: err.message });
   }
-});
+}));
 
 // ── Department Expenses (Cleaners, Security, Support Staff) ───────────────────
 app.get('/api/dept-expenses', async (req, res) => {
@@ -717,7 +724,8 @@ app.patch('/api/stock-adjustments/:id/approve', atomicStockRequest(async (req, r
 
     const adj = await getOne('SELECT * FROM stock_adjustments WHERE id = $1 FOR UPDATE', [adjId]);
     if (!adj) return res.status(404).json({ error: 'Adjustment not found' });
-    if (adj.status !== 'pending') return res.status(400).json({ error: 'Already processed' });
+    if (adj.status === 'approved') return res.json({success:true,message:'Adjustment already approved'});
+    if (adj.status !== 'pending') return res.status(409).json({ error: 'Already processed' });
 
     const { field_to_adjust, new_value, target_id, target_type } = adj;
 
@@ -869,7 +877,7 @@ app.patch('/api/stock-adjustments/:id/approve', atomicStockRequest(async (req, r
   }
 }));
 
-app.patch('/api/stock-adjustments/:id/reject', async (req, res) => {
+app.patch('/api/stock-adjustments/:id/reject', atomicStockRequest(async (req, res) => {
   try {
     const { query } = await import('./api/db.js');
     const adjId = req.params.id;
@@ -883,6 +891,10 @@ app.patch('/api/stock-adjustments/:id/reject', async (req, res) => {
 
     const approved_by = req.user?.sub || req.user?.username || 'gm';
     const approved_by_name = req.user?.fullName || req.user?.full_name || req.user?.name || approved_by;
+    const adj=await query('SELECT status FROM stock_adjustments WHERE id=$1 FOR UPDATE',[adjId]);
+    if (!adj.rows.length) return res.status(404).json({error:'Adjustment not found'});
+    if (adj.rows[0].status==='rejected') return res.json({success:true,message:'Adjustment rejected'});
+    if (adj.rows[0].status!=='pending') return res.status(409).json({error:'Adjustment is already reviewed'});
     await query(
       `UPDATE stock_adjustments SET status='rejected', gm_notes=$1, approved_by=$2, approved_by_name=$3, approved_at=NOW(), updated_at=NOW() WHERE id=$4`,
       [gm_notes, approved_by, approved_by_name, adjId]
@@ -892,7 +904,7 @@ app.patch('/api/stock-adjustments/:id/reject', async (req, res) => {
     console.error('stock-adjustments reject:', err);
     res.status(500).json({ error: err.message });
   }
-});
+}));
 // ── End Stock Adjustment Routes ────────────────────────────────────────────────
 
 // ── Stock Request Status Update (GM Approval) ──────────────────────────────────

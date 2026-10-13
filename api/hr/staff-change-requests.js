@@ -1,11 +1,13 @@
 import { applyAuthCors } from '../_lib/auth.js';
-import { query, getOne } from '../db.js';
+import { query, getOne, insert } from '../db.js';
+import { buildEmployeeRecord } from '../employees.js';
 
 const GM_ROLES   = new Set(['gm', 'admin', 'director']);
 const HR_ROLES   = new Set(['hr_manager', 'hr', 'admin', 'gm', 'director']);
 const ALL_STAFF  = new Set(['*']); // any authenticated user
 
-export default async function handler(req, res) {
+import { atomicStockRequest } from '../_lib/atomicStockRequest.js';
+async function handler(req, res) {
   applyAuthCors(req, res);
   if (req.method === 'OPTIONS') return res.status(200).end();
 
@@ -69,7 +71,7 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'status must be approved or rejected' });
       }
 
-      const existing = await getOne('SELECT * FROM hr_staff_change_requests WHERE id = $1', [id]);
+      const existing = await getOne('SELECT * FROM hr_staff_change_requests WHERE id = $1 FOR UPDATE', [id]);
       if (!existing) return res.status(404).json({ error: 'Request not found' });
       if (existing.status !== 'pending') return res.status(409).json({ error: 'Request already processed' });
 
@@ -89,12 +91,12 @@ export default async function handler(req, res) {
 
       if (status === 'approved') {
         if (existing.request_type === 'add') {
-          await query(
-            `INSERT INTO employees (full_name, position, department, branch, hire_date, phone, email, employment_status, created_at, updated_at)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,'active',NOW(),NOW())`,
-            [existing.full_name, existing.position || '', existing.department || '',
-             existing.branch || '', existing.hire_date || null, existing.phone || null, existing.email || null]
-          );
+          const created=await insert('employees',buildEmployeeRecord({
+            full_name:existing.full_name,position:existing.position || '',department:existing.department || '',
+            branch:existing.branch || '',hire_date:existing.hire_date || null,
+            phone:existing.phone || null,email:existing.email || null,employment_status:'active'
+          }));
+          await query('UPDATE hr_staff_change_requests SET employee_row_id=$2 WHERE id=$1',[id,created.id]);
         } else if (existing.request_type === 'remove' && existing.employee_row_id) {
           await query(
             `UPDATE employees SET employment_status='inactive', updated_at=NOW() WHERE id=$1`,
@@ -134,3 +136,4 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: err.message });
   }
 }
+export default atomicStockRequest(handler);
