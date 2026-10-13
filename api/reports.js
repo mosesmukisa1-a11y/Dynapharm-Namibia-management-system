@@ -93,6 +93,12 @@ async function handler(req, res) {
   const appointmentId = searchParams.get('appointment_id');
 
   try {
+    if(req.method!=='GET'){
+      const incoming=await parseRequestBody(req);
+      const existing=(incoming?.id||id)?await getOne('SELECT data FROM reports WHERE id=$1',[incoming?.id||id]):null;
+      if(existing?.data?.offSystemFulfilment||incoming?.data?.offSystemFulfilment||incoming?.offSystemFulfilment)
+        return res.status(409).json({error:'Historical collection receipts are immutable; use the original return workflow for corrections'});
+    }
     if (req.method === 'GET') {
       let queryText = 'SELECT * FROM reports';
       const params = [];

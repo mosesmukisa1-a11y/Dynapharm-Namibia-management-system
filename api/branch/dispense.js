@@ -9,6 +9,7 @@ import { recomputeLocationBalances } from '../services/stockEngine.js';
 import { broadcastStockEvent } from '../services/stockEvents.js';
 import { postActivityRecord, generateBatId } from '../_lib/activityCapture.js';
 import { getPackageComponents } from '../_lib/packageDefinitions.js';
+export const OFF_SYSTEM_ISSUE = Symbol('off-system-authorized-issue');
 
 async function parseJsonBody(req) {
   if (req.body && typeof req.body === 'object') return req.body;
@@ -134,6 +135,8 @@ async function handler(req, res) {
         const report=(await client.query('SELECT * FROM reports WHERE id=$1 FOR UPDATE',[reportId])).rows[0];
         if (!report) throw Object.assign(new Error('Prescription report not found'),{statusCode:404});
         const rptData=typeof report.data==='string'?JSON.parse(report.data):report.data || {};
+        if(rptData.offSystemFulfilment && req[OFF_SYSTEM_ISSUE]!==true)
+          throw Object.assign(new Error('Use assigned-branch pending fulfilment for this historical form'),{statusCode:409});
         const prescribed=new Map((rptData.medicines || []).map(m=>[String(m.name || m.product_name || '').toLowerCase().trim(),Number(m.quantity || 1)]));
         const prior=(await client.query(`SELECT a.product_name,SUM(a.quantity) AS quantity FROM stock_sale_allocations a
           JOIN stock_movements m ON m.id=a.movement_id

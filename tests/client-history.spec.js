@@ -6,6 +6,9 @@ import {query,getOne} from '../api/db.js';
 import handler from '../api/client-history.js';
 import attachment from '../api/client-history-attachment.js';
 import clients from '../api/clients.js';
+import pending from '../api/branch/off-system-pending.js';
+import dispense from '../api/branch/dispense.js';
+import reports from '../api/reports.js';
 const fd={sub:'CH-FD',role:'frontdesk',branch:'townshop'},consultant={sub:'CH-C',role:'consultant',branch:'townshop'};
 async function invoke(h,method,body,user=fd,url='/api/client-history'){
  const out={status:200};const res={setHeader(){},getHeader(){},status(s){out.status=s;return this;},json(b){out.body=b;return this;},end(){return this;}};
@@ -113,4 +116,88 @@ it('allows actual admin role to file/read/amend using client scope and session a
  expect((await post({...source,action:'amend',encounterId:record.id,version:record.version,reason:'Admin transcription correction'},admin)).status).toBe(200);
  expect((await invoke(attachment,'GET',null,admin,'/api/client-history-attachment?clientId=CH-CLIENT&capabilities=true')).status).toBe(200);
  expect(await balances()).toEqual(before);
+});
+it('lists assigned pending, collects payment once, caps issues and keeps historical capture stock-neutral',async()=>{
+ const branch={sub:'CH-BRANCH',role:'branch_manager',branch:'townshop'};
+ await query(`INSERT INTO product_prices(description,product_code,dp,cp,cif,bv,updated_by)
+ VALUES('PENDING-ITEM','PENDING-ITEM',7,9,2,0,'synthetic')`);
+ await query(`INSERT INTO branch_inventory_batches(id,branch_id,product_name,batch_no,expiry_date,quantity,status)
+ VALUES('PENDING-STOCK','townshop','PENDING-ITEM','PENDING-LOT','2035-12-31',10,'in_stock')`);
+ const before=await balances();
+ const created=await post({...source,data:{...source.data,medicines:[{name:'PENDING-ITEM',unit:'unit',quantity:5,alreadyDispensed:2,directions:'Source'}]}});
+ expect(created.status).toBe(200);const encounter=created.body.encounter;
+ expect(await balances()).toEqual(before);
+ const list=await invoke(pending,'GET',null,branch,'/api/branch/off-system-pending?branch=townshop');
+ expect(list.status).toBe(200);expect(list.body.forms.find(f=>f.id===encounter.id).quantities[0]).toMatchObject({outstanding:3,unitPrice:9});
+ expect((await invoke(pending,'GET',null,{...branch,branch:'swakopmund'},'/api/branch/off-system-pending?branch=townshop')).status).toBe(403);
+ const payload={operationId:randomUUID(),encounterId:encounter.id,version:encounter.version,items:[{name:'PENDING-ITEM',quantity:2}],
+   paymentMethod:'cash',paymentConfirmed:true,physicalConfirmed:true,expectedTotal:18};
+ expect((await invoke(pending,'POST',{...payload,expectedTotal:1},branch)).status).toBe(409);
+ expect(await balances()).toEqual(before);
+ const results=await Promise.all([invoke(pending,'POST',payload,branch),invoke(pending,'POST',payload,branch)]);
+ expect(results.map(r=>r.status),JSON.stringify(results)).toEqual([200,200]);
+ expect(results[0].body.receipt.reference).toBe(results[1].body.receipt.reference);
+ expect(Number((await getOne("SELECT quantity FROM branch_inventory_batches WHERE id='PENDING-STOCK'")).quantity)).toBe(8);
+ const receipt=results[0].body.receipt.reference;
+ expect(Number((await getOne('SELECT SUM(grand_total) total FROM branch_activity_transactions WHERE form_reference_id=$1',[receipt])).total)).toBe(18);
+ const detail=await invoke(handler,'GET',null,fd,'/api/client-history?clientId=CH-CLIENT');
+ expect(detail.body.encounters.find(f=>f.id===encounter.id).quantities[0]).toMatchObject({alreadyDispensed:2,liveDispensed:2,dispensed:4,outstanding:1});
+ expect((await invoke(pending,'POST',{...payload,operationId:randomUUID(),version:2},branch)).status).toBe(409);
+ expect((await invoke(pending,'POST',{...payload,operationId:randomUUID()},consultant)).status).toBe(403);
+ expect((await invoke(dispense,'POST',{reportId:receipt,branchId:'townshop',items:[{product_name:'PENDING-ITEM',quantity:1}]},branch)).status).toBe(409);
+ expect((await invoke(reports,'PUT',{id:receipt,data:{medicines:[]}},consultant,'/api/reports')).status).toBe(409);
+ expect((await post({...source,action:'amend',encounterId:encounter.id,version:2,reason:'Change entitlement'})).status).toBe(409);
+ const failed={...payload,operationId:randomUUID(),version:2,items:[{name:'PENDING-ITEM',quantity:1}],expectedTotal:9};
+ await query("UPDATE branch_inventory_batches SET quantity=0 WHERE id='PENDING-STOCK'");
+ const empty=await balances();expect((await invoke(pending,'POST',failed,branch)).status).toBe(409);
+ expect(await balances()).toEqual(empty);
+ await query("UPDATE branch_inventory_batches SET quantity=8 WHERE id='PENDING-STOCK'");
+ expect((await invoke(pending,'POST',failed,branch)).status).toBe(200);
+ expect((await invoke(handler,'GET',null,fd,'/api/client-history?clientId=CH-CLIENT')).body.encounters.find(f=>f.id===encounter.id).quantities[0].outstanding).toBe(0);
+});
+it('rolls back a multi-item partial deduction and payment failure, then retries exactly once',async()=>{
+ const branch={sub:'CH-BRANCH',role:'branch_manager',branch:'townshop'};
+ await query(`INSERT INTO product_prices(description,product_code,dp,cp,cif,bv,updated_by)
+ VALUES('PENDING-MISSING','PENDING-MISSING',7,9,2,0,'synthetic')`);
+ const created=await post({...source,data:{...source.data,medicines:[
+  {name:'PENDING-ITEM',unit:'unit',quantity:1,alreadyDispensed:0},
+  {name:'PENDING-MISSING',unit:'unit',quantity:1,alreadyDispensed:0}]}});
+ const e=created.body.encounter,before=await balances();
+ const base={operationId:randomUUID(),encounterId:e.id,version:e.version,paymentConfirmed:true,physicalConfirmed:true,paymentMethod:'cash',
+   items:[{name:'PENDING-ITEM',quantity:1},{name:'PENDING-MISSING',quantity:1}],expectedTotal:18};
+ expect((await invoke(pending,'POST',base,branch)).status).toBe(409);expect(await balances()).toEqual(before);
+ const retry={...base,items:[{name:'PENDING-ITEM',quantity:1}],expectedTotal:9};
+ await query(`CREATE FUNCTION reject_pending_payment_test() RETURNS trigger LANGUAGE plpgsql AS $$
+ BEGIN IF NEW.form_reference_id LIKE 'OFF-RX-%' THEN RAISE EXCEPTION 'Synthetic payment failure'; END IF; RETURN NEW; END $$`);
+ await query('CREATE TRIGGER reject_pending_payment_test BEFORE INSERT ON branch_activity_transactions FOR EACH ROW EXECUTE FUNCTION reject_pending_payment_test()');
+ try{
+  expect((await invoke(pending,'POST',retry,branch)).status).toBeGreaterThanOrEqual(400);
+  expect(await balances()).toEqual(before);
+ }finally{
+  await query('DROP TRIGGER reject_pending_payment_test ON branch_activity_transactions');
+  await query('DROP FUNCTION reject_pending_payment_test()');
+ }
+ const success=await invoke(pending,'POST',retry,branch);expect(success.status,JSON.stringify(success.body)).toBe(200);
+ const after=await balances();expect((await invoke(pending,'POST',retry,branch)).body).toEqual(JSON.parse(JSON.stringify(success.body)));
+ expect(await balances()).toEqual(after);
+});
+it('uses approved client membership for current DP and rejects caller-invented discounts or membership',async()=>{
+ const branch={sub:'CH-BRANCH',role:'branch_manager',branch:'townshop'};
+ const created=await post({...source,data:{...source.data,medicines:[{name:'PENDING-ITEM',unit:'unit',quantity:1,alreadyDispensed:0}]}});
+ const e=created.body.encounter;
+ const quote=async()=> (await invoke(pending,'GET',null,branch,'/api/branch/off-system-pending?branch=townshop')).body.forms.find(f=>f.id===e.id);
+ expect((await quote()).quantities[0].unitPrice).toBe(9);
+ const payload={operationId:randomUUID(),encounterId:e.id,version:e.version,items:[{name:'PENDING-ITEM',quantity:1}],
+  paymentConfirmed:true,physicalConfirmed:true,paymentMethod:'card',expectedTotal:7,customerType:'member',campaignDiscounts:{'PENDING-ITEM':{pct:90}}};
+ expect((await invoke(pending,'POST',payload,branch)).status).toBe(409);
+ await query(`UPDATE clients SET data='{"nbNumber":"PENDING-NB"}' WHERE id='CH-CLIENT'`);
+ await query("INSERT INTO distributors(id,distributor_code,distributor_name,status) VALUES('PENDING-MEMBER','PENDING-NB','Synthetic member','active')");
+ await query("INSERT INTO distributor_agreements(id,nb_number,first_name,last_name,processing_branch,status) VALUES('PENDING-MEMBER','PENDING-NB','Synthetic','Member','townshop','pending_payment')");
+ expect((await quote()).quantities[0].unitPrice).toBe(9);
+ await query("UPDATE distributor_agreements SET status='approved' WHERE id='PENDING-MEMBER'");
+ expect((await quote()).quantities[0].unitPrice).toBe(7);
+ const result=await invoke(pending,'POST',payload,branch);expect(result.status,JSON.stringify(result.body)).toBe(200);
+ expect(result.body.receipt.total).toBe(7);
+ await query("UPDATE distributors SET status='inactive' WHERE id='PENDING-MEMBER'");
+ expect((await quote()).customerType).toBe('non-member');
 });

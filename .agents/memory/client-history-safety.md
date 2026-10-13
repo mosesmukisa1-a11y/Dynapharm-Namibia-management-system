@@ -11,6 +11,12 @@ The user subsequently authorized an assigned-branch pending-fulfilment workflow:
 
 **How to apply:** This is a narrow exception to the original historical-only scope below. Never deduct the already-dispensed historical quantities again. Keep new physical dispensing distinct and capped by remaining entitlement. Payment treatment for later issues must be established before implementing financial posting.
 
+Pending medicines are always paid for when collected (user-confirmed).
+
+**Why:** The user selected pay-on-issue rather than supporting prepaid off-system balances.
+
+**How to apply:** Historical capture never posts revenue or stock. Each later physical issue uses current eligible prices, confirmed payment, atomic stock/payment posting and retry-safe remaining-quantity limits.
+
 **Why:** The user needs records of work already performed outside the system, not a second stock/accounting transaction or an implied clinical decision.
 
 **How to apply:** Keep actual service date and capture actor/time separate. Front Desk files existing off-system forms without a new Consultant approval pipeline; recorded prescriber is source attribution, not electronic approval. Consultants have authorized read-only visibility. Keep prescribed/already-dispensed quantities as historical transcription only and preserve originals through amendment snapshots.

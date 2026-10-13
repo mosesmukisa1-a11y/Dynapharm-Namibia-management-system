@@ -1937,6 +1937,8 @@ app.post('/api/prescriptions/:id/dispense', async (req, res) => {
     const { query: dbQuery, getMany, withTransaction: dbTransaction } = await import('./api/db.js');
     const { recomputeLocationBalances } = await import('./api/services/stockEngine.js');
     const prescriptionId = req.params.id;
+    const historicalIssue=(await dbQuery('SELECT data FROM reports WHERE id=$1',[prescriptionId])).rows[0];
+    if(historicalIssue?.data?.offSystemFulfilment)return res.status(409).json({error:'Use assigned-branch pending fulfilment for this historical form'});
     let body = req.body || {};
     if (typeof body === 'string') body = JSON.parse(body || '{}');
     const { branchId, dispensedBy, items, saveMode } = body;

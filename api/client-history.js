@@ -2,6 +2,8 @@ import {randomUUID} from 'node:crypto';
 import {getOne,getMany,query,insert} from './db.js';
 import {atomicStockRequest} from './_lib/atomicStockRequest.js';
 import {historyAccess,historyRoles,canFileHistory,deny} from './services/clientHistoryAccess.js';
+import {historyQuantities} from './services/offSystemFulfilment.js';
+import {isDeepStrictEqual} from 'node:util';
 
 function text(value,max=10000){return String(value||'').trim().slice(0,max);}
 function date(value){
@@ -53,8 +55,7 @@ async function handler(req,res){
     const encounters=[];
     for(const e of rows){
       historyAccess(req.user,e.branch);
-      encounters.push({...e,quantities:(e.data.medicines||[]).map(m=>({...m,
-        dispensed:Number(m.alreadyDispensed||0),outstanding:Math.max(0,Number(m.quantity)-Number(m.alreadyDispensed||0))})),
+      encounters.push({...e,quantities:await historyQuantities(e),
         evidence:await getMany('SELECT * FROM client_dispense_evidence WHERE encounter_id=$1 ORDER BY captured_at',[e.id]),
         history:await getMany('SELECT * FROM client_history_events WHERE encounter_id=$1 ORDER BY created_at',[e.id])});
     }
@@ -87,6 +88,10 @@ async function handler(req,res){
     if(!e.data.offSystemHistorical||e.report_id)deny('Earlier evidence is read-only; it will not be rewritten',409);
     if(body.version!==e.version)deny('Record changed; reload before retrying',409);
     if(!text(body.reason))deny('An amendment reason is required',400);
+    if(await getOne("SELECT id FROM client_dispense_evidence WHERE encounter_id=$1 AND mode='live' LIMIT 1",[e.id])){
+      if(!isDeepStrictEqual(data.medicines,e.data.medicines))
+        deny('Medicines and historical dispensed quantities cannot change after a branch issue; amend notes only',409);
+    }
     await audit(e,actor,`original before amendment: ${text(body.reason,1000)}`);
     e=await getOne(`UPDATE client_encounters SET service_at=$2,source=$3,responsible_consultant=$4,
       data=$5,version=version+1 WHERE id=$1 RETURNING *`,[e.id,serviceAt,body.source,data.originalAuthor,JSON.stringify(data)]);

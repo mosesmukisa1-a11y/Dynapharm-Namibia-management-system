@@ -67,6 +67,31 @@ const prepareForm = async () => {
 };
 
 describe('off-system form filing only', () => {
+  it('marks a line fully historical while retaining partial numeric capture and no stock call', async () => {
+    await render(<ClientHistory clientId={client.id} />);
+    await prepareForm();
+    const checkbox = host.querySelector('input[aria-label="Medicine 1 all historically dispensed"]');
+    await act(async () => checkbox.click());
+    expect(field('Medicine 1 already dispensed').value).toBe('7');
+    await fill('Medicine 1 already dispensed', '2');
+    expect(checkbox.checked).toBe(false);
+    await click('File historical form');
+    expect(mocks.post.mock.calls[0][0]).toBe('/client-history');
+    expect(mocks.post.mock.calls[0][1].data.medicines[0].alreadyDispensed).toBe(2);
+  });
+  it('uses live quantities and pending API counts and locks medicine amendments after actual issue', async () => {
+    detail.encounters = [{ ...filed, quantities: [{ ...medicine, liveDispensed: 2, dispensed: 5, outstanding: 2 }] }];
+    await render(<ClientHistory clientId={client.id} />);
+    const cells = [...host.querySelector('tbody').querySelectorAll('td')].map(item => item.textContent);
+    expect(cells.slice(1)).toEqual(['7 tablet', '3', '2', '5', '2']);
+    expect(host.textContent).toContain('Total pending: 2');
+    await click('Amend with reason');
+    expect(host.textContent).toContain('Medicines are locked after a live issue');
+    expect(field('Medicine 1 prescribed quantity').matches(':disabled')).toBe(true);
+    expect(field('Medicine 1 already dispensed').matches(':disabled')).toBe(true);
+    expect(field('Original form reference (required)').matches(':disabled')).toBe(false);
+    expect(button('Add medicine').matches(':disabled')).toBe(true);
+  });
   it('selects live packages/products, searches, deselects, preserves edits and files only historical fields', async () => {
     mocks.prices.mockResolvedValue([
       { description: 'Catalogue tablet', is_package: false, dp: 91, cp: 127, bv: 18 },
@@ -89,7 +114,7 @@ describe('off-system form filing only', () => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(search, 'BUNDLE');
       search.dispatchEvent(new Event('input', { bubbles: true }));
     });
-    expect(checkboxes()).toHaveLength(1);
+    expect(checkboxes().filter(input => input.getAttribute('aria-label') === 'Catalogue bundle')).toHaveLength(1);
     await select('Catalogue bundle');
     expect(host.querySelectorAll('.ch-editor .ch-line').length).toBe(2);
     expect(field('Medicine 1 directions').value).toBe('Recorded directions');
@@ -220,7 +245,7 @@ describe('off-system form filing only', () => {
     expect(host.textContent).not.toContain('Consultant finalized');
     expect(host.textContent).not.toContain('Draft · unreviewed');
     const cells = [...host.querySelector('tbody').querySelectorAll('td')].map(item => item.textContent);
-    expect(cells.slice(1)).toEqual(['7 tablet', '3', '4']);
+    expect(cells.slice(1)).toEqual(['7 tablet', '3', '0', '3', '4']);
     expect(host.textContent).toContain('Recorded dispenser');
     expect(host.textContent).toContain('Recorded original / snapshot');
     expect(host.querySelectorAll('button').length).toBe(3);

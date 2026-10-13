@@ -33,6 +33,13 @@ const matches = (client, query) => [clientName(client), client.id, client.refere
   client.phone, client.email, client.id_number, contactData(client).idNumber, contactData(client).id_number,
   client.nb_number, client.nbNumber, contactData(client).nbNumber].some(value => normal(value).includes(normal(query)));
 const historical = encounter => parse(encounter.data).offSystemHistorical === true;
+const medicineCounts = encounter => encounter.quantities?.length ? encounter.quantities : (parse(encounter.data).medicines || []).map(line => {
+  const alreadyDispensed = Number(line.alreadyDispensed || 0), liveDispensed = Number(line.liveDispensed || 0);
+  const dispensed = Number(line.dispensed ?? alreadyDispensed + liveDispensed);
+  return { ...line, alreadyDispensed, liveDispensed, dispensed,
+    outstanding: line.outstanding ?? Math.max(0, Number(line.quantity) - dispensed) };
+});
+const medicinesLocked = encounter => !!encounter && medicineCounts(encounter).some(line => Number(line.liveDispensed || 0) > 0);
 const attachmentUrl = (clientId, attachmentId) => `/api/client-history-attachment?clientId=${encodeURIComponent(clientId)}&attachmentId=${encodeURIComponent(attachmentId)}`;
 
 function Button({ children, secondary = false, ...props }) {
@@ -110,7 +117,7 @@ export default function ClientHistory({ clientId, onBack, onClientUpdated }) {
       await load();
     } catch (err) {
       const message = err.message || 'The request could not be confirmed.';
-      const conflict = err.status === 409 || /reload|record changed|version|operation id already/i.test(message);
+      const conflict = err.status === 409 || /reload|record changed|version|operation id already|immutable|medicine.*cannot.*chang|cannot.*amend.*medicine/i.test(message);
       const rejected = [400, 401, 403, 422].includes(err.status) || /required|invalid|access denied|permission|must be|cannot amend|read.only/i.test(message);
       if (conflict) { pending.current = null; setConflicted(true); }
       else if (rejected) pending.current = null;
@@ -140,7 +147,7 @@ export default function ClientHistory({ clientId, onBack, onClientUpdated }) {
   const setData = (key, value) => setEditor(prev => ({ ...prev, data: { ...prev.data, [key]: value } }));
   const setLine = (index, changes) => setData('medicines', editor.data.medicines.map((line, i) => i === index ? { ...line, ...changes } : line));
   const toggleHistoricalMedicine = name => {
-    if (!canFile || busy || uploading || pending.current || conflicted) return;
+    if (!canFile || busy || uploading || pending.current || conflicted || medicinesLocked(editor?.encounter)) return;
     setEditor(prev => {
       if (!prev) return prev;
       const medicines = prev.data.medicines;
@@ -230,11 +237,13 @@ export default function ClientHistory({ clientId, onBack, onClientUpdated }) {
             <Field label="Location / outreach site (optional)" value={editor.data.location} onChange={event => setData('location', event.target.value)} />
             <Field label="Source notes (optional)" multiline wide value={editor.data.notes} onChange={event => setData('notes', event.target.value)} />
           </div>
-          <div className="ch-section"><div className="ch-row"><h4>Medicines as recorded on the original form</h4>
+          <fieldset className="ch-section" style={{ border: 0, padding: 0, minWidth: 0 }} disabled={medicinesLocked(editor.encounter)}><div className="ch-row"><h4>Medicines as recorded on the original form</h4>
             <Button secondary onClick={() => setData('medicines', [...editor.data.medicines, { name: '', quantity: 1, directions: '', unit: 'unit', alreadyDispensed: 0 }])}><Plus size={14} /> Add medicine</Button></div>
-            <p className="ch-caption">Manual names are accepted. Already dispensed is historical evidence only; remaining quantities do not authorize dispensing.</p>
+            <p className="ch-caption">{medicinesLocked(editor.encounter)
+              ? 'Medicines are locked after a live issue. Amend source details only; quantities and historical issued amounts cannot be changed.'
+              : 'Manual names are accepted. Already dispensed is historical evidence only; recording it does not change stock or take payment.'}</p>
              <HistoryMedicineSelection medicines={editor.data.medicines} onToggle={toggleHistoricalMedicine}
-               disabled={busy || uploading || !!pending.current || conflicted} />
+                disabled={busy || uploading || !!pending.current || conflicted || medicinesLocked(editor.encounter)} />
             {editor.data.medicines.map((line, index) => <div className="ch-line" key={index}>
               <div className="ch-row"><strong>Medicine {index + 1}</strong><Button secondary onClick={() => setData('medicines', editor.data.medicines.filter((_, i) => i !== index))}>Remove medicine {index + 1}</Button></div>
               <div className="ch-grid">
@@ -242,10 +251,13 @@ export default function ClientHistory({ clientId, onBack, onClientUpdated }) {
                 <Field label={`Medicine ${index + 1} unit`} value={line.unit} onChange={event => setLine(index, { unit: event.target.value })} />
                 <Field label={`Medicine ${index + 1} prescribed quantity`} type="number" min="1" step="1" value={line.quantity} onChange={event => setLine(index, { quantity: event.target.value })} />
                 <Field label={`Medicine ${index + 1} already dispensed`} type="number" min="0" max={line.quantity} step="1" value={line.alreadyDispensed} onChange={event => setLine(index, { alreadyDispensed: event.target.value })} />
+                <label className="ch-caption ch-wide"><input type="checkbox" aria-label={`Medicine ${index + 1} all historically dispensed`}
+                  checked={Number(line.quantity) > 0 && Number(line.alreadyDispensed) === Number(line.quantity)}
+                  onChange={event => setLine(index, { alreadyDispensed: event.target.checked ? line.quantity : 0 })} /> All prescribed units were historically dispensed (record only; no stock change)</label>
                 <Field label={`Medicine ${index + 1} directions`} wide value={line.directions} onChange={event => setLine(index, { directions: event.target.value })} />
               </div></div>)}
             {!editor.data.medicines.length && <div className="ch-empty"><h4>Transcribe the medicine lines</h4><p>Add each prescribed medicine and the amount already dispensed on the source form.</p></div>}
-          </div>
+          </fieldset>
           <div className="ch-section"><h4>Original form attachment (optional)</h4>
             {storage === null ? <p className="ch-caption">Checking secure storage. You can continue with manual transcription.</p>
               : storage ? <Field label={uploading ? 'Uploading original form…' : 'Upload original form'} type="file" onChange={upload} />
@@ -263,9 +275,9 @@ export default function ClientHistory({ clientId, onBack, onClientUpdated }) {
         {!detail.encounters?.length ? <div className="ch-empty"><h4>No historical forms recorded yet</h4><p className="ch-muted">File an existing outreach, paper or outage form. A booking is not required.</p></div>
           : <div className="ch-timeline">{[...detail.encounters].sort((a, b) => Date.parse(a.service_at) - Date.parse(b.service_at)).map(encounter => {
             const data = parse(encounter.data), isHistorical = historical(encounter);
-            const quantities = encounter.quantities?.length ? encounter.quantities : (data.medicines || []).map(line => ({
-              ...line, dispensed: line.alreadyDispensed ?? 0, outstanding: Number(line.quantity) - Number(line.alreadyDispensed || 0),
-            }));
+            const quantities = medicineCounts(encounter);
+            const totalPending = quantities.reduce((sum, line) => sum + Number(line.outstanding ?? Math.max(0,
+              Number(line.quantity) - Number(line.dispensed ?? Number(line.alreadyDispensed || 0) + Number(line.liveDispensed || 0)))), 0);
             return <article key={encounter.id} className="ch-encounter">
               <div className="ch-row"><div><p className="ch-kicker">{LABELS[encounter.source] || encounter.source}</p><h4>{displayDate(encounter.service_at)}</h4></div>
                 <span className={`ch-badge${isHistorical ? '' : ' earlier'}`}>{isHistorical ? 'Filed off-system history' : 'Earlier evidence · read-only'}</span></div>
@@ -275,12 +287,13 @@ export default function ClientHistory({ clientId, onBack, onClientUpdated }) {
                 ['Source notes', data.notes], ...(!isHistorical ? [['Earlier findings', data.results], ['Earlier follow-up', data.followUp],
                   ['Original prescription date', data.originalPrescriptionDate ? displayDate(data.originalPrescriptionDate) : '']] : [])].map(([label, value]) =>
                 <div key={label}><dt>{label}</dt><dd>{value || 'Not recorded'}</dd></div>)}</dl>
-              <h4>Prescribed and already-dispensed history</h4>
-              <p className="ch-caption">Historical counts only. Remaining amounts are not a live dispensing instruction.</p>
-              {quantities.length ? <div className="ch-table-wrap"><table className="ch-table"><thead><tr><th>Medicine / directions</th><th>Prescribed</th><th>Already dispensed</th><th>Remaining (historical)</th></tr></thead>
+              <h4>Prescribed, historical and newly issued quantities</h4>
+              <p className="ch-caption">Total pending: {totalPending} recorded units. Historical capture does not change stock. New issues are recorded by authorized branch staff, not from this history screen.</p>
+              {quantities.length ? <div className="ch-table-wrap"><table className="ch-table"><thead><tr><th>Medicine / directions</th><th>Prescribed</th><th>Historical issued</th><th>New issued</th><th>Total issued</th><th>Pending</th></tr></thead>
                 <tbody>{quantities.map((line, index) => <tr key={index}><td><strong>{line.name}</strong><p>{line.directions}</p><p>{line.notes}</p></td>
-                  <td>{line.quantity} {line.unit}</td><td>{line.dispensed ?? line.alreadyDispensed ?? 0}</td>
-                  <td><strong>{line.outstanding ?? Number(line.quantity) - Number(line.dispensed ?? line.alreadyDispensed ?? 0)}</strong></td></tr>)}</tbody></table></div>
+                  <td>{line.quantity} {line.unit}</td><td>{line.alreadyDispensed ?? 0}</td><td>{line.liveDispensed ?? 0}</td>
+                  <td>{line.dispensed ?? Number(line.alreadyDispensed || 0) + Number(line.liveDispensed || 0)}</td>
+                  <td><strong>{line.outstanding ?? Math.max(0, Number(line.quantity) - Number(line.dispensed ?? Number(line.alreadyDispensed || 0) + Number(line.liveDispensed || 0)))}</strong></td></tr>)}</tbody></table></div>
                 : <p className="ch-caption">No medicine lines recorded.</p>}
               <Attachments items={data.attachments} clientId={clientId} />
               {!!encounter.evidence?.length && <div className="ch-section"><h4>Retained earlier dispensing evidence · read-only</h4>{encounter.evidence.map(evidence => {

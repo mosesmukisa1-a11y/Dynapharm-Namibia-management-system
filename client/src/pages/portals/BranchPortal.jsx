@@ -24,6 +24,7 @@ import ControlledStockOperations from '../../components/ControlledStockOperation
 import StockCostReport from '../../components/StockCostReport';
 import { LinkedCustomerReturns } from '../../components/LinkedCustomerReturns';
 import {buildBranchPhysicalStockReport} from '../../lib/branchPhysicalStockReport.js';
+import OffSystemPending from '../../components/OffSystemPending';
 
 const DEFAULT_REFERRAL = { name: 'Dynapharm Namibia', nb_number: 'NB005676', id: 'DEFAULT_REFERRAL' };
 
@@ -3623,6 +3624,7 @@ function PrescriptionsTab() {
 
   return (
     <div>
+      <OffSystemPending key={effectiveBranch} branch={effectiveBranch} userRole={user?.role} />
       <div className="flex items-center justify-between mb-5 p-5 rounded-2xl text-white" style={{ background: 'linear-gradient(135deg,#c41e3a 0%,#8b0000 100%)', boxShadow: '0 4px 20px rgba(196,30,58,0.28)' }}>
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl" style={{ background: 'rgba(255,255,255,0.12)' }}>💊</div>
