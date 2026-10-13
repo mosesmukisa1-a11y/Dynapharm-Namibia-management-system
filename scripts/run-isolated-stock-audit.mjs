@@ -1,4 +1,4 @@
-import {randomUUID} from 'node:crypto';
+import {randomUUID, randomBytes} from 'node:crypto';
 import {spawn} from 'node:child_process';
 import {mkdir} from 'node:fs/promises';
 import pg from 'pg';
@@ -19,6 +19,9 @@ const testEnv={...process.env,DATABASE_URL:isolatedUrl.toString(),
   STOCK_AUDIT_ISOLATED:'1',STOCK_AUDIT_DATABASE:name,REPLIT_DEPLOYMENT:'',NODE_ENV:'test',
   // Match pg's source transport rather than guessing SSL from the hostname.
   DATABASE_SSL:new pg.Client({connectionString:sourceUrl.toString()}).connectionParameters.ssl?'1':'0'};
+// Real login tests must not sign disposable sessions with a business key.
+const testAuthKey = randomBytes(48).toString('hex');
+Object.assign(testEnv, {AUTH_SECRET:testAuthKey, JWT_SECRET:testAuthKey, SESSION_SECRET:testAuthKey});
 assertIsolatedTestDatabase(testEnv);
 const args=process.argv.slice(2);
 const all=args.includes('--all');

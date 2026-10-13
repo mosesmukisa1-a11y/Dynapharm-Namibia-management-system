@@ -56,3 +56,11 @@ The user confirmed that “herbal warisan maharani” refers to HERBA WARISAN MA
 **Why:** These user-supplied spellings differed from the live catalogue and were explicitly confirmed during branch-clearance scope review.
 
 **How to apply:** Use these as reviewed terminology when interpreting requests; preserve original product names/IDs. A one-off clearance exemption does not create a permanent ban on separately authorized future write-offs.
+
+## Ordinary branch write-off review
+
+Ordinary branch write-offs require GM review even when the submitting staff member has broad access. Submission is not physical deduction or a stock reservation; approval must recheck current stock. Existing historical write-offs are not retrospectively converted into pending requests.
+
+**Why:** The user explicitly separated ordinary write-off review from the dedicated GM-confirmed clearance action and prohibited historical repairs.
+
+**How to apply:** Keep client-supplied statuses from authorizing deductions. Preserve submission and approval actors separately, and leave an insufficient-stock request pending rather than recording a partial deduction as a full approval.

@@ -10124,13 +10124,14 @@ function WriteOffsTab({ branch }) {
         await api.stock.createMovement({
           product_name:      it.product_name,
           movement_type:     'write_off',
+          status:            'pending_approval',
           quantity:          Number(it.quantity),
           source_location:   sel?.location || form.location || (branch !== 'all' ? branch : ''),
           batch_no:          sel?.batch_no || sel?.batch_number || null,
           reason:            form.reason,
           write_off_reason:  form.reason,
           notes:             `${form.reason}${isRedistrib ? ` → ${form.target_location}` : ''}${form.notes ? ' — ' + form.notes : ''}`,
-          created_by:        user?.full_name || user?.username,
+          created_by:        user?.fullName || user?.username,
           reference:         batchRef,
         });
         // Approval owns stock deduction and batch state. Submitting a request
@@ -10139,7 +10140,7 @@ function WriteOffsTab({ branch }) {
       const productList = validItems.map(it => `${Number(it.quantity)} × ${it.product_name}`).join(', ');
       setAlert({
         type: 'success',
-        msg: `Submitted: ${productList}. Review each record's approval status before confirming physical disposal. This submission is not confirmation of a destination receipt.`,
+        msg: `Submitted for GM approval: ${productList}. Stock is not deducted until approved. This submission is not confirmation of disposal or a destination receipt.`,
       });
       setForm({ reason: '', notes: '', location: '', target_location: '', items: [emptyItem()] });
       setShowForm(false);

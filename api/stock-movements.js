@@ -244,7 +244,9 @@ export default async function handler(req, res) {
       const productName = body.productName || body.product_name || '';
       const qty = Number(body.quantity || 0);
       const notes = body.notes || null;
-      const createdBy = body.createdBy || body.created_by || null;
+      const createdBy = movType === 'write_off'
+        ? (req.user.fullName || req.user.full_name || req.user.username || req.user.sub || req.user.id)
+        : (body.createdBy || body.created_by || null);
 
       if (['write_off', 'sale', 'return', 'field_use', 'received', 'warehouse_dispatch', 'short_receipt'].includes(movType)) {
         const id = `MOV-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -256,11 +258,9 @@ export default async function handler(req, res) {
         const srcLocType = body.source_location_type || inferLocationType(srcLoc);
         const dstLocType = body.destination_location_type || inferLocationType(destLoc);
         const branchId = srcLoc || destLoc;
-        // Allow branch users to submit write-offs pending GM approval.
-        // Warehouse and country-stock write-offs ALWAYS require GM approval so
-        // the approve handler (not the POST path) can deduct from stock_batches.
-        const forceApproval = movType === 'write_off' &&
-          (srcLocType === 'warehouse' || srcLocType === 'country');
+        // Every ordinary write-off is a request, regardless of client status or
+        // location type. Only the authenticated approval path may deduct stock.
+        const forceApproval = movType === 'write_off';
         const movStatus = (body.status === 'pending_approval' || forceApproval)
           ? 'pending_approval' : 'posted';
 
@@ -546,7 +546,7 @@ export default async function handler(req, res) {
         const recomputeJobs = [];
         const locType = srcLocType || dstLocType;
         const locId = srcLoc || destLoc;
-        if (locType && locId) {
+        if (locType && locId && movStatus !== 'pending_approval') {
           recomputeJobs.push(
             recomputeLocationBalances(locType, locId).catch(e =>
               console.error('[stockEngine] stock-movements recompute error:', e.message)
@@ -616,9 +616,9 @@ export default async function handler(req, res) {
       const gmNote = body.notes || body.note || null;
       const action = body.action; // 'approve' | 'reject' | 'approve_all' | 'reject_all'
       const role = String(req.user?.role || '').toLowerCase();
-      const approvalRoles = ['gm', 'general_manager', 'admin', 'super_admin', 'superadmin', 'director'];
+      const approvalRoles = ['gm', 'general_manager', 'admin', 'super_admin', 'superadmin'];
       const isDisposal = ['dispose', 'dispose_all'].includes(action);
-      const permittedRoles = isDisposal ? [...approvalRoles, 'stock', 'stock_manager'] : approvalRoles;
+      const permittedRoles = isDisposal ? [...approvalRoles, 'director', 'stock', 'stock_manager'] : approvalRoles;
       if (!permittedRoles.includes(role)) {
         return res.status(403).json({ success: false, error: isDisposal
           ? 'Stock disposal permission required' : 'GM approval permission required' });
@@ -737,6 +737,23 @@ export default async function handler(req, res) {
           // 'hochland-park' correctly resolve to stored forms like 'hochlandpark',
           // and _branch-suffixed variants ('ondangwa_branch') are also covered.
           const branchCandidates = branchSearchTerms(branchId);
+          // Lock physical rows before balance rows, matching ordinary sales.
+          // Recheck current stock under the locks: submissions do not reserve it.
+          const lockedStock = await client.query(
+            `SELECT id, quantity FROM branch_inventory_batches
+             WHERE LOWER(REPLACE(branch_id,' ','_')) = ANY($1)
+               AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))
+               AND quantity > 0
+             ORDER BY expiry_date ASC NULLS LAST
+             FOR UPDATE`,
+            [branchCandidates, productName]
+          );
+          const available = lockedStock.rows.reduce((sum, b) => sum + Number(b.quantity), 0);
+          if (available < qty) {
+            const error = new Error(`Insufficient branch stock for "${productName}" at ${branchId}: ${available} available, ${qty} requested. Write-off remains pending GM approval.`);
+            error.statusCode = 409;
+            throw error;
+          }
           const resolvedRow = await client.query(
             `SELECT DISTINCT branch_id FROM branch_inventory_batches
              WHERE LOWER(REPLACE(branch_id,' ','_')) = ANY($1) LIMIT 1`,
@@ -768,14 +785,15 @@ export default async function handler(req, res) {
             const specific = await client.query(
               `SELECT * FROM branch_inventory_batches
                WHERE LOWER(REPLACE(branch_id,' ','_')) = ANY($1)
-                 AND LOWER(product_name) = LOWER($2)
+                  AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))
                  AND LOWER(COALESCE(batch_no,'')) = LOWER($3)
                  AND quantity > 0
                ORDER BY expiry_date ASC NULLS LAST
-               LIMIT 1 FOR UPDATE`,
+                FOR UPDATE`,
               [branchCandidates, productName, batchNo]
             );
             for (const b of specific.rows) {
+              if (remaining <= 0) break;
               const take = Math.min(remaining, Number(b.quantity));
               await deductBranchBatchTx(client, b, take);
               await client.query(`DELETE FROM branch_inventory_batches WHERE id = $1 AND quantity <= 0`, [b.id]);
@@ -787,7 +805,7 @@ export default async function handler(req, res) {
             const fifo = await client.query(
               `SELECT * FROM branch_inventory_batches
                WHERE LOWER(REPLACE(branch_id,' ','_')) = ANY($1)
-                 AND LOWER(product_name) = LOWER($2)
+                  AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))
                  AND quantity > 0
                  ${batchNo ? `AND LOWER(COALESCE(batch_no,'')) != LOWER($3)` : ''}
                ORDER BY expiry_date ASC NULLS LAST
@@ -801,6 +819,11 @@ export default async function handler(req, res) {
               await client.query(`DELETE FROM branch_inventory_batches WHERE id = $1 AND quantity <= 0`, [b.id]);
               remaining -= take;
             }
+          }
+          if (remaining > 0) {
+            const error = new Error('Branch stock changed during approval. Write-off remains pending GM approval.');
+            error.statusCode = 409;
+            throw error;
           }
           // Mirror to branch_inventory_movements (use the resolved id so the ledger is consistent)
           const bimId = `BIM-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
