@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ClipboardList, Plus, Save, Search } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
+import HistoryMedicineSelection from './HistoryMedicineSelection';
 import './ClientHistory.css';
 
 const SOURCES = ['outreach', 'paper', 'outage'];
@@ -138,6 +139,17 @@ export default function ClientHistory({ clientId, onBack, onClientUpdated }) {
   };
   const setData = (key, value) => setEditor(prev => ({ ...prev, data: { ...prev.data, [key]: value } }));
   const setLine = (index, changes) => setData('medicines', editor.data.medicines.map((line, i) => i === index ? { ...line, ...changes } : line));
+  const toggleHistoricalMedicine = name => {
+    if (!canFile || busy || uploading || pending.current || conflicted) return;
+    setEditor(prev => {
+      if (!prev) return prev;
+      const medicines = prev.data.medicines;
+      const selected = medicines.some(line => (line.catalogueName || line.name) === name);
+      return { ...prev, data: { ...prev.data, medicines: selected
+        ? medicines.filter(line => (line.catalogueName || line.name) !== name)
+        : [...medicines, { name, catalogueName: name, quantity: 1, directions: '', unit: 'unit', alreadyDispensed: 0 }] } };
+    });
+  };
   const save = () => {
     if (!canFile || !editor || pending.current || conflicted) return;
     try {
@@ -221,6 +233,8 @@ export default function ClientHistory({ clientId, onBack, onClientUpdated }) {
           <div className="ch-section"><div className="ch-row"><h4>Medicines as recorded on the original form</h4>
             <Button secondary onClick={() => setData('medicines', [...editor.data.medicines, { name: '', quantity: 1, directions: '', unit: 'unit', alreadyDispensed: 0 }])}><Plus size={14} /> Add medicine</Button></div>
             <p className="ch-caption">Manual names are accepted. Already dispensed is historical evidence only; remaining quantities do not authorize dispensing.</p>
+             <HistoryMedicineSelection medicines={editor.data.medicines} onToggle={toggleHistoricalMedicine}
+               disabled={busy || uploading || !!pending.current || conflicted} />
             {editor.data.medicines.map((line, index) => <div className="ch-line" key={index}>
               <div className="ch-row"><strong>Medicine {index + 1}</strong><Button secondary onClick={() => setData('medicines', editor.data.medicines.filter((_, i) => i !== index))}>Remove medicine {index + 1}</Button></div>
               <div className="ch-grid">

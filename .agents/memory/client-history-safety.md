@@ -13,6 +13,12 @@ The user corrected the scope: “the only change I asked for is the front desk t
 
 Admin must also be able to file and view these forms while using the existing Front Desk portal.
 
+Off-system forms should use the same medicine picker as Consultants, with manual transcription retained for older medicines absent from today's catalogue.
+
+**Why:** The user wants staff to select the prescribed medicines rather than retype their names.
+
+**How to apply:** Reuse selection presentation only; historical selection does not authorize an order or dispensing and must not inherit stock/pricing mutations.
+
 **Why:** The user uses an Admin login for Front Desk registration; accepting registration but rejecting that same client's history breaks the intended workflow.
 
 **How to apply:** Preserve the real Admin session actor and existing cross-branch Admin permissions, scoped to a selected persisted client. Do not infer extra permissions for unrelated roles from their ability to open a portal.

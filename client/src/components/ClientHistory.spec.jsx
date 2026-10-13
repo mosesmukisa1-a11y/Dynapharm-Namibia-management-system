@@ -6,11 +6,12 @@ import ClientHistory, { ClientHistoryDirectory } from './ClientHistory.jsx';
 
 const mocks = vi.hoisted(() => ({
   user: { id: 'front-actor', role: 'frontdesk', branch: 'okongo' },
-  get: vi.fn(), post: vi.fn(), list: vi.fn(), create: vi.fn(), update: vi.fn(),
+  get: vi.fn(), post: vi.fn(), list: vi.fn(), create: vi.fn(), update: vi.fn(), prices: vi.fn(),
 }));
 vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ user: mocks.user }) }));
 vi.mock('../lib/api', () => ({ api: {
   get: mocks.get, post: mocks.post,
+  prices: { list: mocks.prices },
   clients: { list: mocks.list, create: mocks.create, update: mocks.update },
 } }));
 const client = { id: 'synthetic-client', full_name: 'Synthetic Outreach Client', phone: '0810000119', branch: 'okongo', data: { idNumber: 'TEST123456' } };
@@ -37,6 +38,7 @@ beforeEach(() => {
   available = false;
   mocks.get.mockImplementation(endpoint => Promise.resolve(endpoint.includes('capabilities=true') ? { available } : detail));
   mocks.list.mockResolvedValue([client]);
+  mocks.prices.mockResolvedValue([]);
   mocks.post.mockResolvedValue({ success: true });
   host = document.createElement('div'); document.body.append(host); root = createRoot(host);
 });
@@ -65,6 +67,98 @@ const prepareForm = async () => {
 };
 
 describe('off-system form filing only', () => {
+  it('selects live packages/products, searches, deselects, preserves edits and files only historical fields', async () => {
+    mocks.prices.mockResolvedValue([
+      { description: 'Catalogue tablet', is_package: false, dp: 91, cp: 127, bv: 18 },
+      { description: 'Catalogue bundle', is_package: true, dp: 330, cp: 440, bv: 42 },
+      { description: 'Catalogue tablet', is_package: false },
+      { description: 'Catalogue bundle', is_package: false },
+    ]);
+    await render(<ClientHistory clientId={client.id} />);
+    await click('File off-system form');
+    expect(mocks.prices).toHaveBeenCalledTimes(1);
+    const checkboxes = () => [...host.querySelectorAll('input[type=checkbox]')];
+    expect(checkboxes().map(input => input.getAttribute('aria-label'))).toEqual(['Catalogue bundle', 'Catalogue tablet']);
+    const select = name => act(async () => host.querySelector(`input[aria-label="${name}"]`).click());
+    await select('Catalogue tablet');
+    expect(field('Medicine 1 prescribed quantity').value).toBe('1');
+    expect(field('Medicine 1 already dispensed').value).toBe('0');
+    await fill('Medicine 1 directions', 'Recorded directions');
+    const search = host.querySelector('input[aria-label="Search products"]');
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(search, 'BUNDLE');
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(checkboxes()).toHaveLength(1);
+    await select('Catalogue bundle');
+    expect(host.querySelectorAll('.ch-editor .ch-line').length).toBe(2);
+    expect(field('Medicine 1 directions').value).toBe('Recorded directions');
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(search, '');
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await select('Catalogue tablet'); // Deselect removes its line.
+    expect(field('Medicine 1 name').value).toBe('Catalogue bundle');
+    expect(field('Medicine 2 name')).toBeUndefined();
+    await select('Catalogue tablet');
+    await click('Add medicine'); // Manual fallback alongside catalogue choices.
+    await fill('Medicine 3 name', 'Historical medicine absent from catalogue');
+    await fill('Medicine 2 directions', 'As transcribed');
+    expect(host.textContent).not.toMatch(/DP:|CP:|BV:|OUT OF STOCK/);
+    await fill('Actual service date and time (your local timezone)', '2024-02-11T10:00');
+    await fill('Recorded prescriber (required)', 'Source prescriber');
+    await fill('Original form reference (required)', 'ORIGINAL-119');
+    await click('File historical form');
+    const lines = mocks.post.mock.calls[0][1].data.medicines;
+    expect(lines).toEqual([
+      { name: 'Catalogue bundle', quantity: 1, alreadyDispensed: 0, unit: 'unit', directions: '' },
+      { name: 'Catalogue tablet', quantity: 1, alreadyDispensed: 0, unit: 'unit', directions: 'As transcribed' },
+      { name: 'Historical medicine absent from catalogue', quantity: 1, alreadyDispensed: 0, unit: 'unit', directions: '' },
+    ]);
+    expect(new Set(lines.map(line => line.name)).size).toBe(3);
+    expect(mocks.post).toHaveBeenCalledTimes(1);
+    expect(mocks.post.mock.calls[0][0]).toBe('/client-history');
+  });
+  it('recognizes existing amendment lines without duplicates and removes selected lines by chip', async () => {
+    mocks.prices.mockResolvedValue([{ description: medicine.name, is_package: false }]);
+    await render(<ClientHistory clientId={client.id} />);
+    await click('Amend with reason');
+    expect(host.querySelector('input[type=checkbox]').checked).toBe(true);
+    expect(field('Medicine 1 prescribed quantity').value).toBe('7');
+    await act(async () => host.querySelector(`button[aria-label="Deselect ${medicine.name}"]`).click());
+    expect(field('Medicine 1 name')).toBeUndefined();
+    expect(host.querySelector('input[type=checkbox]').checked).toBe(false);
+    await act(async () => host.querySelector('input[type=checkbox]').click());
+    expect(field('Medicine 1 prescribed quantity').value).toBe('1');
+    expect(field('Medicine 2 name')).toBeUndefined();
+  });
+  it('shows catalogue loading and explicit failure/retry without stale or static fallback', async () => {
+    let reject;
+    mocks.prices.mockImplementationOnce(() => new Promise((_resolve, fail) => { reject = fail; }));
+    await render(<ClientHistory clientId={client.id} />);
+    await click('File off-system form');
+    expect(host.querySelector('[aria-label="Loading medicine catalogue"]')).not.toBeNull();
+    await act(async () => reject(new Error('Catalogue network unavailable')));
+    expect(host.textContent).toContain('Catalogue network unavailable');
+    expect(host.querySelectorAll('input[type=checkbox]')).toHaveLength(0);
+    await click('Add medicine');
+    await fill('Medicine 1 name', 'Old paper medicine');
+    mocks.prices.mockResolvedValue([{ description: 'Retry catalogue item', is_package: false }]);
+    await click('Retry catalogue');
+    expect(host.querySelector('input[aria-label="Retry catalogue item"]')).not.toBeNull();
+    expect(field('Medicine 1 name').value).toBe('Old paper medicine');
+    expect(mocks.post).not.toHaveBeenCalled();
+  });
+  it('allows Admin history selection while Consultant never loads a writable picker', async () => {
+    mocks.user.role = 'consultant';
+    await render(<ClientHistory clientId={client.id} />);
+    expect(mocks.prices).not.toHaveBeenCalled();
+    mocks.user.role = 'admin';
+    await render(<ClientHistory clientId={client.id} />);
+    await click('File off-system form');
+    expect(mocks.prices).toHaveBeenCalledTimes(1);
+    expect(button('Add medicine')).toBeDefined();
+  });
   it('files a manual source form without staff, catalogue, approval or dispensing dependencies', async () => {
     mocks.post.mockImplementation(async (_endpoint, body) => {
       detail = { ...detail, encounters: [...detail.encounters, { ...filed, id: 'newly-filed-form',

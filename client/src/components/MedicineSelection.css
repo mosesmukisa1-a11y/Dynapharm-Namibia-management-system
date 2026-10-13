@@ -1,0 +1,13 @@
+.medicine-selection-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); gap: 8px; max-height: 420px; overflow-y: auto; margin-bottom: 12px; }
+.medicine-selection-card { overflow-wrap: anywhere; }
+.medicine-selection-card:has(input:focus-visible) { outline: 2px solid #c41e3a; outline-offset: 2px; }
+.medicine-selection-card:has(input:disabled) { cursor: not-allowed !important; opacity: .65; }
+.medicine-selection-history .medicine-selection-card { border: 1px solid #ead0d7 !important; background: #fff !important; color: #30252a; }
+.medicine-selection-history .medicine-selection-card:has(input:checked) { background: #fcf0f2 !important; border-color: #c41e3a !important; }
+.medicine-selection-history .medicine-selection-card span { color: #30252a !important; }
+.medicine-selection-history input[type=checkbox] { accent-color: #c41e3a; }
+.medicine-selection-history .medicine-selection-summary { background: #fcf0f2 !important; border-color: #ead0d7 !important; }
+.medicine-selection-history .medicine-selection-summary h4,
+.medicine-selection-history .medicine-selection-summary span,
+.medicine-selection-history .medicine-selection-summary button { color: #992238 !important; }
+.medicine-selection-history .medicine-selection-summary span { background: #f8e8ec !important; border-color: #ead0d7 !important; }
