@@ -1,5 +1,7 @@
 import { applyAuthCors, getBranchScope } from './_lib/auth.js';
 import { getMany, getOne, insert, update, remove, publishRealtimeEvent } from './db.js';
+import { syncCheckupClients } from './services/checkupClients.js';
+import { branchSearchTermsForMany } from './_lib/branchUtils.js';
 
 async function parseRequestBody(req) {
   if (req.body) {
@@ -115,17 +117,22 @@ export default async function handler(req, res) {
   const requestedBranch = searchParams.get('branch');
   const search = searchParams.get('search');
   const branchScope = getBranchScope(req.user);
+  const scopeTerms = branchSearchTermsForMany(branchScope.branches || []);
+  const canReadBranch = branch => !branchScope.enforced || scopeTerms.includes((branch || '').trim().toLowerCase());
   const actor=req.user.sub||req.user.id;
   const presentClient=normalizeClient;
 
   try {
+    if (method === 'POST' && searchParams.get('action') === 'sync-checkups') {
+      return res.json(await syncCheckupClients(req.user));
+    }
     if (method === 'GET') {
       if (id) {
         const client = await getOne('SELECT * FROM clients WHERE id = $1', [id]);
         if (!client) {
           return res.status(404).json({ error: 'Client not found' });
         }
-        if (branchScope.enforced && !branchScope.branches.includes(client.branch)) {
+        if (!canReadBranch(client.branch)) {
           return res.status(403).json({ error: 'Access denied' });
         }
         return res.json(presentClient(client));
@@ -134,14 +141,14 @@ export default async function handler(req, res) {
         if (!client) {
           return res.status(404).json({ error: 'Client not found' });
         }
-        if (branchScope.enforced && !branchScope.branches.includes(client.branch)) {
+        if (!canReadBranch(client.branch)) {
           return res.status(403).json({ error: 'Access denied' });
         }
         return res.json(presentClient(client));
       } else if (phone) {
         let clients;
         if (branchScope.enforced) {
-          clients = await getMany('SELECT * FROM clients WHERE phone = $1 AND branch = ANY($2) ORDER BY created_at DESC', [phone, branchScope.branches]);
+          clients = await getMany('SELECT * FROM clients WHERE phone = $1 AND LOWER(TRIM(branch)) = ANY($2::text[]) ORDER BY created_at DESC', [phone, scopeTerms]);
         } else {
           clients = await getMany('SELECT * FROM clients WHERE phone = $1 ORDER BY created_at DESC', [phone]);
         }
@@ -151,8 +158,8 @@ export default async function handler(req, res) {
         const params = [];
         
         if (branchScope.enforced) {
-          queryText += ' WHERE branch = ANY($1)';
-          params.push(branchScope.branches);
+          queryText += ' WHERE LOWER(TRIM(branch)) = ANY($1::text[])';
+          params.push(scopeTerms);
         } else if (requestedBranch) {
           queryText += ' WHERE branch = $1';
           params.push(requestedBranch);
@@ -325,8 +332,8 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (error) {
     console.error('Clients API error:', error);
-    return res.status(500).json({ 
-      error: 'Internal server error',
+    return res.status(error.statusCode || 500).json({
+      error: error.statusCode ? error.message : 'Internal server error',
       code: error.code || 'INTERNAL_ERROR'
     });
   }

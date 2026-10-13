@@ -90,6 +90,7 @@ export const api = {
 
   clients: {
     list: () => api.get('/clients'),
+    syncCheckups: () => api.post('/clients?action=sync-checkups', {}),
     create: (data) => api.post('/clients', data),
     update: (id, data) => api.put('/clients', { ...data, id }),
   },

@@ -2260,13 +2260,23 @@ function ClientsSection() {
   const [editMode, setEditMode] = useState(false);
   const [editForm, setEditForm] = useState({});
   const [referralModal, setReferralModal] = useState(null);
+  const [loadError, setLoadError] = useState('');
+  const [syncNotice, setSyncNotice] = useState('');
 
-  useEffect(() => {
-    api.clients.list()
-      .then(data => setClients(Array.isArray(data) ? data : data.clients || []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+  const loadClients = useCallback(async () => {
+    setLoading(true);
+    setLoadError('');
+    setSyncNotice('');
+    try {
+      const sync = await api.clients.syncCheckups();
+      if (sync.skipped) setSyncNotice(`${sync.skipped} check-up form(s) need a valid name, phone and branch before a client profile can be created.`);
+      const data = await api.clients.list();
+      setClients(Array.isArray(data) ? data : data.clients || []);
+    } catch (error) {
+      setLoadError(error.message || 'Unable to synchronize check-up clients. Please retry.');
+    } finally { setLoading(false); }
   }, []);
+  useEffect(() => { loadClients(); }, [loadClients]);
 
   const showAllClients = () => { setSearch(''); setBranchFilter(''); };
 
@@ -2278,7 +2288,7 @@ function ClientsSection() {
         || (c.reference || c.referenceNumber || '').toLowerCase().includes(q);
       if (!match) return false;
     }
-    if (branchFilter && (c.branch || '') !== branchFilter) return false;
+    if (branchFilter && getBranchId(c.branch || '') !== getBranchId(branchFilter)) return false;
     return true;
   }).sort((a, b) => new Date(b.timestamp || b.created_at || 0) - new Date(a.timestamp || a.created_at || 0));
 
@@ -2413,6 +2423,10 @@ function ClientsSection() {
   return (
     <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '24px', boxShadow: '0 1px 8px rgba(0,0,0,0.04)' }}>
       <h3 style={{ margin: '0 0 16px', fontSize: '1.15rem', color: '#1e293b' }}>Client Search</h3>
+      <p>Registered clients and clients from your assigned branches’ check-up forms appear here automatically.</p>
+      {loadError && <p role="alert" style={{ color: '#b91c1c' }}>{loadError}</p>}
+      {syncNotice && <p role="status">{syncNotice}</p>}
+      <button onClick={loadClients} disabled={loading} style={{ marginBottom: 12 }}>Refresh clients</button>
       <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '18px' }}>
         <input
           type="text"
@@ -2431,7 +2445,7 @@ function ClientsSection() {
       {loading ? <LoadingSpinner /> : filtered.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '40px', color: '#7f8c8d' }}>
           <h3>📋 No clients found</h3>
-          <p>{branchFilter ? 'No clients registered for the selected branch.' : 'Clients will appear here once they register through the client portal.'}</p>
+          <p>{branchFilter ? 'No clients found for the selected branch.' : 'Clients appear here after registration or submission of a check-up form.'}</p>
         </div>
       ) : (
         <div>
@@ -2450,7 +2464,7 @@ function ClientsSection() {
                     <span style={{ background: memberStatus === 'member' ? '#e8f5e9' : '#fff3cd', color: memberStatus === 'member' ? '#27ae60' : '#f39c12', padding: '4px 8px', borderRadius: '3px', fontSize: '0.8rem' }}>
                       {memberStatus === 'member' ? '👤 Member' : '🤝 Referred'}
                     </span>
-                    {c.branch && <span style={{ background: '#e8f5e9', color: '#27ae60', padding: '4px 8px', borderRadius: '3px', fontSize: '0.8rem', marginLeft: '5px' }}>{c.branch}</span>}
+                    {c.branch && <span style={{ background: '#e8f5e9', color: '#27ae60', padding: '4px 8px', borderRadius: '3px', fontSize: '0.8rem', marginLeft: '5px' }}>{BRANCH_DETAILS.find(b => b.id === getBranchId(c.branch))?.name || c.branch}</span>}
                   </div>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px', marginBottom: '15px' }}>

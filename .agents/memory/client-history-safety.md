@@ -13,6 +13,12 @@ The user subsequently authorized an assigned-branch pending-fulfilment workflow:
 
 Pending medicines are always paid for when collected (user-confirmed).
 
+Consultant check-up forms must automatically feed the Consultant Clients tab.
+
+**Why:** The user reported that check-up patients were missing from Clients and requested harmonized records.
+
+**How to apply:** Preserve registered profiles and original forms; use explicit source/reference evidence rather than name-only identity merges. This synchronization is not a prescription, payment or stock action.
+
 **Why:** The user selected pay-on-issue rather than supporting prepaid off-system balances.
 
 **How to apply:** Historical capture never posts revenue or stock. Each later physical issue uses current eligible prices, confirmed payment, atomic stock/payment posting and retry-safe remaining-quantity limits.
