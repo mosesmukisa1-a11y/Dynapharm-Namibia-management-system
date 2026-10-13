@@ -51,7 +51,41 @@ it('does not enable execution with blockers even after the operator confirms',as
   await change(host.querySelector('input[aria-label="Clearance confirmation"]'),'WRITE OFF BRANCH STOCK');
   expect(button('Confirm GM branch clearance').disabled).toBe(true);
   expect(host.textContent).toContain('Execution blocked');
+  const readiness=host.querySelector('[aria-label="Clearance execution readiness"]');
+  expect(readiness.textContent).toContain('1 blocked batches');
+  expect(readiness.textContent).toContain('townshop — 1 affected batches: Stock status out_of_stock');
+  expect(readiness.textContent).not.toContain('confirmation text must match');
+  expect(readiness.textContent).not.toContain('Confirm the recoverable-backup');
   expect(api.post).toHaveBeenCalledTimes(1);
+});
+it('keeps row-level safeguards even if a malformed summary undercounts blockers',async()=>{
+  api.post.mockResolvedValue({...draft,blocked_rows:0,rows:[{...draft.rows[0],flags:['Pending write-off MOV-TEST']}]});
+  await act(async()=>root.render(<BranchStockClearance/>));
+  await act(async()=>button('Preview branch clearance').click());
+  await act(async()=>host.querySelector('input[type=checkbox]').click());
+  await change(host.querySelector('input[aria-label="Clearance confirmation"]'),'WRITE OFF BRANCH STOCK');
+  expect(button('Confirm GM branch clearance').disabled).toBe(true);
+  expect(host.querySelector('[aria-label="Clearance execution readiness"]').textContent).toContain('MOV-TEST');
+  expect(api.post).toHaveBeenCalledTimes(1);
+});
+it('shows reserved transfer IDs next to confirmation without bypassing the block',async()=>{
+  api.post.mockResolvedValue({...draft,reserved_transfers:['TRANSFER-TEST']});
+  await act(async()=>root.render(<BranchStockClearance/>));
+  await act(async()=>button('Preview branch clearance').click());
+  await act(async()=>host.querySelector('input[type=checkbox]').click());
+  await change(host.querySelector('input[aria-label="Clearance confirmation"]'),'WRITE OFF BRANCH STOCK');
+  expect(button('Confirm GM branch clearance').disabled).toBe(true);
+  expect(host.querySelector('[aria-label="Clearance execution readiness"]').textContent).toContain('Reserved transfer IDs: TRANSFER-TEST');
+});
+it('does not require a missing-cost checkbox for a numeric-string zero',async()=>{
+  api.post.mockResolvedValue({...draft,missing_cost_units:'0'});
+  await act(async()=>root.render(<BranchStockClearance/>));
+  await act(async()=>button('Preview branch clearance').click());
+  expect(host.querySelectorAll('input[type=checkbox]')).toHaveLength(1);
+  await act(async()=>host.querySelector('input[type=checkbox]').click());
+  await change(host.querySelector('input[aria-label="Clearance confirmation"]'),'WRITE OFF BRANCH STOCK');
+  expect(button('Confirm GM branch clearance').disabled).toBe(false);
+  expect(host.querySelector('[aria-label="Clearance execution readiness"]').textContent).toContain('Ready for GM confirmation');
 });
 it('synchronizes the selector and explicit stored scope when reopening a saved clearance',async()=>{
   api.get.mockResolvedValueOnce({branches:[{id:'townshop',name:'Windhoek CBD'}],history:[{id:draft.id,status:'approved'}]})

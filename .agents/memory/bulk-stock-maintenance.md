@@ -15,6 +15,12 @@ Freezing the relevant inventory/registry predicates during execution is intentio
 
 **How to apply:** Preserve exact typed branch identities, recheck current staff authority, reject stale previews and maintain deterministic retry identity. Replace broad maintenance locks only with demonstrated equivalent predicate protection, not client-side totals.
 
+Explain unmet clearance requirements next to the confirmation button, not only above a long batch table. A row saying “No detected blocker” is not an all-preview clearance, and an empty stock-edit queue does not mean there are no pending write-offs.
+
+**Why:** An operator supplied correctly typed/ticked confirmation screenshots but could not see the aggregate blockers after scrolling, making the functioning safety gate appear broken.
+
+**How to apply:** Keep blocking details and exact request/batch identities visible near execution. Do not infer which recorded quantity/status is wrong or resolve production blockers without reviewed authority.
+
 Close owned disposable browser contexts/services before a production build when workspace memory is tight.
 
 **Why:** A concurrent build stalled after transformation near the memory limit; releasing owned audit resources allowed the serial build to finish normally without dependency changes.

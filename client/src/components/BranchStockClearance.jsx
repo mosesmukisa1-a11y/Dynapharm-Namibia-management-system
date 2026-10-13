@@ -55,9 +55,26 @@ export default function BranchStockClearance() {
     catch (error) { setMessage({ type:'error',text:error.message }); }
     finally { setBusy(false); }
   };
-  const blocked = preview && (preview.blocked_rows > 0 || preview.reserved_transfers?.length > 0);
-  const canExecute = preview?.status === 'draft' && !blocked && preview.rows.length > 0 &&
-    backup && confirmation === CONFIRMATION && (!preview.missing_cost_units || missingCost) && !busy;
+  const blockedRows = preview?.rows.filter(row => row.flags?.length) || [];
+  const blocked = preview && (preview.blocked_rows > 0 || blockedRows.length > 0 || preview.reserved_transfers?.length > 0);
+  const missingEvidence = Number(preview?.missing_cost_units) > 0;
+  const blockingGroups = [];
+  for (const row of blockedRows) for (const reason of row.flags) {
+    let group = blockingGroups.find(item => item.branch === row.branch_id && item.reason === reason);
+    if (!group) { group = { branch:row.branch_id, reason, ids:[] }; blockingGroups.push(group); }
+    group.ids.push(row.id);
+  }
+  const executionReasons = [];
+  if (preview) {
+    if (preview.status !== 'draft') executionReasons.push('This clearance is not awaiting confirmation.');
+    if (busy) executionReasons.push('A request is still in progress.');
+    if (blocked) executionReasons.push(`Stock review required: ${Math.max(Number(preview.blocked_rows) || 0, blockedRows.length)} blocked batches; ${preview.reserved_transfers?.length || 0} reserved transfers. Check the details below.`);
+    if (!preview.rows.length) executionReasons.push('There is no non-exempt stock in this preview.');
+    if (!backup) executionReasons.push('Confirm the recoverable-backup and physical-stock review attestation.');
+    if (missingEvidence && !missingCost) executionReasons.push('Acknowledge the missing original cost evidence.');
+    if (confirmation !== CONFIRMATION) executionReasons.push(`The confirmation text must match exactly: ${CONFIRMATION}.`);
+  }
+  const canExecute = !!preview && executionReasons.length === 0;
   return (
     <section className="rounded-xl border border-red-200 bg-white p-4 space-y-3" aria-label="GM branch stock clearance">
       <h3 className="font-bold text-lg text-red-800">GM Branch Stock Clearance</h3>
@@ -107,7 +124,7 @@ export default function BranchStockClearance() {
         {preview.status === 'draft' && <div className="space-y-2 border-t pt-3">
           <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={backup} disabled={busy}
             onChange={event => setBackup(event.target.checked)} />I have verified a recoverable backup and reviewed physical stock, holds and allocations. This is my attestation, not an automated backup check.</label>
-          {!!preview.missing_cost_units && <label className="flex items-start gap-2 text-sm">
+          {missingEvidence && <label className="flex items-start gap-2 text-sm">
             <input type="checkbox" checked={missingCost} disabled={busy} onChange={event => setMissingCost(event.target.checked)} />
             I acknowledge missing original cost evidence. Only known original costs will be posted; the full financial expense remains incomplete.
           </label>}
@@ -116,6 +133,20 @@ export default function BranchStockClearance() {
               disabled={busy} onChange={event => setConfirmation(event.target.value)} autoComplete="off" />
           </label>
           <p className="text-xs text-gray-600">Inventory and transfer writes briefly pause during the atomic commit. If any relevant stock changes after preview, execution is rejected with no deductions.</p>
+          <div aria-label="Clearance execution readiness" aria-live="polite" className="rounded border p-3 text-sm">
+            {canExecute ? <p className="font-semibold">Ready for GM confirmation. No stock changes until you click Confirm.</p> : <>
+              <p className="font-semibold text-red-800">Confirmation disabled — required actions:</p>
+              <ul className="list-disc pl-5">{executionReasons.map(reason => <li key={reason}>{reason}</li>)}</ul>
+            </>}
+            {!!blockingGroups.length && <div className="mt-2 space-y-2">
+              {blockingGroups.map(group => <details key={`${group.branch}:${group.reason}`}>
+                <summary className="cursor-pointer text-red-800">{group.branch} — {group.ids.length} affected batches: {group.reason}</summary>
+                <ul className="pl-5 font-mono text-xs break-all">{group.ids.map(id => <li key={id}>{id}</li>)}</ul>
+              </details>)}
+              <p className="mt-2">Review pending write-offs in the GM write-off queue, not Stock Record Edit Requests. Stock status mismatches require a reviewed correction. Then create a fresh clearance preview; typing the phrase does not override these safeguards.</p>
+            </div>}
+            {!!preview.reserved_transfers?.length && <p className="mt-2 break-all">Reserved transfer IDs: {preview.reserved_transfers.join(', ')}. Resolve their stock allocations, then create a fresh preview.</p>}
+          </div>
           <Button variant="danger" disabled={!canExecute} onClick={execute}>Confirm GM branch clearance</Button>
         </div>}
       </>}

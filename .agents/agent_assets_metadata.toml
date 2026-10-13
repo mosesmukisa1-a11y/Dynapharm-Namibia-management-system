@@ -378,3 +378,17 @@ mtime_ms = 1791894906807
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/11b349a0-c3a2-45f7-8174-87289d4bc26a/1fb4f4b2-191f-4d5f-97f6-5bebf80b63af"
 storage_version_token = "1791894940254380"
 content_type = "text/html"
+
+[[outputs]]
+id = "9MdefbXl4NUvmFDTqpwI0"
+uri = "file://generated-artifacts/branch-stock-clearance/button-diagnostic-report.html"
+type = "html"
+title = "Clearance confirmation — cause and fix"
+description = "Read-only live evidence, the 17 blocked stock batches, UI fix and verification. No live deductions or publication."
+logical_id = "a8a35b52-fd9b-4e95-891d-f0a530f4968e"
+content_hash = "sha256:2182c649bf178d6f1a2129feffedc463a6c7a72ade040812a617c281cdc6a3d2"
+size = 5003
+mtime_ms = 1791903656167
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/a8a35b52-fd9b-4e95-891d-f0a530f4968e/86f1628e-79b6-4a85-8004-9f1faf8f843e"
+storage_version_token = "1791903657447812"
+content_type = "text/html"
