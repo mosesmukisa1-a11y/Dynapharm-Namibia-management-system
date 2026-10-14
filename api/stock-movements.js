@@ -6,6 +6,7 @@ import { branchLayers, takeLayers } from './services/stockCostLayers.js';
 import { movementSaleEvidence } from './services/saleEvidence.js';
 import { businessDay, businessDatePredicate, validateBusinessDates } from './services/businessDates.js';
 import { classifySaleCostEvidence } from '../shared/saleCostEvidence.js';
+import { stockLedgerPage } from './services/stockLedgerPage.js';
 
 async function deductBranchBatchTx(client, batch, quantity) {
   const layers = branchLayers(batch);
@@ -64,7 +65,18 @@ export default async function handler(req, res) {
 
   try {
     if (req.method === 'GET') {
+      const readers=['admin','super_admin','superadmin','gm','general_manager','director','finance','finance_manager',
+        'mis','stock','stock_manager','warehouse','warehouse_manager','branch','branch_manager','branch_staff'];
+      if(!readers.includes(String(req.user.role || '').toLowerCase()))
+        return res.status(403).json({success:false,error:'Staff stock evidence access required'});
       const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      if (url.searchParams.get('page') === '1') {
+        try { return res.json(await stockLedgerPage(url, branchScope)); }
+        catch(error) {
+          if(error.status) return res.status(error.status).json({success:false,error:error.message});
+          throw error;
+        }
+      }
       const warehouseId = url.searchParams.get('warehouse');
       const productId = url.searchParams.get('product');
       const requestedBranch = url.searchParams.get('branch');

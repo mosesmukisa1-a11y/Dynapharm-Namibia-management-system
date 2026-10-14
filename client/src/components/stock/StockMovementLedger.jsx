@@ -11,15 +11,19 @@ export default function StockMovementLedger({ branch, period, onPeriodChange, tr
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [attempt, retry] = useState(0);
+  const [cursor, setCursor] = useState(null);
+  const [nextCursor, setNextCursor] = useState(null);
   const [filters, setFilters] = useState({from:'',to:'',product:'',batch:'',type:'',cost:'',location:branch || 'all'});
   useEffect(()=>setFilters(previous=>({...previous,location:branch || 'all'})),[branch]);
   const from=period?.from ?? filters.from, to=period?.to ?? filters.to;
+  useEffect(()=>setCursor(null),[filters.location,from,to,filters.product,filters.batch,filters.type,search]);
   const change=(field,value)=>setFilters(previous=>({...previous,[field]:value}));
   const dateChange=(field,value)=>onPeriodChange ? onPeriodChange({...period,[field]:value}) : change(field,value);
   useEffect(() => {
     let cancelled = false;
     setLoading(true); setError('');
-    const params = new URLSearchParams({ limit: '500' });
+    const params = new URLSearchParams({ page: '1', limit: '100' });
+    if(cursor) params.set('cursor',cursor);
     if (filters.location && filters.location !== 'all') {
       params.set(filters.location.includes('warehouse') || filters.location === 'country_stock' ? 'location' : 'branch', filters.location);
     }
@@ -30,16 +34,16 @@ export default function StockMovementLedger({ branch, period, onPeriodChange, tr
     if (filters.type) params.set('type',filters.type);
     if (search.trim()) params.set('search', search.trim());
     api.stock.movements(params.toString()).then(result => {
-      if (!cancelled) setRows(result.movements || []);
+      if (!cancelled) {setRows(result.movements || []);setNextCursor(result.nextCursor || null);}
     }).catch(err => { if (!cancelled) { setRows([]); setError(err.message); } })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [filters.location,from,to,filters.product,filters.batch,filters.type,search,attempt]);
+  }, [filters.location,from,to,filters.product,filters.batch,filters.type,search,attempt,cursor]);
   const visible=filters.cost ? rows.filter(row=>(row.cost_evidence_status || 'missing')===filters.cost) : rows;
   return <section className="sp-panel sp-panel-content" style={{ marginBottom: 20 }}>
     <h2 className="font-bold">{trace ? 'Trace Stock — recorded movement timeline' : 'Movement Ledger'}</h2>
     <p className="text-sm text-gray-600">Africa/Windhoek business dates. DP selling value, customer charges and original received DP/CIF are separate bases.
-      {' '}Up to 500 recorded movements; not proof of complete historical coverage. No quantities are changed here.</p>
+      {' '}100 recorded movements per page; search applies before pagination. Only persisted mirror identities are deduplicated. No quantities are changed here.</p>
     <label className="sp-label">Search receipt, reference, movement, batch, product or branch
       <input className="sp-input" value={search} onChange={event => setSearch(event.target.value)} placeholder="Receipt / reference / batch" />
     </label>
@@ -63,7 +67,7 @@ export default function StockMovementLedger({ branch, period, onPeriodChange, tr
     {loading ? <p role="status">Loading movement evidence…</p> : !error && <div style={{ overflowX: 'auto' }}>
       <table className="w-full text-sm"><thead><tr>
         {['Date/time','Business date','Movement ID','Type','Reference','Receipt','Source → destination','Product','Batch','Qty','DP/unit','DP value','CP/customer charged value','Branch profit (charged − DP)','Original received DP/unit','Original CIF/unit','Cost evidence','Actor','Status'].map(label => <th key={label} className="p-2 text-left">{label}</th>)}
-      </tr></thead><tbody>{visible.map(row => <tr key={row.id}>
+      </tr></thead><tbody>{visible.map(row => <tr key={`${row.ledger_source || ''}:${row.id}`}>
         {[`${namibiaDay(row.created_at)} ${new Date(row.created_at).toLocaleTimeString('en-GB',{timeZone:'Africa/Windhoek'})}`,row.business_date || `${namibiaDay(row.created_at)} (from timestamp)`,row.id,row.movement_type,row.reference_id,row.receipt_no,
           `${row.source_location || '—'} → ${row.destination_location || '—'}`,row.product_name,row.batch_no || '—',row.signed_quantity ?? row.quantity,
           value(row.dp_unit_price),value(row.dp_value),value(row.charged_value),value(row.branch_profit_value),
@@ -71,6 +75,8 @@ export default function StockMovementLedger({ branch, period, onPeriodChange, tr
           .map((cell,index) => <td key={index} className="p-2 border-b">{cell}</td>)}
       </tr>)}</tbody></table>
       {!visible.length && <p>No matching recorded movements.</p>}
+      <button className="sp-btn" disabled={!cursor} onClick={()=>setCursor(null)}>First page</button>
+      <button className="sp-btn" disabled={!nextCursor} onClick={()=>setCursor(nextCursor)}>Next page</button>
     </div>}
   </section>;
 }

@@ -20,6 +20,7 @@ import StockViewBoundary from '../../components/stock/StockViewBoundary';
 import StockMovementLedger from '../../components/stock/StockMovementLedger';
 import BranchBatchLedger from '../../components/stock/BranchBatchLedger';
 import StockTrace from '../../components/stock/StockTrace';
+import { readStockDashboardSales } from '../../lib/stockDashboardSales';
 import { stockValuationEvidence } from '../../lib/stockValuationEvidence';
 import { cleanStockStatus, presentStockStatus, stockStatusConflict } from '../../../../shared/stockStatus';
 import DistributionTab from '../../components/stock/DistributionTab';
@@ -1573,7 +1574,14 @@ function StockPortalContent() {
   const { policy, canEdit, onSaved } = useStockAlertPolicy();
   const { user } = useAuth();
   const [viewParams, setViewParams] = useSearchParams();
-  const [globalBranch, setGlobalBranch] = useState(['admin', 'super_admin'].includes(user?.role) ? 'all' : (user?.branch || 'all'));
+  // Scope is part of request context, not just local state. An old location's
+  // failed GET must not replace the newly selected location's view.
+  const globalBranch=viewParams.get('branch') || (['admin', 'super_admin'].includes(user?.role) ? 'all' : (user?.branch || 'all'));
+  const setGlobalBranch=branch=>setViewParams(previous=>{
+    const next=new URLSearchParams(previous);
+    next.set('branch',branch);
+    return next;
+  },{replace:true});
 
   const canRecordDispatchReturns = ['stock', 'stock_manager', 'admin', 'superadmin', 'super_admin', 'gm', 'general_manager'].includes((user?.role || '').toLowerCase());
   const tabs = [
@@ -1678,6 +1686,7 @@ function StockPortalContent() {
 
 // ── AI Command Center ─────────────────────────────────────────────────────────
 function AICommandCenter({ branch }) {
+  const {user}=useAuth();
   const { expiryWarningDays } = useStockAlertPolicy();
   const [data, setData] = useState({ batches: [], movements: [], transfers: [], sales: [], branchData: [],companySnapshot:null });
   const [snapshotError,setSnapshotError]=useState('');
@@ -1692,7 +1701,8 @@ function AICommandCenter({ branch }) {
       api.stock.batches().then(d => Array.isArray(d) ? d : d.batches || []),
       api.stock.movements().then(d => Array.isArray(d) ? d : d.movements || []),
       api.stock.transfers().then(d => Array.isArray(d) ? d : d.transfers || []),
-      api.branch.walkinSales().then(d => Array.isArray(d) ? d : d.sales || d.walkin_sales || []),
+      readStockDashboardSales({branch,user,branchIds:BRANCH_DETAILS.map(item=>item.id),
+        read:query=>api.branch.walkinSales(query)}),
       api.branch.stockSummary().then(d => d.branches || []),
       api.get('/stock/current-overview'),
     ]).then(([priceData, batches, movements, transfers, sales, branchData,companySnapshot]) => {
@@ -1701,7 +1711,7 @@ function AICommandCenter({ branch }) {
       setSnapshotError('');
       setLastRefresh(new Date());
     }).catch(error=>setSnapshotError(error.message || 'Could not load stock dashboard')).finally(() => setLoading(false));
-  }, []);
+  }, [branch,user?.role]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -8010,6 +8020,7 @@ function OrdersTab({ branch }) {
 }
 
 function ValuationTab({ branch }) {
+  const latestValuation=useRef(0);
   const [estimatePrices, setEstimatePrices] = useState([]);
   const [estimateError, setEstimateError] = useState('');
   const [valData, setValData] = useState({ rows: [], summary: {} });
@@ -8018,18 +8029,20 @@ function ValuationTab({ branch }) {
   const [viewMode, setViewMode] = useState('product');
 
   const loadValuation = useCallback(() => {
+    const request=++latestValuation.current;
     setLoading(true);
     setValError('');
+    setEstimateError('');
     Promise.all([api.stock.valuation(), api.prices.list().catch(error => {
-      setEstimateError(error.message || 'Catalogue estimates unavailable'); return [];
+      if(request===latestValuation.current)setEstimateError(error.message || 'Catalogue estimates unavailable'); return [];
     })])
-      .then(([d, prices]) => { setValData(d || { rows: [] }); setEstimatePrices(Array.isArray(prices) ? prices : []); })
-      .catch(e => setValError(e.message || 'Valuation could not be loaded.'))
-      .finally(() => setLoading(false));
+      .then(([d, prices]) => { if(request===latestValuation.current){setValData(d || { rows: [] }); setEstimatePrices(Array.isArray(prices) ? prices : []);} })
+      .catch(e => {if(request===latestValuation.current)setValError(e.message || 'Valuation could not be loaded.');})
+      .finally(() => {if(request===latestValuation.current)setLoading(false);});
   }, []);
 
   useStockRealtime({ onUpdate: loadValuation });
-  useEffect(() => { loadValuation(); }, [loadValuation]);
+  useEffect(() => { loadValuation(); return ()=>{latestValuation.current++;}; }, [loadValuation]);
   useEffect(() => {
     const iv = setInterval(loadValuation, 60000);
     return () => clearInterval(iv);
@@ -9818,10 +9831,10 @@ function BatchTab({ branch }) {
           <CardHeader>
             <div className="flex justify-between items-center flex-wrap gap-2">
               <h3 className="font-bold text-gray-800">
-                Batch Location Tracker
+                Import & Warehouse Source Batches
                 <span className="text-xs font-normal text-gray-400 ml-2">({filtered.length} batch{filtered.length !== 1 ? 'es' : ''})</span>
               </h3>
-              <div className="text-xs text-gray-400">Click any row to view full detail</div>
+              <div className="text-xs text-gray-400">Source batches only; branch-held physical stock is listed above. Click a row for recorded source detail.</div>
             </div>
           </CardHeader>
           {filtered.length === 0 ? (

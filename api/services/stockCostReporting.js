@@ -39,13 +39,19 @@ export async function getStockCostProjection(options={},read=getMany) {
   const add=({id,location,locationType,productName,batchNo,expiryDate,quantity,source,condition='saleable',reserved=false,transit=false})=>{
     const expired=expiryDate && expiryDate<today;
     const eligible=condition==='saleable' && !expired && !reserved && !transit;
+    const zeroCostApproved=source?.zeroCostApproved===true || source?.metadata?.zeroCostApproved===true;
+    const original=value=>{
+      const number=nullableNumber(value);
+      return number!=null && (number>0 || (number===0 && zeroCostApproved)) ? number : null;
+    };
+    const unitCIF=original(source?.cif_unit_cost),unitDPC=original(source?.dpc_unit_value);
     rows.push({id,location,locationType,productName,batchNo,expiryDate,condition,
       availableQty:eligible ? quantity : 0,reservedQty:reserved ? quantity : 0,
       onHandQty:transit ? 0 : quantity,inTransitQty:transit ? quantity : 0,
       quarantinedQty:condition!=='saleable' ? quantity : 0,expiredQty:expired ? quantity : 0,missingExpiry:!expiryDate,
-      qty:quantity,unitCIF:nullableNumber(source?.cif_unit_cost),unitDPC:nullableNumber(source?.dpc_unit_value),
-      missingCostQuantity:source?.cif_unit_cost==null ? quantity : 0,
-      missingDPCQuantity:source?.dpc_unit_value==null ? quantity : 0,sourceBatchId:source?.id || null});
+      qty:quantity,unitCIF,unitDPC,zeroCostApproved,
+      missingCostQuantity:unitCIF==null ? quantity : 0,
+      missingDPCQuantity:unitDPC==null ? quantity : 0,sourceBatchId:source?.id || null});
   };
   for (const row of stock.filter(r=>!options.branchOnly && !ALL_BRANCH_LOCATION_ALIASES.includes(String(r.location || '').toLowerCase()) && !String(r.location || '').endsWith('_branch'))) add({id:row.id,location:row.location || row.warehouse_id,locationType:row.location==='country_stock'?'country':'warehouse',productName:row.description,
     batchNo:row.batch_no,expiryDate:day(row.expiry_date),quantity:Number(row.remaining_quantity),source:sourceSnapshot(row),
@@ -69,7 +75,8 @@ export async function getStockCostProjection(options={},read=getMany) {
   }
   for (const row of segregated.filter(r=>!options.branchOnly || r.source_type==='branch')) add({id:row.id,location:row.location,locationType:row.source_type==='branch'?'branch':row.location==='country_stock'?'country':'warehouse',productName:row.snapshot.product_name,
     batchNo:row.snapshot.batch_no,expiryDate:day(row.snapshot.expiry_date),quantity:Number(row.quantity),
-    source:{id:row.snapshot.source_batch_id,cif_unit_cost:row.snapshot.unit_cost,dpc_unit_value:row.snapshot.unit_dp},
+    source:{id:row.snapshot.source_batch_id,cif_unit_cost:row.snapshot.unit_cost,dpc_unit_value:row.snapshot.unit_dp,
+      zeroCostApproved:row.snapshot.zeroCostApproved===true},
     condition:row.condition || 'quarantine'});
   return rows.filter(r=>!product || String(r.productName).toLowerCase().trim()===product);
 }

@@ -31,6 +31,8 @@ import gmSummary from '../api/gm/summary.js';
 import directorSummary from '../api/director/summary.js';
 import profitAnalysis from '../api/director/products/profit-analysis.js';
 import productRange from '../api/reports/branch-sales/product-range.js';
+import trace from '../api/stock/trace.js';
+import valuation from '../api/stock/valuation.js';
 
 const prefix='TSE-'+randomUUID().slice(0,8),product=prefix+'-PRODUCT',branch='townshop',password=randomUUID();
 let server,base,cookie;
@@ -59,7 +61,7 @@ beforeAll(async()=>{
   for(const [path,h] of [['walkin',walkin],['campaign',campaign],['dispense',dispense],
     ['audit',audit],['movements',movements],['summary',summary],['requests',requests],['products',productReport],
     ['finance',financeSummary],['gm',gmSummary],['director',directorSummary],['profit',profitAnalysis],['product-range',productRange],
-    ['refund',requestRefund],['refund-approve',approveRefund]])
+    ['refund',requestRefund],['refund-approve',approveRefund],['trace',trace],['valuation',valuation]])
     app.all('/'+path,h);
   server=await new Promise(resolve=>{const s=app.listen(0,'127.0.0.1',()=>resolve(s));});
   base='http://127.0.0.1:'+server.address().port;
@@ -67,6 +69,113 @@ beforeAll(async()=>{
     body:JSON.stringify({username:actor,password})});
   expect(response.status).toBe(200);
   cookie=response.headers.getSetCookie().map(c=>c.split(';')[0]).join('; ');
+});
+it('pages the entire filtered ledger, preserves unmatched legacy lines and follows primary receipt identities',async()=>{
+  const tag=prefix+'-PAGE';
+  await query(`INSERT INTO stock_movements(id,product_name,movement_type,quantity,source_location,
+    reference_id,status,created_at) SELECT $1||'-'||LPAD(n::text,4,'0'),$2,'sale',1,'townshop',$1,'posted',
+      '2026-10-14T08:00:00Z'::timestamptz FROM generate_series(1,1003) n`,[tag,product]);
+  let cursor=null,ids=[];
+  do {
+    const result=await http('/movements?page=1&limit=100&search='+encodeURIComponent(tag)+(cursor?'&cursor='+cursor:''));
+    expect(result.status).toBe(200);
+    expect(result.body.movements.length).toBeLessThanOrEqual(100);
+    ids.push(...result.body.movements.map(row=>row.id));cursor=result.body.nextCursor;
+  }while(cursor);
+  expect(ids).toHaveLength(1003);expect(new Set(ids).size).toBe(1003);
+  await query(`UPDATE stock_movements SET created_at='2026-10-14T08:00:00Z'::timestamptz+
+    (substring(id from '[0-9]{4}$')::int % 997)*interval '1 microsecond' WHERE reference_id=$1`,[tag]);
+  let microCursor=null,microIds=[];
+  do {
+    const result=await http('/movements?page=1&limit=100&search='+encodeURIComponent(tag)+(microCursor?'&cursor='+microCursor:''));
+    expect(result.status).toBe(200);
+    microIds.push(...result.body.movements.map(row=>row.id));microCursor=result.body.nextCursor;
+  }while(microCursor);
+  expect(microIds).toHaveLength(1003);expect(new Set(microIds).size).toBe(1003);
+  const legacy=tag+'-LEGACY';
+  await query(`INSERT INTO branch_inventory_movements(id,branch_id,product_name,type,quantity,reference,created_at)
+    VALUES($1,'townshop',$2,'sale',1,$3,'2026-10-14T08:00:00Z')`,[legacy,product,tag]);
+  expect((await http('/movements?page=1&search='+legacy)).body.movements.map(row=>row.id)).toContain(legacy);
+  await query(`UPDATE stock_movements SET metadata=jsonb_build_object('sale_evidence',
+    jsonb_build_object('branch_movement_id',$1::text)) WHERE id=$2`,[legacy,tag+'-0001']);
+  expect((await http('/movements?page=1&search='+legacy)).body.movements.map(row=>row.id)).toEqual([tag+'-0001']);
+  expect((await http('/movements?page=1&cursor=bad')).status).toBe(400);
+  expect((await http('/movements?page=1',undefined,{},null)).status).toBe(401);
+  await query('DELETE FROM branch_inventory_movements WHERE id=$1',[legacy]);
+  await query('DELETE FROM stock_movements WHERE reference_id=$1',[tag]);
+  const reference=prefix+'-PRIMARY-TRACE',receipt=prefix+'-RECEIPT-TRACE';
+  await query(`INSERT INTO branch_walkin_sales(id,branch_id,sale_number,data,created_at)
+    VALUES($1,'townshop',$2,'{}','2026-10-14T08:00:00Z')`,[reference,receipt]);
+  await query(`INSERT INTO stock_movements(id,product_name,movement_type,quantity,source_location,reference_id,status,created_at)
+    VALUES($1,$2,'sale',1,'townshop',$3,'posted','2026-10-14T08:00:00Z')`,[reference+'-MOV',product,reference]);
+  const byReceipt=await http('/movements?page=1&search='+receipt);
+  expect(byReceipt.status).toBe(200);expect(byReceipt.body.movements[0].receipt_no).toBe(receipt);
+  const timeline=await http('/trace?search='+receipt);
+  expect(timeline.status).toBe(200);
+  expect(timeline.body.events.some(event=>event.recordId===reference)).toBe(true);
+  expect(timeline.body.events.some(event=>event.recordId===reference+'-MOV')).toBe(true);
+  await query('DELETE FROM stock_movements WHERE reference_id=$1',[reference]);
+  await query('DELETE FROM branch_walkin_sales WHERE id=$1',[reference]);
+});
+it('counts the Hochland Park central and branch sale mirror only once',async()=>{
+  const reference=prefix+'-HOCHLAND',batch=prefix+'-BATCH-H';
+  await query(`INSERT INTO branch_inventory_batches(id,branch_id,product_name,batch_no,quantity,status)
+    VALUES($1,'hochland-park',$2,$3,8,'in_stock')`,[batch,product,batch]);
+  await query(`INSERT INTO stock_movements(id,product_name,batch_no,movement_type,quantity,source_location,reference_id,status,created_at)
+    VALUES($1,$2,$3,'sale',2,'hochland-park',$4,'posted','2026-10-14T08:00:00Z')`,[reference+'-SM',product,batch,reference]);
+  await query(`INSERT INTO branch_inventory_movements(id,branch_id,product_name,batch_no,type,quantity,reference,created_at)
+    VALUES($1,'hochland-park',$2,$3,'sale',2,$4,'2026-10-14T08:00:00Z')`,[reference+'-BIM',product,batch,reference]);
+  await query(`INSERT INTO branch_inventory_movements(id,branch_id,product_name,batch_no,type,quantity,reference,created_at)
+    VALUES($1,'hochland-park',$2,$3,'adjustment',1,$4,'2026-10-14T08:00:00Z')`,[reference+'-ADJUST',product,batch,reference]);
+  const response=await http('/summary?branch=hochland-park&date_from=2026-10-14&date_to=2026-10-14');
+  expect(response.status).toBe(200);
+  const row=response.body.branches.find(row=>row.branch_id==='hochland-park');
+  expect(row.qty_sold).toBe(2);
+  expect(row.qty_adjusted).toBe(1);
+  expect(Number((await query('SELECT quantity FROM branch_inventory_batches WHERE id=$1',[batch])).rows[0].quantity)).toBe(8);
+  await query('DELETE FROM branch_inventory_movements WHERE id=$1',[reference+'-BIM']);
+  await query('DELETE FROM branch_inventory_movements WHERE id=$1',[reference+'-ADJUST']);
+  await query('DELETE FROM stock_movements WHERE id=$1',[reference+'-SM']);
+  await query('DELETE FROM branch_inventory_batches WHERE id=$1',[batch]);
+});
+it.each(['branch','branch_staff'])('enforces assigned scope for %s using real staff sessions on unfiltered evidence and foreign requests',async role=>{
+  const tag=prefix+'-'+role,userId=tag+'-USER',foreign=tag+'-FOREIGN';
+  await query(`INSERT INTO users(id,username,password_hash,full_name,role,branch,is_active,must_change_password)
+    VALUES($1,$1,$2,'Synthetic branch scope operator',$3,'townshop',true,false)`,[userId,await bcrypt.hash(password,10),role]);
+  await query(`INSERT INTO branch_inventory_batches(id,branch_id,product_name,batch_no,quantity,status)
+    VALUES($1,'swakopmund',$2,$1,3,'in_stock')`,[foreign,product]);
+  for(const [id,owner] of [[tag+'-OWN','townshop'],[foreign,'swakopmund']]) {
+    await query(`INSERT INTO stock_movements(id,product_name,movement_type,quantity,source_location,reference_id,status)
+      VALUES($1,$2,'sale',1,$3,$1,'posted')`,[id,product,owner]);
+    await query(`INSERT INTO branch_inventory_movements(id,branch_id,product_name,type,quantity,reference)
+      VALUES($1,$2,$3,'sale',1,$4)`,[id+'-BIM',owner,product,id]);
+  }
+  const response=await fetch(base+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({username:userId,password})});
+  expect(response.status).toBe(200);
+  const session=response.headers.getSetCookie().map(value=>value.split(';')[0]).join('; ');
+  const scoped=await http('/movements?page=1&limit=1000',undefined,{},session);
+  expect(scoped.status).toBe(200);
+  expect(scoped.body.movements.some(row=>row.id===tag+'-OWN')).toBe(true);
+  expect(scoped.body.movements.some(row=>row.id===foreign || row.id===foreign+'-BIM')).toBe(false);
+  for(const path of ['/movements?page=1&branch=swakopmund','/movements?page=1&location=swakopmund',
+    '/trace?search='+foreign+'&branch=swakopmund','/valuation?branch=swakopmund','/valuation?location=swakopmund']) {
+    expect((await http(path,undefined,{},session)).status).toBe(403);
+  }
+  const timeline=await http('/trace?search='+encodeURIComponent(tag),undefined,{},session);
+  expect(timeline.status).toBe(200);
+  expect(timeline.body.events.some(event=>event.recordId===foreign || event.recordId===foreign+'-BIM')).toBe(false);
+  expect(timeline.body.events.some(event=>event.recordId===tag+'-OWN')).toBe(true);
+  const costs=await http('/valuation',undefined,{},session);
+  expect(costs.status).toBe(200);expect(costs.body.rows.length).toBeGreaterThan(0);
+  expect(costs.body.rows.every(row=>row.locationId==='townshop' && row.locationType==='branch')).toBe(true);
+  const legacy=await http('/movements?limit=1000',undefined,{},session);
+  expect(legacy.status).toBe(200);
+  expect(legacy.body.movements.some(row=>row.id===foreign+'-BIM')).toBe(false);
+  await query('DELETE FROM branch_inventory_movements WHERE reference=$1 OR reference=$2',[foreign,tag+'-OWN']);
+  await query('DELETE FROM stock_movements WHERE reference_id=$1 OR reference_id=$2',[foreign,tag+'-OWN']);
+  await query('DELETE FROM branch_inventory_batches WHERE id=$1',[foreign]);
+  await query('DELETE FROM users WHERE id=$1',[userId]);
 });
 afterAll(async()=>{
   if(server)await new Promise(resolve=>server.close(resolve));
@@ -131,6 +240,8 @@ it('posts 341 DP / 443 charged / 102 margin atomically across split batches, wit
   const branchCookie=branchLogin.headers.getSetCookie().map(c=>c.split(';')[0]).join('; ');
   expect(branchLogin.status).toBe(200);
   expect((await http('/movements?branch=swakopmund',undefined,{},branchCookie)).status).toBe(403);
+  expect((await http('/movements?page=1&branch=swakopmund',undefined,{},branchCookie)).status).toBe(403);
+  expect((await http('/trace?search='+encodeURIComponent(id)+'&branch=swakopmund',undefined,{},branchCookie)).status).toBe(403);
   const own=await http('/movements?branch=townshop&reference_id='+id,undefined,{},branchCookie);
   expect(own.status).toBe(200); expect(own.body.movements).toHaveLength(2);
   expect((await http('/movements?search='+encodeURIComponent(id),undefined,{},branchCookie)).body.movements).toHaveLength(2);

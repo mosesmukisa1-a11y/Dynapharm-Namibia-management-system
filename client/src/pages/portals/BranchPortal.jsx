@@ -1,5 +1,6 @@
 import { isOpenStockRequest } from '../../../../shared/stockRequests.js';
 import { saleReviewErrors } from '../../lib/branchSaleReview.js';
+import './branch-pos.css';
 import { movementDPValue, namibiaDay } from '../../lib/saleEvidence.js';
 import { useState, useEffect, useRef, useMemo, useCallback, useContext, createContext } from 'react';
 import { MyProfileTab } from '../../components/StaffServicesTab';
@@ -1936,7 +1937,7 @@ export function WalkInSalesTab() {
       } else if (!receiptNumber) {
         receiptNumber = generateReceiptNumber();
       }
-      if (!saleSubmission.current) saleSubmission.current = { receiptNumber, offlineId: generateOfflineId() };
+      if (!saleSubmission.current) saleSubmission.current = { receiptNumber, offlineId: generateOfflineId(), timestamp:new Date().toISOString() };
       const referral = isMember ? selectedReg : (selectedReferral || DEFAULT_REFERRAL);
       const custName = isMember ? (selectedReg?.name || '') : newName;
       const custPhone = isMember ? (selectedReg?.phone || '') : newPhone;
@@ -1966,6 +1967,7 @@ export function WalkInSalesTab() {
       }));
 
       const saleData = {
+        timestamp:saleSubmission.current.timestamp,
         receipt_number: receiptNumber,
         saleNumber: receiptNumber,
         branch: effectiveBranch,
@@ -1989,7 +1991,7 @@ export function WalkInSalesTab() {
         subtotal: cartData.totalAmount,
         total_bv: cartData.totalBV,
         totalBV: cartData.totalBV,
-        soldBy: user?.full_name || user?.username || null,
+        soldBy: user?.fullName || user?.username || null,
         distributorReferral: {
           id: referral?.id || DEFAULT_REFERRAL.id,
           name: referral?.name || referral?.full_name || DEFAULT_REFERRAL.name,
@@ -2011,7 +2013,7 @@ export function WalkInSalesTab() {
         });
       } else {
         const completed=await api.branch.createWalkinSale(salePayloadWithId);
-        savedSaleDate=completed.sale?.timestamp || completed.sale?.sale_date || savedSaleDate;
+        savedSaleDate=completed.sale?.timestamp || completed.sale?.sale_date || completed.sale?.saleDate || savedSaleDate;
       }
 
       const commonReceiptParams = {
@@ -2224,10 +2226,10 @@ export function WalkInSalesTab() {
 
       {showModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,0,0,0.72)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px', backdropFilter: 'blur(3px)' }} onClick={e => { if (e.target === e.currentTarget) closeModal(); }}>
-          <div style={{ width: '100%', maxWidth: '1340px', background: '#fff', borderRadius: '22px', overflow: 'hidden', maxHeight: '96vh', display: 'flex', flexDirection: 'column', boxShadow: '0 32px 80px rgba(196,30,58,0.25)' }}>
+          <div className="branch-pos-window" role="dialog" aria-modal="true" aria-label="Branch Point of Sale" style={{ width: '100%', maxWidth: '1340px', background: '#fff', borderRadius: '22px', overflow: 'hidden', maxHeight: '96vh', display: 'flex', flexDirection: 'column', boxShadow: '0 32px 80px rgba(196,30,58,0.25)' }}>
 
             {/* POS Header */}
-            <div style={{ background: 'linear-gradient(135deg,#c41e3a 0%,#8b0000 100%)', padding: '14px 22px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+            <div className="branch-pos-header" style={{ background: 'linear-gradient(135deg,#c41e3a 0%,#8b0000 100%)', padding: '14px 22px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                 <div style={{ width: 42, height: 42, borderRadius: 12, background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem', backdropFilter: 'blur(4px)' }}>🏪</div>
                 <div>
@@ -2242,7 +2244,7 @@ export function WalkInSalesTab() {
             </div>
 
             {/* 3-Column Body */}
-            <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
+            <div className="branch-pos-body" style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
 
               {/* ── COL 1: LEFT CONTROL PANEL ── */}
               <div style={{ width: 280, flexShrink: 0, borderRight: '1px solid #f0e8ea', overflowY: 'auto', background: '#fff', padding: '16px 14px', display: 'flex', flexDirection: 'column', gap: 14 }}>

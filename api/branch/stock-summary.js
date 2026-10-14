@@ -165,12 +165,12 @@ export default async function handler(req, res) {
       if (qty > 0 && qty < alertPolicy.lowStockThreshold) br.low_stock_count++;
     }
 
-    const smSaleBranches = new Set(),bimSaleBranches = new Set(),periodMirrorKeys = new Set();
+    const smSaleBranches = new Set(),bimSaleBranches = new Set(),periodMirrorQuantities = new Map();
     // Quarantine is still physically owned at its original branch. Transit is not.
     const norm = (s) => (s || '').replace(/^quarantine:/i,'').toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
     const conditionShift = sm => norm(sm.source_location) && norm(sm.source_location)===norm(sm.destination_location)
       && [sm.source_location,sm.destination_location].some(location=>/^quarantine:/i.test(location || ''));
-    const periodMirrorKey=(branch,reference,product,batch)=>[branch,reference,product || '',batch || ''].join('|');
+    const periodMirrorKey=(branch,reference,product,batch,type)=>JSON.stringify([branch,reference,product || '',batch || '',type]);
     // Include owned reservations and segregated stock, not just available batches.
     for(const br of Object.values(branchMap)){
       br.closing_qty=0;br.dp_value=0;br.cif_value=0;
@@ -202,8 +202,10 @@ export default async function handler(req, res) {
       const dst = norm(sm.destination_location);
       const q = Math.abs(Number(sm.quantity || 0));
       const t = (sm.movement_type || '').toLowerCase();
-      if(sm.reference_id && t!=='reserved') for(const location of [src,dst])
-        periodMirrorKeys.add(periodMirrorKey(location,sm.reference_id,sm.product_name,sm.batch_no));
+      if(sm.reference_id && t!=='reserved') for(const location of new Set([src,dst])) {
+        const key=periodMirrorKey(normalizeBranchSlug(location) || location,sm.reference_id,sm.product_name,sm.batch_no,t);
+        periodMirrorQuantities.set(key,(periodMirrorQuantities.get(key) || 0)+q);
+      }
       const fmtDt = (d) => d instanceof Date ? d.toISOString() : d;
       const movRecord = {
         product_name: sm.product_name,
@@ -268,7 +270,8 @@ export default async function handler(req, res) {
 
     for (const agg of bimAgg) {
       const normBimId = normalizeBranchSlug(agg.branch_id) || norm(agg.branch_id);
-      if (agg.reference && periodMirrorKeys.has(periodMirrorKey(normBimId,agg.reference,agg.product_name,agg.batch_no))) continue;
+      const matchedQuantity=periodMirrorQuantities.get(periodMirrorKey(normBimId,agg.reference,agg.product_name,agg.batch_no,(agg.type || '').toLowerCase()));
+      if (agg.reference && matchedQuantity!=null && Math.abs(matchedQuantity-Math.abs(Number(agg.total_qty || 0)))<1e-8) continue;
       const br = ensureBranch(agg.branch_id);
       // Use Math.abs: direction is encoded in the type, not the stored quantity sign.
       const q = Math.abs(Number(agg.total_qty || 0));

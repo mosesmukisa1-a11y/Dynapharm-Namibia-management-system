@@ -434,3 +434,17 @@ mtime_ms = 1791991620640
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/5b773a3d-7944-423b-bca1-4def026f5fc9/b6e77b5c-6d07-49d2-bba1-7b1ef4054420"
 storage_version_token = "1791991621555071"
 content_type = "text/html"
+
+[[outputs]]
+id = "y-AuUsXvQ9CNCePkrETE4"
+uri = "file://generated-artifacts/sales-stock-integration/report.md"
+type = "text"
+title = "Sales and Stock integration — final review"
+description = "Build passed; 263 unit and 25 isolated database checks passed, including real-session branch role isolation. Browser fixes and remaining release checks are documented."
+logical_id = "47a96ca2-9c1b-4d39-aaea-44dae254fa1b"
+content_hash = "sha256:bf3e0ba57597cda34966839c20c82f2929f71c5d45217c679e6759992f51e5b6"
+size = 12897
+mtime_ms = 1792009345373
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/47a96ca2-9c1b-4d39-aaea-44dae254fa1b/3fd7ad80-c507-4200-bce1-bd7888cac867"
+storage_version_token = "1792009352727033"
+content_type = "text/markdown"

@@ -92,6 +92,18 @@ Isolated browser environments also require a fresh disposable authentication sig
 
 **How to apply:** Override signing keys only in the disposable child process; never print or persist them. Require recorded ownership for any cleanup.
 
+Do not assume a generic database helper points at the database used by an isolated browser preview.
+
+**Why:** A browser tester used a generic read-only helper without proving its target; those results could not be used as isolated-fixture evidence.
+
+**How to apply:** Explicitly prohibit generic database helpers in isolated browser instructions. Use session-authenticated fixture APIs, or an ownership-checked harness connection, for fixture assertions.
+
+Stopping a background fixture task can terminate its process group before asynchronous database cleanup finishes.
+
+**Why:** The disposable browser harness stopped and its preview closed, but its owned database still existed and required a positively identified cleanup.
+
+**How to apply:** Prefer a graceful signal to the ownership-verified harness and wait for its disposal marker. Verify deletion; remove only the exact fixture owned in the current session, never a stale or unverified manifest.
+
 Canonical-only branch fixtures do not establish legacy-location coverage. Include a persisted legacy branch alias with a held or reserved unit when validating stock-report agreement.
 
 **Why:** Different report reads can normalize owner names at different stages: available inventory can be positive while a canonical-only physical projection returns zero. Ordinary canonical lifecycle fixtures miss this failure.

@@ -2,6 +2,8 @@ import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
 import { getMany, getOne } from '../db.js';
 import { branchSearchTerms, normalizeBranchSlug } from '../_lib/branchUtils.js';
 import { traceDocumentEvents } from '../services/stockTracePresentation.js';
+import { stockLedgerPage } from '../services/stockLedgerPage.js';
+import { businessDay } from '../services/businessDates.js';
 
 const readers=['admin','super_admin','superadmin','gm','general_manager','director','finance','finance_manager','mis',
   'stock','stock_manager','warehouse','warehouse_manager','branch','branch_manager','branch_staff'];
@@ -21,6 +23,44 @@ export default async function handler(req,res) {
   const term=`%${search.replace(/[\\%_]/g,'\\$&')}%`;
   try {
     const events=[],gaps=[];
+    const primaryAvailable=(await getOne("SELECT to_regclass('public.branch_walkin_sales') AS name"))?.name;
+    const primary=primaryAvailable ? await getMany(`SELECT id,sale_number,created_at,
+      COALESCE(to_jsonb(w)->>'sale_date',to_jsonb(w)->'data'->>'timestamp') AS sale_date,
+      COALESCE(to_jsonb(w)->>'branch_id',to_jsonb(w)->>'branch',to_jsonb(w)->'data'->>'branchId',to_jsonb(w)->'data'->>'branch') AS branch_id
+      FROM branch_walkin_sales w WHERE (w.id ILIKE $1 ESCAPE '\\' OR w.sale_number ILIKE $1 ESCAPE '\\'
+        OR to_jsonb(w)->'data'->>'receipt_number' ILIKE $1 ESCAPE '\\')
+      AND ($2::text[] IS NULL OR LOWER(COALESCE(to_jsonb(w)->>'branch_id',to_jsonb(w)->>'branch',
+        to_jsonb(w)->'data'->>'branchId',to_jsonb(w)->'data'->>'branch'))=ANY($2))
+      ORDER BY created_at DESC LIMIT 201`,[term,owners]) : [];
+    if(!primaryAvailable)gaps.push('Primary sale source unavailable; receipt-to-sale matching not verified');
+    const patterns=[term,...primary.slice(0,200).map(row=>`%${row.id.replace(/[\\%_]/g,'\\$&')}%`)];
+    if(primary.length>200)gaps.push('Primary sale matches truncated at 200 records; narrow the search');
+    for(const row of primary.slice(0,200)) {
+      const timestamp=row.sale_date || row.created_at;
+      events.push({id:`primary:${row.id}`,source:'branch_walkin_sales',recordId:row.id,type:'recorded sale',
+        reference:row.id,receipt:row.sale_number,timestamp,businessDate:timestamp ? businessDay(new Date(timestamp)) : null,
+        location:row.branch_id,status:'Primary record; not an additional transaction',actor:'See captured movement/audit actor'});
+    }
+    // Follow persisted receipt -> sale reference -> movement identity. No writes,
+    // catalogue-based reconstruction or guessed legacy joins.
+    const movementURL=new URL('http://local/?page=1&limit=200');
+    if(branch)movementURL.searchParams.set('branch',branch);
+    movementURL.searchParams.set('search',search);
+    const movementAvailable=(await getOne(`SELECT CASE WHEN to_regclass('public.stock_movements') IS NOT NULL
+      AND to_regclass('public.branch_inventory_movements') IS NOT NULL
+      AND to_regclass('public.warehouse_inventory_movements') IS NOT NULL
+      AND to_regclass('public.branch_walkin_sales') IS NOT NULL THEN 'available' END AS name`))?.name;
+    const movementPage=movementAvailable ? await stockLedgerPage(movementURL,scope) : {movements:[]};
+    if(!movementAvailable)gaps.push('Movement source schema unavailable; timeline not verified');
+    if(movementPage.hasMore)gaps.push('Movement timeline truncated at 200 records; narrow the search');
+    for(const row of movementPage.movements) {
+      if(row.reference_id)patterns.push(`%${row.reference_id.replace(/[\\%_]/g,'\\$&')}%`);
+      if(row.batch_no)patterns.push(`%${row.batch_no.replace(/[\\%_]/g,'\\$&')}%`);
+      events.push({id:`movement:${row.ledger_source}:${row.id}`,source:row.ledger_source,recordId:row.id,
+        type:row.movement_type,reference:row.reference_id,receipt:row.receipt_no,timestamp:row.created_at,
+        businessDate:row.business_date || businessDay(new Date(row.created_at)),location:row.source_location || row.branch_id,
+        actor:row.created_by || 'Not recorded',status:row.status || 'Not recorded'});
+    }
     // All table names below are static allowlisted application tables.
     for(const [kind,table] of [['supplier_import','supplier_imports'],['transfer','stock_transfers']]) {
       if(kind==='supplier_import' && owners) {gaps.push('Warehouse/import documents excluded from branch-scoped trace; no expanded authority is inferred.');continue;}
@@ -28,14 +68,14 @@ export default async function handler(req,res) {
       let itemSearch='';
       if(kind==='transfer') {
         if((await getOne("SELECT to_regclass('public.stock_transfer_items') AS name"))?.name) {
-          itemSearch=" OR EXISTS (SELECT 1 FROM stock_transfer_items item WHERE item.transfer_id=t.id AND to_jsonb(item)::text ILIKE $1 ESCAPE '\\')";
+          itemSearch=" OR EXISTS (SELECT 1 FROM stock_transfer_items item WHERE item.transfer_id=t.id AND to_jsonb(item)::text ILIKE ANY($1::text[]))";
         } else gaps.push('Transfer child items unavailable; transfer search is limited to recorded header evidence');
       }
       const records=await getMany(`SELECT to_jsonb(t) AS record FROM ${table} t
-        WHERE (to_jsonb(t)::text ILIKE $1 ESCAPE '\\'${itemSearch})
+        WHERE (to_jsonb(t)::text ILIKE ANY($1::text[])${itemSearch})
         AND ($2::text[] IS NULL OR LOWER(COALESCE(to_jsonb(t)->>'to_branch',to_jsonb(t)->>'to_location',''))=ANY($2)
           OR LOWER(COALESCE(to_jsonb(t)->>'from_branch',to_jsonb(t)->>'from_location',''))=ANY($2))
-        ORDER BY t.created_at DESC LIMIT 201`,[term,owners]);
+        ORDER BY t.created_at DESC LIMIT 201`,[[...new Set(patterns)],owners]);
       if(records.length>200)gaps.push(`${kind} matches truncated at 200 records; narrow the search`);
       for(const {record} of records.slice(0,200))events.push(...traceDocumentEvents(kind,record));
     }

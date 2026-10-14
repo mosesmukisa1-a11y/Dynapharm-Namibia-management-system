@@ -18,8 +18,9 @@ const release=process.argv.includes('--release-audit');
 const clientHistory=process.argv.includes('--client-history');
 const branchClearance=process.argv.includes('--branch-clearance');
 const saleDemo=process.argv.includes('--sale-demo');
-const apiPort=saleDemo?3009:branchClearance?3008:clientHistory?3007:release?3006:continuation?3005:lifecycleAudit?3004:navigationAudit?3003:3002;
-const uiPort=saleDemo?5180:branchClearance?5179:clientHistory?5178:release?5177:continuation?5176:lifecycleAudit?5175:navigationAudit?5174:5173;
+const salesStock=process.argv.includes('--sales-stock');
+const apiPort=salesStock?3010:saleDemo?3009:branchClearance?3008:clientHistory?3007:release?3006:continuation?3005:lifecycleAudit?3004:navigationAudit?3003:3002;
+const uiPort=salesStock?5181:saleDemo?5180:branchClearance?5179:clientHistory?5178:release?5177:continuation?5176:lifecycleAudit?5175:navigationAudit?5174:5173;
 const env={...process.env,DATABASE_URL:isolated.toString(),STOCK_AUDIT_ISOLATED:'1',
   STOCK_AUDIT_DATABASE:name,STOCK_AUDIT_UI_FIXTURE:'1',NODE_ENV:'test',REPLIT_DEPLOYMENT:'',
   AUTH_SECRET:auditAuthKey,JWT_SECRET:auditAuthKey,SESSION_SECRET:auditAuthKey,
@@ -27,7 +28,7 @@ const env={...process.env,DATABASE_URL:isolated.toString(),STOCK_AUDIT_ISOLATED:
 assertIsolatedTestDatabase(env);
 const admin=new pg.Pool({connectionString:source.toString(),max:1});
 let target,backend,frontend,created=false,cleaning=false;
-const base=saleDemo?'generated-artifacts/hochland-sale-demo':branchClearance?'generated-artifacts/branch-stock-clearance/ui':clientHistory?'generated-artifacts/client-history':release?'generated-artifacts/stock-release-verification':continuation?'generated-artifacts/stock-continuation-stages':lifecycleAudit?'generated-artifacts/stock-lifecycle-stages':navigationAudit?'generated-artifacts/stock-navigation-audit':'generated-artifacts/stock-ui-verification';
+const base=salesStock?'generated-artifacts/sales-stock-integration/ui':saleDemo?'generated-artifacts/hochland-sale-demo':branchClearance?'generated-artifacts/branch-stock-clearance/ui':clientHistory?'generated-artifacts/client-history':release?'generated-artifacts/stock-release-verification':continuation?'generated-artifacts/stock-continuation-stages':lifecycleAudit?'generated-artifacts/stock-lifecycle-stages':navigationAudit?'generated-artifacts/stock-navigation-audit':'generated-artifacts/stock-ui-verification';
 const emptyFixture=process.argv.includes('--empty');
 const clean=async()=>{
   if(cleaning)return;cleaning=true;
@@ -79,6 +80,17 @@ try{
     await target.query(`INSERT INTO product_prices(description,product_code,dp,cp,cif,bv,updated_by)
       VALUES('TEST-ITEM','TEST-ITEM',7,9,2,0,'isolated-audit-fixture')`);
   }
+  if(salesStock) {
+    if(!emptyFixture)throw Error('Sales/Stock UI audit requires --empty');
+    await target.query("UPDATE product_prices SET dp=341,cp=443,cif=23 WHERE description='TEST-ITEM'");
+    await target.query("UPDATE products SET dp=341,cp=443 WHERE name='TEST-ITEM'");
+    await target.query(`INSERT INTO branch_inventory_batches(id,branch_id,product_name,batch_no,expiry_date,
+      quantity,unit_price,status,source_batch_id,metadata) VALUES('UI-SALES-BATCH','townshop','TEST-ITEM','QA-SALES-LOT',
+      '2035-12-31',10,341,'in_stock','UI-SALES-SOURCE',
+      '{"original_source":{"id":"UI-SALES-SOURCE","dpc_unit_value":341,"cif_unit_cost":23}}')`);
+    await target.query(`INSERT INTO inventory_balances(id,location_id,location_type,product_name,closing_qty,on_hand_qty,available_qty)
+      VALUES('UI-SALES-BALANCE','townshop','branch','TEST-ITEM',10,10,10)`);
+  }
   const passwordHash=await bcrypt.hash('DisposableStockUi-2026!',10);
   for(const [id,username,role,branch] of [
     ['UI-BRANCH-A','ui_branch_a','branch_manager','townshop'],
@@ -89,6 +101,9 @@ try{
       is_active,must_change_password,metadata) VALUES($1,$2,$3,$4,$5,$6,true,false,'{"disposable_ui_audit":true}')`,
       [id,username,passwordHash,role,username,branch]);
   }
+  if(salesStock)await target.query(`INSERT INTO users(id,username,password_hash,role,full_name,branch,
+    is_active,must_change_password,metadata) VALUES('UI-ADMIN','ui_admin',$1,'admin','Synthetic UI administrator',
+      'townshop',true,false,'{"disposable_ui_audit":true}')`,[passwordHash]);
   backend=spawn('node',['server.js'],{env,stdio:['ignore','pipe','pipe']});
   backend.stdout.on('data',()=>{}); // Startup can print bootstrap credentials: never echo those.
   backend.stderr.on('data',d=>{
@@ -102,7 +117,7 @@ try{
     await new Promise(resolve=>setTimeout(resolve,500));
   }
   const proxy=Object.fromEntries(['/api','/assets','/uploads'].map(path=>[path,{target:`http://127.0.0.1:${apiPort}`,changeOrigin:true}]));
-  if(emptyFixture){
+  if(emptyFixture && !salesStock){
     const result=await target.query(`SELECT
       COALESCE((SELECT SUM(remaining_quantity) FROM stock_batches),0)+
       COALESCE((SELECT SUM(quantity) FROM branch_inventory_batches),0) AS qty`);
@@ -114,7 +129,7 @@ try{
     disposable:true,frontend:`http://127.0.0.1:${uiPort}`,backendPort:apiPort,
     isolatedDatabase:name,harnessPid:process.pid,
     product:'TEST-ITEM',branchA:'townshop',branchB:'swakopmund',
-    baseline:emptyFixture?{warehouse:0,branchA:0,branchB:0,company:0,returned:0,writeOff:0}:{warehouse:50,branchA:23,branchB:20,company:93,returned:2,writeOff:1}
+    baseline:salesStock?{warehouse:0,branchA:10,branchB:0,company:10,returned:0,writeOff:0}:emptyFixture?{warehouse:0,branchA:0,branchB:0,company:0,returned:0,writeOff:0}:{warehouse:50,branchA:23,branchB:20,company:93,returned:2,writeOff:1}
   },null,2));
   console.log(`ISOLATED STOCK UI READY: port ${uiPort} — backend ${apiPort} — synthetic TEST-ITEM only`);
 }catch(error){

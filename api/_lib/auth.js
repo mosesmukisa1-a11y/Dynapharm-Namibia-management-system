@@ -112,7 +112,7 @@ function sanitizeUser(user) {
   };
 }
 
-const BRANCH_SCOPED_ROLES = new Set(['dispenser', 'branch_manager', 'stock_manager', 'consultant', 'frontdesk']);
+const BRANCH_SCOPED_ROLES = new Set(['branch', 'branch_staff', 'branch_sales', 'dispenser', 'branch_manager', 'stock_manager', 'consultant', 'frontdesk']);
 const FULL_ACCESS_ROLES = new Set(['admin', 'gm', 'director']);
 // Roles that see all branches but must NOT be forced to supply a branch param
 // (e.g. Finance needs a full cross-branch view).
@@ -120,7 +120,7 @@ const ALL_BRANCH_ROLES = new Set(['finance', 'finance_manager', 'mis', 'super_ad
 
 function getBranchScope(user) {
   if (!user) return { enforced: false, branches: null, requiresBranchParam: false };
-  const role = (user.role || user.sub?.role || '').toLowerCase();
+  const role = (user.role || user.sub?.role || '').trim().toLowerCase();
   // Full-access admin roles: unrestricted but should specify a branch to avoid
   // dumping every branch's data (requiresBranchParam = true for list endpoints).
   if (FULL_ACCESS_ROLES.has(role)) return { enforced: false, branches: null, requiresBranchParam: true };

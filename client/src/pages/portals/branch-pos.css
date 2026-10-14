@@ -1,0 +1,25 @@
+@media (max-width: 900px) {
+  .branch-pos-body {
+    flex-direction: column;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+  }
+  .branch-pos-body > div {
+    width: 100% !important;
+    min-width: 0;
+    flex: 0 0 auto !important;
+    overflow: visible !important;
+    box-sizing: border-box;
+  }
+  .branch-pos-window input,
+  .branch-pos-window select {
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  .branch-pos-header {
+    padding: 12px !important;
+    gap: 8px;
+  }
+  .branch-pos-header > div { min-width: 0; }
+  .branch-pos-header > button { flex-shrink: 0; }
+}

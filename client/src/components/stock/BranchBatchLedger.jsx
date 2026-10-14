@@ -16,7 +16,7 @@ export default function BranchBatchLedger({ branch }) {
     let cancelled = false; setError(''); setRows([]); setMovements([]);
     if (!selected) return;
     setLoading(true);
-    const params = new URLSearchParams({branch:selected,limit:'1000'}).toString();
+    const params = new URLSearchParams({branch:selected,limit:'1000',page:'1'}).toString();
     Promise.all([api.stock.branchInventory(params), api.stock.movements(params)])
       .then(([inventory, ledger]) => { if (!cancelled) { setRows(inventory.inventory || []); setMovements(ledger.movements || []); } })
       .catch(err => { if (!cancelled) setError(err.message); })
@@ -35,7 +35,7 @@ export default function BranchBatchLedger({ branch }) {
     {error && <p role="alert">{error} <button onClick={() => retry(n => n + 1)}>Retry branch batches</button></p>}
     {loading && <p role="status">Loading branch batches…</p>}
     {!loading && !error && selected && <div style={{overflowX:'auto'}}><table className="w-full text-sm">
-      <thead><tr>{['Branch','Product','Batch','Expiry','Received (recorded)','Sold (recorded)','Written off (recorded)','Returned (recorded)','Net recorded movements','Remaining physical','History gap / other movements','Condition','Original CIF/unit','Original received DP/unit','Original DP total','Cost evidence','FEFO review'].map(title => <th key={title} className="p-2 text-left">{title}</th>)}</tr></thead>
+      <thead><tr>{['Branch','Product','Batch','Expiry','Received (recorded)','Sold (recorded)','Written off (recorded)','Returned (recorded)','Transferred out (recorded)','Signed adjustments (recorded)','Net recorded movements','Remaining physical','History gap / other movements','Condition','Original CIF/unit','Original received DP/unit','Original DP total','Cost evidence','FEFO review'].map(title => <th key={title} className="p-2 text-left">{title}</th>)}</tr></thead>
       <tbody>{rows.filter(row=>!search || [row.product_name,row.batch_no].some(value=>String(value || '').toLowerCase().includes(search.toLowerCase()))).map(row => {
         const evidence = branchBatchEvidence(row,movements);
         const qty = Number(row.quantity), approvedZero=row.metadata?.zeroCostApproved === true;
@@ -49,6 +49,7 @@ export default function BranchBatchLedger({ branch }) {
         const fields = [row.branch_id,row.product_name,row.batch_no,row.expiry_date || 'Missing expiry',
           evidence.matchedLines ? evidence.received : 'No evidence',evidence.matchedLines ? evidence.sold : 'No evidence',
           evidence.matchedLines ? evidence.writtenOff : 'No evidence',evidence.matchedLines ? evidence.returned : 'No evidence',
+          evidence.matchedLines ? evidence.transferredOut : 'No evidence',evidence.matchedLines ? evidence.adjustment : 'No evidence',
           evidence.matchedLines ? evidence.ledgerRemaining : 'No evidence',qty,
           evidence.difference ? `Unreconciled ${evidence.difference} units; do not repair automatically` : 'Matches recorded subset; completeness not certified',
           row.status,unit(row.stock_value_cif,missingCIF),unit(row.stock_value_dp,missingDP),
