@@ -1,4 +1,4 @@
-import {ProfitAnalysisTab as SavedSaleProfitAnalysis} from './GMPortal';
+import SavedSaleProfitReport from '../../components/SavedSaleProfitReport';
 import { useState, useEffect, useCallback } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -7,7 +7,7 @@ import {
 import DistributorPerformanceTab from '../../components/DistributorPerformanceTab';
 import DailySalesCard from '../../components/DailySalesCard';
 import { api } from '../../lib/api';
-import { getLiveProductList, findProductPrice, setLivePrices } from '../../lib/pricing';
+import { setLivePrices } from '../../lib/pricing';
 import { formatCurrency, formatDate, BRANCHES, BRANCH_DETAILS } from '../../lib/constants';
 import {
   Tabs, Card, CardBody, CardHeader, Button, Input, StatCard,
@@ -104,7 +104,7 @@ export default function DirectorPortal() {
         {activeTab === 'branchAnalysis' && <BranchAnalysisTab start={applied.start} end={applied.end} />}
         {activeTab === 'registrations' && <RegistrationsTab start={applied.start} end={applied.end} />}
         {activeTab === 'distributors' && <DistributorPerformanceTab title="Distributor Network Performance" />}
-        {activeTab === 'profitAnalysis' && <SavedSaleProfitAnalysis />}
+        {activeTab === 'profitAnalysis' && <SavedSaleProfitReport />}
         {activeTab === 'accounts' && <AccountsTab role="director" />}
         {activeTab === 'salary' && <SalaryLedgerTab role="director" />}
         {activeTab === 'financeApprovals' && <FinanceApprovalsTab />}
@@ -600,144 +600,6 @@ function RegistrationsTab({ start, end }) {
           />
         )}
       </Card>
-    </div>
-  );
-}
-
-function ProfitAnalysisTab() {
-  const pad = n => String(n).padStart(2, '0');
-  const localDate = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  const now = new Date();
-  const [startDate, setStartDate] = useState(localDate(new Date(now.getFullYear(), now.getMonth(), 1)));
-  const [endDate, setEndDate] = useState(localDate(now));
-  const [qtySoldMap, setQtySoldMap] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [campaignPrices, setCampaignPrices] = useState({});
-  const [editingCampaign, setEditingCampaign] = useState(null);
-  const [campaignPrice, setCampaignPrice] = useState('');
-
-  const load = useCallback(() => {
-    setLoading(true);
-    api.director.profitAnalysis({ startDate, endDate })
-      .then(res => {
-        const map = {};
-        (res?.products || []).forEach(p => { map[p.productName] = p.qtySold; });
-        setQtySoldMap(map);
-      })
-      .catch(() => setQtySoldMap({}))
-      .finally(() => setLoading(false));
-  }, [startDate, endDate]);
-
-  useEffect(() => { load(); }, [load]);
-
-  const profitRows = getLiveProductList().map(p => {
-    const qtySold = qtySoldMap[p.description] || 0;
-    const campaign = campaignPrices[p.description];
-    const sellingPrice = campaign || p.dp;
-    const profit = sellingPrice - p.cif;
-    const totalProfit = profit * qtySold;
-    const margin = sellingPrice > 0 ? ((profit / sellingPrice) * 100) : 0;
-    return {
-      product_name: p.description, cif: p.cif, dp: p.dp, cp: p.cp,
-      campaign_price: campaign || null, selling_price: sellingPrice,
-      profit_per_unit: profit, margin: Math.round(margin * 10) / 10,
-      qty_sold: qtySold, total_profit: totalProfit,
-    };
-  }).sort((a, b) => b.total_profit - a.total_profit);
-
-  const totalCIF     = profitRows.reduce((s, r) => s + r.cif * r.qty_sold, 0);
-  const totalRevenue = profitRows.reduce((s, r) => s + r.selling_price * r.qty_sold, 0);
-  const grandProfit  = profitRows.reduce((s, r) => s + r.total_profit, 0);
-  const avgMargin    = totalRevenue > 0 ? ((grandProfit / totalRevenue) * 100).toFixed(1) : '0';
-
-  const saveCampaign = () => {
-    if (editingCampaign && campaignPrice) setCampaignPrices(prev => ({ ...prev, [editingCampaign]: Number(campaignPrice) }));
-    setEditingCampaign(null);
-    setCampaignPrice('');
-  };
-
-  return (
-    <div className="space-y-6">
-      <Card className="bg-gradient-to-r from-emerald-50 to-teal-50 border-emerald-200">
-        <CardBody>
-          <div className="flex flex-col md:flex-row md:items-center gap-4">
-            <div className="flex items-start gap-4 flex-1">
-              <TrendingUp size={32} className="text-emerald-600 mt-1" />
-              <div>
-                <h3 className="font-bold text-emerald-900">Profit Analysis — CIF vs DP</h3>
-                <p className="text-sm text-emerald-700 mt-1">Stock imported at CIF price; sold at DP. Profit = DP − CIF per unit. Qty sold sourced from live stock movements.</p>
-              </div>
-            </div>
-            <div className="flex gap-2 items-end">
-              <div>
-                <label className="block text-xs font-semibold text-emerald-800 mb-1">From</label>
-                <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="border border-emerald-300 rounded px-2 py-1 text-sm" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-emerald-800 mb-1">To</label>
-                <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="border border-emerald-300 rounded px-2 py-1 text-sm" />
-              </div>
-              <Button size="sm" onClick={load} className="mb-0.5">Apply</Button>
-            </div>
-          </div>
-        </CardBody>
-      </Card>
-      {loading ? <LoadingSpinner /> : (
-        <>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <StatCard title="Total CIF Cost" value={formatCurrency(totalCIF)} color="red" icon={<Ship size={24} />} />
-            <StatCard title="Total Revenue (DP)" value={formatCurrency(totalRevenue)} color="blue" icon={<DollarSign size={24} />} />
-            <StatCard title="Gross Profit" value={formatCurrency(grandProfit)} color="green" icon={<TrendingUp size={24} />} />
-            <StatCard title="Avg Margin" value={`${avgMargin}%`} color="purple" icon={<BarChart3 size={24} />} />
-          </div>
-          <Card>
-            <CardHeader>
-              <div className="flex justify-between items-center">
-                <h3 className="font-bold text-gray-800">Product Profit Breakdown</h3>
-                <Badge variant="info">{profitRows.filter(r => r.qty_sold > 0).length} products with sales</Badge>
-              </div>
-            </CardHeader>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 text-left">
-                    {['Product', 'CIF', 'DP', 'Campaign', 'Profit/Unit', 'Margin', 'Qty Sold', 'Total Profit', 'Actions'].map(h => (
-                      <th key={h} className="px-4 py-3 font-semibold text-gray-600">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {profitRows.map(r => (
-                    <tr key={r.product_name} className={`border-b border-gray-100 hover:bg-gray-50 ${r.qty_sold > 0 ? '' : 'opacity-40'}`}>
-                      <td className="px-4 py-2.5 text-gray-800 max-w-[250px] truncate" title={r.product_name}>{r.product_name}</td>
-                      <td className="px-4 py-2.5 text-right text-red-600 font-medium">{formatCurrency(r.cif)}</td>
-                      <td className="px-4 py-2.5 text-right font-medium">{formatCurrency(r.dp)}</td>
-                      <td className="px-4 py-2.5 text-right">{r.campaign_price ? <span className="text-orange-600 font-medium">{formatCurrency(r.campaign_price)}</span> : '-'}</td>
-                      <td className="px-4 py-2.5 text-right text-green-700 font-bold">{formatCurrency(r.profit_per_unit)}</td>
-                      <td className="px-4 py-2.5 text-right"><span className={`font-medium ${r.margin >= 50 ? 'text-green-600' : r.margin >= 30 ? 'text-blue-600' : 'text-orange-600'}`}>{r.margin}%</span></td>
-                      <td className="px-4 py-2.5 text-right font-medium">{r.qty_sold > 0 ? r.qty_sold : '-'}</td>
-                      <td className="px-4 py-2.5 text-right font-bold text-green-700">{r.total_profit > 0 ? formatCurrency(r.total_profit) : '-'}</td>
-                      <td className="px-4 py-2.5">
-                        <button className="text-xs text-blue-600 hover:underline" onClick={() => { setEditingCampaign(r.product_name); setCampaignPrice(String(r.campaign_price || r.dp)); }}>Set Campaign</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        </>
-      )}
-      <Modal open={!!editingCampaign} onClose={() => setEditingCampaign(null)} title={`Campaign Price: ${editingCampaign}`} size="sm">
-        <div className="p-6 space-y-4">
-          {editingCampaign && (() => { const prod = getLiveProductList().find(p => p.description === editingCampaign); return prod ? <div className="text-sm text-gray-600 bg-gray-50 p-3 rounded"><p>CIF: {formatCurrency(prod.cif)} | DP: {formatCurrency(prod.dp)} | CP: {formatCurrency(prod.cp)}</p></div> : null; })()}
-          <Input label="Campaign Selling Price (N$)" type="number" min="0" step="0.01" value={campaignPrice} onChange={e => setCampaignPrice(e.target.value)} />
-          <div className="flex gap-3">
-            <Button onClick={saveCampaign}>Apply Campaign Price</Button>
-            <Button variant="secondary" onClick={() => { setCampaignPrices(prev => { const n = { ...prev }; delete n[editingCampaign]; return n; }); setEditingCampaign(null); }}>Reset to DP</Button>
-          </div>
-        </div>
-      </Modal>
     </div>
   );
 }
