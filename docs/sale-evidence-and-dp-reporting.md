@@ -59,20 +59,36 @@ product quantities; ambiguous prices and missing charged allocations require
 review. Old prescription movements without an exact completion identity and
 uncaptured branch-mirror identities are explicitly unresolved.
 
+The dry run also reports a database fingerprint and SELECT-only schema readiness
+checks for the audit source-key column and its valid, unconditional unique index.
+Missing schema blocks apply; the tool never repairs schema itself. The source
+fingerprint includes exactly captured branch mirrors, and their branch, original
+reference, product, batch, movement type and quantity must agree before a mirror
+patch is eligible. Mirror-only and allocation-only missing metadata are included
+even when central movement metadata is already complete. A reference-linked
+mirror without an originally captured mirror ID remains unresolved.
+
 After operator review and a genuine database backup, apply to the same database:
 
 ```sh
 node scripts/repair-sale-evidence.mjs --reference TU-2026-000122 \
   --apply --approve REVIEWED_PLAN_HASH --fingerprint REVIEWED_FINGERPRINT \
-  --backup /secure/path/to/reviewed-backup-file
+  --backup /secure/path/to/reviewed-backup-file --backup-verified
 ```
 
 The tool checks that the backup file exists and is nonempty; the operator must
-verify that it is a restorable backup of the correct database. Stale plans fail.
+verify that it is a restorable backup of the correct database.
+`--backup-verified` is the operator's explicit acknowledgement of this verification,
+not an automated restore test or permission supplied by the agent. Retain the
+backup's verification record separately. Stale plans and different database
+targets fail. Any dry run from the older planner must be repeated and reviewed
+because the strengthened plan/fingerprint now include mirror and target evidence.
 Apply runs serializably, fills only missing movement/mirror/allocation metadata,
 preserves nonblank evidence including zero, and inserts reconstructed-provenance
 audit events with original actors/timestamps when available. It returns before
-and after plans plus an invariant check of stock quantities and receipt values.
+and after plans plus an invariant check of stock quantities, receipt values and
+non-metadata branch mirror values. The apply report retains the approved hashes,
+database fingerprint and operator backup-verification acknowledgement.
 Rerunning an unchanged repaired scope is idempotent. Review unresolved rows
 separately; do not treat an incomplete repair as stock-loss evidence.
 
@@ -95,8 +111,121 @@ successful transactions. Browser fixtures use a separate disposable UI harness:
 only into that owned isolated database, with saved DP 341, charged 443, margin
 102, later catalogue DP 999, and six real open requests.
 
-These checks do not verify the supplied historical receipt in production.
-No production sale, quantity repair, or historical apply is authorized or performed.
+These isolated checks alone do not verify historical production records.
+The bounded read-only production reviews are documented below. No production
+sale replay, quantity repair or historical apply has been performed.
+
+### Bounded production review — 14 October 2026
+
+After the operator confirmed the repair was merged and authorized the
+exact-reference read-only review, production was inspected through the read-only
+replica. This was not a CLI dry run against the primary database and does not
+authorize an apply.
+
+- `TU-2026-000122` and `WALK-1791966024927-UDFO` identify the same completed
+  Tsumeb sale, dated 14 October 2026. The captured line and allocation show one
+  D.I GROW (GREEN) (1 LITER), commercial DP N$341, customer charge N$443 and
+  commercial margin N$102. These values came from original saved evidence,
+  not today's catalogue.
+- The exact-reference extract contained one sale, one posted central movement,
+  one allocation, no sale audit events and one reference-linked branch mirror.
+  The existing pure planner proposed central movement metadata and a
+  reconstructed sale audit event for one eligible sale.
+- The allocation did **not** capture `branch_movement_id`. The observed
+  reference-linked mirror is not sufficient authority for this repair to fill
+  its metadata. The planner retained this as an unresolved review row.
+- Original supplier/received costs remain missing. Commercial DP must not be
+  substituted for these costs.
+- No prescription dispensing session appeared in this bounded extract. Other
+  legacy sessions, other receipts and branch/date scopes were not inspected;
+  this review makes no claim that their evidence is complete.
+- The production `mis_sales_audit` schema did not contain `source_key`, which
+  the apply path requires. Operator confirmation of a merge is not proof of
+  production schema readiness. No schema changes were attempted.
+
+The extract was captured at `2026-10-14T10:10:36.809961Z`. A second read at
+`2026-10-14T10:11:31.495Z` confirmed that the complete scoped sale, movement,
+allocation, audit and mirror rows were unchanged. Both reads were SELECT-only;
+there was no apply, sale replay, quantity change or financial posting.
+
+Restricted evidence, the planner output and the second-read checks were retained
+under `generated-artifacts/sale-repair/production-exact-reference-*.json`, excluded
+from Git and deployment. These local files are not a database backup. The
+extract SHA-256 is
+`4d5ea316a3625f320e19fdbed85c1534dccc8090e52b577810d8d4e389569e15`.
+The replica-derived candidate plan hash is
+`bbc1ae8222edb9a22341f81ae0df155503a1f4ab7c7653c2e2d09e5240c042c7`
+and its source fingerprint is
+`29d4b51235baedd25140163f20eaab904d9c4090f9004bb62280da84ef00022d`.
+These hashes record this review only: replica serialization and target identity
+have not been validated against the primary CLI, so **do not use them as apply
+approval values**.
+
+**Status: review performed; live repair blocked.** No verified restorable backup
+or hash-bound apply approval has been supplied. Before any apply, an authorized
+operator must confirm primary-target/schema readiness through the supported
+deployment process, run the canonical CLI read-only dry run on that target,
+review its eligible and unresolved rows, retain its exact plan hash/fingerprint,
+verify a restorable backup of that database and explicitly approve that exact
+plan. Any changed evidence requires another dry run and review. Mirror and
+legacy-session gaps must remain unresolved unless exact original linkage is
+established. Preserve the CLI's before/after plans, invariant checks and
+reconstructed provenance if a later, separately approved apply occurs.
+
+### Follow-up review: Windhoek CBD prescriptions and current readiness
+
+The operator requested code fixes and a read-only prescription review using
+Windhoek CBD records. The branch registry identifies Windhoek CBD as `townshop`;
+this is distinct from warehouse identities and from Tsumeb.
+
+There were no prescription activity records or prescription movements for
+14 October 2026. A branch-scoped date lookup identified 9 October 2026 as the
+latest recorded prescription dispensing day at or before 14 October. Only that
+single day was extracted for the prescription review:
+
+- One activity session, `BAT-1791543953426-9E2UI7`, records a paid, posted partial
+  dispense against `RPT-1791540815996-f6xnqx`. Its captured totals are quantity 1,
+  commercial DP N$623 and customer charge N$810.
+- One posted central prescription movement and one reference-linked branch
+  mirror were observed for HERBA WARISAN MAHARANI 6 X 10G, batch `RCV-WI8JCQ`.
+  They have no captured sale-evidence metadata. There is no sale allocation and
+  no source-keyed sale completion audit for the reviewed reference.
+- These are legacy evidence gaps, not authority to infer a session-to-movement
+  mapping from matching names, quantities or nearby timestamps. Session totals
+  must not be copied into individual movements, even when the bounded extract
+  contains only one apparent candidate. No prescription repair is eligible on
+  this evidence. The saved partial-dispense state, quantities, entitlement and
+  financial records were left unchanged.
+
+The prescription extract was captured at `2026-10-14T11:38:20.756629Z`.
+A second read at `2026-10-14T11:41:02.762667Z` confirmed the complete scoped
+sessions, movements, allocations, audits and mirrors were unchanged. Restricted
+before/after evidence and the unresolved finding are retained locally in
+`generated-artifacts/sale-repair/windhoek-cbd-prescription-evidence.json`.
+The review covers this day only, not all Windhoek CBD prescription history.
+
+A fresh exact-reference read also confirmed the original Tsumeb sale still has
+one central movement, one allocation, one reference-linked mirror and no sale
+audit event. The original mirror identity is still missing. A current SELECT-only
+schema check found both `mis_sales_audit.source_key` and the required valid
+unconditional unique index present, so the earlier schema blocker is resolved
+as observed, without this task applying production DDL.
+
+**Live apply remains blocked:** no correct-primary CLI plan, verified restorable
+backup record or explicit hash-bound apply approval has been obtained. The
+replica reviews and passing isolated tests are not substitutes for these.
+
+The operator subsequently chose to finish the code fixes and read-only review
+only. Completion of this work does not authorize a production apply or assert
+that historical records have been repaired. Backup verification, a fresh
+correct-primary CLI plan and explicit approval of that exact plan remain
+separate prerequisites for any later live operation.
+
+The repair safeguard changes passed 22 focused unit checks and all 16 checks in
+the sale-evidence database suite, using a newly created disposable database that
+was removed afterward. These include original quantity conservation, mirror
+identity conflicts, mirror-only repairs, preservation of nonblank/zero evidence,
+read-only schema preflight, different-target rejection and invalid CLI arguments.
 
 ### Verification results
 

@@ -7,6 +7,7 @@
 - [Warehouse write-off deduction path](warehouse-writeoff-path.md) — warehouse write-offs deduct stock_batches.remaining_quantity (not branch_inventory_batches); detected via inferLocationType(source_location) in approve handler.
 - [Receipt source evidence](receive-request-warehouse-deduction.md) — deduct each source once; a shortage is not evidence of earlier dispatch. Resolve persisted transfers before receiving.
 - [Portal route naming](portal-route-naming.md) — portal routes are short names (/consultant, /branch, /finance...) not "/xxx-portal"; wrong URL causes blank page, easily mistaken for a real bug.
+- [Official branch name](branch-official-name.md) — Windhoek CBD and Townshop are one branch; Windhoek CBD is the user-confirmed official name, not a new branch.
 - [Auth user field naming](auth-user-field-naming.md) — sanitizeUser() returns fullName (camelCase), not full_name; reading user.full_name silently gives undefined.
 - [Dependency audit caveats](dependency-audit-caveats.md) — official patched SheetJS releases can trigger overbroad npm advisories; compare upstream fixed versions without suppressing future findings.
 - [Publishing dependency state](publishing-dependency-state.md) — ENOTEMPTY installation conflicts require a clean dependency tree; distinguish them from older security-scan failures.

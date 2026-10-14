@@ -304,3 +304,16 @@ it('repairs exact captured metadata/audit only, dry-runs without writes and is i
   expect(after.eligible).toHaveLength(0);expect(await totalUnits()).toBe(quantity);
   expect((await query('SELECT details FROM mis_sales_audit WHERE record_id=$1',[reference])).rows[0].details.provenance).toBe('reconstructed_exact_source');
 });
+it('repairs mirror-only missing metadata without changing quantities or charges',async()=>{
+  const reference=prefix+'-WALK',options={reference};
+  await query(`UPDATE branch_inventory_movements SET
+    metadata=jsonb_set(metadata,'{sale_evidence}',(metadata->'sale_evidence')-'dp_value')
+    WHERE reference=$1`,[reference]);
+  const plan=await withTransaction(c=>readSaleRepairPlan(c,options));
+  expect(plan.eligible).toHaveLength(1);
+  expect(plan.eligible[0].lines.every(l=>Object.keys(l.patch).length===0)).toBe(true);
+  expect(plan.eligible[0].lines.some(l=>l.mirrorPatch.dp_value!=null)).toBe(true);
+  const checks=await withTransaction(c=>applySaleRepairPlanTx(c,plan));
+  expect(checks.invariantAfter).toBe(checks.invariantBefore);
+  expect((await withTransaction(c=>readSaleRepairPlan(c,options))).eligible).toHaveLength(0);
+});

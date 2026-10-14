@@ -1,5 +1,6 @@
 import { query } from '../db.js';
 import { businessDay, businessTime } from '../services/businessDates.js';
+import { officialBranchName } from './branchUtils.js';
 
 export function generateBatId() {
   return `BAT-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
@@ -35,7 +36,7 @@ export async function postActivityRecord(record) {
     [
       id,
       record.branch_id || '',
-      record.branch_name || record.branch_id || '',
+      officialBranchName(record.branch_id, record.branch_name || record.branch_id || ''),
       record.client_id || null,
       record.client_name || 'Walk-in Client',
       record.client_phone || null,

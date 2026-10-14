@@ -1,6 +1,7 @@
 import { applyAuthCors } from '../_lib/auth.js';
 import { postActivityRecord, generateBatId } from '../_lib/activityCapture.js';
 import { getMany } from '../db.js';
+import { officialBranchName, normalizeBranchSlug, CANONICAL_WINDHOEK_CBD } from '../_lib/branchUtils.js';
 
 async function parseBody(req) {
   if (req.body && typeof req.body === 'object') return req.body;
@@ -63,7 +64,10 @@ export default async function handler(req, res) {
 
       const conds = ['1=1'];
       const params = [];
-      if (branchId) { conds.push(`branch_id = $${params.length + 1}`); params.push(branchId); }
+      if (branchId) {
+        conds.push(`branch_id = $${params.length + 1}`);
+        params.push(normalizeBranchSlug(branchId)===CANONICAL_WINDHOEK_CBD ? CANONICAL_WINDHOEK_CBD : branchId);
+      }
       if (date) { conds.push(`service_date = $${params.length + 1}`); params.push(date); }
       if (actType) { conds.push(`activity_type = $${params.length + 1}`); params.push(actType); }
       params.push(limit);
@@ -72,7 +76,9 @@ export default async function handler(req, res) {
         `SELECT * FROM branch_activity_transactions WHERE ${conds.join(' AND ')} ORDER BY created_at DESC LIMIT $${params.length}`,
         params
       );
-      return res.status(200).json({ success: true, transactions: rows, total: rows.length });
+      return res.status(200).json({ success: true,
+        transactions: rows.map(row=>({...row,branch_name:officialBranchName(row.branch_id,row.branch_name)})),
+        total: rows.length });
     }
 
     return res.status(405).json({ success: false, error: 'Method not allowed' });

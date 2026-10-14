@@ -56,6 +56,13 @@ export function normalizeBranchArray(branches) {
   return [...new Set(branches.map(normalizeBranchSlug).filter(Boolean))];
 }
 
+// A branch's public name is not its storage key. Preserve the townshop key so
+// existing sales, stock, staff scopes and prescriptions remain linked.
+export function officialBranchName(branchId, fallback=branchId || '') {
+  return normalizeBranchSlug(branchId)===CANONICAL_WINDHOEK_CBD
+    ? 'Windhoek CBD' : fallback;
+}
+
 /**
  * Canonical list of all branch IDs — single source of truth for backend.
  * Mirrors BRANCH_DETAILS IDs in client/src/lib/constants.js.
