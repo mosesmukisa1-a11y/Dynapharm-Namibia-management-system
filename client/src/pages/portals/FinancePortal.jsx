@@ -1,3 +1,4 @@
+import SaleEvidenceLinks from '../../components/SaleEvidenceLinks';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from '../../lib/api';
 import { useStockRealtime } from '../../hooks/useStockRealtime';
@@ -57,6 +58,7 @@ export default function FinancePortal() {
         <h1 className="text-xl font-bold text-gray-900">Finance Portal</h1>
         <p className="text-sm text-gray-500">Financial oversight, deposit verification, expense approvals, remittance and reporting</p>
       </div>
+      <SaleEvidenceLinks />
       <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
       <div className="mt-6">
         {activeTab === 'dashboard' && <DashboardTab />}

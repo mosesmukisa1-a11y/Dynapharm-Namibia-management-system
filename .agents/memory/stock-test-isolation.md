@@ -56,6 +56,12 @@ Concurrency regression tests must prove actual contention and cover both valid w
 
 **How to apply:** Control scheduling without mocking SQL results or handler behavior, verify the competing real database transaction is blocked by the winning row lock, release it, and await both requests before assertions and cleanup.
 
+New reporting SQL needs a real read-only HTTP check against a guarded schema-only fixture, even after mocked unit tests pass.
+
+**Why:** A new trace reader passed mocks but selected a branch column that did not exist; the actual captured branch was inside structured audit evidence. Empty real tables still validate SQL compatibility.
+
+**How to apply:** For added report sources, inspect the writer/schema and exercise the GET through actual synthetic staff-session middleware. Mocks prove presentation and filtering intent, not schema compatibility.
+
 Whole-system audits must use a separate test database or isolated environment, not merely uniquely named rows in the business database. Never connect their fixtures to live payment or other external services.
 
 **Why:** The user explicitly requires business records to remain untouched during an end-to-end stock audit. Prefixes and cleanup do not prevent a mis-scoped handler or failing assertion from changing unrelated records.
@@ -85,3 +91,15 @@ Canonical-only branch fixtures do not establish legacy-location coverage. Includ
 **Why:** Different report reads can normalize owner names at different stages: available inventory can be positive while a canonical-only physical projection returns zero. Ordinary canonical lifecycle fixtures miss this failure.
 
 **How to apply:** Verify canonical and authorized legacy-alias requests produce the same owned, available, held and original-cost totals, without treating warehouse aliases as branch owners.
+
+A backup recovery drill does not broaden a test process's database authority.
+
+**Why:** A second owned database restored successfully, but the original process correctly rejected it because its guard was bound to a different exact target. Restore-command success alone did not establish recovered-row agreement.
+
+**How to apply:** Keep independent exact-target guard contexts for recovery verification and retain the comparison result. Never disable or widen isolation merely because another database has a synthetic-looking name.
+
+Physical-stock fixture readiness does not establish POS catalogue or original-cost evidence readiness.
+
+**Why:** A browser fixture had stock visible in batch screens but no matching price-list product, blocking sale staging. A different API fixture intentionally lacked original CIF despite having a current catalogue CIF; assuming the browser fixture's cost produced a false regression failure.
+
+**How to apply:** Validate each disposable fixture's active catalogue and captured cost sources separately before staging. Never change business prices or fill missing original costs to satisfy a synthetic expectation.

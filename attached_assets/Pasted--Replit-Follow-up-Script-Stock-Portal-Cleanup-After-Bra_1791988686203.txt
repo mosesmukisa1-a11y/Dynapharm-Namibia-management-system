@@ -1,0 +1,371 @@
+# Replit Follow-up Script: Stock Portal Cleanup After Branch/Stock Blockers
+
+Paste this into Replit only after the first post-publish blocker fix has been applied and verified:
+
+- Branch `Review Sale ->` opens a review/confirmation screen.
+- Stock Portal views no longer render shell-only after reload/navigation.
+
+---
+
+## Replit Agent Prompt
+
+You are working on the Dynapharm Namibia Management System. The urgent post-publish blockers have been addressed. Now continue with the Stock Portal cleanup, but keep changes phased, conservative, and compatible with the improved Branch Sales evidence model.
+
+Do not redesign everything at once. Preserve existing working workflows. Do not delete live data. Do not submit test sales, imports, transfers, write-offs, or counts unless explicitly instructed.
+
+## Current Evidence Model To Preserve
+
+Branch Sales now captures:
+
+- DP total
+- CP/customer charged total
+- Branch profit
+- Movement ID
+- Receipt number
+- Batch number
+- Business date
+- Timezone: `Africa/Windhoek`
+- MIS `sale created` audit event
+
+Finance now separates:
+
+- `Net Sales (original DP)`
+- `Net charged revenue`
+- `Stock Value (DP)`
+- incomplete original evidence warnings
+
+Stock cleanup must consume this evidence. Do not replace it with old assumptions.
+
+---
+
+## Phase 1: Restore Stock Report Reliability
+
+First make the existing Stock Portal reliable.
+
+Required views must render body content after:
+
+- top-nav click into Stock
+- direct `/stock?view=...` URL
+- browser reload
+- switching from Branch, Finance, Director, MIS, or GM
+
+Verify these routes:
+
+```text
+/stock?view=aiDashboard
+/stock?view=branchStock
+/stock?view=inventory
+/stock?view=batch
+/stock?view=stockReports
+/stock?view=costReport
+/stock?view=valuation
+/stock?view=reorder
+/stock?view=barcode
+```
+
+If a view cannot load data, show a visible error panel with Retry. Never show only the navigation shell.
+
+Acceptance:
+
+- Every route above shows either real content, loading state, or visible error.
+- No route silently shows blank body content.
+
+---
+
+## Phase 2: Add Stock Movement Ledger To Stock Reports
+
+Improve `Stock Reports` before adding bigger features.
+
+Default Stock Reports page must show an on-screen movement ledger.
+
+Columns:
+
+```text
+Date/time
+Business date
+Movement ID
+Reference
+Receipt no
+Branch/location
+Product
+Batch
+Qty
+DP unit
+DP value
+CP charged value
+Branch profit
+Cost evidence
+Actor/staff
+Status
+```
+
+Filters:
+
+```text
+From date
+To date
+Branch/location
+Product
+Batch
+Reference / receipt / movement ID
+Movement type
+Cost evidence status
+```
+
+Search must find existing evidence such as:
+
+```text
+TU-2026-000122
+WALK-1791966024927-UDFO
+QA-20261014-001
+TRF-1791971012005-B2ZFQ4
+```
+
+Acceptance:
+
+- A user can trace a sale or movement without exporting CSV.
+- DP value is populated where captured.
+- CP/customer charged value is separate from DP stock value.
+
+---
+
+## Phase 3: Fix DP vs CP Labels Everywhere In Stock
+
+Rules:
+
+- DP = stock value / distributor price / internal stock valuation.
+- CP = customer price / charged revenue.
+- Branch profit = CP charged value - DP value.
+
+Update labels:
+
+```ts
+const STOCK_LABELS = {
+  dpStockValue: "DP stock value",
+  dpSalesValue: "DP sales value",
+  cpCustomerPrice: "CP customer price",
+  chargedRevenue: "Customer charged revenue",
+  branchProfit: "Branch profit",
+};
+```
+
+Required:
+
+- Branch Stock uses DP for stock value.
+- Valuation uses DP for stock value.
+- Stock movement ledger uses DP value and CP charged value separately.
+- Barcode labels should show `DP stock value` and `CP customer price`.
+
+Acceptance:
+
+- D.I Grow Green 1L barcode/reporting clearly shows DP `N$341` and CP `N$443`.
+- No Stock tab labels CP as stock value.
+
+---
+
+## Phase 4: Cost Evidence Classification
+
+Do not treat `0` as valid original received cost unless explicitly approved.
+
+Add/normalize cost evidence status:
+
+```ts
+type CostEvidenceStatus = "original" | "partial" | "estimated" | "missing";
+
+function classifyCostEvidence(line: {
+  originalReceivedDPC?: number | null;
+  originalReceivedCost?: number | null;
+  estimated?: boolean;
+  zeroCostApproved?: boolean;
+}): CostEvidenceStatus {
+  const hasDpc =
+    line.originalReceivedDPC !== null &&
+    line.originalReceivedDPC !== undefined &&
+    (Number(line.originalReceivedDPC) > 0 || line.zeroCostApproved);
+
+  const hasCost =
+    line.originalReceivedCost !== null &&
+    line.originalReceivedCost !== undefined &&
+    (Number(line.originalReceivedCost) > 0 || line.zeroCostApproved);
+
+  if (hasDpc && hasCost) return "original";
+  if (hasDpc || hasCost) return "partial";
+  if (line.estimated) return "estimated";
+  return "missing";
+}
+```
+
+Valuation must display:
+
+- Original DP value
+- Estimated DP value
+- Missing DP units
+- Original CIF value
+- Estimated CIF value
+- Missing CIF units
+
+Acceptance:
+
+- Finance and Stock Valuation agree on missing original-evidence units or clearly explain scope differences.
+- Historical sales are not repriced from today’s catalogue.
+
+---
+
+## Phase 5: Branch Batch Ledger
+
+Add branch-level batch visibility.
+
+Columns:
+
+```text
+Branch
+Product
+Batch
+Expiry
+Received qty
+Sold qty
+Written off qty
+Returned qty
+Remaining qty
+CIF/unit
+DP/unit
+Total DP
+Cost evidence
+FEFO status
+```
+
+Compute from stock movements:
+
+- Positive movement into branch = received/returned/restored.
+- Negative movement from branch = sale/write-off/transfer-out.
+- Remaining qty = positive in - negative out.
+
+Acceptance:
+
+- Tsumeb D.I Grow Green 1L shows branch-held batch evidence.
+- `QA-20261014-001` is searchable if still present in movement/batch evidence.
+- FEFO warnings remain visible.
+
+---
+
+## Phase 6: Transfer And Return Status Cleanup
+
+Normalize internal statuses before rendering.
+
+```ts
+const STATUS_LABELS: Record<string, string> = {
+  pending: "Pending",
+  pending_gm: "Pending GM",
+  approved: "Approved",
+  dispatched: "Dispatched",
+  in_transit: "In Transit",
+  received: "Received",
+  delivered: "Delivered",
+  partially_received: "Partially Received",
+  rejected: "Rejected",
+  returned: "Returned",
+  cancelled: "Cancelled",
+};
+
+function cleanStatus(status: string) {
+  const raw = String(status || "").replace(/^\$/, "").trim().toLowerCase();
+  return STATUS_LABELS[raw] || raw.replace(/_/g, " ");
+}
+```
+
+Required:
+
+- Remove raw `$delivered`, `$received`, `$approved`.
+- Never show `Rejected` and `Approved` for the same actionable transfer.
+- If status conflict exists, disable action and show `Status conflict detected`.
+
+---
+
+## Phase 7: Trace Stock
+
+After Stock Reports and batch ledger are stable, add `Trace Stock`.
+
+Search by:
+
+```text
+receipt number
+sale reference
+movement ID
+batch number
+transfer reference
+import reference
+product name
+branch/location
+```
+
+Timeline events:
+
+```text
+supplier import
+country stock receipt
+transfer created
+GM approval/rejection
+warehouse receipt
+warehouse dispatch
+branch receipt
+sale created
+refund/restock
+write-off
+stock count adjustment
+```
+
+Acceptance:
+
+- Searching `TU-2026-000122` shows sale and stock movement.
+- Searching `QA-20261014-001` shows import/transfer/receipt evidence where available.
+- Searching `TRF-1791971012005-B2ZFQ4` shows warehouse-to-branch movement.
+
+---
+
+## Phase 8: Usability Simplification
+
+Only after the reports work, simplify navigation.
+
+Do not remove existing tabs yet. Instead, group visually:
+
+```text
+Dashboard
+Receive Stock
+Move Stock
+Branch Stock
+Audit & Reports
+Settings
+```
+
+Keep old tab labels available during transition.
+
+Acceptance:
+
+- Staff can still find every existing function.
+- Daily tasks need fewer clicks.
+- No route breaks after reload.
+
+---
+
+## Final Manual Test Checklist
+
+1. Open `/stock?view=stockReports`.
+2. Search `TU-2026-000122`.
+3. Confirm DP value and CP charged value are separate.
+4. Open `/stock?view=valuation`.
+5. Confirm missing cost evidence is classified, not hidden.
+6. Open `/stock?view=batch`.
+7. Confirm branch-held batches are visible or searchable.
+8. Open `/stock?view=barcode`.
+9. Confirm D.I Grow Green 1L labels DP `N$341` and CP `N$443`.
+10. Reload every route tested above.
+11. Confirm no shell-only view appears.
+
+Stop after completing these phases and report:
+
+- Files changed
+- Database migrations added
+- Tests run
+- Manual checks completed
+- Any remaining data gaps
+

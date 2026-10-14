@@ -7,6 +7,7 @@ const args=process.argv.slice(2),values=new Map();
 const valueFlags=new Set(['--reference','--branch','--from','--to','--approve','--fingerprint','--database-fingerprint','--backup']);
 const switches=new Set(['--apply','--backup-verified']);
 const get=flag=>values.get(flag);
+let committedApply;
 try{
   for(let i=0;i<args.length;i++){
     const flag=args[i];
@@ -53,11 +54,15 @@ try{
     }
     return {mode:'dry-run',...plan};
   });
+  if(result.mode==='apply')committedApply=result;
   await mkdir('generated-artifacts/sale-repair',{recursive:true});
   const path=`generated-artifacts/sale-repair/${Date.now()}-${result.mode}.json`;
   await writeFile(path,JSON.stringify(result,null,2),{mode:0o600});
   console.log(`Metadata-only ${result.mode} report: ${path}`);
   if(!apply)console.log(`Eligible: ${result.eligible.length}; review: ${result.review.length}; plan hash: ${result.planHash}; fingerprint: ${result.fingerprint}`);
   if(!apply)console.log(`Database fingerprint: ${result.readiness.databaseFingerprint}; primary: ${result.readiness.isPrimary}; schema ready: ${result.readiness.schemaReady}${result.readiness.blockers.length?`; blockers: ${result.readiness.blockers.join('; ')}`:''}`);
-}catch(error){console.error(error.message);process.exitCode=1;}
+}catch(error){
+  if(committedApply)console.error('Repair committed, but its file report could not be saved. Before/after evidence remains in mis_sales_audit under sale_evidence_repaired. Do not assume rollback or reuse stale approvals; run a new read-only dry run and review the retained audit.');
+  console.error(error.message);process.exitCode=1;
+}
 finally{await closePool();}

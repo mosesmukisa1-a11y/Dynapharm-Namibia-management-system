@@ -1,4 +1,5 @@
 import { isOpenStockRequest } from '../../../../shared/stockRequests.js';
+import { saleReviewErrors } from '../../lib/branchSaleReview.js';
 import { movementDPValue, namibiaDay } from '../../lib/saleEvidence.js';
 import { useState, useEffect, useRef, useMemo, useCallback, useContext, createContext } from 'react';
 import { MyProfileTab } from '../../components/StaffServicesTab';
@@ -1505,7 +1506,7 @@ function LegacyRefundRequestsTab() {
   );
 }
 
-function WalkInSalesTab() {
+export function WalkInSalesTab() {
   const { user } = useAuth();
   const { isOnline } = useOffline();
   const portalBranch = useContext(PortalBranchContext);
@@ -1535,6 +1536,9 @@ function WalkInSalesTab() {
   const [salesDateFrom, setSalesDateFrom] = useState('');
   const [salesDateTo, setSalesDateTo] = useState('');
   const [regFromCache, setRegFromCache] = useState(false);
+  const [reviewErrors, setReviewErrors] = useState({});
+  const saleSubmission = useRef(null);
+  const saleSubmitting = useRef(false);
   const [refFromCache, setRefFromCache] = useState(false);
   const [scanMode, setScanMode]     = useState(false);
   const [cameraMode, setCameraMode] = useState(false);
@@ -1887,6 +1891,8 @@ function WalkInSalesTab() {
     : 0;
 
   const openModal = () => {
+    saleSubmission.current = null;
+    setReviewErrors({});
     setCustomerType('registered'); setRegSearch(''); setRegResults([]); setSelectedReg(null);
     setNewName(''); setNewPhone(''); setReferralSearch(''); setReferralResults([]);
     setSelectedReferral(null); setNoReferral(false); setCart([]); setProductSearch('');
@@ -1905,29 +1911,32 @@ function WalkInSalesTab() {
   };
 
   const wiReviewSale = () => {
-    if (cart.length === 0) { setError('Please add products to cart'); return; }
-    if (isMember && !selectedReg) { setError('Please select a registered client'); return; }
-    if (!isMember && !newName.trim()) { setError('Please enter customer name'); return; }
-    if (!isMember && customerType !== 'prescription' && customerType !== 'consultation' && !noReferral && !selectedReferral) { setError('Please select a referral distributor or tick "no referral"'); return; }
+    const problems = saleReviewErrors({ branch: effectiveBranch, customerType, cart, selectedReg,
+      name: newName, paymentMethod, noReferral, selectedReferral });
+    setReviewErrors(problems);
+    if (Object.keys(problems).length) { setError(Object.values(problems).join(' ')); return; }
     setError('');
     setShowConfirmModal(true);
   };
 
   const completeSale = async () => {
+    if (saleSubmitting.current) return;
+    saleSubmitting.current = true;
     setSubmitting(true);
     setError('');
     try {
-      let receiptNumber;
-      if (navigator.onLine && effectiveBranch) {
+      let receiptNumber = saleSubmission.current?.receiptNumber;
+      if (!receiptNumber && navigator.onLine && effectiveBranch) {
         try {
           const r = await api.branch.nextReceiptNumber(effectiveBranch);
           receiptNumber = r.receipt_number || generateReceiptNumber();
         } catch {
           receiptNumber = generateReceiptNumber();
         }
-      } else {
+      } else if (!receiptNumber) {
         receiptNumber = generateReceiptNumber();
       }
+      if (!saleSubmission.current) saleSubmission.current = { receiptNumber, offlineId: generateOfflineId() };
       const referral = isMember ? selectedReg : (selectedReferral || DEFAULT_REFERRAL);
       const custName = isMember ? (selectedReg?.name || '') : newName;
       const custPhone = isMember ? (selectedReg?.phone || '') : newPhone;
@@ -1988,7 +1997,7 @@ function WalkInSalesTab() {
         },
       };
 
-      const saleOfflineId = generateOfflineId();
+      const saleOfflineId = saleSubmission.current.offlineId;
       const salePayloadWithId = { ...saleData, offline_id: saleOfflineId };
       let savedSaleDate=saleData.timestamp || saleData.sale_date;
       if (!navigator.onLine) {
@@ -2036,6 +2045,7 @@ function WalkInSalesTab() {
     } catch (err) {
       setError(err.message || 'Failed to complete sale');
     } finally {
+      saleSubmitting.current = false;
       setSubmitting(false);
     }
   };
@@ -2223,7 +2233,7 @@ function WalkInSalesTab() {
                 <div>
                   <div style={{ color: '#fff', fontSize: '1.1rem', fontWeight: 800, letterSpacing: '-0.01em' }}>Branch Point of Sale</div>
                   <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.76rem', marginTop: 1 }}>
-                    {user?.branch ? `${getBranchDisplayName(user.branch)} Branch` : 'Dynapharm'} &nbsp;·&nbsp;
+                    {effectiveBranch ? `${getBranchDisplayName(effectiveBranch)} Branch` : 'Select branch'} &nbsp;·&nbsp;
                     <span style={{ color: '#ffd0d8', fontWeight: 600 }}>{isMember ? '🏅 Member — DP Prices' : '👤 Walk-in — CP Prices'}</span>
                   </div>
                 </div>
@@ -2263,6 +2273,7 @@ function WalkInSalesTab() {
                 </div>
 
                 {/* Member or New Customer details */}
+                {reviewErrors.customer && <p role="alert" style={{ color: '#c41e3a' }}>{reviewErrors.customer}</p>}
                 {customerType === 'registered' ? (
                   <div>
                     <div style={{ fontSize: '0.62rem', fontWeight: 800, letterSpacing: '.12em', color: '#c41e3a', textTransform: 'uppercase', marginBottom: 8 }}>Member Lookup</div>
@@ -2339,7 +2350,11 @@ function WalkInSalesTab() {
                         </div>
                       )}
                       <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: '0.8rem', cursor: 'pointer', color: '#92400e', userSelect: 'none' }}>
-                        <input type="checkbox" checked={noReferral} onChange={e => toggleNoReferral(e.target.checked)} style={{ width: 15, height: 15, accentColor: '#c41e3a' }} />
+                        <input type="checkbox" checked={noReferral} onChange={e => {
+                          toggleNoReferral(e.target.checked);
+                          setReviewErrors(previous => ({...previous,referral:null}));
+                          setError('');
+                        }} style={{ width: 15, height: 15, accentColor: '#c41e3a' }} />
                         No referral — direct walk-in
                       </label>
                     </div>
@@ -2371,6 +2386,8 @@ function WalkInSalesTab() {
                   </div>
                 )}
 
+                {reviewErrors.referral && <p role="alert" style={{ color: '#c41e3a' }}>{reviewErrors.referral}</p>}
+                {reviewErrors.payment && <p role="alert" style={{ color: '#c41e3a' }}>{reviewErrors.payment}</p>}
                 {/* Payment Method — large 2×2 icon tiles */}
                 <div>
                   <div style={{ fontSize: '0.62rem', fontWeight: 800, letterSpacing: '.12em', color: '#c41e3a', textTransform: 'uppercase', marginBottom: 8 }}>Payment Method</div>
@@ -2658,9 +2675,10 @@ function WalkInSalesTab() {
                     </div>
                   )}
                   <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {error && <div role="alert" style={{ color: '#c41e3a', fontSize: '0.82rem' }}>{error}</div>}
                     <button type="button" onClick={wiReviewSale}
                       style={{ width: '100%', padding: '12px 0', border: 'none', borderRadius: 12, background: cart.length === 0 ? '#e5e7eb' : 'linear-gradient(135deg,#c41e3a 0%,#8b0000 100%)', color: cart.length === 0 ? '#9ca3af' : '#fff', fontWeight: 800, cursor: cart.length === 0 ? 'not-allowed' : 'pointer', fontSize: '0.92rem', boxShadow: cart.length > 0 ? '0 4px 14px rgba(196,30,58,0.3)' : 'none', letterSpacing: '0.01em', transition: 'all .15s' }}
-                      disabled={cart.length === 0}>
+                      disabled={cart.length === 0 || submitting}>
                       Review Sale →
                     </button>
                     <button type="button" onClick={closeModal}
@@ -2691,6 +2709,7 @@ function WalkInSalesTab() {
 
             <div style={{ padding: '20px', maxHeight: '68vh', overflowY: 'auto', background: '#fdf7f8' }}>
               {error && <div style={{ background: '#fff0f3', border: '1px solid #fecaca', color: '#c41e3a', padding: '8px 12px', borderRadius: 8, marginBottom: 12, fontSize: '0.82rem', fontWeight: 500 }}>{error}</div>}
+              <p style={{ color: '#8b0000', marginBottom: 12 }}>Branch: <strong>{getBranchDisplayName(effectiveBranch)}</strong> · Payment: {paymentMethod}</p>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
                 {/* Customer card */}
@@ -2707,8 +2726,9 @@ function WalkInSalesTab() {
                   </div>
                   {!isMember && (selectedReferral || noReferral) && (
                     <div style={{ marginTop: 8, padding: '5px 9px', background: '#fffbeb', borderRadius: 7, border: '1px solid #fcd34d', fontSize: '0.77rem', color: '#92400e' }}>
-                      Referral: <strong>{selectedReferral?.name || DEFAULT_REFERRAL.name}</strong>
-                      {selectedReferral?.nb_number && <span style={{ color: '#d97706', marginLeft: 4 }}>({selectedReferral.nb_number})</span>}
+                      {noReferral ? <>Direct walk-in — no referring distributor. Existing house-account allocation: <strong>{DEFAULT_REFERRAL.name}</strong>.</>
+                        : <>Referral: <strong>{selectedReferral?.name}</strong>
+                          {selectedReferral?.nb_number && <span style={{ color: '#d97706', marginLeft: 4 }}>({selectedReferral.nb_number})</span>}</>}
                     </div>
                   )}
                 </div>
@@ -2741,6 +2761,11 @@ function WalkInSalesTab() {
                         <div>
                           <span style={{ fontWeight: 700, color: '#1e293b' }}>{item.name || item.description}</span>
                           <span style={{ color: '#94a3b8', marginLeft: 5 }}>×{item.qty}</span>
+                          <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                            DP/unit {formatCurrency(item.dp)} · DP total {formatCurrency(item.dp * item.qty)}
+                            {' · '}Customer/unit {formatCurrency(item.unitPrice)} · BV {Number(item.bv || 0) * item.qty}
+                            {' · '}Expected stock movement −{item.qty}
+                          </div>
                           {hasDiscount && (
                             <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#16a34a', marginTop: 1 }}>🏷️ {item.campaignDiscount.pct}% OFF — {item.campaignDiscount.campaignName}</div>
                           )}

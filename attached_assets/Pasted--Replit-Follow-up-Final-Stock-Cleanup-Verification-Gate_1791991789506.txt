@@ -1,0 +1,189 @@
+# Replit Follow-up: Final Stock Cleanup Verification Gate
+
+Use this prompt in Replit before publishing the Stock Portal cleanup.
+
+---
+
+## Replit Agent Prompt
+
+The Stock Portal cleanup implementation, unit tests, read-only checks, and production build have passed, but the review remains `PARTIALLY VERIFIED`. Do not add features or refactor unrelated code. Complete only the missing release verification below.
+
+This is a read-only verification pass. Do not submit a sale, import, transfer, approval, receipt, return, write-off, count, price change, migration, historical backfill, or record deletion.
+
+## 1. Authenticated route and reload matrix
+
+Using a real authenticated `ui_stock` staff session, verify each route by:
+
+1. Opening through Stock navigation.
+2. Opening the direct URL.
+3. Reloading the direct URL.
+4. Switching to another portal and returning to Stock.
+
+Routes:
+
+```text
+/stock?view=aiDashboard
+/stock?view=branchStock
+/stock?view=inventory
+/stock?view=batch
+/stock?view=stockReports
+/stock?view=costReport
+/stock?view=valuation
+/stock?view=reorder
+/stock?view=barcode
+/stock?view=trace
+```
+
+For every route record:
+
+- PASS/FAIL
+- final URL
+- visible view heading
+- whether real body content rendered
+- whether loading completed
+- any visible error and Retry behavior
+- screenshot reference
+- console/network error with exact endpoint and status
+
+Do not mark a route passed if only the shell, navigation, or location selector appears.
+
+## 2. Populated historical trace verification
+
+Run authenticated read-only searches against the populated development/review database for:
+
+```text
+TU-2026-000122
+WALK-1791966024927-UDFO
+QA-20261014-001
+TRF-1791971012005-B2ZFQ4
+```
+
+For each search verify:
+
+- response is 200
+- expected source type is returned
+- receipt/reference/movement identity is correct
+- product and batch are correct where recorded
+- branch/location scope is correct
+- quantity is correct
+- DP and charged values are not mixed
+- event timestamps are recorded evidence, not generated current dates
+- foreign-branch access remains 403 for branch-scoped staff
+
+If production data cannot be accessed safely in the test environment, state `NOT VERIFIED`; do not replace this with empty-fixture success.
+
+## 3. Live numeric reconciliation
+
+Read-only compare the same scope and timestamp across:
+
+- Stock Valuation
+- Finance Stock Value (DP)
+- Director Live Inventory Snapshot
+- Branch Stock
+- MIS sale evidence
+
+Verify and document:
+
+- total units
+- warehouse units
+- branch units
+- in-transit units
+- original DP value
+- estimated DP value
+- missing original-DP units
+- original CIF value
+- estimated CIF value
+- missing original-CIF units
+
+Any difference must include its exact scope/basis explanation. Do not call different totals consistent without explaining date, role, branch, source cap, or evidence-basis differences.
+
+## 4. DP/CP and barcode verification
+
+In the authenticated Barcode view locate:
+
+```text
+D.I GROW (GREEN) (1 LITER)
+```
+
+Verify visibly:
+
+- code `NB9845`
+- `DP stock value: NAD 341`
+- `CP customer price: NAD 443`
+
+Verify the same distinction in movement ledger and Branch Stock. Stock value must use DP; customer charged revenue must be separately labelled.
+
+## 5. Batch ledger verification
+
+Using populated history, verify:
+
+- product and batch search
+- received quantity
+- returned quantity
+- sold quantity
+- approved write-off quantity
+- transfer-out quantity
+- recorded net
+- authoritative physical quantity
+- unexplained gap
+- FEFO/condition warning
+- pending/rejected movements excluded
+- mirror identities deduplicated
+
+Search `QA-20261014-001` and document whether it is present. If absent, explain the exact source/table gap; do not infer or create evidence.
+
+## 6. Status safety verification
+
+Read-only verify display normalization for records containing:
+
+```text
+$delivered
+$received
+$approved
+```
+
+Confirm they display as human labels. Use tests/fixtures for contradictory status handling; do not perform a live approval or rejection.
+
+Verify a conflict displays `Status conflict detected` and removes/disables actionable controls.
+
+## 7. Print verification
+
+Open print previews without completing any business transaction:
+
+- one product barcode label
+- one batch barcode/label if historical evidence exists
+- movement ledger/report print view
+
+Verify DP/CP labels, product name, code/batch, page layout, and that no text is clipped. Do not physically print unless explicitly requested.
+
+## 8. Failure boundary verification
+
+In an isolated or mocked environment, force one allowed Stock GET to return 503.
+
+Verify:
+
+- visible error panel appears
+- endpoint/status is shown appropriately
+- Retry is available
+- Retry remounts/reloads the view
+- POST/write failures are not handled as read-only retry errors
+
+## Required final report
+
+Update `generated-artifacts/stock-cleanup/report.md` with:
+
+- a route-by-route browser matrix
+- populated reference results
+- numeric reconciliation table
+- barcode/DP/CP evidence
+- batch evidence result
+- print checks
+- failure-boundary check
+- exact remaining NOT VERIFIED items
+- screenshot references
+- exact console/network errors
+
+The final status may be `FULLY VERIFIED` only if all required authenticated, populated-history, reload, reconciliation, barcode, batch, print-preview, and error-boundary checks pass.
+
+If any required item is incomplete, retain `PARTIALLY VERIFIED`. Do not publish automatically. Stop and report whether publication is recommended.
+

@@ -4,7 +4,8 @@ import { recomputeLocationBalances, recomputeInventoryBalance, inferLocationType
 import { branchSearchTerms } from './_lib/branchUtils.js';
 import { branchLayers, takeLayers } from './services/stockCostLayers.js';
 import { movementSaleEvidence } from './services/saleEvidence.js';
-import { businessDatePredicate, validateBusinessDates } from './services/businessDates.js';
+import { businessDay, businessDatePredicate, validateBusinessDates } from './services/businessDates.js';
+import { classifySaleCostEvidence } from '../shared/saleCostEvidence.js';
 
 async function deductBranchBatchTx(client, batch, quantity) {
   const layers = branchLayers(batch);
@@ -87,6 +88,30 @@ export default async function handler(req, res) {
       const dateTo = url.searchParams.get('date_to');
       validateBusinessDates(dateFrom,dateTo);
       const referenceIdFilter = url.searchParams.get('reference_id');
+      const search = url.searchParams.get('search')?.trim();
+      const productNameFilter=url.searchParams.get('product_name')?.trim();
+      const batchFilter=url.searchParams.get('batch_no')?.trim();
+      const locationFilter=url.searchParams.get('location')?.trim();
+      if (branchScope.enforced && locationFilter && !branchScope.branches.includes(locationFilter)) {
+        return res.status(403).json({success:false,error:'Access denied'});
+      }
+      const searchPredicate = `(id ILIKE $SEARCH ESCAPE '\\' OR product_name ILIKE $SEARCH ESCAPE '\\'
+        OR batch_no ILIKE $SEARCH ESCAPE '\\' OR reference_id ILIKE $SEARCH ESCAPE '\\'
+        OR source_location ILIKE $SEARCH ESCAPE '\\' OR destination_location ILIKE $SEARCH ESCAPE '\\'
+        OR metadata->'sale_evidence'->>'receipt_no' ILIKE $SEARCH ESCAPE '\\'
+        OR metadata->'sale_evidence'->>'movement_id' ILIKE $SEARCH ESCAPE '\\'
+        OR metadata->'sale_evidence'->>'branch_movement_id' ILIKE $SEARCH ESCAPE '\\')`;
+      const addSearch = (conditions, params, isBranch = false) => {
+        for (const [column,term] of [['product_name',productNameFilter],['batch_no',batchFilter]]) {
+          if (term) { params.push(`%${term.replace(/[\\%_]/g,'\\$&')}%`); conditions.push(`${column} ILIKE $${params.length} ESCAPE '\\'`); }
+        }
+        if (locationFilter && !isBranch) { params.push(locationFilter); conditions.push(`(source_location=$${params.length} OR destination_location=$${params.length})`); }
+        if (!search) return;
+        params.push(`%${search.replace(/[\\%_]/g, '\\$&')}%`);
+        const predicate = isBranch ? searchPredicate.replaceAll('reference_id', 'reference')
+          .replaceAll('source_location', 'branch_id').replaceAll('destination_location', 'destination_branch_id') : searchPredicate;
+        conditions.push(predicate.replaceAll('$SEARCH', `$${params.length}`));
+      };
       // Fix #4: validate limit — reject negative, NaN, and non-finite values with 400;
       // clamp the accepted range to [1, 1000] to prevent oversized DB queries.
       const rawLimit = parseInt(url.searchParams.get('limit') || '100', 10);
@@ -130,21 +155,10 @@ export default async function handler(req, res) {
             branchMovements = [];
           } else {
             // Expand branch ids to normalized candidates for fuzzy match
-            branchCandidates = targetBranches.flatMap(b => {
-              const norm = b.toLowerCase().replace(/\s+/g, '_');
-              const stripped = norm.replace(/_branch$/, '');
-              const res = [norm];
-              if (!norm.endsWith('_branch')) res.push(norm + '_branch');
-              if (stripped !== norm) res.push(stripped);
-              return res;
-            });
+            branchCandidates = targetBranches.flatMap(b => branchSearchTerms(b));
           }
         } else if (branch) {
-          const normBranch = branch.toLowerCase().replace(/\s+/g, '_');
-          const stripped = normBranch.replace(/_branch$/, '');
-          branchCandidates = [normBranch];
-          if (!normBranch.endsWith('_branch')) branchCandidates.push(normBranch + '_branch');
-          if (stripped !== normBranch) branchCandidates.push(stripped);
+          branchCandidates = branchSearchTerms(branch);
         }
 
         if (branchCandidates && branchCandidates.length > 0) {
@@ -154,6 +168,7 @@ export default async function handler(req, res) {
           if (dateFrom) { bimParams.push(dateFrom); bimWhere.push(businessDatePredicate('created_at',`$${bimParams.length}`)); }
           if (dateTo) { bimParams.push(dateTo); bimWhere.push(businessDatePredicate('created_at',`$${bimParams.length}`,true)); }
           if (referenceIdFilter) { bimParams.push(referenceIdFilter); bimWhere.push(`reference = $${bimParams.length}`); }
+          addSearch(bimWhere, bimParams, true);
           bimParams.push(safeLimit);
 
           const bimRows = await getMany(
@@ -185,6 +200,7 @@ export default async function handler(req, res) {
             createdBy: r.created_by, created_by: r.created_by,
             createdAt: fmtDt(r.created_at), created_at: fmtDt(r.created_at),
             status: 'posted',
+            metadata: r.metadata,
             ...movementSaleEvidence(r),
           }));
         } else if (!branchScope.enforced && !branch) {
@@ -196,6 +212,7 @@ export default async function handler(req, res) {
           if (dateFrom) { bmParams.push(dateFrom); bmWhere.push(businessDatePredicate('created_at',`$${bmParams.length}`)); }
           if (dateTo) { bmParams.push(dateTo); bmWhere.push(businessDatePredicate('created_at',`$${bmParams.length}`,true)); }
           if (referenceIdFilter) { bmParams.push(referenceIdFilter); bmWhere.push(`reference_id = $${bmParams.length}`); }
+          addSearch(bmWhere, bmParams);
           let bmQuery = 'SELECT * FROM stock_movements';
           if (bmWhere.length > 0) bmQuery += ' WHERE ' + bmWhere.join(' AND ');
           bmParams.push(safeLimit);
@@ -227,20 +244,67 @@ export default async function handler(req, res) {
             disposal_status: r.disposal_status || null,
             disposed_by: r.disposed_by || null,
             disposed_at: r.disposed_at ? fmtDt(r.disposed_at) : null,
+            metadata: r.metadata,
             ...movementSaleEvidence(r),
           }));
         }
       } catch (bmErr) {
         console.error('[stock-movements] branch movements query error:', bmErr.message);
+        throw bmErr; // Never present a failed ledger read as an empty successful report.
       }
 
       const warehouseNormalized = rows.map(normalizeMovement).filter(Boolean);
-      const combined = [...warehouseNormalized, ...branchMovements].sort((a, b) => {
+      const warehouseMatches = warehouseNormalized.filter(row => {
+        if (branch) return false;
+        if (search && ![row.id,row.product_name,row.batch_no,row.reference_id,row.source_location,row.destination_location,row.receipt_no]
+          .some(value => String(value || '').toLowerCase().includes(search.toLowerCase()))) return false;
+        if (productNameFilter && !String(row.product_name || '').toLowerCase().includes(productNameFilter.toLowerCase())) return false;
+        if (batchFilter && !String(row.batch_no || '').toLowerCase().includes(batchFilter.toLowerCase())) return false;
+        if (locationFilter && ![row.source_location,row.destination_location,row.location].includes(locationFilter)) return false;
+        if (dateFrom || dateTo) {
+          const day = businessDay(new Date(row.created_at));
+          if ((dateFrom && day < dateFrom) || (dateTo && day > dateTo)) return false;
+        }
+        return !movementType || row.movement_type === movementType;
+      });
+      const combined = [...warehouseMatches, ...branchMovements].sort((a, b) => {
         const da = new Date(a.createdAt || a.created_at || 0);
         const db = new Date(b.createdAt || b.created_at || 0);
         return db - da;
       }).slice(0, safeLimit);
 
+      // Read exact immutable allocation evidence for older movements too.
+      // Mirror IDs come from captured identity, never product/batch-name matching.
+      const identities = combined.map(row => row.metadata?.sale_evidence?.movement_id || row.id);
+      if (identities.length) {
+        const allowedOwners = branchScope.enforced ? branchScope.branches.flatMap(branchSearchTerms) : null;
+        const allocations = await getMany(`SELECT a.movement_id,a.quantity,a.snapshot
+          FROM stock_sale_allocations a WHERE a.movement_id=ANY($1::text[])
+          AND ($2::text[] IS NULL OR EXISTS(SELECT 1 FROM stock_movements m WHERE m.id=a.movement_id
+            AND LOWER(REPLACE(m.source_location,' ','_'))=ANY($2::text[])))`, [identities,allowedOwners]);
+        const byMovement = new Map();
+        for (const allocation of allocations) {
+          const list = byMovement.get(allocation.movement_id) || [];
+          list.push(allocation); byMovement.set(allocation.movement_id, list);
+        }
+        for (const row of combined) {
+          const parts = byMovement.get(row.metadata?.sale_evidence?.movement_id || row.id);
+          if (!parts?.length) continue;
+          const totalQty = parts.reduce((sum, part) => sum + Number(part.quantity), 0);
+          if (Math.abs(totalQty - Math.abs(row.quantity)) > 1e-8 || totalQty <= 0) continue;
+          const unit = field => parts.every(part => {
+            const n = part.snapshot?.[field];
+            return n != null && n !== '' && Number.isFinite(Number(n)) &&
+              (Number(n) > 0 || (Number(n) === 0 && part.snapshot?.zeroCostApproved === true));
+          }) ? parts.reduce((sum,part) => sum + Number(part.quantity) * Number(part.snapshot[field]), 0) / totalQty : null;
+          row.original_received_dpc = unit('unit_dp');
+          row.original_received_cost = unit('unit_cost');
+          row.cost_evidence_status = classifySaleCostEvidence({
+            originalReceivedDPC: row.original_received_dpc, originalReceivedCost: row.original_received_cost,
+            zeroCostApproved: parts.every(part => part.snapshot?.zeroCostApproved === true),
+          });
+        }
+      }
       return res.json({ success: true, movements: combined, total: combined.length });
     }
 

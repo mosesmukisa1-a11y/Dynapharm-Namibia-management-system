@@ -1,4 +1,6 @@
 const API_BASE = '/api';
+import { reportStockReadError } from './stockReadErrors';
+import { presentStockStatus } from '../../../shared/stockStatus';
 
 async function request(endpoint, options = {}) {
   const url = `${API_BASE}${endpoint}`;
@@ -16,12 +18,18 @@ async function request(endpoint, options = {}) {
     delete config.headers['Content-Type'];
   }
 
-  const res = await fetch(url, config);
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ message: res.statusText }));
-    throw Object.assign(new Error(err.message || err.error || `Request failed: ${res.status}`), { status: res.status });
+  const context=typeof window === 'undefined' ? '' : window.location.pathname+window.location.search;
+  try {
+    const res = await fetch(url, config);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: res.statusText }));
+      throw Object.assign(new Error(err.message || err.error || `Request failed: ${res.status}`), { status: res.status });
+    }
+    return await res.json();
+  } catch (error) {
+    if (typeof window !== 'undefined') reportStockReadError(endpoint,config.method || 'GET',context,error);
+    throw error;
   }
-  return res.json();
 }
 
 export const api = {
@@ -131,7 +139,8 @@ export const api = {
     rejectWriteoff: (id, data = {}) => api.put('/stock-movements', { ...data, id, action: 'reject' }),
     disposeWriteoff: (id, data = {}) => api.put('/stock-movements', { ...data, id, action: 'dispose' }),
     disposeAllWriteoffs: (ids, data = {}) => api.put('/stock-movements', { ...data, ids, action: 'dispose_all' }),
-    transfers: (params = '') => api.get(`/stock/transfers${params ? '?' + params : ''}`),
+    transfers: (params = '') => api.get(`/stock/transfers${params ? '?' + params : ''}`).then(result=>
+      Array.isArray(result) ? result.map(presentStockStatus) : {...result,transfers:(result.transfers || []).map(presentStockStatus)}),
     createTransfer: (data) => api.post('/stock/transfers', data),
     updateTransfer: (id, data) => api.put('/stock/transfers', { ...data, id }),
     requests: (params = '') => api.get(`/stock-requests${params ? '?' + params : ''}`),

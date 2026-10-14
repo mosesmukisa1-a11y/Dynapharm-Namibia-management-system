@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { BarChart3, TrendingUp, DollarSign, Ship } from 'lucide-react';
 import { api } from '../lib/api';
 import { namibiaDay } from '../lib/saleEvidence.js';
@@ -16,14 +16,17 @@ export default function SavedSaleProfitReport() {
   const [editingCampaign, setEditingCampaign] = useState(null);
   const [campaignPrice, setCampaignPrice] = useState('');
   const [profitError,setProfitError]=useState(null);
+  const latestRequest = useRef(0);
 
   const load = useCallback(() => {
+    const requestId = ++latestRequest.current;
     setLoading(true);
     setProfitError(null);
     Promise.all([
       api.director.profitAnalysis({ startDate, endDate }),
       api.prices.list(),
     ]).then(([res, prices]) => {
+      if (requestId !== latestRequest.current) return;
       if (Array.isArray(prices) && prices.length > 0) setLivePrices(prices);
       const map = {};
       (res?.products || []).forEach(p => {
@@ -31,11 +34,20 @@ export default function SavedSaleProfitReport() {
       });
       setQtySoldMap(map);
     })
-    .catch(e => {setQtySoldMap({});setProfitError(e.message);})
-    .finally(() => setLoading(false));
+    .catch(e => {
+      if (requestId !== latestRequest.current) return;
+      setQtySoldMap({});
+      setProfitError(e.message);
+    })
+    .finally(() => {
+      if (requestId === latestRequest.current) setLoading(false);
+    });
   }, [startDate, endDate]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+    return () => { latestRequest.current += 1; };
+  }, [load]);
 
   const profitRows = Object.values(qtySoldMap).map(p => {
     const qtySold = p.qtySold;

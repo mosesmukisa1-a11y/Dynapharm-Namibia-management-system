@@ -392,3 +392,45 @@ mtime_ms = 1791903656167
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/a8a35b52-fd9b-4e95-891d-f0a530f4968e/86f1628e-79b6-4a85-8004-9f1faf8f843e"
 storage_version_token = "1791903657447812"
 content_type = "text/html"
+
+[[outputs]]
+id = "2-4r11eZGdWEdCH94DFbn"
+uri = "file://generated-artifacts/postpublish-integration/report.html"
+type = "html"
+title = "Sales and Stock integration review"
+description = "Fixes, exact source/API details, isolated test results, browser evidence and remaining verification limits."
+logical_id = "b42bbe12-200c-42c7-bd68-e7041e42ba64"
+content_hash = "sha256:3d177beda258a7ee1fe442fe3f3db355760a8f25ebc85a5357618b044c5ec9dd"
+size = 18506
+mtime_ms = 1791988577100
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/b42bbe12-200c-42c7-bd68-e7041e42ba64/6991fc72-1856-467d-8bd7-e766ccfa0385"
+storage_version_token = "1791988577948179"
+content_type = "text/html"
+
+[[outputs]]
+id = "IqhH58WuJoR37ddyfpmGz"
+uri = "file://generated-artifacts/stock-cleanup/report.html"
+type = "html"
+title = "Stock Portal cleanup — review report"
+description = "Changes, source queries, 18 tests, 27 read-only checks, reproduced fixes and explicit browser verification gaps."
+logical_id = "d1e97a07-a95e-4654-87a8-5e95cb06668b"
+content_hash = "sha256:3145ab945b58894227873445574bc3e1a71be2c36efb56b2e089a6919ef303a1"
+size = 15767
+mtime_ms = 1791990527028
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/d1e97a07-a95e-4654-87a8-5e95cb06668b/bffc8203-ca64-4776-a3d0-5107c9ddb427"
+storage_version_token = "1791990527841227"
+content_type = "text/html"
+
+[[outputs]]
+id = "1xYN3mAWdg4W40ZW-lLr8"
+uri = "file://generated-artifacts/release-preparation/report.html"
+type = "html"
+title = "Prepared release — checklist and recovery"
+description = "Build/tests, read-only schema review, browser checks, migration plan, publication steps and recovery instructions."
+logical_id = "5b773a3d-7944-423b-bca1-4def026f5fc9"
+content_hash = "sha256:8546581df488f716680f3cf94ef22360dd4bb4ec32b38082f3dc45e34fea0499"
+size = 8010
+mtime_ms = 1791991620640
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/5b773a3d-7944-423b-bca1-4def026f5fc9/b6e77b5c-6d07-49d2-bba1-7b1ef4054420"
+storage_version_token = "1791991621555071"
+content_type = "text/html"

@@ -1,3 +1,4 @@
+import SaleEvidenceLinks from '../../components/SaleEvidenceLinks';
 import SavedSaleProfitReport from '../../components/SavedSaleProfitReport';
 import { useState, useEffect, useCallback } from 'react';
 import {
@@ -97,6 +98,7 @@ export default function DirectorPortal() {
           <Button onClick={apply} className="mb-0.5">Apply</Button>
         </div>
       </div>
+      <SaleEvidenceLinks />
       <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
       <div className="mt-6">
         {activeTab === 'dashboard' && <DashboardTab start={applied.start} end={applied.end} />}

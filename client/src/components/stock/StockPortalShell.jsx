@@ -4,15 +4,12 @@ import { locationLabel } from './distributionModel';
 import './stock-portal.css';
 
 const groups = [
-  { title: 'Overview', ids: ['aiDashboard', 'overview', 'realtime'] },
-  { title: 'Inventory', ids: ['countryStock', 'warehouses', 'branchStock', 'inventory', 'batch', 'fieldStock', 'barcode'] },
-  { title: 'Transfers', ids: ['distribution', 'orders', 'transfers', 'dispatchReturns'] },
-  { title: 'Approvals', ids: ['refundApprovals', 'adjustments', 'controlledOperations'] },
-  { title: 'Adjustments & Disposal', ids: ['writeOffs'] },
-  { title: 'Stock Intake', ids: ['supplierImport'] },
-  { title: 'Reports', ids: ['stockReports', 'costReport', 'valuation'] },
-  { title: 'Replenishment', ids: ['reorder'] },
-  { title: 'Administration', ids: ['alertSettings', 'campaigns', 'staffServices', 'messages'] },
+  { title: 'Dashboard', ids: ['aiDashboard', 'overview', 'realtime'] },
+  { title: 'Receive Stock', ids: ['supplierImport', 'countryStock', 'warehouses'] },
+  { title: 'Move Stock', ids: ['distribution', 'orders', 'transfers', 'dispatchReturns', 'fieldStock'] },
+  { title: 'Branch Stock', ids: ['branchStock', 'inventory', 'batch', 'barcode', 'reorder'] },
+  { title: 'Audit & Reports', ids: ['stockReports', 'trace', 'costReport', 'valuation', 'refundApprovals', 'adjustments', 'controlledOperations', 'writeOffs'] },
+  { title: 'Settings', ids: ['alertSettings', 'campaigns', 'staffServices', 'messages'] },
 ];
 const icons = {
   aiDashboard: LayoutDashboard, overview: BarChart3, realtime: Activity,
@@ -22,7 +19,7 @@ const icons = {
   stockReports: FileSpreadsheet, costReport: ListOrdered, valuation: BarChart3, reorder: TrendingUp,
   supplierImport: Globe, alertSettings: Bell, campaigns: Megaphone, staffServices: Users, messages: MessageSquare,
 };
-const labels = { orders: 'Warehouse dispatch', transfers: 'Branch transfers', dispatchReturns: 'Dispatch returns', controlledOperations: 'Counts & returns', writeOffs: 'Write-offs', batch: 'Batches' };
+const labels = {}; // Keep the existing tab labels available during the grouping transition.
 
 /**
  * Pass only the existing permission-filtered tabs. No new permissions are inferred.

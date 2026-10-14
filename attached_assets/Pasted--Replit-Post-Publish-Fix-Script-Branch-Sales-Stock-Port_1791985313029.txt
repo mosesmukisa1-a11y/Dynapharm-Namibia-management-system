@@ -1,0 +1,544 @@
+# Replit Post-Publish Fix Script: Branch Sales + Stock Portal Integration
+
+Paste the prompt below into Replit Agent after the 14 Oct 2026 branch-sales publish.
+
+---
+
+## Replit Agent Prompt
+
+You are working on the Dynapharm Namibia Management System after the latest Branch Sales publish. The new Branch Sales work improved DP/CP evidence, MIS audit logging, and Finance reporting, but the revisit found blockers that must be fixed before layering more Stock Portal changes.
+
+This is a no-room-for-error business system. Do the fixes in this order:
+
+1. Fix Branch sale review/submit flow.
+2. Fix Stock Portal route rendering/hydration.
+3. Preserve the new MIS and Finance evidence improvements.
+4. Then update Stock Portal reports to consume the new branch-sale evidence.
+
+Do not delete live data. Do not reprice historical sales. Do not silently convert missing original-cost evidence into current catalogue evidence.
+
+---
+
+## Revisit findings after publish
+
+### What improved
+
+Branch sales UI now clearly separates sale modes:
+
+- Member: `DP price · BV`
+- Walk-in: `CP price`
+- Prescription: `CP price · Rx`
+- Consultation: consult fee
+
+Walk-in product cards now correctly show:
+
+- CP customer price
+- Branch profit
+- Example staged test:
+  - Branch: Tsumeb
+  - Customer type: Walk-in
+  - Product: `D.I GROW (GREEN) (1 LITER)`
+  - CP charged price: `N$443`
+  - DP base value: `N$341`
+  - Branch profit: `N$102`
+
+MIS now records sale-created audit events with good evidence:
+
+- `event_type`: sale created
+- `reference`: e.g. `WALK-1791975457640-RELT`
+- `receiptNumber`: e.g. `TW-2026-000726`
+- `businessDate`: `2026-10-14`
+- `timezone`: `Africa/Windhoek`
+- `dpTotal`
+- `chargedTotal`
+- `branchProfitTotal`
+- line-level `movementId`, `batchNo`, `dpUnitPrice`, `dpTotal`, `chargedTotal`, `branchProfit`
+
+Finance now clearly labels:
+
+- `Net Sales (original DP)`
+- `Stock Value (DP)`
+- `DP means distributor selling price, not consumer receipts or received CIF`
+- `Net charged revenue`
+- Missing original evidence warning
+
+Director dashboard also now reflects live sales and stock movement:
+
+- Today's sales increased to `N$1,646`
+- Transactions: `4`
+- Total company stock: `19,974`
+- Warehouse stock: `11,627`
+- Branch stock: `8,347`
+- In-transit: `0`
+
+### Critical blockers found
+
+1. Branch Sales `Review Sale ->` does not advance
+   - Staged sale:
+     - Branch: Tsumeb
+     - Customer: `QA TEST CUSTOMER`
+     - Product: `D.I GROW (GREEN) (1 LITER)`
+     - Total: `N$443`
+     - Branch profit: `N$102`
+   - The button was enabled, but clicking `Review Sale ->` did not open a review/confirmation screen and did not show validation feedback.
+   - No sale was intentionally submitted during the revisit.
+   - This must be fixed before further live sales testing.
+
+2. Stock Portal views render shell-only after publish/reload
+   - After navigating to Stock and reloading, several views showed only:
+     - header
+     - side navigation
+     - location filter
+   - Missing body content was observed on:
+     - Command Center
+     - Branch Stock
+     - Stock Reports
+     - Valuation
+   - This is a hard blocker for stock audit and daily stock control.
+
+3. Stock Reports still has no useful default report body
+   - Even before the shell-only issue, Stock Reports did not expose an on-screen movement ledger/search result by default.
+
+4. Original received cost evidence still needs classification
+   - MIS events show fields such as `originalReceivedDPC` and `originalReceivedCost`.
+   - Some records show `0`; some show `null`.
+   - Do not treat `0` as valid original evidence unless the actual received DP/CIF was truly zero.
+   - Use explicit statuses: `original`, `estimated`, `partial`, `missing`.
+
+---
+
+## Fix 1: Branch sale review must advance or explain validation
+
+Find the Branch POS component and the handler behind `Review Sale ->`.
+
+Requirements:
+
+- If required fields are complete and cart has items, clicking `Review Sale ->` must open a review screen/modal.
+- If anything is missing, show visible validation messages beside the relevant fields.
+- Do not silently ignore clicks.
+- Disable the button only when there are no cart items or a submit/review transition is already in progress.
+
+Expected staged test:
+
+```text
+Branch: Tsumeb
+Customer type: Walk-in
+Customer name: QA TEST CUSTOMER
+Phone: 0810000000
+Payment: Cash
+Product: D.I GROW (GREEN) (1 LITER)
+Quantity: 1
+CP charged total: N$443
+DP stock value: N$341
+Branch profit: N$102
+```
+
+Review screen must show:
+
+- Branch
+- Customer type
+- Customer name
+- Payment method
+- Product lines
+- Quantity
+- DP unit price and DP total
+- CP/customer charged unit price and charged total
+- Branch profit
+- BV
+- Expected stock movement quantity `-1`
+- Final submit button, e.g. `Complete Sale`
+
+Example React-safe pattern:
+
+```tsx
+function canReviewSale(state: SaleState) {
+  if (!state.customerType) return { ok: false, message: "Select customer type." };
+  if (!state.cart.length) return { ok: false, message: "Add at least one product." };
+  if (state.customerType === "walk_in" && !state.customerName?.trim()) {
+    return { ok: false, message: "Enter customer name." };
+  }
+  if (!state.paymentMethod) return { ok: false, message: "Select payment method." };
+  return { ok: true };
+}
+
+function handleReviewSale() {
+  const validation = canReviewSale(saleState);
+  if (!validation.ok) {
+    setFormError(validation.message);
+    return;
+  }
+  setFormError(null);
+  setSaleStep("review");
+}
+```
+
+Acceptance test:
+
+- Stage the Tsumeb D.I Grow walk-in sale above.
+- Click `Review Sale ->`.
+- Confirm review screen opens.
+- Do not complete sale until final user confirmation.
+
+---
+
+## Fix 2: Final sale submit must be atomic and idempotent
+
+Once review works, ensure `Complete Sale` writes all evidence in one atomic backend operation.
+
+Required records:
+
+1. Sale header / receipt.
+2. Sale lines with original DP and charged evidence.
+3. Stock movement rows with DP value.
+4. MIS audit event.
+5. Branch profit evidence.
+6. Inventory decrement.
+7. Finance/Director-compatible summary fields.
+
+Do not create stock requests from sales.
+
+Required transaction payload fields:
+
+```ts
+type SaleLineEvidence = {
+  productId: string;
+  productName: string;
+  batchNo: string | null;
+  expiryDate: string | null;
+  quantity: number;
+  dpUnitPrice: number;
+  dpTotal: number;
+  chargedUnitPrice: number;
+  chargedTotal: number;
+  branchProfit: number;
+  bvTotal: number;
+  movementId: string;
+  originalReceivedDPC: number | null;
+  originalReceivedCost: number | null;
+  costEvidenceStatus: "original" | "estimated" | "partial" | "missing";
+};
+```
+
+Idempotency key:
+
+```ts
+const idempotencyKey = [
+  "sale",
+  branchId,
+  customerType,
+  customerName || memberCode,
+  paymentMethod,
+  cart.map((line) => `${line.productId}:${line.batchNo}:${line.quantity}`).join("|"),
+  businessDate,
+].join(":");
+```
+
+If the same key is submitted twice, return the original sale instead of creating another receipt or another stock movement.
+
+---
+
+## Fix 3: Stock Portal shell-only rendering
+
+This is now the highest Stock Portal priority.
+
+Find the Stock Portal component/router and identify why views render only the frame after direct navigation/reload or portal switching.
+
+Symptoms:
+
+- URL changes to `https://dynapharm-namibia-management-system.com/stock?view=aiDashboard`
+- Shell renders:
+  - nav
+  - location filter
+  - view title
+- Main body content is missing.
+
+Required fixes:
+
+- Every stock view must render its content after:
+  - top-nav click into Stock
+  - direct `/stock?view=...` URL
+  - browser reload
+  - switching from Branch/Finance/Director/MIS to Stock
+- If data fails to load, show a visible error panel with retry, not a blank content area.
+- Do not hide the view body behind a stale `isLoading`, missing role, undefined location scope, or failed suspense state.
+
+Add a reusable guard:
+
+```tsx
+function StockViewBoundary({
+  view,
+  loading,
+  error,
+  children,
+}: {
+  view: string;
+  loading: boolean;
+  error?: Error | string | null;
+  children: React.ReactNode;
+}) {
+  if (loading) {
+    return <div className="stock-panel">Loading {view}...</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="stock-panel stock-panel-error">
+        <h3>Could not load {view}</h3>
+        <p>{String(error)}</p>
+        <button onClick={() => window.location.reload()}>Retry</button>
+      </div>
+    );
+  }
+
+  return <>{children}</>;
+}
+```
+
+Acceptance test:
+
+Open each of these URLs directly and after reload:
+
+```text
+/stock?view=aiDashboard
+/stock?view=branchStock
+/stock?view=inventory
+/stock?view=batch
+/stock?view=stockReports
+/stock?view=valuation
+/stock?view=barcode
+```
+
+Each must show real content, not only the nav shell.
+
+---
+
+## Fix 4: Preserve MIS sale-created improvements
+
+Do not regress the current MIS audit structure.
+
+Current good example:
+
+```json
+{
+  "event_type": "sale created",
+  "reference": "WALK-1791975457640-RELT",
+  "receiptNumber": "TW-2026-000726",
+  "businessDate": "2026-10-14",
+  "timezone": "Africa/Windhoek",
+  "dpTotal": 623,
+  "chargedTotal": 810,
+  "branchProfitTotal": 187,
+  "customerType": "non_member",
+  "paymentMethod": "cash",
+  "provenance": "transaction_capture",
+  "dpComplete": true
+}
+```
+
+Keep this, but improve cost evidence:
+
+```ts
+function classifyCostEvidence(line: {
+  originalReceivedDPC?: number | null;
+  originalReceivedCost?: number | null;
+}) {
+  const hasDpc = line.originalReceivedDPC !== null && line.originalReceivedDPC !== undefined && Number(line.originalReceivedDPC) > 0;
+  const hasCost = line.originalReceivedCost !== null && line.originalReceivedCost !== undefined && Number(line.originalReceivedCost) > 0;
+
+  if (hasDpc && hasCost) return "original";
+  if (hasDpc || hasCost) return "partial";
+  return "missing";
+}
+```
+
+If true zero-cost received stock exists, add a separate boolean such as `zeroCostApproved: true`; otherwise zero should not mean original evidence.
+
+---
+
+## Fix 5: Finance and Director should consume original evidence consistently
+
+Finance is improved. Preserve these labels:
+
+- `Net Sales (original DP)`
+- `Stock Value (DP)`
+- `Net charged revenue`
+- `DP means distributor selling price, not consumer receipts or received CIF`
+
+Director is improved. Preserve:
+
+- `Today's sales`
+- `Net DP`
+- original-evidence gross profit warning
+- live inventory snapshot
+
+Add links or drill-downs from Director/Finance to MIS audit and Stock Trace by receipt/reference.
+
+---
+
+## Fix 6: Stock Portal reports must consume new sale evidence
+
+Once Stock Portal rendering is fixed, update these tabs:
+
+### Stock Reports
+
+Default content must include:
+
+- Movement Ledger
+- Branch Stock Report
+- Transfer Report
+- Batch Report
+- Exceptions
+
+Movement Ledger columns:
+
+```text
+Date/time
+Movement ID
+Sale/Transfer/Import reference
+Receipt no
+Branch
+Product
+Batch
+Qty
+DP unit
+DP value
+CP charged value
+Branch profit
+Cost evidence status
+Actor
+```
+
+Search must find:
+
+- `WALK-1791975457640-RELT`
+- `TW-2026-000726`
+- `MOV-1791975457881-jv3r`
+- `QA-20261014-001`
+- `TRF-1791971012005-B2ZFQ4`
+
+### Valuation
+
+Show:
+
+- Original DP stock value
+- Estimated DP stock value
+- Missing DP units
+- Original CIF cost
+- Estimated CIF cost
+- Missing CIF units
+
+Finance currently reports `8190 units lack original received DP`; Stock Valuation must agree or explain any scope/date difference.
+
+### Branch Stock
+
+Use DP stock value for stock. If CP/customer revenue appears, label it separately.
+
+Tsumeb should still show:
+
+- Sales revenue: `N$341`
+- Stock value DP: `N$341`
+- Branch quantity reflecting current live stock
+
+### Inventory/Batches
+
+Inventory can already see `QA-20261014-001` in some states. Batches must also show branch-held batches, not only warehouse batches.
+
+Add branch batch ledger columns:
+
+```text
+Branch
+Product
+Batch
+Expiry
+Received qty
+Sold qty
+Written off qty
+Remaining qty
+CIF/unit
+DP/unit
+DP total
+Cost evidence
+FEFO warning
+```
+
+---
+
+## Fix 7: Stock Trace view
+
+After the two blockers are fixed, add `Trace Stock`.
+
+Search inputs:
+
+- batch
+- movement ID
+- walk-in reference
+- receipt number
+- transfer ref
+- import ref
+- product
+- branch
+
+Trace timeline event types:
+
+- supplier import
+- country stock receipt
+- transfer created
+- GM approved/rejected
+- warehouse received
+- warehouse dispatched
+- branch received
+- sale created
+- refund/restock
+- write-off
+- stock count adjustment
+
+Acceptance test:
+
+- Search `TW-2026-000726` and show sale + movement evidence.
+- Search `WALK-1791975457640-RELT` and show the same sale evidence.
+- Search `MOV-1791975457881-jv3r` and show product/batch/DP/charged/profit.
+- Search `QA-20261014-001` and show import/transfer/receipt evidence.
+
+---
+
+## Manual acceptance checklist after implementation
+
+1. Branch sale review:
+   - Stage Tsumeb walk-in sale for D.I Grow Green 1L.
+   - Confirm `Review Sale ->` opens review.
+   - Do not submit until explicitly approved.
+
+2. Branch sale submit:
+   - Submit one approved test sale only.
+   - Confirm one receipt, one sale audit, and one stock movement.
+   - Double-click/retry must not duplicate the sale.
+
+3. MIS:
+   - Search sale created for today.
+   - Confirm receipt, reference, movement ID, DP, charged total, branch profit, business date, timezone.
+
+4. Finance:
+   - Confirm net sales original DP and net charged revenue are both present and labelled.
+
+5. Director:
+   - Confirm today's sales and live inventory update.
+
+6. Stock:
+   - Reload `/stock?view=aiDashboard`; content must appear.
+   - Reload `/stock?view=stockReports`; movement ledger must appear.
+   - Reload `/stock?view=valuation`; valuation must appear.
+   - Search test receipt/reference in Stock Reports/Trace Stock.
+
+7. Evidence classification:
+   - `0` originalReceivedDPC/originalReceivedCost must not be counted as original evidence unless explicitly approved as true zero cost.
+
+---
+
+## What not to do
+
+- Do not submit multiple test sales.
+- Do not make stock write-offs during this fix.
+- Do not hide missing-cost issues by using current catalogue values as original evidence.
+- Do not remove MIS audit details that are now working.
+- Do not leave blank Stock views with no error message.
+

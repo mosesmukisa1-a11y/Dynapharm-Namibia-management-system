@@ -3,7 +3,11 @@ import { beforeAll,afterAll,it,expect } from 'vitest';
 import express from 'express';
 import bcrypt from 'bcryptjs';
 import { randomUUID } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, unlink, mkdtemp, rm } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { assertIsolatedTestDatabase } from '../api/testDatabaseGuard.js';
 import { query,withTransaction } from '../api/db.js';
 import login from '../api/auth/login.js';
 import { getTokenFromRequest,verifyAuthToken } from '../api/_lib/auth.js';
@@ -90,7 +94,9 @@ it('posts 341 DP / 443 charged / 102 margin atomically across split batches, wit
   const id=prefix+'-WALK',before=await totalUnits();
   const requestsBefore=(await query('SELECT * FROM stock_requests ORDER BY id')).rows;
   const payload=sale(id,{soldBy:'Forged staff'});
-  const posted=await http('/walkin',payload);
+  const concurrent=await Promise.all([http('/walkin',payload),http('/walkin',payload)]);
+  expect(concurrent.map(r=>r.status).sort()).toEqual([200,201]);
+  const posted=concurrent.find(r=>r.status===201);
   expect(posted.status,JSON.stringify(posted.body)).toBe(201);
   expect(await totalUnits()).toBe(before-1);
   for(const portal of ['finance','gm','director']){
@@ -108,6 +114,27 @@ it('posts 341 DP / 443 charged / 102 margin atomically across split batches, wit
   expect(logs[0].details.lines).toHaveLength(2);
   const ledger=(await http('/movements?branch=townshop&reference_id='+id)).body.movements;
   expect(ledger).toHaveLength(2);expect(ledger.reduce((s,m)=>s+m.dp_value,0)).toBe(341);
+  // This fixture has no received CIF evidence: do not fabricate it from catalogue CIF70.
+  expect(ledger.every(m=>m.cost_evidence_status!=='original' && m.original_received_cost==null)).toBe(true);
+  for (const search of [id, logs[0].details.receiptNumber, ledger[0].id, ledger[0].batch_no]) {
+    const found=await http('/movements?search='+encodeURIComponent(search));
+    expect(found.status,JSON.stringify(found.body)).toBe(200);
+    expect(found.body.movements.some(m=>m.reference_id===id)).toBe(true);
+  }
+  expect((await http('/movements?search=NO-SUCH-SYNTHETIC-MOVEMENT')).body.movements).toEqual([]);
+  const branchActor=prefix+'-BRANCH';
+  await query(`INSERT INTO users(id,username,password_hash,full_name,role,branch,is_active,must_change_password)
+    VALUES($1,$1,$2,'Synthetic branch operator','branch_manager',$3,true,false)`,
+    [branchActor,await bcrypt.hash(password,10),branch]);
+  const branchLogin=await fetch(base+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({username:branchActor,password})});
+  const branchCookie=branchLogin.headers.getSetCookie().map(c=>c.split(';')[0]).join('; ');
+  expect(branchLogin.status).toBe(200);
+  expect((await http('/movements?branch=swakopmund',undefined,{},branchCookie)).status).toBe(403);
+  const own=await http('/movements?branch=townshop&reference_id='+id,undefined,{},branchCookie);
+  expect(own.status).toBe(200); expect(own.body.movements).toHaveLength(2);
+  expect((await http('/movements?search='+encodeURIComponent(id),undefined,{},branchCookie)).body.movements).toHaveLength(2);
+  await query('DELETE FROM users WHERE id=$1',[branchActor]);
   expect(ledger.reduce((s,m)=>s+m.signed_quantity,0)).toBe(-1);
   expect((await query('SELECT * FROM stock_requests ORDER BY id')).rows).toEqual(requestsBefore);
   const daily=await getLegacyDPRevenue([branch],businessDay(),businessDay());
@@ -302,7 +329,17 @@ it('repairs exact captured metadata/audit only, dry-runs without writes and is i
   await withTransaction(c=>applySaleRepairPlanTx(c,plan));
   const after=await withTransaction(c=>readSaleRepairPlan(c,options));
   expect(after.eligible).toHaveLength(0);expect(await totalUnits()).toBe(quantity);
-  expect((await query('SELECT details FROM mis_sales_audit WHERE record_id=$1',[reference])).rows[0].details.provenance).toBe('reconstructed_exact_source');
+  expect((await query("SELECT details FROM mis_sales_audit WHERE record_id=$1 AND event_type='sale_created'",[reference])).rows[0].details.provenance).toBe('reconstructed_exact_source');
+  const retained=(await query("SELECT details FROM mis_sales_audit WHERE record_id=$1 AND event_type='sale_evidence_repaired'",[reference])).rows;
+  expect(retained).toHaveLength(1);
+  expect(retained[0].details.planHash).toBe(plan.planHash);
+  expect(retained[0].details.fingerprint).toBe(plan.fingerprint);
+  expect(retained[0].details.lines[0].before.movementSaleEvidence).toBeNull();
+  expect(retained[0].details.lines[0].after.movementSaleEvidence.dp_unit_price).toBe(341);
+  const review=(await http('/audit?branch=townshop&event=sale_evidence_repaired')).body.logs;
+  expect(review.some(row=>row.recordId===reference && row.details.planHash===plan.planHash)).toBe(true);
+  await withTransaction(c=>applySaleRepairPlanTx(c,after));
+  expect((await query("SELECT id FROM mis_sales_audit WHERE record_id=$1 AND event_type='sale_evidence_repaired'",[reference])).rows).toHaveLength(1);
 });
 it('repairs mirror-only missing metadata without changing quantities or charges',async()=>{
   const reference=prefix+'-WALK',options={reference};
@@ -317,3 +354,198 @@ it('repairs mirror-only missing metadata without changing quantities or charges'
   expect(checks.invariantAfter).toBe(checks.invariantBefore);
   expect((await withTransaction(c=>readSaleRepairPlan(c,options))).eligible).toHaveLength(0);
 });
+it('enforces approval, backup, target and stale-evidence gates through the full repair command, with atomic evidence and safe retry',async()=>{
+  assertIsolatedTestDatabase(process.env);
+  const reference=prefix+'-WALK';
+  const directory='generated-artifacts/sale-repair-command';
+  await mkdir(directory,{recursive:true});
+  const backupFile=`${directory}/${prefix}.dump`;
+  const emptyFile=`${directory}/${prefix}-empty.dump`;
+  await writeFile(emptyFile,'',{mode:0o600});
+  const run=(command,args,options={})=>new Promise((resolve,reject)=>{
+    const child=spawn(command,args,{env:process.env,stdio:['ignore','pipe','pipe'],...options});
+    let stdout='',stderr='';
+    child.stdout.on('data',value=>{stdout+=value;});
+    child.stderr.on('data',value=>{stderr+=value;});
+    child.on('error',reject);
+    child.on('close',status=>resolve({status,stdout,
+      stderr:stderr.split(process.env.DATABASE_URL).join('[isolated database]')}));
+  });
+  const cli=(args,options)=>run(process.execPath,[resolve('scripts/repair-sale-evidence.mjs'),'--reference',reference,...args],options);
+  const savedReport=async result=>{
+    expect(result.status,result.stderr).toBe(0);
+    const path=result.stdout.match(/report: ([^\n]+)/)?.[1];
+    expect(path).toBeTruthy();
+    return JSON.parse(await readFile(path,'utf8'));
+  };
+  const state=async()=>({
+    movements:(await query('SELECT id,quantity,unit_cif,unit_dp,metadata FROM stock_movements WHERE reference_id=$1 ORDER BY id',[reference])).rows,
+    allocations:(await query('SELECT movement_id,quantity,snapshot FROM stock_sale_allocations WHERE sale_reference=$1 ORDER BY movement_id',[reference])).rows,
+    mirrors:(await query('SELECT id,quantity,metadata FROM branch_inventory_movements WHERE reference=$1 ORDER BY id',[reference])).rows,
+    audits:(await query('SELECT id,event_type,details,source_key FROM mis_sales_audit WHERE record_id=$1 ORDER BY id',[reference])).rows,
+    units:await totalUnits(),
+  });
+  await query(`UPDATE stock_movements SET
+    metadata=jsonb_set(metadata,'{sale_evidence}',(metadata->'sale_evidence')-'dp_unit_price')
+    WHERE reference_id=$1`,[reference]);
+  const before=await state();
+  const plan=await savedReport(await cli([]));
+  expect(plan.eligible).toHaveLength(1);
+  expect(await state()).toEqual(before);
+
+  // Back up only the owned synthetic database, restore into a second owned
+  // database and compare the fixture before attesting it restorable.
+  const restoreName=`stock_audit_${randomUUID().replaceAll('-','')}`;
+  const restoreUrl=new URL(process.env.DATABASE_URL);
+  restoreUrl.pathname=`/${restoreName}`;
+  assertIsolatedTestDatabase({...process.env,DATABASE_URL:restoreUrl.toString(),
+    STOCK_AUDIT_DATABASE:restoreName});
+  let restoreCreated=false;
+  const trigger=prefix.replaceAll('-','_')+'_repair_deny';
+  let triggerCreated=false;
+  const approved=(overrides={})=>[
+    '--apply','--approve',overrides.planHash || plan.planHash,
+    '--fingerprint',overrides.fingerprint || plan.fingerprint,
+    '--database-fingerprint',overrides.databaseFingerprint || plan.readiness.databaseFingerprint,
+    '--backup',overrides.backup || resolve(backupFile),
+    ...(overrides.verified===false?[]:['--backup-verified']),
+  ];
+  const denied=[];
+  const expectDenied=async (name,args,message,expectedState=before)=>{
+    const result=await cli(args);
+    expect(result.status,result.stdout).toBe(1);
+    expect(result.stderr).toMatch(message);
+    expect(await state()).toEqual(expectedState);
+    denied.push({name,status:result.status,error:result.stderr.trim(),unchanged:true});
+  };
+  try{
+    const dump=await run('pg_dump',['--dbname',process.env.DATABASE_URL,
+      '--format=custom','--no-owner','--no-privileges','--file',backupFile]);
+    expect(dump.status,dump.stderr).toBe(0);
+    await query(`CREATE DATABASE ${restoreName}`);restoreCreated=true;
+    const restored=await run('pg_restore',['--dbname',restoreUrl.toString(),
+      '--no-owner','--no-privileges','--exit-on-error',backupFile]);
+    expect(restored.status,restored.stderr).toBe(0);
+    // The test process is intentionally bound to its one owned database.
+    // Verify the recovered copy in a separate guarded process with its own
+    // exact target identity rather than weakening or changing that guard.
+    const recoveryCheck=await run(process.execPath,['--input-type=module','-e',`
+      import {query,closePool} from './api/db.js';
+      try {
+        const result=await query('SELECT id,quantity,unit_cif,unit_dp,metadata FROM stock_movements WHERE reference_id=$1 ORDER BY id',
+          [process.env.SYNTHETIC_SALE_REFERENCE]);
+        console.log(JSON.stringify(result.rows));
+      } finally { await closePool(); }
+    `],{env:{...process.env,DATABASE_URL:restoreUrl.toString(),
+      STOCK_AUDIT_DATABASE:restoreName,SYNTHETIC_SALE_REFERENCE:reference}});
+    expect(recoveryCheck.status,recoveryCheck.stderr).toBe(0);
+    const recovered=JSON.parse(recoveryCheck.stdout);
+    expect(recovered).toEqual(before.movements);
+    await query(`DROP DATABASE ${restoreName} WITH (FORCE)`);restoreCreated=false;
+
+    await expectDenied('missing approval',['--apply'],/Apply requires/);
+    await expectDenied('missing backup attestation',approved({verified:false}),/Apply requires/);
+    await expectDenied('empty backup',approved({backup:emptyFile}),/nonempty existing file/);
+    await expectDenied('wrong target',approved({databaseFingerprint:'a'.repeat(64)}),/Database differs/);
+    await expectDenied('wrong plan hash',approved({planHash:'b'.repeat(64)}),/Evidence changed/);
+    await expectDenied('stale source fingerprint',approved({fingerprint:'c'.repeat(64)}),/Evidence changed/);
+    const changed=before.movements[0];
+    await query("UPDATE stock_movements SET metadata=metadata || '{\"synthetic_stale_review\":true}'::jsonb WHERE id=$1",[changed.id]);
+    const changedState=await state();
+    try{
+      await expectDenied('source changed after reviewed dry run',approved(),/Evidence changed/,changedState);
+    }finally{
+      await query('UPDATE stock_movements SET metadata=$1::jsonb WHERE id=$2',
+        [JSON.stringify(changed.metadata),changed.id]);
+    }
+    expect(await state()).toEqual(before);
+    const sourceIndexes=(await query(`SELECT i.relname AS name,pg_get_indexdef(i.oid) AS ddl
+      FROM pg_index x JOIN pg_class i ON i.oid=x.indexrelid
+      JOIN pg_class t ON t.oid=x.indrelid JOIN pg_namespace n ON n.oid=t.relnamespace
+      JOIN pg_attribute a ON a.attrelid=t.oid AND a.attname='source_key'
+      WHERE n.nspname='public' AND t.relname='mis_sales_audit' AND x.indisunique
+      AND x.indpred IS NULL AND x.indexprs IS NULL AND x.indnkeyatts=1
+      AND x.indkey[0]=a.attnum`)).rows;
+    expect(sourceIndexes.length).toBeGreaterThan(0);
+    try{
+      for(const index of sourceIndexes)await query(`DROP INDEX "${index.name.replaceAll('"','""')}"`);
+      await expectDenied('missing unique audit index',approved(),/Repair blocked: Missing valid unique audit source_key index/);
+    }finally{
+      for(const index of sourceIndexes)await query(index.ddl);
+    }
+
+    // A required durable repair audit failure must roll back the metadata too.
+    await query(`CREATE FUNCTION ${trigger}() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF NEW.event_type='sale_evidence_repaired' THEN
+        RAISE EXCEPTION 'synthetic repair evidence storage failure';
+      END IF; RETURN NEW; END$$`);
+    await query(`CREATE TRIGGER ${trigger} BEFORE INSERT ON mis_sales_audit
+      FOR EACH ROW EXECUTE FUNCTION ${trigger}()`);
+    triggerCreated=true;
+    await expectDenied('repair evidence failure',approved(),/synthetic repair evidence storage failure/);
+    await query(`DROP TRIGGER ${trigger} ON mis_sales_audit`);
+    await query(`DROP FUNCTION ${trigger}()`);triggerCreated=false;
+
+    const applied=await savedReport(await cli(approved()));
+    expect(applied.mode).toBe('apply');
+    expect(applied.checks.quantitiesAndPostingsUnchanged).toBe(true);
+    expect(applied.checks.repairEvents).toHaveLength(1);
+    expect(applied.after.eligible).toHaveLength(0);
+    const after=await state();
+    expect(after.units).toBe(before.units);
+    expect(after.movements.map(({metadata,...rest})=>rest))
+      .toEqual(before.movements.map(({metadata,...rest})=>rest));
+    const originalAuditCount=before.audits.filter(row=>row.event_type==='sale_evidence_repaired').length;
+    const events=after.audits.filter(row=>row.event_type==='sale_evidence_repaired');
+    expect(events).toHaveLength(originalAuditCount+1);
+    expect(events.at(-1).details.planHash).toBe(plan.planHash);
+    expect(events.at(-1).details.lines[0].before.movementSaleEvidence.dp_unit_price).toBeUndefined();
+    expect(events.at(-1).details.lines[0].after.movementSaleEvidence.dp_unit_price).toBe(341);
+
+    const retry=await cli(approved());
+    expect(retry.status).toBe(1);
+    expect(retry.stderr).toMatch(/Evidence changed/);
+    expect(await state()).toEqual(after);
+
+    // Force only the file report to fail after a second synthetic commit.
+    // The durable in-transaction evidence must still survive.
+    await query(`UPDATE stock_movements SET metadata=jsonb_set(metadata,'{sale_evidence}',
+      (metadata->'sale_evidence')-'business_date') WHERE reference_id=$1`,[reference]);
+    const fileFailureBefore=await state();
+    const fileFailurePlan=await savedReport(await cli([]));
+    const blockedDirectory=await mkdtemp(join(tmpdir(),'sale-repair-report-'));
+    let fileFailure;
+    try{
+      await writeFile(join(blockedDirectory,'generated-artifacts'),'synthetic path blocker',{mode:0o600});
+      fileFailure=await cli(approved({planHash:fileFailurePlan.planHash,
+        fingerprint:fileFailurePlan.fingerprint}),{cwd:blockedDirectory});
+      expect(fileFailure.status).toBe(1);
+      expect(fileFailure.stderr).toMatch(/Repair committed, but its file report could not be saved/);
+      const retained=await state();
+      expect(retained.units).toBe(fileFailureBefore.units);
+      expect(retained.audits.filter(row=>row.event_type==='sale_evidence_repaired'))
+        .toHaveLength(fileFailureBefore.audits.filter(row=>row.event_type==='sale_evidence_repaired').length+1);
+      expect(retained.audits.at(-1).details.lines[0].before.movementSaleEvidence.business_date).toBeUndefined();
+      expect(retained.audits.at(-1).details.lines[0].after.movementSaleEvidence.business_date).toBeTruthy();
+      expect((await savedReport(await cli([]))).eligible).toHaveLength(0);
+    }finally{
+      await rm(blockedDirectory,{recursive:true,force:true});
+    }
+    await writeFile(`${directory}/results.json`,JSON.stringify({
+      synthetic:true,scope:'Owned disposable database only; no live approval or repair',
+      backupRestoredAndCompared:true,denied,
+      apply:{status:0,checks:applied.checks,remainingEligible:applied.after.eligible.length},
+      retry:{status:retry.status,error:retry.stderr.trim(),unchanged:true},
+      fileReportFailure:{status:fileFailure.status,error:fileFailure.stderr.trim(),durableEvidenceRetained:true},
+      actualReplicaCommand:'NOT VERIFIED — no standby was provisioned; replica gate is unit-tested',
+    },null,2),{mode:0o600});
+  }finally{
+    if(triggerCreated){
+      await query(`DROP TRIGGER IF EXISTS ${trigger} ON mis_sales_audit`);
+      await query(`DROP FUNCTION IF EXISTS ${trigger}()`);
+    }
+    if(restoreCreated)await query(`DROP DATABASE ${restoreName} WITH (FORCE)`);
+    await unlink(backupFile).catch(()=>{});
+    await unlink(emptyFile).catch(()=>{});
+  }
+},180000);

@@ -3809,9 +3809,7 @@ server.on('error', (error) => {
       { id: 'USR_STOCK_001', username: 'stock', password: 'Stock@2025', fullName: 'Stock Manager', email: 'stock@dynapharm.com.na', phone: '', role: 'stock', branch: 'all', mustChangePassword: false },
     ];
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('DEFAULT PORTAL CREDENTIALS (change immediately via Admin panel)');
-    console.log('  Finance portal: username=finance  password=Finance@2025');
-    console.log('  GM portal:      username=gm       password=GM@2025');
+    console.log('Staff portal access is managed through Admin. Credentials are never printed in startup logs.');
     console.log('  [must_change_password=true — staff will be prompted to reset]');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 

@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { businessDay } from './businessDates.js';
 
 const num=v=>{
@@ -96,7 +96,7 @@ export function planSaleEvidenceRepair({sales,movements,allocations,audits,mirro
       timestamp:new Date(sale.sale_date).toISOString(),timezone:'Africa/Windhoek',provenance:'reconstructed_exact_source'};
     if(lines.some(l=>Object.keys(l.patch).length || l.allocationPatch ||
       Object.keys(l.mirrorPatch || {}).length) || !audit)
-      eligible.push({reference:sale.id,lines,audit:audit?null:details});
+      eligible.push({reference:sale.id,branch:sale.branch_id,lines,audit:audit?null:details});
   }
   // Legacy prescriptions have no exact completion-to-BAT identity. Never group
   // distinct partial issues by report name/time; they require operator review.
@@ -178,8 +178,22 @@ export async function applySaleRepairPlanTx(client,plan) {
     (SELECT COALESCE(jsonb_agg(to_jsonb(m)-'metadata' ORDER BY id),'[]'::jsonb)
       FROM branch_inventory_movements m WHERE reference=ANY($1)) AS mirror_values`,[refs])).rows);
   const before=await invariant();
+  const repairEvents=[];
+  const operationId=randomUUID();
   for(const sale of plan.eligible){
+    const evidenceLines=[];
     for(const line of sale.lines) {
+      const movementBefore=(await client.query(
+        "SELECT metadata->'sale_evidence' AS evidence FROM stock_movements WHERE id=$1 FOR UPDATE",
+        [line.movementId])).rows[0];
+      if(!movementBefore)throw Error(`Repair source movement ${line.movementId} disappeared`);
+      const allocationBefore=(await client.query(
+        "SELECT snapshot->'financial_dp_unit' AS financial_dp_unit FROM stock_sale_allocations WHERE movement_id=$1 FOR UPDATE",
+        [line.movementId])).rows[0] || null;
+      const mirrorBefore=line.mirrorId?(await client.query(
+        "SELECT metadata->'sale_evidence' AS evidence FROM branch_inventory_movements WHERE id=$1 FOR UPDATE",
+        [line.mirrorId])).rows[0]:null;
+      if(line.mirrorId && !mirrorBefore)throw Error(`Repair source mirror ${line.mirrorId} disappeared`);
       if(line.allocationPatch)await client.query(`UPDATE stock_sale_allocations SET snapshot=$1::jsonb || jsonb_strip_nulls(snapshot)
         WHERE movement_id=$2`,[JSON.stringify(line.allocationPatch),line.movementId]);
       for(const [table,id,patch] of [['stock_movements',line.movementId,line.patch],
@@ -191,12 +205,53 @@ export async function applySaleRepairPlanTx(client,plan) {
           jsonb_build_object('sale_evidence',$1::jsonb || jsonb_strip_nulls(COALESCE(metadata->'sale_evidence','{}'::jsonb)))
           WHERE id=$2`,[JSON.stringify(patch),id]);
       }
+      const movementAfter=(await client.query(
+        "SELECT metadata->'sale_evidence' AS evidence FROM stock_movements WHERE id=$1",
+        [line.movementId])).rows[0];
+      const allocationAfter=(await client.query(
+        "SELECT snapshot->'financial_dp_unit' AS financial_dp_unit FROM stock_sale_allocations WHERE movement_id=$1",
+        [line.movementId])).rows[0] || null;
+      const mirrorAfter=line.mirrorId?(await client.query(
+        "SELECT metadata->'sale_evidence' AS evidence FROM branch_inventory_movements WHERE id=$1",
+        [line.mirrorId])).rows[0]:null;
+      evidenceLines.push({
+        movementId:line.movementId,
+        branchMovementId:line.mirrorId || null,
+        productName:line.productName,
+        batchNo:line.batchNo,
+        quantity:line.quantity,
+        before:{
+          movementSaleEvidence:movementBefore.evidence ?? null,
+          allocationFinancialDpUnit:allocationBefore?.financial_dp_unit ?? null,
+          branchMovementSaleEvidence:mirrorBefore?.evidence ?? null,
+        },
+        after:{
+          movementSaleEvidence:movementAfter?.evidence ?? null,
+          allocationFinancialDpUnit:allocationAfter?.financial_dp_unit ?? null,
+          branchMovementSaleEvidence:mirrorAfter?.evidence ?? null,
+        },
+      });
     }
     if(sale.audit)await client.query(`INSERT INTO mis_sales_audit(event_type,record_id,user_name,details,created_at,source_key)
       VALUES('sale_created',$1,$2,$3,$4,$5) ON CONFLICT(source_key) DO NOTHING`,
     [sale.reference,sale.audit.staff,JSON.stringify(sale.audit),sale.audit.timestamp,`walkin:${sale.reference}`]);
+    const event=(await client.query(`INSERT INTO mis_sales_audit
+      (event_type,record_id,details,created_at,source_key)
+      VALUES('sale_evidence_repaired',$1,$2,NOW(),$3)
+      ON CONFLICT(source_key) DO NOTHING RETURNING id`,
+    [sale.reference,JSON.stringify({
+      executor:'repair-sale-evidence CLI',
+      operationId,
+      planHash:plan.planHash,
+      fingerprint:plan.fingerprint,
+      sourceReference:sale.reference,
+      branch:sale.branch,
+      lines:evidenceLines,
+    }),`sale-evidence-repair:${operationId}:${sale.reference}`])).rows[0];
+    if(event)repairEvents.push({id:String(event.id),reference:sale.reference});
   }
   const after=await invariant();
   if(after!==before)throw Error('Repair invariant failed: quantities or financial values changed');
-  return {invariantBefore:before,invariantAfter:after,quantitiesAndPostingsUnchanged:true};
+  return {invariantBefore:before,invariantAfter:after,quantitiesAndPostingsUnchanged:true,
+    repairEvents};
 }

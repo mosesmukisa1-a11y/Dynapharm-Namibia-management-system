@@ -1,3 +1,4 @@
+import { stockStatusConflict } from '../../shared/stockStatus.js';
 import { applyAuthCors } from '../_lib/auth.js';
 import { query, getMany, getOne, insert, update, remove, publishRealtimeEvent, withTransaction } from '../db.js';
 import { atomicStockRequest } from '../_lib/atomicStockRequest.js';
@@ -485,6 +486,7 @@ function normalizeTransfer(row, itemsMap, notesMap) {
     fromWarehouse: row.from_warehouse,
     toBranch: row.to_branch,
     status: row.status,
+    status_conflict: stockStatusConflict(row),
     product_name: firstItem?.productName ?? legacyProduct,
     quantity: firstItem?.quantity ?? legacyQuantity,
     itemsSource: storedItems.length ? 'item_rows' : legacyItem ? 'legacy_transfer_header' : 'none',
@@ -1069,6 +1071,9 @@ async function handler(req, res) {
       }
 
       const oldTransfer = await getOne('SELECT * FROM stock_transfers WHERE id = $1 FOR UPDATE', [id]);
+      if (oldTransfer && stockStatusConflict(oldTransfer)) {
+        return res.status(409).json({success:false,error:'Status conflict detected. Review original approval evidence before changing this transfer.'});
+      }
       if(oldTransfer?.from_warehouse==='country_stock') {
         authorizeCountryDistribution(currentUser);
         await query("SELECT pg_advisory_xact_lock(hashtext('country-distribution-create'))");

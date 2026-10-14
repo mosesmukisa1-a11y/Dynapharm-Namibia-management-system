@@ -1,4 +1,5 @@
 import { businessDay, BUSINESS_TIMEZONE } from './businessDates.js';
+import { classifySaleCostEvidence } from '../../shared/saleCostEvidence.js';
 
 export const saleEvidenceSchema = `
 ALTER TABLE mis_sales_audit ADD COLUMN IF NOT EXISTS source_key TEXT;
@@ -19,6 +20,13 @@ export function movementSaleEvidence(row) {
     branch_profit_value: number(evidence.branch_profit_value),
     receipt_no: evidence.receipt_no || null,
     business_date: evidence.business_date || null,
+    original_received_dpc: number(evidence.original_received_dpc),
+    original_received_cost: number(evidence.original_received_cost),
+    cost_evidence_status: classifySaleCostEvidence({
+      originalReceivedDPC: evidence.original_received_dpc,
+      originalReceivedCost: evidence.original_received_cost,
+      zeroCostApproved: evidence.zero_cost_approved === true,
+    }),
     dp_complete: !isSaleMovement(row.movement_type || row.type) || dp != null,
     signed_quantity: isSaleMovement(row.movement_type || row.type)
       ? -Math.abs(Number(row.quantity)) : Number(row.quantity),
@@ -33,7 +41,9 @@ export async function saveMovementSaleEvidenceTx(client, allocation, branchMovem
     movement_id:allocation.movement_id,branch_movement_id:branchMovementId || s.branch_movement_id || null,
     dp_unit_price: dp, dp_value: dp == null ? null : dp*q,
     charged_unit_price: charge, charged_value: charged,
-    branch_profit_value: dp == null || charged == null ? null : charged-dp*q };
+    branch_profit_value: dp == null || charged == null ? null : charged-dp*q,
+    original_received_dpc: number(s.unit_dp), original_received_cost: number(s.unit_cost),
+    zero_cost_approved: s.zeroCostApproved === true };
   // The exact mirror ID is captured at posting, never inferred by batch/name.
   const mirror = branchMovementId || s.branch_movement_id;
   await client.query(`UPDATE stock_movements SET metadata=COALESCE(metadata,'{}'::jsonb) ||
@@ -56,7 +66,9 @@ export async function completeSaleEvidenceTx(client, { sourceKey, reference, rec
     return { movementId:a.movement_id, productName:a.product_name, batchNo:a.batch_no,
       expiryDate:a.expiry_date, quantity:q, dpUnitPrice:dp, dpTotal:dp==null?null:dp*q,
       chargedTotal:charged, branchProfit:dp==null || charged==null?null:charged-dp*q,
-      originalReceivedCost:s.unit_cost, originalReceivedDPC:s.unit_dp };
+      originalReceivedCost:s.unit_cost, originalReceivedDPC:s.unit_dp,
+      costEvidenceStatus: classifySaleCostEvidence({ originalReceivedDPC:s.unit_dp,
+        originalReceivedCost:s.unit_cost, zeroCostApproved:s.zeroCostApproved === true }) };
   });
   const sum = field => lines.some(l=>l[field]==null) ? null : lines.reduce((n,l)=>n+l[field],0);
   const details = { branch, reference, receiptNumber:receipt || reference,
