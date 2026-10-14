@@ -2,8 +2,8 @@
 import { beforeAll,afterAll,it,expect } from 'vitest';
 import express from 'express';
 import bcrypt from 'bcryptjs';
-import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, writeFile, unlink, mkdtemp, rm } from 'node:fs/promises';
+import { randomUUID,createHash } from 'node:crypto';
+import { mkdir, readFile, writeFile, unlink, mkdtemp, rm,stat } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -376,6 +376,7 @@ it('enforces approval, backup, target and stale-evidence gates through the full 
     expect(result.status,result.stderr).toBe(0);
     const path=result.stdout.match(/report: ([^\n]+)/)?.[1];
     expect(path).toBeTruthy();
+    expect((await stat(path)).mode & 0o777).toBe(0o600);
     return JSON.parse(await readFile(path,'utf8'));
   };
   const state=async()=>({
@@ -383,6 +384,11 @@ it('enforces approval, backup, target and stale-evidence gates through the full 
     allocations:(await query('SELECT movement_id,quantity,snapshot FROM stock_sale_allocations WHERE sale_reference=$1 ORDER BY movement_id',[reference])).rows,
     mirrors:(await query('SELECT id,quantity,metadata FROM branch_inventory_movements WHERE reference=$1 ORDER BY id',[reference])).rows,
     audits:(await query('SELECT id,event_type,details,source_key FROM mis_sales_audit WHERE record_id=$1 ORDER BY id',[reference])).rows,
+    receipts:(await query('SELECT * FROM branch_walkin_sales WHERE id=$1',[reference])).rows,
+    branchBatches:(await query('SELECT * FROM branch_inventory_batches WHERE product_name=$1 ORDER BY id',[product])).rows,
+    balances:(await query('SELECT * FROM inventory_balances WHERE product_name=$1 ORDER BY to_jsonb(inventory_balances)::text',[product])).rows,
+    activity:(await query('SELECT * FROM branch_activity_transactions WHERE form_reference_id=$1 ORDER BY id',[reference])).rows,
+    distributorProfit:(await query('SELECT * FROM branch_distributor_profit WHERE sale_id=$1 ORDER BY id',[reference])).rows,
     units:await totalUnits(),
   });
   await query(`UPDATE stock_movements SET
@@ -390,7 +396,21 @@ it('enforces approval, backup, target and stale-evidence gates through the full 
     WHERE reference_id=$1`,[reference]);
   const before=await state();
   const plan=await savedReport(await cli([]));
+  expect(plan.mode).toBe('dry-run');
   expect(plan.eligible).toHaveLength(1);
+  expect(plan.readiness).toMatchObject({isPrimary:true,schemaReady:true,blockers:[]});
+  for(const value of [plan.planHash,plan.fingerprint,plan.readiness.databaseFingerprint])
+    expect(value).toMatch(/^[a-f0-9]{64}$/);
+  expect(plan.planHash).toBe(createHash('sha256').update(JSON.stringify({
+    eligible:plan.eligible,review:plan.review,readiness:plan.readiness,
+  })).digest('hex'));
+  const canonical=await withTransaction(async client=>{
+    await client.query('SET TRANSACTION ISOLATION LEVEL SERIALIZABLE');
+    await client.query('SET TRANSACTION READ ONLY');
+    return readSaleRepairPlan(client,{reference});
+  });
+  expect(plan).toEqual({mode:'dry-run',...canonical});
+  expect(await savedReport(await cli([]))).toEqual(plan);
   expect(await state()).toEqual(before);
 
   // Back up only the owned synthetic database, restore into a second owned
@@ -430,23 +450,33 @@ it('enforces approval, backup, target and stale-evidence gates through the full 
     // Verify the recovered copy in a separate guarded process with its own
     // exact target identity rather than weakening or changing that guard.
     const recoveryCheck=await run(process.execPath,['--input-type=module','-e',`
-      import {query,closePool} from './api/db.js';
+      import {query,withTransaction,closePool} from './api/db.js';
+      import {readSaleRepairReadiness} from './api/services/saleEvidenceRepair.js';
       try {
         const result=await query('SELECT id,quantity,unit_cif,unit_dp,metadata FROM stock_movements WHERE reference_id=$1 ORDER BY id',
           [process.env.SYNTHETIC_SALE_REFERENCE]);
-        console.log(JSON.stringify(result.rows));
+        const readiness=await withTransaction(async client=>{
+          await client.query('SET TRANSACTION READ ONLY');
+          return readSaleRepairReadiness(client);
+        });
+        console.log(JSON.stringify({movements:result.rows,readiness}));
       } finally { await closePool(); }
     `],{env:{...process.env,DATABASE_URL:restoreUrl.toString(),
       STOCK_AUDIT_DATABASE:restoreName,SYNTHETIC_SALE_REFERENCE:reference}});
     expect(recoveryCheck.status,recoveryCheck.stderr).toBe(0);
     const recovered=JSON.parse(recoveryCheck.stdout);
-    expect(recovered).toEqual(before.movements);
+    expect(recovered.movements).toEqual(before.movements);
+    expect(recovered.readiness.databaseFingerprint).not.toBe(plan.readiness.databaseFingerprint);
     await query(`DROP DATABASE ${restoreName} WITH (FORCE)`);restoreCreated=false;
 
     await expectDenied('missing approval',['--apply'],/Apply requires/);
     await expectDenied('missing backup attestation',approved({verified:false}),/Apply requires/);
     await expectDenied('empty backup',approved({backup:emptyFile}),/nonempty existing file/);
-    await expectDenied('wrong target',approved({databaseFingerprint:'a'.repeat(64)}),/Database differs/);
+    await expectDenied('missing backup file',approved({backup:resolve(directory,`${prefix}-missing.dump`)}),/ENOENT/);
+    await expectDenied('backup path is a directory',approved({backup:resolve(directory)}),/nonempty existing file/);
+    await expectDenied('identical fixture but different restored database',approved({
+      databaseFingerprint:recovered.readiness.databaseFingerprint,
+    }),/Database differs/);
     await expectDenied('wrong plan hash',approved({planHash:'b'.repeat(64)}),/Evidence changed/);
     await expectDenied('stale source fingerprint',approved({fingerprint:'c'.repeat(64)}),/Evidence changed/);
     const changed=before.movements[0];
@@ -454,6 +484,9 @@ it('enforces approval, backup, target and stale-evidence gates through the full 
     const changedState=await state();
     try{
       await expectDenied('source changed after reviewed dry run',approved(),/Evidence changed/,changedState);
+      const changedPlan=await savedReport(await cli([]));
+      expect(changedPlan.planHash).toBe(plan.planHash);
+      expect(changedPlan.fingerprint).not.toBe(plan.fingerprint);
     }finally{
       await query('UPDATE stock_movements SET metadata=$1::jsonb WHERE id=$2',
         [JSON.stringify(changed.metadata),changed.id]);
@@ -488,13 +521,26 @@ it('enforces approval, backup, target and stale-evidence gates through the full 
 
     const applied=await savedReport(await cli(approved()));
     expect(applied.mode).toBe('apply');
+    const {mode:dryRunMode,...reviewedPlan}=plan;
+    expect(dryRunMode).toBe('dry-run');
+    expect(applied.before).toEqual(reviewedPlan);
+    expect(applied.approval).toEqual({
+      planHash:plan.planHash,fingerprint:plan.fingerprint,
+      databaseFingerprint:plan.readiness.databaseFingerprint,backupVerifiedByOperator:true,
+    });
     expect(applied.checks.quantitiesAndPostingsUnchanged).toBe(true);
+    expect(applied.checks.invariantBefore).toMatch(/^[a-f0-9]{64}$/);
+    expect(applied.checks.invariantAfter).toBe(applied.checks.invariantBefore);
     expect(applied.checks.repairEvents).toHaveLength(1);
     expect(applied.after.eligible).toHaveLength(0);
     const after=await state();
     expect(after.units).toBe(before.units);
     expect(after.movements.map(({metadata,...rest})=>rest))
       .toEqual(before.movements.map(({metadata,...rest})=>rest));
+    for(const key of ['receipts','branchBatches','balances','activity','distributorProfit'])
+      expect(after[key],`${key} must not change during metadata repair`).toEqual(before[key]);
+    expect(after.allocations).toEqual(before.allocations);
+    expect(after.mirrors).toEqual(before.mirrors);
     const originalAuditCount=before.audits.filter(row=>row.event_type==='sale_evidence_repaired').length;
     const events=after.audits.filter(row=>row.event_type==='sale_evidence_repaired');
     expect(events).toHaveLength(originalAuditCount+1);
@@ -505,6 +551,20 @@ it('enforces approval, backup, target and stale-evidence gates through the full 
     const retry=await cli(approved());
     expect(retry.status).toBe(1);
     expect(retry.stderr).toMatch(/Evidence changed/);
+    expect(await state()).toEqual(after);
+
+    // Old approval fails closed; a fresh canonical empty plan is an explicit
+    // no-op, not permission to reuse the original review after it has changed.
+    const noOpPlan=await savedReport(await cli([]));
+    expect(noOpPlan.eligible).toHaveLength(0);
+    const noOp=await savedReport(await cli(approved({
+      planHash:noOpPlan.planHash,fingerprint:noOpPlan.fingerprint,
+      databaseFingerprint:noOpPlan.readiness.databaseFingerprint,
+    })));
+    expect(noOp.before.eligible).toHaveLength(0);
+    expect(noOp.after.eligible).toHaveLength(0);
+    expect(noOp.checks.repairEvents).toEqual([]);
+    expect(noOp.checks.invariantAfter).toBe(noOp.checks.invariantBefore);
     expect(await state()).toEqual(after);
 
     // Force only the file report to fail after a second synthetic commit.
@@ -533,9 +593,13 @@ it('enforces approval, backup, target and stale-evidence gates through the full 
     }
     await writeFile(`${directory}/results.json`,JSON.stringify({
       synthetic:true,scope:'Owned disposable database only; no live approval or repair',
+      backupAuthority:'Synthetic disposable fixture only; NOT verification of a business backup and NOT production apply authorization',
+      canonicalDryRun:{mode:plan.mode,servicePlanMatches:true,repeatedCliMatches:true,
+        primary:plan.readiness.isPrimary,schemaReady:plan.readiness.schemaReady},
       backupRestoredAndCompared:true,denied,
       apply:{status:0,checks:applied.checks,remainingEligible:applied.after.eligible.length},
       retry:{status:retry.status,error:retry.stderr.trim(),unchanged:true},
+      freshNoOp:{status:0,checks:noOp.checks,unchanged:true},
       fileReportFailure:{status:fileFailure.status,error:fileFailure.stderr.trim(),durableEvidenceRetained:true},
       actualReplicaCommand:'NOT VERIFIED — no standby was provisioned; replica gate is unit-tested',
     },null,2),{mode:0o600});
