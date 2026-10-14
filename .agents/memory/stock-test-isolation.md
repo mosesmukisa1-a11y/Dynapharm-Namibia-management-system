@@ -62,6 +62,12 @@ New reporting SQL needs a real read-only HTTP check against a guarded schema-onl
 
 **How to apply:** For added report sources, inspect the writer/schema and exercise the GET through actual synthetic staff-session middleware. Mocks prove presentation and filtering intent, not schema compatibility.
 
+Long-running disposable API processes can retain stale ESM exports after source changes; preserve their evidence but do not certify a new build from their runtime.
+
+**Why:** A retained populated review server rejected a newly imported date helper while a fresh process reading the same data succeeded. Reseeding would destroy the retained history without fixing the cache issue.
+
+**How to apply:** Verify current code with a fresh process over the owned review target; keep business GETs read-only and omit bootstrap/migrations when the pass forbids writes. Distinguish wrapper route gaps from real application failures.
+
 Whole-system audits must use a separate test database or isolated environment, not merely uniquely named rows in the business database. Never connect their fixtures to live payment or other external services.
 
 **Why:** The user explicitly requires business records to remain untouched during an end-to-end stock audit. Prefixes and cleanup do not prevent a mis-scoped handler or failing assertion from changing unrelated records.

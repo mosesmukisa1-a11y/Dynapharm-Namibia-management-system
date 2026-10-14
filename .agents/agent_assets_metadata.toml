@@ -411,14 +411,14 @@ content_type = "text/html"
 id = "IqhH58WuJoR37ddyfpmGz"
 uri = "file://generated-artifacts/stock-cleanup/report.html"
 type = "html"
-title = "Stock Portal cleanup — review report"
-description = "Changes, source queries, 18 tests, 27 read-only checks, reproduced fixes and explicit browser verification gaps."
+title = "Final stock gate — publication not recommended"
+description = "Read-only evidence, confirmed branch-summary double-count, blocked authenticated browser checks, source records and exact commands."
 logical_id = "d1e97a07-a95e-4654-87a8-5e95cb06668b"
-content_hash = "sha256:3145ab945b58894227873445574bc3e1a71be2c36efb56b2e089a6919ef303a1"
-size = 15767
-mtime_ms = 1791990527028
-storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/d1e97a07-a95e-4654-87a8-5e95cb06668b/bffc8203-ca64-4776-a3d0-5107c9ddb427"
-storage_version_token = "1791990527841227"
+content_hash = "sha256:950585c48b99efe2bba38181ac17f0a0e19635eaa325874a4c91ef9730df563c"
+size = 30623
+mtime_ms = 1791993491188
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/d1e97a07-a95e-4654-87a8-5e95cb06668b/6e1f46f4-f5fe-4768-8ca1-c68ae8d9eb16"
+storage_version_token = "1791993492611603"
 content_type = "text/html"
 
 [[outputs]]
