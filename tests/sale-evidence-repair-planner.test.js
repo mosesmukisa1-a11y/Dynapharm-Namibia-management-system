@@ -95,7 +95,7 @@ describe('exact historical sale evidence planning',()=>{
 
 describe('repair readiness gates',()=>{
   const ready={database_name:'isolated',database_oid:'123',server_address:'127.0.0.1',
-    server_port:5432,has_source_key:true,has_source_key_unique:true};
+    server_port:5432,is_primary:true,has_source_key:true,has_source_key_unique:true};
   function client(row=ready){
     return {queries:[],async query(sql){this.queries.push(sql);return {rows:[row]};}};
   }
@@ -108,13 +108,28 @@ describe('repair readiness gates',()=>{
   });
   it('blocks apply before the first write if the audit index is unavailable',async()=>{
     const db=client({...ready,has_source_key_unique:false});
-    await expect(applySaleRepairPlanTx(db,{eligible:[]})).rejects.toThrow(/Repair blocked/);
+    await expect(applySaleRepairPlanTx(db,{eligible:[],readiness:{isPrimary:true}})).rejects.toThrow(/Repair blocked/);
     expect(db.queries).toHaveLength(1);
   });
   it('rejects another database even when its sale rows could be identical',async()=>{
     const db=client();
-    await expect(applySaleRepairPlanTx(db,{eligible:[],readiness:{databaseFingerprint:'another-database'}}))
+    await expect(applySaleRepairPlanTx(db,{eligible:[],readiness:{isPrimary:true,databaseFingerprint:'another-database'}}))
       .rejects.toThrow(/target differs/);
+    expect(db.queries).toHaveLength(1);
+  });
+  it('reports replica status with SELECT only',async()=>{
+    const db=client({...ready,is_primary:false});
+    const result=await readSaleRepairReadiness(db);
+    expect(result.isPrimary).toBe(false);
+    expect(result.schemaReady).toBe(true);
+    expect(db.queries.every(sql=>sql.trim().startsWith('SELECT'))).toBe(true);
+  });
+  it.each([
+    [false,true], [true,false], [true,undefined],
+  ])('rejects current primary=%s and reviewed primary=%s before writes',async(current,reviewed)=>{
+    const db=client({...ready,is_primary:current});
+    await expect(applySaleRepairPlanTx(db,{eligible:[],readiness:{isPrimary:reviewed}}))
+      .rejects.toThrow(/confirmed primary database/);
     expect(db.queries).toHaveLength(1);
   });
 });
@@ -126,6 +141,10 @@ describe('repair command validation before database access',()=>{
     [['--reference','one','--reference','two'],/Duplicate argument/],
     [['--surprise'],/Unknown argument/],
     [['--reference','one','--apply'],/backup-verified/],
+    [['--reference','one','--apply','--approve','a'.repeat(64),'--fingerprint','b'.repeat(64),
+      '--backup','not-a-backup','--backup-verified'],/--database-fingerprint/],
+    [['--reference','one','--apply','--approve','a'.repeat(64),'--fingerprint','b'.repeat(64),
+      '--database-fingerprint','invalid','--backup','not-a-backup','--backup-verified'],/full SHA-256/],
   ])('rejects unsafe arguments %j',(args,message)=>{
     const child=spawnSync(process.execPath,['scripts/repair-sale-evidence.mjs',...args],{encoding:'utf8'});
     expect(child.status).toBe(1);

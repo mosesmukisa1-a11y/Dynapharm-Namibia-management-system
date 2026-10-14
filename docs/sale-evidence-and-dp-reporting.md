@@ -73,6 +73,7 @@ After operator review and a genuine database backup, apply to the same database:
 ```sh
 node scripts/repair-sale-evidence.mjs --reference TU-2026-000122 \
   --apply --approve REVIEWED_PLAN_HASH --fingerprint REVIEWED_FINGERPRINT \
+   --database-fingerprint REVIEWED_DATABASE_FINGERPRINT \
   --backup /secure/path/to/reviewed-backup-file --backup-verified
 ```
 
@@ -83,6 +84,11 @@ not an automated restore test or permission supplied by the agent. Retain the
 backup's verification record separately. Stale plans and different database
 targets fail. Any dry run from the older planner must be repeated and reviewed
 because the strengthened plan/fingerprint now include mirror and target evidence.
+The CLI requires separate approval of the database fingerprint and reports
+`readiness.isPrimary`; apply rejects a recovery replica or a plan without
+confirmed primary status. This recovery check does not establish that a writable
+database is the intended production target: the operator must independently
+confirm the correct target. Replica-derived review hashes are never approval values.
 Apply runs serializably, fills only missing movement/mirror/allocation metadata,
 preserves nonblank evidence including zero, and inserts reconstructed-provenance
 audit events with original actors/timestamps when available. It returns before
@@ -220,6 +226,55 @@ only. Completion of this work does not authorize a production apply or assert
 that historical records have been repaired. Backup verification, a fresh
 correct-primary CLI plan and explicit approval of that exact plan remain
 separate prerequisites for any later live operation.
+
+### Operator handoff — no live operation authorized
+
+The current scope is code safeguards and read-only review only. No backup has
+been verified by this task, no primary CLI plan has been obtained here, and no
+approval is recorded. The example apply command above is documentation, not
+permission to run it. An agent must not supply `--backup-verified` on behalf of
+the operator or treat task completion as authorization.
+
+For a later, separately authorized operation, the operator must:
+
+1. Independently confirm the intended primary database through the supported
+   operational process. Do not copy credentials into reports. Run the canonical
+   CLI dry run for `TU-2026-000122` (the same sale as
+   `WALK-1791966024927-UDFO`) on that target. Retain the original restricted JSON
+   report, including primary/schema readiness and every eligible and review row.
+   Do not use the replica hashes printed in the earlier review.
+2. Review the exact proposed metadata and reconstructed audit provenance. The
+   previously observed eligible central evidence is not authority to repair the
+   uncaptured branch mirror. The reviewed Windhoek CBD prescription remains
+   ineligible: its original allocation/completion linkage is absent. No inferred
+   mirror IDs, prescription sessions, catalogue prices or received costs.
+3. Obtain a backup of that exact database and verify restoration to a separate
+   safe target using the database's supported restore procedure. Retain a
+   restricted verification record with backup identity/checksum, capture time,
+   confirmed source target, restore-test result/time and verifying operator.
+   A nonempty file, replica extract or passing test is not proof of restorability.
+4. Record explicit authorization naming the exact reference, CLI report,
+   `planHash`, source-and-target `fingerprint`, separate
+   `readiness.databaseFingerprint`, backup verification record and the permitted
+   metadata-only scope. **All of these are currently pending.** If the source,
+   plan, target or readiness changes, obtain a fresh dry run and approval.
+5. Only after separate authorization, use those exact approved values in the
+   CLI. Preserve the apply report's before/after plans, invariant hashes,
+   unchanged-quantities/postings check and reconstructed provenance alongside the
+   approval and backup verification. Retain unresolved rows as unresolved.
+   Never replay a sale, alter quantities/financial postings or run repair at
+   startup.
+
+Do not store restricted evidence or backups in Git, deployment assets or public
+storage. This handoff deliberately leaves live backup verification and approval
+to the authorized operator; it does not claim historical records are repaired.
+
+The additional primary-target and explicit database-approval safeguards passed
+28 focused unit checks, including rejection of replica/unknown-primary plans and
+missing or malformed database approval arguments before database access.
+JavaScript syntax and patch whitespace checks also passed. These checks used
+fixtures and invalid CLI arguments only; no database connection, backup
+verification, new production read or live apply was performed for this handoff.
 
 The repair safeguard changes passed 22 focused unit checks and all 16 checks in
 the sale-evidence database suite, using a newly created disposable database that

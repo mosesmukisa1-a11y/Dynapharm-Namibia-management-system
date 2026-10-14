@@ -110,7 +110,8 @@ export function planSaleEvidenceRepair({sales,movements,allocations,audits,mirro
 export async function readSaleRepairReadiness(client) {
   const row=(await client.query(`SELECT current_database() AS database_name,
     (SELECT oid::text FROM pg_database WHERE datname=current_database()) AS database_oid,
-    inet_server_addr()::text AS server_address, inet_server_port() AS server_port,
+     inet_server_addr()::text AS server_address, inet_server_port() AS server_port,
+     NOT pg_is_in_recovery() AS is_primary,
     EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public'
       AND table_name='mis_sales_audit' AND column_name='source_key') AS has_source_key,
     EXISTS(SELECT 1 FROM pg_index i JOIN pg_class t ON t.oid=i.indrelid
@@ -123,7 +124,8 @@ export async function readSaleRepairReadiness(client) {
   if(!row.has_source_key)blockers.push('Missing mis_sales_audit.source_key');
   if(!row.has_source_key_unique)blockers.push('Missing valid unique audit source_key index');
   return {databaseFingerprint:hash({database:row.database_name,oid:row.database_oid,
-    server:row.server_address,port:row.server_port}),schemaReady:blockers.length===0,blockers};
+     server:row.server_address,port:row.server_port}),isPrimary:row.is_primary===true,
+     schemaReady:blockers.length===0,blockers};
 }
 
 export async function readSaleRepairPlan(client,{reference,branch,from,to,limit=500}) {
@@ -160,6 +162,8 @@ export async function readSaleRepairPlan(client,{reference,branch,from,to,limit=
 
 export async function applySaleRepairPlanTx(client,plan) {
   const readiness=await readSaleRepairReadiness(client);
+   if(!readiness.isPrimary || plan.readiness?.isPrimary!==true)
+     throw Error('Repair requires a fresh reviewed dry run on the confirmed primary database; replica plans are not approval values');
   if(!readiness.schemaReady)throw Error(`Repair blocked: ${readiness.blockers.join('; ')}. Use the supported schema deployment process; no repair DDL is allowed.`);
   if(!plan.readiness || readiness.databaseFingerprint!==plan.readiness.databaseFingerprint)
     throw Error('Repair target differs from the reviewed database; run and review a new dry run');
