@@ -17,16 +17,26 @@ export default function SavedSaleProfitReport() {
   const [campaignPrice, setCampaignPrice] = useState('');
   const [profitError,setProfitError]=useState(null);
   const latestRequest = useRef(0);
+  const selectedRange = useRef({ startDate, endDate });
+
+  const selectDate = (field, setDate, value) => {
+    // Selection takes effect immediately, even before React runs the reload effect.
+    selectedRange.current = { ...selectedRange.current, [field]: value };
+    setDate(value);
+  };
 
   const load = useCallback(() => {
     const requestId = ++latestRequest.current;
+    const isCurrent = () => requestId === latestRequest.current
+      && startDate === selectedRange.current.startDate
+      && endDate === selectedRange.current.endDate;
     setLoading(true);
     setProfitError(null);
     Promise.all([
       api.director.profitAnalysis({ startDate, endDate }),
       api.prices.list(),
     ]).then(([res, prices]) => {
-      if (requestId !== latestRequest.current) return;
+      if (!isCurrent()) return;
       if (Array.isArray(prices) && prices.length > 0) setLivePrices(prices);
       const map = {};
       (res?.products || []).forEach(p => {
@@ -35,12 +45,12 @@ export default function SavedSaleProfitReport() {
       setQtySoldMap(map);
     })
     .catch(e => {
-      if (requestId !== latestRequest.current) return;
+      if (!isCurrent()) return;
       setQtySoldMap({});
       setProfitError(e.message);
     })
     .finally(() => {
-      if (requestId === latestRequest.current) setLoading(false);
+      if (isCurrent()) setLoading(false);
     });
   }, [startDate, endDate]);
 
@@ -94,11 +104,11 @@ export default function SavedSaleProfitReport() {
             <div className="flex gap-2 items-end">
               <div>
                 <label className="block text-xs font-semibold text-emerald-800 mb-1">From</label>
-                <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="border border-emerald-300 rounded px-2 py-1 text-sm" />
+                <input type="date" value={startDate} onChange={e => selectDate('startDate', setStartDate, e.target.value)} className="border border-emerald-300 rounded px-2 py-1 text-sm" />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-emerald-800 mb-1">To</label>
-                <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="border border-emerald-300 rounded px-2 py-1 text-sm" />
+                <input type="date" value={endDate} onChange={e => selectDate('endDate', setEndDate, e.target.value)} className="border border-emerald-300 rounded px-2 py-1 text-sm" />
               </div>
               <Button size="sm" onClick={load} className="mb-0.5">Apply</Button>
             </div>
