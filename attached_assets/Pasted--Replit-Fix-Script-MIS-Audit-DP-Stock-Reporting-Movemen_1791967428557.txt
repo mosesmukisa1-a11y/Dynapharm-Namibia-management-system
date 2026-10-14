@@ -1,0 +1,447 @@
+# Replit Fix Script: MIS Audit, DP Stock Reporting, Movement Valuation, Open Requests, Timezone
+
+Paste the prompt below into Replit Agent for the Dynapharm Namibia Management System project.
+
+---
+
+## Replit Agent Prompt
+
+You are working on the Dynapharm Namibia Management System. Fix the issues found during this live test sale:
+
+- Receipt: `TU-2026-000122`
+- Branch: `Tsumeb`
+- Customer: `TEST CUSTOMER`
+- Date shown: `14 Oct 2026, 10:20`
+- Product: `D.I GROW (GREEN) (1 LITER)` x `1`
+- Customer paid / CP: `N$ 443`
+- DP value: `N$ 341`
+- Branch profit: `N$ 102`
+- Stock movement reference: `WALK-1791966024927-UDFO`
+
+### Required Fixes
+
+1. **MIS Audit must record sales**
+   - When any sale is completed, create an MIS audit record.
+   - Event type should be `sale_created`.
+   - Include: receipt number, sale id/reference, branch, staff/user, customer type, payment method, product lines, quantities, DP total, charged total, branch profit total, and local Namibia timestamp.
+   - MIS Audit filters for `2026-10-14`, `Tsumeb`, `sale created` must show the test sale or future equivalent test sales.
+
+2. **Stock Portal must use DP values for stock/reporting**
+   - Stock Portal branch stock/reporting must use DP value for stock-linked sales amounts.
+   - For this test sale, stock reporting should show `N$ 341`, not `N$ 443`, where the label is stock value, DP sales, movement value, or inventory value.
+   - If the system still needs customer receipt revenue, show it separately as `Customer charged revenue` or `CP receipts`, not under stock/DP labels.
+
+3. **Stock movement DP value must not be blank**
+   - The stock movement row for a sale must persist `dp_value = dp_unit_price * qty`.
+   - For `D.I GROW (GREEN) (1 LITER)` x `1`, the movement ledger must show `N$ 341` in `DP VALUE`.
+   - Do not rely on current price-list lookup at render time. Store original DP evidence on the movement at transaction time.
+
+4. **Sales must not increase open stock requests**
+   - Completing a walk-in/member/prescription sale must not create or increment stock requests.
+   - `OPEN REQUESTS` must only count actual stock requests with open statuses, e.g. `pending`, `approved`, `in_transit`, or whatever statuses are actually used.
+   - Do not derive `open requests` from stock movements, sale movements, reorder recommendations, or alert rows.
+
+5. **Timezone consistency**
+   - Use Namibia local business time for displayed transaction times and business dates: `Africa/Windhoek`.
+   - Store canonical `created_at` as UTC ISO/timestamptz if the database supports it.
+   - Also store or derive `business_date` using `Africa/Windhoek`, so date filters match the date seen by Namibian staff.
+   - All portals must use the same rule: Branch, Finance, MIS, Stock, GM, and Director.
+
+---
+
+## Implementation Pattern
+
+Find the sale completion handler. It is likely the function behind `Complete Sale`.
+
+Refactor it so a completed sale writes all related evidence in one atomic operation/transaction:
+
+```ts
+type SaleLineEvidence = {
+  productId: string;
+  productName: string;
+  batchNo?: string | null;
+  expiryDate?: string | null;
+  quantity: number;
+  dpUnitPrice: number;
+  chargedUnitPrice: number;
+  bv: number;
+};
+
+function toMoney(n: number) {
+  return Math.round(Number(n || 0) * 100) / 100;
+}
+
+function namibiaBusinessDate(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Africa/Windhoek",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value;
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+function namibiaDisplayTimestamp(date = new Date()) {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Africa/Windhoek",
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+```
+
+Inside `completeSale(...)`, calculate and persist both charged and DP evidence:
+
+```ts
+const now = new Date();
+const businessDate = namibiaBusinessDate(now);
+
+const saleLines = cartItems.map((item) => {
+  const quantity = Number(item.quantity || 1);
+  const dpUnitPrice = toMoney(item.dpPrice ?? item.dp_unit_price ?? item.distributorPrice);
+  const chargedUnitPrice = toMoney(item.salePrice ?? item.chargedPrice ?? item.cpPrice ?? dpUnitPrice);
+
+  return {
+    productId: item.productId,
+    productName: item.productName,
+    batchNo: item.batchNo ?? null,
+    expiryDate: item.expiryDate ?? null,
+    quantity,
+    dpUnitPrice,
+    chargedUnitPrice,
+    dpTotal: toMoney(dpUnitPrice * quantity),
+    chargedTotal: toMoney(chargedUnitPrice * quantity),
+    branchProfit: toMoney((chargedUnitPrice - dpUnitPrice) * quantity),
+    bvTotal: toMoney((Number(item.bv || 0)) * quantity),
+  };
+});
+
+const dpTotal = toMoney(saleLines.reduce((sum, line) => sum + line.dpTotal, 0));
+const chargedTotal = toMoney(saleLines.reduce((sum, line) => sum + line.chargedTotal, 0));
+const branchProfitTotal = toMoney(saleLines.reduce((sum, line) => sum + line.branchProfit, 0));
+```
+
+Then, in the same transaction/batch:
+
+```ts
+// 1. Insert sale receipt/header.
+// 2. Insert sale lines with original DP and charged evidence.
+// 3. Insert stock movements for each product line.
+// 4. Insert MIS audit event.
+// 5. Update/decrement inventory.
+// 6. Do NOT insert or update stock request/open request records.
+```
+
+The stock movement insert must include DP value:
+
+```ts
+await insertStockMovement({
+  movement_type: customerType === "member" ? "member_sale" : "non_member_sale",
+  branch,
+  product_id: line.productId,
+  product_name: line.productName,
+  batch_no: line.batchNo,
+  expiry_date: line.expiryDate,
+  quantity: -Math.abs(line.quantity),
+  dp_unit_price: line.dpUnitPrice,
+  dp_value: line.dpTotal,
+  charged_unit_price: line.chargedUnitPrice,
+  charged_value: line.chargedTotal,
+  branch_profit_value: line.branchProfit,
+  reference: saleReference,
+  receipt_no: receiptNo,
+  staff_user: currentUser.username,
+  created_at: now.toISOString(),
+  business_date: businessDate,
+  notes: `Walk-in ${customerType} sale`,
+});
+```
+
+The MIS audit insert should look like:
+
+```ts
+await insertAuditLog({
+  event_type: "sale_created",
+  branch,
+  reference: saleReference,
+  receipt_no: receiptNo,
+  user_id: currentUser.id,
+  username: currentUser.username,
+  created_at: now.toISOString(),
+  business_date: businessDate,
+  timezone: "Africa/Windhoek",
+  details: {
+    customerType,
+    paymentMethod,
+    customerName,
+    dpTotal,
+    chargedTotal,
+    branchProfitTotal,
+    lines: saleLines.map((line) => ({
+      productId: line.productId,
+      productName: line.productName,
+      batchNo: line.batchNo,
+      quantity: line.quantity,
+      dpUnitPrice: line.dpUnitPrice,
+      dpTotal: line.dpTotal,
+      chargedUnitPrice: line.chargedUnitPrice,
+      chargedTotal: line.chargedTotal,
+      branchProfit: line.branchProfit,
+    })),
+  },
+});
+```
+
+Adapt the helper/table names to the existing project, but preserve these fields.
+
+---
+
+## SQL/Data Migration Guidance
+
+If using Postgres/Supabase, add missing columns if they do not exist:
+
+```sql
+alter table stock_movements
+  add column if not exists dp_unit_price numeric,
+  add column if not exists dp_value numeric,
+  add column if not exists charged_unit_price numeric,
+  add column if not exists charged_value numeric,
+  add column if not exists branch_profit_value numeric,
+  add column if not exists receipt_no text,
+  add column if not exists business_date date,
+  add column if not exists timezone text default 'Africa/Windhoek';
+
+alter table sales
+  add column if not exists dp_total numeric,
+  add column if not exists charged_total numeric,
+  add column if not exists branch_profit_total numeric,
+  add column if not exists business_date date,
+  add column if not exists timezone text default 'Africa/Windhoek';
+
+alter table sale_lines
+  add column if not exists dp_unit_price numeric,
+  add column if not exists dp_total numeric,
+  add column if not exists charged_unit_price numeric,
+  add column if not exists charged_total numeric,
+  add column if not exists branch_profit numeric;
+```
+
+Backfill blank sale movement `dp_value` from sale lines where possible:
+
+```sql
+update stock_movements sm
+set
+  dp_unit_price = coalesce(sm.dp_unit_price, sl.dp_unit_price),
+  dp_value = coalesce(sm.dp_value, sl.dp_total, sl.dp_unit_price * abs(sm.quantity)),
+  charged_unit_price = coalesce(sm.charged_unit_price, sl.charged_unit_price),
+  charged_value = coalesce(sm.charged_value, sl.charged_total),
+  branch_profit_value = coalesce(sm.branch_profit_value, sl.branch_profit),
+  receipt_no = coalesce(sm.receipt_no, s.receipt_no),
+  business_date = coalesce(sm.business_date, s.business_date, (sm.created_at at time zone 'Africa/Windhoek')::date),
+  timezone = coalesce(sm.timezone, 'Africa/Windhoek')
+from sales s
+join sale_lines sl on sl.sale_id = s.id
+where sm.reference = s.reference
+  and sm.product_id = sl.product_id
+  and sm.movement_type in ('non_member_sale', 'member_sale', 'prescription_dispense', 'campaign_sale')
+  and (sm.dp_value is null or sm.dp_value = 0);
+```
+
+If exact keys differ, match by `receipt_no`, `sale_id`, `reference`, `product_id`, `product_name`, and timestamp proximity.
+
+Backfill MIS audit logs for completed sales that are missing audit entries:
+
+```sql
+insert into audit_logs (
+  event_type,
+  branch,
+  reference,
+  receipt_no,
+  user_id,
+  username,
+  created_at,
+  business_date,
+  timezone,
+  details
+)
+select
+  'sale_created',
+  s.branch,
+  s.reference,
+  s.receipt_no,
+  s.staff_user_id,
+  s.staff_username,
+  s.created_at,
+  coalesce(s.business_date, (s.created_at at time zone 'Africa/Windhoek')::date),
+  'Africa/Windhoek',
+  jsonb_build_object(
+    'customerType', s.customer_type,
+    'paymentMethod', s.payment_method,
+    'customerName', s.customer_name,
+    'dpTotal', s.dp_total,
+    'chargedTotal', s.charged_total,
+    'branchProfitTotal', s.branch_profit_total,
+    'source', 'backfill_missing_sale_created_audit'
+  )
+from sales s
+where not exists (
+  select 1
+  from audit_logs a
+  where a.event_type = 'sale_created'
+    and (
+      a.reference = s.reference
+      or a.receipt_no = s.receipt_no
+    )
+);
+```
+
+---
+
+## Fix Stock Portal Queries
+
+Search for Stock Portal metrics named like:
+
+- `salesRevenue`
+- `branchRevenue`
+- `stockRevenue`
+- `movementValue`
+- `dpOut`
+- `DP VALUE`
+- `Branch Stock`
+- `Movement Ledger`
+
+For stock-linked sales reporting, replace charged/CP calculations with DP calculations:
+
+```ts
+// Wrong for stock DP reporting:
+sum += movement.charged_value ?? movement.customer_paid ?? movement.total;
+
+// Correct:
+sum += movement.dp_value ?? (movement.dp_unit_price * Math.abs(movement.quantity));
+```
+
+Keep charged values only where the UI clearly says `Customer charged revenue`, `CP receipts`, or `cash collected`.
+
+For the Branch Stock dashboard:
+
+```ts
+const salesUnits = saleMovements.reduce((sum, m) => sum + Math.abs(m.quantity), 0);
+const salesDpValue = saleMovements.reduce(
+  (sum, m) => sum + Number(m.dp_value ?? Number(m.dp_unit_price || 0) * Math.abs(Number(m.quantity || 0))),
+  0
+);
+```
+
+Label it as `DP SALES VALUE` or `SALES VALUE (DP)`.
+
+---
+
+## Fix Open Requests Count
+
+Find the logic behind `OPEN REQUESTS`.
+
+It must only count stock request records:
+
+```ts
+const OPEN_STOCK_REQUEST_STATUSES = new Set([
+  "pending",
+  "approved",
+  "in_transit",
+  "partially_received",
+]);
+
+const openRequests = stockRequests.filter((request) =>
+  request.branch === selectedBranch &&
+  OPEN_STOCK_REQUEST_STATUSES.has(String(request.status || "").toLowerCase())
+).length;
+```
+
+It must not count:
+
+- sale movements
+- reorder recommendations
+- low-stock alerts
+- stock movement ledger rows
+- branch inventory rows
+
+Add a regression test:
+
+```ts
+it("does not increment open stock requests when completing a walk-in sale", async () => {
+  const before = await getOpenStockRequestCount("Tsumeb");
+  await completeWalkInSale({
+    branch: "Tsumeb",
+    customerName: "TEST CUSTOMER",
+    productName: "D.I GROW (GREEN) (1 LITER)",
+    quantity: 1,
+    paymentMethod: "cash",
+  });
+  const after = await getOpenStockRequestCount("Tsumeb");
+  expect(after).toBe(before);
+});
+```
+
+---
+
+## Acceptance Tests
+
+After deploying the fix, run a new single-product test sale and verify:
+
+1. **Branch receipt**
+   - New receipt appears in Walk-in Sales.
+   - Customer paid value may show CP, e.g. `N$ 443`.
+
+2. **MIS**
+   - MIS Audit search for the sale date, branch, and `sale created` returns the sale.
+   - It includes receipt number, branch, user, DP total, charged total, and product lines.
+
+3. **Stock Movement Ledger**
+   - Sale movement exists.
+   - Quantity is `-1`.
+   - `DP VALUE` is populated, e.g. `N$ 341`.
+   - Reference/receipt links back to the sale.
+
+4. **Stock Portal**
+   - Branch Stock/Inventory sales value uses DP, not CP.
+   - For the one-item test, stock DP effect should be `N$ 341`, not `N$ 443`.
+
+5. **Finance and Director**
+   - DP totals remain consistent with Sales Review/Product Sales.
+   - If CP/customer revenue is shown, it is separately labeled.
+
+6. **Open Requests**
+   - Completing a sale does not change open stock request count.
+
+7. **Timezone**
+   - Branch receipt, MIS audit, Stock Movement, Finance, Director, and GM show the same Namibia-local business date.
+   - Date filters for `Africa/Windhoek` local date return the sale consistently.
+
+---
+
+## Specific Current Bug Evidence
+
+Use these as regression targets from the live test:
+
+- MIS Audit currently returned `0 records` for:
+  - Date: `2026-10-14`
+  - Branch: `Tsumeb`
+  - Event: `sale created`
+- Stock movement ledger showed the sale row:
+  - `14 Oct 2026, 10:20`
+  - `D.I GROW (GREEN) (1 LITER)`
+  - `Non-member Sale`
+  - `-1`
+  - reference `WALK-1791966024927-UDFO`
+  - but `DP VALUE` was blank/`—`
+- Stock Portal Branch Stock showed:
+  - Tsumeb closing stock `35`
+  - sales units `-1`
+  - revenue `N$ 443`
+  - It should use DP for stock-linked reporting: `N$ 341`.
+- Branch Stock Management `OPEN REQUESTS` rose from `2` to `3` around the sale test. Confirm and fix any sale path that touches stock requests.
+
