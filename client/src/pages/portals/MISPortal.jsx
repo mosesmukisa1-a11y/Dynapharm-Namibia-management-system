@@ -100,7 +100,7 @@ function AuditTab() {
     const headers = ['Date', 'Event Type', 'User', 'Details'];
     const rows = data.map(r => {
       const det = r.details;
-      const detStr = !det ? '' : typeof det === 'object' ? Object.entries(det).map(([k,v]) => `${k}:${v}`).join('; ') : String(det);
+      const detStr = !det ? '' : typeof det === 'object' ? JSON.stringify(det) : String(det);
       return [
         formatDateTime(r.createdAt || r.created_at),
         r.eventType || r.action || '',
@@ -169,7 +169,7 @@ function AuditTab() {
               { header: 'Details', render: r => {
                 const d = r.details;
                 if (!d) return '-';
-                if (typeof d === 'object') return Object.entries(d).map(([k, v]) => `${k}: ${v}`).join(' | ') || '-';
+                if (typeof d === 'object') return <pre style={{whiteSpace:'pre-wrap',maxWidth:650,fontSize:12}}>{JSON.stringify(d,null,2)}</pre>;
                 return String(d);
               }},
             ]}

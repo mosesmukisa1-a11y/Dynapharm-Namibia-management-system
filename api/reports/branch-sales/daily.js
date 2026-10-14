@@ -1,3 +1,4 @@
+import { businessDay } from '../../services/businessDates.js';
 import { applyAuthCors } from '../../_lib/auth.js';
 import { getMany, getOne } from '../../db.js';
 
@@ -10,7 +11,7 @@ export default async function handler(req, res) {
   try {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const branchId = url.searchParams.get('branch_id') || '';
-    const date = url.searchParams.get('date') || new Date().toISOString().slice(0, 10);
+    const date = url.searchParams.get('date') || businessDay();
 
     const conds = [`service_date = $1`];
     const params = [date];
@@ -23,7 +24,8 @@ export default async function handler(req, res) {
       ? branchId.toLowerCase().replace(/ /g, '_')
       : null;
 
-    const movConds = [`DATE(created_at) = $1`];
+    const movConds = [`created_at >= ($1::date::timestamp AT TIME ZONE 'Africa/Windhoek')`,
+      `created_at < (($1::date+1)::timestamp AT TIME ZONE 'Africa/Windhoek')`];
     const movParams = [date];
     if (normBranchId) {
       movConds.push(`LOWER(REPLACE(branch_id, ' ', '_')) = $${movParams.length + 1}`);
@@ -85,7 +87,8 @@ export default async function handler(req, res) {
       // POS walk-in sales from branch_walkin_sales (case-insensitive branch_id match)
       getMany(
         `SELECT * FROM branch_walkin_sales
-         WHERE sale_date::date = $1${normBranchId ? ' AND LOWER(REPLACE(branch_id, \' \', \'_\')) = $2' : ''}
+         WHERE sale_date >= ($1::date::timestamp AT TIME ZONE 'Africa/Windhoek')
+           AND sale_date < (($1::date+1)::timestamp AT TIME ZONE 'Africa/Windhoek')${normBranchId ? ' AND LOWER(REPLACE(branch_id, \' \', \'_\')) = $2' : ''}
            AND (status IS NULL OR status NOT IN ('cancelled','voided'))
          ORDER BY created_at ASC`,
         normBranchId ? [date, normBranchId] : [date]
@@ -95,7 +98,7 @@ export default async function handler(req, res) {
       getMany(`
         SELECT
           r.id                                                                    AS report_id,
-          COALESCE(NULLIF(LEFT(TRIM(r.data->>'date'),10),''), DATE(r.created_at)::text)
+          COALESCE(NULLIF(LEFT(TRIM(r.data->>'date'),10),''), (r.created_at AT TIME ZONE 'Africa/Windhoek')::date::text)
                                                                                  AS service_date,
           COALESCE(NULLIF(TRIM(r.branch),''), 'townshop')                        AS branch_id,
           COALESCE((r.data->>'consultation_fee')::numeric, 0)                    AS consultation_fee,
@@ -130,7 +133,7 @@ export default async function handler(req, res) {
               AND bat.workflow_source != 'dispense_draft'
           )                                                                       AS consult_in_bat
         FROM reports r
-        WHERE COALESCE(NULLIF(LEFT(TRIM(r.data->>'date'),10),''), DATE(r.created_at)::text)::date = $1::date
+        WHERE COALESCE(NULLIF(LEFT(TRIM(r.data->>'date'),10),''), (r.created_at AT TIME ZONE 'Africa/Windhoek')::date::text)::date = $1::date
           ${rpBranchClause}
           AND (
             (r.data ? 'medicines' AND jsonb_array_length(COALESCE(r.data->'medicines','[]'::jsonb)) > 0)
@@ -177,7 +180,8 @@ export default async function handler(req, res) {
                type = 'walk_in_non_member_sale'
                AND reference IN (
                  SELECT id FROM branch_walkin_sales
-                 WHERE DATE(sale_date) = $1::date
+                 WHERE sale_date >= ($1::date::timestamp AT TIME ZONE 'Africa/Windhoek')
+                   AND sale_date < (($1::date+1)::timestamp AT TIME ZONE 'Africa/Windhoek')
                    ${normBranchId ? `AND LOWER(REPLACE(branch_id, ' ', '_')) = $2` : ''}
                    AND data->>'sale_type' = 'campaign_sale'
                )
@@ -232,19 +236,20 @@ export default async function handler(req, res) {
         const isNonMember = ct.includes('non') || (!ct.includes('member') && ct !== 'online');
         const dpTotal = items.reduce((acc, i) => {
           const nm = (i.product_name || i.name || i.description || '').trim();
-          const dp = lookupDp(nm) || Number(i.dpPrice || i.dp || (isNonMember ? 0 : i.unit_price) || 0);
+          const dp = i.dpPrice ?? i.dp;
+          if(dp==null)return NaN;
           return acc + dp * Number(i.quantity || i.qty || 1);
         }, 0);
-        const saleDateStr = s.sale_date instanceof Date
-          ? s.sale_date.toISOString().slice(0, 10)
-          : String(s.sale_date || '').slice(0, 10);
+        const capturedDP=s.metadata?.sale_evidence?.dpTotal;
+        const savedDP=capturedDP ?? dpTotal;
+        const saleDateStr = businessDay(new Date(s.sale_date));
         return {
           id: s.id,
           branch_id: s.branch_id,
           activity_type: actType,
           service_date: saleDateStr,
           grand_total: Number(s.total || 0),
-          product_total_dp: parseFloat(dpTotal.toFixed(2)),
+          product_total_dp: Number.isFinite(savedDP) ? savedDP : null,
           payment_method: s.payment_method || 'cash',
           payment_status: 'paid',
           total_qty: totalQty,

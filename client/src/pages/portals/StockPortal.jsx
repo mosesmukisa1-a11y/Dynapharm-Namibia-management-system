@@ -1,3 +1,4 @@
+import { movementDPValue, movementDPUnit, namibiaDay } from '../../lib/saleEvidence.js';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { disposalFeedback, expiryReasonConflict, stockView } from '../../lib/stockAuditPresentation';
@@ -6586,9 +6587,9 @@ function InventoryTab({ branch }) {
   // ── date-range helpers ───────────────────────────────────────
   const inPeriod = (dateStr) => {
     if (!dateStr) return true;
-    const d = new Date(dateStr);
-    if (dateFrom && d < new Date(dateFrom)) return false;
-    if (dateTo   && d > new Date(dateTo + 'T23:59:59')) return false;
+    const d = namibiaDay(dateStr);
+    if (dateFrom && d < dateFrom) return false;
+    if (dateTo && d > dateTo) return false;
     return true;
   };
   const quickRange = (days) => {
@@ -7011,6 +7012,7 @@ function InventoryTab({ branch }) {
         const normBranchMvs = periodBranchMvs.map(m => ({
           id: m.id,
           _source: 'branch',
+          ...m,
           product_name: m.product_name,
           batch_no: m.batch_no,
           movement_type: m.type,
@@ -7023,7 +7025,9 @@ function InventoryTab({ branch }) {
         }));
 
         // Combined and sorted log (warehouse + branch movements)
-        const allMvs = [...filteredMvs.map(m => ({ ...m, _source: 'warehouse' })), ...normBranchMvs]
+        const centralIds=new Set(filteredMvs.map(m=>m.id));
+        const uniqueBranchMvs=normBranchMvs.filter(m=>!centralIds.has(m.metadata?.sale_evidence?.movement_id));
+        const allMvs = [...filteredMvs.map(m => ({ ...m, _source: 'warehouse' })), ...uniqueBranchMvs]
           .filter(m => {
             if (mvSearch && !(m.product_name||'').toLowerCase().includes(mvSearch.toLowerCase()) && !(m.batch_no||'').toLowerCase().includes(mvSearch.toLowerCase())) return false;
             if (mvTypeFilter && m.movement_type !== mvTypeFilter) return false;
@@ -7076,15 +7080,15 @@ function InventoryTab({ branch }) {
                   {allMvs.map((m, idx) => {
                     const mt = (m.movement_type||'').toLowerCase();
                     const isIn  = ['in','received','import_received','transfer_in','warehouse_receipt','receipt','receive','stock_receipt'].some(k => mt.includes(k));
-                    const isOut = ['out','dispatched','transfer_out','dispatch','write_off','released','sale','sold','dispense','field_use'].some(k => mt.includes(k));
+                    const isOut = ['out','dispatched','transfer_out','dispatch','write_off','released','sale','sold','dispense','campaign_free_item','field_use'].some(k => mt.includes(k));
                     const typeColor = isIn ? { bg: '#f0fdf4', color: '#166534', border: '#86efac' } : isOut ? { bg: '#fef2f2', color: '#991b1b', border: '#fca5a5' } : { bg: '#fffbeb', color: '#92400e', border: '#fcd34d' };
                     const isBranch = m._source === 'branch';
-                    const dpcVal = Number(m.quantity||0) * (Number(m.dpc_unit_value||0) || getDPCPrice(m.product_name||''));
+                    const dpcVal = movementDPValue(m);
                     return (
                       <tr key={`${m._source}-${m.id||idx}`} style={{ borderBottom: '1px solid #f1f5f9', background: isBranch ? (idx % 2 === 0 ? '#fafff7' : '#f0fdf4') : (idx % 2 === 0 ? '#fff' : '#fafafa') }}>
                         <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
                           <div style={{ fontWeight: 600, fontSize: '0.78rem', color: '#374151' }}>{formatDate(m.created_at)}</div>
-                          <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{m.created_at ? new Date(m.created_at).toLocaleTimeString('en-ZA',{hour:'2-digit',minute:'2-digit'}) : ''}</div>
+                          <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{m.created_at ? new Date(m.created_at).toLocaleTimeString('en-ZA',{timeZone:'Africa/Windhoek',hour:'2-digit',minute:'2-digit'}) : ''}</div>
                         </td>
                         <td style={{ padding: '8px 8px' }}>
                           <span style={{ background: isBranch ? '#dcfce7' : '#eff6ff', color: isBranch ? '#166534' : '#1d4ed8', padding: '1px 6px', borderRadius: 4, fontSize: '0.65rem', fontWeight: 800 }}>
@@ -7104,7 +7108,7 @@ function InventoryTab({ branch }) {
                           {isIn ? '+' : isOut ? '-' : '±'}{Number(m.quantity||0).toLocaleString()}
                         </td>
                         <td style={{ padding: '8px 12px', textAlign: 'center', fontSize: '0.78rem', color: '#475569', fontWeight: 600 }}>
-                          {dpcVal > 0 ? formatCurrency(dpcVal) : <span style={{ color: '#cbd5e1' }}>—</span>}
+                          {dpcVal != null ? `N$ ${dpcVal.toFixed(2)}` : <span>Incomplete</span>}
                         </td>
                         <td style={{ padding: '8px 12px', fontSize: '0.78rem', color: '#475569' }}>{fmtLocation(m.source_location||m.location||'')}</td>
                         <td style={{ padding: '8px 12px', fontSize: '0.78rem', color: '#475569' }}>{fmtLocation(m.destination_location||'')}</td>
@@ -10652,26 +10656,23 @@ function BranchStockTab({ branch }) {
   const thirtyFwd = new Date(Date.now() + expiryWarningDays * 24 * 60 * 60 * 1000);
   const periodLabel = fmtPeriodLabel(period.from, period.to);
 
-  const EMPTY_BRANCH = (b) => ({ name: b.name, key: b.id, noData: true, closingQty: 0, closingDPC: 0, closingValue: 0, products: [], movements: [], salesQty: 0, salesRevenue: 0, salesCount: 0, issued: 0, dispensedQty: 0, transferredOut: 0, transferredIn: 0, returns: 0, writeoffs: 0, expiryQty: 0, expiredQty: 0, expiringQty: 0, opening: 0, batchCount: 0, lowStockCount: 0, lastMovement: null, sourceWarehouse: null });
+  const EMPTY_BRANCH = (b) => ({ name: b.name, key: b.id, noData: true, closingQty: 0, closingDPC: 0, closingValue: 0, products: [], movements: [], salesQty: 0, salesRevenue: 0,customerReceipts:0,missingSalesDP:0, salesCount: 0, issued: 0, dispensedQty: 0, transferredOut: 0, transferredIn: 0, returns: 0, writeoffs: 0, expiryQty: 0, expiredQty: 0, expiringQty: 0, opening: 0, batchCount: 0, lowStockCount: 0, lastMovement: null, sourceWarehouse: null });
 
   const allBranchSummaries = BRANCH_DETAILS.map(b => {
     const key = b.id;
     const data = branchData.find(d => d.branch_id === key);
     if (!data) return EMPTY_BRANCH(b);
     const closingQty = data.closing_qty || 0;
-    const closingDPC = (data.inventory || []).reduce((s, inv) => {
-      const qty = Number(inv.quantity || 0);
-      return s + qty * (getDPCPrice(inv.product_name || inv.description || '') || Number(inv.unit_price || 0));
-    }, 0);
+    const closingDPC = Number(data.dp_value || 0);
     const products = [];
     const productMap = {};
-    (data.inventory || []).forEach(inv => {
+    (data.physical_inventory || []).forEach(inv => {
       const name = inv.product_name || inv.description || 'Unknown';
       const mapKey = `${name}||${inv.batch_no || ''}`;
       if (!productMap[mapKey]) productMap[mapKey] = { product_name: name, qty: 0, dpcValue: 0, batchNo: inv.batch_no || null, expiryDate: inv.expiry_date || null, expiring: false, expired: false, source_warehouse: inv.source_warehouse || null };
       const qty = Number(inv.quantity || 0);
       productMap[mapKey].qty += qty;
-      productMap[mapKey].dpcValue += qty * (getDPCPrice(name) || Number(inv.unit_price || 0));
+      productMap[mapKey].dpcValue += qty * Number(inv.unit_dp ?? 0);
       if (inv.expiry_date) {
         const exp = new Date(inv.expiry_date);
         if (exp < now && qty > 0) productMap[mapKey].expired = true;
@@ -10694,7 +10695,9 @@ function BranchStockTab({ branch }) {
       dispensedQty: data.qty_dispensed || 0,
       transferredOut: data.qty_transferred_out || 0,
       transferredIn: data.qty_transferred_in || 0,
-      salesRevenue: data.sales_revenue || 0,
+      salesRevenue: data.sales_dp_value || 0,
+      customerReceipts:data.customer_charged_revenue || 0,
+      missingSalesDP:data.missing_sales_dp_qty || 0,
       salesCount: data.sales_count || 0,
       opening: data.opening_qty || 0,
       products,
@@ -10738,7 +10741,7 @@ function BranchStockTab({ branch }) {
       <div class="formula-row"><span class="formula-label">- Write-offs</span><span class="formula-val" style="color:#c41e3a">-${br.writeoffs.toLocaleString()}</span></div>
       <div class="formula-row"><span class="formula-label">+ Returns</span><span class="formula-val" style="color:#166534">+${br.returns.toLocaleString()}</span></div>
       <div class="closing-row"><span class="closing-label">= Closing Stock</span><span class="closing-val">${br.closingQty.toLocaleString()}</span></div>
-      <div style="padding:8px 12px;background:#fafafa;font-size:10px;color:#64748b;display:flex;justify-content:space-between"><span>DP Value: <strong style="color:#c41e3a">N$ ${br.closingDPC.toFixed(2)}</strong></span><span>Sales Revenue: <strong style="color:#1e3a5f">N$ ${br.salesRevenue.toFixed(2)}</strong></span></div>
+      <div style="padding:8px 12px;background:#fafafa;font-size:10px;color:#64748b">Received-cost DPC stock value: N$ ${br.closingDPC.toFixed(2)} · DP sales value: N$ ${br.salesRevenue.toFixed(2)} ${br.missingSalesDP?'(incomplete original DP evidence)':''} · Customer charged receipts: N$ ${br.customerReceipts.toFixed(2)}</div>
     </div>
     <div style="font-size:9px;font-weight:800;color:#c41e3a;text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;border-bottom:1px solid #fecaca;padding-bottom:4px">Current Product Inventory</div>
     <table><thead><tr><th>Product</th><th>Batch</th><th>Expiry</th><th>Qty</th><th>Status</th><th>DP Value</th></tr></thead><tbody>${pRows||'<tr><td colspan="6" style="text-align:center;color:#94a3b8">No inventory on file</td></tr>'}</tbody></table>
@@ -10759,6 +10762,10 @@ function BranchStockTab({ branch }) {
     <tbody>${brRows}
     <tr class="total-row"><td><strong>COMPANY TOTAL</strong></td><td>-</td><td><strong style="color:#166534">${companySummary.issued.toLocaleString()}</strong></td><td><strong style="color:#c41e3a">${companySummary.salesQty.toLocaleString()}</strong></td><td><strong style="color:#c41e3a">${companySummary.dispensed.toLocaleString()}</strong></td><td><strong style="color:#c41e3a">${companySummary.writeoffs.toLocaleString()}</strong></td><td><strong style="color:#166534">${companySummary.returns.toLocaleString()}</strong></td><td><strong style="color:#15803d">${companySummary.closing.toLocaleString()}</strong></td><td><strong>N$ ${companySummary.closingValue.toFixed(2)}</strong></td></tr>
     </tbody></table></body></html>`);
+    for(const label of win.document.querySelectorAll('.kpi-label')){
+      if(label.textContent==='Total Sales Revenue')label.textContent='DP sales value (known)';
+      if(label.textContent==='DP Stock Value')label.textContent='Original received DPC stock value';
+    }
     win.document.close();
   };
 
@@ -10783,9 +10790,9 @@ function BranchStockTab({ branch }) {
 
   // ── Sales Summary PDF (correct source: branch_inventory_movements via product-range API) ──
   const printSalesSummaryReport = (products, branchLabel, dateFrom, dateTo) => {
-    const fmtD = d => d ? new Date(d).toLocaleDateString('en-NA', { day:'2-digit', month:'long', year:'numeric' }) : '-';
+    const fmtD = d => d ? formatDate(d) : '-';
     const fmtN = n => n > 0 ? Number(n).toLocaleString() : '';
-    const fmtV = v => v > 0 ? `N$ ${Number(v).toLocaleString('en-NA', { minimumFractionDigits:2, maximumFractionDigits:2 })}` : '-';
+    const fmtV = v => v != null ? `N$ ${Number(v).toLocaleString('en-NA', { minimumFractionDigits:2, maximumFractionDigits:2 })}` : 'Incomplete';
 
     const grandWalkin   = products.reduce((s, p) => s + (p.walkin       || 0), 0);
     const grandRx       = products.reduce((s, p) => s + (p.prescription || 0), 0);
@@ -10805,7 +10812,7 @@ function BranchStockTab({ branch }) {
       <td style="text-align:center">${fmtN(p.campaigns)}</td>
       <td style="text-align:center;font-weight:800">${Number(p.total || 0).toLocaleString()}</td>
       ${hasRefunds ? `<td style="text-align:center;color:#c41e3a;font-weight:700">${(p.refunded||0)>0?'−'+Number(p.refunded).toLocaleString():''}</td><td style="text-align:center;font-weight:900;color:#166534">${Number(p.net??(p.total||0)).toLocaleString()}</td>` : ''}
-      <td style="text-align:right;font-weight:600">${fmtV(p.dp_value)}</td>
+      <td style="text-align:right;font-weight:600">${fmtV(p.dp_value)}${p.missing_dp_qty>0?' (incomplete)':''}</td>
     </tr>`).join('');
 
     const refundedCols = hasRefunds
@@ -10857,7 +10864,8 @@ function BranchStockTab({ branch }) {
         </tfoot>
       </table>`;
 
-    printDocument(`Branch Sales Report — ${branchLabel} — ${fmtD(dateFrom)} to ${fmtD(dateTo)}`, bodyHtml);
+    printDocument(`Branch Sales Report — ${branchLabel} — ${fmtD(dateFrom)} to ${fmtD(dateTo)}`, bodyHtml +
+      (products.some(p=>p.missing_dp_qty>0)?'<p>INCOMPLETE original DP evidence: totals include only known saved values.</p>':''));
   };
 
   const printMovementsReport = (movs, titleSuffix, branchLabel) => {
@@ -10872,7 +10880,10 @@ function BranchStockTab({ branch }) {
     for (const m of movs) {
       const displayName = (m.product_name || 'Unknown').trim();
       const key = displayName.toUpperCase();
-      if (!prodMap[key]) prodMap[key] = { displayName, walkin: 0, pkg: 0, rx: 0, camp: 0, dpUnit: getDPCPrice(displayName) };
+      if (!prodMap[key]) prodMap[key] = { displayName, walkin: 0, pkg: 0, rx: 0, camp: 0, dpValue:0,missingDP:false };
+      const value=movementDPValue(m);
+      prodMap[key].dpValue+=value ?? 0;
+      if(value==null)prodMap[key].missingDP=true;
       const qty = Math.abs(Number(m.quantity || 0));
       const t   = m.movement_type || '';
       if      (WALKIN_TYPES.includes(t))       prodMap[key].walkin += qty;
@@ -10882,10 +10893,10 @@ function BranchStockTab({ branch }) {
       else                                      prodMap[key].walkin += qty;
     }
     const sorted = Object.entries(prodMap)
-      .map(([, { displayName, walkin, pkg, rx, camp, dpUnit }]) => ({
+      .map(([, { displayName, walkin, pkg, rx, camp, dpValue,missingDP }]) => ({
         name: displayName, walkin, pkg, rx, camp,
         total: walkin + pkg + rx + camp,
-        dpUnit
+        dpValue,missingDP
       }))
       .sort((a, b) => b.total - a.total);
 
@@ -10894,7 +10905,7 @@ function BranchStockTab({ branch }) {
     const grandRx     = sorted.reduce((s, r) => s + r.rx,     0);
     const grandCamp   = sorted.reduce((s, r) => s + r.camp,   0);
     const grandTotal  = sorted.reduce((s, r) => s + r.total,  0);
-    const grandVal    = sorted.reduce((s, r) => s + (r.dpUnit > 0 ? r.total * r.dpUnit : 0), 0);
+    const grandVal    = sorted.reduce((s, r) => s + r.dpValue, 0);
 
     // ── Date range from data ───────────────────────────────────────────────
     const dates   = movs.map(m => m.created_at).filter(Boolean).map(d => new Date(d));
@@ -10905,9 +10916,7 @@ function BranchStockTab({ branch }) {
     // ── Rows ───────────────────────────────────────────────────────────────
     const fmtN = n => n > 0 ? n.toLocaleString() : '';
     const rows = sorted.map((r, i) => {
-      const val = r.dpUnit > 0
-        ? `N$ ${(r.total * r.dpUnit).toLocaleString('en-NA', { minimumFractionDigits:2, maximumFractionDigits:2 })}`
-        : '-';
+      const val = `N$ ${r.dpValue.toFixed(2)}${r.missingDP?' (incomplete)':''}`;
       return `<tr>
         <td style="color:#777;font-size:10px">${String(i+1).padStart(2,'0')}</td>
         <td>${r.name}</td>
@@ -10994,7 +11003,7 @@ function BranchStockTab({ branch }) {
           {[
             ['Opening', br.opening, '#1e3a5f'], ['+ Received', br.issued, '#166534'], ['- Sales', br.salesQty, '#c41e3a'],
             ['- Dispensed', br.dispensedQty, '#6d28d9'], ['- Trf Out', br.transferredOut, '#92400e'], ['- Write-offs', br.writeoffs, '#c41e3a'],
-            ['+ Returns', br.returns, '#166534'], ['= Closing', br.closingQty, '#15803d'], ['DP Value', `N$${Math.round(br.closingDPC).toLocaleString()}`, '#c41e3a'],
+            ['+ Returns', br.returns, '#166534'], ['= Closing', br.closingQty, '#15803d'], ['Original received DPC', `N$${Math.round(br.closingDPC).toLocaleString()}`, '#c41e3a'],
             ['Low Stock', br.lowStockCount, br.lowStockCount > 0 ? '#d97706' : '#166534'], ['Expiring', br.expiringQty || 0, br.expiringQty > 0 ? '#d97706' : '#166534'], ['Expired', br.expiredQty || 0, br.expiredQty > 0 ? '#c41e3a' : '#166534'],
           ].map(([l, v, c]) => (
             <div key={l} style={{ background: '#fff', border: '1.5px solid #f0e8ea', borderRadius: 10, padding: '10px 12px', textAlign: 'center' }}>
@@ -11021,7 +11030,7 @@ function BranchStockTab({ branch }) {
               <tbody>
                 {filteredProducts.length === 0 && <tr><td colSpan={8} style={{ padding: 24, textAlign: 'center', color: '#94a3b8' }}>No products found</td></tr>}
                 {filteredProducts.map((p, i) => {
-                  const dpUnit = getDPCPrice(p.product_name);
+                  const dpUnit = p.qty>0 ? p.dpcValue/p.qty : 0;
                   return (
                     <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#fdf8f8', borderBottom: '1px solid #f5f0f0' }}>
                       <td style={{ padding: '7px 10px', fontWeight: 600, color: '#1e293b', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.product_name}>{p.product_name}</td>
@@ -11066,8 +11075,8 @@ function BranchStockTab({ branch }) {
               <tbody>
                 {filteredMovements.length === 0 && <tr><td colSpan={12} style={{ padding: 24, textAlign: 'center', color: '#94a3b8' }}>No movements recorded</td></tr>}
                 {filteredMovements.map((m, i) => {
-                  const isOut = ['sale', 'transfer_out', 'write_off', 'dispense', 'prescription_dispense', 'field_use'].some(t => (m.movement_type || '').toLowerCase().includes(t));
-                  const dpUnit = getDPCPrice(m.product_name || '');
+                  const isOut = ['sale', 'campaign_free_item', 'transfer_out', 'write_off', 'dispense', 'prescription_dispense', 'field_use'].some(t => (m.movement_type || '').toLowerCase().includes(t));
+                  const dpUnit = movementDPUnit(m);
                   const qty = Math.abs(Number(m.quantity || 0));
                   return (
                     <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#fdf8f8', borderBottom: '1px solid #f5f0f0' }}>
@@ -11077,7 +11086,7 @@ function BranchStockTab({ branch }) {
                       <td style={{ padding: '6px 8px', color: '#6b7280', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{m.expiry_date ? formatDate(m.expiry_date) : '-'}</td>
                       <td style={{ padding: '6px 8px' }}>{movTypeBadge(m.movement_type)}</td>
                       <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: isOut ? '#c41e3a' : '#166534' }}>{isOut ? '-' : '+'}{qty}</td>
-                      <td style={{ padding: '6px 8px', textAlign: 'right', color: dpUnit > 0 ? '#1e293b' : '#94a3b8', fontWeight: 600 }}>{dpUnit > 0 ? `N$ ${(qty * dpUnit).toFixed(2)}` : '-'}</td>
+                      <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600 }}>{dpUnit != null ? `N$ ${(qty * dpUnit).toFixed(2)}` : 'Incomplete'}</td>
                       <td style={{ padding: '6px 8px', color: '#6b7280', fontSize: '0.72rem' }}>{m.source_location ? fmtBranch(m.source_location) : '-'}</td>
                       <td style={{ padding: '6px 8px', color: '#6b7280', fontSize: '0.72rem' }}>{m.destination_location ? fmtBranch(m.destination_location) : '-'}</td>
                       <td style={{ padding: '6px 8px', fontFamily: 'monospace', color: '#6b7280', fontSize: '0.7rem' }}>{m.reference_id || '-'}</td>
@@ -11125,8 +11134,8 @@ function BranchStockTab({ branch }) {
         {[
           { label: 'Total Branches', value: allBranchSummaries.length, accent: '#1e3a5f', bg: '#f4f7fb', icon: '🏪' },
           { label: 'Closing Stock', value: companySummary.closing.toLocaleString(), accent: '#15803d', bg: '#f0fdf4', icon: '📦' },
-          { label: 'DP Stock Value', value: `N$ ${Math.round(companySummary.closingValue).toLocaleString()}`, accent: '#c41e3a', bg: '#fff5f5', icon: '💰' },
-          { label: 'Sales Revenue', value: `N$ ${Math.round(companySummary.salesRevenue).toLocaleString()}`, accent: '#166534', bg: '#f0fdf4', icon: '📈' },
+          { label: 'Original received DPC', value: `N$ ${Math.round(companySummary.closingValue).toLocaleString()}`, accent: '#c41e3a', bg: '#fff5f5', icon: '💰' },
+          { label: 'DP sales value (known)', value: `N$ ${companySummary.salesRevenue.toFixed(2)}`, accent: '#166534', bg: '#f0fdf4', icon: '📈' },
         ].map(({ label, value, accent, bg, icon }) => (
           <div key={label} style={{ background: bg, border: `2px solid ${accent}22`, borderRadius: 12, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ fontSize: '1.5rem', lineHeight: 1 }}>{icon}</div>
@@ -11211,7 +11220,7 @@ function BranchStockTab({ branch }) {
                       <div style={{ textAlign: 'right' }}>
                         <div style={{ fontSize: '0.62rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.07em' }}>DP Value</div>
                         <div style={{ fontSize: '1rem', fontWeight: 800, color: '#c41e3a', marginTop: 2 }}>N$ {Math.round(br.closingDPC).toLocaleString()}</div>
-                        <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: 2 }}>N$ {Math.round(br.salesRevenue).toLocaleString()} revenue</div>
+                        <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: 2 }}>DP sales: N$ {br.salesRevenue.toFixed(2)}{br.missingSalesDP>0?' (incomplete)':''}<br/>Customer charged receipts: N$ {br.customerReceipts.toFixed(2)}<br/>Commercial margin (charged − DP): {br.missingSalesDP>0?'Incomplete':`N$ ${(br.customerReceipts-br.salesRevenue).toFixed(2)}`}</div>
                       </div>
                     </div>
 
@@ -11336,9 +11345,10 @@ function BranchStockTab({ branch }) {
               const prodMap = {};
               for (const m of finalMovs) {
                 const key = (m.product_name || 'Unknown').trim();
-                if (!prodMap[key]) prodMap[key] = { qty: 0, dpVal: 0 };
+                if (!prodMap[key]) prodMap[key] = { qty: 0, dpVal: 0, missing:0 };
                 const qty = Math.abs(Number(m.quantity || 0));
-                const dpUnit = getDPCPrice(m.product_name || '');
+                const dpUnit = movementDPUnit(m);
+                if(dpUnit==null)prodMap[key].missing+=qty;
                 prodMap[key].qty  += qty;
                 prodMap[key].dpVal += dpUnit > 0 ? qty * dpUnit : 0;
               }
@@ -11354,7 +11364,8 @@ function BranchStockTab({ branch }) {
                     </span>
                     <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
                       Total units: <strong style={{ color: '#1e293b' }}>{grandQty}</strong>
-                      {grandDp > 0 && <> &nbsp;·&nbsp; DP Value: <strong style={{ color: '#c41e3a' }}>N$ {grandDp.toFixed(2)}</strong></>}
+                      <> &nbsp;·&nbsp; DP value (known): <strong style={{ color: '#c41e3a' }}>N$ {grandDp.toFixed(2)}</strong>
+                        {sorted.some(([,v])=>v.missing>0)?' · INCOMPLETE original DP evidence':''}</>
                     </span>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 6 }}>
@@ -11390,7 +11401,7 @@ function BranchStockTab({ branch }) {
                   )}
                   {finalMovs.slice(0, 500).map((m, i) => {
                     const isOut = CATEGORY_MAP.sold.includes(m.movement_type) || CATEGORY_MAP.written_off.includes(m.movement_type) || CATEGORY_MAP.transferred_out.includes(m.movement_type) || CATEGORY_MAP.dispensed.includes(m.movement_type);
-                    const dpUnit = getDPCPrice(m.product_name || '');
+                    const dpUnit = movementDPUnit(m);
                     const qty = Math.abs(Number(m.quantity || 0));
                     const typeLabel = TYPE_LABEL_MAP[m.movement_type] || (m.movement_type || '-').replace(/_/g, ' ');
                     return (
@@ -11404,7 +11415,7 @@ function BranchStockTab({ branch }) {
                           <span style={{ display: 'inline-block', padding: '2px 7px', borderRadius: 10, fontSize: '0.68rem', fontWeight: 700, background: isOut ? '#fef2f2' : '#dcfce7', color: isOut ? '#c41e3a' : '#166534' }}>{typeLabel}</span>
                         </td>
                         <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: isOut ? '#c41e3a' : '#166534' }}>{isOut ? '-' : '+'}{qty}</td>
-                        <td style={{ padding: '6px 8px', textAlign: 'right', color: '#374151', fontWeight: 600 }}>{dpUnit > 0 ? `N$ ${(qty * dpUnit).toFixed(2)}` : '-'}</td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right', color: '#374151', fontWeight: 600 }}>{dpUnit != null ? `N$ ${(qty * dpUnit).toFixed(2)}` : 'Incomplete'}</td>
                         <td style={{ padding: '6px 8px', color: '#6b7280', fontSize: '0.72rem' }}>{m.source_location ? fmtBranch(m.source_location) : '-'}</td>
                         <td style={{ padding: '6px 8px', color: '#6b7280', fontSize: '0.72rem' }}>{m.destination_location ? fmtBranch(m.destination_location) : '-'}</td>
                         <td style={{ padding: '6px 8px', fontFamily: 'monospace', color: '#6b7280', fontSize: '0.68rem' }}>{m.reference_id || '-'}</td>
@@ -11431,7 +11442,7 @@ function BranchStockTab({ branch }) {
               <h3 className="font-bold text-gray-800">Product Stock by Branch</h3>
               <Button size="sm" variant="secondary" onClick={() => {
                 const allProds = displayBranches.flatMap(br => br.products.map(p => ({ ...p, branch: br.name })));
-                const rows = allProds.map(p => { const dpU = getDPCPrice(p.product_name); return `<tr><td>${p.product_name}</td><td>${p.branch}</td><td>${p.batchNo||'-'}</td><td>${p.expiryDate?formatDate(p.expiryDate):'-'}</td><td style="font-weight:800;color:${p.qty===0?'#c41e3a':p.qty<lowStockThreshold?'#d97706':'#166534'}">${p.qty}</td><td>${p.expiring?'<span style="color:#c41e3a">Expiring</span>':'-'}</td><td>N$ ${dpU.toFixed(2)}</td><td>N$ ${(p.qty*dpU).toFixed(2)}</td></tr>`; }).join('');
+                const rows = allProds.map(p => { const dpU = p.qty>0 ? p.dpcValue/p.qty : 0; return `<tr><td>${p.product_name}</td><td>${p.branch}</td><td>${p.batchNo||'-'}</td><td>${p.expiryDate?formatDate(p.expiryDate):'-'}</td><td style="font-weight:800;color:${p.qty===0?'#c41e3a':p.qty<lowStockThreshold?'#d97706':'#166534'}">${p.qty}</td><td>${p.expiring?'<span style="color:#c41e3a">Expiring</span>':'-'}</td><td>N$ ${dpU.toFixed(2)}</td><td>N$ ${(p.qty*dpU).toFixed(2)}</td></tr>`; }).join('');
                 printDocument('Per-Branch Product Stock', `<table><thead><tr><th>Product</th><th>Branch</th><th>Batch</th><th>Expiry</th><th>Qty</th><th>Status</th><th>DP Unit</th><th>DP Value</th></tr></thead><tbody>${rows}</tbody></table>`, true);
               }}><Printer size={14} /> Print</Button>
             </div>
@@ -11506,8 +11517,10 @@ function StockReportsTab({ branch }) {
 
   const now = new Date();
   const periodLabel = fmtPeriodLabel(period.from, period.to);
-  const periodStart = period.from ? new Date(period.from) : new Date(0);
-  const periodEnd = period.to ? new Date(period.to + 'T23:59:59') : new Date('2099-12-31');
+  const inMovementPeriod=value=>{
+    const day=namibiaDay(value);
+    return (!period.from || day>=period.from) && (!period.to || day<=period.to);
+  };
 
   const branchReports = BRANCH_DETAILS.map(br => {
     const key = br.id;
@@ -11527,7 +11540,7 @@ function StockReportsTab({ branch }) {
         returns:       data.qty_returned      || 0,
         closing:       data.closing_qty       || 0,
         closingValue:  closingDPC,
-        salesRevenue:  data.sales_revenue     || 0,
+        salesRevenue:  data.sales_dp_value     || 0,
         expiringQty:   data.expiring_qty      || 0,
         expiredQty:    data.expired_qty       || 0,
       }
@@ -11664,7 +11677,7 @@ function StockReportsTab({ branch }) {
         </div>
         <div style={{ marginTop: 10, display: 'flex', gap: 16, fontSize: '0.78rem', color: '#64748b', paddingTop: 10, borderTop: '1px solid #f1f5f9', flexWrap: 'wrap' }}>
           <span>Closing Stock Value (DP): <strong style={{ color: '#c41e3a' }}>N$ {companySummary.closingValue.toFixed(2)}</strong></span>
-          <span>Sales Revenue: <strong style={{ color: '#166534' }}>N$ {(companySummary.salesRevenue || 0).toFixed(2)}</strong></span>
+          <span>DP sales value (known): <strong style={{ color: '#166534' }}>N$ {(companySummary.salesRevenue || 0).toFixed(2)}</strong></span>
           {companySummary.expiringQty > 0 && <span>⚠️ Expiring soon: <strong style={{ color: '#d97706' }}>{companySummary.expiringQty.toLocaleString()} units</strong></span>}
           {companySummary.expiredQty > 0 && <span>🔴 Expired (in stock): <strong style={{ color: '#c41e3a' }}>{companySummary.expiredQty.toLocaleString()} units</strong></span>}
         </div>
@@ -11821,7 +11834,7 @@ function StockReportsTab({ branch }) {
           <div className="flex justify-between items-center flex-wrap gap-2">
             <h3 className="font-bold text-gray-800">Stock Movement Log</h3>
             <Button size="sm" variant="secondary" onClick={() => {
-              const periodMoves = movements.filter(m => m.created_at && new Date(m.created_at) >= periodStart && new Date(m.created_at) <= periodEnd)
+              const periodMoves = movements.filter(m => m.created_at && inMovementPeriod(m.created_at))
                 .sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
               const rows = periodMoves.map(m => `<tr><td>${formatDateTime(m.created_at)}</td><td>${m.product_name||''}</td><td>${(m.movement_type||'').replace(/_/g,' ')}</td><td>${m.quantity||0}</td><td>${fmtLocation(m.source_location||m.location||'')}</td><td>${fmtLocation(m.destination_location||'')}</td><td>${m.reference_id||m.reference||'-'}</td><td>${m.recorded_by||m.created_by||'-'}</td></tr>`).join('');
               printDocument(`Stock Movement Log — ${periodLabel}`, `<table><thead><tr><th>Date</th><th>Product</th><th>Type</th><th>Qty</th><th>From</th><th>To</th><th>Reference</th><th>By</th></tr></thead><tbody>${rows}</tbody></table>`);
@@ -11844,7 +11857,7 @@ function StockReportsTab({ branch }) {
             { header: 'To', render: r => <span className="text-xs">{fmtLocation(r.destination_location || '')}</span> },
             { header: 'Ref', render: r => <span className="text-xs text-gray-500">{r.reference_id || r.reference || '-'}</span> },
           ]}
-          data={movements.filter(m => m.created_at && new Date(m.created_at) >= periodStart && new Date(m.created_at) <= periodEnd).sort((a,b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 100)}
+          data={movements.filter(m => m.created_at && inMovementPeriod(m.created_at)).sort((a,b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 100)}
           emptyMessage="No movements in selected period"
         />
       </Card>

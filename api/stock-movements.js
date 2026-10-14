@@ -3,6 +3,8 @@ import { query, getMany, getOne, withTransaction } from './db.js';
 import { recomputeLocationBalances, recomputeInventoryBalance, inferLocationType } from './services/stockEngine.js';
 import { branchSearchTerms } from './_lib/branchUtils.js';
 import { branchLayers, takeLayers } from './services/stockCostLayers.js';
+import { movementSaleEvidence } from './services/saleEvidence.js';
+import { businessDatePredicate, validateBusinessDates } from './services/businessDates.js';
 
 async function deductBranchBatchTx(client, batch, quantity) {
   const layers = branchLayers(batch);
@@ -34,6 +36,7 @@ function normalizeMovement(row) {
     location: row.location || row.source_location || '',
     notes: row.notes || '',
     metadata: row.metadata || null,
+    ...movementSaleEvidence(row),
     createdBy: row.created_by || '', created_by: row.created_by || '',
     createdAt: createdAt, created_at: createdAt,
     status: row.status || null,
@@ -82,6 +85,7 @@ export default async function handler(req, res) {
       const statusFilter = url.searchParams.get('status');
       const dateFrom = url.searchParams.get('date_from');
       const dateTo = url.searchParams.get('date_to');
+      validateBusinessDates(dateFrom,dateTo);
       const referenceIdFilter = url.searchParams.get('reference_id');
       // Fix #4: validate limit — reject negative, NaN, and non-finite values with 400;
       // clamp the accepted range to [1, 1000] to prevent oversized DB queries.
@@ -147,15 +151,15 @@ export default async function handler(req, res) {
           const bimParams = [branchCandidates];
           const bimWhere = ['LOWER(REPLACE(branch_id, \' \', \'_\')) = ANY($1)'];
           if (movementType) { bimParams.push(movementType); bimWhere.push(`type = $${bimParams.length}`); }
-          if (dateFrom) { bimParams.push(dateFrom); bimWhere.push(`created_at >= $${bimParams.length}::timestamp`); }
-          if (dateTo) { bimParams.push(dateTo + 'T23:59:59'); bimWhere.push(`created_at <= $${bimParams.length}::timestamp`); }
+          if (dateFrom) { bimParams.push(dateFrom); bimWhere.push(businessDatePredicate('created_at',`$${bimParams.length}`)); }
+          if (dateTo) { bimParams.push(dateTo); bimWhere.push(businessDatePredicate('created_at',`$${bimParams.length}`,true)); }
           if (referenceIdFilter) { bimParams.push(referenceIdFilter); bimWhere.push(`reference = $${bimParams.length}`); }
           bimParams.push(safeLimit);
 
           const bimRows = await getMany(
             `SELECT id, branch_id, type AS movement_type, product_name, product_code, batch_no, quantity,
                     unit, unit_price, source_branch_id, destination_branch_id, reference AS reference_id,
-                    notes, created_by, created_at
+                    notes, created_by, created_at, metadata
              FROM branch_inventory_movements
              WHERE ${bimWhere.join(' AND ')}
              ORDER BY created_at DESC LIMIT $${bimParams.length}`,
@@ -181,6 +185,7 @@ export default async function handler(req, res) {
             createdBy: r.created_by, created_by: r.created_by,
             createdAt: fmtDt(r.created_at), created_at: fmtDt(r.created_at),
             status: 'posted',
+            ...movementSaleEvidence(r),
           }));
         } else if (!branchScope.enforced && !branch) {
           // No branch filter, non-scoped user — fall back to stock_movements
@@ -188,8 +193,8 @@ export default async function handler(req, res) {
           const bmWhere = [];
           if (movementType) { bmParams.push(movementType); bmWhere.push(`movement_type = $${bmParams.length}`); }
           if (statusFilter) { bmParams.push(statusFilter); bmWhere.push(`status = $${bmParams.length}`); }
-          if (dateFrom) { bmParams.push(dateFrom); bmWhere.push(`created_at >= $${bmParams.length}::timestamp`); }
-          if (dateTo) { bmParams.push(dateTo + 'T23:59:59'); bmWhere.push(`created_at <= $${bmParams.length}::timestamp`); }
+          if (dateFrom) { bmParams.push(dateFrom); bmWhere.push(businessDatePredicate('created_at',`$${bmParams.length}`)); }
+          if (dateTo) { bmParams.push(dateTo); bmWhere.push(businessDatePredicate('created_at',`$${bmParams.length}`,true)); }
           if (referenceIdFilter) { bmParams.push(referenceIdFilter); bmWhere.push(`reference_id = $${bmParams.length}`); }
           let bmQuery = 'SELECT * FROM stock_movements';
           if (bmWhere.length > 0) bmQuery += ' WHERE ' + bmWhere.join(' AND ');
@@ -222,6 +227,7 @@ export default async function handler(req, res) {
             disposal_status: r.disposal_status || null,
             disposed_by: r.disposed_by || null,
             disposed_at: r.disposed_at ? fmtDt(r.disposed_at) : null,
+            ...movementSaleEvidence(r),
           }));
         }
       } catch (bmErr) {

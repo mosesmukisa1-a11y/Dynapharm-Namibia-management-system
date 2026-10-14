@@ -1,7 +1,7 @@
 import { recordBranchSaleAllocationTx } from '../services/stockSaleAllocations.js';
 import { applyAuthCors } from '../_lib/auth.js';
 import { authorizeBranchReturn } from '../services/linkedReversals.js';
-import { atomicStockRequest } from '../_lib/atomicStockRequest.js';
+import { atomicSaleRequest } from '../_lib/atomicSaleRequest.js';
 import { assertActivePriceProducts } from '../services/priceImport.js';
 import { query, getMany, getOne, withTransaction } from '../db.js';
 import { branchSearchTerms, normalizeBranchSlug } from '../_lib/branchUtils.js';
@@ -9,6 +9,8 @@ import { recomputeLocationBalances } from '../services/stockEngine.js';
 import { broadcastStockEvent } from '../services/stockEvents.js';
 import { postActivityRecord, generateBatId } from '../_lib/activityCapture.js';
 import { getPackageComponents } from '../_lib/packageDefinitions.js';
+import { completeSaleEvidenceTx } from '../services/saleEvidence.js';
+import { businessDay, businessTime } from '../services/businessDates.js';
 export const OFF_SYSTEM_ISSUE = Symbol('off-system-authorized-issue');
 
 async function parseJsonBody(req) {
@@ -29,11 +31,22 @@ async function handler(req, res) {
     if (req.method === 'POST') {
       const body = await parseJsonBody(req);
       const { reportId, branchId, items, createdBy, customerType, paymentMethod, patientName, consultationFee, consultMode, nbNumber, referralNb, dispenseType, campaignDiscounts } = body;
+      const actor = req.user?.fullName || req.user?.username || req.user?.id || req.user?.sub;
+      const completionId = generateBatId();
       // Normalise campaign discount map: productName (lower) → { pct }
       const campDiscMap = {};
       if (campaignDiscounts && typeof campaignDiscounts === 'object') {
         for (const [name, disc] of Object.entries(campaignDiscounts)) {
-          const pct = Number(disc?.pct || 0);
+          const campaign=disc?.campaignId ? await getOne(`SELECT * FROM campaigns WHERE id=$1 AND status='approved'
+            AND start_date <= (NOW() AT TIME ZONE 'Africa/Windhoek')::date
+            AND end_date >= (NOW() AT TIME ZONE 'Africa/Windhoek')::date`,[disc.campaignId]) : null;
+          const cond=campaign?.conditions || {};
+          const scoped=campaign?.scope==='nationwide' || normalizeBranchSlug(campaign?.branch || '')===normalizeBranchSlug(branchId) ||
+            (campaign?.target_branches || []).some(b=>normalizeBranchSlug(b)===normalizeBranchSlug(branchId)) ||
+            (cond.stock_assignments || []).some(a=>normalizeBranchSlug(a.branch)===normalizeBranchSlug(branchId));
+          const pct=Number(campaign?.discount_percentage ?? cond.discount_pct ?? 0);
+          if(!campaign || !scoped || pct!==Number(disc.pct) || !(pct>0 && pct<=100))
+            throw Object.assign(new Error('Prescription discount requires the approved source campaign'),{statusCode:422});
           if (pct > 0) campDiscMap[name.toLowerCase()] = pct;
         }
       }
@@ -46,6 +59,7 @@ async function handler(req, res) {
 
       const movType = 'prescription_dispense';
       const deductions = [];
+      let completionEvidence;
       const insufficientItems = [];
 
       const livePriceRows = await getMany(`SELECT description, dp, cp, bv, cif FROM live_product_prices`);
@@ -58,8 +72,8 @@ async function handler(req, res) {
       for (const item of items) {
         const productName = item.product_name || item.name || '';
         const qty = Number(item.quantity ?? 1);
-        if (!productName || !Number.isSafeInteger(qty) || qty <= 0)
-          throw Object.assign(new Error('Dispensing requires product names and positive whole base-unit quantities'),{statusCode:400});
+        if (!productName || !Number.isFinite(qty) || qty <= 0)
+          throw Object.assign(new Error('Dispensing requires product names and positive quantities'),{statusCode:400});
 
         // Free items (buy-X-get-Y companion) bypass normal pricing and go out at zero charge.
         if (item.is_free || item.campaign_free) {
@@ -83,8 +97,8 @@ async function handler(req, res) {
           const isMember = customerType === 'member';
           for (const comp of pkg.products) {
             const livePrice = livePriceMap[comp.name.toLowerCase()];
-            const dp = livePrice ? Number(livePrice.dp) || comp.dp : comp.dp;
-            const cp = livePrice ? Number(livePrice.cp) || comp.cp : comp.cp;
+             const dp = livePrice?.dp == null ? null : Number(livePrice.dp);
+             const cp = livePrice?.cp == null ? null : Number(livePrice.cp);
             const bv = livePrice ? Number(livePrice.bv) || 0 : 0;
             const cif = livePrice ? Number(livePrice.cif) || 0 : 0;
             const compDiscPct = campDiscMap[comp.name.toLowerCase()] || 0;
@@ -92,7 +106,7 @@ async function handler(req, res) {
             const baseCharge = isMember ? dp : cp;
             resolvedItems.push({
               product_name: comp.name,
-              quantity: Math.round(Number(comp.quantity || 1) * qty),
+               quantity: Number(comp.quantity || 1) * qty,
               unit_price: dp,                                                    // BIM stock valuation always uses DP (cost basis)
               charge_unit: Math.round(baseCharge * compDiscMult * 100) / 100,   // what the patient is actually charged (with discount)
               bv_unit: bv,
@@ -112,13 +126,13 @@ async function handler(req, res) {
           // Frontend now sends explicit dp/cp fields — use as fallback when live lookup fails
           const passedDP = Number(item.dp || item.dp_price || 0);
           const passedCP = Number(item.cp || item.cp_price || 0);
-          const baseChargeUnit = isMem ? (dpPrice || passedDP || null) : (cpPrice || passedCP || null);
+          const baseChargeUnit = isMem ? (livePrice?.dp == null ? null : Number(livePrice.dp)) : (livePrice?.cp == null ? null : Number(livePrice.cp));
           const itemDiscPct = campDiscMap[productName.toLowerCase()] || 0;
           const itemDiscMult = itemDiscPct > 0 ? (1 - itemDiscPct / 100) : 1;
           resolvedItems.push({
             product_name: productName,
             quantity: qty,
-            unit_price: dpPrice || passedDP || null,                                                   // BIM: stock valuation at DP
+            unit_price: livePrice?.dp == null ? null : Number(livePrice.dp),
             charge_unit: baseChargeUnit != null ? Math.round(baseChargeUnit * itemDiscMult * 100) / 100 : null,  // patient charge with discount
             bv_unit: livePrice ? Number(livePrice.bv) || 0 : 0,
             cif_unit: livePrice ? Number(livePrice.cif) || 0 : 0,
@@ -213,7 +227,7 @@ async function handler(req, res) {
 
           for (const batch of batches) {
             if (remaining <= 0) break;
-            const take = Math.round(Math.min(remaining, Number(batch.quantity)));
+            const take = Math.min(remaining, Number(batch.quantity));
 
             await client.query(
               `UPDATE branch_inventory_batches SET quantity = quantity - $1, updated_at = NOW() WHERE id = $2`,
@@ -228,7 +242,7 @@ async function handler(req, res) {
             await client.query(
               `INSERT INTO branch_inventory_movements (id, branch_id, type, product_name, batch_no, quantity, unit_price, charge_unit, reference, notes, created_by, created_at)
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())`,
-              [bimId, branchId, itemMovType, batch.product_name, batch.batch_no || '', take, unitPrice, chargeUnit, reportId, dispenseNote, createdBy || '']
+               [bimId, branchId, itemMovType, batch.product_name, batch.batch_no || '', take, unitPrice, chargeUnit, reportId, dispenseNote, actor || '']
             );
 
             const smId = 'MOV-' + ts + '-' + Math.random().toString(36).slice(2, 6);
@@ -241,8 +255,8 @@ async function handler(req, res) {
               [smId, batch.product_name, batch.batch_no || '', batch.expiry_date || null, take, itemMovType, branchId, reportId, dispenseNote, unitPrice]
             );
 
-            const actualCost=await recordBranchSaleAllocationTx(client,{movementId:smId,saleReference:reportId,batchId:batch.id,quantity:take,branchMovementId:bimId,revenueUnit:chargeUnit,bvUnit:customerType==='member'?item.bv_unit:0,financialDpUnit:unitPrice});
-            deductions.push({ product_name: batch.product_name, batch_no: batch.batch_no, quantity: take, unit_price: actualCost.unit_dp, unit_cif:actualCost.unit_cost, missing_cost_quantity:actualCost.missing_cost_quantity, charge_unit: chargeUnit, bv_unit: item.bv_unit || 0, from_package: fromPackage, is_free: isFreeItem });
+            const actualCost=await recordBranchSaleAllocationTx(client,{movementId:smId,saleReference:reportId,batchId:batch.id,quantity:take,branchMovementId:bimId,revenueUnit:chargeUnit,bvUnit:customerType==='member'?item.bv_unit:0,financialDpUnit:isFreeItem?0:unitPrice});
+            deductions.push({ movement_id:smId, product_name: batch.product_name, batch_no: batch.batch_no, quantity: take, unit_price: isFreeItem?0:unitPrice, unit_cif:actualCost.unit_cost, missing_cost_quantity:actualCost.missing_cost_quantity, charge_unit: chargeUnit, bv_unit: item.bv_unit || 0, from_package: fromPackage, is_free: isFreeItem });
             remaining -= take;
           }
 
@@ -254,45 +268,19 @@ async function handler(req, res) {
         if (insufficientItems.length > 0) {
           throw new Error(`Insufficient stock for: ${insufficientItems.map(i => `${i.product_name} (need ${i.requested}, have ${i.available})`).join(', ')}`);
         }
+        const quantities = new Map();
+        for(const d of deductions.filter(d=>!d.is_free))
+          quantities.set(d.product_name.toLowerCase().trim(),(quantities.get(d.product_name.toLowerCase().trim()) || 0)+d.quantity);
+        rptData.medicines=(rptData.medicines || []).map(m=>{
+          const issued=quantities.get(String(m.name || m.product_name || '').toLowerCase().trim()) || 0;
+          const dispensedQty=Number(m.dispensed_qty || 0)+issued;
+          return {...m,dispensed_qty:dispensedQty,dispensed:dispensedQty>=Number(m.quantity || 1)};
+        });
+        await client.query('UPDATE reports SET data=$1::jsonb,updated_at=NOW() WHERE id=$2',[JSON.stringify(rptData),reportId]);
+        completionEvidence=await completeSaleEvidenceTx(client,{sourceKey:`dispense:${completionId}`,reference:reportId,
+          receipt:reportId,branch:branchId,user:req.user,customerType,paymentMethod:paymentMethod || 'cash',
+          movementIds:deductions.map(d=>d.movement_id)});
       });
-
-      // ── Update report medicines dispensed status ──────────────────────────
-      // Build a map: product name (lower) → total qty dispensed in this session
-      const dispensedQtyMap = {};
-      for (const d of deductions) {
-        if (d.is_free) continue;
-        const k = (d.product_name || '').toLowerCase().trim();
-        dispensedQtyMap[k] = (dispensedQtyMap[k] || 0) + Number(d.quantity || 0);
-      }
-      try {
-        const rptRow = await query(`SELECT data FROM reports WHERE id = $1`, [reportId]);
-        if (rptRow.rows.length > 0) {
-          const rptData = (() => {
-            try { return typeof rptRow.rows[0].data === 'string' ? JSON.parse(rptRow.rows[0].data) : (rptRow.rows[0].data || {}); } catch { return {}; }
-          })();
-          if (Array.isArray(rptData.medicines) && rptData.medicines.length > 0) {
-            let changed = false;
-            rptData.medicines = rptData.medicines.map(m => {
-              const k = (m.name || '').toLowerCase().trim();
-              const sessionQty = dispensedQtyMap[k];
-              if (sessionQty === undefined) return m;
-              const prevQty = Number(m.dispensed_qty || 0);
-              const newQty = prevQty + sessionQty;
-              const prescQty = Number(m.quantity || 1);
-              changed = true;
-              return { ...m, dispensed_qty: newQty, dispensed: newQty >= prescQty };
-            });
-            if (changed) {
-              await query(
-                `UPDATE reports SET data = $1::jsonb, updated_at = NOW() WHERE id = $2`,
-                [JSON.stringify(rptData), reportId]
-              );
-            }
-          }
-        }
-      } catch (e) {
-        console.error('[dispense] report medicines update error:', e.message);
-      }
 
       recomputeLocationBalances('branch', branchId).catch(e =>
         console.error('[stockEngine] dispense recompute error:', e.message)
@@ -303,20 +291,22 @@ async function handler(req, res) {
 
       const totalDispensedQty = deductions.reduce((s, d) => s + Number(d.quantity || 0), 0);
       // DP total = stock cost basis (branch_inventory_movements.unit_price is always DP).
-      const totalDispensedDP = parseFloat(deductions.reduce((s, d) => s + (Number(d.quantity || 0) * Number(d.unit_price || 0)), 0).toFixed(2));
+      const totalDispensedDP = deductions.some(d=>d.unit_price==null) ? null :
+        parseFloat(deductions.reduce((s, d) => s + Number(d.quantity)*Number(d.unit_price), 0).toFixed(2));
       // Charge total = what the patient actually pays. Free campaign items are excluded (charge = 0).
       const totalChargeToPatient = parseFloat(deductions
         .filter(d => !d.is_free)
         .reduce((s, d) => s + (Number(d.quantity || 0) * Number(d.charge_unit != null ? d.charge_unit : (d.unit_price || 0))), 0).toFixed(2));
       const totalDispensedBV = deductions.filter(d => !d.is_free).reduce((s, d) => s + (Number(d.quantity || 0) * Number(d.bv_unit || 0)), 0);
-      const now = new Date();
-      const serviceDate = now.toISOString().slice(0, 10);
-      const serviceTime = now.toTimeString().slice(0, 8);
+      const now = new Date(completionEvidence?.timestamp || Date.now());
+      const serviceDate = businessDay(now);
+      const serviceTime = businessTime(now);
       const pmNorm = (paymentMethod || 'cash').toLowerCase();
 
       try {
         await postActivityRecord({
-          id: generateBatId(),
+          id: completionId,
+          created_at: completionEvidence.timestamp,
           branch_id: branchId,
           branch_name: branchId,
           client_name: patientName || 'Patient',
@@ -345,10 +335,10 @@ async function handler(req, res) {
             : 'dispensed',
           consultation_status: 'none',
           reporting_status: 'posted',
-          captured_by: createdBy || null,
+          captured_by: actor || null,
         });
       } catch (e) {
-        console.error('[activityCapture] dispense post error:', e.message);
+        throw e;
       }
 
       // ── Distributor profit: write to branch_distributor_profit for referred non-member Rx ──
@@ -421,4 +411,4 @@ async function handler(req, res) {
     return res.status(error.statusCode || 500).json({ success: false, error: error.message || 'Internal server error' });
   }
 }
-export default atomicStockRequest(handler);
+export default atomicSaleRequest(handler);

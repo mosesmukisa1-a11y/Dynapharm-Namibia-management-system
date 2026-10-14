@@ -1,3 +1,4 @@
+import {ProfitAnalysisTab as SavedSaleProfitAnalysis} from './GMPortal';
 import { useState, useEffect, useCallback } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -103,7 +104,7 @@ export default function DirectorPortal() {
         {activeTab === 'branchAnalysis' && <BranchAnalysisTab start={applied.start} end={applied.end} />}
         {activeTab === 'registrations' && <RegistrationsTab start={applied.start} end={applied.end} />}
         {activeTab === 'distributors' && <DistributorPerformanceTab title="Distributor Network Performance" />}
-        {activeTab === 'profitAnalysis' && <ProfitAnalysisTab />}
+        {activeTab === 'profitAnalysis' && <SavedSaleProfitAnalysis />}
         {activeTab === 'accounts' && <AccountsTab role="director" />}
         {activeTab === 'salary' && <SalaryLedgerTab role="director" />}
         {activeTab === 'financeApprovals' && <FinanceApprovalsTab />}

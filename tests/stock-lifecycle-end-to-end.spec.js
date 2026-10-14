@@ -209,7 +209,8 @@ it('sales reports include fractional seconds on the selected end date and exclud
   const branch='test_date_boundary_branch';
   for(const [id,date,total] of [['first','2030-01-01 10:00:00+02',1],['late','2030-01-01 23:59:59.999999+02',2],['next','2030-01-02 00:00:00+02',4]])
     await query(`INSERT INTO branch_walkin_sales(id,branch_id,sale_date,customer_type,
-      payment_method,total,subtotal,status) VALUES($1,$2,$3,'member','cash',$4,$4,'completed')`,
+      payment_method,total,subtotal,status,items) VALUES($1,$2,$3,'member','cash',$4,$4,'completed',
+        jsonb_build_array(jsonb_build_object('dp',$4::numeric,'quantity',1)))`,
       [`ISOLATED-DATE-${id}`,branch,date,total]);
   const actual=await getBranchSalesRevenue(branch,'2030-01-01','2030-01-01');
   steps.push({name:'End-date fractional-second sales boundary',expected:{totalSales:3},

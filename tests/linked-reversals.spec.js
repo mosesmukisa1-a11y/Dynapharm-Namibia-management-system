@@ -203,7 +203,8 @@ describe.sequential('linked physical returns preserve stock and financial eviden
     expect((await call(dispensing,'POST',body,admin)).status).toBe(409);
     const free=await call(dispensing,'POST',{...body,items:[{product_name:product,quantity:1,is_free:true}]},admin);
     expect(free.status,JSON.stringify(free)).toBe(409);
-    expect((await call(dispensing,'POST',{...body,items:[{product_name:product,quantity:0.5}]},admin)).status).toBe(400);
+    // Fractional issues are valid quantities, but cannot reopen exhausted entitlement.
+    expect((await call(dispensing,'POST',{...body,items:[{product_name:product,quantity:0.5}]},admin)).status).toBe(409);
     expect(await qty('branch_inventory_batches',sale.batch,'quantity')).toBe(3);
   });
   it('segregates damaged and expired returns without crediting saleable stock',async()=>{

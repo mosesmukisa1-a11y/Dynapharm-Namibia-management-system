@@ -62,7 +62,7 @@ export default async function handler(req, res) {
     // Total walkin transaction count
     const txnRow = await getOne(
       `SELECT COUNT(*) as cnt FROM branch_walkin_sales
-       WHERE status='completed' AND sale_date >= $1::date AND sale_date <= ($2 || 'T23:59:59')::timestamp`,
+       WHERE status='completed' AND sale_date >= ($1::date::timestamp AT TIME ZONE 'Africa/Windhoek') AND sale_date < (($2::date+1)::timestamp AT TIME ZONE 'Africa/Windhoek')`,
       [start, end]
     );
     const totalTransactions = Number(txnRow?.cnt || 0);
@@ -73,8 +73,8 @@ export default async function handler(req, res) {
        FROM branch_walkin_sales,
             jsonb_array_elements(CASE WHEN jsonb_typeof(items::jsonb) = 'array' THEN items::jsonb ELSE '[]'::jsonb END) AS item
        WHERE status = 'completed'
-         AND sale_date >= $1::date
-         AND sale_date <= ($2 || 'T23:59:59')::timestamp`,
+         AND sale_date >= ($1::date::timestamp AT TIME ZONE 'Africa/Windhoek')
+         AND sale_date < (($2::date+1)::timestamp AT TIME ZONE 'Africa/Windhoek')`,
       [start, end]
     );
     const totalBV = Number(bvRow?.total_bv || 0);

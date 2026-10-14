@@ -9,6 +9,12 @@ vi.mock('../api/services/stockCostReporting.js',()=>({
   getSalesCostPage:vi.fn(async()=>({rows:[],total:0,summary:{knownSalesCost:0,missingSalesCostQuantity:0,knownSalesRevenue:0,missingSalesRevenueQuantity:0,grossProfit:0}})),
 }));
 vi.mock('../api/db.js',()=>({withTransaction:async fn=>fn({query:async()=>({rows:[]})})}));
+// This suite tests access/scope, not SQL accounting. Real financial queries are
+// exercised by isolated authenticated sale and cost lifecycle suites.
+vi.mock('../api/services/stockFinancialReports.js',()=>({
+  getSalesReturnsSummary:vi.fn(async()=>({})),
+  getWriteOffExpenseSummary:vi.fn(async()=>({})),
+}));
 vi.mock('../api/services/stockCostAudit.js',()=>({getStockCostAudit:vi.fn(async()=>({
   generatedAt:'2026-10-09T00:00:00Z',records:[],csv:'',saleCount:0,sourceLayerCount:0,
 }))}));

@@ -1,11 +1,12 @@
 import { recordBranchSaleAllocationTx } from '../services/stockSaleAllocations.js';
 import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
-import { atomicStockRequest } from '../_lib/atomicStockRequest.js';
+import { atomicSaleRequest } from '../_lib/atomicSaleRequest.js';
 import { assertActivePriceProducts } from '../services/priceImport.js';
 import { query, getOne, getMany, withTransaction } from '../db.js';
 import { recomputeLocationBalances } from '../services/stockEngine.js';
 import { postActivityRecord, generateBatId } from '../_lib/activityCapture.js';
 import { authorizeBranchReturn } from '../services/linkedReversals.js';
+import { completeSaleEvidenceTx } from '../services/saleEvidence.js';
 
 async function parseJsonBody(req) {
   if (req.body && typeof req.body === 'object') return req.body;
@@ -82,7 +83,7 @@ export async function deductStock(client, branchId, productName, qty, movType, n
       `INSERT INTO branch_inventory_movements (id, branch_id, type, product_name, batch_no, quantity, unit_price, reference, notes, created_by, created_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())`,
       [bimId, branchId, movType, batch.product_name, batch.batch_no || '', take,
-       unitPrice || null, saleId, noteStr, createdBy || '']
+       unitPrice ?? null, saleId, noteStr, createdBy || '']
     );
     const smId1 = 'MOV-' + ts1 + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();
     await client.query(
@@ -92,7 +93,7 @@ export async function deductStock(client, branchId, productName, qty, movType, n
           reference_id, notes, status, unit_dp, movement_date, created_at, updated_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7,'branch','customer',NULL,$8,$9,'posted',$10,NOW(),NOW(),NOW())`,
       [smId1, batch.product_name, batch.batch_no || '', batch.expiry_date || null,
-       take, movType, branchId, saleId, noteStr, unitPrice || null]
+        take, movType, branchId, saleId, noteStr, unitPrice ?? null]
     );
     await recordBranchSaleAllocationTx(client,{movementId:smId1,saleReference:saleId,batchId:batch.id,quantity:take,branchMovementId:bimId,revenueUnit,bvUnit,financialDpUnit});
     deductions.push({ product_name: batch.product_name, batch_no: batch.batch_no, quantity: take, movement_type: movType });
@@ -117,7 +118,7 @@ async function handler(req, res) {
       const campaign_name  = body.campaign_name;
       const rawBranch      = body.branch || body.branch_id;
       const notes          = body.notes || '';
-      const processed_by   = body.processed_by || body.created_by || '';
+      const processed_by   = req.user.fullName || req.user.username || req.user.id || req.user.sub;
 
       // Customer identification — mirrors walk-in sales logic
       const customer_type  = body.customer_type || 'member';
@@ -194,7 +195,7 @@ async function handler(req, res) {
         free_product = firstFree.product_name || firstFree.name || null;
       }
 
-      if (!paid_product || !Number.isSafeInteger(paid_qty) || paid_qty <= 0) {
+      if (!paid_product || !Number.isFinite(paid_qty) || paid_qty <= 0) {
         return res.status(400).json({ success: false, error: 'paid_product and a positive paid_qty are required' });
       }
 
@@ -244,8 +245,10 @@ async function handler(req, res) {
       );
 
       const paidPrice  = matchPrice(paid_product);
-      const paidDp     = Number(paidPrice?.dp || 0);
-      const paidCp     = Number(paidPrice?.cp || paidPrice?.dp || 0);  // fallback to dp if no cp
+       if(paidPrice?.dp==null || (!isMember && paidPrice?.cp==null))
+         return res.status(422).json({success:false,error:'Original campaign DP/charged price is required'});
+       const paidDp     = Number(paidPrice.dp);
+       const paidCp     = Number(paidPrice.cp ?? paidPrice.dp);
       const paidBv     = Number(paidPrice?.bv || 0);
 
       // Resolve discount for discount-type campaigns
@@ -302,6 +305,7 @@ async function handler(req, res) {
         }] : []),
       ];
 
+      let completionEvidence;
       await withTransaction(async (client) => {
         // Deduct paid stock.
         // unit_price in BIM = paidUnitPrice for both member and non-member:
@@ -315,7 +319,7 @@ async function handler(req, res) {
           client, branch, paid_product, paid_qty,
           isMember ? 'campaign_sale' : 'walk_in_non_member_sale',
           `Campaign: ${campaign.name} — paid item`,
-          saleId, paidUnitPrice || null, processed_by,paidUnitPrice,isMember?paidBv:0,paidDpDiscounted
+           saleId, paidUnitPrice, processed_by,paidUnitPrice,isMember?paidBv:0,paidDpDiscounted
         );
         allDeductions.push(...paidResult.deductions);
         if (paidResult.short > 0) insufficientItems.push({ product_name: paid_product, short: paidResult.short });
@@ -325,7 +329,7 @@ async function handler(req, res) {
           const freeResult = await deductStock(
             client, branch, free_product, free_qty,
             'campaign_free_item', `Campaign: ${campaign.name} — FREE item`,
-            saleId, null, processed_by,0
+             saleId, 0, processed_by,0,0,0
           );
           allDeductions.push(...freeResult.deductions);
           if (freeResult.short > 0) insufficientItems.push({ product_name: free_product, short: freeResult.short });
@@ -390,20 +394,22 @@ async function handler(req, res) {
             referral_nb || null,
           ]
         );
+        completionEvidence=await completeSaleEvidenceTx(client,{sourceKey:`walkin:${saleId}`,reference:saleId,
+          receipt:saleNumber,branch,user:req.user,customerType:customer_type,paymentMethod:'cash',chargedTotal:paidTotal});
       });
 
       // ── Post-transaction: activity record (mirrors walk-in sales) ────────────
       const actType = isMember ? 'member_sale' : 'non_member_sale';
-      const saleDate = new Date().toISOString();
-      postActivityRecord({
+      const saleDate = completionEvidence.timestamp;
+      await postActivityRecord({
         id:                 generateBatId(),
+        created_at:         saleDate,
         branch_id:          branch,
         branch_name:        branch,
         client_name:        customer_name || (isMember ? distributor_nb : referral_nb) || 'Campaign Customer',
         client_type:        customer_type,
         nb_number:          isMember ? distributor_nb : (referral_nb || null),
         service_date:       saleDate,
-        service_time:       new Date().toTimeString().slice(0, 8),
         activity_type:      actType,
         workflow_source:    'branch_portal',
         form_reference_id:  saleId,
@@ -419,7 +425,7 @@ async function handler(req, res) {
         consultation_status: 'none',
         reporting_status:   'posted',
         captured_by:        processed_by || null,
-      }).catch(e => console.error('[activityCapture] campaign-sale post error:', e.message));
+      });
 
       // ── Post-transaction: record distributor profit for non-member sales ──────
       // Mirrors walk-in sales exactly: profit = (CP - DP) × qty → referring distributor
@@ -447,7 +453,7 @@ async function handler(req, res) {
         receipt: {
           sale_number:    saleNumber,
           branch,
-          sale_date:      new Date().toISOString(),
+          sale_date:      completionEvidence.timestamp,
           customer_name:  customer_name || '',
           customer_type,
           is_member:      isMember,
@@ -484,4 +490,4 @@ async function handler(req, res) {
     return res.status(err.statusCode || 500).json({ success: false, error: err.message || 'Internal server error' });
   }
 }
-export default atomicStockRequest(handler);
+export default atomicSaleRequest(handler);

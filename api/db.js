@@ -50,6 +50,10 @@ export async function withRequestTransaction(fn) {
 
 let pool = null;
 let poolConnectionString;
+export async function closePool() {
+  if(pool)await pool.end();
+  pool=null;
+}
 
 function resolveSslConfig() {
   const envOverride = process.env.DATABASE_SSL;

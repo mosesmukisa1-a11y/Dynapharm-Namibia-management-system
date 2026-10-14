@@ -87,7 +87,9 @@ export const salesEvidenceSql=`WITH evidence AS (
     UNION ALL
     SELECT sm.id AS movement_id,sm.reference_id AS sale_reference,
     sm.source_location AS branch_id,sm.product_name,sm.batch_no,sm.expiry_date,sm.quantity,
-      '{}'::jsonb AS snapshot,COALESCE(sale.sale_date,sm.movement_date,sm.created_at) AS created_at,'legacy:'||sm.id AS allocation_id
+      jsonb_build_object('financial_dp_unit',sm.metadata->'sale_evidence'->'dp_unit_price',
+        'revenue_total',sm.metadata->'sale_evidence'->'charged_value') AS snapshot,
+      COALESCE(sale.sale_date,sm.movement_date,sm.created_at) AS created_at,'legacy:'||sm.id AS allocation_id
     FROM stock_movements sm LEFT JOIN stock_sale_allocations a ON a.movement_id=sm.id
     LEFT JOIN branch_walkin_sales sale ON sale.id=sm.reference_id
     WHERE a.movement_id IS NULL AND sm.status IN ('posted','approved')

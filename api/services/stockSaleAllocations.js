@@ -1,6 +1,7 @@
 import { normalizeBranchSlug, branchSearchTerms } from '../_lib/branchUtils.js';
 import {createHash} from 'node:crypto';
 import { branchLayers, takeLayers, sourceSnapshot } from './stockCostLayers.js';
+import { saveMovementSaleEvidenceTx } from './saleEvidence.js';
 // Server-recorded sale evidence, not a join to whatever lot happens to remain.
 // Physical/source IDs are intentionally historical strings: depleted rows may
 // disappear, but that must not change the supplier identity of the original sale.
@@ -61,7 +62,7 @@ export async function recordBranchSaleAllocationTx(client, {movementId,saleRefer
     original_source:original ? {...original,expiry_date:date(original.expiry_date)} : null,
     cost_layers:taken,missing_cost_quantity:taken.filter(l=>l.source?.cif_unit_cost==null).reduce((sum,l)=>sum+l.quantity,0),
     revenue_unit:revenueUnit ?? null,
-    bv_unit:bvUnit,financial_dp_unit:financialDpUnit ?? null,
+    bv_unit:bvUnit,financial_dp_unit:financialDpUnit ?? null,branch_movement_id:branchMovementId || null,
     status:'in_stock',condition:'saleable',
   };
   await client.query('UPDATE branch_inventory_batches SET metadata=$1 WHERE id=$2',
@@ -75,6 +76,7 @@ export async function recordBranchSaleAllocationTx(client, {movementId,saleRefer
     (movement_id,sale_reference,branch_batch_id,branch_id,product_name,batch_no,expiry_date,quantity,snapshot)
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
     [movementId,saleReference,row.id,row.branch_id,row.product_name,row.batch_no,date(row.expiry_date),quantity,JSON.stringify(snapshot)]);
+  await saveMovementSaleEvidenceTx(client,{movement_id:movementId,sale_reference:saleReference,quantity,snapshot},branchMovementId);
   return snapshot;
 }
 
@@ -85,9 +87,14 @@ export async function reconcileSaleFinancialsTx(client,saleReference,total,total
   const rows=(await client.query('SELECT * FROM stock_sale_allocations WHERE sale_reference=$1 ORDER BY created_at,movement_id',[saleReference])).rows;
   const cents=Math.round(Number(total)*100);
   if (!Number.isSafeInteger(cents) || cents<0) throw new Error('Original sale total must be finite and nonnegative');
-  const weights=rows.map(a=>Number(a.quantity)*Number(a.snapshot.revenue_unit ?? a.snapshot.financial_dp_unit ?? 0));
+  let weights=rows.map(a=>Number(a.quantity)*Number(a.snapshot.revenue_unit ?? a.snapshot.financial_dp_unit ?? 0));
+  // With one exactly linked product, the original receipt charge is allocated
+  // by its batch quantities. This establishes no DP or received-cost evidence.
+  if(!weights.some(w=>w>0) && new Set(rows.map(a=>a.product_name)).size===1)
+    weights=rows.map(a=>Number(a.quantity));
   const sum=weights.reduce((s,n)=>s+n,0);
-  if (!rows.length || (cents>0 && !(sum>0))) throw new Error('Original sale revenue cannot be allocated to its products');
+  if (!rows.length) return; // Fee-only receipt: no stock-linked sale.
+  if(cents>0 && !(sum>0))return; // Unallocated receipt cash stays header-only.
   const amounts=weights.map(w=>sum ? Math.floor(cents*w/sum) : 0);
   let left=cents-amounts.reduce((s,n)=>s+n,0);
   const order=weights.map((w,i)=>({i,fraction:sum?cents*w/sum-amounts[i]:0}))
@@ -98,6 +105,7 @@ export async function reconcileSaleFinancialsTx(client,saleReference,total,total
     const snapshot={...a.snapshot,revenue_total:amounts[i]/100,revenue_unit:amounts[i]/100/Number(a.quantity),
       bv_unit:sum>0 ? Number(totalBv || 0)*weights[i]/sum/Number(a.quantity) : 0};
     await client.query('UPDATE stock_sale_allocations SET snapshot=$1 WHERE movement_id=$2',[JSON.stringify(snapshot),a.movement_id]);
+    await saveMovementSaleEvidenceTx(client,{...a,snapshot});
   }
 }
 

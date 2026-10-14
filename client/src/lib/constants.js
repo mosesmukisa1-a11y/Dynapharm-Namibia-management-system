@@ -112,6 +112,7 @@ export function formatCurrency(amount) {
 export function formatDate(date) {
   if (!date) return '-';
   return new Date(date).toLocaleDateString('en-ZA', {
+    timeZone: /^\d{4}-\d{2}-\d{2}$/.test(String(date)) ? 'UTC' : 'Africa/Windhoek',
     year: 'numeric', month: 'short', day: 'numeric',
   });
 }
@@ -119,6 +120,7 @@ export function formatDate(date) {
 export function formatDateTime(date) {
   if (!date) return '-';
   return new Date(date).toLocaleString('en-ZA', {
+    timeZone: 'Africa/Windhoek',
     year: 'numeric', month: 'short', day: 'numeric',
     hour: '2-digit', minute: '2-digit',
   });

@@ -1,3 +1,5 @@
+import { isOpenStockRequest } from '../../../../shared/stockRequests.js';
+import { movementDPValue, namibiaDay } from '../../lib/saleEvidence.js';
 import { useState, useEffect, useRef, useMemo, useCallback, useContext, createContext } from 'react';
 import { MyProfileTab } from '../../components/StaffServicesTab';
 import { useNavigate } from 'react-router-dom';
@@ -1988,6 +1990,7 @@ function WalkInSalesTab() {
 
       const saleOfflineId = generateOfflineId();
       const salePayloadWithId = { ...saleData, offline_id: saleOfflineId };
+      let savedSaleDate=saleData.timestamp || saleData.sale_date;
       if (!navigator.onLine) {
         await enqueue({
           type: 'walkin_sale',
@@ -1998,10 +2001,12 @@ function WalkInSalesTab() {
           label: `Walk-in sale · ${saleData.customer_type} · N$${saleData.total}`,
         });
       } else {
-        await api.branch.createWalkinSale(salePayloadWithId);
+        const completed=await api.branch.createWalkinSale(salePayloadWithId);
+        savedSaleDate=completed.sale?.timestamp || completed.sale?.sale_date || savedSaleDate;
       }
 
       const commonReceiptParams = {
+        saleDate:savedSaleDate,
         receiptNumber,
         branch: effectiveBranch,
         items: itemsWithProfit,
@@ -2117,12 +2122,10 @@ function WalkInSalesTab() {
           const q = salesSearch.toLowerCase();
           const filteredSales = sales.filter(s => {
             if (salesDateFrom) {
-              const d = new Date(s.created_at || s.timestamp);
-              if (d < new Date(salesDateFrom)) return false;
+              if (namibiaDay(s.sale_date || s.timestamp || s.created_at) < salesDateFrom) return false;
             }
             if (salesDateTo) {
-              const d = new Date(s.created_at || s.timestamp);
-              if (d > new Date(salesDateTo + 'T23:59:59')) return false;
+              if (namibiaDay(s.sale_date || s.timestamp || s.created_at) > salesDateTo) return false;
             }
             if (q) {
               const receipt = (s.receipt_number || s.saleNumber || s.id || '').toString().toLowerCase();
@@ -2826,6 +2829,7 @@ function PrescriptionsTab() {
   const [dispenseCameraMode, setDispenseCameraMode] = useState(false);
   const [prescCampaigns, setPrescCampaigns] = useState([]); // active discount campaigns
   const [rxIsCampaignSale, setRxIsCampaignSale] = useState(false); // Campaign Sale toggle in prescription dispense
+  const rxRetry=useRef(null);
 
   const CHECKUP_FEE_OPTIONS = {
     standard:        { label: 'Full Body Check Up',              fee: 200, cashback: 50, consultantEarns: 150 },
@@ -3172,6 +3176,7 @@ function PrescriptionsTab() {
       const rxDispenseType = (!anyPartialQty && selectedIndices.length >= undispensedCountBefore) ? 'full' : 'partial';
 
       await api.branch.dispense({
+        requestId:rxRetry.current ||= generateOfflineId(),
         reportId: report.id,
         branchId: effectiveBranch,
         items: dispenseItems,
@@ -3188,6 +3193,7 @@ function PrescriptionsTab() {
       });
 
       // Build qty map: medicine name → qty dispensed in this session
+      rxRetry.current=null;
       const pendingQtyMap = {};
       // Only build qty/package maps for items the user selected
       for (const pi of selectedIndices) {
@@ -5431,7 +5437,7 @@ function BranchStockTab() {
       {(() => {
         const totalProducts = [...new Set(inventory.map(i => (i.product_name || i.productName || '').trim().toLowerCase()).filter(Boolean))].length;
         const totalDpValue = inventory.reduce((s,i)=>s+Number(i.stock_value_dp || 0),0);
-        const openReqs = requests.filter(r => r.status === 'pending' || r.status === 'submitted').length;
+        const openReqs = requests.filter(isOpenStockRequest).length;
         const totalAlerts = outOfStock.length + expiredItems.length + lowStock.length + expiringItems.length;
         const kpis = [
           {label:'Owned Units',value:physicalStock?.closing_qty ?? 'Unavailable',icon:'📦',color:'#1e3a5f',bg:'#f0f4ff',tab:'reports'},
@@ -6724,8 +6730,8 @@ function BranchStockTab() {
           if (movFilter.search && !pName.includes(movFilter.search.toLowerCase())) return false;
           const mType = (m.movement_type || m.type || '').toLowerCase();
           if (movFilter.type !== 'all' && mType !== movFilter.type) return false;
-          if (movFilter.dateFrom) { const d = new Date(m.created_at || m.createdAt); if (d < new Date(movFilter.dateFrom)) return false; }
-          if (movFilter.dateTo) { const d = new Date(m.created_at || m.createdAt); if (d > new Date(movFilter.dateTo + 'T23:59:59')) return false; }
+          if (movFilter.dateFrom && namibiaDay(m.created_at || m.createdAt)<movFilter.dateFrom) return false;
+          if (movFilter.dateTo && namibiaDay(m.created_at || m.createdAt)>movFilter.dateTo) return false;
           return true;
         });
         const inwardTypes = ['received', 'receive', 'stock_receipt', 'transfer_in', 'return', 'return_in', 'adjustment'];
@@ -6733,8 +6739,7 @@ function BranchStockTab() {
         const totalInward = filteredMov.filter(m => inwardTypes.includes((m.movement_type || m.type || '').toLowerCase())).reduce((s, m) => s + Math.abs(Number(m.quantity || 0)), 0);
         const totalOutward = filteredMov.filter(m => outwardTypes.includes((m.movement_type || m.type || '').toLowerCase())).reduce((s, m) => s + Math.abs(Number(m.quantity || 0)), 0);
         const totalDPOut = filteredMov.filter(m => outwardTypes.includes((m.movement_type || m.type || '').toLowerCase())).reduce((s, m) => {
-          const capturedPrice = Number(m.unit_price || m.unitPrice || m.unit_dp || m.unitDp || 0);
-          return s + capturedPrice * Math.abs(Number(m.quantity || 0));
+          return s + (movementDPValue(m) ?? 0);
         }, 0);
         const typeLabel = (t) => {
           const map = { received: 'Stock Receipt', receive: 'Stock Receipt', stock_receipt: 'Stock Receipt', sale: 'Walk-in Sale', walk_in_member_sale: 'Member Sale', walk_in_non_member_sale: 'Non-member Sale', write_off: 'Write Off', transfer_in: 'Transfer In', transfer_out: 'Transfer Out', field_use: 'Field Use', return: 'Return In', return_in: 'Return In', return_out: 'Return Out', adjustment: 'Adjustment', dispense: 'Prescription Dispense', prescription_dispense: 'Prescription Dispense', online_order_sale: 'Online Order Sale', campaign_sale: 'Campaign Sale', campaign_free_item: 'Campaign Free Item' };
@@ -6821,8 +6826,7 @@ function BranchStockTab() {
                 ) : filteredMov.map((m, idx) => {
                   const pName = m.product_name || m.productName || '-';
                   const mType = (m.movement_type || m.type || '').toLowerCase();
-                  const capturedPrice = Number(m.unit_price || m.unitPrice || m.unit_dp || m.unitDp || 0);
-                  const dpVal = capturedPrice * Math.abs(Number(m.quantity || 0));
+                  const dpVal = movementDPValue(m);
                   const isOut = outwardTypes.includes(mType);
                   return (
                     <tr key={m.id || idx} style={{ background: idx % 2 === 0 ? 'white' : '#fdf8f8', borderBottom: '1px solid #f5f0f0' }}>
@@ -6832,7 +6836,7 @@ function BranchStockTab() {
                       <td style={{ padding: '7px 8px', color: '#6b7280', fontSize: '0.74rem', whiteSpace: 'nowrap' }}>{(m.expiry_date || m.expiryDate) ? new Date(m.expiry_date || m.expiryDate).toLocaleDateString('en-ZA') : '—'}</td>
                       <td style={{ padding: '7px 8px' }}>{typeBadge(mType)}</td>
                       <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 700, color: isOut ? '#c41e3a' : '#166534' }}>{isOut ? '-' : '+'}{Math.abs(Number(m.quantity || 0))}</td>
-                      <td style={{ padding: '7px 8px', textAlign: 'right', color: dpVal > 0 ? '#1e293b' : '#94a3b8', fontWeight: 600 }}>{dpVal > 0 ? `N$ ${Math.round(dpVal).toLocaleString("en-ZA")}` : '—'}</td>
+                      <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 600 }}>{dpVal != null ? `N$ ${dpVal.toFixed(2)}` : 'Incomplete'}</td>
                       <td style={{ padding: '7px 8px', color: '#6b7280', fontSize: '0.74rem', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fmtLocation(m.source_location || m.sourceLocation) || '—'}</td>
                       <td style={{ padding: '7px 8px', color: '#6b7280', fontSize: '0.74rem', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fmtLocation(m.destination_location || m.destinationLocation) || '—'}</td>
                       <td style={{ padding: '7px 8px', color: '#6b7280', fontFamily: 'monospace', fontSize: '0.72rem', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.reference_id || m.referenceId || m.reference || '—'}</td>
@@ -12362,6 +12366,7 @@ function printCampaignReceipt(receipt, branchDisplayName) {
   const campaignBanner = `<div style="background:#9b1c2e;color:#fff;text-align:center;padding:5px 10px;border-radius:6px;font-weight:700;font-size:11px;margin-bottom:6px;">🎁 Campaign: ${receipt.campaign_name || 'Campaign Sale'}</div>`;
 
   const receiptHTML = generateReceiptHTML({
+    saleDate:receipt.sale_date,
     receiptNumber:   receipt.sale_number,
     branch:          branchDisplayName || receipt.branch,
     items:           mappedItems,
@@ -12401,6 +12406,7 @@ function BranchCampaignsTab() {
   const [inventory, setInventory] = useState([]);
   const [prices, setPrices] = useState([]);
   const [saleForm, setSaleForm] = useState({ paid_product: '', paid_qty: 1, free_product: '', free_qty: 1, notes: '' });
+  const campaignRetry=useRef(null);
   const [submitting, setSubmitting] = useState(false);
   const [filterStatus, setFilterStatus] = useState('active');
   const [lastReceipt, setLastReceipt] = useState(null);
@@ -12568,6 +12574,7 @@ function BranchCampaignsTab() {
     setSubmitting(true);
     try {
       const result = await api.branch.campaignSale({
+        requestId:campaignRetry.current ||= generateOfflineId(),
         campaign_id:    saleModal.id,
         campaign_name:  saleModal.name,
         branch:         effectiveBranch,
@@ -12585,6 +12592,7 @@ function BranchCampaignsTab() {
         processed_by:   user?.username || user?.full_name || 'branch',
       });
       setLastReceipt(result.receipt || null);
+      campaignRetry.current=null;
       setAlertMsg({ type: 'success', msg: 'Campaign sale processed successfully!' });
     } catch (err) {
       setAlertMsg({ type: 'error', msg: err.message });

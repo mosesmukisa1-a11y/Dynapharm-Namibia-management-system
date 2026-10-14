@@ -38,8 +38,8 @@ export default async function handler(req, res) {
            'walkin_sale','walkin_member_sale','walkin_non_member_sale',
            'prescription_dispense','online_order_sale','online_order_fulfilment'
          )
-         AND sm.created_at >= $1::date
-         AND sm.created_at <= ($2 || 'T23:59:59')::timestamp`,
+         AND sm.created_at >= ($1::date::timestamp AT TIME ZONE 'Africa/Windhoek')
+         AND sm.created_at < (($2::date+1)::timestamp AT TIME ZONE 'Africa/Windhoek')`,
       [start, end]
     ),
   ]);
@@ -50,7 +50,7 @@ export default async function handler(req, res) {
 
   const totalSalesRevenue = salesRevenue.totalSales;
   const totalOrders = await getOne(
-    `SELECT COUNT(*) as cnt FROM branch_walkin_sales WHERE status='completed' AND sale_date >= $1::date AND sale_date <= ($2 || 'T23:59:59')::timestamp`,
+    `SELECT COUNT(*) as cnt FROM branch_walkin_sales WHERE status='completed' AND sale_date >= ($1::date::timestamp AT TIME ZONE 'Africa/Windhoek') AND sale_date < (($2::date+1)::timestamp AT TIME ZONE 'Africa/Windhoek')`,
     [start, end]
   );
   const walkinCount = Number(totalOrders?.cnt || 0);
@@ -67,8 +67,8 @@ export default async function handler(req, res) {
          'walk_in_member_sale','walk_in_non_member_sale','sale',
          'online_order_fulfilment','online_order_sale','prescription_dispense'
        )
-       AND sm.created_at >= $1::date
-       AND sm.created_at <= ($2 || 'T23:59:59')::timestamp`,
+       AND sm.created_at >= ($1::date::timestamp AT TIME ZONE 'Africa/Windhoek')
+       AND sm.created_at < (($2::date+1)::timestamp AT TIME ZONE 'Africa/Windhoek')`,
     [start, end]
   );
   const cifCostOfSales = Number(cifRow?.cif_cost || 0);

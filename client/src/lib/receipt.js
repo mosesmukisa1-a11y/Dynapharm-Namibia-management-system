@@ -12,13 +12,13 @@ export function generateReceiptHTML({
   referralName, referralNB, cashier, showBV = true,
   cashback = 0, branchAmount = null, distributorProfit = null,
   consultFeeAmount = 0, consultFeeMode = null,
-  followUpDate = null, followUpNotes = null,
+  followUpDate = null, followUpNotes = null, saleDate = null,
 }) {
   const branchInfo = BRANCH_DETAILS.find(b => b.name === branch) || {};
   const branchDisplay = branchInfo.name || branch || '';
-  const now = new Date();
-  const dateStr = now.toLocaleDateString('en-ZA', { year: 'numeric', month: 'short', day: 'numeric' });
-  const timeStr = now.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const now = saleDate ? new Date(saleDate) : new Date();
+  const dateStr = now.toLocaleDateString('en-ZA', { timeZone:'Africa/Windhoek', year: 'numeric', month: 'short', day: 'numeric' });
+  const timeStr = now.toLocaleTimeString('en-ZA', { timeZone:'Africa/Windhoek', hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const isMember = customerType === 'member';
   const isNonMember = !isMember;
 
@@ -301,7 +301,7 @@ export function generatePrescriptionQuoteHTML({
   const branchInfo = BRANCH_DETAILS.find(b => b.name === branch) || {};
   const branchDisplay = branchInfo.name || branch || '';
   const isMember = membershipStatus === 'member';
-  const dateStr = date ? new Date(date).toLocaleDateString('en-ZA', { year: 'numeric', month: 'short', day: 'numeric' }) : new Date().toLocaleDateString('en-ZA', { year: 'numeric', month: 'short', day: 'numeric' });
+  const dateStr = date ? new Date(date).toLocaleDateString('en-ZA', { timeZone:'Africa/Windhoek',year: 'numeric', month: 'short', day: 'numeric' }) : new Date().toLocaleDateString('en-ZA', { timeZone:'Africa/Windhoek',year: 'numeric', month: 'short', day: 'numeric' });
 
   const itemRows = items.map(item => {
     const bv = Number(item.bv || 0);
@@ -386,8 +386,8 @@ export function generateSalesPDFHTML({
   const branchInfo = BRANCH_DETAILS.find(b => b.name === branch) || {};
   const branchDisplay = branchInfo.name || branch || '';
   const now = saleDate ? new Date(saleDate) : new Date();
-  const dateStr = now.toLocaleDateString('en-ZA', { year: 'numeric', month: 'long', day: 'numeric' });
-  const timeStr = now.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' });
+  const dateStr = now.toLocaleDateString('en-ZA', { timeZone:'Africa/Windhoek',year: 'numeric', month: 'long', day: 'numeric' });
+  const timeStr = now.toLocaleTimeString('en-ZA', { timeZone:'Africa/Windhoek',hour: '2-digit', minute: '2-digit' });
   const isMember = customerType === 'member';
   const isNonMember = !isMember;
 
@@ -562,7 +562,7 @@ export function generatePrescriptionQuotePDFHTML({
   const branchInfo = BRANCH_DETAILS.find(b => b.name === branch) || {};
   const branchDisplay = branchInfo.name || branch || '';
   const isMember = membershipStatus === 'member';
-  const dateStr = date ? new Date(date).toLocaleDateString('en-ZA', { year: 'numeric', month: 'long', day: 'numeric' }) : new Date().toLocaleDateString('en-ZA', { year: 'numeric', month: 'long', day: 'numeric' });
+  const dateStr = date ? new Date(date).toLocaleDateString('en-ZA', { timeZone:'Africa/Windhoek',year: 'numeric', month: 'long', day: 'numeric' }) : new Date().toLocaleDateString('en-ZA', { timeZone:'Africa/Windhoek',year: 'numeric', month: 'long', day: 'numeric' });
   const isInclusive = consultMode === 'inclusive';
 
   const rows = items.map(item => {

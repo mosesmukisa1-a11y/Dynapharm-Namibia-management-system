@@ -1607,7 +1607,7 @@ function ReportsTab() {
               <CardHeader>
                 <div className="flex justify-between items-center">
                   <h3 className="font-bold text-gray-800">Stock Value Report</h3>
-                  <span className="text-xs text-gray-400">As of {stockValue.asOfDate ? new Date(stockValue.asOfDate).toLocaleDateString() : 'today'}</span>
+                  <span className="text-xs text-gray-400">As of {stockValue.asOfDate ? formatDate(stockValue.asOfDate) : 'today'}</span>
                 </div>
               </CardHeader>
               <CardBody>

@@ -1,5 +1,6 @@
 import { applyAuthCors } from '../../_lib/auth.js';
 import { getMany } from '../../db.js';
+import {businessDay,validateBusinessDates} from '../../services/businessDates.js';
 
 /**
  * GET /api/reports/branch-sales/product-range
@@ -19,11 +20,12 @@ export default async function handler(req, res) {
 
   try {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = businessDay();
     const firstOfMonth = today.slice(0, 8) + '01';
 
     const dateFrom   = url.searchParams.get('date_from') || firstOfMonth;
     const dateTo     = url.searchParams.get('date_to')   || today;
+    validateBusinessDates(dateFrom,dateTo);
     const branchRaw  = url.searchParams.get('branch_id') || 'all';
     const branchId   = branchRaw === 'all' ? null : branchRaw.toLowerCase().replace(/ /g, '_');
 
@@ -47,8 +49,8 @@ export default async function handler(req, res) {
       WITH campaign_refs AS (
         SELECT id, COALESCE(NULLIF((data->>'discount_pct')::numeric, 0), 0) AS discount_pct
         FROM branch_walkin_sales
-        WHERE DATE(sale_date) >= $1::date
-          AND DATE(sale_date) <= $2::date
+        WHERE sale_date >= ($1::date::timestamp AT TIME ZONE 'Africa/Windhoek')
+          AND sale_date < (($2::date+1)::timestamp AT TIME ZONE 'Africa/Windhoek')
           ${campBranchClause}
           AND data->>'sale_type' = 'campaign_sale'
       ),
@@ -63,28 +65,12 @@ export default async function handler(req, res) {
             ELSE 'regular'
           END                          AS sale_type,
           SUM(ABS(bim.quantity))       AS total_qty,
-          SUM(
-            ABS(bim.quantity) *
-            -- dp_amount guard: bim.unit_price stores CP (not DP) for walk_in_non_member_sale
-            -- rows (both regular and campaign non-member). Never use it as a DP fallback for
-            -- those rows or the product-range report will show inflated DP figures. Mirror of
-            -- the same guard in daily-products.js.
-            CASE WHEN bim.type = 'campaign_free_item'      THEN 0
-                 WHEN bim.type = 'walk_in_non_member_sale' AND COALESCE(cr.discount_pct, 0) > 0
-                   -- Non-member discount campaign: apply discount_pct from campaign_refs CTE.
-                   THEN COALESCE(NULLIF(ROUND(pp.dp * (1 - cr.discount_pct / 100), 2), 0), NULLIF(pp.dp, 0), 0)
-                 WHEN bim.type = 'walk_in_non_member_sale'
-                   -- bxgy or regular: list DP (unit_price stores CP, not DP).
-                   THEN COALESCE(NULLIF(pp.dp, 0), 0)
-                 ELSE COALESCE(NULLIF(pp.dp, 0), NULLIF(bim.unit_price, 0), 0)
-            END
-          )                            AS dp_amount
+          SUM((bim.metadata->'sale_evidence'->>'dp_value')::numeric) AS dp_amount,
+          SUM(CASE WHEN bim.metadata->'sale_evidence'->>'dp_value' IS NULL THEN ABS(bim.quantity) ELSE 0 END) AS missing_dp_qty
         FROM branch_inventory_movements bim
-        LEFT JOIN live_product_prices pp
-               ON LOWER(TRIM(pp.description)) = LOWER(TRIM(bim.product_name))
         LEFT JOIN campaign_refs cr ON cr.id = bim.reference
-        WHERE bim.created_at >= $1::date
-          AND bim.created_at  < ($2::date + INTERVAL '1 day')
+        WHERE bim.created_at >= ($1::date::timestamp AT TIME ZONE 'Africa/Windhoek')
+          AND bim.created_at < (($2::date+1)::timestamp AT TIME ZONE 'Africa/Windhoek')
           ${movBranchClause}
           AND bim.type IN (
             'walk_in_member_sale', 'walk_in_non_member_sale',
@@ -111,13 +97,13 @@ export default async function handler(req, res) {
           SUM(ABS(bim.quantity) * COALESCE(bim.charge_unit, NULLIF(bim.unit_price, 0), NULLIF(pp.dp, 0), 0)) AS refund_dp
         FROM branch_inventory_movements bim
         LEFT JOIN live_product_prices pp ON LOWER(TRIM(pp.description)) = LOWER(TRIM(bim.product_name))
-        WHERE bim.created_at >= $1::date
-          AND bim.created_at  < ($2::date + INTERVAL '1 day')
+        WHERE bim.created_at >= ($1::date::timestamp AT TIME ZONE 'Africa/Windhoek')
+          AND bim.created_at < (($2::date+1)::timestamp AT TIME ZONE 'Africa/Windhoek')
           ${movBranchClause}
           AND bim.type = 'refund_return'
         GROUP BY LOWER(TRIM(bim.product_name))
       )
-      SELECT a.product_name, a.sale_type, a.total_qty, a.dp_amount,
+      SELECT a.product_name, a.sale_type, a.total_qty, a.dp_amount,a.missing_dp_qty,
              COALESCE(r.refund_qty, 0) AS refund_qty,
              COALESCE(r.refund_dp,  0) AS refund_dp
       FROM agg a
@@ -136,12 +122,14 @@ export default async function handler(req, res) {
           product_name: r.product_name || 'Unknown',
           walkin: 0, prescription: 0, campaigns: 0, free: 0,
           dp_value: 0,
+          missing_dp_qty:0,
           refunded: Number(r.refund_qty || 0),
           refund_dp: parseFloat(Number(r.refund_dp || 0).toFixed(2)),
         };
       }
       const qty = Number(r.total_qty  || 0);
       const dp  = Number(r.dp_amount  || 0);
+      prodMap[key].missing_dp_qty+=Number(r.missing_dp_qty || 0);
       if      (r.sale_type === 'regular')        { prodMap[key].walkin       += qty; prodMap[key].dp_value += dp; }
       else if (r.sale_type === 'prescription')   { prodMap[key].prescription += qty; prodMap[key].dp_value += dp; }
       else if (r.sale_type === 'campaign_paid')  { prodMap[key].campaigns    += qty; prodMap[key].dp_value += dp; }

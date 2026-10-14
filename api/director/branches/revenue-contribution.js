@@ -16,7 +16,7 @@ export default async function handler(req, res) {
       `SELECT branch_id, COALESCE(SUM(total),0) as revenue
        FROM branch_walkin_sales
        WHERE status='completed'
-         AND sale_date >= $1::date AND sale_date <= ($2 || 'T23:59:59')::timestamp
+         AND sale_date >= ($1::date::timestamp AT TIME ZONE 'Africa/Windhoek') AND sale_date < (($2::date+1)::timestamp AT TIME ZONE 'Africa/Windhoek')
        GROUP BY branch_id`,
       [start, end]
     ),
@@ -24,8 +24,8 @@ export default async function handler(req, res) {
       `SELECT branch_id, COALESCE(SUM(refund_amount), 0) AS refund_total
        FROM branch_refund_requests
        WHERE status = 'approved'
-         AND processed_at::date >= $1::date
-         AND processed_at::date <= $2::date
+         AND processed_at >= ($1::date::timestamp AT TIME ZONE 'Africa/Windhoek')
+         AND processed_at < (($2::date+1)::timestamp AT TIME ZONE 'Africa/Windhoek')
        GROUP BY branch_id`,
       [start, end]
     ),

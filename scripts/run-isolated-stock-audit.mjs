@@ -1,6 +1,6 @@
 import {randomUUID, randomBytes} from 'node:crypto';
 import {spawn} from 'node:child_process';
-import {mkdir} from 'node:fs/promises';
+import {mkdir,readFile} from 'node:fs/promises';
 import pg from 'pg';
 import {assertIsolatedTestDatabase} from '../api/testDatabaseGuard.js';
 import {stockAuditSuites} from '../tests/helpers/database-suites.js';
@@ -39,7 +39,7 @@ async function child(command,args,{env=process.env,input,capture=false}={}){
     process.on('close',code=>{
       // Do not leak connection strings in tool errors.
       errors=errors.split(sourceUrl.toString()).join('[database]').split(isolatedUrl.toString()).join('[isolated database]');
-      if(code!==0)reject(Error(`${command} exited ${code}: ${errors.slice(-2000)}`));
+      if(code!==0)reject(Error(`${command} exited ${code}: ${errors.slice(-16000)}`));
       else{if(errors)console.error(errors);resolve(output);}
     });
     process.stdin.end(input);
@@ -53,6 +53,7 @@ try{
   await child('psql',['--dbname',isolatedUrl.toString(),'--quiet','--set','ON_ERROR_STOP=1'],{
     input:schema,capture:true});
   target=new pg.Pool({connectionString:isolatedUrl.toString(),max:1});
+  await target.query(await readFile('migrations/033_sale_evidence.sql','utf8'));
   await target.query(`INSERT INTO warehouse_locations(id,name,type)
     VALUES('windhoek_warehouse','Isolated warehouse','warehouse'),
       ('ondangwa_warehouse','Isolated second warehouse','warehouse')`);

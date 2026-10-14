@@ -29,16 +29,11 @@ export async function getSalesReturnsSummary({aliases,from,to,productName}={},re
   const [result]=await read(`${salesEvidenceSql}, events AS (
     SELECT 'sale' AS kind,e.quantity,e.snapshot,
       COALESCE((e.snapshot->>'revenue_total')::numeric,(e.snapshot->>'revenue_unit')::numeric*e.quantity) AS revenue,
-      CASE WHEN (LOWER(s.customer_type) LIKE '%member%' AND LOWER(s.customer_type) NOT LIKE '%non%')
-          OR LOWER(s.customer_type) LIKE '%online%'
-        THEN COALESCE((e.snapshot->>'revenue_total')::numeric,(e.snapshot->>'revenue_unit')::numeric*e.quantity)
-        ELSE (e.snapshot->>'financial_dp_unit')::numeric*e.quantity*(1-COALESCE((s.data->>'discount_pct')::numeric,0)/100) END AS original_dp
+      (e.snapshot->>'financial_dp_unit')::numeric*e.quantity AS original_dp
     FROM evidence e LEFT JOIN branch_walkin_sales s ON s.id=e.sale_reference
     UNION ALL
     SELECT 'refund',r.quantity,COALESCE(rev.snapshot,'{}'::jsonb),r.refund_amount,
-      CASE WHEN (LOWER(s.customer_type) LIKE '%member%' AND LOWER(s.customer_type) NOT LIKE '%non%')
-          OR LOWER(s.customer_type) LIKE '%online%' THEN r.refund_amount
-        ELSE (rev.snapshot->>'financial_dp_unit')::numeric*r.quantity*(1-COALESCE((s.data->>'discount_pct')::numeric,0)/100) END
+      (rev.snapshot->>'financial_dp_unit')::numeric*r.quantity
     FROM branch_refund_requests r
     LEFT JOIN stock_linked_reversals rev ON rev.id=r.movement_id AND rev.kind='customer'
     LEFT JOIN branch_walkin_sales s ON s.id=r.sale_reference
@@ -136,11 +131,9 @@ export async function getLegacyDPRevenue(aliases,start,end,read=getMany){
   };
   for(const sale of sales){
     let dp=sale.dp==null?null:Number(sale.dp);
-    if(['memberSales','onlineSales'].includes(category(sale.customer_type)))dp=Number(sale.total);
-    else if(dp!=null)dp*=discountFactor(sale.data);
+    // New commercial snapshots already include the recorded discount. Never
+    // replace them with receipt cash or apply the campaign discount twice.
     if(dp==null && Number(sale.missing_dp || 0)===0){
-      if(['memberSales','onlineSales'].includes(category(sale.customer_type)))dp=Number(sale.total);
-      else{
         let items=sale.items;
         try{if(typeof items==='string')items=JSON.parse(items);}catch{items=null;}
         let data=sale.data;
@@ -148,7 +141,6 @@ export async function getLegacyDPRevenue(aliases,start,end,read=getMany){
         if(Array.isArray(items)&&items.length&&items.every(i=>(i.dpPrice ?? i.dp)!=null && (i.quantity ?? i.qty)!=null))
           dp=items.reduce((n,i)=>n+Number(i.dpPrice ?? i.dp)*Number(i.quantity ?? i.qty),0)*
             discountFactor(data);
-      }
     }
     out.grossCustomerReceipts+=Number(sale.total || 0);
     if(dp==null || !Number.isFinite(dp)){out.missingDPRecords++;continue;}
@@ -159,8 +151,9 @@ export async function getLegacyDPRevenue(aliases,start,end,read=getMany){
   for(const refund of refunds){
     out.customerRefunds+=Number(refund.refund_amount || 0);
     const unit=refund.snapshot?.financial_dp_unit;
-    const dp=['memberSales','onlineSales'].includes(category(refund.customer_type))?Number(refund.refund_amount):
-      unit!=null?Number(unit)*Number(refund.quantity)*discountFactor(refund.original_data):null;
+    // A reversal carries the original NET commercial DP. Cash refunded is a
+    // separate basis; neither customer type nor campaign metadata reprices it.
+    const dp=unit!=null?Number(unit)*Number(refund.quantity):null;
     if(dp==null || !Number.isFinite(dp)){out.missingDPRecords++;continue;}
     out.refundsDP+=dp;
     if(refund.original_type==='prescription_dispense')out.prescriptionSales-=dp;

@@ -1,13 +1,15 @@
 import { recordBranchSaleAllocationTx, reconcileSaleFinancialsTx } from '../services/stockSaleAllocations.js';
 import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
 import { query, getMany, getOne, withTransaction } from '../db.js';
-import { atomicStockRequest } from '../_lib/atomicStockRequest.js';
+import { atomicSaleRequest } from '../_lib/atomicSaleRequest.js';
 import { assertActivePriceProducts } from '../services/priceImport.js';
 import { branchSearchTerms } from '../_lib/branchUtils.js';
 import { recomputeLocationBalances } from '../services/stockEngine.js';
 import { broadcastStockEvent } from '../services/stockEvents.js';
 import { postActivityRecord, generateBatId } from '../_lib/activityCapture.js';
 import { getPackageComponents } from '../_lib/packageDefinitions.js';
+import { completeSaleEvidenceTx } from '../services/saleEvidence.js';
+import { businessDatePredicate } from '../services/businessDates.js';
 
 async function parseJsonBody(req) {
   if (req.body && typeof req.body === 'object') {
@@ -241,13 +243,13 @@ function buildSelectQuery(searchParams, scopedBranches, enforced) {
   const from = searchParams.get('from');
   if (from) {
     params.push(from);
-    conditions.push(`sale_date::date >= $${params.length}::date`);
+    conditions.push(businessDatePredicate('sale_date',`$${params.length}`));
   }
 
   const to = searchParams.get('to');
   if (to) {
     params.push(to);
-    conditions.push(`sale_date::date <= $${params.length}::date`);
+    conditions.push(businessDatePredicate('sale_date',`$${params.length}`,true));
   }
 
   const search = searchParams.get('search');
@@ -479,6 +481,15 @@ async function handler(req, res) {
     if (req.method === 'POST') {
       const body = await parseJsonBody(req);
       const salePayload = body.sale || body;
+      const retryIdentity=salePayload.offline_id || salePayload.id;
+      if(retryIdentity) {
+        await query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`walkin:${retryIdentity}`]);
+        const existing=await getOne('SELECT * FROM branch_walkin_sales WHERE id=$1 OR offline_id=$1',[retryIdentity]);
+        if(existing){
+          if(branchScope.enforced && !branchScope.branches.includes(existing.branch_id))return res.status(403).json({success:false,error:'Access denied'});
+          return res.status(200).json({success:true,sale:normalizeSaleRow(existing),duplicate:true});
+        }
+      }
 
       if (salePayload.offline_id) {
         const dup = await getOne('SELECT id FROM branch_walkin_sales WHERE offline_id = $1', [salePayload.offline_id]);
@@ -489,6 +500,10 @@ async function handler(req, res) {
       }
 
       const record = buildSaleRecord(salePayload);
+      record.created_by = req.user.fullName || req.user.username || req.user.id || req.user.sub;
+      record.sale_date = new Date().toISOString();
+      record.created_at = record.sale_date;
+      if(record.status !== 'completed') return res.status(400).json({success:false,error:'Only completed sales can deduct stock'});
 
       if (branchScope.enforced && !branchScope.branches.includes(record.branch_id)) {
         return res.status(403).json({ success: false, error: 'Access denied: cannot create sales for this branch' });
@@ -503,7 +518,10 @@ async function handler(req, res) {
       const deductItems = [];
       const isMemberSale = (record.customer_type === 'member');
 
-      const livePriceRows = await getMany(`SELECT description, dp, cp, bv, cif FROM live_product_prices`);
+      const livePriceRows = await getMany(`SELECT description, dp, cp, bv, cif FROM live_product_prices
+        UNION ALL SELECT name AS description,dp,cp,0 AS bv,NULL AS cif FROM products p
+        WHERE is_active IS DISTINCT FROM false AND NOT EXISTS(
+          SELECT 1 FROM live_product_prices pp WHERE LOWER(TRIM(pp.description))=LOWER(TRIM(p.name)))`);
       const livePriceMap = {};
       for (const row of livePriceRows) {
         if (row.description) livePriceMap[row.description.toLowerCase()] = row;
@@ -511,6 +529,7 @@ async function handler(req, res) {
 
       for (const item of saleItems) {
         const qty = Number(item.quantity || item.qty || 0);
+        if(!Number.isFinite(qty) || qty<=0)throw Object.assign(new Error('Sale quantities must be positive'),{statusCode:400});
         // Always resolve DP (cost basis) — never CP — for BIM.unit_price and
         // stock_movements.unit_dp.  Reports already join product_prices.dp, but
         // writing DP here keeps inventory_balances.stock_value_dp accurate and
@@ -518,8 +537,7 @@ async function handler(req, res) {
         const itemName = item.product_name || item.name || item.description || '';
         const itemLivePrice = livePriceMap[itemName.toLowerCase()];
         // Prefer: (1) live product_prices.dp, (2) frontend dpPrice/dp, (3) unit_price fallback
-        const originalDP=itemLivePrice?.dp ?? item.dpPrice ?? item.dp ??
-          (isMemberSale ? item.unit_price ?? item.unitPrice : null);
+        const originalDP=itemLivePrice?.dp;
         // CP is not evidence of distributor price. An unknown original DP
         // remains unknown; received CIF/source layers still determine COGS.
         const unitPrice=originalDP==null ? null : Number(originalDP);
@@ -528,33 +546,33 @@ async function handler(req, res) {
           for (const comp of pkg.products) {
             const livePrice = livePriceMap[comp.name.toLowerCase()];
             // Always DP for cost basis (same as dispense.js)
-            const dp = livePrice ? Number(livePrice.dp) || comp.dp : comp.dp;
+            const dp = livePrice?.dp==null ? null : Number(livePrice.dp);
             deductItems.push({
               name: comp.name,
-              qty: Math.round(Number(comp.quantity || 1) * qty),
+              qty: Number(comp.quantity || 1) * qty,
               unitPrice: dp,
+              revenueUnit:isMemberSale ? dp : (livePrice?.cp==null ? null : Number(livePrice.cp)),
             });
           }
         } else if (Array.isArray(item.components) && item.components.length > 0) {
           for (const comp of item.components) {
             const compLive = livePriceMap[(comp.name || comp.product_name || '').toLowerCase()];
             // Always DP for cost basis
-            const compDp = compLive
-              ? (Number(compLive.dp) || Number(comp.dp || comp.unit_price || 0))
-              : Number(comp.dp || comp.unit_price || 0);
+            const compDp = compLive?.dp==null ? null : Number(compLive.dp);
             deductItems.push({
               name: comp.name || comp.product_name || '',
-              qty: Math.round(Number(comp.quantity || comp.qty || 1) * qty),
+              qty: Number(comp.quantity || comp.qty || 1) * qty,
               unitPrice: compDp,
+              revenueUnit:isMemberSale ? compDp : (compLive?.cp==null ? null : Number(compLive.cp)),
             });
           }
         } else {
-          const charged=item.unit_price ?? item.unitPrice ?? (isMemberSale ? item.dpPrice ?? item.dp : item.cpPrice ?? item.cp);
+          const charged=isMemberSale ? itemLivePrice?.dp : itemLivePrice?.cp;
           deductItems.push({ name: itemName, qty, unitPrice,revenueUnit:charged==null ? null : Number(charged),bvUnit:isMemberSale?Number(item.bv || item.bvPrice || 0):0 });
         }
       }
 
-      let insertedRow;
+      let insertedRow,completedEvidence;
       try {
         insertedRow = await withTransaction(async (client) => {
           const columns = Object.keys(record);
@@ -587,7 +605,7 @@ async function handler(req, res) {
             )).rows;
             for (const batch of batches) {
               if (remaining <= 0) break;
-              const take = Math.round(Math.min(remaining, Number(batch.quantity)));
+              const take = Math.min(remaining, Number(batch.quantity));
               await client.query(
                 `UPDATE branch_inventory_batches SET quantity = quantity - $1, updated_at = NOW() WHERE id = $2`,
                 [take, batch.id]
@@ -600,7 +618,7 @@ async function handler(req, res) {
               await client.query(
                 `INSERT INTO branch_inventory_movements (id, branch_id, type, product_name, batch_no, quantity, unit_price, reference, notes, created_by, created_at)
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())`,
-                [bimId, branchId, saleMovType, batch.product_name, batch.batch_no || '', take, item.unitPrice || null, saleId, 'Walk-in ' + customerType + ' sale', record.created_by || '']
+                [bimId, branchId, saleMovType, batch.product_name, batch.batch_no || '', take, item.unitPrice ?? null, saleId, 'Walk-in ' + customerType + ' sale', record.created_by || '']
               );
               const smId = 'MOV-' + ts + '-' + Math.random().toString(36).slice(2, 6);
               await client.query(
@@ -610,7 +628,7 @@ async function handler(req, res) {
                     reference_id, notes, status, unit_dp, movement_date, created_at, updated_at)
                  VALUES ($1,$2,$3,$4,$5,$6,$7,'branch','customer',NULL,$8,$9,'posted',$10,NOW(),NOW(),NOW())`,
                 [smId, batch.product_name, batch.batch_no || '', batch.expiry_date || null,
-                 take, saleMovType, branchId, saleId, 'Walk-in ' + customerType + ' sale', item.unitPrice || null]
+                 take, saleMovType, branchId, saleId, 'Walk-in ' + customerType + ' sale', item.unitPrice ?? null]
               );
               await recordBranchSaleAllocationTx(client,{movementId:smId,saleReference:saleId,batchId:batch.id,quantity:take,branchMovementId:bimId,revenueUnit:item.revenueUnit,bvUnit:item.bvUnit || 0,financialDpUnit:item.unitPrice});
               remaining -= take;
@@ -624,6 +642,9 @@ async function handler(req, res) {
             throw new Error(`Insufficient stock for: ${insufficientItems.map(i => `${i.product_name} (need ${i.requested}, have ${i.available})`).join(', ')}`);
           }
           await reconcileSaleFinancialsTx(client,saleId,record.total,record.total_bv);
+          completedEvidence=await completeSaleEvidenceTx(client,{sourceKey:`walkin:${saleId}`,reference:saleId,
+            receipt:record.sale_number,branch:branchId,user:req.user,customerType,
+            paymentMethod:record.payment_method,chargedTotal:record.total,timestamp:record.sale_date});
 
           return result.rows[0];
         });
@@ -656,7 +677,7 @@ async function handler(req, res) {
         const dp = liveRow ? (Number(liveRow.dp) || Number(i.dpPrice || i.dp || 0)) : Number(i.dpPrice || i.dp || 0);
         return s + dp * Number(i.quantity || i.qty || 0);
       }, 0);
-      postActivityRecord({
+      await postActivityRecord({
         id: generateBatId(),
         branch_id: record.branch_id,
         branch_name: record.branch_id,
@@ -665,11 +686,11 @@ async function handler(req, res) {
         client_type: record.customer_type || 'walk_in',
         nb_number: JSON.parse(record.metadata || '{}').referralId || null,
         service_date: record.sale_date,
-        service_time: record.sale_date ? new Date(record.sale_date).toTimeString().slice(0, 8) : null,
         activity_type: actType,
         workflow_source: 'branch_portal',
         form_reference_id: insertedRow.id,
-        product_total_dp: dpSubtotal || record.total,
+        created_at:record.sale_date,
+        product_total_dp: completedEvidence?.dpTotal ?? null,
         product_total_cp: record.total,
         total_qty: totalQty,
         grand_total: record.total,
@@ -681,7 +702,7 @@ async function handler(req, res) {
         consultation_status: 'none',
         reporting_status: 'posted',
         captured_by: record.created_by || null,
-      }).catch(e => console.error('[activityCapture] walkin-sale post error:', e.message));
+      });
 
       // Auto-record distributor profit for non-member sales
       if (record.customer_type !== 'member') {
@@ -813,4 +834,4 @@ async function handler(req, res) {
     return res.status(500).json({ success: false, error: 'Internal server error' });
   }
 }
-export default atomicStockRequest(handler);
+export default atomicSaleRequest(handler);

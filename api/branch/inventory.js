@@ -1,3 +1,4 @@
+import { movementSaleEvidence } from '../services/saleEvidence.js';
 import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
 import { query, getMany, getOne, withTransaction } from '../db.js';
 import { recomputeLocationBalances } from '../services/stockEngine.js';
@@ -95,6 +96,7 @@ function normalizeMovementRow(row) {
     productCode: row.product_code,
     batchNo: row.batch_no,
     quantity: parseNumber(row.quantity),
+    ...movementSaleEvidence(row),
     unit: row.unit || 'units',
     sourceBranchId: row.source_branch_id,
     destinationBranchId: row.destination_branch_id,

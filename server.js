@@ -2639,6 +2639,9 @@ server.on('error', (error) => {
           new URL('./migrations/032_client_history.sql',import.meta.url),'utf8')]),
       (await import('./api/services/stockCostLayers.js')).lifecycleSchema,
       (await import('./api/services/stockSaleAllocations.js')).saleAllocationSchema,
+      (await import('./api/services/saleEvidence.js')).saleEvidenceSchema,
+      (await import('./api/_lib/atomicSaleRequest.js')).saleRetrySchema,
+      `ALTER TABLE branch_activity_transactions ALTER COLUMN total_qty TYPE NUMERIC`,
       (await import('./api/services/linkedReversals.js')).reversalSchema,
       await (await import('node:fs/promises')).readFile(
         new URL('./migrations/028_stock_cost_reporting_indexes.sql',import.meta.url),'utf8'),

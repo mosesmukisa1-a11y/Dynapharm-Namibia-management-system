@@ -3,7 +3,7 @@
  *
  * 4 automated jobs:
  *  1. runAutoWriteOff()           — nightly: submit expired batches for GM approval
- *  2. runAutoStockRequest()       — nightly: create stock requests when stock < min threshold
+ *  2. runAutoStockRequest()       — disabled without independent explicit reorder authority
  *  3. runAutoReceiveDispatched()  — every tick: auto-receive transfers idle >N hours
  *  4. checkAutoApproveTransfer() — retained compatibility hook; staff approval/dispatch required
  */
@@ -152,131 +152,10 @@ export async function runAutoWriteOff() {
 // 2. AUTO STOCK REQUEST: generate requests when stock hits min threshold
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Depletion is a recommendation, not independent reorder authority. Legacy
+// globally-enabled defaults and active threshold rules do not authorize orders.
 export async function runAutoStockRequest() {
-  const enabled = await getConfig('auto_stock_request_enabled', 'true');
-  if (enabled !== 'true') {
-    console.log('[automation] stock-request: disabled');
-    return;
-  }
-
-  const globalMinQty      = Number(await getConfig('stock_request_min_qty', '5'));
-  const globalReorderQty  = Number(await getConfig('stock_request_reorder_qty', '20'));
-  const preferredWarehouse = await getConfig('preferred_warehouse', 'windhoek_warehouse');
-
-  // Per-product-branch reorder rules
-  const rules = await getMany(
-    'SELECT branch_id, product_name, min_qty, reorder_qty, preferred_warehouse FROM stock_reorder_rules WHERE active = true'
-  ).catch(() => []);
-
-  const ruleMap = new Map();
-  for (const r of rules) {
-    const canonBranch = normalizeBranchSlug(r.branch_id) || r.branch_id;
-    const key = `${canonBranch}||${(r.product_name || '').toLowerCase().trim()}`;
-    ruleMap.set(key, r);
-  }
-
-  // Current branch totals
-  const branchTotals = await getMany(
-    `SELECT branch_id, product_name, SUM(quantity) AS total_qty
-     FROM branch_inventory_batches
-     WHERE quantity >= 0
-     GROUP BY branch_id, product_name`
-  );
-
-  // Open stock requests in last 7 days (to avoid duplicates)
-  const openRequests = await getMany(
-    `SELECT requesting_branch, items FROM stock_requests
-     WHERE status IN ('pending','approved')
-       AND created_at > NOW() - INTERVAL '7 days'`
-  );
-  const openRequestKeys = new Set();
-  for (const req of openRequests) {
-    let items = [];
-    try { items = typeof req.items === 'string' ? JSON.parse(req.items || '[]') : (req.items || []); } catch {}
-    const branchNorm = normalizeBranchSlug(req.requesting_branch) || req.requesting_branch || '';
-    for (const item of items) {
-      openRequestKeys.add(`${branchNorm}||${(item.product_name || item.productName || '').toLowerCase().trim()}`);
-    }
-  }
-
-  // Group products to request per branch
-  const toRequest = new Map();
-
-  for (const row of branchTotals) {
-    const canonBranch  = normalizeBranchSlug(row.branch_id) || row.branch_id;
-    const productLower = (row.product_name || '').toLowerCase().trim();
-    const ruleKey = `${canonBranch}||${productLower}`;
-    const rule = ruleMap.get(ruleKey);
-
-    const minQty     = rule ? Number(rule.min_qty)     : globalMinQty;
-    const reorderQty = rule ? Number(rule.reorder_qty) : globalReorderQty;
-    const warehouse  = rule?.preferred_warehouse || preferredWarehouse;
-    const totalQty   = Number(row.total_qty || 0);
-
-    // Skip: no explicit rule and not below global threshold, OR not below rule threshold
-    if (!rule && totalQty > globalMinQty) continue;
-    if (totalQty > minQty) continue;
-
-    // Skip if already have an open request for this branch+product
-    if (openRequestKeys.has(ruleKey)) continue;
-
-    if (!toRequest.has(canonBranch)) toRequest.set(canonBranch, []);
-    toRequest.get(canonBranch).push({
-      product_name: row.product_name,
-      productName:  row.product_name,
-      quantity:     reorderQty,
-      unit:         'units',
-      current_qty:  totalQty,
-      preferred_warehouse: warehouse,
-    });
-  }
-
-  let requestsCreated = 0;
-
-  for (const [branchId, items] of toRequest.entries()) {
-    try {
-      const id        = genId('ORD');
-      const warehouse = items[0].preferred_warehouse || preferredWarehouse;
-
-      await query(
-        `INSERT INTO stock_requests (id, requesting_branch, created_by, priority, notes, items, status, created_at, updated_at)
-         VALUES ($1,$2,'system','high',$3,$4,'pending',NOW(),NOW())`,
-        [id, branchId,
-         `Auto-generated reorder: ${items.length} product${items.length !== 1 ? 's' : ''} below minimum stock threshold`,
-         JSON.stringify(items.map(i => ({
-           product_name: i.product_name, productName: i.product_name,
-           quantity: i.quantity, unit: i.unit,
-         })))]
-      );
-
-      for (const item of items) {
-        await logAction('auto_stock_request', branchId, item.product_name, item.quantity, {
-          orderId: id, currentQty: item.current_qty, warehouse,
-        });
-      }
-
-      const branchLabel = branchId.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-
-      await notify('branch_alert', branchId,
-        `📦 Auto Stock Request Created`,
-        `System created stock request #${id} for ${items.length} product${items.length !== 1 ? 's' : ''} that fell below minimum stock levels. Awaiting warehouse fulfilment.`,
-        'info'
-      );
-      await notify('gm_alert', 'gm',
-        `📦 Auto Stock Request — ${branchLabel}`,
-        `Auto-generated stock request for ${branchLabel}: ${items.map(i => i.product_name).join(', ')}. Please review and approve in the GM Portal.`,
-        'info'
-      );
-
-      requestsCreated++;
-    } catch (err) {
-      console.error('[automation] stock-request error for branch', branchId, ':', err.message);
-    }
-  }
-
-  if (requestsCreated > 0) {
-    console.log(`[automation] stock-request: created ${requestsCreated} auto-request(s)`);
-  }
+  return { requestsCreated:0, reason:'Staff must review low-stock alerts and submit an explicit stock request' };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

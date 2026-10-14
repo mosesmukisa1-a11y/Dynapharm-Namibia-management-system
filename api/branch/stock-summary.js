@@ -3,6 +3,8 @@ import { getMany } from '../db.js';
 import { ALL_BRANCH_IDS, normalizeBranchSlug,branchSearchTerms } from '../_lib/branchUtils.js';
 import {getStockCostProjection} from '../services/stockCostReporting.js';
 import { getStockAlertPolicy } from '../services/stockAlertPolicy.js';
+import { movementSaleEvidence, isSaleMovement } from '../services/saleEvidence.js';
+import { businessDatePredicate, validateBusinessDates } from '../services/businessDates.js';
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
@@ -21,6 +23,7 @@ export default async function handler(req, res) {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const dateFrom = url.searchParams.get('date_from') || null;
     const dateTo = url.searchParams.get('date_to') || null;
+    validateBusinessDates(dateFrom,dateTo);
     const branchFilterRaw = url.searchParams.get('branch') || null;
     let branchFilter = branchFilterRaw ? (normalizeBranchSlug(branchFilterRaw) || branchFilterRaw) : null;
     if(branchScoped){
@@ -36,11 +39,15 @@ export default async function handler(req, res) {
       `SELECT * FROM branch_inventory_batches ORDER BY branch_id, product_name, expiry_date ASC NULLS LAST`
     );
 
-    let bimQuery = `SELECT branch_id, product_name, batch_no, reference, type, SUM(quantity) as total_qty, MAX(created_at) as last_date, (array_agg(DISTINCT source_branch_id))[1] as source FROM branch_inventory_movements`;
+    let bimQuery = `SELECT branch_id, product_name, batch_no, reference, type, SUM(quantity) as total_qty, MAX(created_at) as last_date, (array_agg(DISTINCT source_branch_id))[1] as source,
+      SUM((metadata->'sale_evidence'->>'dp_value')::numeric) AS sale_dp,
+      SUM((metadata->'sale_evidence'->>'charged_value')::numeric) AS sale_charged,
+      SUM(CASE WHEN metadata->'sale_evidence'->>'dp_value' IS NULL THEN ABS(quantity) ELSE 0 END) AS missing_sale_dp
+      FROM branch_inventory_movements`;
     const bimParams = [];
     const bimWhere = [];
-    if (dateFrom) { bimParams.push(dateFrom); bimWhere.push(`created_at >= $${bimParams.length}::timestamp`); }
-    if (dateTo) { bimParams.push(dateTo); bimWhere.push(`created_at < ($${bimParams.length}::date + interval '1 day')`); }
+    if (dateFrom) { bimParams.push(dateFrom); bimWhere.push(businessDatePredicate('created_at',`$${bimParams.length}`)); }
+    if (dateTo) { bimParams.push(dateTo); bimWhere.push(businessDatePredicate('created_at',`$${bimParams.length}`,true)); }
     if (branchFilter) { bimParams.push(branchFilter); bimWhere.push(`branch_id = $${bimParams.length}`); }
     if (bimWhere.length) bimQuery += ' WHERE ' + bimWhere.join(' AND ');
     bimQuery += ' GROUP BY branch_id, product_name, batch_no, reference, type';
@@ -55,11 +62,11 @@ export default async function handler(req, res) {
     let smPrePeriodRows  = [];
     if (dateFrom) {
       const smPrePs = [dateFrom];
-      let smPreQ = `SELECT movement_type, quantity, source_location, destination_location, reference_id, product_name, batch_no FROM stock_movements WHERE status IN ('posted','approved') AND created_at < $1::timestamp`;
+      let smPreQ = `SELECT movement_type, quantity, source_location, destination_location, reference_id, product_name, batch_no FROM stock_movements WHERE status IN ('posted','approved') AND created_at < ($1::date::timestamp AT TIME ZONE 'Africa/Windhoek')`;
       if (branchFilter) { smPrePs.push(branchFilter); smPrePs.push(`quarantine:${branchFilter}`); smPreQ += ` AND (source_location IN ($${smPrePs.length - 1},$${smPrePs.length}) OR destination_location IN ($${smPrePs.length - 1},$${smPrePs.length}))`; }
 
       const bimPrePs = [dateFrom];
-      let bimPreQ = `SELECT branch_id, type, quantity, reference, product_name, batch_no FROM branch_inventory_movements WHERE created_at < $1::timestamp`;
+      let bimPreQ = `SELECT branch_id, type, quantity, reference, product_name, batch_no FROM branch_inventory_movements WHERE created_at < ($1::date::timestamp AT TIME ZONE 'Africa/Windhoek')`;
       if (branchFilter) { bimPrePs.push(branchFilter); bimPreQ += ` AND branch_id = $${bimPrePs.length}`; }
 
       [smPrePeriodRows, bimPrePeriodRows] = await Promise.all([
@@ -68,11 +75,11 @@ export default async function handler(req, res) {
       ]);
     }
 
-    let smQuery = `SELECT product_name, batch_no, expiry_date, movement_type, quantity, source_location, destination_location, reference_id, notes, created_by, created_at FROM stock_movements`;
+    let smQuery = `SELECT id,product_name, batch_no, expiry_date, movement_type, quantity, source_location, destination_location, reference_id, notes, created_by, created_at,unit_dp,metadata FROM stock_movements`;
     const smParams = [];
     const smWhere = ["status IN ('posted','approved')"];
-    if (dateFrom) { smParams.push(dateFrom); smWhere.push(`created_at >= $${smParams.length}::timestamp`); }
-    if (dateTo) { smParams.push(dateTo); smWhere.push(`created_at < ($${smParams.length}::date + interval '1 day')`); }
+    if (dateFrom) { smParams.push(dateFrom); smWhere.push(businessDatePredicate('created_at',`$${smParams.length}`)); }
+    if (dateTo) { smParams.push(dateTo); smWhere.push(businessDatePredicate('created_at',`$${smParams.length}`,true)); }
     if (branchFilter) {
       smParams.push(branchFilter); smParams.push(`quarantine:${branchFilter}`);
       smWhere.push(`(source_location IN ($${smParams.length - 1},$${smParams.length}) OR destination_location IN ($${smParams.length - 1},$${smParams.length}))`);
@@ -83,9 +90,9 @@ export default async function handler(req, res) {
 
     let salesQuery = `SELECT id, branch_id, sale_date, customer_type, total, items, created_by, created_at FROM branch_walkin_sales`;
     const salesParams = [];
-    const salesWhere = [];
-    if (dateFrom) { salesParams.push(dateFrom); salesWhere.push(`created_at >= $${salesParams.length}::timestamp`); }
-    if (dateTo) { salesParams.push(dateTo); salesWhere.push(`created_at < ($${salesParams.length}::date + interval '1 day')`); }
+    const salesWhere = ["status='completed'"];
+    if (dateFrom) { salesParams.push(dateFrom); salesWhere.push(businessDatePredicate('sale_date',`$${salesParams.length}`)); }
+    if (dateTo) { salesParams.push(dateTo); salesWhere.push(businessDatePredicate('sale_date',`$${salesParams.length}`,true)); }
     if (branchFilter) { salesParams.push(branchFilter); salesWhere.push(`branch_id = $${salesParams.length}`); }
     if (salesWhere.length) salesQuery += ' WHERE ' + salesWhere.join(' AND ');
     salesQuery += ' ORDER BY created_at DESC';
@@ -109,6 +116,7 @@ export default async function handler(req, res) {
           qty_returned: 0,
           qty_adjusted: 0,
           sales_revenue: 0,
+          sales_dp_value:0, customer_charged_revenue:0,missing_sales_dp_qty:0,
           sales_count: 0,
           closing_qty: 0,
           dp_value: 0,
@@ -209,6 +217,8 @@ export default async function handler(req, res) {
         notes: sm.notes,
         created_by: sm.created_by,
         created_at: fmtDt(sm.created_at),
+        unit_dp:sm.unit_dp == null ? null : Number(sm.unit_dp),
+        ...movementSaleEvidence(sm),
       };
 
       const isBranchLoc = (loc) => loc && !loc.startsWith('in_transit') && !loc.includes('warehouse') && loc !== 'country_stock' && loc !== 'branch' && loc !== 'written_off' && loc !== 'customer' && loc !== 'patient';
@@ -238,6 +248,11 @@ export default async function handler(req, res) {
       }
       if (isBranchLoc(src)) {
         const br = ensureBranch(src);
+        if(isSaleMovement(t)){
+          br.sales_dp_value+=movRecord.dp_value ?? 0;
+          br.missing_sales_dp_qty+=movRecord.dp_value==null ? q : 0;
+          br.customer_charged_revenue+=movRecord.charged_value ?? 0;
+        }
         if (!br.movements.includes(movRecord)) br.movements.push(movRecord);
         if (t === 'transfer_out' || t === 'dispatched' || t === 'transit_dispatch') br.qty_transferred_out += q;
         else if (t === 'write_off' || t === 'field_use') br.qty_written_off += q;
@@ -258,6 +273,11 @@ export default async function handler(req, res) {
       // Use Math.abs: direction is encoded in the type, not the stored quantity sign.
       const q = Math.abs(Number(agg.total_qty || 0));
       const t = (agg.type || '').toLowerCase();
+      if(isSaleMovement(t)){
+        br.sales_dp_value+=Number(agg.sale_dp ?? 0);
+        br.customer_charged_revenue+=Number(agg.sale_charged ?? 0);
+        br.missing_sales_dp_qty+=Number(agg.missing_sale_dp || 0);
+      }
       if (t === 'receive' || t === 'received' || t === 'stock_receipt' || t === 'transfer_in') {
         br.qty_received += q;
         if (agg.source) br.source_warehouse = agg.source;
@@ -282,7 +302,7 @@ export default async function handler(req, res) {
       if (!brId) continue;
       const br = ensureBranch(brId);
       br.sales_count++;
-      br.sales_revenue += Number(sale.total || 0);
+      // Customer receipts are deliberately not a stock/DP total.
       if (!smSaleBranches.has(brId) && !bimSaleBranches.has(brId)) {
         let items = [];
         try { items = typeof sale.items === 'string' ? JSON.parse(sale.items) : (sale.items || []); } catch {}
@@ -392,6 +412,8 @@ export default async function handler(req, res) {
       const products = new Set();
       br.inventory.forEach(i => products.add(i.product_name));
       br.product_count = products.size;
+      br.sales_revenue=br.sales_dp_value; // compatibility alias, now explicitly DP
+      br.sales_dp_complete=br.missing_sales_dp_qty===0;
 
       if (dateFrom) {
         // opening = signed net of all movements before period_start

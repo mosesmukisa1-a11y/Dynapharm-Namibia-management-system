@@ -1,5 +1,6 @@
 import { applyAuthCors } from '../../_lib/auth.js';
 import { getMany } from '../../db.js';
+import { businessDay } from '../../services/businessDates.js';
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
@@ -10,7 +11,7 @@ export default async function handler(req, res) {
   try {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const branchId = url.searchParams.get('branch_id') || '';
-    const date = url.searchParams.get('date') || new Date().toISOString().slice(0, 10);
+    const date = url.searchParams.get('date') || businessDay();
 
     const normBranchId = branchId && branchId !== 'all'
       ? branchId.toLowerCase().replace(/ /g, '_')
@@ -34,7 +35,8 @@ export default async function handler(req, res) {
         SELECT id,
                COALESCE(NULLIF((data->>'discount_pct')::numeric, 0), 0) AS discount_pct
         FROM branch_walkin_sales
-        WHERE DATE(sale_date) = $1::date
+        WHERE sale_date>=($1::date::timestamp AT TIME ZONE 'Africa/Windhoek')
+          AND sale_date<(($1::date+1)::timestamp AT TIME ZONE 'Africa/Windhoek')
           ${campSubBranchClause}
           AND data->>'sale_type' = 'campaign_sale'
       ),
@@ -64,18 +66,8 @@ export default async function handler(req, res) {
           --     so "Actual Figure" reflects the real discounted DP charged.
           --   walk_in_non_member_sale (regular/bxgy): pp.dp only.
           --   All other types: pp.dp is authoritative; bim.unit_price as last resort fallback.
-          SUM(
-            ABS(bim.quantity) *
-            CASE WHEN bim.type = 'campaign_free_item'      THEN 0
-                 WHEN bim.type = 'campaign_sale'
-                   THEN COALESCE(NULLIF(bim.unit_price, 0), NULLIF(pp.dp, 0), 0)
-                 WHEN bim.type = 'walk_in_non_member_sale' AND cr.id IS NOT NULL AND COALESCE(cr.discount_pct, 0) > 0
-                   THEN COALESCE(NULLIF(ROUND(pp.dp * (1 - cr.discount_pct / 100), 2), 0), NULLIF(pp.dp, 0), 0)
-                 WHEN bim.type = 'walk_in_non_member_sale'
-                   THEN COALESCE(NULLIF(pp.dp, 0), 0)
-                 ELSE COALESCE(NULLIF(pp.dp, 0), NULLIF(bim.unit_price, 0), 0)
-            END
-          )                                                                 AS dp_amount,
+          SUM((bim.metadata->'sale_evidence'->>'dp_value')::numeric) AS dp_amount,
+          SUM(CASE WHEN bim.metadata->'sale_evidence'->>'dp_value' IS NULL THEN ABS(bim.quantity) ELSE 0 END) AS missing_dp_qty,
           -- unit_dp: per-unit DP price for display in the price column.
           --   campaign_sale: bim.unit_price (actual discounted/charged price).
           --   campaign_free_item: 0 (free, no charge).
@@ -83,23 +75,9 @@ export default async function handler(req, res) {
           --     so the report shows the discounted DP equivalent (for strikethrough display).
           --   walk_in_non_member_sale (regular/bxgy no discount): pp.dp only.
           --   All others: pp.dp authoritative; bim.unit_price as fallback.
-          MIN(
-            CASE WHEN bim.type = 'campaign_free_item'      THEN 0
-                 WHEN bim.type = 'campaign_sale'
-                   THEN COALESCE(NULLIF(bim.unit_price, 0), NULLIF(pp.dp, 0), 0)
-                 WHEN bim.type = 'walk_in_non_member_sale' AND cr.id IS NOT NULL AND COALESCE(cr.discount_pct, 0) > 0
-                   -- Non-member discount campaign: apply discount_pct to list DP for display.
-                   -- dp_amount remains pp.dp × qty (company cost basis unchanged).
-                   THEN COALESCE(
-                     NULLIF(ROUND(pp.dp * (1 - cr.discount_pct / 100), 2), 0),
-                     NULLIF(pp.dp, 0), 0)
-                 WHEN bim.type = 'walk_in_non_member_sale'
-                   THEN COALESCE(NULLIF(pp.dp, 0), 0)
-                 ELSE COALESCE(NULLIF(pp.dp, 0), NULLIF(bim.unit_price, 0), 0)
-            END
-          )                                                                 AS unit_dp,
+          SUM((bim.metadata->'sale_evidence'->>'dp_value')::numeric)/NULLIF(SUM(ABS(bim.quantity)),0) AS unit_dp,
           -- list_dp: product price list DP (the "Normal DP" / full list price).
-          COALESCE(MAX(pp.dp), 0)                                           AS list_dp,
+          NULL::numeric AS list_dp,
           -- discount_pct: campaign discount percentage (0 for regular / bxgy sales).
           MAX(COALESCE(cr.discount_pct, 0))                                 AS discount_pct,
           -- bv_total: only member-type movements earn BV.
@@ -111,10 +89,11 @@ export default async function handler(req, res) {
                  ELSE ABS(bim.quantity) END
           )                                                                 AS bv_total
         FROM branch_inventory_movements bim
-        LEFT JOIN live_product_prices pp
-               ON LOWER(TRIM(pp.description)) = LOWER(TRIM(bim.product_name))
+        LEFT JOIN LATERAL (SELECT MAX(bv) AS bv FROM live_product_prices
+          WHERE LOWER(TRIM(description))=LOWER(TRIM(bim.product_name))) pp ON TRUE
         LEFT JOIN campaign_refs cr ON cr.id = bim.reference
-        WHERE DATE(bim.created_at) = $1::date
+        WHERE bim.created_at>=($1::date::timestamp AT TIME ZONE 'Africa/Windhoek')
+          AND bim.created_at<(($1::date+1)::timestamp AT TIME ZONE 'Africa/Windhoek')
           AND bim.type IN (
             'walk_in_member_sale', 'walk_in_non_member_sale',
             'prescription_dispense', 'sale', 'campaign_sale', 'campaign_free_item',
@@ -141,12 +120,13 @@ export default async function handler(req, res) {
           SUM(ABS(bim.quantity) * COALESCE(bim.charge_unit, NULLIF(bim.unit_price, 0), NULLIF(pp.dp, 0), 0)) AS refund_dp
         FROM branch_inventory_movements bim
         LEFT JOIN live_product_prices pp ON LOWER(TRIM(pp.description)) = LOWER(TRIM(bim.product_name))
-        WHERE DATE(bim.created_at) = $1::date
+        WHERE bim.created_at>=($1::date::timestamp AT TIME ZONE 'Africa/Windhoek')
+          AND bim.created_at<(($1::date+1)::timestamp AT TIME ZONE 'Africa/Windhoek')
           AND bim.type = 'refund_return'
           ${branchClause}
         GROUP BY LOWER(TRIM(bim.product_name))
       )
-      SELECT a.product_name, a.sale_type, a.total_qty, a.dp_amount, a.unit_dp, a.list_dp, a.discount_pct, a.bv_total,
+      SELECT a.product_name, a.sale_type, a.total_qty, a.dp_amount, a.unit_dp, a.list_dp, a.discount_pct, a.bv_total,a.missing_dp_qty,
              COALESCE(r.refund_qty, 0) AS refund_qty,
              COALESCE(r.refund_dp,  0) AS refund_dp
       FROM agg a
@@ -232,6 +212,8 @@ export default async function handler(req, res) {
           sale_type:     r.sale_type,
           total_qty:     parseFloat(netQty.toFixed(4)),
           dp_amount:     parseFloat(netDp.toFixed(2)),
+          missing_dp_qty:Number(r.missing_dp_qty || 0),
+          dp_complete:Number(r.missing_dp_qty || 0)===0,
           unit_dp:       parseFloat(Number(r.unit_dp      || 0).toFixed(2)),
           list_dp:       parseFloat(Number(r.list_dp      || 0).toFixed(2)),
           discount_pct:  parseFloat(Number(r.discount_pct || 0).toFixed(2)),
@@ -243,6 +225,8 @@ export default async function handler(req, res) {
     }
 
     const totals = {
+      missing_dp_qty: rows.reduce((n,r)=>n+Number(r.missing_dp_qty || 0),0),
+      dp_complete: rows.every(r=>Number(r.missing_dp_qty || 0)===0),
       total_qty:  netProducts.reduce((s, r) => s + r.total_qty,  0),
       paid_qty:   netProducts.filter(r => r.sale_type !== 'campaign_free')
                              .reduce((s, r) => s + r.total_qty, 0),

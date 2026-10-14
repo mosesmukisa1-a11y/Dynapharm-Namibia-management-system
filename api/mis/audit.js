@@ -1,5 +1,6 @@
 import { applyAuthCors } from '../_lib/auth.js';
 import { getMany, query } from '../db.js';
+import { businessDatePredicate, validateBusinessDates } from '../services/businessDates.js';
 
 function parseDate(value) {
   if (!value) return null;
@@ -41,8 +42,9 @@ export default async function handler(req, res) {
   if (req.method === 'GET') {
     try {
       const { searchParams } = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-      const startParam = parseDate(searchParams.get('start'));
-      const endParam = parseDate(searchParams.get('end'));
+       const startParam = searchParams.get('start');
+       const endParam = searchParams.get('end');
+       validateBusinessDates(startParam,endParam);
       const branchParam = searchParams.get('branch');
       const eventType = searchParams.get('event');
 
@@ -50,13 +52,13 @@ export default async function handler(req, res) {
       const where = [];
 
       if (startParam) {
-        where.push(`created_at >= $${params.length + 1}`);
-        params.push(startParam.toISOString());
+        where.push(businessDatePredicate('created_at',`$${params.length + 1}`));
+        params.push(startParam);
       }
 
       if (endParam) {
-        where.push(`created_at <= $${params.length + 1}`);
-        params.push(endParam.toISOString());
+        where.push(businessDatePredicate('created_at',`$${params.length + 1}`,true));
+        params.push(endParam);
       }
 
       if (eventType) {
@@ -65,7 +67,7 @@ export default async function handler(req, res) {
       }
 
       if (branchParam) {
-        where.push(`(details->>'branch' = $${params.length + 1})`);
+        where.push(`(LOWER(REPLACE(details->>'branch',' ','_')) = LOWER(REPLACE($${params.length + 1},' ','_')))`);
         params.push(branchParam);
       }
 
@@ -85,7 +87,7 @@ export default async function handler(req, res) {
       });
     } catch (error) {
       console.error('MIS audit GET error:', error);
-      return res.status(500).json({ success: false, error: error?.message || 'Internal server error' });
+      return res.status(error.statusCode || 500).json({ success: false, error: error?.message || 'Internal server error' });
     }
   }
 
@@ -122,7 +124,7 @@ export default async function handler(req, res) {
           RETURNING id
         `,
         [
-          body.eventType || 'unknown',
+          body.eventType === 'sale_created' ? 'sale_created_unverified_client' : body.eventType || 'unknown',
           body.recordId || null,
           body.user || null,
           body.details ? JSON.stringify(body.details) : null,

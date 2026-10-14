@@ -98,6 +98,7 @@ async function main() {
       '009_create_branch_finance_tables.sql',
       '010_create_stock_management_tables.sql',
       '011_create_mis_tables.sql',
+      '033_sale_evidence.sql',
       '012_alter_distributors_add_branch_fields.sql',
       '013_stock_enhancements.sql',
       '014_centralized_stock_engine.sql',
