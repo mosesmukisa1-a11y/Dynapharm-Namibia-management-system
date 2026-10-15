@@ -1329,6 +1329,18 @@ app.post('/api/prices/bulk-import',priceEndpoint(async req=>{
   const {importPrices}=await import('./api/services/priceImport.js');
   return importPrices(req.body.products,req.body.effective_from,priceActor(req));
 }));
+const manualPriceEndpoint=fn=>priceEndpoint(async req=>{
+  try{return await fn(req);}catch(error){
+    if(['42P01','42703'].includes(error.code))throw Object.assign(new Error('Manual price control requires reviewed additive migration 035; no schema changes were attempted'),{status:503});
+    throw error;
+  }
+});
+app.get('/api/prices/manual-schedules',manualPriceEndpoint(async req=>
+  (await import('./api/services/manualPriceControl.js')).listManualPrices(req.user)));
+app.post('/api/prices/manual-schedules/:id/activate',manualPriceEndpoint(async req=>
+  (await import('./api/services/manualPriceControl.js')).activateManualPrice(req.params.id,req.body,req.user)));
+app.post('/api/prices/manual-schedules/:id/compensate',manualPriceEndpoint(async req=>
+  (await import('./api/services/manualPriceControl.js')).compensateManualPrice(req.params.id,req.body,req.user)));
 app.get('/api/prices/duplicates',priceEndpoint(async req=>{
   if(!req.user)throw Object.assign(new Error('Authentication required'),{status:401});
   if(!['gm','admin','superadmin','super_admin'].includes(String(req.user.role).toLowerCase()))throw Object.assign(new Error('General Manager permission required'),{status:403});

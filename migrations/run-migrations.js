@@ -122,6 +122,7 @@ async function main() {
   '031_stock_request_audit_fields.sql',
   '032_client_history.sql',
    '034_stock_worker_journal.sql',
+   '035_manual_price_control.sql',
     ];
     
     for (const migration of migrations) {

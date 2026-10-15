@@ -58,6 +58,7 @@ try{
   target=new pg.Pool({connectionString:isolatedUrl.toString(),max:1});
   await target.query(await readFile('migrations/033_sale_evidence.sql','utf8'));
   await target.query(await readFile('migrations/034_stock_worker_journal.sql','utf8'));
+  await target.query(await readFile('migrations/035_manual_price_control.sql','utf8'));
   await target.query(`INSERT INTO warehouse_locations(id,name,type)
     VALUES('windhoek_warehouse','Isolated warehouse','warehouse'),
       ('ondangwa_warehouse','Isolated second warehouse','warehouse')`);

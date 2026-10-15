@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import {businessToday} from '../../../../shared/price-list-import.js';
 import DistributorPerformanceTab from '../../components/DistributorPerformanceTab';
 import StaffServicesTab from '../../components/StaffServicesTab';
 import StaffMessagesTab from '../../components/StaffMessagesTab';
@@ -563,7 +564,7 @@ function EncodedSalesTab() {
             { header: 'Status', render: r => <Badge variant={r.status === 'verified' ? 'success' : 'warning'}>{r.status || 'draft'}</Badge> },
           ]}
           data={sales}
-          emptyMessage="No encoded sales"
+          emptyMessage="No manually encoded sales in this scope. Operational Branch sales and receipts are separate; this is not evidence that a sale failed."
         />
       </Card>
     </div>
@@ -932,13 +933,14 @@ function printMISSalesBreakdown(products, branchLabel, dateFrom, dateTo) {
 const branchName = (id) => BRANCH_ID_TO_NAME[id] || (id ? id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '-');
 
 function MISStockTab() {
-  const today = new Date();
-  const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
-  const todayStr = today.toISOString().slice(0, 10);
+  const todayStr = businessToday();
+  const firstOfMonth = todayStr.slice(0,7)+'-01';
 
   const [reportData, setReportData] = useState(null);
   const [salesData, setSalesData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [reportError,setReportError]=useState('');
+  const requestVersion=useRef(0);
   const [activeView, setActiveView] = useState('summary');
   const [selectedBranch, setSelectedBranch] = useState('all');
   const [productSearch, setProductSearch] = useState('');
@@ -946,21 +948,28 @@ function MISStockTab() {
   const [endDate, setEndDate] = useState(todayStr);
 
   const loadData = useCallback(() => {
+    const version=++requestVersion.current;
     setLoading(true);
+    setReportError('');
     const stockParams = `start=${startDate}&end=${endDate}`;
     const salesParams = { date_from: startDate, date_to: endDate, branch_id: selectedBranch };
     Promise.all([
-      api.mis.stockReport(stockParams).catch(() => null),
-      api.reports.branchProductRange(salesParams).catch(() => null),
+      api.mis.stockReport(stockParams),
+      api.reports.branchProductRange(salesParams),
     ]).then(([report, sales]) => {
+      if(version!==requestVersion.current)return;
       setReportData(report);
       setSalesData(sales);
-    }).finally(() => setLoading(false));
+    }).catch(error=>{
+      if(version!==requestVersion.current)return;
+      setReportData(null);setSalesData(null);
+      setReportError(error.message||'MIS reports unavailable; do not interpret this as zero sales.');
+    }).finally(() => {if(version===requestVersion.current)setLoading(false);});
   }, [startDate, endDate, selectedBranch]);
 
   const { connected: wsConnected } = useStockRealtime({ onUpdate: loadData });
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData();return()=>{requestVersion.current++;}; }, [loadData]);
 
   const branches = reportData?.branches || [];
   const summary = reportData?.summary || {};
@@ -984,7 +993,7 @@ function MISStockTab() {
     const rows = filteredProducts.map(r => [
       branchLabel, r.product_name || '',
       r.walkin || 0, r.prescription || 0, r.campaigns || 0,
-      r.total || 0, r.refunded || 0, r.net || (r.total || 0),
+      r.total || 0, r.refunded || 0, r.net ?? (r.total || 0),
       Number(r.dp_value || 0).toFixed(2), Number(r.refund_dp || 0).toFixed(2),
     ].map(v => `"${String(v).replace(/"/g, '""')}"`));
     const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
@@ -1038,7 +1047,8 @@ function MISStockTab() {
 
       {loading && <LoadingSpinner />}
 
-      {!loading && (
+      {reportError && <Alert type="error">{reportError} Reports are unavailable, not zero.</Alert>}
+      {!loading && !reportError && (
         <>
           {/* Company KPI summary */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(140px,1fr))', gap: 10, marginBottom: 18 }}>

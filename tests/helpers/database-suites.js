@@ -41,6 +41,7 @@ export const databaseSuites = [
   'tests/legacy-balance-sync.spec.js',
   'tests/import-partial-failure.spec.js',
   'tests/price-list-import.spec.js',
+  'tests/manual-price-control.spec.js',
   'tests/publish-safe-stock-index.spec.js',
   'tests/refund-batch-restore.spec.js',
   'tests/refund-ghost-cleanup.spec.js',

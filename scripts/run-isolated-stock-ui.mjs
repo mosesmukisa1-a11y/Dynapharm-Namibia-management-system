@@ -1,6 +1,6 @@
 import {randomUUID,randomBytes} from 'node:crypto';
 import {spawn} from 'node:child_process';
-import {mkdir,writeFile,unlink} from 'node:fs/promises';
+import {mkdir,readFile,writeFile,unlink} from 'node:fs/promises';
 import pg from 'pg';
 import bcrypt from 'bcryptjs';
 import {createServer} from 'vite';
@@ -76,6 +76,7 @@ try{
   await run('psql',['--dbname',isolated.toString(),'--quiet','--set','ON_ERROR_STOP=1'],{input:schema});
   target=new pg.Pool({connectionString:isolated.toString(),max:1});
   if((await target.query('SELECT current_database() AS name')).rows[0].name!==name)throw Error('Wrong fixture database');
+  if(finalRelease)await target.query(await readFile('migrations/035_manual_price_control.sql','utf8'));
   await target.query(`INSERT INTO warehouse_locations(id,name,type) VALUES
     ('windhoek_warehouse','Isolated Windhoek warehouse','warehouse'),('ondangwa_warehouse','Isolated second warehouse','warehouse')`);
   await mkdir(base,{recursive:true});

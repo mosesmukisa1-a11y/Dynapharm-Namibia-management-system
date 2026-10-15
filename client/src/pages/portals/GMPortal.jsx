@@ -1,4 +1,5 @@
 import SavedSaleProfitReport from '../../components/SavedSaleProfitReport';
+import ManualPriceControl from '../../components/ManualPriceControl.jsx';
 import { originalChargedMargin } from '../../lib/originalChargedMargin.js';
 import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
 import DistributorPerformanceTab from '../../components/DistributorPerformanceTab';
@@ -5361,6 +5362,7 @@ function PriceListTab() {
         </CardBody>
       </Card>
 
+      <ManualPriceControl onChanged={load}/>
       {pendingChanges.some(change => change.change_type === 'new_product') && (
         <section aria-labelledby="scheduled-new-products-heading" style={{ padding: '16px', border: '1px solid #d7c997', borderRadius: 12, background: '#fffdf5' }}>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
