@@ -448,3 +448,17 @@ mtime_ms = 1792009345373
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/47a96ca2-9c1b-4d39-aaea-44dae254fa1b/3fd7ad80-c507-4200-bce1-bd7888cac867"
 storage_version_token = "1792009352727033"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "H_vJZo4z8iX3gCBtz46Ei"
+uri = "file://generated-artifacts/sales-stock-integration/release-gate/report.md"
+type = "text"
+title = "Final Sales and Stock release-gate report"
+description = "PARTIALLY VERIFIED: 263 unit and 25 isolated database checks passed; complete route/return coverage and Retry/race evidence. Publication blocked by reproduced source-portal errors. Includes recovery and read-only history smoke checks."
+logical_id = "5fbf33da-c596-46db-9be0-691b279207e8"
+content_hash = "sha256:e1b51ec0c825429a4f2e1c2d60852dc6eea0344fa614d8ed90dbe1ea76876986"
+size = 13658
+mtime_ms = 1792051400230
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/5fbf33da-c596-46db-9be0-691b279207e8/845d04b4-ea5b-461f-906d-793d08b7b3a9"
+storage_version_token = "1792051423836831"
+content_type = "text/markdown"

@@ -16,9 +16,9 @@ Compare before/after balances only within the same disposable audit phase.
 
 Run long authenticated stock audits in short resumable stages and persist reports and screenshots after each stage.
 
-**Why:** The user explicitly requires that interruptions must not lose results, following stalled full browser runs without saved evidence.
+**Why:** The user explicitly requires that interruptions must not lose results. A single aggregate browser action also exceeded its 45-second limit and reset the notebook before observations were retained; a still-running outer job did not preserve those results.
 
-**How to apply:** Reuse the existing browser test session, save action/endpoint/status/error and observed balances on failure, fix reproducible defects, and resume only the affected stage. Older automated results are not fresh browser evidence.
+**How to apply:** Reuse the existing browser test session; keep individual browser actions bounded (one navigation/reload at a time) and persist each route or short stage. Save action/endpoint/status/error and observed balances on failure, fix reproducible defects, and resume only the affected stage. Older automated results are not fresh browser evidence.
 
 A stalled delegated browser session does not establish that the app or browser runtime is broken. Bounded local authenticated rendering checks can still succeed using the environment Chromium wrapper.
 

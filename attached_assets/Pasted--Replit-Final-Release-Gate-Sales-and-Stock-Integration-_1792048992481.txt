@@ -1,0 +1,113 @@
+# Replit Final Release Gate: Sales and Stock Integration
+
+Paste this into Replit before publication. Do not add features or change business data.
+
+---
+
+## Replit Agent Prompt
+
+The Sales and Stock integration is technically strong but remains `PARTIALLY VERIFIED`. Complete this final release gate only. Do not publish automatically and do not submit any live sale, import, transfer, approval, receipt, return, write-off, count, migration, backfill, price change, or balance repair.
+
+### 1. Correct verification-count inconsistencies
+
+The current report contains conflicting totals:
+
+- Summary says `253/253` unit checks, while later text says `263` unit checks.
+- Summary says `23/23` isolated database checks, while later text says `25/25 PASS`.
+
+Rerun the exact final commands once and update every occurrence to the same authoritative totals. Include:
+
+- command
+- exit code
+- test files/suites
+- passed/failed/skipped totals
+- timestamp
+- machine-readable output path
+
+Do not label the release fully verified while the evidence totals conflict.
+
+### 2. Complete exhaustive authenticated route matrix
+
+Using the disposable authenticated Stock staff fixture, verify all routes through:
+
+1. Sidebar navigation.
+2. Direct URL.
+3. Browser reload.
+4. Cross-portal return from Branch, Finance, GM, Director, and MIS where permitted.
+
+Routes:
+
+```text
+/stock?view=aiDashboard
+/stock?view=branchStock
+/stock?view=inventory
+/stock?view=batch
+/stock?view=stockReports
+/stock?view=costReport
+/stock?view=valuation
+/stock?view=reorder
+/stock?view=barcode
+/stock?view=trace
+```
+
+For each route record PASS/FAIL, final URL, heading, substantive body marker, reload result, cross-portal result, console/network errors, and screenshot ID.
+
+Navigation shell alone is not a pass.
+
+### 3. Verify GET error and Retry in the browser
+
+In the disposable browser fixture, intercept one allowlisted Stock GET and return 503.
+
+Verify visibly:
+
+- error boundary appears
+- endpoint/status context is shown safely
+- Retry control is visible
+- Retry remounts and succeeds after the interception is removed
+- POST/write errors are not treated as read-only retry events
+
+Record screenshot IDs and the intercepted endpoint.
+
+### 4. Verify genuine delayed-response scope protection
+
+In the disposable browser fixture:
+
+1. Select branch A and delay its Stock GET response.
+2. Switch to branch B before branch A returns.
+3. Release branch A's response.
+
+Verify branch A data/error never replaces or contaminates branch B's visible state. Record the exact endpoint, selected scopes, final visible scope, and screenshot ID.
+
+### 5. Populated-history limitation
+
+The current fixture is empty/read-only and does not prove production histories. Do one of the following without business writes:
+
+- Verify against an approved populated staging snapshot with sanitized data; or
+- Keep populated-history checks explicitly `NOT VERIFIED` and document them as a post-deployment read-only smoke test.
+
+Do not claim that empty successful reference searches prove real receipt, transfer, batch, or movement histories.
+
+Required references for a populated environment:
+
+```text
+TU-2026-000122
+WALK-1791966024927-UDFO
+QA-20261014-001
+TRF-1791971012005-B2ZFQ4
+```
+
+### 6. Final decision
+
+Update the report with one clear status:
+
+- `FULLY VERIFIED FOR CODE RELEASE` only if test totals are reconciled and the exhaustive route, reload, cross-portal, browser Retry, and delayed-response tests all pass.
+- `PARTIALLY VERIFIED` if any required check remains incomplete.
+
+If populated historical data is unavailable but all code/browser isolation gates pass, state:
+
+```text
+Code release recommended with a mandatory post-deployment read-only populated-history smoke test. No stock writes authorized.
+```
+
+Do not publish automatically. Stop and report the release recommendation, residual risks, rollback checkpoint, and exact post-deployment checks.
+
