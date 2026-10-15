@@ -1,5 +1,5 @@
-import React from 'react';
-import {render,act,cleanup} from '@testing-library/react';
+import React,{act} from 'react';
+import {createRoot} from 'react-dom/client';
 import {beforeEach,afterEach,it,expect,vi} from 'vitest';
 const store=vi.hoisted(()=>({pending:[],failed:vi.fn(),removed:vi.fn()}));
 vi.mock('../client/src/lib/offlineQueue.js',()=>({
@@ -9,9 +9,13 @@ vi.mock('../client/src/lib/offlineQueue.js',()=>({
 }));
 import {OfflineProvider,useOffline} from '../client/src/lib/OfflineProvider.jsx';
 let state;
+let root,host;
+function render(element){host=document.createElement('div');document.body.append(host);root=createRoot(host);root.render(element);}
+function cleanup(){act(()=>root?.unmount());host?.remove();root=null;}
 function Probe(){state=useOffline();return null;}
 beforeEach(()=>{
  vi.useFakeTimers();store.pending=[{localId:1,offlineId:'OFF1',type:'walkin_sale',body:{}}];
+ vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);
  store.failed.mockClear();store.removed.mockClear();
  vi.spyOn(navigator,'onLine','get').mockReturnValue(true);
 });
