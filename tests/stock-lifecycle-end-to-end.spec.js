@@ -2,6 +2,7 @@
 import {beforeAll,afterAll,it,expect} from 'vitest';
 import {writeFile} from 'node:fs/promises';
 import {query} from '../api/db.js';
+import {detectDrift} from '../worker/drift.mjs';
 import packs from '../api/stock/product-packs.js';
 import barcode from '../api/stock/barcode.js';
 import receiveImport from '../api/stock/import/receive.js';
@@ -58,7 +59,12 @@ async function physical(){
 }
 async function checkpoint(name,expected){
   const actual=await physical();
-  steps.push({name,expected,actual,pass:Object.entries(expected).every(([k,v])=>actual[k]===v)});
+  const findings=[];
+  await detectDrift({scope:[{type:'branch',id:a},{type:'branch',id:b},{type:'warehouse',id:warehouse}],
+    read:query,finding:async finding=>{findings.push(finding);}});
+  steps.push({name,expected,actual,pass:Object.entries(expected).every(([k,v])=>actual[k]===v),
+    drift:{findings,coverage:'Known source quantities only; not held/reserved/transit or complete legacy reconciliation',
+      productionDetectionEnabled:false,productionRepairEnabled:false}});
   expect(actual,name).toMatchObject(expected);
 }
 async function inspection(batchType,batchId,condition,disposition){
@@ -74,6 +80,8 @@ beforeAll(async()=>{
   if(current!==process.env.STOCK_AUDIT_DATABASE || !/^stock_audit_[a-f0-9]{32}$/.test(current))
     throw Error('The audit must run in its own empty database');
   expect(Number((await query('SELECT COUNT(*) AS count FROM stock_batches')).rows[0].count)).toBe(0);
+  await query("INSERT INTO branches(id,name,status) VALUES($1,'Synthetic branch A','active'),($2,'Synthetic branch B','active') ON CONFLICT(id) DO UPDATE SET status='active'",[a,b]);
+  await query("UPDATE warehouse_locations SET status='active' WHERE id=$1",[warehouse]);
   await query(`INSERT INTO products(id,sku,name,unit,dp,cp,is_active)
     VALUES('ISOLATED-TEST-ITEM','TEST-ITEM',$1,'unit',7,9,true) ON CONFLICT(id) DO NOTHING`,[product]);
 });

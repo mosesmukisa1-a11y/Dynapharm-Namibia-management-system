@@ -1,6 +1,7 @@
 // DB suites are always serial: whole-database safety baselines cannot overlap
 // fixture writers. Everything else runs in the fast, no-database unit project.
 export const stockAuditSuites = [
+  'tests/mis-live-sale.spec.js',
   'tests/branch-writeoff-review.spec.js',
   'tests/stock-disposal-audit.spec.js',
   'tests/stock-remaining-verification.spec.js',

@@ -3,21 +3,25 @@ import { getMany } from '../db.js';
 import { ALL_BRANCH_IDS, normalizeBranchSlug } from '../_lib/branchUtils.js';
 import { getStockCostProjection } from '../services/stockCostReporting.js';
 import { inferLocationType } from '../services/stockEngine.js';
+import {businessDay,validateBusinessDates} from '../services/businessDates.js';
+import {reportInstantPredicate} from '../services/reportDateBounds.js';
+import {COMPANY_REPORT_ROLES} from '../services/dailySales.js';
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (!req.user) return res.status(401).json({ success: false, error: 'Authentication required' });
+  if (!COMPANY_REPORT_ROLES.has(req.user.role)) return res.status(403).json({success:false,error:'Company stock reporting access required'});
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
     const { searchParams } = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const branchFilter = searchParams.get('branch') || null;
 
-    const now = new Date();
-    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-    const startStr = searchParams.get('start') || monthStart.toISOString();
-    const endStr = searchParams.get('end') || now.toISOString();
+    const today=businessDay();
+    const startStr = searchParams.get('start') || today.slice(0,8)+'01';
+    const endStr = searchParams.get('end') || today;
+    if(/^\d{4}-\d{2}-\d{2}$/.test(startStr)&&/^\d{4}-\d{2}-\d{2}$/.test(endStr))validateBusinessDates(startStr,endStr);
 
     const projection=(await getStockCostProjection()).filter(r=>inferLocationType(r.location)==='branch'
       && (!branchFilter || normalizeBranchSlug(r.location)===normalizeBranchSlug(branchFilter)));
@@ -32,7 +36,8 @@ export default async function handler(req, res) {
         type,
         SUM(quantity) AS total_qty
       FROM branch_inventory_movements
-      WHERE created_at BETWEEN $1 AND $2
+      WHERE ${reportInstantPredicate('created_at','$1',startStr)}
+        AND ${reportInstantPredicate('created_at','$2',endStr,true)}
     `;
     const movParams = [startStr, endStr];
     if (branchFilter) {
@@ -45,16 +50,17 @@ export default async function handler(req, res) {
     let salesQuery = `
       SELECT
         s.branch_id,
-        COALESCE(item.value->>'productName', item.value->>'name', 'Unknown') AS product_name,
+        COALESCE(item.value->>'product_name', item.value->>'productName', item.value->>'name', 'Unknown') AS product_name,
         SUM(COALESCE(NULLIF(item.value->>'quantity','')::numeric, 0)) AS sold_qty,
         SUM(COALESCE(
           NULLIF(item.value->>'amount','')::numeric,
           NULLIF(item.value->>'total','')::numeric,
-          COALESCE(NULLIF(item.value->>'quantity','')::numeric,0) * COALESCE(NULLIF(item.value->>'unitPrice','')::numeric, 0)
+          COALESCE(NULLIF(item.value->>'quantity','')::numeric,0) * COALESCE(NULLIF(item.value->>'unit_price','')::numeric,NULLIF(item.value->>'unitPrice','')::numeric, 0)
         )) AS sold_value
       FROM branch_walkin_sales s
-      CROSS JOIN LATERAL jsonb_array_elements(COALESCE(s.items,'[]'::jsonb)) AS item(value)
-      WHERE s.sale_date BETWEEN $1 AND $2
+      CROSS JOIN LATERAL jsonb_array_elements(COALESCE(NULLIF(s.items,'[]'::jsonb),s.data->'items',s.data->'products','[]'::jsonb)) AS item(value)
+      WHERE ${reportInstantPredicate('s.sale_date','$1',startStr)}
+        AND ${reportInstantPredicate('s.sale_date','$2',endStr,true)}
     `;
     const salesParams = [startStr, endStr];
     if (branchFilter) {
@@ -201,13 +207,13 @@ export default async function handler(req, res) {
       missingCostQuantity:projection.reduce((sum,r)=>sum+r.missingDPCQuantity,0),
       valuationComplete:projection.every(r=>!r.missingDPCQuantity),
       success: true,
-      period: { start: startStr, end: endStr },
+      period: { start: startStr, end: endStr,timezone:'Africa/Windhoek',endExclusive:true },
       branches: paddedResult,
       summary,
     });
 
   } catch (err) {
     console.error('Stock report API error:', err);
-    return res.status(500).json({ success: false, error: err?.message || 'Internal server error' });
+    return res.status(err.statusCode || 500).json({ success: false, error: err?.message || 'Internal server error' });
   }
 }

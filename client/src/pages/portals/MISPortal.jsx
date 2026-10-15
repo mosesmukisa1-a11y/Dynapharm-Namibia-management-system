@@ -1190,7 +1190,7 @@ function MISStockTab() {
               </div>
               <Table
                 columns={[
-                  { header: '#', render: (r, i) => <span style={{ color: '#94a3b8', fontSize: '0.78rem' }}>{String(i + 1).padStart(2, '0')}</span> },
+                  { header: '#', render: r => <span style={{ color: '#94a3b8', fontSize: '0.78rem' }}>{String(r._displayIndex).padStart(2, '0')}</span> },
                   { header: 'Product', render: r => <span style={{ fontWeight: 700 }}>{r.product_name || '-'}</span> },
                   { header: 'Walk-in', render: r => r.walkin > 0 ? <span style={{ fontWeight: 700, color: '#1e3a5f' }}>{Number(r.walkin).toLocaleString()}</span> : <span style={{ color: '#cbd5e1' }}>—</span> },
                   { header: 'Prescription', render: r => r.prescription > 0 ? <span style={{ fontWeight: 600, color: '#166534' }}>{Number(r.prescription).toLocaleString()}</span> : <span style={{ color: '#cbd5e1' }}>—</span> },
@@ -1206,7 +1206,7 @@ function MISStockTab() {
                   }},
                   { header: 'DP Value', render: r => r.dp_value > 0 ? <span style={{ fontWeight: 700, color: '#c41e3a' }}>N$ {Number(r.dp_value).toLocaleString('en-NA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span> : <span style={{ color: '#cbd5e1' }}>—</span> },
                 ]}
-                data={filteredProducts}
+                data={filteredProducts.map((row,index)=>({...row,_displayIndex:index+1}))}
                 emptyMessage="No sales recorded for this period"
               />
             </Card>

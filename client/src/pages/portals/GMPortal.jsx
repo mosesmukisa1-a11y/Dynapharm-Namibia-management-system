@@ -755,7 +755,7 @@ function DashboardTab() {
             </div>
           </div>
           <p className="text-xs text-emerald-600 mt-2 font-medium">
-            Profit = DP Selling Price - CIF Cost (actual cost from Malaysia import)
+            Matched charged revenue − original CIF cost; separate expenses and incomplete audit evidence are not included.
           </p>
         </CardBody>
       </Card>

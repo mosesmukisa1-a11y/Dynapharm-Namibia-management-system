@@ -3,6 +3,12 @@ import {it,expect} from 'vitest';
 import {readFileSync} from 'node:fs';
 import {parse} from '@babel/parser';
 const source=readFileSync('client/src/pages/portals/StockPortal.jsx','utf8');
+it('labels central-batch screen and print separately from company original-cost stock',()=>{
+ expect(source).toContain('Central Batch Valuation (excludes branch and held stock)');
+ expect(source).toContain("printDocument('Central Batch Price Valuation'");
+ expect(source).toContain('not a complete original-cost company valuation');
+ expect(source).toContain('No central/source batches in this scope (branch and held stock are excluded)');
+});
 const ast=parse(source,{sourceType:'module',plugins:['jsx']});
 const report=ast.program.body.find(n=>n.type==='FunctionDeclaration'&&n.id.name==='StockReportsTab');
 const callback=report.body.body.flatMap(n=>n.declarations||[]).find(n=>n.id.name==='loadData').init.arguments[0];

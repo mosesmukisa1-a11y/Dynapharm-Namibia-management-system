@@ -3,6 +3,16 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import {isTestProcess, assertIsolatedTestDatabase, verifyIsolatedTestConnection} from './testDatabaseGuard.js';
 
 const requestTransactions = new AsyncLocalStorage();
+const connectionErrors = new WeakMap();
+function watchConnection(client) {
+  // pg-pool's idle listener is detached while a client is checked out.
+  // A severed in-flight connection can emit a second error after its query
+  // rejects; retain a client listener so that failure cannot kill the server.
+  client.on('error', error => {
+    connectionErrors.set(client,error);
+    console.error('[db-client]',/^[A-Z0-9]{5}$/.test(error.code || '')?error.code:'CONNECTION_LOST');
+  });
+}
 
 export function deferUntilCommit(callback, key) {
   const context = requestTransactions.getStore();
@@ -20,7 +30,7 @@ export async function withRequestTransaction(fn) {
   if (requestTransactions.getStore()?.active) return fn();
   const client = await getPool().connect();
   const context = { client, active: true, afterCommit: [], pending: new Set() };
-  let result;
+  let result,releaseError;
   try {
     await client.query('BEGIN');
     result = await requestTransactions.run(context, async () => {
@@ -33,12 +43,13 @@ export async function withRequestTransaction(fn) {
       return value;
     });
   } catch (error) {
-    await client.query('ROLLBACK');
     context.afterCommit = [];
+    try { await client.query('ROLLBACK'); }
+    catch (rollbackError) { releaseError=rollbackError; }
     throw error;
   } finally {
     context.active = false;
-    client.release();
+    client.release(releaseError || connectionErrors.get(client));
   }
   for (const callback of context.afterCommit) {
     try { await callback(); } catch (error) {
@@ -101,11 +112,14 @@ function getPool() {
       idleTimeoutMillis: Number(process.env.DB_IDLE_TIMEOUT || 30000),
       connectionTimeoutMillis: Number.isFinite(connectionTimeout) ? connectionTimeout : 10000,
       // pg awaits this hook before any caller receives the client or runs SQL.
-      onConnect: testing ? verifyIsolatedTestConnection : undefined,
+      onConnect: async client => {
+        watchConnection(client);
+        if(testing)await verifyIsolatedTestConnection(client);
+      },
     });
     poolConnectionString = process.env.DATABASE_URL;
     pool.on('error', (err) => {
-      console.error('Unexpected error on idle client', err);
+      console.error('[db-idle]',/^[A-Z0-9]{5}$/.test(err.code || '')?err.code:'CONNECTION_LOST');
     });
   }
   return pool;
@@ -268,6 +282,6 @@ export async function withTransaction(fn, { advisoryLockBeforeBegin } = {}) {
         releaseError = error;
       }
     }
-    client.release(releaseError);
+    client.release(releaseError || connectionErrors.get(client));
   }
 }

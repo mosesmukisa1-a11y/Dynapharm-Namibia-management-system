@@ -11838,7 +11838,7 @@ function StockReportsTab({ branch }) {
       <Card style={{ marginTop: 18 }}>
         <CardHeader>
           <div className="flex justify-between items-center flex-wrap gap-2">
-            <h3 className="font-bold text-gray-800">Stock Valuation Report (CIF & DPC)</h3>
+            <h3 className="font-bold text-gray-800">Central Batch Valuation (excludes branch and held stock)</h3>
             <Button size="sm" variant="secondary" onClick={() => {
               const locGroups = {};
               batches.forEach(b => {
@@ -11851,10 +11851,15 @@ function StockReportsTab({ branch }) {
               });
               const rows = Object.entries(locGroups).map(([loc, d]) => `<tr><td style="font-weight:700">${fmtLocation(loc)}</td><td>${d.qty.toLocaleString()}</td><td>N$ ${Math.round(d.cif).toLocaleString('en-ZA')}</td><td>N$ ${Math.round(d.dpc).toLocaleString('en-ZA')}</td><td>N$ ${Math.round(d.dpc - d.cif).toLocaleString('en-ZA')}</td></tr>`).join('');
               const totals = Object.values(locGroups).reduce((s,d) => ({ qty: s.qty+d.qty, cif: s.cif+d.cif, dpc: s.dpc+d.dpc }), { qty:0, cif:0, dpc:0 });
-              printDocument('Stock Valuation Report', `<table><thead><tr><th>Location</th><th>Total Qty</th><th>CIF Value</th><th>DPC Value</th><th>Margin</th></tr></thead><tbody>${rows}<tr class="total-row" style="font-weight:800;background:#fff0f3;border-top:2px solid #fecaca"><td>TOTAL</td><td>${totals.qty.toLocaleString()}</td><td>N$ ${Math.round(totals.cif).toLocaleString('en-ZA')}</td><td>N$ ${Math.round(totals.dpc).toLocaleString('en-ZA')}</td><td>N$ ${Math.round(totals.dpc-totals.cif).toLocaleString('en-ZA')}</td></tr></tbody></table>`);
+              printDocument('Central Batch Price Valuation', `<p>Central/source batches only; branch and held stock are excluded. Recorded or estimated prices, not a complete original-cost company valuation. Missing prices require review.</p><table><thead><tr><th>Location</th><th>Total Qty</th><th>Price-basis CIF Value</th><th>Price-basis DP Value</th><th>DP–CIF Difference</th></tr></thead><tbody>${rows}<tr class="total-row" style="font-weight:800;background:#fff0f3;border-top:2px solid #fecaca"><td>CENTRAL TOTAL</td><td>${totals.qty.toLocaleString()}</td><td>N$ ${Math.round(totals.cif).toLocaleString('en-ZA')}</td><td>N$ ${Math.round(totals.dpc).toLocaleString('en-ZA')}</td><td>N$ ${Math.round(totals.dpc-totals.cif).toLocaleString('en-ZA')}</td></tr></tbody></table>`);
             }}><Printer size={14} /> Print Valuation Report</Button>
           </div>
         </CardHeader>
+        <p className="text-sm text-gray-600 px-4 pb-2">
+          Central/source batches only; branch and held stock are excluded. Recorded or estimated prices,
+          not a complete original-cost company valuation. Missing prices require review.
+          Use Current Company Stock above for all-location original-evidence totals.
+        </p>
         {(() => {
           const locGroups = {};
           batches.forEach(b => {
@@ -11872,12 +11877,12 @@ function StockReportsTab({ branch }) {
               columns={[
                 { header: 'Location', render: r => <span className="font-bold text-sm">{fmtLocation(r.location)}</span> },
                 { header: 'Total Qty', render: r => <span className="font-semibold">{r.qty.toLocaleString()}</span> },
-                { header: 'CIF Value', render: r => <span className="text-xs">N$ {Math.round(r.cif).toLocaleString('en-ZA')}</span> },
-                { header: 'DPC Value', render: r => <span className="text-xs font-semibold" style={{ color: '#c41e3a' }}>N$ {Math.round(r.dpc).toLocaleString('en-ZA')}</span> },
-                { header: 'Margin', render: r => <span className="text-xs font-semibold" style={{ color: (r.dpc - r.cif) > 0 ? '#166534' : '#c41e3a' }}>N$ {Math.round(r.dpc - r.cif).toLocaleString('en-ZA')}</span> },
+                { header: 'Price-basis CIF Value', render: r => <span className="text-xs">N$ {Math.round(r.cif).toLocaleString('en-ZA')}</span> },
+                { header: 'Price-basis DP Value', render: r => <span className="text-xs font-semibold" style={{ color: '#c41e3a' }}>N$ {Math.round(r.dpc).toLocaleString('en-ZA')}</span> },
+                { header: 'DP–CIF Difference', render: r => <span className="text-xs font-semibold" style={{ color: (r.dpc - r.cif) > 0 ? '#166534' : '#c41e3a' }}>N$ {Math.round(r.dpc - r.cif).toLocaleString('en-ZA')}</span> },
               ]}
               data={valData}
-              emptyMessage="No stock data"
+              emptyMessage="No central/source batches in this scope (branch and held stock are excluded)"
             />
             <div style={{ padding: '10px 16px', background: '#fff0f3', borderTop: '2px solid #fecaca', display: 'flex', gap: 24, fontSize: '0.82rem', flexWrap: 'wrap' }}>
               <span style={{ fontWeight: 800, color: '#c41e3a' }}>TOTAL</span>

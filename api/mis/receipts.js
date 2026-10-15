@@ -1,5 +1,8 @@
 import { applyAuthCors } from '../_lib/auth.js';
 import { getMany, getOne } from '../db.js';
+import {reportInstantPredicate} from '../services/reportDateBounds.js';
+import {businessDay,validateBusinessDates} from '../services/businessDates.js';
+import {COMPANY_REPORT_ROLES} from '../services/dailySales.js';
 
 function parseDate(value) {
   if (!value) return null;
@@ -114,6 +117,7 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
   if (!req.user) return res.status(401).json({ success: false, error: 'Authentication required' });
+  if (!COMPANY_REPORT_ROLES.has(req.user.role)) return res.status(403).json({success:false,error:'Company receipts reporting access required'});
 
   if (req.method !== 'GET') {
     return res.status(405).json({ success: false, error: 'Method not allowed' });
@@ -136,21 +140,17 @@ export default async function handler(req, res) {
       if (!parsed) {
         return res.status(400).json({ success: false, error: 'Invalid date parameter' });
       }
-      walkinWhere.push(`sale_date::date = $${walkinParams.length + 1}`);
-      walkinParams.push(parsed.toISOString().slice(0, 10));
+      const day=/^\d{4}-\d{2}-\d{2}$/.test(dateParam)?dateParam:businessDay(parsed);
+      const position=`$${walkinParams.length + 1}`;
+      walkinWhere.push(reportInstantPredicate('sale_date',position,day),reportInstantPredicate('sale_date',position,day,true));
+      walkinParams.push(day);
     } else {
-      const start = parseDate(startParam);
-      const end = parseDate(endParam);
-      if (start && end) {
-        walkinWhere.push(`sale_date BETWEEN $${walkinParams.length + 1} AND $${walkinParams.length + 2}`);
-        walkinParams.push(start.toISOString(), end.toISOString());
-      } else if (start) {
-        walkinWhere.push(`sale_date >= $${walkinParams.length + 1}`);
-        walkinParams.push(start.toISOString());
-      } else if (end) {
-        walkinWhere.push(`sale_date <= $${walkinParams.length + 1}`);
-        walkinParams.push(end.toISOString());
-      } else {
+      if(startParam&&endParam&&/^\d{4}-\d{2}-\d{2}$/.test(startParam)&&/^\d{4}-\d{2}-\d{2}$/.test(endParam))validateBusinessDates(startParam,endParam);
+      for(const [value,end] of [[startParam,false],[endParam,true]])if(value){
+        walkinWhere.push(reportInstantPredicate('sale_date',`$${walkinParams.length+1}`,value,end));
+        walkinParams.push(value);
+      }
+      if(!startParam&&!endParam){
         walkinWhere.push(`sale_date >= NOW() - INTERVAL '7 days'`);
       }
     }
@@ -200,20 +200,20 @@ export default async function handler(req, res) {
     if (dateParam) {
       const parsed = parseDate(dateParam);
       if (parsed) {
-        rxParams.push(parsed.toISOString().slice(0, 10));
+        rxParams.push(/^\d{4}-\d{2}-\d{2}$/.test(dateParam)?dateParam:businessDay(parsed));
         rxWhere.push(`bat.service_date::date = $${rxParams.length}`);
       }
     } else {
       const start = parseDate(startParam);
       const end = parseDate(endParam);
       if (start && end) {
-        rxParams.push(start.toISOString(), end.toISOString());
+        rxParams.push(/^\d{4}-\d{2}-\d{2}$/.test(startParam)?startParam:businessDay(start),/^\d{4}-\d{2}-\d{2}$/.test(endParam)?endParam:businessDay(end));
         rxWhere.push(`bat.service_date BETWEEN $${rxParams.length - 1} AND $${rxParams.length}`);
       } else if (start) {
-        rxParams.push(start.toISOString());
+        rxParams.push(/^\d{4}-\d{2}-\d{2}$/.test(startParam)?startParam:businessDay(start));
         rxWhere.push(`bat.service_date >= $${rxParams.length}`);
       } else if (end) {
-        rxParams.push(end.toISOString());
+        rxParams.push(/^\d{4}-\d{2}-\d{2}$/.test(endParam)?endParam:businessDay(end));
         rxWhere.push(`bat.service_date <= $${rxParams.length}`);
       } else {
         rxWhere.push(`bat.service_date >= NOW() - INTERVAL '7 days'`);
@@ -310,7 +310,7 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     console.error('MIS receipts API error:', error);
-    return res.status(500).json({
+    return res.status(error.statusCode || 500).json({
       success: false,
       error: error?.message || 'Internal server error',
     });
