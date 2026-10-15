@@ -13,7 +13,7 @@ export default defineConfig({
         test: {
           name: 'unit',
           environment: 'jsdom',
-          exclude: [...configDefaults.exclude, ...databaseSuites],
+          exclude: [...configDefaults.exclude, ...databaseSuites, 'scripts/**/*.test.mjs'],
           setupFiles: ['./tests/helpers/test-connection-setup.js'],
           fileParallelism: true,
           maxWorkers: 4,

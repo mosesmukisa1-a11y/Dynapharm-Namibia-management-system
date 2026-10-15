@@ -38,13 +38,13 @@ waitForPort = 5000
 name = "Backend API"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "PORT=3001 node server.js"
-waitForPort = 3001
-
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "PORT=3001 STARTUP_MODE=code-only ALLOW_SCHEMA_SYNC=false ALLOW_REFERENCE_SEEDS=false ALLOW_INVENTORY_SEED=false ALLOW_STOCK_SUMMARY_DDL=false ENABLE_STOCK_SCHEDULER=false ENABLE_STOCK_HEALTH_DIGEST=false node server.js"
+waitForPort = 3001
 
 [userenv]
 

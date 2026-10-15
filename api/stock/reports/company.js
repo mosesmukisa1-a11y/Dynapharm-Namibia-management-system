@@ -1,11 +1,13 @@
 import { applyAuthCors } from '../../_lib/auth.js';
 import { getMany, getOne } from '../../db.js';
+import { canReadCompanyStock,storedFreshness,liveFreshness } from '../../services/stockReportFreshness.js';
 import { getStockCostProjection,getSalesCostReport } from '../../services/stockCostReporting.js';
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (!req.user) return res.status(401).json({ success: false, error: 'Authentication required' });
+  if(!canReadCompanyStock(req.user))return res.status(403).json({success:false,error:'Company stock reporting access denied'});
   if (req.method !== 'GET') return res.status(405).json({ success: false, error: 'Method not allowed' });
 
   try {
@@ -28,9 +30,12 @@ export default async function handler(req, res) {
         ).catch(() => null);
         if (stored && stored.report_data?.cost_basis==='received_batches_v1') {
           const data = typeof stored.report_data === 'string' ? JSON.parse(stored.report_data) : stored.report_data;
-          return res.json({ success: true, source: 'precomputed', period_type: periodType, period_key: periodKey, computed_at: stored.computed_at, ...data });
+          const freshness=storedFreshness(stored.computed_at);
+          if(freshness.state==='unavailable')return res.status(503).json({success:false,error:freshness.reason,freshness});
+          return res.json({ ...data,success: true, source: 'precomputed', period_type: periodType, period_key: periodKey, computed_at: stored.computed_at,freshness });
         }
       }
+      return res.status(503).json({success:false,error:'Requested stock summary is unavailable; no unbounded current-data substitution',freshness:{state:'unavailable'},period});
     }
 
     let dateFilter = '';
@@ -58,6 +63,7 @@ export default async function handler(req, res) {
 
     res.status(200).json({
       success: true,
+      freshness:liveFreshness(),
       cost_basis:'received_batches_v1',
       missingCostQuantity:stock.reduce((sum,r)=>sum+r.missingCostQuantity,0),
       missingDPCQuantity:stock.reduce((sum,r)=>sum+r.missingDPCQuantity,0),

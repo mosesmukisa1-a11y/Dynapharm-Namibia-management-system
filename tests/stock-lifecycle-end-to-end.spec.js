@@ -164,6 +164,13 @@ it('runs the requested 100-unit import-to-two-branches, sale, refund, damage and
   expect((await invoke(currentOverview,'GET',{},staff)).status).toBe(403);
   const summary=success(await invoke(branchSummary,'GET',{},staff,`/api/branch/stock-summary?branch=${a}`));
   const branchReport=summary.branches.find(row=>row.branch_id===a);
+  await writeFile('generated-artifacts/stock-worker/test-evidence/branch-receipt-mirrors.json',JSON.stringify({
+    isolated:true,action:`GET /api/branch/stock-summary?branch=${a}`,status:200,branchReport,
+    movements:(await query(`SELECT id,movement_type,quantity,source_location,destination_location,
+      reference_id,product_name,batch_no,status,metadata FROM stock_movements WHERE product_name=$1`,[product])).rows,
+    branchMovements:(await query(`SELECT id,branch_id,type,reference,product_name,batch_no,quantity
+      FROM branch_inventory_movements WHERE product_name=$1`,[product])).rows,
+  },null,2));
   expect(branchReport).toMatchObject({
     closing_qty:23,opening_qty:0,qty_received:30,qty_sold:8,qty_returned:2,qty_written_off:1});
   steps.push({name:'Stock and sales report parity',expected:{grossSold:8,returned:2,netSold:6,writeOff:1,valuationCIF:186,grossProfit:56},

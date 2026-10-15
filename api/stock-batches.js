@@ -1,5 +1,6 @@
 import { applyAuthCors } from './_lib/auth.js';
 import { query, getMany, getOne } from './db.js';
+import { canReadCentralBatches } from './services/stockReportFreshness.js';
 function normalizeInboundPayload(payload) {
   if (!payload) return null;
   return {
@@ -199,6 +200,8 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
+  if(!req.user)return res.status(401).json({success:false,error:'Authentication required'});
+  if(!canReadCentralBatches(req.user))return res.status(403).json({success:false,error:'Central warehouse batch access denied; use permitted branch inventory'});
 
   const { searchParams } = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const id = searchParams.get('id');

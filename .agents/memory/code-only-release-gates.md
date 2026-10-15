@@ -11,9 +11,9 @@ A code-only publication must stop unless the actual healthy production source ch
 
 Keep legacy bootstrap as an indivisible lazy operation; code-only must be a hard boundary, including automatic price activation on otherwise read-only HTTP requests.
 
-**Why:** The user requires unchanged default legacy behavior. Its schema/seeds/normalizations are coupled; selective legacy toggles can run repair logic against an unprepared schema. A health request also exposed automatic price activation beyond the obvious startup functions.
+**Why:** Development legacy behavior remains coupled and must retain its ordering. The user subsequently required production to reject legacy/unset startup profiles and require all safety flags explicitly false. A health request also exposed automatic price activation beyond the obvious startup functions.
 
-**How to apply:** Preserve existing legacy ordering/guards, reject permissive overrides in code-only, and verify actual isolated HTTP startup rather than policy booleans alone. This is startup safety, not permission to disable normal authorized staff business transactions.
+**How to apply:** Preserve development legacy ordering/guards, never permit a production fallback to it, reject permissive overrides in code-only, and verify isolated HTTP startup. Workers need separate explicit task/service authority. This is not permission to disable normal staff transactions or change live settings.
 
 An exact recovered legacy source snapshot is not automatically a zero-write-compatible production rollback target.
 

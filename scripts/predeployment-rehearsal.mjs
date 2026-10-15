@@ -7,7 +7,9 @@ import {spawn} from 'node:child_process';
 import {randomUUID,randomBytes,createHash} from 'node:crypto';
 import pg from 'pg';
 import jwt from 'jsonwebtoken';
-const root=process.cwd(),out=path.join(root,'generated-artifacts/sales-stock-integration/predeployment');
+const root=process.cwd(),priorOut=path.join(root,'generated-artifacts/sales-stock-integration/predeployment');
+const out=process.argv.includes('--stock-worker')
+  ?path.join(root,'generated-artifacts/stock-worker/test-evidence/web-rollback-rehearsal'):priorOut;
 if(process.env.REPLIT_DEPLOYMENT==='1')throw Error('Rehearsal prohibited in production');
 const source=new URL(process.env.DATABASE_URL);
 if(!['helium','localhost','127.0.0.1'].includes(source.hostname))throw Error('Known local development database required; remote database provisioning forbidden');
@@ -61,7 +63,7 @@ async function exportSource(commit,dir){
 }
 try{
   await fs.mkdir(out,{recursive:true});await save();
-  const rollback=JSON.parse(await fs.readFile(path.join(out,'guarded-rollback.json'),'utf8'));
+  const rollback=JSON.parse(await fs.readFile(path.join(priorOut,'guarded-rollback.json'),'utf8'));
   const release=(await command('git',['rev-parse','HEAD'])).stdout.trim();
   const targets=[{kind:'release',commit:release},{kind:'rollback',commit:rollback.commit}];
   for(const t of targets){
@@ -88,7 +90,7 @@ try{
   if(baseline.totalRows!==0)throw Error('Schema-only fixture unexpectedly contains rows');
   const secret=randomBytes(48).toString('hex');
   const token=jwt.sign({sub:'owned-predeploy-admin',role:'admin',branch:'townshop',fullName:'Synthetic rehearsal'},secret,{expiresIn:'15m'});
-  const allow=JSON.parse(await fs.readFile(path.join(out,'safe-smoke-allowlist.json'),'utf8'));
+  const allow=JSON.parse(await fs.readFile(path.join(priorOut,'safe-smoke-allowlist.json'),'utf8'));
   if(allow.globalMiddlewareIssues.length)throw Error('Unresolved global middleware; no smoke requests allowed');
   const apiPaths=['/api/health','/api/version','/api/prices','/api/stock/valuation',
     '/api/branch/inventory?branch=townshop','/api/stock/branch-batches',
@@ -102,7 +104,7 @@ try{
     const metricsFile=path.join(temp,t.kind+'-query-metrics.json'),entry=path.join(temp,t.kind+'-entry.mjs');
     await fs.writeFile(entry,`import {server} from ${JSON.stringify(path.join(t.dir,'server.js'))};\nimport * as db from ${JSON.stringify(path.join(t.dir,'api/db.js'))};\nif(!server.listening)await new Promise((r,j)=>{server.once('listening',r);server.once('error',j);});console.log('OWNED_PORT:'+server.address().port);process.on('SIGTERM',async()=>{server.closeAllConnections?.();await new Promise(r=>server.close(r));await db.closePool?.();process.exit(0);});`);
     const ssl=new pg.Client({connectionString:source.toString()}).connectionParameters.ssl;
-    const env={...process.env,NODE_ENV:'test',REPLIT_DEPLOYMENT:'',DATABASE_URL:url.toString(),
+    const env={...process.env,NODE_ENV:'test',REPLIT_DEPLOYMENT:'0',DATABASE_URL:url.toString(),
       DATABASE_SSL:ssl?'1':'0',HOST:'127.0.0.1',PORT:'0',PGOPTIONS:'-c default_transaction_read_only=on',
       STOCK_AUDIT_ISOLATED:'1',STOCK_AUDIT_DATABASE:name,AUTH_SECRET:secret,JWT_SECRET:secret,SESSION_SECRET:secret,
       AUTH_COOKIE_NAME:'owned_predeploy_session',
@@ -119,10 +121,12 @@ try{
     const checks=[];
     for(const p of [...apiPaths,...htmlPaths]){
       result.currentAction={kind:t.kind,method:'GET',path:p,status:null};await save();
-      const response=await fetch('http://127.0.0.1:'+port+p,{headers:{Cookie:'owned_predeploy_session='+token},signal:AbortSignal.timeout(8000)});
+      const started=Date.now();
+      const response=await fetch('http://127.0.0.1:'+port+p,{method:'GET',redirect:'manual',headers:{Cookie:'owned_predeploy_session='+token},signal:AbortSignal.timeout(8000)});
+      if(response.redirected||(response.status>=300&&response.status<400))throw Error('Owned smoke redirect refused: '+p);
       const text=await response.text();let error=null;
       if(!response.ok){try{error=JSON.parse(text).error||JSON.parse(text).message;}catch{error='Non-JSON error';}}
-      checks.push({method:'GET',path:p,status:response.status,result:response.ok?'PASS':'FAIL',
+      checks.push({method:'GET',path:p,status:response.status,durationMs:Date.now()-started,result:response.ok?'PASS':'FAIL',
         error:response.ok?undefined:redact(error),contentType:response.headers.get('content-type'),
         ...(p==='/api/health'?{startup:JSON.parse(text).startup}:{})});
       result.currentStage={kind:t.kind,checks};await save();

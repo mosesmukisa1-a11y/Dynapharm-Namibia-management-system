@@ -37,7 +37,10 @@ export function installTestConnectionGuard(pg) {
       assertIsolatedTestDatabase();
       const expected = new pg.Client({connectionString: process.env.DATABASE_URL}).connectionParameters;
       const actual = this.connectionParameters;
-      if (['database', 'host', 'port', 'user'].some(key => actual[key] !== expected[key])) {
+      const derivedWorkerRole=(expected.database||'').replace(/^stock_audit_/,'worker_audit_');
+      const workerRoleAllowed=/^worker_audit_[a-f0-9]{32}$/.test(derivedWorkerRole)&&actual.user===derivedWorkerRole;
+      if (['database', 'host', 'port'].some(key => actual[key] !== expected[key]) ||
+          (actual.user!==expected.user&&!workerRoleAllowed)) {
         throw new Error(refusal);
       }
       await new Promise((resolve, reject) => originalConnect.call(this, error => error ? reject(error) : resolve()));

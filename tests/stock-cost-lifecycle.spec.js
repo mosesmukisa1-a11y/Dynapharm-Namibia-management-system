@@ -149,7 +149,7 @@ describe.sequential('carton receiving and actual source cost lifecycle',()=>{
     expect(Number(rows[0].original_unit_dp)).toBe(2);
     expect((await invoke(receive,{...body,notes:'changed'})).status).toBe(409);
   });
-  it('keeps blank costs unknown but accepts an explicitly received zero cost',async()=>{
+  it('keeps blank and unapproved zero costs unknown; only explicit approval makes zero known',async()=>{
     const result=await invoke(receive,{receiptKey:`${prefix}-blank`,items:[
       {productName:`${prefix}-Unknown`,quantity:1,batchNo:'UNKNOWN',expiryDate:'2035-12-31'},
       {productName:`${prefix}-Free`,quantity:1,batchNo:'FREE',expiryDate:'2035-12-31',unitCIF:0,unitDP:0},
@@ -157,7 +157,11 @@ describe.sequential('carton receiving and actual source cost lifecycle',()=>{
     expect(result.status).toBe(201);
     const projection=(await getStockCostProjection()).filter(r=>r.productName.startsWith(prefix));
     expect(projection.find(r=>r.productName.endsWith('Unknown')).missingCostQuantity).toBe(1);
-    expect(projection.find(r=>r.productName.endsWith('Free')).missingCostQuantity).toBe(0);
+    expect(projection.find(r=>r.productName.endsWith('Free')).missingCostQuantity).toBe(1);
+    // Synthetic approved source evidence only; not an approval API or history repair.
+    await query(`UPDATE stock_batches SET metadata=COALESCE(metadata,'{}'::jsonb)||'{"zeroCostApproved":true}'::jsonb WHERE description=$1`,[`${prefix}-Free`]);
+    const approved=(await getStockCostProjection()).find(r=>r.productName===`${prefix}-Free`);
+    expect(approved).toMatchObject({unitCIF:0,unitDPC:0,zeroCostApproved:true,missingCostQuantity:0,missingDPCQuantity:0});
   });
   it('preserves the stored NUMERIC received cost through real import, partial warehouse/branch receipts, sale and both downloads',async()=>{
     await invoke(packs,{productName:product,baseUnit:'unit',packs:[

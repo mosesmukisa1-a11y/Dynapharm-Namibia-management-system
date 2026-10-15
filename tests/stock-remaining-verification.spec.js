@@ -30,6 +30,9 @@ async function invoke(handler,method,body={},user=staff,url='/api/test'){
 const sum=async()=>getSalesReturnsSummary({aliases:[branch],productName:p});
 const numbers=data=>Object.fromEntries(Object.entries(data).map(([k,v])=>[k,typeof v==='string' && /^-?\d+(\.\d+)?$/.test(v)?Number(v):v]));
 beforeAll(async()=>{
+  // DP must come from the authoritative active list, never a client-supplied
+  // dpPrice. Preserve the frozen original cost layers independently.
+  await query('INSERT INTO product_prices(description,dp,cp,cif,bv) VALUES($1,7,9,2,1)',[p]);
   const source={id:prefix+'SOURCE',cif_unit_cost:2,dpc_unit_value:7,expiry_date:'2035-12-31'};
   await query(`INSERT INTO branch_inventory_batches(id,branch_id,product_name,batch_no,expiry_date,quantity,status,metadata)
     VALUES($1,$2,$3,'F-LOT','2035-12-31',10,'in_stock',$4)`,
@@ -98,7 +101,7 @@ it('screen API and financial exports agree; another branch cannot export these r
   checks.push({name:'Report/API/financial JSON/CSV parity and branch export scope',pass:true});
 });
 it('damaged returns reverse their original costs but remain unavailable; new catalogue prices do not reprice history',async()=>{
-  await query('INSERT INTO product_prices(description,dp,cp,cif,bv) VALUES($1,99,100,50,1)',[p]);
+  await query('UPDATE product_prices SET dp=99,cp=100,cif=50 WHERE description=$1',[p]);
   expect(Number((await sum()).netSalesDP)).toBe(42);
   const allocation=(await query('SELECT movement_id FROM stock_sale_allocations WHERE sale_reference=$1',[prefix+'SALE'])).rows[0];
   const refund=await invoke(requestRefund,'POST',{allocation_id:allocation.movement_id,quantity:1,
@@ -163,12 +166,14 @@ it('defines and tests sales inactivity, configurable window, unknown history and
   expect(aliases.rows[0]).toMatchObject({lastActivity:'2030-04-01',daysSinceActivity:0,status:'ACTIVE'});
   checks.push({name:'Slow-moving report inactivity and ambiguous history',pass:true});
 });
-it('keeps original discount evidence consistent across DP views without changing actual receipts or received CIF',async()=>{
+it('cannot retroactively change captured DP by editing legacy discount JSON',async()=>{
+  const captured=numbers(await sum());
   await query(`UPDATE branch_walkin_sales SET data=COALESCE(data,'{}'::jsonb)||'{"discount_pct":10}'::jsonb WHERE id=$1`,[prefix+'SALE']);
   const actual=numbers(await sum());
-  expect(actual).toMatchObject({grossSalesDP:50.4,refundsDP:18.9,netSalesDP:31.5,netSalesRevenue:45,netCostOfGoodsSold:10,grossProfitAfterReturns:35});
-  expect((await getBranchSalesRevenue(branch)).totalSales).toBeCloseTo(31.5,8);
-  checks.push({name:'Original discount, frozen DP, actual receipts and CIF remain separate',pass:true});
+  expect(actual).toEqual(captured);
+  expect(actual).toMatchObject({grossSalesDP:56,refundsDP:21,netSalesDP:35,netSalesRevenue:45,netCostOfGoodsSold:10,grossProfitAfterReturns:35});
+  expect((await getBranchSalesRevenue(branch)).totalSales).toBeCloseTo(35,8);
+  checks.push({name:'Legacy JSON cannot reprice frozen DP; receipts and original CIF remain separate',pass:true});
 });
 it('does not expose a warehouse batch to branch staff through a shared Windhoek alias',async()=>{
   await query(`INSERT INTO stock_batches(id,description,batch_no,expiry_date,quantity,remaining_quantity,

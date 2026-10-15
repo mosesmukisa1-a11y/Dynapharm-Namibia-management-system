@@ -8,11 +8,13 @@
  */
 import { applyAuthCors } from '../../_lib/auth.js';
 import { getOne, getMany } from '../../db.js';
+import { canReadCompanyStock,storedFreshness } from '../../services/stockReportFreshness.js';
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (!req.user) return res.status(401).json({ success: false, error: 'Authentication required' });
+  if(!canReadCompanyStock(req.user))return res.status(403).json({success:false,error:'Company stock reporting access denied'});
   if (req.method !== 'GET') return res.status(405).json({ success: false, error: 'Method not allowed' });
 
   try {
@@ -34,7 +36,9 @@ export default async function handler(req, res) {
       }
 
       const data = typeof row.report_data === 'string' ? JSON.parse(row.report_data) : row.report_data;
-      return res.json({ success: true, source: 'precomputed', period_type: periodType, period_key: periodKey, computed_at: row.computed_at, data });
+      const freshness=storedFreshness(row.computed_at);
+      if(freshness.state==='unavailable')return res.status(503).json({success:false,error:freshness.reason,freshness});
+      return res.json({ success: true, source: 'precomputed', period_type: periodType, period_key: periodKey, computed_at: row.computed_at, data,freshness });
     }
 
     // Fetch latest summaries for the given period type
@@ -50,9 +54,12 @@ export default async function handler(req, res) {
       period_key: r.period_key,
       branch_id: r.branch_id,
       computed_at: r.computed_at,
+      freshness:storedFreshness(r.computed_at),
       data: typeof r.report_data === 'string' ? JSON.parse(r.report_data) : r.report_data,
     }));
 
+    if(!summaries.length||summaries.some(s=>s.freshness.state==='unavailable'))
+      return res.status(503).json({success:false,error:'Stored summaries unavailable',freshness:{state:'unavailable'}});
     return res.json({ success: true, source: 'precomputed', period_type: periodType, summaries });
   } catch (err) {
     console.error('precomputed summary error:', err);

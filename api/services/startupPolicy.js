@@ -14,6 +14,18 @@ const permissionFlags = ['ALLOW_SCHEMA_SYNC', 'ALLOW_REFERENCE_SEEDS',
  * @returns {StartupPolicy}
  */
 export function createStartupPolicy(env = {}) {
+  if(env.REPLIT_DEPLOYMENT!==undefined&&!['0','1','false','true'].includes(env.REPLIT_DEPLOYMENT))
+    throw new Error('Invalid REPLIT_DEPLOYMENT marker');
+  if(env.NODE_ENV!==undefined&&!['development','test','production'].includes(env.NODE_ENV))
+    throw new Error('Invalid NODE_ENV startup marker');
+  const production = env.NODE_ENV === 'production' || ['1','true'].includes(env.REPLIT_DEPLOYMENT);
+  if (production) {
+    if (env.STARTUP_MODE !== 'code-only')
+      throw new Error('Production requires explicit STARTUP_MODE=code-only');
+    for (const flag of [...permissionFlags, 'ENABLE_STOCK_HEALTH_DIGEST'])
+      if (env[flag] !== 'false')
+        throw new Error(`Production requires explicit ${flag}=false`);
+  }
   const startupMode = env.STARTUP_MODE ?? 'legacy';
   if (!['legacy', 'code-only'].includes(startupMode))
     throw new Error('Invalid STARTUP_MODE; expected legacy or code-only');
@@ -28,6 +40,11 @@ export function createStartupPolicy(env = {}) {
     allowSchemaSync: allowed, allowReferenceSeeds: allowed,
     allowInventorySeed: allowed, allowStockSummaryDDL: allowed,
     enableStockScheduler: allowed});
+}
+
+// Explicit web launcher is safe even outside a platform-marked production process.
+export function assertCodeOnlyWebProfile(env) {
+  return createStartupPolicy({...env, NODE_ENV:'production'});
 }
 
 // The legacy entrypoint remains one indivisible operation to preserve its ordering,

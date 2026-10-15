@@ -1,6 +1,7 @@
 import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
 import { getMany } from '../db.js';
 import { ALL_BRANCH_IDS, normalizeBranchSlug,branchSearchTerms } from '../_lib/branchUtils.js';
+import { receiptMirrorType } from '../../shared/stockReceiptEvidence.js';
 import {getStockCostProjection} from '../services/stockCostReporting.js';
 import { getStockAlertPolicy } from '../services/stockAlertPolicy.js';
 import { movementSaleEvidence, isSaleMovement } from '../services/saleEvidence.js';
@@ -170,7 +171,7 @@ export default async function handler(req, res) {
     const norm = (s) => (s || '').replace(/^quarantine:/i,'').toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
     const conditionShift = sm => norm(sm.source_location) && norm(sm.source_location)===norm(sm.destination_location)
       && [sm.source_location,sm.destination_location].some(location=>/^quarantine:/i.test(location || ''));
-    const periodMirrorKey=(branch,reference,product,batch,type)=>JSON.stringify([branch,reference,product || '',batch || '',type]);
+    const periodMirrorKey=(branch,reference,product,batch,type)=>JSON.stringify([branch,reference,product || '',batch || '',receiptMirrorType(type)]);
     // Include owned reservations and segregated stock, not just available batches.
     for(const br of Object.values(branchMap)){
       br.closing_qty=0;br.dp_value=0;br.cif_value=0;
@@ -238,8 +239,7 @@ export default async function handler(req, res) {
           if (sm.source_location) br.source_warehouse = sm.source_location;
         }
         // Direct receipts (branch_receipt, import, transfer_in) → qty_received only
-        else if (t === 'transfer_in' || t === 'received' || t === 'receive' ||
-                 t === 'branch_receipt' || t === 'import_received' || t === 'transit_receipt') {
+        else if (receiptMirrorType(t)==='physical_receipt') {
           br.qty_received += q;
           if (sm.source_location) br.source_warehouse = sm.source_location;
         }
@@ -281,7 +281,7 @@ export default async function handler(req, res) {
         br.customer_charged_revenue+=Number(agg.sale_charged ?? 0);
         br.missing_sales_dp_qty+=Number(agg.missing_sale_dp || 0);
       }
-      if (t === 'receive' || t === 'received' || t === 'stock_receipt' || t === 'transfer_in') {
+      if (receiptMirrorType(t)==='physical_receipt') {
         br.qty_received += q;
         if (agg.source) br.source_warehouse = agg.source;
       }

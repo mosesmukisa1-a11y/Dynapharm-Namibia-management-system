@@ -6,6 +6,8 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
+    "start:web": "node scripts/start-code-only-web.mjs",
+    "start:stock-worker": "node worker/main.mjs",
     "dev": "node server.js",
     "dev:vite": "npx vite",
     "build": "npx vite build",

@@ -133,3 +133,9 @@ Physical-stock fixture readiness does not establish POS catalogue or original-co
 **Why:** A browser fixture had stock visible in batch screens but no matching price-list product, blocking sale staging. A different API fixture intentionally lacked original CIF despite having a current catalogue CIF; assuming the browser fixture's cost produced a false regression failure.
 
 **How to apply:** Validate each disposable fixture's active catalogue and captured cost sources separately before staging. Never change business prices or fill missing original costs to satisfy a synthetic expectation.
+
+Serial test files can still contaminate whole-company baselines through retained fixtures. A database-template clone also needs server-side connection drain, not only a client pool-close acknowledgement.
+
+**Why:** The combined suite included other fixtures' legitimate clients, and a template clone intermittently failed immediately after the pool had closed.
+
+**How to apply:** Use independent owned databases for whole-scope suites. Drain only the exact owned template from a separate control connection; never sweep development/production sessions or reuse stale test-result JSON after a harness failure.
