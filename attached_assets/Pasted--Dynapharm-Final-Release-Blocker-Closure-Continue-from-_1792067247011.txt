@@ -1,0 +1,329 @@
+# Dynapharm Final Release-Blocker Closure
+
+Continue from branch:
+
+stock-worker-release-2026-10-15
+
+Expected candidate:
+
+508f7ec730ffe7c61cc711d0004451c5b3d7357f
+
+Do not publish, restart production, change production configuration, or write to the production database.
+
+Preserve all completed fixes. This task must close only the remaining release blockers listed below.
+
+==================================================
+1. VERIFY STARTING STATE
+==================================================
+
+Before making changes:
+
+1. Confirm the current branch and commit match the references above.
+2. Confirm the working tree status.
+3. Preserve all unrelated and untracked user files.
+4. Verify the existing test artifacts and commit references.
+5. Stop with BLOCKED if the expected source cannot be verified.
+
+==================================================
+2. CLEAN DEPENDENCY INSTALLATION
+==================================================
+
+Perform a fresh installation using the committed lockfile in a clean temporary workspace.
+
+Requirements:
+
+- use the repository’s declared Node and package-manager versions;
+- do not alter dependency versions;
+- do not regenerate the lockfile unless it is proven invalid;
+- run the complete build and test suite using only freshly installed dependencies;
+- prove the build does not depend on previously installed node_modules;
+- record commands, versions, checksums and results.
+
+A failed clean installation is a release blocker.
+
+==================================================
+3. AUTHENTICATED BROWSER VERIFICATION
+==================================================
+
+Use an isolated non-production database and authorized synthetic accounts.
+
+Verify through the actual rendered portals:
+
+- Branch sale;
+- Branch stock;
+- Stock movement ledger;
+- Stock reports;
+- Finance;
+- MIS;
+- GM;
+- Director.
+
+Trace one synthetic sale from start to finish and confirm:
+
+- the active DP price is used;
+- submitted or manipulated DP values are ignored;
+- CP remains distinct;
+- stock decreases exactly once;
+- the movement shows quantity, DP, CP, timestamp and reference;
+- no unrelated open request is created;
+- Finance, MIS, GM and Director receive the intended scoped result;
+- unauthorized and cross-branch access is rejected;
+- loading, unavailable, stale and error states are clear.
+
+Capture screenshots with no credentials or personal data.
+
+==================================================
+4. SALE INTERRUPTION AND RETRY
+==================================================
+
+Test the actual application process, not only the Express adapter.
+
+Simulate:
+
+- connection loss before COMMIT;
+- connection loss after COMMIT but before response;
+- application-process termination during the transaction;
+- retry after an uncertain response;
+- double-click or duplicate submission;
+- browser offline/reconnect.
+
+Required result:
+
+- no duplicate sale;
+- no duplicate stock deduction;
+- no orphan movement;
+- no partial financial record;
+- retry returns the existing committed outcome when appropriate;
+- failed pre-COMMIT attempts leave no business records.
+
+Record transaction IDs, counts and before/after fingerprints using synthetic data only.
+
+==================================================
+5. DOCUMENT AND PRINT VERIFICATION
+==================================================
+
+Generate and visually inspect actual outputs for:
+
+- customer receipt;
+- thermal receipt;
+- stock movement report;
+- branch stock report;
+- dispatch document;
+- receiving document;
+- transfer document;
+- inventory valuation report;
+- Finance sales report.
+
+Verify:
+
+- readable layout;
+- correct branch and document reference;
+- correct business date and timestamp;
+- correct quantity;
+- DP and CP labels are not confused;
+- totals and currency formatting are correct;
+- no clipping, overlap, blank pages or missing rows;
+- no unauthorized financial fields appear for branch users.
+
+Save redacted evidence.
+
+==================================================
+6. DRIFT-DETECTION BOUNDARY
+==================================================
+
+Keep automatic drift repair disabled.
+
+Expand and test detection against populated synthetic data covering:
+
+- available stock;
+- held stock;
+- reserved stock;
+- transit stock;
+- batch stock;
+- legacy movement types;
+- returns;
+- write-offs;
+- disposals;
+- partial transfers;
+- partial receipts;
+- mirrored receipt evidence;
+- expired and quarantined quantities.
+
+A finding must be labelled as a review item, never proof of missing stock.
+
+If complete reconciliation cannot be proven, retain:
+
+WORKER_DRIFT_DETECTION=false
+WORKER_DRIFT_REPAIR=false
+
+Document the missing coverage precisely.
+
+==================================================
+7. MANUAL JOB ACCEPTANCE
+==================================================
+
+The thirteen quarantined jobs must remain disabled unless individually proven.
+
+Create an operational acceptance checklist for each disabled job, including:
+
+- responsible role;
+- frequency;
+- exact manual steps;
+- duplicate-prevention check;
+- required evidence;
+- escalation owner;
+- maximum acceptable delay.
+
+Pay special attention to scheduled price activation.
+
+Do not mark READY unless an authorized role can safely:
+
+- identify approved future prices;
+- activate each price exactly once;
+- confirm effective date and scope;
+- preserve price history;
+- verify Branch Sales uses the new DP;
+- record an audit trail.
+
+If no acceptable manual price procedure exists, return:
+
+BLOCKED - DO NOT PUBLISH
+
+==================================================
+8. HUMAN FAILURE ALERTING
+==================================================
+
+Configure and test a non-production alert delivery path for worker failures.
+
+It must:
+
+- notify a defined human or monitored operational channel;
+- include task ID, run ID, timestamp and safe error summary;
+- exclude secrets and customer information;
+- avoid duplicate alert flooding;
+- escalate unresolved failures;
+- retain the durable journal as the system of record.
+
+Do not configure production credentials during this task.
+
+If human delivery cannot be demonstrated, keep the relevant worker tasks disabled and report the limitation.
+
+==================================================
+9. PRODUCTION READINESS EVIDENCE
+==================================================
+
+Using explicit read-only authorization only, prepare a checklist for:
+
+- source and target database catalog compatibility;
+- dedicated web-service role grants;
+- dedicated worker role grants;
+- migration role separation;
+- backup recency;
+- restore rehearsal evidence;
+- recovery-point objective;
+- recovery-time objective;
+- post-release health checks;
+- existing production schedulers and background jobs.
+
+Do not connect to production unless explicit authorization and approved credentials already exist.
+
+Investigate the reported existing hosted activity:
+
+stuck-approval: flagged 8 stuck transfer(s)
+
+Determine from source/configuration evidence:
+
+- which process emits it;
+- whether it mutates data;
+- how it is scheduled;
+- whether it would overlap with the new worker;
+- how it will be disabled or isolated during release.
+
+Do not stop or alter the hosted process in this task.
+
+Unresolved duplicate scheduler risk is a publication blocker.
+
+==================================================
+10. COMPLETE REGRESSION
+==================================================
+
+After any source change, rerun all relevant tests, including:
+
+- complete unit suite;
+- complete isolated database suite;
+- worker tests;
+- startup-contract tests;
+- authorization tests;
+- sales retry/idempotency tests;
+- transfer and receipt tests;
+- valuation tests;
+- report freshness tests;
+- browser workflows;
+- clean dependency build;
+- web release rehearsal;
+- worker release rehearsal;
+- guarded rollback rehearsal.
+
+Do not rely on earlier results for files affected by new changes.
+
+==================================================
+11. REQUIRED OUTPUTS
+==================================================
+
+Update or create:
+
+generated-artifacts/final-release-gate/report.md
+generated-artifacts/final-release-gate/clean-install.md
+generated-artifacts/final-release-gate/browser-evidence/
+generated-artifacts/final-release-gate/interruption-tests.md
+generated-artifacts/final-release-gate/document-review.md
+generated-artifacts/final-release-gate/manual-job-acceptance.md
+generated-artifacts/final-release-gate/alert-delivery.md
+generated-artifacts/final-release-gate/production-readiness.md
+generated-artifacts/final-release-gate/test-results.md
+generated-artifacts/final-release-gate/release-runbook.md
+generated-artifacts/final-release-gate/rollback-runbook.md
+
+Include exact commands, test totals, failures, skipped checks, screenshots, fingerprints and commit IDs.
+
+Do not include secrets, cookies, connection strings or real personal/clinical information.
+
+==================================================
+12. FINAL DECISION
+==================================================
+
+Return exactly one headline:
+
+READY FOR EXPLICIT PUBLICATION AUTHORIZATION
+
+or:
+
+PARTIALLY VERIFIED - DO NOT PUBLISH
+
+or:
+
+BLOCKED - DO NOT PUBLISH
+
+READY requires all of the following:
+
+- clean lockfile installation passes;
+- complete tests and build pass;
+- real rendered portal workflows pass;
+- interruption and retry tests prove exactly-once behavior;
+- required documents are visually verified;
+- disabled jobs have accepted manual procedures;
+- manual scheduled-price control is operational;
+- worker failures reach a human;
+- duplicate production scheduler risk is resolved;
+- release and guarded rollback rehearsals pass;
+- no production action occurred.
+
+End with:
+
+Production database modified: NO
+Production environment modified: NO
+Production restarted: NO
+Production published: NO
+Production rollback executed: NO
+
+Do not publish. Await explicit user authorization.
