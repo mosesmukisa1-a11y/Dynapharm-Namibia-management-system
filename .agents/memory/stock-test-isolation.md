@@ -2,6 +2,18 @@
 name: Stock safety test isolation
 description: Why receipt evidence and full-database safety baselines need different isolation from ordinary unit tests.
 ---
+Directly seeded physical balances do not establish movement-derived opening evidence.
+
+**Why:** A physically conserving audit can still lack the history needed for its period formula. That discrepancy is not proof of lost goods.
+
+**How to apply:** Create explicitly labelled synthetic pre-period opening evidence with a fresh fixture when needed. It is setup, not staff receiving verification. Preserve the incomplete phase; never backfill a result just to obtain a pass.
+
+Keep observed-request counts separate from interception counts in browser fault tests.
+
+**Why:** Incrementing one shared guard in both a request observer and its route handler falsely classified a single attempt as a duplicate and prevented any server request.
+
+**How to apply:** Diagnose interception exceptions and inspect server-side stock/transaction evidence before treating a fetch failure as an application defect or retrying a sale.
+
 Metadata-only approval evidence does not establish quantity-edit safety.
 
 **Why:** Earlier GM browser checks approved expiry changes, while the subsequently reported Approve All failure involved warehouse quantities. These exercise different writes, movements and balance refreshes.

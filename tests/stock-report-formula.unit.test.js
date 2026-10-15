@@ -1,11 +1,14 @@
-import {it,expect} from 'vitest';
+import {it,expect,vi} from 'vitest';
 import {readFileSync} from 'node:fs';
 import {stockFormulaReview} from '../client/src/lib/stockReportFormula.js';
-import {createElement} from 'react';
+import React,{createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {Alert} from '../client/src/components/ui.jsx';
 it('renders evidence-gap text through the real shared alert component',()=>{
- expect(renderToStaticMarkup(createElement(Alert,{type:'warning'},'Movement formula requires review'))).toContain('Movement formula requires review');
+ // The unit runner uses classic JSX; production Vite uses the automatic runtime.
+ vi.stubGlobal('React',React);
+ try{expect(renderToStaticMarkup(createElement(Alert,{type:'warning'},'Movement formula requires review'))).toContain('Movement formula requires review');}
+ finally{vi.unstubAllGlobals();}
 });
 it('reconciles a complete opening and sale without inventing receipts',()=>{
  expect(stockFormulaReview({opening:10,salesQty:2,closing:8})).toEqual({status:'reconciled',expected:8,difference:0});
