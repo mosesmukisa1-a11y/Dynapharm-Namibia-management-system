@@ -20,3 +20,9 @@ An exact recovered legacy source snapshot is not automatically a zero-write-comp
 **Why:** Restoring source offline does not run its bootstrap; republishing it does. A snapshot predating startup controls can ignore a code-only setting and resume old mutations.
 
 **How to apply:** Preserve the exact raw source and clearly separate any reviewed rollback candidate retaining safety controls. Never label offline restoration proof as a production no-write rollback rehearsal.
+
+A safe release smoke allowlist is endpoint- and mode-specific. Do not equate an HTTP GET, a code-only process, or a successful portal HTML response with a non-mutating browser workflow.
+
+**Why:** Legacy read handlers can normalize persisted identity data, and portal scripts automatically request additional endpoints. Startup guards intentionally do not disable normal staff business transactions.
+
+**How to apply:** Audit shared authentication/providers and page-initiated requests; exclude write-capable and unresolved reads. Label HTTP shell/API checks separately from rendered authenticated browser evidence, and do not expand a reviewed smoke allowlist implicitly.

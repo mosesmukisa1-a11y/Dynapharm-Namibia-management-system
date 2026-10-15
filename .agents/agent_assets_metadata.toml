@@ -504,3 +504,17 @@ mtime_ms = 1792056079238
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/0eb012e2-aa86-46dc-8a45-e3fd36a71a5f/e139d13d-a84e-49a9-974c-9b6c700e8622"
 storage_version_token = "1792056133566242"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "cTNM7HVD6-KJfROvO3uEs"
+uri = "file://generated-artifacts/sales-stock-integration/predeployment/report.md"
+type = "text"
+title = "Final predeployment and guarded rollback review"
+description = "Production metadata contract passed. Guarded rollback preserved separately. Both candidates passed23 startup tests and30 owned HTTP checks with unchanged database fingerprints. No production changes or publication. Includes restricted smoke allowlist, exclusions, operational decision table and rollback procedure."
+logical_id = "1ad8a260-b12f-48f4-9b3d-77ebd1d0c66c"
+content_hash = "sha256:1110f63fec8d6c4312bd98066105fac845cca909f5d66cee91437136938e7e60"
+size = 21795
+mtime_ms = 1792057778142
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/1ad8a260-b12f-48f4-9b3d-77ebd1d0c66c/97636ad5-2119-456a-8e18-459e909ed40a"
+storage_version_token = "1792057863117554"
+content_type = "text/markdown"

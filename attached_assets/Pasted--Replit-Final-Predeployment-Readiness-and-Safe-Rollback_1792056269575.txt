@@ -1,0 +1,226 @@
+# Replit Final Predeployment: Readiness and Safe Rollback Rehearsal
+
+Run this before authorizing publication. This task must not publish or restart production.
+
+---
+
+## Replit Agent Prompt
+
+Startup safety implementation has passed and the exact deployed source has been recovered. Publication remains blocked because:
+
+1. Production schema compatibility with `STARTUP_MODE=code-only` has not been checked.
+2. The raw production rollback tag uses legacy mutating startup and cannot safely be republished unchanged.
+3. The operational impact of disabling Stock scheduling and automatic price activation has not been approved.
+
+Complete only the read-only readiness and rollback rehearsal below. Do not publish, restart production, change environment variables, run migrations, seed data, repair balances, invoke schedulers, or submit business transactions.
+
+## A. Read-only production schema compatibility
+
+Using approved production database access, run only catalogue/metadata `SELECT` queries required by `api/services/startupSchema.js`.
+
+Prohibited:
+
+- DDL
+- INSERT/UPDATE/DELETE/MERGE
+- stored procedures with side effects
+- advisory locks
+- migrations
+- application bootstrap
+- scheduler startup
+- health endpoints that invoke lazy business writes
+
+Verify the exact versioned minimum contract used by code-only startup:
+
+- required relations exist;
+- required columns exist;
+- deployment role has required `SELECT` privileges;
+- diagnostics contain no credentials, row data, staff data, customer data, or clinical data.
+
+Save a redacted compatibility result:
+
+```json
+{
+  "compatible": true,
+  "contractVersion": "...",
+  "missingTables": [],
+  "missingColumns": [],
+  "unreadableRelations": [],
+  "checkedAt": "...",
+  "writesExecuted": false
+}
+```
+
+If compatibility is false or access cannot be proven read-only, stop. Do not publish.
+
+## B. Audit lazy side effects for intended smoke routes
+
+Statically inspect every GET/HEAD handler and middleware used by the proposed production smoke test:
+
+```text
+/api/health
+/api/version
+/branch
+/finance
+/gm
+/director
+/mis
+/stock?view=aiDashboard
+/stock?view=branchStock
+/stock?view=inventory
+/stock?view=batch
+/stock?view=stockReports
+/stock?view=costReport
+/stock?view=valuation
+/stock?view=reorder
+/stock?view=barcode
+/stock?view=trace
+```
+
+Include API requests initiated by these pages.
+
+For each request classify:
+
+```text
+Read-only
+Writes audit/access timestamp
+May activate price changes
+May seed/create schema
+May enqueue notification/request
+Unknown
+```
+
+The existing daily due-price middleware must be confirmed disabled in `code-only`.
+
+Do not call a production endpoint classified as write-capable or unknown during the later smoke test. Produce a safe allowlist of verified read-only requests.
+
+## C. Create a guarded rollback candidate
+
+Preserve the exact raw production tag unchanged:
+
+```text
+production-before-sales-stock-2026-10-15
+raw target: 456ac456f3eaa4b25293b22d05fe8346dfab8c38
+raw tree: 6f0efcc00e40e962ede9909f9bc5ed7433c37ec0
+```
+
+Create a separate review branch/checkpoint derived from that exact production source. Apply only the minimum startup-safety boundary required for `STARTUP_MODE=code-only` and its readiness health support.
+
+Do not include:
+
+- Sales/Stock feature changes from the new candidate;
+- schema migrations;
+- historical repairs;
+- scheduler behavior changes in legacy mode;
+- price changes;
+- new business functionality.
+
+Name it clearly, for example:
+
+```text
+production-rollback-code-only-2026-10-15
+```
+
+Verify offline:
+
+- its business application tree matches the raw production snapshot except for the reviewed startup-safety files;
+- `STARTUP_MODE=code-only` executes zero DDL/writes/seeds/repairs/schedulers;
+- it passes the production compatibility contract;
+- build passes;
+- startup-safety tests pass;
+- restore and republish procedure is documented;
+- no database restore is required.
+
+Do not deploy this rollback candidate.
+
+## D. Rehearse release and rollback in an owned disposable environment
+
+Using a disposable environment/database only:
+
+1. Start the new Sales/Stock release candidate with `STARTUP_MODE=code-only`.
+2. Verify readiness and approved read-only routes.
+3. Stop it.
+4. Start the guarded rollback candidate with `STARTUP_MODE=code-only`.
+5. Verify readiness and the same compatible core routes.
+6. Confirm no database writes, schema changes, seeds, repairs, scheduler timers, or business records occur in either start.
+
+Compare database fingerprints before, between, and after. The disposable database must be owned by the harness and removed safely afterward.
+
+This is rehearsal only, not production deployment.
+
+## E. Scheduler and automatic price activation decision document
+
+Produce a decision table without changing production:
+
+| Capability | Current legacy web process | Code-only web release | Separate worker option | Business owner approval required |
+|---|---|---|---|---|
+| Daily/weekly/monthly summaries | | | | |
+| Missed-run backfill | | | | |
+| Expiry scans | | | | |
+| Receipt reminders | | | | |
+| Approval escalation | | | | |
+| Warehouse reorder requests | | | | |
+| Redistribution suggestions | | | | |
+| Inventory drift repair | | | | |
+| Health digest | | | | |
+| Scheduled price activation | | | | |
+
+Explicitly state:
+
+- which functions stop under code-only;
+- whether any user-facing report depends on newly generated summaries;
+- whether stopping price activation leaves already scheduled price changes unapplied;
+- who currently owns/approves warehouse reorder and drift repair behavior;
+- that the health digest is broken unless separately quarantined or corrected;
+- that no worker exists unless separately designed and authorized.
+
+Do not choose on the user's behalf.
+
+## F. Proposed production configuration
+
+Validate but do not set:
+
+```text
+STARTUP_MODE=code-only
+ALLOW_SCHEMA_SYNC=false
+ALLOW_REFERENCE_SEEDS=false
+ALLOW_INVENTORY_SEED=false
+ALLOW_STOCK_SUMMARY_DDL=false
+ENABLE_STOCK_SCHEDULER=false
+ENABLE_STOCK_HEALTH_DIGEST=false
+```
+
+Confirm malformed or contradictory values fail closed.
+
+Note: `ENABLE_STOCK_HEALTH_DIGEST=false` is redundant while the whole scheduler is disabled, but records the intended quarantine if a future worker selectively enables jobs.
+
+## G. Required report
+
+Stop without publishing and report:
+
+```text
+Production schema compatible: YES/NO
+Read-only metadata check completed: YES/NO
+Production writes executed: NO
+Safe smoke endpoint allowlist completed: YES/NO
+Guarded rollback candidate created: YES/NO
+Guarded rollback identifier:
+Release rehearsal passed: YES/NO
+Rollback rehearsal passed: YES/NO
+Disposable database unchanged: YES/NO
+Scheduler impact documented: YES/NO
+Price activation impact documented: YES/NO
+Production configuration changed: NO
+Production restarted: NO
+Publication attempted: NO
+Remaining user decision:
+Publication readiness: BLOCKED / READY FOR EXPLICIT USER AUTHORIZATION
+```
+
+Publication may be marked `READY FOR EXPLICIT USER AUTHORIZATION` only if:
+
+- production compatibility is confirmed through read-only metadata;
+- safe smoke requests are allowlisted;
+- guarded rollback candidate exists and passes rehearsal;
+- release and rollback code-only starts produce zero database mutations;
+- scheduler/price-activation impact is fully documented.
+
