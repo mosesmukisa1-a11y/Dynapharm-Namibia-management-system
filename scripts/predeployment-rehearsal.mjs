@@ -8,6 +8,7 @@ import {randomUUID,randomBytes,createHash} from 'node:crypto';
 import pg from 'pg';
 import jwt from 'jsonwebtoken';
 import {releaseEvidenceRoot} from './release-evidence-paths.mjs';
+import {TASKS} from '../worker/tasks.mjs';
 const root=process.cwd(),priorOut=path.join(root,'generated-artifacts/sales-stock-integration/predeployment');
 const out=process.argv.includes('--final-release-gate')?path.join(root,releaseEvidenceRoot,'web-rollback-rehearsal'):process.argv.includes('--stock-worker')
   ?path.join(root,'generated-artifacts/stock-worker/test-evidence/web-rollback-rehearsal'):priorOut;
@@ -85,10 +86,30 @@ try{
   await admin.query(`CREATE DATABASE ${name}`);created=true;
   await command('psql',['--quiet','--set','ON_ERROR_STOP=1'],{env:pgEnv(url),input:dump.stdout});
   target=new pg.Pool({connectionString:url.toString(),max:1});
+  if(process.argv.includes('--populated')){
+    await target.query(await fs.readFile(path.join(root,'migrations/035_manual_price_control.sql'),'utf8'));
+    await target.query(`INSERT INTO branches(id,name,status) VALUES('townshop','Synthetic rehearsal branch','active');
+      INSERT INTO products(id,sku,name,unit,dp,cp,is_active) VALUES('OWNED-REHEARSAL','OWNED-REHEARSAL','OWNED-REHEARSAL','unit',341,443,true);
+      INSERT INTO product_prices(description,product_code,dp,cp,cif,bv,updated_by) VALUES('OWNED-REHEARSAL','OWNED-REHEARSAL',341,443,23,0,'synthetic-rehearsal');
+      INSERT INTO branch_inventory_batches(id,branch_id,product_name,batch_no,expiry_date,quantity,unit_price,status,metadata)
+      VALUES('OWNED-REHEARSAL','townshop','OWNED-REHEARSAL','QA-LOT','2035-12-31',4,341,'in_stock','{"disposable_rehearsal":true}');
+      INSERT INTO inventory_balances(id,location_id,location_type,product_name,closing_qty,on_hand_qty,available_qty)
+      VALUES('OWNED-REHEARSAL','townshop','branch','OWNED-REHEARSAL',4,4,4);`);
+    result.fixture='Populated disposable reference catalogue and physical4 units; intentionally incomplete opening/source history. Not a workflow fixture.';
+  }
   // This setting affects this owned fixture only, before the baseline.
   await target.query(`ALTER DATABASE ${name} SET default_transaction_read_only=on`);
   const baseline=await snapshot();result.baseline=baseline;await save();
-  if(baseline.totalRows!==0)throw Error('Schema-only fixture unexpectedly contains rows');
+  if(process.argv.includes('--populated')?baseline.totalRows===0:baseline.totalRows!==0)throw Error('Unexpected fixture population');
+  const workerEnv={...process.env,DATABASE_URL:url.toString(),WORKER_DATABASE_URL:url.toString(),
+    NODE_ENV:'test',REPLIT_DEPLOYMENT:'0',PGOPTIONS:'-c default_transaction_read_only=on',WORKER_ENABLED:'false',
+    ...Object.fromEntries(TASKS.map(t=>[t.flag,'false']))};
+  const disabled=await command(process.execPath,[path.join(root,'worker/main.mjs'),'--check-config'],
+    {env:workerEnv,log:'worker-disabled.log'});
+  if(!disabled.stdout.includes('"timersStarted":false'))throw Error('Worker disabled evidence absent');
+  result.workerRehearsal={status:'PASS',enabled:false,tasks:[],timersStarted:false,
+    fingerprintUnchanged:JSON.stringify(await snapshot())===JSON.stringify(baseline)};
+  if(!result.workerRehearsal.fingerprintUnchanged)throw Error('Disabled worker changed owned database');
   const secret=randomBytes(48).toString('hex');
   const token=jwt.sign({sub:'owned-predeploy-admin',role:'admin',branch:'townshop',fullName:'Synthetic rehearsal'},secret,{expiresIn:'15m'});
   const allow=JSON.parse(await fs.readFile(path.join(priorOut,'safe-smoke-allowlist.json'),'utf8'));
