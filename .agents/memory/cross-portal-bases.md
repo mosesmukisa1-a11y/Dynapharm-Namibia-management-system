@@ -33,3 +33,9 @@ DP revenue (a captured 90 from a 10%-off 100 sale must reverse 90, not 81).
 **How to apply:** Gross/net DP reports must consume the original allocation or
 its exact reversal snapshot without another discount or customer-type price
 substitution. Missing saved DP stays incomplete.
+
+Company-wide administrative previews do not waive branch-specific endpoint safeguards. Aggregate explicitly scoped authorized reads and retain per-section completeness, rather than weakening server authority.
+
+**Why:** The user requires the explicit-branch protection to remain: unscoped administrative reads risk appearing under the wrong branch, while swallowed failures can present unavailable financial data as zero.
+
+**How to apply:** Keep successful branch subsets separate from company totals, name unavailable branches only where permitted, and retry the affected read section. Respect each endpoint's actual branch parameter contract; a company-wide UI label is not new server authority.

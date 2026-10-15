@@ -462,3 +462,17 @@ mtime_ms = 1792051400230
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/5fbf33da-c596-46db-9be0-691b279207e8/845d04b4-ea5b-461f-906d-793d08b7b3a9"
 storage_version_token = "1792051423836831"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "DoadMJwN4Wmjr6Aza5K8x"
+uri = "file://generated-artifacts/sales-stock-integration/final-blocker/report.md"
+type = "text"
+title = "GM/Finance blocker fixes — release review"
+description = "Narrow code-release gate passed: build,273 unit checks, scoped staff reads, incomplete-data Retry, sibling controls and Stock returns. Includes retained25-database evidence, screenshots, residual risks and rollback checkpoint. Not published."
+logical_id = "ab37a4ef-2c0c-415c-8e78-e3bcda558558"
+content_hash = "sha256:343ff56ddfd4b29c7106d0a4e823c7f12b170e38038c6f3ca66687aa8326494e"
+size = 12556
+mtime_ms = 1792053440762
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/ab37a4ef-2c0c-415c-8e78-e3bcda558558/7c352555-9902-46f6-b957-bcc2a01405ea"
+storage_version_token = "1792053480054310"
+content_type = "text/markdown"

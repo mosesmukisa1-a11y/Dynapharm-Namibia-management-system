@@ -3,6 +3,9 @@ import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
 import DistributorPerformanceTab from '../../components/DistributorPerformanceTab';
 import DispatchNote from '../../components/DispatchNote';
 import DailySalesCard from '../../components/DailySalesCard';
+import BranchReadStatus from '../../components/BranchReadStatus';
+import { useBranchDashboardReads } from '../../hooks/useBranchDashboardReads';
+import { GM_BRANCH_SECTIONS } from '../../lib/authorizedBranchReads';
 import { api } from '../../lib/api';
 import { PRICE_LIST, getCIFPrice, findProductPrice, getLiveProductList, setLivePrices } from '../../lib/pricing';
 import { formatCurrency, formatDateTime, formatDate, BRANCHES, BRANCH_DETAILS } from '../../lib/constants';
@@ -499,7 +502,9 @@ function DashboardTab() {
   const [endDate, setEndDate] = useState(today);
   const [appliedStart, setAppliedStart] = useState(firstOfMonth);
   const [appliedEnd, setAppliedEnd] = useState(today);
-  const [data, setData] = useState({ orders: [], branches: [], products: [], sales: [], deposits: [], expenses: [] });
+  const [baseData, setData] = useState({ orders: [], branches: [], products: [], expenses: [] });
+  const { reads: branchReads, retry: retryBranchRead } = useBranchDashboardReads(GM_BRANCH_SECTIONS, { from: appliedStart, to: appliedEnd });
+  const data = { ...baseData, sales: branchReads.sales.rows || [], deposits: branchReads.deposits.rows || [] };
   const [loading, setLoading] = useState(true);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [gmSummary, setGmSummary] = useState(null);
@@ -527,16 +532,14 @@ function DashboardTab() {
       api.orders.list().then(d => Array.isArray(d) ? d : d.orders || []).catch(() => []),
       api.branches.list().then(d => Array.isArray(d) ? d : d.branches || []).catch(() => []),
       api.products.list().then(d => Array.isArray(d) ? d : d.products || []).catch(() => []),
-      api.branch.walkinSales(`from=${start}&to=${end}`).then(d => Array.isArray(d) ? d : d.sales || []).catch(() => []),
-      api.branch.deposits(`from=${start}&to=${end}`).then(d => Array.isArray(d) ? d : d.deposits || []).catch(() => []),
-    ]).then(([orders, branches, products, sales, deposits]) => {
+    ]).then(([orders, branches, products]) => {
       const filteredOrders = orders.filter(o => {
         const d = o.created_at || o.date || o.timestamp;
         if (!d) return true;
         const ds = d.slice(0, 10);
         return ds >= start && ds <= end;
       });
-      setData({ orders: filteredOrders, branches, products, sales, deposits });
+      setData({ orders: filteredOrders, branches, products });
     }).finally(() => setLoading(false));
     refreshGmSummary(start, end);
   }, [refreshGmSummary]);
@@ -654,6 +657,8 @@ function DashboardTab() {
         </CardBody>
       </Card>
 
+      {GM_BRANCH_SECTIONS.map(section => <BranchReadStatus key={section} section={section}
+        result={branchReads[section]} retry={() => retryBranchRead(section)} />)}
       <DailySalesCard className="mb-6" />
 
       {gmSummary && (
@@ -765,6 +770,7 @@ function DashboardTab() {
         <Card>
           <CardHeader><h3 className="font-bold text-gray-800">Revenue by Branch</h3></CardHeader>
           <CardBody>
+            {(branchReads.sales.loading || branchReads.sales.failures.length > 0) && <p className="text-red-700">{branchReads.sales.loading ? 'Loading branch data…' : 'Incomplete data — successful branches only; not a company total.'}</p>}
             {Object.keys(branchRevenue).length > 0 ? (
               <div className="space-y-3">
                 {Object.entries(branchRevenue).sort((a, b) => b[1] - a[1]).map(([branch, rev]) => (
@@ -775,7 +781,7 @@ function DashboardTab() {
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-gray-500 py-4 text-center">Revenue data will appear when sales are recorded.</p>
+              <p className="text-sm text-gray-500 py-4 text-center">{branchReads.sales.loading || branchReads.sales.failures.length ? 'Complete sales data unavailable' : 'Revenue data will appear when sales are recorded.'}</p>
             )}
           </CardBody>
         </Card>
@@ -783,6 +789,7 @@ function DashboardTab() {
         <Card>
           <CardHeader><h3 className="font-bold text-gray-800">Top Products</h3></CardHeader>
           <CardBody>
+            {(branchReads.sales.loading || branchReads.sales.failures.length > 0) && <p className="text-red-700">Incomplete data — rankings are not complete.</p>}
             {topProducts.length > 0 ? (
               <div className="space-y-3">
                 {topProducts.map(([name, count], i) => (

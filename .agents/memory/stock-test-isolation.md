@@ -68,6 +68,12 @@ Long-running disposable API processes can retain stale ESM exports after source 
 
 **How to apply:** Verify current code with a fresh process over the owned review target; keep business GETs read-only and omit bootstrap/migrations when the pass forbids writes. Distinguish wrapper route gaps from real application failures.
 
+Browser failure injection must affect the active logical read, and current-code claims need observations captured after the change.
+
+**Why:** Development StrictMode issued duplicate mount reads: injecting503 into only the obsolete read while the current read returned200 correctly produced complete data, not an unavailable branch. A continuation also carried forward an older DOM observation after the markup had changed.
+
+**How to apply:** For a failed-branch test, fail matching reads for that branch until the intentional Retry, then remove the interceptor. Do not weaken stale-response guards to retain an obsolete failure. Check observation timestamps and the served module before treating carried-forward DOM evidence as a new regression.
+
 Whole-system audits must use a separate test database or isolated environment, not merely uniquely named rows in the business database. Never connect their fixtures to live payment or other external services.
 
 **Why:** The user explicitly requires business records to remain untouched during an end-to-end stock audit. Prefixes and cleanup do not prevent a mis-scoped handler or failing assertion from changing unrelated records.
@@ -103,6 +109,12 @@ Stopping a background fixture task can terminate its process group before asynch
 **Why:** The disposable browser harness stopped and its preview closed, but its owned database still existed and required a positively identified cleanup.
 
 **How to apply:** Prefer a graceful signal to the ownership-verified harness and wait for its disposal marker. Verify deletion; remove only the exact fixture owned in the current session, never a stale or unverified manifest.
+
+Optional Linux proc child-process listings may be absent even when the harness cmdline is readable.
+
+**Why:** A cleanup precheck failed on a missing per-task children file although the ownership-verified harness was still running.
+
+**How to apply:** Do not make safe disposal depend on that optional listing. Verify the exact manifest PID/cmdline, exact database identity and final listener closure; never substitute an unverified process or database sweep.
 
 Canonical-only branch fixtures do not establish legacy-location coverage. Include a persisted legacy branch alias with a held or reserved unit when validating stock-report agreement.
 

@@ -1,0 +1,215 @@
+# Replit Final Blocker Fix: GM/Finance Scope + Daily Sales Markup
+
+Paste this into Replit. This is a narrowly scoped release-blocker repair.
+
+---
+
+## Replit Agent Prompt
+
+The Sales and Stock release gate remains `PARTIALLY VERIFIED`. The Stock Portal itself passed the requested 10-route sidebar/direct/reload matrix, all 50 permitted cross-portal Stock render combinations, the genuine GET 503/Retry test, and the delayed old-branch response test.
+
+Do not modify the verified Stock cleanup unless required by a failing regression. Fix only the two remaining cross-portal blockers and rerun their affected checks.
+
+Do not weaken server authorization. Do not publish automatically. Do not perform stock or financial writes.
+
+## Blocker 1: GM and administrator Finance dashboards issue unscoped branch requests
+
+Current failures:
+
+```text
+GET /api/branch/walkin-sales?from=...&to=... -> 400
+GET /api/branch/deposits?from=...&to=... -> 400
+GET /api/branch/expenses?from=...&to=... -> 400
+```
+
+Response:
+
+```json
+{"success":false,"error":"branch parameter is required"}
+```
+
+Known callers:
+
+- `client/src/pages/portals/GMPortal.jsx` — `DashboardTab.loadData`
+- `client/src/pages/portals/FinancePortal.jsx` — `DashboardTab`
+
+The server safeguard is intentional. Do not remove or weaken `requiresBranchParam` in `api/_lib/auth.js` or the branch handlers.
+
+### Required correction
+
+For administrative company-wide dashboards, request each authorized branch explicitly and aggregate the successful responses. Reuse the existing authorized branch list/canonical branch IDs already used by the fixed Stock dashboard.
+
+Parameter contracts observed by the release gate:
+
+- Walk-in sales accepts `branch_id=<canonicalBranchId>`.
+- Deposits accepts `branch=<canonicalBranchId>`.
+- Expenses accepts `branch=<canonicalBranchId>`.
+
+Do not assume these parameter names are interchangeable.
+
+Create/reuse one shared helper so GM and Finance do not independently reimplement branch aggregation.
+
+```ts
+type BranchReadSpec<T> = {
+  endpoint: string;
+  branchParam: "branch" | "branch_id";
+  extract: (payload: unknown) => T[];
+};
+
+async function readAuthorizedBranches<T>(
+  branches: Array<{ id: string; name: string }>,
+  spec: BranchReadSpec<T>,
+  commonParams: Record<string, string>,
+): Promise<{
+  rows: T[];
+  failures: Array<{ branchId: string; status?: number; message: string }>;
+}> {
+  const results = await Promise.allSettled(
+    branches.map(async (branch) => {
+      const params = new URLSearchParams(commonParams);
+      params.set(spec.branchParam, branch.id);
+      const response = await api.get(`${spec.endpoint}?${params.toString()}`);
+      return { branchId: branch.id, rows: spec.extract(response) };
+    }),
+  );
+
+  const rows: T[] = [];
+  const failures: Array<{ branchId: string; status?: number; message: string }> = [];
+
+  results.forEach((result, index) => {
+    if (result.status === "fulfilled") {
+      rows.push(...result.value.rows);
+    } else {
+      failures.push({
+        branchId: branches[index].id,
+        status: result.reason?.status,
+        message: result.reason?.message || "Branch data unavailable",
+      });
+    }
+  });
+
+  return { rows, failures };
+}
+```
+
+Adapt to the project API client and response shapes.
+
+### No false zero rule
+
+The current callers swallow failures into empty arrays, which can present unavailable data as zero. Stop doing that.
+
+If any branch request fails:
+
+- show `Incomplete data` for the affected dashboard section;
+- show the number/names of unavailable branches where permitted;
+- preserve successful branch results separately;
+- do not display a company-wide zero or complete total as though all branches responded;
+- provide Retry.
+
+If all branch requests succeed, render the normal aggregate.
+
+### Deduplication
+
+Before aggregating sales or financial rows, deduplicate only by stable persisted identity such as sale ID, receipt ID, deposit ID, or expense ID. Do not deduplicate by amount/name/date alone.
+
+## Blocker 2: Nested interactive controls in DailySalesCard
+
+Known source:
+
+- `client/src/components/DailySalesCard.jsx`
+
+The expandable header is a button and currently contains a nested Refresh button. This is invalid interactive markup and triggers React/browser warnings in GM and Director.
+
+### Required correction
+
+Use a non-interactive wrapper containing sibling controls:
+
+```tsx
+<div className="daily-sales-card-header">
+  <button
+    type="button"
+    className="daily-sales-card-toggle"
+    aria-expanded={expanded}
+    aria-controls="daily-sales-card-content"
+    onClick={() => setExpanded((value) => !value)}
+  >
+    <span>Today's Sales</span>
+    <span aria-hidden="true">{expanded ? "−" : "+"}</span>
+  </button>
+
+  <button
+    type="button"
+    className="daily-sales-card-refresh"
+    onClick={handleRefresh}
+    disabled={loading}
+  >
+    Refresh
+  </button>
+</div>
+```
+
+Requirements:
+
+- no button inside another button;
+- Refresh does not toggle expansion;
+- expansion remains keyboard accessible;
+- visible focus states remain;
+- GM and Director render without nested-button warnings;
+- existing sales calculations and API behavior remain unchanged.
+
+## Tests to add/update
+
+### Unit/component tests
+
+1. GM requests walk-in sales and deposits once per authorized branch with the correct parameter names.
+2. Finance requests walk-in sales, deposits, and expenses once per authorized branch with the correct parameter names.
+3. Successful branch responses aggregate correctly.
+4. Stable IDs are deduplicated; independent equal-value records remain.
+5. One failed branch produces `Incomplete data`, not a false company-wide zero.
+6. Retry reruns only the affected dashboard read safely.
+7. `DailySalesCard` contains no nested interactive elements.
+8. Refresh does not toggle the card.
+9. Expand/collapse remains keyboard accessible.
+
+### Authenticated API/browser checks
+
+Using the disposable authenticated administrator/GM fixture:
+
+- Open `/gm`; verify no unscoped 400 calls.
+- Open `/finance`; verify no unscoped 400 calls.
+- Confirm every branch request uses the endpoint's accepted parameter name.
+- Confirm GM and Finance show substantive dashboard content.
+- Open `/director`; confirm `DailySalesCard` renders without nested-button warnings.
+- Refresh and expand/collapse the card; confirm both controls act independently.
+- Navigate from GM, Finance, and Director to Stock; confirm Stock Command Center still renders.
+- Record console/network output and screenshot IDs.
+
+No business POST/PUT/PATCH/DELETE requests are authorized.
+
+## Regression gate
+
+Rerun:
+
+```sh
+npm run build
+npx vitest run --project=unit --reporter=json --outputFile=generated-artifacts/sales-stock-integration/final-blocker-unit-results.json
+```
+
+Rerun only the relevant isolated browser/API checks plus a short Stock smoke check. Preserve the authoritative previous `263/263` unit and `25/25` isolated database evidence; if the new full unit run changes the total, report the new exact authoritative total consistently.
+
+## Release decision
+
+Mark `FULLY VERIFIED FOR CODE RELEASE` only if:
+
+- GM has no unscoped branch API 400s;
+- Finance has no unscoped branch API 400s;
+- partial failures cannot masquerade as complete zero totals;
+- GM and Director emit no nested-button warnings;
+- DailySalesCard controls work independently;
+- affected unit/browser checks and build pass;
+- Stock Command Center still renders after cross-portal navigation.
+
+Populated historical references may remain a mandatory post-deployment read-only smoke test if no approved sanitized snapshot exists. State that residual risk explicitly.
+
+Do not publish automatically. Stop with the release recommendation, changed files, tests, browser evidence, residual risks, and rollback checkpoint.
+

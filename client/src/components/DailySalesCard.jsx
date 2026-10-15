@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useId } from 'react';
 import { api } from '../lib/api';
 import { formatCurrency, BRANCH_ID_TO_NAME } from '../lib/constants';
 import { LoadingSpinner } from './ui';
@@ -18,6 +18,7 @@ function MiniBar({ value, max, color = '#c41e3a' }) {
 }
 
 export default function DailySalesCard({ className = '' }) {
+  const contentId = useId();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
@@ -63,12 +64,18 @@ export default function DailySalesCard({ className = '' }) {
   return (
     <div className={className} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, overflow: 'hidden', boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
       {/* Header — always visible, tappable to expand */}
-      <button
-        onClick={() => setExpanded(p => !p)}
-        style={{
-          width: '100%', textAlign: 'left', cursor: 'pointer', border: 'none', padding: 0, background: 'none',
-        }}
-      >
+      <div style={{ position: 'relative' }}>
+        <button type="button" aria-label="Expand or collapse daily sales" aria-expanded={expanded}
+          aria-controls={contentId} onClick={() => setExpanded(p => !p)}
+          className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-600"
+          style={{ position: 'absolute', inset: 0, width: '100%', border: 0, background: 'transparent', borderRadius: 12, cursor: 'pointer', zIndex: 1 }} />
+        <button type="button" aria-label="Refresh daily sales" disabled={loading || refreshing}
+          className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
+          onClick={() => load(selectedDate, true)} title="Refresh"
+          style={{ position: 'absolute', top: 18, right: 54, zIndex: 2, background: 'rgba(255,255,255,0.15)',
+            border: 'none', borderRadius: 8, padding: 6, cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+          <RefreshCw size={14} color="#fff" style={{ animation: refreshing ? 'spin 0.8s linear infinite' : 'none' }} />
+        </button>
         <div style={{ background: 'linear-gradient(135deg, #c41e3a 0%, #8b0000 100%)', padding: '18px 20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1 }}>
@@ -97,12 +104,6 @@ export default function DailySalesCard({ className = '' }) {
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <button
-                  onClick={(e) => { e.stopPropagation(); load(selectedDate, true); }}
-                  title="Refresh"
-                  style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 8, padding: 6, cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-                  <RefreshCw size={14} color="#fff" style={{ animation: refreshing ? 'spin 0.8s linear infinite' : 'none' }} />
-                </button>
                 <div style={{ background: 'rgba(255,255,255,0.15)', borderRadius: 8, padding: 6 }}>
                   {expanded ? <ChevronUp size={16} color="#fff" /> : <ChevronDown size={16} color="#fff" />}
                 </div>
@@ -128,11 +129,11 @@ export default function DailySalesCard({ className = '' }) {
             </div>
           </div>
         </div>
-      </button>
+      </div>
 
       {/* Expanded branch detail panel */}
       {expanded && (
-        <div style={{ padding: '16px 20px', background: '#fafafa' }}>
+        <div id={contentId} style={{ padding: '16px 20px', background: '#fafafa' }}>
           {/* Date selector */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
             <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Date</label>

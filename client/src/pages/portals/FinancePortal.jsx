@@ -12,6 +12,9 @@ import StaffServicesTab from '../../components/StaffServicesTab';
 import StaffMessagesTab from '../../components/StaffMessagesTab';
 import ControlledStockOperations from '../../components/ControlledStockOperations';
 import StockCostReport from '../../components/StockCostReport';
+import BranchReadStatus from '../../components/BranchReadStatus';
+import { useBranchDashboardReads } from '../../hooks/useBranchDashboardReads';
+import { FINANCE_BRANCH_SECTIONS } from '../../lib/authorizedBranchReads';
 
 const BRANCH_NAME_MAP = Object.fromEntries(BRANCH_DETAILS.map(b => [b.id, b.name]));
 const branchLabel = (id) => {
@@ -84,7 +87,11 @@ export default function FinancePortal() {
 
 /* ─── DASHBOARD ─────────────────────────────────────────── */
 function DashboardTab() {
-  const [data, setData] = useState({ sales: [], deposits: [], orders: [], expenses: [] });
+  const [baseData, setData] = useState({ orders: [] });
+  const { reads: branchReads, retry: retryBranchRead } = useBranchDashboardReads(FINANCE_BRANCH_SECTIONS);
+  const data = { ...baseData, sales: branchReads.sales.rows || [], deposits: branchReads.deposits.rows || [], expenses: branchReads.expenses.rows || [] };
+  const branchAmount = (section, amount) => branchReads[section].loading ? 'Loading…' :
+    branchReads[section].failures.length ? 'Incomplete data' : formatCurrency(amount);
   const [branchSummary, setBranchSummary] = useState([]);
   const [financeSummary, setFinanceSummary] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -97,13 +104,10 @@ function DashboardTab() {
 
   useEffect(() => {
     Promise.all([
-      api.branch.walkinSales().then(d => Array.isArray(d) ? d : d.sales || []).catch(() => []),
-      api.branch.deposits().then(d => Array.isArray(d) ? d : d.deposits || []).catch(() => []),
       api.orders.list().then(d => Array.isArray(d) ? d : d.orders || []).catch(() => []),
       api.finance.branchesSummary().then(d => Array.isArray(d) ? d : d.branches || []).catch(() => []),
-      api.branch.expenses().then(d => Array.isArray(d) ? d : d.expenses || []).catch(() => []),
-    ]).then(([sales, deposits, orders, branches, expenses]) => {
-      setData({ sales, deposits, orders, expenses });
+    ]).then(([orders, branches]) => {
+      setData({ orders });
       setBranchSummary(branches);
     }).finally(() => setLoading(false));
     refreshFinanceSummary();
@@ -125,6 +129,8 @@ function DashboardTab() {
 
   return (
     <div className="space-y-5">
+      {FINANCE_BRANCH_SECTIONS.map(section => <BranchReadStatus key={section} section={section}
+        result={branchReads[section]} retry={() => retryBranchRead(section)} />)}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="rounded-xl p-5 text-white bg-gradient-to-br from-purple-500 to-purple-700">
           <p className="text-xs opacity-80 uppercase tracking-wide">Total Sales Revenue</p>
@@ -135,18 +141,18 @@ function DashboardTab() {
         </div>
         <div className="rounded-xl p-5 text-white bg-gradient-to-br from-orange-400 to-orange-600">
           <p className="text-xs opacity-80 uppercase tracking-wide">Pending Deposits</p>
-          <p className="text-2xl font-bold mt-1">{formatCurrency(totalPendingAmt)}</p>
-          <p className="text-xs opacity-70 mt-1">{pendingDeposits.length} awaiting verification</p>
+          <p className="text-2xl font-bold mt-1">{branchAmount('deposits', totalPendingAmt)}</p>
+          <p className="text-xs opacity-70 mt-1">{branchReads.deposits.failures.length ? 'Known successful branches: ' : ''}{pendingDeposits.length} awaiting verification</p>
         </div>
         <div className="rounded-xl p-5 text-white bg-gradient-to-br from-green-500 to-green-700">
           <p className="text-xs opacity-80 uppercase tracking-wide">Verified Deposits</p>
-          <p className="text-2xl font-bold mt-1">{formatCurrency(totalVerified)}</p>
+          <p className="text-2xl font-bold mt-1">{branchAmount('deposits', totalVerified)}</p>
           <p className="text-xs opacity-70 mt-1">Confirmed in bank</p>
         </div>
         <div className="rounded-xl p-5 text-white bg-gradient-to-br from-red-500 to-red-700">
           <p className="text-xs opacity-80 uppercase tracking-wide">Approved Expenses</p>
-          <p className="text-2xl font-bold mt-1">{formatCurrency(totalExpenses)}</p>
-          <p className="text-xs opacity-70 mt-1">{pendingExpenses.length} pending review ({formatCurrency(totalPendingExpenses)})</p>
+          <p className="text-2xl font-bold mt-1">{branchAmount('expenses', totalExpenses)}</p>
+          <p className="text-xs opacity-70 mt-1">{branchReads.expenses.failures.length ? 'Known successful branches: ' : ''}{pendingExpenses.length} pending review ({formatCurrency(totalPendingExpenses)})</p>
         </div>
       </div>
 
@@ -222,7 +228,7 @@ function DashboardTab() {
             ...data.sales.map(s => ({ ...s, _kind: 'sale' })),
             ...data.deposits.map(d => ({ ...d, _kind: 'deposit' })),
           ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 15)}
-          emptyMessage="No recent transactions"
+          emptyMessage={branchReads.sales.loading || branchReads.deposits.loading || branchReads.sales.failures.length || branchReads.deposits.failures.length ? 'Complete transaction data unavailable' : 'No recent transactions'}
         />
       </Card>
     </div>
