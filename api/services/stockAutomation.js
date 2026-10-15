@@ -12,6 +12,7 @@ import { query, withTransaction, getMany, getOne } from '../db.js';
 import { recomputeLocationBalances } from './stockEngine.js';
 import { normalizeBranchSlug } from '../_lib/branchUtils.js';
 import { getStockAlertPolicy } from './stockAlertPolicy.js';
+import {healthDigestEnabled} from './startupPolicy.js';
 
 function genId(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
@@ -799,6 +800,8 @@ export async function runInterBranchRedistribution() {
 // 15. NIGHTLY STOCK HEALTH DIGEST
 // ─────────────────────────────────────────────────────────────────────────────
 export async function runNightlyStockHealthDigest() {
+  // Optional independent quarantine; default unchanged. Never set by startup.
+  if (!healthDigestEnabled(process.env)) return;
   const enabled = await getConfig('health_digest_enabled', 'true');
   if (enabled !== 'true') return;
 

@@ -490,3 +490,17 @@ mtime_ms = 1792054123266
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/d1bb47c3-23ee-410d-b8f4-c07678962edd/fcb982b6-8288-4e96-9652-78f082647d78"
 storage_version_token = "1792054157441665"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "A_b4CJgjGRJgC0NlFcJmX"
+uri = "file://generated-artifacts/sales-stock-integration/startup-safety/report.md"
+type = "text"
+title = "Startup safety and production recovery review"
+description = "Exact production source recovered and tagged; offline restore verified. Central code-only guards, read-only readiness and independent digest quarantine implemented. Build and295/295 tests passed. Includes complete inventory, proposed settings, operational impact and remaining rollback/publication review. Production unchanged."
+logical_id = "0eb012e2-aa86-46dc-8a45-e3fd36a71a5f"
+content_hash = "sha256:e35abc9f02154698726060f75f989b7d25cdba9d56892517f49c3896c38da202"
+size = 26484
+mtime_ms = 1792056079238
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/0eb012e2-aa86-46dc-8a45-e3fd36a71a5f/e139d13d-a84e-49a9-974c-9b6c700e8622"
+storage_version_token = "1792056133566242"
+content_type = "text/markdown"

@@ -15,6 +15,7 @@
  *   be referenced in ON CONFLICT clauses without a matching explicit index.
  */
 import { query, getMany, getOne } from '../db.js';
+import {createStartupPolicy} from './startupPolicy.js';
 import {
   runAutoWriteOff,
   runAutoStockRequest,
@@ -523,6 +524,11 @@ async function backfillMissedRuns() {
 
 // ── Start the scheduler ─────────────────────────────────────────────────────
 export function startStockScheduler() {
+  if (!createStartupPolicy(process.env).enableStockScheduler) {
+    console.info(JSON.stringify({event:'startup.operation.skipped',
+      operation:'stock-scheduler', startupMode:'code-only', reason:'code-only policy'}));
+    return;
+  }
   if (schedulerStarted) return;
   schedulerStarted = true;
 

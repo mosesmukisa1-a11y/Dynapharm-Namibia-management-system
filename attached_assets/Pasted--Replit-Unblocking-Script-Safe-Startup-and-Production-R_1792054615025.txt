@@ -1,0 +1,237 @@
+# Replit Unblocking Script: Safe Startup and Production Rollback
+
+Use this before attempting the Sales and Stock publication again.
+
+---
+
+## Replit Agent Prompt
+
+The Sales and Stock code release passed its narrow code gate, but publication preflight correctly stopped for two reasons:
+
+1. The currently deployed production source checkpoint cannot be identified, so code rollback is not reproducible.
+2. Normal `node server.js` startup performs schema DDL, seeds records, may seed inventory balances, creates/updates stock reporting structures, and starts stock automation. Therefore the requested code-only deployment cannot currently be guaranteed.
+
+Perform only the unblocking work below. Do not publish. Do not restart production. Do not run migrations, seeds, repairs, stock automation, sales, transfers, approvals, receipts, write-offs, counts, refunds, price changes, or historical backfills.
+
+## Part A: Establish a recoverable production code snapshot
+
+Use read-only Replit deployment/checkpoint metadata and workspace history to identify the source snapshot used by the currently healthy deployment.
+
+Known production observations:
+
+```text
+Runtime marker: 1791991774240-vxcjv6
+Reported deployedAt: 2026-10-14T15:29:34.241Z
+Public URL: https://dynapharm-namibia-management-system.com
+```
+
+The runtime marker is not a Git commit and must not be used as one.
+
+Search, without restoring or publishing:
+
+- Replit deployment history/build metadata
+- Replit checkpoints near the deployment timestamp
+- Git reflog/log around the deployment timestamp
+- build logs containing source revision metadata
+- platform-provided deployment source archives or checkpoint associations
+
+If an exact source snapshot is found:
+
+1. Preserve it as a separate recoverable checkpoint/branch/tag or exported source archive.
+2. Name it clearly, for example `production-before-sales-stock-2026-10-15`.
+3. Record its immutable identifier and how to restore and republish it.
+4. Verify the saved snapshot can be checked out/restored without touching the database.
+5. Do not deploy it.
+
+If no exact snapshot can be found, stop and report `ROLLBACK SOURCE NOT RECOVERABLE`. Do not substitute current HEAD, `90b7ab...`, or `84df93...`.
+
+## Part B: Inventory every startup side effect
+
+Produce a complete startup-side-effect table for `server.js` and every function it invokes before/after listening.
+
+For each side effect record:
+
+```text
+Source file and line/function
+Operation type: DDL / seed / repair / business write / scheduler / read-only
+Tables affected
+Trigger condition
+Idempotent: yes/no/conditional
+Required for application startup: yes/no
+Existing environment/config guard
+Proposed explicit guard
+Behavior when disabled
+```
+
+At minimum include:
+
+- warehouse location inserts
+- schema sync loop
+- client-history migration
+- default automation configuration seed
+- inventory balance seeding
+- `ensureStockSummaryTable()`
+- `startStockScheduler()`
+- reorder automation
+- inventory drift repair
+- health digest
+
+Do not execute these functions while auditing them.
+
+## Part C: Add explicit startup modes
+
+Refactor startup so operational side effects require explicit configuration. Do not alter the default production behavior yet and do not set production environment variables.
+
+Introduce a central typed configuration, adapting names to project conventions:
+
+```js
+const STARTUP_MODE = process.env.STARTUP_MODE || "legacy";
+
+const startupPolicy = {
+  allowSchemaSync:
+    STARTUP_MODE === "legacy" || process.env.ALLOW_SCHEMA_SYNC === "true",
+  allowReferenceSeeds:
+    STARTUP_MODE === "legacy" || process.env.ALLOW_REFERENCE_SEEDS === "true",
+  allowInventorySeed:
+    STARTUP_MODE === "legacy" || process.env.ALLOW_INVENTORY_SEED === "true",
+  allowStockSummaryDDL:
+    STARTUP_MODE === "legacy" || process.env.ALLOW_STOCK_SUMMARY_DDL === "true",
+  enableStockScheduler:
+    STARTUP_MODE === "legacy" || process.env.ENABLE_STOCK_SCHEDULER === "true",
+};
+```
+
+Support at least:
+
+```text
+STARTUP_MODE=legacy
+  Existing behavior for backward compatibility.
+
+STARTUP_MODE=code-only
+  No DDL, seeds, inventory initialization, repairs, or stock scheduler startup.
+  Application must fail visibly if required schema is absent; it must not create it.
+```
+
+Requirements:
+
+- All startup side effects must be routed through the central policy.
+- `code-only` must issue clear structured logs listing every skipped operation.
+- Missing required schema in `code-only` must fail health/readiness with a clear message, not trigger automatic repair.
+- Reads and HTTP serving may start only when required existing schema is compatible.
+- No silent fallback from `code-only` to `legacy`.
+- No environment value should be changed automatically.
+- No scheduler should start in `code-only`.
+- Unit tests must prove zero write/DDL/scheduler calls in `code-only`.
+- Unit tests must prove legacy behavior remains unchanged when `STARTUP_MODE` is unset.
+
+## Part D: Separate readiness from mutation
+
+Add a read-only startup compatibility check that verifies required tables/columns using catalogue/metadata reads only.
+
+It should return a structured result:
+
+```json
+{
+  "compatible": true,
+  "missingTables": [],
+  "missingColumns": [],
+  "startupMode": "code-only",
+  "writesAllowed": false,
+  "schedulerEnabled": false
+}
+```
+
+Expose this safely through health/readiness without credentials or schema secrets.
+
+Do not create missing objects from this check.
+
+## Part E: Fix or quarantine the broken health digest separately
+
+Known error:
+
+```text
+api/services/stockAutomation.js references nonexistent
+live_product_prices.distributor_price
+```
+
+Inspect the real schema and identify the correct existing column/source. Do not guess.
+
+Choose one and report it for approval:
+
+1. A narrowly tested read-query correction using the actual schema; or
+2. Explicitly disable only the failing health-digest job through a reviewed configuration flag while leaving other scheduler jobs unchanged.
+
+Do not apply either option to production during this task. Do not enable any new automation.
+
+Also document that reorder automation previously raised four requests and drift repair started in production. Confirm their current intended ownership and approval rules; do not change them here.
+
+## Part F: Tests
+
+Add tests covering:
+
+1. `STARTUP_MODE=code-only` performs no SQL write or DDL calls.
+2. `code-only` does not call any seed or repair function.
+3. `code-only` does not start Stock scheduler jobs.
+4. Read-only compatibility passes with complete schema.
+5. Read-only compatibility fails clearly with a missing required table/column.
+6. No compatibility failure triggers schema creation or repair.
+7. Legacy mode retains current guarded behavior.
+8. Unknown startup mode fails closed.
+9. Health/readiness reports mode and compatibility without exposing secrets.
+10. Health-digest corrected query or quarantine option has focused tests, but remains unapplied to production.
+
+Run:
+
+```sh
+npm run build
+npx vitest run --project=unit --reporter=json --outputFile=generated-artifacts/sales-stock-integration/startup-safety-unit-results.json
+```
+
+Run startup tests only against an owned disposable database/environment. Do not point them at production.
+
+## Part G: Prepare, but do not perform, the next publication
+
+Provide an exact proposed deployment configuration for review:
+
+```text
+STARTUP_MODE=code-only
+ALLOW_SCHEMA_SYNC=false
+ALLOW_REFERENCE_SEEDS=false
+ALLOW_INVENTORY_SEED=false
+ALLOW_STOCK_SUMMARY_DDL=false
+ENABLE_STOCK_SCHEDULER=false
+```
+
+Explain the operational impact of disabling the scheduler for the lifetime of that deployment. Do not set these values yet.
+
+If continuous production scheduling is required, propose a separate independently controlled worker/deployment with explicit authorization. Do not combine scheduler enablement with the web code release silently.
+
+## Required final report
+
+Stop without publishing and report:
+
+```text
+Rollback source identified: YES/NO
+Rollback snapshot identifier:
+Restore procedure verified: YES/NO
+Startup side effects inventoried:
+Code-only mode implemented:
+Code-only zero-write tests:
+Legacy regression tests:
+Readiness compatibility result:
+Health digest recommendation:
+Scheduler operational impact:
+Files changed:
+Build result:
+Unit result:
+Production environment changed: NO
+Production restarted: NO
+Production data written: NO
+Publication recommendation: BLOCKED / READY FOR USER APPROVAL
+```
+
+Publication remains blocked unless both are true:
+
+- the exact currently deployed source is recoverably preserved; and
+- `code-only` startup is proven to execute no database writes, DDL, seeds, repairs, or schedulers.
+

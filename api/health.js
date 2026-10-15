@@ -1,5 +1,6 @@
 import { applyAuthCors } from './_lib/auth.js';
 import { query } from './db.js';
+import {getStartupReadiness} from './services/startupSchema.js';
 
 function resolveCommitHash() {
   return (
@@ -31,6 +32,11 @@ export default async function handler(req, res) {
   }
 
   res.setHeader('Cache-Control', 'no-store, max-age=0');
+  const startup = getStartupReadiness();
+  if (startup.startupMode === 'code-only' && startup.compatible !== true) {
+    if (req.method === 'HEAD') return res.status(503).end();
+    return res.status(503).json({ok:false, status:'not-ready', startup});
+  }
 
   const started = Date.now();
   let dbConnected = false;
@@ -43,7 +49,7 @@ export default async function handler(req, res) {
     dbLatencyMs = Date.now() - dbStart;
     dbConnected = true;
   } catch (error) {
-    dbError = error.message;
+    dbError = 'Database unavailable';
   }
 
   const payload = {
@@ -68,6 +74,7 @@ export default async function handler(req, res) {
     },
     realtimeGateway: process.env.REALTIME_GATEWAY_URL || null,
     nodeVersion: process.version,
+    startup,
   };
 
   const statusCode = dbConnected ? 200 : 503;

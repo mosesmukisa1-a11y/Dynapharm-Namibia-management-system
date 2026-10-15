@@ -5,6 +5,13 @@ import os from 'os';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
 import { atomicStockRequest } from './api/_lib/atomicStockRequest.js';
+import {createStartupPolicy, runStartupOperation} from './api/services/startupPolicy.js';
+import {checkStartupCompatibility, readinessFor, setStartupReadiness,
+  startupReadinessGate} from './api/services/startupSchema.js';
+
+const startupPolicy = createStartupPolicy(process.env);
+setStartupReadiness(readinessFor(startupPolicy));
+console.info(JSON.stringify({event:'startup.policy', ...startupPolicy}));
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 5000;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -13,16 +20,19 @@ const __dirname = path.dirname(__filename);
 
 const DEPLOY_VERSION = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const VERSION_FILE = path.join(__dirname, 'version.json');
-try {
+runStartupOperation(startupPolicy, 'runtime-version-file', () => { try {
   fs.writeFileSync(VERSION_FILE, JSON.stringify({ version: DEPLOY_VERSION, deployedAt: new Date().toISOString() }), 'utf8');
 } catch (e) {
   console.warn('Could not write version.json:', e.message);
-}
+} });
 
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
-if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+runStartupOperation(startupPolicy, 'uploads-directory', () => {
+  if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+});
 
 const app = express();
+app.use(startupReadinessGate);
 
 app.disable('x-powered-by');
 app.use(express.json({ limit: '10mb' }));
@@ -63,7 +73,7 @@ const _videoTmpCache = new Map();
 const VIDEO_CACHE_TTL = 60 * 60 * 1000; // 1 hour
 
 // Periodically evict expired temp-file cache entries and delete the files
-setInterval(() => {
+runStartupOperation(startupPolicy, 'video-cache-cleanup-timer', () => setInterval(() => {
   const now = Date.now();
   for (const [key, val] of _videoTmpCache) {
     if (now - val.ts > VIDEO_CACHE_TTL) {
@@ -71,7 +81,7 @@ setInterval(() => {
       fs.unlink(val.tmpPath, () => {});
     }
   }
-}, 15 * 60 * 1000);
+}, 15 * 60 * 1000));
 
 app.get('/api/obj/*', async (req, res) => {
   try {
@@ -248,6 +258,8 @@ app.get('/dynapharm-complete-system', (req, res) => res.redirect('/dynapharm-com
 let priceActivationDay = null, priceActivationFlight = null;
 app.use('/api', async (req,res,next) => {
   if(req.method === 'OPTIONS') return next();
+  // A health/read-only request must not activate scheduled prices in code-only.
+  if (!startupPolicy.writesAllowed) return next();
   try {
     const {businessToday} = await import('./shared/price-list-import.js');
     const day=businessToday();
@@ -1258,7 +1270,7 @@ async function initProductPricesTable() {
     console.error('initProductPricesTable error:', err.message);
   }
 }
-initProductPricesTable();
+runStartupOperation(startupPolicy, 'price-catalogue-bootstrap', initProductPricesTable);
 
 // ── PDF text extraction endpoint ──────────────────────────────────────────────
 // Accepts a PDF file (multipart/form-data field "pdf") and returns extracted text.
@@ -1289,7 +1301,8 @@ async function applyPendingPriceChanges() {
   }
 }
 // Run once at startup and then every hour
-setInterval(applyPendingPriceChanges, 60 * 60 * 1000);
+runStartupOperation(startupPolicy, 'price-activation-timer',
+  () => setInterval(applyPendingPriceChanges, 60 * 60 * 1000));
 
 app.use('/api/prices', (req,res,next) => {
   if(req.method==='GET'||req.method==='OPTIONS')return next();
@@ -2501,12 +2514,19 @@ app.use((req, res) => {
   }
 });
 
+if (startupPolicy.startupMode === 'code-only') {
+  const {query} = await import('./api/db.js');
+  const readiness = await checkStartupCompatibility(query, startupPolicy);
+  setStartupReadiness(readiness);
+  console.info(JSON.stringify({event:'startup.compatibility', ...readiness}));
+}
+
 const server = app.listen(PORT, HOST, () => {
   console.log('Dynapharm API & static server running');
   console.log(`Listening on http://${HOST}:${PORT}`);
-  if (process.env.DATABASE_URL) {
+  if (process.env.DATABASE_URL && startupPolicy.startupMode === 'legacy') {
     console.log(`DATABASE_URL detected: ${process.env.DATABASE_URL.replace(/:[^:@]+@/, ':****@')}`);
-  } else {
+  } else if (!process.env.DATABASE_URL) {
     console.warn('DATABASE_URL not set. Database-backed APIs may fail.');
   }
 });
@@ -2515,7 +2535,7 @@ server.on('error', (error) => {
   console.error('Server error:', error);
 });
 
-(async () => {
+runStartupOperation(startupPolicy, 'legacy-database-bootstrap', async () => {
   try {
     const { query, getOne } = await import('./api/db.js');
     await query('SELECT 1');
@@ -3837,4 +3857,6 @@ server.on('error', (error) => {
   } catch (error) {
     console.warn('Database startup check failed:', error.message);
   }
-})();
+});
+
+export {server};
