@@ -10,6 +10,7 @@ import { postActivityRecord, generateBatId } from '../_lib/activityCapture.js';
 import { getPackageComponents } from '../_lib/packageDefinitions.js';
 import { completeSaleEvidenceTx } from '../services/saleEvidence.js';
 import { businessDatePredicate } from '../services/businessDates.js';
+import {withCapturedReceiptDP} from '../services/saleReceiptPricing.js';
 
 async function parseJsonBody(req) {
   if (req.body && typeof req.body === 'object') {
@@ -57,11 +58,26 @@ function safeJsonParse(value, fallback) {
   }
 }
 
+async function normalizeSaleRows(rows){
+  const sales=rows.map(normalizeSaleRow).filter(Boolean);
+  if(!sales.length)return sales;
+  // Read the frozen sale DP, never today's price or caller-supplied dpPrice.
+  // Do not select CIF/private original costs into the Branch response.
+  const facts=await getMany(`SELECT sm.reference_id,sm.product_name,ABS(sm.quantity) AS quantity,
+    sm.metadata->'sale_evidence'->>'dp_unit_price' AS dp_unit_price
+    FROM stock_movements sm JOIN branch_walkin_sales s
+      ON s.id=sm.reference_id AND s.branch_id=sm.source_location
+    WHERE sm.reference_id=ANY($1::text[]) AND sm.movement_type='sale'
+      AND sm.status='posted' AND sm.metadata->'sale_evidence'->>'version'='1'`,
+    [sales.map(s=>String(s.id))]);
+  return withCapturedReceiptDP(sales,facts);
+}
+
 function normalizeSaleRow(row) {
   if (!row) return null;
 
   const data = safeJsonParse(row.data, {});
-  const items = safeJsonParse(row.items, data.products || []);
+  const items = safeJsonParse(row.items, data.items || data.products || []);
   const metadata = safeJsonParse(row.metadata, data.metadata || null);
 
   const saleDate = row.sale_date instanceof Date ? row.sale_date.toISOString() : row.sale_date || data.timestamp;
@@ -403,7 +419,7 @@ async function handler(req, res) {
         if (branchScope.enforced && !branchScope.branches.includes(row.branch_id)) {
           return res.status(403).json({ success: false, error: 'Access denied' });
         }
-        return res.status(200).json({ success: true, sale: normalizeSaleRow(row) });
+        return res.status(200).json({ success: true, sale: (await normalizeSaleRows([row]))[0] });
       }
 
       // Require an explicit branch filter for admin-level roles (admin/gm/director) —
@@ -422,7 +438,7 @@ async function handler(req, res) {
         getMany(rxQueryText, rxParams).catch(() => []),
       ]);
 
-      const walkinSales = rows.map(normalizeSaleRow).filter(Boolean);
+      const walkinSales = await normalizeSaleRows(rows);
       const rawRxSales = rxRows.map(normalizeRxRow).filter(Boolean);
 
       // Populate dispensed products from branch_inventory_movements for Rx entries
@@ -487,7 +503,7 @@ async function handler(req, res) {
         const existing=await getOne('SELECT * FROM branch_walkin_sales WHERE id=$1 OR offline_id=$1',[retryIdentity]);
         if(existing){
           if(branchScope.enforced && !branchScope.branches.includes(existing.branch_id))return res.status(403).json({success:false,error:'Access denied'});
-          return res.status(200).json({success:true,sale:normalizeSaleRow(existing),duplicate:true});
+          return res.status(200).json({success:true,sale:(await normalizeSaleRows([existing]))[0],duplicate:true});
         }
       }
 
@@ -495,7 +511,7 @@ async function handler(req, res) {
         const dup = await getOne('SELECT id FROM branch_walkin_sales WHERE offline_id = $1', [salePayload.offline_id]);
         if (dup) {
           const existing = await getOne('SELECT * FROM branch_walkin_sales WHERE id = $1', [dup.id]);
-          return res.status(200).json({ success: true, sale: normalizeSaleRow(existing), duplicate: true });
+          return res.status(200).json({ success: true, sale: (await normalizeSaleRows([existing]))[0], duplicate: true });
         }
       }
 
@@ -749,7 +765,7 @@ async function handler(req, res) {
 
       return res.status(201).json({
         success: true,
-        sale: normalizeSaleRow(insertedRow),
+        sale: (await normalizeSaleRows([insertedRow]))[0],
       });
     }
 
@@ -800,7 +816,7 @@ async function handler(req, res) {
 
       return res.status(200).json({
         success: true,
-        sale: normalizeSaleRow(result.rows[0]),
+        sale: (await normalizeSaleRows([result.rows[0]]))[0],
       });
     }
 

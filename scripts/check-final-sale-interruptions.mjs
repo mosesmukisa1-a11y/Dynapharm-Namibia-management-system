@@ -48,11 +48,12 @@ async function blockedSale(kind){
  await blocker.query('SELECT pg_advisory_lock(77220155)');
  await db.query(`CREATE OR REPLACE FUNCTION public.final_release_wait() RETURNS trigger LANGUAGE plpgsql AS
  $$BEGIN PERFORM pg_advisory_xact_lock(77220155); RETURN NEW; END$$`);
- await db.query(`CREATE TRIGGER final_release_wait BEFORE INSERT ON branch_walkin_sales FOR EACH ROW
- WHEN(NEW.id='${id}') EXECUTE FUNCTION public.final_release_wait()`);
+ stage.blockpoint='AFTER INSERT of sale stock movement, after the physical deduction and before COMMIT';
+ await db.query(`CREATE TRIGGER final_release_wait AFTER INSERT ON stock_movements FOR EACH ROW
+ WHEN(NEW.reference_id='${id}') EXECUTE FUNCTION public.final_release_wait()`);
  pending=post(id);
  const pid=await waitFor(async()=>{const r=await db.query(`SELECT pid FROM pg_stat_activity
- WHERE datname=current_database() AND wait_event='advisory' AND query ILIKE '%branch_walkin_sales%'`);return r.rows[0]?.pid;},'owned transaction waiting before COMMIT');
+ WHERE datname=current_database() AND wait_event='advisory' AND query ILIKE '%stock_movements%'`);return r.rows[0]?.pid;},'owned transaction waiting before COMMIT');
  stage.databasePid=pid;
  if(kind==='connection-before-commit'){
    stage.termination=(await db.query('SELECT pg_terminate_backend(pid,5000) stopped FROM pg_stat_activity WHERE pid=$1 AND datname=current_database()',[pid])).rows;
@@ -70,13 +71,13 @@ async function blockedSale(kind){
    process.kill(m.harnessPid,'SIGUSR2');
    await waitFor(async()=>{try{return (await fetch(origin+'/api/health')).ok;}catch{return false;}},'owned application restart');
  }
- await db.query('DROP TRIGGER final_release_wait ON branch_walkin_sales');
+ await db.query('DROP TRIGGER final_release_wait ON stock_movements');
  await db.query('DROP FUNCTION public.final_release_wait()');
  stage.retry=await post(id);assert.equal(stage.retry.status,201);stage.after=await capture(db);await verify(id,before,stage.after);stage.status='PASS';
  }catch(e){stage.status='FAIL';stage.error=e.message;stage.observed=await capture(db);throw e;}
  finally{
   await blocker.query('SELECT pg_advisory_unlock(77220155)');blocker.release();
-  await db.query('DROP TRIGGER IF EXISTS final_release_wait ON branch_walkin_sales');
+  await db.query('DROP TRIGGER IF EXISTS final_release_wait ON stock_movements');
   await db.query('DROP FUNCTION IF EXISTS public.final_release_wait()');await persist();
  }
 }

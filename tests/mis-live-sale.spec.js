@@ -42,7 +42,7 @@ it('finds the displayed receipt for a same-day range and an exact business date'
  for(const filter of ['start=2026-10-15&end=2026-10-15','date=2026-10-15']){
   const result=await invoke(receipts,'/api/mis/receipts?'+filter+'&branch=townshop&q=MIS-RECEIPT-1');
   expect(result.statusCode).toBe(200);expect(result.body.receipts).toHaveLength(1);
-  expect(result.body.receipts[0].sale_number).toBe('MIS-RECEIPT-1');
+  expect(result.body.receipts[0].receiptNumber).toBe('MIS-RECEIPT-1');
  }
 });
 it('rejects anonymous and branch access, and invalid calendar ranges',async()=>{

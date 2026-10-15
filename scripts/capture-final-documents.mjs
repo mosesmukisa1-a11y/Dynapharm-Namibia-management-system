@@ -24,7 +24,7 @@ async function output(page,name,open){
  row.text=await popup.locator('body').innerText();
  await writeFile(`${dir}/${name}.html`,await popup.content());
  const thermal=name==='thermal-receipt';
- const paper=thermal?{width:'80mm',height:Math.ceil(((await popup.locator('body').boundingBox()).height+40)*25.4/96)+'mm'}:{};
+ const paper=thermal?{width:'80mm',height:'200mm'}:{};
  await popup.pdf({path:`${dir}/${name}.pdf`,printBackground:true,preferCSSPageSize:!thermal,...paper});
  await popup.screenshot({path:`${dir}/${name}.jpg`,fullPage:true});
  row.status='GENERATED_PENDING_VISUAL_REVIEW';await popup.close();
