@@ -7,8 +7,9 @@ import {spawn} from 'node:child_process';
 import {randomUUID,randomBytes,createHash} from 'node:crypto';
 import pg from 'pg';
 import jwt from 'jsonwebtoken';
+import {releaseEvidenceRoot} from './release-evidence-paths.mjs';
 const root=process.cwd(),priorOut=path.join(root,'generated-artifacts/sales-stock-integration/predeployment');
-const out=process.argv.includes('--final-release-gate')?path.join(root,'generated-artifacts/final-release-gate/web-rollback-rehearsal'):process.argv.includes('--stock-worker')
+const out=process.argv.includes('--final-release-gate')?path.join(root,releaseEvidenceRoot,'web-rollback-rehearsal'):process.argv.includes('--stock-worker')
   ?path.join(root,'generated-artifacts/stock-worker/test-evidence/web-rollback-rehearsal'):priorOut;
 if(process.env.REPLIT_DEPLOYMENT==='1')throw Error('Rehearsal prohibited in production');
 const source=new URL(process.env.DATABASE_URL);
