@@ -532,3 +532,17 @@ mtime_ms = 1792061911790
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/dcd98a62-97af-4960-879a-6b0b4363d336/95d68dcf-df5f-4e2a-9a05-5b7877d7eb1c"
 storage_version_token = "1792062030462154"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "qkooc7qFaN5he4Atgnfv6"
+uri = "file://generated-artifacts/final-release-gate/report.md"
+type = "text"
+title = "Final release-gate report — blocked"
+description = "Verified fixes, test results, evidence boundaries and remaining release blockers. No production changes or publication."
+logical_id = "e83490f9-d98e-48d8-8a20-9e308bb6c553"
+content_hash = "sha256:088a3ba28b0a3ed1df9d77d0fabf6d28a575847db7ad15df01c653835fa4181f"
+size = 12215
+mtime_ms = 1792066678146
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/e83490f9-d98e-48d8-8a20-9e308bb6c553/c6464c05-5846-49d6-9446-0169bece7f21"
+storage_version_token = "1792067096574421"
+content_type = "text/markdown"
