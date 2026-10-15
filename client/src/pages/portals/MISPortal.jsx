@@ -600,16 +600,18 @@ function ReceiptsTab() {
 
   const exportCSV = () => {
     if (!receipts.length) return;
-    const headers = ['Receipt #', 'Date', 'Branch', 'Customer', 'Phone', 'Type', 'Payment', 'Amount'];
+    const headers = ['Receipt #', 'Date (ISO timestamp)', 'Business Date (Africa/Windhoek)', 'Branch', 'Customer', 'Phone', 'Type', 'Payment', 'Recorded Amount (N$)', 'Calculation Basis'];
     const rows = receipts.map(r => [
       r.receiptNumber || r.saleNumber || r.id || '',
       r.saleDate || r.date || '',
+      r.businessDate || 'Missing evidence',
       r.branchId || r.branch || '',
       r.customerName || '',
       r.customerPhone || '',
       r.customerType || '',
       r.paymentMethod || '',
-      Number(r.total || r.totalAmount || 0).toFixed(2),
+      r.total==null?'Missing evidence':Number(r.total).toFixed(2),
+      r.amountBasis==='prescription_dp_only'?'Prescription DP only; customer charge not established':'Original customer charge',
     ].map(v => `"${String(v).replace(/"/g, '""')}"`));
     const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
     const a = document.createElement('a');
@@ -619,7 +621,8 @@ function ReceiptsTab() {
     URL.revokeObjectURL(a.href);
   };
 
-  const totalAmt = receipts.reduce((s, r) => s + Number(r.total || r.totalAmount || 0), 0);
+  const totalAmt = receipts.filter(r=>r.amountBasis!=='prescription_dp_only').reduce((s, r) => s + Number(r.total ?? 0), 0);
+  const prescriptionDP = receipts.filter(r=>r.amountBasis==='prescription_dp_only').reduce((s,r)=>s+Number(r.total??0),0);
 
   return (
     <div className="space-y-4">
@@ -651,7 +654,8 @@ function ReceiptsTab() {
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div>
                 <span className="font-bold text-gray-800">{receipts.length} receipt{receipts.length !== 1 ? 's' : ''}</span>
-                {receipts.length > 0 && <span className="text-sm text-gray-500 ml-2">· Total: <strong>{formatCurrency(totalAmt)}</strong></span>}
+                {receipts.length > 0 && <span className="text-sm text-gray-500 ml-2">· Known customer charges: <strong>{formatCurrency(totalAmt)}</strong> · Prescription DP (separate basis): {formatCurrency(prescriptionDP)}</span>}
+                {receipts.some(r=>r.missingAmountEvidence)&&<p className="text-red-700 text-sm">Missing original amount evidence; known totals are incomplete.</p>}
               </div>
               {receipts.length > 0 && (
                 <Button size="sm" variant="secondary" onClick={exportCSV}>
@@ -667,7 +671,8 @@ function ReceiptsTab() {
               { header: 'Branch', render: r => r.branchId || r.branch || '-' },
               { header: 'Customer', render: r => r.customerName || r.clientName || '-' },
               { header: 'Type', render: r => r.customerType ? <Badge variant="info">{r.customerType}</Badge> : '-' },
-              { header: 'Amount', render: r => <span className="font-bold">{formatCurrency(r.total || r.totalAmount)}</span> },
+              { header: 'Recorded Amount', render: r => <span className="font-bold">{r.total==null?'Missing evidence':formatCurrency(r.total)}</span> },
+              { header: 'Basis', render:r=>r.amountBasis==='prescription_dp_only'?'Prescription DP; customer charge not established':'Original customer charge' },
               { header: 'Payment', render: r => <Badge variant="default">{r.paymentMethod || r.payment_method || '-'}</Badge> },
             ]}
             data={receipts}

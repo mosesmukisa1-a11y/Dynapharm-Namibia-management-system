@@ -47,6 +47,9 @@ it('finds the displayed receipt for a same-day range and an exact business date'
   const result=await invoke(receipts,'/api/mis/receipts?'+filter+'&branch=townshop&q=MIS-RECEIPT-1');
   expect(result.statusCode).toBe(200);expect(result.body.receipts).toHaveLength(1);
   expect(result.body.receipts[0].receiptNumber).toBe('MIS-RECEIPT-1');
+  expect(result.body.receipts[0].total).toBe(886);
+  expect(result.body.receipts[0].amountBasis).toBe('original_customer_charge');
+  expect(result.body.receipts[0].items[0]).toMatchObject({productName:product,quantity:2,unitPrice:443});
  }
 });
 it('rejects anonymous and branch access, and invalid calendar ranges',async()=>{
@@ -55,6 +58,21 @@ it('rejects anonymous and branch access, and invalid calendar ranges',async()=>{
   expect((await invoke(handler,'/api/mis/test',{role:'branch_manager',branch:'townshop'})).statusCode).toBe(403);
   expect((await invoke(handler,'/api/mis/test?start=2026-02-30&end=2026-03-01')).statusCode).toBe(422);
  }
+});
+it('keeps prescription DP separate from original customer receipts',async()=>{
+ await query(`INSERT INTO branch_activity_transactions(id,branch_id,activity_type,workflow_source,
+   service_date,client_name,product_total_dp,form_reference_id)
+   VALUES('MIS-TEST-RX-BASIS','townshop','prescription_dispensing','branch_portal','2026-10-15',
+     'Synthetic RX basis',25,'MIS-TEST-RX-BASIS')`);
+ try{
+  const result=await invoke(receipts,'/api/mis/receipts?date=2026-10-15&branch=townshop');
+  expect(result.statusCode).toBe(200);
+  expect(result.body.totals.customerChargedAmount).toBe(886);
+  expect(result.body.totals.prescriptionDPAmount).toBe(25);
+  expect(result.body.totals.mixedBases).toBe(true);
+  expect(result.body.totals.totalAmount).toBeNull();
+  expect(result.body.receipts.find(r=>r.source==='prescription')).toMatchObject({chargedAmount:null,amountBasis:'prescription_dp_only',total:25});
+ }finally{await query("DELETE FROM branch_activity_transactions WHERE id='MIS-TEST-RX-BASIS'");}
 });
 it('reloads the invoice DP from the real typed sale movement without rewriting raw history or exposing CIF',async()=>{
  const result=await invoke(walkin,'/api/branch/walkin-sales?id=MIS-CANONICAL-SALE',{id:'SYNTHETIC-ADMIN',role:'admin'});

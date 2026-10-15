@@ -1523,7 +1523,7 @@ function ReportsTab() {
     const presets = getPresetDates(period);
     const csvStart = period === 'custom' ? startDate : (presets.startDate || today);
     const csvEnd = period === 'custom' ? endDate : (presets.endDate || today);
-    const headers = ['Branch', 'Walk-in Revenue', 'Units Sold', 'Cash', 'Swipe/EFT', 'Stock Value (DP)'];
+    const headers = ['Branch', 'Walk-in DP Revenue (not customer receipts)', 'Units Sold', 'Cash (DP basis)', 'Swipe/EFT (DP basis)', 'Stock Value (DP)'];
     const rows = branchSummary.map(r => [
       r.branchName || branchLabel(r.branchId),
       r.salesRevenue || 0,
@@ -1532,9 +1532,9 @@ function ReportsTab() {
       (Number(r.swipeTotal || 0) + Number(r.eftTotal || 0)).toFixed(2),
       r.stockValueDP || 0,
     ]);
-    rows.push(['TOTAL Walk-in', walkInRevenue.toFixed(2), '', totalCash.toFixed(2), totalSwipe.toFixed(2), '']);
-    if (prescriptionRev > 0) rows.push(['Prescription Dispense Revenue', prescriptionRev.toFixed(2), '', '', '', '']);
-    rows.push(['GRAND TOTAL', totalRevenue.toFixed(2), '', '', '', '']);
+    rows.push(['TOTAL Walk-in DP', walkInRevenue.toFixed(2), '', totalCash.toFixed(2), totalSwipe.toFixed(2), '']);
+    if (prescriptionRev > 0) rows.push(['Prescription Dispense DP', prescriptionRev.toFixed(2), '', '', '', '']);
+    rows.push(['GRAND TOTAL DP (not customer receipts)', totalRevenue.toFixed(2), '', '', '', '']);
     const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));

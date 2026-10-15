@@ -26,7 +26,8 @@ function normalizeItems(items) {
 
 function normalizeReceipt(row) {
   if (!row) return null;
-  const total = Number(row.total || row.total_amount || 0);
+  const savedTotal=row.total ?? row.total_amount;
+  const total=savedTotal==null ? null : Number(savedTotal);
   const subtotal = Number(row.subtotal || 0);
   const discount = Number(row.discount || 0);
   const tax = Number(row.tax || 0);
@@ -58,25 +59,29 @@ function normalizeReceipt(row) {
     tax,
     total,
     totalAmount: total,
+    chargedAmount:row.source==='prescription'?null:total,
+    amountBasis:row.source==='prescription'?'prescription_dp_only':'original_customer_charge',
+    missingAmountEvidence:total===null,
     totalBV: Number(row.total_bv || 0),
     status: row.status || 'completed',
     saleDate,
+    businessDate:saleDateObj?businessDay(saleDateObj):null,
     date: saleDateObj ? saleDateObj.toISOString().slice(0, 10) : '',
     timestamp: saleDateObj ? saleDateObj.toISOString() : new Date().toISOString(),
     createdAt: row.created_at,
     source: row.source || 'walkin',
     items: items.map((item) => ({
-      productName: item.productName || item.name || item.product || '',
+       productName: item.productName || item.product_name || item.name || item.product || '',
       productCode: item.productCode || item.sku || '',
       quantity: Number(item.quantity || 0),
-      unitPrice: Number(item.unitPrice || item.price || 0),
-      amount: Number(item.amount || item.total || (item.quantity || 0) * (item.unitPrice || item.price || 0)),
+       unitPrice: Number(item.unitPrice ?? item.unit_price ?? item.price ?? 0),
+       amount: Number(item.amount ?? item.line_total ?? item.total ?? (item.quantity || 0) * (item.unitPrice ?? item.unit_price ?? item.price ?? 0)),
     })),
     products: items.map((item) => ({
-      name: item.productName || item.name || item.product || '',
+       name: item.productName || item.product_name || item.name || item.product || '',
       sku: item.productCode || item.sku || '',
       quantity: Number(item.quantity || 0),
-      amount: Number(item.amount || item.total || (item.quantity || 0) * (item.unitPrice || item.price || 0)),
+       amount: Number(item.amount ?? item.line_total ?? item.total ?? (item.quantity || 0) * (item.unitPrice ?? item.unit_price ?? item.price ?? 0)),
     })),
     data: typeof row.data === 'object' && row.data !== null ? row.data : row.data ? (() => {
       try { return JSON.parse(row.data); } catch { return {}; }
@@ -107,6 +112,16 @@ function summarizeReceipts(receipts) {
   summary.branchBreakdown = Array.from(summary.branches.values()).sort((a, b) =>
     a.branch.localeCompare(b.branch)
   );
+  summary.customerChargedAmount=receipts.filter(r=>r.amountBasis==='original_customer_charge').reduce((s,r)=>s+Number(r.total??0),0);
+  summary.prescriptionDPAmount=receipts.filter(r=>r.amountBasis==='prescription_dp_only').reduce((s,r)=>s+Number(r.total??0),0);
+  summary.missingAmountEvidence=receipts.filter(r=>r.missingAmountEvidence).length;
+  summary.mixedBases=new Set(receipts.map(r=>r.amountBasis)).size>1;
+  if(summary.mixedBases||summary.missingAmountEvidence)summary.totalAmount=null;
+  // Never present a combined branch figure as comparable charged revenue.
+  for(const branch of summary.branchBreakdown){
+    const rows=receipts.filter(r=>(r.branchId||'unknown')===branch.branch);
+    if(new Set(rows.map(r=>r.amountBasis)).size>1||rows.some(r=>r.missingAmountEvidence))branch.total=null;
+  }
   return summary;
 }
 
@@ -259,37 +274,13 @@ export default async function handler(req, res) {
       LIMIT 1000
     `;
 
-    const [walkinRows, rxRows, priceRows] = await Promise.all([
+    const [walkinRows, rxRows] = await Promise.all([
       getMany(walkinQuery, walkinParams),
       getMany(rxQuery, rxParams),
-      getMany(`SELECT description, dp FROM live_product_prices`),
     ]);
-
-    // Build DP price map for non-member receipt recalculation.
-    // Non-member receipts are stored at CP; recompute at DP so the total is
-    // uniform across the system (every sale = DP × qty).
-    const dpMap = {};
-    for (const p of priceRows) {
-      if (p.description) dpMap[p.description.toLowerCase().trim()] = Number(p.dp || 0);
-    }
-
-    for (const row of walkinRows) {
-      const ct = (row.customer_type || '').toLowerCase();
-      if (ct.includes('non') || (!ct.includes('member') && !ct.includes('online'))) {
-        let items = [];
-        try { items = typeof row.items === 'string' ? JSON.parse(row.items) : (Array.isArray(row.items) ? row.items : []); } catch {}
-        if (items.length > 0) {
-          const dpTotal = items.reduce((s, i) => {
-            const nm = (i.product_name || i.name || i.description || '').trim();
-            // Non-member walk-in: i.unit_price is the consumer price (CP), not DP.
-            // Never use it as a DP fallback — it inflates the receipts revenue figure.
-            const dp = (nm ? dpMap[nm.toLowerCase().trim()] : 0) || Number(i.dpPrice || i.dp || 0);
-            return s + dp * Number(i.quantity || i.qty || 1);
-          }, 0);
-          if (dpTotal > 0) row.total = dpTotal;
-        }
-      }
-    }
+    // Receipt amount is the original saved customer charge, not today's DP,
+    // received DPC, or a recomputation from catalogue prices. Prescription DP
+    // records remain separately labelled; no historical row is rewritten.
 
     const allRows = [...walkinRows, ...rxRows];
 

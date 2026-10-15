@@ -31,11 +31,11 @@ try{
   report.before=await capture(db);await save();
   const stock=await pageFor('stock');await stock.goto(m.frontend+'/stock?view=costReport');
   await stock.getByRole('button',{name:/^(Load|Refresh) report$/i}).click();
-  await stock.getByRole('button',{name:/Download audit/i}).waitFor();
+  await stock.getByRole('button',{name:/Download.*audit/i}).waitFor();
   const format=stock.locator('select').filter({has:stock.locator('option[value="stock_csv"]')});
   for(const [name,value] of [['stock','stock_csv'],['original-cost','csv'],['financial-original','financial_csv']]){
     await format.selectOption(value);
-    await download(stock,name,()=>stock.getByRole('button',{name:/Download audit/i}).click());
+    await download(stock,name,()=>stock.getByRole('button',{name:/Download.*audit/i}).click());
   }
   const mis=await pageFor('mis');await mis.goto(m.frontend+'/mis');
   await mis.getByRole('button',{name:/Stock/}).filter({hasText:'Stock'}).first().click();
@@ -45,6 +45,24 @@ try{
   await mis.getByText('TEST-ITEM',{exact:true}).first().waitFor();
   await download(mis,'mis-products',()=>mis.getByRole('button',{name:'Export CSV',exact:true}).click());
   assert(!(await mis.locator('body').innerText()).includes('NaN'));
+  // Keep a genuine old response in flight while a newer invalid range fails.
+  // The older success must not replace the current range/error.
+  await mis.route('**/api/reports/branch-sales/product-range**',async route=>{
+    if(new URL(route.request().url()).searchParams.get('date_from')===day){
+      const response=await route.fetch();await new Promise(r=>setTimeout(r,800));await route.fulfill({response});
+    }else await route.continue();
+  });
+  const oldRequest=mis.waitForRequest(r=>r.url().includes('/reports/branch-sales/product-range')&&new URL(r.url()).searchParams.get('date_from')===day);
+  await mis.getByRole('button',{name:'Go',exact:true}).click();await oldRequest;
+  const tomorrow=new Date(new Date(day+'T12:00:00Z').getTime()+86400000).toISOString().slice(0,10);
+  await dates.nth(0).fill(tomorrow);
+  await mis.getByText(/Reports are unavailable, not zero/).waitFor();
+  await mis.waitForTimeout(1100);
+  assert(await mis.getByText(/Reports are unavailable, not zero/).isVisible());
+  report.stages.push({name:'MIS invalid range and stale-success suppression',status:'PASS',from:tomorrow,to:day,expectedHTTP:422});
+  await mis.screenshot({path:dir+'/mis-invalid-range-stale-response.png',fullPage:true});
+  await mis.unroute('**/api/reports/branch-sales/product-range**');await dates.nth(0).fill(day);
+  await mis.getByText('TEST-ITEM',{exact:true}).first().waitFor();
   const branchSelect=mis.locator('select').filter({has:mis.locator('option[value="townshop"]')}).last();
   await branchSelect.selectOption('swakopmund');
   await mis.getByText('Sales Breakdown — Swakopmund').waitFor();
