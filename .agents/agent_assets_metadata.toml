@@ -574,3 +574,17 @@ mtime_ms = 1792077912010
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/4c2900a1-8fd5-43a8-aed1-f1783ca4965c/74ba20fe-fba2-4b7c-a3c5-40b5d65fc6b6"
 storage_version_token = "1792077923832141"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "s-Dmva1wQ87YB1TmNs94p"
+uri = "file://generated-artifacts/owner-readiness-review-20261015.zip"
+type = "unspecified"
+title = "Owner approval and read-only readiness review"
+description = "Nine updated review documents, bounded production catalog evidence and validation manifest. Status: BLOCKED — DO NOT PUBLISH. No production changes performed."
+logical_id = "67151ccf-55d7-4c68-b1e3-380a661f0d7c"
+content_hash = "sha256:f0455c475b78211067083120ebf7fc80d5c978abf4da6f80da98f6307bd629c1"
+size = 45920
+mtime_ms = 1792088309105
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/67151ccf-55d7-4c68-b1e3-380a661f0d7c/824f577a-74f0-459a-851f-b168c1f6a20b"
+storage_version_token = "1792088321475232"
+content_type = "application/octet-stream"

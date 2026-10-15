@@ -31,4 +31,19 @@ Owner approval packages do not themselves authorize production inspection. Human
 
 **Why:** The owner explicitly separates operational acceptance, narrowly scoped production read-only inspection, and later mutation/publication authority. Sending an instruction attachment is not any of those approvals.
 
-**How to apply:** Prepare the allowlist first; wait for “I authorize the listed read-only production readiness checks.” Inspect only approved metadata/health, never unrestricted business rows or credentials. This approval still excludes migration, service retirement/restart, configuration changes, worker activation, repairs and publication. Keep unsigned staff/alert fields visibly unaccepted.
+**How to apply:** Prepare the allowlist first; require explicit scoped read-only approval. Inspect only approved metadata/health, never unrestricted business rows or credentials. This approval still excludes migration, service retirement/restart, configuration changes, worker activation, repairs and publication. Record genuine supplied acceptance without treating it as evidence of alert delivery or actual target worker state.
+
+The owner accepts temporary manual operation while automated jobs remain off, limits
+manual scheduled prices to global existing-product schedules, and requires a
+maximum 15-minute RPO and one-hour RTO before controlled release planning.
+
+**Why:** The owner explicitly separates manual operating acceptance, alert delivery,
+time-limited production metadata inspection, and later mutation/release authority.
+Backup availability alone does not prove measured recovery objectives.
+
+**How to apply:** Consult the current operational authorization for its expiry and
+targets before each resumed production inspection; never renew it implicitly.
+Hold unsupported branch/staged schedules. Require existing independent recovery
+evidence; label its absence as a failed recovery evidence gate, not proof that
+backups do not exist. Keep names, email addresses and other personal approval
+details out of agent memory.

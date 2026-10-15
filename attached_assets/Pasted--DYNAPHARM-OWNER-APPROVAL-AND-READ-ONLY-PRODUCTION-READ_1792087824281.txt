@@ -1,0 +1,483 @@
+# DYNAPHARM OWNER APPROVAL AND READ-ONLY PRODUCTION READINESS AUTHORIZATION
+
+Approval date: 15 October 2026
+Timezone: Africa/Windhoek
+Authorization owner: Moses Mukisa
+Official role: General Manager and Lead Developer
+
+Current release status:
+
+BLOCKED - DO NOT PUBLISH
+
+This instruction provides operational acceptance and narrowly scoped read-only production inspection authority. It does not authorize publication or production mutation.
+
+==================================================
+1. STRICT SAFETY BOUNDARY
+==================================================
+
+Do not:
+
+- publish or deploy;
+- restart or stop production services;
+- change production configuration;
+- change environment variables;
+- apply migration 035 or any other migration;
+- run the historical migration runner;
+- write to the production database;
+- activate the new worker;
+- enable any automated stock job;
+- retire or modify the legacy scheduler;
+- repair or backfill stock;
+- alter users, roles, grants, prices or business records;
+- access customer, employee or clinical records;
+- perform rollback or restore.
+
+All production database inspection must use an approved read-only identity, bounded timeouts and `BEGIN READ ONLY` where applicable.
+
+==================================================
+2. OWNER IDENTITY AND ACCEPTANCE
+==================================================
+
+Owner acceptance name:
+
+Moses Mukisa
+
+Role:
+
+General Manager and Lead Developer
+
+I formally accept the 13 temporary manual operating procedures while the corresponding automated jobs remain disabled.
+
+I assign the following staff:
+
+Primary stock operator:
+Toini Tushishi, Stock Controller
+
+Backup stock operator:
+Nicholas Ndebesa, Assistant Stock Controller
+
+Primary Finance and MIS operator:
+Agume Phiona, Head of Finance and MIS Manager
+
+Backup Finance operator:
+Moses Mukisa, General Manager and Lead Developer
+
+GM approver:
+Moses Mukisa, General Manager and Lead Developer
+
+Director escalation owner:
+Birungi Alexender, Director of Operations
+
+Record the acceptance timestamp automatically when this instruction is submitted, using Africa/Windhoek time.
+
+==================================================
+3. MANUAL OPERATING ACCEPTANCE
+==================================================
+
+I accept the proposed frequencies and deadlines for the 13 temporary manual procedures.
+
+Assign responsibilities according to these rules:
+
+- Toini Tushishi is the primary operator for stock, expiry, receipt, transfer, reorder and redistribution reviews.
+- Nicholas Ndebesa is the backup for those Stock operations.
+- Agume Phiona is the primary operator for Finance, MIS, daily, weekly and monthly reconciliation procedures.
+- Moses Mukisa is the backup Finance operator and GM approver.
+- Birungi Alexender is the Director escalation owner.
+- Activities requiring both Stock and Finance must be reviewed by Toini Tushishi and Agume Phiona or their assigned backups.
+- Historical repair, backfill and balance correction require separate written authorization.
+- No operator may use direct SQL to change stock or financial balances.
+- All manual actions must retain their normal audit evidence.
+
+All automation remains disabled until each job is separately tested, approved and enabled through a controlled release.
+
+Automation must not be enabled merely because this manual operating acceptance exists.
+
+==================================================
+4. SCHEDULED-PRICE LIMITATION
+==================================================
+
+I accept the current manual scheduled-price limitation:
+
+- only approved global schedules;
+- only existing products;
+- no branch-specific scheduled prices;
+- no staged or new-product scheduled prices.
+
+Unsupported branch-specific or staged price changes must be placed on hold and escalated to Moses Mukisa and Birungi Alexender.
+
+Manual activation must:
+
+1. Verify the approved product and global scope.
+2. Verify the effective Africa/Windhoek business date.
+3. Verify old and new DP, CP, CIF and BV values.
+4. Use a unique approval reference.
+5. Activate the price exactly once.
+6. Preserve price history.
+7. Record the authenticated actor and timestamp.
+8. Retry an uncertain response using the same history ID and approval reference.
+9. Verify Branch Sales uses the new DP.
+10. Use guarded compensation for an incorrect activation.
+11. Never overwrite history or correct prices through raw SQL.
+
+Automatic scheduled-price activation remains disabled.
+
+==================================================
+5. ALERT APPROVAL
+==================================================
+
+Approved alert channel:
+
+Email
+
+Approved monitored destination:
+
+mosesmukisa1@gmail.com
+
+Primary alert recipient:
+
+Moses Mukisa, General Manager and Lead Developer
+
+Backup alert destination:
+
+birungi41@hotmail.com
+
+Backup alert recipient:
+
+Birungi Alexender, Director of Operations
+
+Required primary response window:
+
+1 hour from the original alert
+
+Escalation interval:
+
+Escalate to Birungi Alexender 2 hours after the original alert if no accepted response has been recorded.
+
+I authorize one clearly labelled synthetic non-production alert test.
+
+The test message must:
+
+- state `SYNTHETIC NON-PRODUCTION READINESS TEST`;
+- contain no customer data;
+- contain no clinical data;
+- contain no employee data;
+- contain no production stock or financial data;
+- contain no credentials or connection information;
+- use one stable test event ID;
+- record safe send status and provider message ID;
+- request human acknowledgement;
+- test duplicate suppression without sending unnecessary duplicates;
+- test escalation safely.
+
+Use a supported secure provider configuration. Do not place email passwords, API keys, application passwords, tokens or secret webhook URLs in source code, Git, reports or chat.
+
+If no secure email provider is configured, do not improvise. Report the required setup and keep the alert gate blocked.
+
+==================================================
+6. READ-ONLY PRODUCTION AUTHORIZATION
+==================================================
+
+I authorize the listed read-only production readiness checks.
+
+Authorization owner:
+
+Moses Mukisa, General Manager and Lead Developer
+
+Authorized targets:
+
+- https://dynapharmnamibia.net/
+- https://dynapharm-namibia-management-system.com/
+
+Preferred production domain:
+
+https://dynapharmnamibia.net/
+
+Authorization begins when this instruction is submitted.
+
+Authorization expires 48 hours after submission, using Africa/Windhoek time.
+
+This authorization covers only:
+
+- deployed commit, version and artifact identity;
+- active service and deployment names;
+- active scheduler, timer and worker process identities;
+- service entrypoints and replica ownership;
+- safe startup and worker boolean settings;
+- database schema and catalog metadata;
+- migration-journal identifiers;
+- database role names and effective grants;
+- migration 035 prerequisite compatibility;
+- backup metadata;
+- restore-rehearsal records;
+- documented and measured RPO/RTO;
+- reviewed non-mutating health and readiness endpoints.
+
+This authorization does not include production business-row inspection.
+
+Do not browse authenticated portals if page loading can invoke a mutation-capable endpoint.
+
+Do not use unrestricted SQL.
+
+Do not retrieve:
+
+- customer rows;
+- clinical rows;
+- employee records;
+- stock transaction details;
+- passwords;
+- tokens;
+- cookies;
+- connection strings;
+- secret values.
+
+Environment inspection is limited to the names and safe boolean or mode values of:
+
+- STARTUP_MODE
+- ALLOW_SCHEMA_SYNC
+- ALLOW_REFERENCE_SEEDS
+- ALLOW_INVENTORY_SEED
+- ALLOW_STOCK_SUMMARY_DDL
+- ENABLE_STOCK_SCHEDULER
+- ENABLE_STOCK_HEALTH_DIGEST
+- WORKER_ENABLED
+- individual WORKER task flags
+
+Do not retrieve credential values.
+
+==================================================
+7. RECOVERY REQUIREMENTS
+==================================================
+
+Accepted recovery point objective:
+
+Maximum 15 minutes of data loss
+
+Accepted recovery time objective:
+
+System restored and usable within 1 hour
+
+Read-only verification must determine whether the current backup and recovery arrangements can meet these objectives.
+
+Verify only through metadata and existing evidence:
+
+- backup frequency;
+- latest successful backup timestamp;
+- backup retention;
+- protected backup reference;
+- responsible backup operator;
+- latest independent restore rehearsal;
+- measured restore duration;
+- measured recovery point;
+- restore evidence reference;
+- gaps against the 15-minute RPO;
+- gaps against the 1-hour RTO.
+
+Do not download or restore a production backup.
+
+If no recent restore rehearsal proves these objectives, report the recovery gate as failed.
+
+==================================================
+8. CLEAN INSTALL PROOF
+==================================================
+
+Complete the clean installation proof in a disposable tracked archive using an ordinary shell.
+
+Use:
+
+TEMP_DIR="$(mktemp -d)"
+trap 'rm -rf "$TEMP_DIR"' EXIT
+git archive HEAD | tar -x -C "$TEMP_DIR"
+
+Then:
+
+1. Verify the exported lockfile hash matches the source lockfile.
+2. Confirm `node_modules` is absent.
+3. Run `npm ci`.
+4. Do not alter or regenerate the lockfile.
+5. Run the production build.
+6. Run the unit tests.
+7. Run the startup-contract tests.
+8. Record exact versions, commands, exit codes and totals.
+9. Remove the temporary directory.
+
+Do not substitute existing or linked dependencies.
+
+If the environment still prevents `npm ci`, report the exact technical restriction and leave this gate unverified.
+
+==================================================
+9. MIGRATION 035 READ-ONLY PREFLIGHT
+==================================================
+
+Migration 035 may be inspected but must not be applied.
+
+Verify through schema/catalog metadata:
+
+- `product_price_history` exists;
+- its `id` type and uniqueness match the migration requirements;
+- relevant pricebook objects exist;
+- whether `manual_price_actions` already exists;
+- if it exists, compare all columns, constraints, indexes, sequence and ownership;
+- required migration-role capabilities;
+- required web-runtime privileges;
+- migration-journal compatibility;
+- conflicting locks or incompatible objects.
+
+Use bounded read-only transactions.
+
+Do not run:
+
+node migrations/run-migrations.js
+
+Do not apply:
+
+migrations/035_manual_price_control.sql
+
+Return one result:
+
+- COMPATIBLE FOR A SEPARATELY AUTHORIZED MIGRATION WINDOW
+- INCOMPATIBLE - DO NOT APPLY
+- NOT VERIFIED
+
+==================================================
+10. LEGACY SCHEDULER INSPECTION
+==================================================
+
+Identify the production process responsible for:
+
+stuck-approval: flagged 8 stuck transfer(s)
+
+Using read-only inspection only, determine:
+
+- deployed source version;
+- service/deployment name;
+- startup command;
+- replica count;
+- host/process timezone;
+- timer or scheduler identity;
+- schedule;
+- enabled automation settings;
+- whether auto-revert is enabled;
+- whether the process can write notifications, automation logs, transfer states, batches or movements;
+- whether other legacy stock jobs run in the same process;
+- overlap with the proposed new worker.
+
+Do not stop, restart or reconfigure it.
+
+Prepare a controlled retirement plan showing:
+
+1. Exact old scheduler owners.
+2. How all replicas will be drained.
+3. How strict code-only startup will replace the old entrypoint.
+4. How proof of stop will be collected.
+5. How long observation must continue.
+6. How the new worker remains disabled.
+7. How rollback avoids silently restoring unsafe legacy automation.
+
+If the scheduler cannot be positively identified, publication remains blocked.
+
+==================================================
+11. WORKER STATE
+==================================================
+
+Confirm without changing configuration:
+
+- WORKER_ENABLED=false;
+- every worker task flag=false;
+- drift detection=false;
+- drift repair=false;
+- no worker timers started;
+- automatic price activation disabled;
+- no second scheduler is active.
+
+Do not enable any worker task.
+
+Each job requires separate future approval after:
+
+- idempotency testing;
+- distributed-lock testing;
+- retry testing;
+- authorization testing;
+- audit verification;
+- alert delivery verification;
+- exclusive scheduler ownership;
+- rollback readiness.
+
+==================================================
+12. REQUIRED OUTPUTS
+==================================================
+
+Update:
+
+generated-artifacts/owner-approval-package/operator-signoff.md
+generated-artifacts/owner-approval-package/alert-approval.md
+generated-artifacts/owner-approval-package/production-readonly-authorization.md
+generated-artifacts/owner-approval-package/clean-install.md
+generated-artifacts/owner-approval-package/production-readiness-results.md
+generated-artifacts/owner-approval-package/migration-035-target-review.md
+generated-artifacts/owner-approval-package/legacy-scheduler-target-review.md
+generated-artifacts/owner-approval-package/recovery-readiness.md
+generated-artifacts/owner-approval-package/final-status.md
+
+Record:
+
+- authorization start and expiry;
+- checks actually performed;
+- targets inspected;
+- read-only identity class used;
+- exact safe commands or APIs;
+- results;
+- incomplete checks;
+- alert delivery and acknowledgement;
+- RPO/RTO findings;
+- scheduler findings;
+- migration compatibility;
+- clean-install result;
+- remaining blockers.
+
+Do not include secrets or production business data.
+
+==================================================
+13. FINAL DECISION
+==================================================
+
+Return exactly one headline:
+
+READY FOR CONTROLLED RELEASE PLANNING
+
+or:
+
+PARTIALLY VERIFIED - DO NOT PUBLISH
+
+or:
+
+BLOCKED - DO NOT PUBLISH
+
+Do not return READY unless:
+
+- clean `npm ci` proof passes;
+- operator acceptance is recorded;
+- the synthetic alert reaches an approved recipient and is acknowledged;
+- duplicate-alert behavior is verified;
+- authorized read-only production checks complete;
+- deployed source is identified;
+- the legacy scheduler is positively identified;
+- a safe retirement plan is complete;
+- migration 035 is compatible;
+- role separation is acceptable;
+- backup and restore evidence meets the 15-minute RPO;
+- restore evidence meets the 1-hour RTO;
+- workers remain disabled;
+- no production mutation occurred.
+
+Even READY does not authorize publication, migration, scheduler retirement, configuration changes, restart, worker activation or rollback. Those require a separate controlled release instruction.
+
+End with:
+
+Production database modified: NO
+Production environment modified: NO
+Production restarted: NO
+Production scheduler stopped: NO
+Production worker activated: NO
+Production migration applied: NO
+Production published: NO
+Production rollback executed: NO
