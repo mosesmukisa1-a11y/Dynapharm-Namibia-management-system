@@ -1,0 +1,274 @@
+Your next step is to complete the human approvals and production inspection, not publish. Give Replit this single instruction:
+
+```text
+# Dynapharm Operational Approval and Production Readiness Phase
+
+Current status:
+
+BLOCKED - DO NOT PUBLISH
+
+Continue from the current verified branch and commit. Preserve every completed fix and all existing evidence.
+
+Do not publish, restart production, stop production services, change production configuration, apply migrations, activate workers, or write to production.
+
+This phase has two purposes:
+
+1. Complete the remaining non-production checks.
+2. Prepare an exact approval package for the owner before any production inspection or release.
+
+==================================================
+1. VERIFY CURRENT STATE
+==================================================
+
+Record:
+
+- current branch and full commit;
+- git status;
+- application-code commit;
+- lockfile hash;
+- migration list;
+- current worker flags;
+- current startup safety flags;
+- all untracked files.
+
+Confirm:
+
+- web startup remains code-only;
+- all background jobs remain disabled;
+- drift detection and repair remain disabled;
+- automatic scheduled-price activation remains disabled;
+- no production operation has occurred.
+
+Stop if any safety condition differs.
+
+==================================================
+2. CLEAN INSTALL PROOF
+==================================================
+
+Use an ordinary shell and a disposable system directory.
+
+Export tracked files only:
+
+TEMP_DIR="$(mktemp -d)"
+git archive HEAD | tar -x -C "$TEMP_DIR"
+
+In the exported directory:
+
+1. Verify the lockfile hash matches the source.
+2. Run `npm ci`.
+3. Do not regenerate or modify the lockfile.
+4. Run the complete production build.
+5. Run unit tests.
+6. Run startup-contract tests.
+7. Record exact commands, versions, exit codes and totals.
+8. Remove the disposable directory afterward.
+
+Do not use linked or existing `node_modules`.
+
+If package-network access is unavailable, report that specific limitation. Do not substitute an existing-dependency build.
+
+==================================================
+3. CLOSE REMAINING NON-PRODUCTION CHECKS
+==================================================
+
+Using only isolated databases and synthetic data, verify:
+
+- partial transfer;
+- partial dispatch;
+- partial receipt;
+- rejected over-dispatch;
+- rejected over-receipt;
+- immediate first GUI sale acknowledgement;
+- offline/lost-acknowledgement replay;
+- simultaneous manual-price activation;
+- lost-acknowledgement retry for manual price activation;
+- canonical branch labels in current reports;
+- dispatch PDF pagination and per-line status presentation;
+- standalone receiving-document behavior, or clearly document that the product has no standalone receiving document.
+
+Do not rewrite historical branch aliases or business records merely to make evidence pass.
+
+Fix only reproducible application defects. After any source change, rerun all affected tests and the full regression suite.
+
+==================================================
+4. MIGRATION 035 REVIEW
+==================================================
+
+Review only:
+
+migrations/035_manual_price_control.sql
+
+Document:
+
+- every object created or altered;
+- lock implications;
+- expected execution time;
+- transaction behavior;
+- rollback limitations;
+- compatibility with the current production schema;
+- required database role;
+- preflight queries;
+- post-migration checks;
+- forward-recovery procedure.
+
+Prepare a command that applies only migration 035.
+
+Do not run the entire historical migration runner.
+
+Do not apply migration 035 to production.
+
+Test migration 035 on:
+
+- a fresh isolated database;
+- a production-like populated isolated database;
+- repeated execution, if intended to be idempotent.
+
+==================================================
+5. OPERATOR ACCEPTANCE PACKAGE
+==================================================
+
+Create a sign-off document for the 13 quarantined jobs.
+
+For every job include:
+
+- job name;
+- disabled status;
+- business effect while disabled;
+- exact manual procedure;
+- responsible role;
+- required frequency;
+- deadline;
+- duplicate-prevention check;
+- evidence to retain;
+- escalation role;
+- acceptance name;
+- acceptance timestamp;
+- accepted/rejected field.
+
+Do not invent names, approvals or timestamps.
+
+Highlight that the current manual price workflow supports only approved global existing-product schedules.
+
+Explicitly mark branch-specific and staged price schedules as unsupported.
+
+Publication remains blocked until the real owner accepts the limits and assigns responsible staff.
+
+==================================================
+6. ALERT ACCEPTANCE PACKAGE
+==================================================
+
+Prepare configuration instructions for a real monitored alert destination.
+
+The owner must provide:
+
+- alert channel type;
+- destination;
+- responsible recipient;
+- backup recipient;
+- response window;
+- escalation interval;
+- test-delivery authorization.
+
+Do not request secrets in the report.
+
+After the owner supplies an approved test destination, send one non-production test alert and capture acknowledgement, deduplication and escalation evidence.
+
+Until actual acknowledgement exists, keep publication blocked.
+
+==================================================
+7. READ-ONLY PRODUCTION AUTHORIZATION REQUEST
+==================================================
+
+Prepare a narrowly scoped authorization request for read-only production inspection.
+
+Request permission to inspect only:
+
+- deployed commit/version;
+- active service names;
+- active scheduler processes;
+- safe environment-variable names and boolean values;
+- database schema/catalog metadata;
+- role grants;
+- migration state;
+- backup metadata;
+- restore-rehearsal records;
+- RPO and RTO documentation;
+- health/readiness status.
+
+Do not request unrestricted database access.
+
+Do not expose passwords, tokens, cookies or connection strings.
+
+Do not perform these checks until the user explicitly states:
+
+“I authorize the listed read-only production readiness checks.”
+
+==================================================
+8. LEGACY SCHEDULER PLAN
+==================================================
+
+Complete a repository-based plan for the process emitting:
+
+stuck-approval: flagged 8 stuck transfer(s)
+
+Document:
+
+- source module;
+- command;
+- schedule;
+- service/deployment name if known;
+- database reads and writes;
+- lock/idempotency behavior;
+- overlap with the new worker;
+- exact controlled retirement steps;
+- proof-of-stop checks;
+- rollback steps.
+
+Do not stop it.
+
+Final retirement requires separately authorized production access and a controlled release window.
+
+==================================================
+9. RELEASE HOLD POINT
+==================================================
+
+After completing all permitted work, stop.
+
+Do not publish.
+
+Do not apply migration 035.
+
+Do not stop the legacy scheduler.
+
+Do not enable the new worker.
+
+Create:
+
+generated-artifacts/owner-approval-package/operator-signoff.md
+generated-artifacts/owner-approval-package/alert-approval.md
+generated-artifacts/owner-approval-package/production-readonly-authorization.md
+generated-artifacts/owner-approval-package/migration-035-review.md
+generated-artifacts/owner-approval-package/legacy-scheduler-plan.md
+generated-artifacts/owner-approval-package/nonproduction-results.md
+generated-artifacts/owner-approval-package/final-status.md
+
+Return exactly one status:
+
+BLOCKED - AWAITING OWNER APPROVAL
+
+or:
+
+PARTIALLY VERIFIED - AWAITING PRODUCTION AUTHORIZATION
+
+Do not return READY until real operator sign-off, alert acknowledgement and separately authorized production checks are complete.
+
+End with:
+
+Production database modified: NO
+Production environment modified: NO
+Production restarted: NO
+Production published: NO
+Production rollback executed: NO
+```
+
+After Replit completes this, review and sign the operator package, nominate the alert recipient, and explicitly authorize the narrowly defined **read-only** production checks.

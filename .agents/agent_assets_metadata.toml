@@ -560,3 +560,17 @@ mtime_ms = 1792073392690
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/d5d884e7-82eb-4b59-a20b-ede0f3c2d6f4/178b81c6-0f05-466c-9865-ea5291453f7d"
 storage_version_token = "1792073419541183"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "i0S2ZR0Iy8I5qZrDkT66s"
+uri = "file://generated-artifacts/owner-approval-package.zip"
+type = "unspecified"
+title = "Owner approval package — blocked pending approvals"
+description = "Seven review documents covering operator sign-offs, alert approval, narrowly scoped production read-only authorization, migration035, legacy scheduler retirement and isolated test results. No publication or production operations performed."
+logical_id = "4c2900a1-8fd5-43a8-aed1-f1783ca4965c"
+content_hash = "sha256:0c69bfd86fc412e691539cfb05f82e90a9c1db62688ebe3356979b30fce5392e"
+size = 26037
+mtime_ms = 1792077912010
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/4c2900a1-8fd5-43a8-aed1-f1783ca4965c/74ba20fe-fba2-4b7c-a3c5-40b5d65fc6b6"
+storage_version_token = "1792077923832141"
+content_type = "application/octet-stream"
