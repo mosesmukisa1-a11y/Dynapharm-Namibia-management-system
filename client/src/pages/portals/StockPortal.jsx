@@ -11776,7 +11776,7 @@ function StockReportsTab({ branch }) {
             <Button size="sm" variant="secondary" onClick={printAllBranches}><Printer size={14} /> Print Report</Button>
           </div>
         </CardHeader>
-        {formulaWarning && <Alert type="warning" message={formulaWarning} />}
+        {formulaWarning && <Alert type="warning">{formulaWarning}</Alert>}
         <p className="px-4 py-2 text-xs text-gray-600">Inbound includes direct receipts and received transfers. Net adjustments are signed. Formula checks do not certify complete historical evidence.</p>
         <Table
           columns={[

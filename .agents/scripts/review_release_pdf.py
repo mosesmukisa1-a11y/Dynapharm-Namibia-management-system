@@ -1,9 +1,12 @@
 """Render only newly generated, synthetic release-audit PDFs."""
 from pathlib import Path
 import json
+import sys
 import fitz
 
-root = Path("generated-artifacts/final-release-gate/documents")
+root = Path(sys.argv[1] if len(sys.argv) > 1 else "generated-artifacts/final-release-gate/documents")
+if not root.resolve().is_relative_to(Path("generated-artifacts").resolve()):
+    raise ValueError("PDF audit output must remain in generated-artifacts")
 root.mkdir(parents=True, exist_ok=True)
 results = []
 for source in sorted(root.glob("*.pdf")):

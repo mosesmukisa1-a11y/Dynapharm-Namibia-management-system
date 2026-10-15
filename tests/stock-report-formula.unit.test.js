@@ -1,6 +1,12 @@
 import {it,expect} from 'vitest';
 import {readFileSync} from 'node:fs';
 import {stockFormulaReview} from '../client/src/lib/stockReportFormula.js';
+import {createElement} from 'react';
+import {renderToStaticMarkup} from 'react-dom/server';
+import {Alert} from '../client/src/components/ui.jsx';
+it('renders evidence-gap text through the real shared alert component',()=>{
+ expect(renderToStaticMarkup(createElement(Alert,{type:'warning'},'Movement formula requires review'))).toContain('Movement formula requires review');
+});
 it('reconciles a complete opening and sale without inventing receipts',()=>{
  expect(stockFormulaReview({opening:10,salesQty:2,closing:8})).toEqual({status:'reconciled',expected:8,difference:0});
 });
@@ -19,4 +25,5 @@ it('uses selected rows for totals and exposes transfer/adjustment coverage in sc
  expect(source).toContain('<th>Net adjustments</th>');
  expect(source).toContain("header: 'Net adjustments'");
  expect(source).toContain('formulaWarning');
+ expect(source).toContain('<Alert type="warning">{formulaWarning}</Alert>');
 });

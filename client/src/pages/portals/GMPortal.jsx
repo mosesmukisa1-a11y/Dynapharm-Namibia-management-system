@@ -1,4 +1,5 @@
 import SavedSaleProfitReport from '../../components/SavedSaleProfitReport';
+import { originalChargedMargin } from '../../lib/originalChargedMargin.js';
 import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
 import DistributorPerformanceTab from '../../components/DistributorPerformanceTab';
 import DispatchNote from '../../components/DispatchNote';
@@ -613,6 +614,7 @@ function DashboardTab() {
   const beTotalSales = gmSummary?.sales?.totalSales || 0;
   const beCIFCost = gmSummary?.finance?.cifCostOfSales || 0;
   const beGrossProfit = gmSummary?.finance?.grossProfit ?? null;
+  const beOriginalGrossMargin=originalChargedMargin(gmSummary?.finance);
   const beRemittanceDue = gmSummary?.finance?.remittanceDue || 0;
   const beTotalTransactions = gmSummary?.sales?.totalTransactions || 0;
   const beTotalBV = gmSummary?.sales?.totalBV || 0;
@@ -751,7 +753,8 @@ function DashboardTab() {
             </div>
             <div className="bg-white/80 rounded-lg p-3">
               <p className="text-xs text-gray-500">Margin %</p>
-              <p className="text-lg font-bold text-purple-700">{beTotalSales > 0 ? ((beGrossProfit / beTotalSales) * 100).toFixed(1) : '0'}%</p>
+              <p className="text-lg font-bold text-purple-700">{beOriginalGrossMargin==null?'Unavailable':`${beOriginalGrossMargin.toFixed(1)}%`}</p>
+              <p className="text-xs text-gray-500">Matched original net charged revenue basis</p>
             </div>
           </div>
           <p className="text-xs text-emerald-600 mt-2 font-medium">
