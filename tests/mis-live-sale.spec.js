@@ -3,6 +3,7 @@ import {beforeAll,it,expect} from 'vitest';
 import {query} from '../api/db.js';
 import report from '../api/mis/stock-report.js';
 import receipts from '../api/mis/receipts.js';
+import walkin from '../api/branch/walkin-sales.js';
 const product='MIS-BOUNDARY-ITEM',actor={id:'MIS-TEST-ACTOR',role:'mis',branch:'townshop'};
 async function invoke(handler,url,user=actor){
  const response={statusCode:200,body:null,setHeader(){},status(code){this.statusCode=code;return this;},
@@ -23,6 +24,9 @@ beforeAll(async()=>{
  await query(`INSERT INTO branch_walkin_sales(id,branch_id,sale_number,status,total,subtotal,sale_date,items,data)
  VALUES('MIS-CANONICAL-SALE','townshop','MIS-RECEIPT-1','completed',886,886,'2026-10-15T11:00:00Z',$1,$2)`,
  [JSON.stringify(items),JSON.stringify({items,saleNumber:'MIS-RECEIPT-1'})]);
+ await query(`INSERT INTO stock_movements(id,product_name,quantity,movement_type,reference_id,source_location,status,metadata)
+ VALUES('MIS-CAPTURED-DP',$1,2,'walk_in_non_member_sale','MIS-CANONICAL-SALE','townshop','posted',$2)`,
+ [product,JSON.stringify({sale_evidence:{version:1,sale_reference:'MIS-CANONICAL-SALE',dp_unit_price:341}})]);
  const other=[{product_name:product,quantity:1,unit_price:443}];
  await query(`INSERT INTO branch_walkin_sales(id,branch_id,sale_number,status,total,subtotal,sale_date,items,data)
  VALUES('MIS-UNMIRRORED','swakopmund','MIS-RECEIPT-2','completed',443,443,'2026-10-15T12:00:00Z',$1,$2)`,
@@ -51,4 +55,14 @@ it('rejects anonymous and branch access, and invalid calendar ranges',async()=>{
   expect((await invoke(handler,'/api/mis/test',{role:'branch_manager',branch:'townshop'})).statusCode).toBe(403);
   expect((await invoke(handler,'/api/mis/test?start=2026-02-30&end=2026-03-01')).statusCode).toBe(422);
  }
+});
+it('reloads the invoice DP from the real typed sale movement without rewriting raw history or exposing CIF',async()=>{
+ const result=await invoke(walkin,'/api/branch/walkin-sales?id=MIS-CANONICAL-SALE',{id:'SYNTHETIC-ADMIN',role:'admin'});
+ expect(result.statusCode).toBe(200);
+ expect(result.body.sale.products[0].dpPrice).toBe(341);
+ expect(result.body.sale.total).toBe(886);
+ expect(result.body.sale.dpEvidence).toBe('captured_sale_dp');
+ const raw=(await query("SELECT items FROM branch_walkin_sales WHERE id='MIS-CANONICAL-SALE'")).rows[0];
+ expect(raw.items[0].dpPrice).toBe(999);
+ expect(JSON.stringify(result.body).toLowerCase()).not.toContain('cif');
 });

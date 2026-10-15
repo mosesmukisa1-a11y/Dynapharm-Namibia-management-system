@@ -67,7 +67,8 @@ async function normalizeSaleRows(rows){
     sm.metadata->'sale_evidence'->>'dp_unit_price' AS dp_unit_price
     FROM stock_movements sm JOIN branch_walkin_sales s
       ON s.id=sm.reference_id AND s.branch_id=sm.source_location
-    WHERE sm.reference_id=ANY($1::text[]) AND sm.movement_type='sale'
+    WHERE sm.reference_id=ANY($1::text[])
+      AND sm.metadata->'sale_evidence'->>'sale_reference'=s.id
       AND sm.status='posted' AND sm.metadata->'sale_evidence'->>'version'='1'`,
     [sales.map(s=>String(s.id))]);
   return withCapturedReceiptDP(sales,facts);

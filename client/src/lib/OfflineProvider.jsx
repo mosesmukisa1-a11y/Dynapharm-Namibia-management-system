@@ -26,6 +26,7 @@ export function OfflineProvider({ children }) {
   const [lastSyncResult, setLastSyncResult] = useState(null);
   const [authRequired, setAuthRequired] = useState(false);
   const syncingRef = useRef(false);
+  const syncAgainRef = useRef(false);
 
   const refreshCounts = useCallback(async () => {
     try {
@@ -43,7 +44,9 @@ export function OfflineProvider({ children }) {
   }, [refreshCounts]);
 
   const syncNow = useCallback(async () => {
-    if (syncingRef.current || !navigator.onLine) return;
+    if (!navigator.onLine) return;
+    if (syncingRef.current) { syncAgainRef.current=true; return; }
+    syncAgainRef.current=false;
     syncingRef.current = true;
     setIsSyncing(true);
     setAuthRequired(false);
@@ -70,6 +73,7 @@ export function OfflineProvider({ children }) {
       }));
 
       let batchResults = null;
+      let retryableFailure = false;
       try {
         const res = await fetch('/api/sync/batch', {
           method: 'POST',
@@ -87,8 +91,12 @@ export function OfflineProvider({ children }) {
         if (res.ok) {
           const data = await res.json();
           batchResults = Array.isArray(data.results) ? data.results : null;
+          retryableFailure=!batchResults;
+        } else if(res.status>=500 || res.status===408 || res.status===429){
+          retryableFailure=true;
         }
       } catch (networkErr) {
+        retryableFailure=true;
         console.warn('[OfflineSync] Batch request failed (network):', networkErr.message);
       }
 
@@ -114,7 +122,7 @@ export function OfflineProvider({ children }) {
             failed++;
           }
         }
-      } else {
+      } else if(!retryableFailure) {
         for (const op of pending) {
           await markFailed(op.localId);
           failed++;
@@ -122,13 +130,18 @@ export function OfflineProvider({ children }) {
       }
 
       setLastSyncAt(Date.now());
-      setLastSyncResult({ succeeded, failed, duplicates, total: pending.length });
+      setLastSyncResult({ succeeded, failed, duplicates, total: pending.length,
+        pending:retryableFailure?pending.length:0,networkUncertain:retryableFailure });
     } catch (err) {
       console.error('[OfflineSync] Sync error:', err);
     } finally {
       syncingRef.current = false;
       setIsSyncing(false);
       await refreshCounts();
+      if(syncAgainRef.current && navigator.onLine){
+        syncAgainRef.current=false;
+        setTimeout(syncNow,0);
+      }
     }
   }, [refreshCounts]);
 
