@@ -1,0 +1,443 @@
+Paste this entire script into Replit Agent:
+
+```text
+# DYNAPHARM FINAL RELEASE-BLOCKER CLOSURE
+
+Continue from the current verified branch and preserve all completed Sales, Stock, Finance, MIS, GM, Director, offline-replay, valuation, reporting and worker-safety fixes.
+
+Current status:
+
+BLOCKED - DO NOT PUBLISH
+
+Do not publish, deploy, restart production, change production configuration, migrate production, write to production, stop production processes or activate the new worker.
+
+This task must address only the remaining release blockers.
+
+==================================================
+1. SAFETY AND STARTING STATE
+==================================================
+
+Before doing anything:
+
+1. Record the current branch and full commit.
+2. Record `git status`.
+3. Preserve unrelated and untracked user files.
+4. Verify the latest implementation commits and generated reports.
+5. Confirm all production safety flags remain code-only/default-off.
+6. Confirm drift detection and repair remain disabled.
+7. Confirm all thirteen unproven jobs remain quarantined.
+8. Stop if repository identity or expected safety controls differ.
+
+Do not undo completed fixes.
+
+==================================================
+2. CLEAN LOCKFILE INSTALLATION
+==================================================
+
+Prove that the project installs and builds without existing `node_modules`.
+
+Create a disposable directory using the operating system temporary directory.
+
+Export only tracked files from the current commit, for example:
+
+```bash
+TEMP_DIR="$(mktemp -d)"
+git archive HEAD | tar -x -C "$TEMP_DIR"
+cd "$TEMP_DIR"
+```
+
+Then:
+
+1. Record Node and npm versions.
+2. Compare the exported lockfile hash with the source lockfile.
+3. Run the lockfile-enforcing installation command, normally:
+
+```bash
+npm ci
+```
+
+4. Do not edit or regenerate the lockfile.
+5. Run the production build.
+6. Run the unit and startup-contract tests.
+7. Record commands, exit codes, totals and non-secret logs.
+8. Return to the repository and remove the temporary directory.
+
+Do not use the repository’s existing `node_modules`.
+
+If network/package access is unavailable, record that limitation and keep the release blocked.
+
+==================================================
+3. COMPLETE MIS VERIFICATION
+==================================================
+
+Use only an isolated database and synthetic accounts/data.
+
+Through the actual application and rendered MIS portal, verify:
+
+- same-day sales are included through the full selected end date;
+- date-only ranges use Africa/Windhoek boundaries;
+- explicit zoned timestamps remain exact;
+- product breakdown matches the underlying sale;
+- receipts match the underlying sale;
+- row numbering never displays `NaN`;
+- branch filters do not leak other branches;
+- invalid dates fail clearly;
+- empty encoded-sales scope is not presented as proof that an operational sale failed;
+- DP, charged revenue, CP and original CIF evidence remain separate.
+
+Trace one controlled synthetic sale across Branch, Stock and MIS.
+
+Save redacted screenshots, request statuses and database reconciliation evidence.
+
+==================================================
+4. COMPLETE EXPORT VERIFICATION
+==================================================
+
+Generate and inspect actual downloaded bytes for:
+
+- stock/cost CSV;
+- Finance sales export;
+- MIS export;
+- movement report;
+- branch stock report;
+- inventory valuation report.
+
+Verify:
+
+- HTTP status;
+- MIME type;
+- filename;
+- non-empty content;
+- expected row count;
+- branch/date scope;
+- CSV escaping;
+- column alignment;
+- Namibia business dates;
+- DP/CP labels and values;
+- no unauthorized columns;
+- no credentials or personal data leakage;
+- totals reconcile to the source transaction.
+
+Do not mark exports verified from screen rendering alone.
+
+==================================================
+5. TRANSFER, DISPATCH AND RECEIVING DOCUMENTS
+==================================================
+
+Create a legitimate synthetic stock lifecycle through supported application actions:
+
+1. Receive/import stock into a warehouse.
+2. Create a branch transfer request if required by the workflow.
+3. Approve the transfer.
+4. Dispatch part or all of the quantity.
+5. Receive it at the destination branch.
+6. Generate transfer, dispatch and receiving documents.
+7. Sell part of the legitimately received stock.
+8. Generate the branch stock reconciliation report.
+
+Verify:
+
+- valid status transitions;
+- no contradictory actions;
+- no over-dispatch;
+- no over-receipt;
+- correct partial quantities;
+- correct source and destination;
+- correct product, batch and expiry;
+- inbound transfers appear in branch formulas;
+- signed adjustments are handled correctly;
+- selected-branch totals exclude other branches;
+- opening, inbound, adjustments, sales, outbound and closing reconcile;
+- document references trace to movements;
+- retries do not duplicate movements;
+- reports display visible reconciliation warnings when evidence is incomplete.
+
+Inspect downloaded PDF/print bytes and rendered pages for:
+
+- transfer document;
+- dispatch document;
+- receiving document;
+- branch stock report;
+- movement report.
+
+Do not seed final transfer/document rows merely to create passing evidence.
+
+==================================================
+6. SCHEDULED-PRICE OPERATING CONTROL
+==================================================
+
+Keep automatic scheduled-price activation disabled until proven safe.
+
+Build or verify a manual authorized workflow that allows an approved role to:
+
+1. View pending approved prices.
+2. Confirm product and branch/global scope.
+3. Confirm Namibia effective business date.
+4. Activate one price exactly once.
+5. Preserve prior-price history.
+6. Record actor, timestamp and approval reference.
+7. Prevent overlapping or duplicate activation.
+8. Verify Branch Sales immediately uses the new DP.
+9. Correct an erroneous activation through an audited compensating process.
+
+Use synthetic data only.
+
+Add tests for:
+
+- unauthorized activation;
+- early activation;
+- duplicate activation;
+- overlapping price periods;
+- branch-specific versus global price;
+- retry after uncertain response;
+- historical sale retaining transaction-time DP.
+
+Create an operator sign-off checklist. Do not self-approve it or invent an owner.
+
+If an authorized operator has not accepted and demonstrated the procedure, keep status:
+
+BLOCKED - DO NOT PUBLISH
+
+==================================================
+7. OPERATOR ACCEPTANCE
+==================================================
+
+Prepare one sign-off table for all thirteen quarantined jobs.
+
+For each job record:
+
+- name;
+- current disabled status;
+- business consequence;
+- manual replacement;
+- responsible named role;
+- execution frequency;
+- completion deadline;
+- duplicate-prevention step;
+- evidence retained;
+- escalation role;
+- acceptance name;
+- acceptance timestamp.
+
+Do not mark a procedure accepted without an actual authorized human decision.
+
+Keep every unaccepted task disabled.
+
+==================================================
+8. HUMAN ALERT DELIVERY
+==================================================
+
+Use an approved non-production monitored destination.
+
+Configure and test worker failure delivery containing:
+
+- environment;
+- task ID;
+- run ID;
+- safe error summary;
+- UTC timestamp;
+- Africa/Windhoek timestamp;
+- retry status;
+- escalation status.
+
+Verify:
+
+- successful human-visible delivery;
+- secrets and personal data are absent;
+- duplicate alerts are suppressed;
+- repeated unresolved failures escalate;
+- durable journal remains the source of truth;
+- alert-delivery failure is itself recorded.
+
+Do not add production credentials.
+
+If no approved channel or recipient exists, document the requirement and keep the release blocked.
+
+==================================================
+9. LEGACY SCHEDULER INVESTIGATION
+==================================================
+
+Investigate the process emitting:
+
+```text
+stuck-approval: flagged 8 stuck transfer(s)
+```
+
+Use repository, deployment-manifest and non-production evidence first.
+
+Identify:
+
+- source module;
+- command or startup path;
+- deployment/service name;
+- schedule;
+- lock behavior;
+- reads and writes;
+- whether it creates or changes transfers;
+- whether it overlaps with the new worker;
+- how to disable it safely;
+- how to confirm it stopped;
+- rollback procedure.
+
+Do not stop or modify the production process.
+
+Produce a retirement plan ensuring the old and new schedulers can never run concurrently.
+
+If its identity, mutation behavior or retirement procedure remains unknown, keep:
+
+BLOCKED - DO NOT PUBLISH
+
+==================================================
+10. PRODUCTION READ-ONLY AUTHORIZATION GATE
+==================================================
+
+Do not access production without separate explicit authorization.
+
+Prepare a checklist requesting read-only permission to verify:
+
+- deployed source commit;
+- active services and schedulers;
+- environment-variable names and safety values;
+- target database schema/catalog compatibility;
+- web-role privileges;
+- worker-role privileges;
+- migration-role separation;
+- latest successful backup;
+- restore-rehearsal evidence;
+- recovery-point objective;
+- recovery-time objective;
+- post-release health checks.
+
+Do not request or record raw passwords, tokens, cookies or connection strings.
+
+If authority is later granted, perform only the specifically approved read-only checks. Do not infer permission from browser access or passive logs.
+
+==================================================
+11. REGRESSION AND REHEARSAL
+==================================================
+
+After any application-source change, rerun:
+
+- complete unit suite;
+- complete isolated database suite;
+- startup-contract tests;
+- worker tests;
+- authorization tests;
+- offline/reconnect tests;
+- transaction interruption and retry tests;
+- scheduled-price tests;
+- transfer/dispatch/receipt tests;
+- branch reconciliation tests;
+- valuation tests;
+- MIS tests;
+- export tests;
+- report freshness tests;
+- production build;
+- web release rehearsal;
+- worker release rehearsal;
+- guarded rollback rehearsal.
+
+Use populated isolated fixtures.
+
+Confirm:
+
+- no duplicate stock deduction;
+- no duplicate sale;
+- no duplicate transfer movement;
+- no unexpected stock request;
+- no startup mutation;
+- no scheduler starts from the web process;
+- no quarantined worker task runs;
+- database fingerprints remain unchanged during read-only rehearsals.
+
+Do not substitute earlier evidence when affected code changed.
+
+==================================================
+12. REQUIRED ARTIFACTS
+==================================================
+
+Create or update:
+
+```text
+generated-artifacts/final-operational-gate/report.md
+generated-artifacts/final-operational-gate/clean-install.md
+generated-artifacts/final-operational-gate/mis-evidence/
+generated-artifacts/final-operational-gate/export-evidence/
+generated-artifacts/final-operational-gate/transfer-document-evidence/
+generated-artifacts/final-operational-gate/scheduled-price-control.md
+generated-artifacts/final-operational-gate/operator-acceptance.md
+generated-artifacts/final-operational-gate/alert-evidence.md
+generated-artifacts/final-operational-gate/legacy-scheduler-retirement.md
+generated-artifacts/final-operational-gate/production-authorization.md
+generated-artifacts/final-operational-gate/test-results.md
+generated-artifacts/final-operational-gate/release-runbook.md
+generated-artifacts/final-operational-gate/rollback-runbook.md
+```
+
+Include:
+
+- exact branch and commits;
+- changed files;
+- exact commands;
+- test totals and failures;
+- skipped and unverified checks;
+- screenshots and document evidence;
+- database before/after counts;
+- reconciliation results;
+- operational approvals;
+- unresolved risks.
+
+Exclude credentials, secrets, real customer data and clinical data.
+
+==================================================
+13. FINAL RELEASE DECISION
+==================================================
+
+Return exactly one headline:
+
+```text
+READY FOR EXPLICIT PUBLICATION AUTHORIZATION
+```
+
+or:
+
+```text
+PARTIALLY VERIFIED - DO NOT PUBLISH
+```
+
+or:
+
+```text
+BLOCKED - DO NOT PUBLISH
+```
+
+READY requires all of these:
+
+- clean `npm ci` installation passes;
+- production build passes from the clean installation;
+- complete tests pass;
+- MIS verification passes;
+- exports are inspected and reconciled;
+- transfer, dispatch and receiving documents pass;
+- branch stock formulas reconcile;
+- scheduled-price manual controls are demonstrated;
+- authorized operator acceptance is recorded;
+- approved human alert delivery is demonstrated;
+- legacy scheduler identity and safe retirement are established;
+- separately authorized production readiness checks pass;
+- backup/restore and RPO/RTO are accepted;
+- release and guarded rollback rehearsals pass;
+- production remains unchanged.
+
+Do not publish even if READY. Publication requires a separate explicit instruction from the user.
+
+End with exactly:
+
+```text
+Production database modified: NO
+Production environment modified: NO
+Production restarted: NO
+Production published: NO
+Production rollback executed: NO
+```
+```

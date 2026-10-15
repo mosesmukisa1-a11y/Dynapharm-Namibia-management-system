@@ -546,3 +546,17 @@ mtime_ms = 1792066678146
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/e83490f9-d98e-48d8-8a20-9e308bb6c553/c6464c05-5846-49d6-9446-0169bece7f21"
 storage_version_token = "1792067096574421"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "jp9u4b3T7q_k_cDnmvq7V"
+uri = "file://generated-artifacts/final-operational-gate/report.md"
+type = "text"
+title = "Final operational gate — BLOCKED"
+description = "Reviewable release report with fixes, source provenance, isolated test results, evidence links and remaining blockers. Nothing published or changed in production."
+logical_id = "d5d884e7-82eb-4b59-a20b-ede0f3c2d6f4"
+content_hash = "sha256:731d4e695483ca80f0337ed46a2e27a50372fc61fa463036904f8c841efdee09"
+size = 12686
+mtime_ms = 1792073392690
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/d5d884e7-82eb-4b59-a20b-ede0f3c2d6f4/178b81c6-0f05-466c-9865-ea5291453f7d"
+storage_version_token = "1792073419541183"
+content_type = "text/markdown"
