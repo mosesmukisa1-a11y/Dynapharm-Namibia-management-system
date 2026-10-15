@@ -5,6 +5,7 @@ import pg from 'pg';
 import bcrypt from 'bcryptjs';
 import {createServer} from 'vite';
 import {assertIsolatedTestDatabase} from '../api/testDatabaseGuard.js';
+import {releaseBrowserEvidence} from './release-evidence-paths.mjs';
 
 if(['1','true'].includes(process.env.REPLIT_DEPLOYMENT)||process.env.NODE_ENV==='production'||!process.env.DATABASE_URL)throw Error('Disposable development environment required');
 const source=new URL(process.env.DATABASE_URL),name=`stock_audit_${randomUUID().replaceAll('-','')}`;
@@ -32,7 +33,7 @@ if(finalRelease)Object.assign(env,{STARTUP_MODE:'code-only',ALLOW_SCHEMA_SYNC:'f
   ALLOW_INVENTORY_SEED:'false',ALLOW_STOCK_SUMMARY_DDL:'false',ENABLE_STOCK_SCHEDULER:'false',ENABLE_STOCK_HEALTH_DIGEST:'false'});
 const admin=new pg.Pool({connectionString:source.toString(),max:1});
 let target,backend,frontend,created=false,cleaning=false;
-const base=finalRelease?'generated-artifacts/final-release-gate/browser-evidence':salesStock?'generated-artifacts/sales-stock-integration/ui':saleDemo?'generated-artifacts/hochland-sale-demo':branchClearance?'generated-artifacts/branch-stock-clearance/ui':clientHistory?'generated-artifacts/client-history':release?'generated-artifacts/stock-release-verification':continuation?'generated-artifacts/stock-continuation-stages':lifecycleAudit?'generated-artifacts/stock-lifecycle-stages':navigationAudit?'generated-artifacts/stock-navigation-audit':'generated-artifacts/stock-ui-verification';
+const base=finalRelease?releaseBrowserEvidence:salesStock?'generated-artifacts/sales-stock-integration/ui':saleDemo?'generated-artifacts/hochland-sale-demo':branchClearance?'generated-artifacts/branch-stock-clearance/ui':clientHistory?'generated-artifacts/client-history':release?'generated-artifacts/stock-release-verification':continuation?'generated-artifacts/stock-continuation-stages':lifecycleAudit?'generated-artifacts/stock-lifecycle-stages':navigationAudit?'generated-artifacts/stock-navigation-audit':'generated-artifacts/stock-ui-verification';
 const authFile=finalRelease?`/tmp/dynapharm-final-${process.pid}-auth.json`:null;
 let environment;
 const emptyFixture=process.argv.includes('--empty');
@@ -99,6 +100,16 @@ try{
       '{"original_source":{"id":"UI-SALES-SOURCE","dpc_unit_value":341,"cif_unit_cost":23}}')`);
     await target.query(`INSERT INTO inventory_balances(id,location_id,location_type,product_name,closing_qty,on_hand_qty,available_qty)
       VALUES('UI-SALES-BALANCE','townshop','branch','TEST-ITEM',10,10,10)`);
+    if(finalRelease){
+      // Fresh synthetic opening evidence, created with the fixture. Never backfill a business database.
+      const day=new Intl.DateTimeFormat('en-CA',{timeZone:'Africa/Windhoek',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+      const beforeMonth=new Date(new Date(day.slice(0,7)+'-01T00:00:00+02:00').getTime()-1).toISOString();
+      await target.query(`INSERT INTO branch_inventory_movements(id,branch_id,type,product_name,batch_no,quantity,
+        related_batch_id,reference,notes,metadata,created_by,created_at)
+        VALUES('UI-OPENING-EVIDENCE','townshop','received','TEST-ITEM','QA-SALES-LOT',10,'UI-SALES-BATCH',
+        'SYNTHETIC-OPENING','Synthetic fixture initial balance; not a staff receiving workflow',
+        '{"disposable_fixture":true,"opening_balance":true}','isolated-audit-fixture',$1)`,[beforeMonth]);
+    }
   }
   const fixturePassword=finalRelease?randomBytes(24).toString('base64url'):'DisposableStockUi-2026!';
   const passwordHash=await bcrypt.hash(fixturePassword,10);

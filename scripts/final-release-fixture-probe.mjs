@@ -1,7 +1,7 @@
 import pg from 'pg';
 import {readFile,mkdir,writeFile} from 'node:fs/promises';
 import {assertIsolatedTestDatabase} from '../api/testDatabaseGuard.js';
-const directory='generated-artifacts/final-release-gate/browser-evidence';
+import {releaseBrowserEvidence as directory} from './release-evidence-paths.mjs';
 export async function fixture(){
  const m=JSON.parse(await readFile(`${directory}/environment.json`,'utf8'));
  if(!m.disposable||!/^stock_audit_[a-f0-9]{32}$/.test(m.isolatedDatabase))throw Error('Unknown owned fixture');

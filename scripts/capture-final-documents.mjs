@@ -1,8 +1,9 @@
 import {chromium} from 'playwright';
 import {fixture} from './final-release-fixture-probe.mjs';
 import {readFile,mkdir,writeFile} from 'node:fs/promises';
+import {releaseEvidenceRoot} from './release-evidence-paths.mjs';
 const {m,db}=await fixture();await db.end();
-const dir='generated-artifacts/final-release-gate/documents';
+const dir=releaseEvidenceRoot+'/documents';
 await mkdir(dir,{recursive:true});
 const password=JSON.parse(await readFile(m.authFile,'utf8')).password;
 const browser=await chromium.launch({headless:true,executablePath:'/repl/tools/bin/chromium',args:['--no-sandbox']});

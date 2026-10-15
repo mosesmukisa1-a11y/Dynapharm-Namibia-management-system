@@ -3,7 +3,7 @@ import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
 import http from 'node:http';
 import assert from 'node:assert/strict';
-const dir='generated-artifacts/final-release-gate';
+import {releaseEvidenceRoot as dir} from './release-evidence-paths.mjs';
 const {m,db}=await fixture(),origin=`http://127.0.0.1:${m.backendPort}`;
 const password=JSON.parse(await readFile(m.authFile,'utf8')).password;
 const login=await fetch(origin+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},
