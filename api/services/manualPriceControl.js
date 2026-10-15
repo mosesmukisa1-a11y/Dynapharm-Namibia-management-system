@@ -73,7 +73,7 @@ export async function activateManualPrice(id,input,user){
     const after=Object.fromEntries(fields.map(k=>[k,Number(h['new_'+k])]));
     if(fields.some(k=>before[k]===null||before[k]===undefined)||!same(row,before))
       throw fail('Live prices differ from the scheduled prior prices; review rather than overwrite');
-    if(fields.some(k=>!Number.isFinite(after[k])||after[k]<0)||after.dp<=0||after.cp<=0)
+    if(fields.some(k=>h['new_'+k]===null||h['new_'+k]===undefined||!Number.isFinite(after[k])||after[k]<0)||after.dp<=0||after.cp<=0)
       throw fail('Scheduled prices are invalid',422);
     const updated=await update(client,row,after,actor);
     await client.query("UPDATE product_price_history SET status='applied' WHERE id=$1",[h.id]);

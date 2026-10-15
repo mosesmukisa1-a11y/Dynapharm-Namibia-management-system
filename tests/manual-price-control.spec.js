@@ -73,6 +73,13 @@ describe('manual global scheduled price control',()=>{
     await expect(activateManualPrice(h.id,input,gm)).rejects.toMatchObject({status:409});
     expect(Number((await state(p.id)).dp)).toBe(100);
   });
+  it('does not convert missing scheduled CIF evidence to zero',async()=>{
+    const {p,h}=await seed();
+    await query('UPDATE product_price_history SET new_cif=NULL WHERE id=$1',[h.id]);
+    await expect(activateManualPrice(h.id,input,gm)).rejects.toMatchObject({status:422});
+    expect(Number((await state(p.id)).dp)).toBe(100);
+    expect(Number((await state(p.id)).cif)).toBe(20);
+  });
   it('serializes concurrent activation and returns the committed action on uncertain-response retry',async()=>{
     const {p,h}=await seed();
     const results=await Promise.all([activateManualPrice(h.id,input,gm),activateManualPrice(h.id,input,gm)]);

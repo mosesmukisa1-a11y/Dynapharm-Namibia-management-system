@@ -43,6 +43,7 @@ export default function ManualPriceControl({onChanged}){
     {(data?.pending||[]).map(p=><div key={p.id} className="border-t py-3">
       <strong>{p.description}</strong> · Product {p.product_id} · Schedule {p.id} · Global<br/>
       Effective {String(p.effective_from).slice(0,10)} Africa/Windhoek · DP {p.live_dp} → {p.new_dp} · CP {p.live_cp} → {p.new_cp}
+      {' '}· CIF {p.live_cif??'Missing'} → {p.new_cif??'Missing'} · BV {p.live_bv??'Missing'} → {p.new_bv??'Missing'}
       <button type="button" className="ml-3 bg-red-700 text-white rounded px-3 py-1"
         disabled={!enabled||String(p.effective_from).slice(0,10)>data.today} onClick={()=>act(p.id,'activate')}>
         Activate schedule {p.id}
@@ -52,6 +53,8 @@ export default function ManualPriceControl({onChanged}){
     <h4 className="font-semibold mt-3">Recent audited actions</h4>
     {(data?.actions||[]).map(a=><div key={a.id} className="border-t py-2 text-sm">
       {a.description} · {a.action} · History {a.history_id} · {a.actor_name} · {a.approval_reference} · {a.created_at}
+      <span className="block">DP {a.before_prices.dp} → {a.after_prices.dp} · CP {a.before_prices.cp} → {a.after_prices.cp}
+        {' '}· CIF {a.before_prices.cif} → {a.after_prices.cif} · BV {a.before_prices.bv} → {a.after_prices.bv}</span>
       {a.action==='activation'&&!reversed.has(a.history_id)&&<button type="button" disabled={!enabled}
         className="ml-2 border border-red-600 rounded px-2 py-1" onClick={()=>act(a.history_id,'compensate')}>
         Compensate activation {a.history_id}
