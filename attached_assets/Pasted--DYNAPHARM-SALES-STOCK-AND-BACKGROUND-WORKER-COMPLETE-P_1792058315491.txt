@@ -1,0 +1,681 @@
+# DYNAPHARM SALES, STOCK AND BACKGROUND WORKER
+# COMPLETE PRE-PUBLICATION IMPLEMENTATION AND RELEASE GATE
+
+You are working on the Dynapharm Namibia Management System.
+
+Execute this task end to end. Inspect the existing repository before changing anything and follow its frameworks, architecture, database layer, naming conventions, scripts and test patterns.
+
+Do not publish or modify production during this task.
+
+Known release references:
+
+- Release candidate: 843acf388dfb0d9785760fb9ee1cac3a9f261a58
+- Guarded rollback commit: fcbb9d774853200d52be59ff8745b50c5fdcb6e5
+- Raw production commit: 456ac456f3eaa4b25293b22d05fe8346dfab8c38
+- Raw production tag: production-before-sales-stock-2026-10-15
+- Guarded rollback branch: production-rollback-code-only-2026-10-15
+
+These references must be verified before use. Stop and report a mismatch rather than guessing.
+
+==================================================
+1. OBJECTIVE
+==================================================
+
+Prepare the application for a safe production release by:
+
+1. Preserving the completed Branch Sales and Stock Portal fixes.
+2. Keeping the web service startup code-only and free of automatic mutations.
+3. Separating stock background operations into a dedicated worker.
+4. Repairing or quarantining unsafe background jobs.
+5. Protecting stock movements, valuations, batches, transfers and reports.
+6. Providing a tested release and guarded rollback procedure.
+7. Returning a clear release decision without publishing.
+
+==================================================
+2. NON-NEGOTIABLE SAFETY RULES
+==================================================
+
+1. Do not publish, deploy, promote or restart production.
+2. Do not change production environment variables.
+3. Do not write to the production database.
+4. Do not execute production migrations or schema synchronization.
+5. Do not run seeds, stock repairs, backfills or scheduled jobs against production.
+6. Do not change historical sales, stock movements, batches, transfers, prices or financial records.
+7. Use an isolated production-like database for every write-capable test.
+8. Keep secrets out of source code, logs and generated artifacts.
+9. Work from the verified release candidate in a new branch.
+10. Do not discard unrelated existing changes.
+11. Do not enable a task merely because it exists in the repository.
+12. Stop and report BLOCKED if production safety cannot be demonstrated.
+
+Before editing, record:
+
+- current branch;
+- current commit;
+- working-tree status;
+- runtime versions;
+- package-manager version;
+- database engine and migration state;
+- existing start, build and test commands.
+
+If the working tree contains unrelated changes, preserve them and document them.
+
+==================================================
+3. PRESERVE SAFE WEB STARTUP
+==================================================
+
+The production web service must remain in code-only startup mode:
+
+STARTUP_MODE=code-only
+ALLOW_SCHEMA_SYNC=false
+ALLOW_REFERENCE_SEEDS=false
+ALLOW_INVENTORY_SEED=false
+ALLOW_STOCK_SUMMARY_DDL=false
+ENABLE_STOCK_SCHEDULER=false
+ENABLE_STOCK_HEALTH_DIGEST=false
+
+Adapt configuration loading to the existing application, but retain these safety meanings.
+
+Confirm that web startup:
+
+- performs no schema mutation;
+- performs no migration automatically;
+- performs no reference-data seeding;
+- performs no inventory seeding or repair;
+- performs no stock-summary DDL;
+- starts no scheduler, timer, digest or backfill;
+- does not activate pending prices;
+- does not create reorder requests;
+- does not mutate data through readiness or health endpoints;
+- still permits authorized staff business transactions after login.
+
+Fail closed when production safety variables are missing, malformed or contradictory.
+
+Add startup-contract tests that fail if any forbidden operation is attempted.
+
+Provide a web command following project conventions, for example:
+
+npm run start:web
+
+Do not replace a valid existing command unnecessarily.
+
+==================================================
+4. CREATE A DEDICATED STOCK WORKER
+==================================================
+
+Create a separately deployable worker process. It must not start from the web server command and must not listen for public HTTP traffic unless a private authenticated health endpoint is required by the hosting platform.
+
+Provide a separate command following project conventions, for example:
+
+npm run start:stock-worker
+
+The worker must use an explicit task allowlist. Newly discovered jobs must default to disabled.
+
+Assess these tasks individually:
+
+- daily stock summaries;
+- weekly stock summaries;
+- monthly stock summaries;
+- missed-run summary backfill;
+- expiry scanning;
+- receipt reminders;
+- approval escalation;
+- warehouse reorder requests;
+- redistribution suggestions;
+- inventory drift detection;
+- inventory drift repair;
+- stock health digest;
+- scheduled price activation;
+- stuck-approval processing.
+
+Classify each task as exactly one of:
+
+- ENABLED
+- DISABLED_PENDING_REPAIR
+- DISABLED_UNSAFE
+- NOT_FOUND
+
+Document why each classification was chosen.
+
+No task may run unless it is explicitly enabled through both configuration and the internal allowlist.
+
+==================================================
+5. WORKER SAFETY CONTROLS
+==================================================
+
+Every enabled task must include:
+
+- a stable task identifier;
+- single-run distributed locking;
+- idempotency protection;
+- bounded retries with exponential backoff;
+- execution timeout;
+- transaction boundaries;
+- structured audit logs;
+- start, success, skip and failure records;
+- rows-read and rows-written counts;
+- business date;
+- UTC event timestamp;
+- Africa/Windhoek display timestamp;
+- correlation/run ID;
+- failure alerting;
+- graceful shutdown;
+- dry-run support where practical.
+
+Prevent overlapping executions across worker instances.
+
+A retry or restart must never duplicate:
+
+- stock movements;
+- stock requests;
+- transfer records;
+- batch receipts;
+- summaries;
+- notifications;
+- approval events;
+- price activations;
+- financial entries.
+
+Use database-backed locking or another established distributed-locking mechanism already compatible with the project. Do not depend only on in-memory locks.
+
+Record idempotency keys and task-run history in an auditable form. Add schema through the normal migration mechanism only in the isolated development/test environment. Do not apply migrations to production.
+
+==================================================
+6. TIMEZONE AND BUSINESS DATE
+==================================================
+
+Use Africa/Windhoek explicitly for all business schedules and operational display dates.
+
+Use a documented timestamp policy:
+
+- immutable event timestamps stored consistently, preferably UTC;
+- business dates calculated using Africa/Windhoek;
+- UI and reports labelled clearly;
+- no reliance on the host machine timezone;
+- daylight-saving and midnight-boundary tests included where applicable.
+
+Verify that transactions cannot be assigned to the wrong business day near midnight.
+
+==================================================
+7. TASK-BY-TASK VERIFICATION
+==================================================
+
+For every worker task:
+
+1. Identify the source module and entry point.
+2. Identify all tables and records read.
+3. Identify all tables and records written.
+4. Document its trigger and schedule.
+5. Verify authentication or service authorization.
+6. Verify branch and warehouse scoping.
+7. Test duplicate execution.
+8. Test concurrent execution.
+9. Test retries after partial failure.
+10. Test transaction rollback.
+11. Test timeout behavior.
+12. Test audit logs and alerts.
+13. Run only against an isolated production-like database.
+14. Record evidence and final classification.
+
+Apply these specific requirements:
+
+A. STOCK SUMMARIES
+
+- Summary generation must be deterministic.
+- Rerunning a period must not double-count.
+- Daily, weekly and monthly boundaries must use Africa/Windhoek.
+- Backfills must be bounded and explicitly authorized.
+- Summaries must reconcile to underlying movement records.
+- Existing historical records must not be rewritten silently.
+
+B. HEALTH DIGEST
+
+- Repair the incompatible stock health-digest query.
+- Verify its joins, filters, aliases, null handling and permissions.
+- Add realistic populated-data tests.
+- If it cannot be proved correct, classify it DISABLED_PENDING_REPAIR.
+- Do not enable it based only on a successful empty-database test.
+
+C. SCHEDULED PRICE ACTIVATION
+
+- A scheduled price must activate exactly once.
+- Preserve complete price history.
+- Use the intended effective business date.
+- Confirm branch/global price scope.
+- Prevent activation of invalid, overlapping or unapproved prices.
+- Confirm Branch Sales and Stock use the correct active DP price.
+- Do not overwrite CP or historical transaction valuations.
+
+D. REORDER REQUESTS
+
+- An ordinary walk-in sale must not automatically create an open stock request unless an explicitly documented and approved reorder rule is satisfied.
+- Deduplicate open reorder requests.
+- Record the precise rule and threshold that caused each request.
+- Respect branch, warehouse and product scope.
+- Do not create requests for inactive products or invalid locations.
+
+E. INVENTORY DRIFT
+
+- Separate detection from repair.
+- Detection may report discrepancies without changing balances.
+- Automatic repair must remain DISABLED_UNSAFE unless separately approved and fully proven.
+- Never manufacture balancing movements without an authorized reason, user/service identity and immutable audit trail.
+
+F. TRANSFERS, DISPATCH AND RECEIPT
+
+- Normalize transfer statuses through one state machine.
+- Block contradictory approval, rejection, dispatch, cancellation and receipt actions.
+- Enforce valid state transitions server-side.
+- Preserve source and destination warehouse/branch scope.
+- Preserve batch, expiry and document traceability.
+- Prevent over-dispatch and over-receipt.
+- Track partial dispatch, partial receipt and returned quantities correctly.
+- Ensure retries do not duplicate movements.
+- Link every movement to the originating request, transfer, dispatch or receipt document.
+
+G. STOCK VALUATION
+
+- Stock movement records must carry required DP and CP information according to the established accounting rules.
+- Branch Sales must use the correct active DP price.
+- Never infer missing DP or CP silently.
+- Show missing valuation as an explicit data-quality exception.
+- Historical transactions must retain transaction-time values.
+- Add tests for sale, return, receipt, transfer, write-off and adjustment movements.
+- Reconcile quantity multiplied by transaction-time unit value to movement totals.
+- Confirm Finance, MIS, GM and Director reports use the intended valuation basis.
+
+H. BATCH AND EXPIRY
+
+- Preserve batch number and expiry date through receipt, transfer, dispatch, branch receipt, sale and return where required.
+- Prevent selling unavailable or expired batches when policy forbids it.
+- Define FEFO/FIFO behavior according to existing business rules.
+- Report stock without batch history as a data-quality exception.
+- Do not alter physical balances while repairing display-only batch-history gaps.
+
+==================================================
+8. SALES-TO-STOCK INTEGRATION
+==================================================
+
+Verify the complete lifecycle for one isolated test sale:
+
+1. Authorized branch user selects an in-stock product.
+2. System resolves the correct branch and active DP price.
+3. Sale is committed once.
+4. Branch stock decreases once.
+5. Stock movement ledger records quantity, DP, CP, business date, actor and reference.
+6. No unrelated open request is created.
+7. Finance receives the intended financial effect.
+8. MIS, GM and Director reporting reflects the transaction with correct scope.
+9. Return or reversal follows an explicit compensating workflow.
+10. Retrying the sale request cannot create a duplicate transaction.
+
+Use synthetic test data only. Do not create this transaction in production.
+
+Test:
+
+- successful sale;
+- duplicate submission;
+- insufficient stock;
+- invalid branch;
+- unauthorized user;
+- missing DP;
+- inactive product;
+- expired batch;
+- server interruption during commit;
+- approved reversal or return.
+
+==================================================
+9. REPORTING RESILIENCE
+==================================================
+
+Identify every screen and API that depends on precomputed stock summaries.
+
+For each report, implement and document one approved behavior:
+
+- verified live-data fallback;
+- clearly labelled last-generated summary with generation timestamp;
+- temporary unavailable state with a clear operational message.
+
+Do not:
+
+- display stale summaries as current;
+- return misleading zero values;
+- hide missing periods as successful empty results;
+- mix DP and CP without clear labels;
+- silently omit movements with missing valuation.
+
+Verify report effects in:
+
+- Branch Stock;
+- Stock Management;
+- Finance;
+- MIS;
+- GM;
+- Director;
+- inventory valuation;
+- movement ledger;
+- batch/expiry reports;
+- transfer and receiving reports;
+- daily sales and stock reports.
+
+Apply branch and role scope server-side, not only in the interface.
+
+==================================================
+10. STOCK PORTAL USABILITY
+==================================================
+
+Retain all required functionality while keeping navigation simple.
+
+Group existing tabs logically without deleting required routes:
+
+- Command Center
+- Inventory
+- Receiving
+- Distribution and Transfers
+- Batch and Expiry
+- Barcode
+- Requests and Reorder
+- Movements and Trace
+- Reports
+- Configuration, where authorized
+
+Requirements:
+
+- preserve direct links and existing permissions;
+- show DP and CP labels unambiguously;
+- show business date separately from event timestamp where needed;
+- provide movement filters by branch, warehouse, product, document, type, date and status;
+- provide read-only document tracing from transaction to movement and report;
+- show loading, empty, stale, unavailable and error states clearly;
+- prevent actions that conflict with current transfer status;
+- maintain usable keyboard and barcode-scanner flows;
+- do not expose financial fields to unauthorized roles.
+
+Do not perform broad visual redesigns unrelated to stock correctness.
+
+==================================================
+11. AUTHORIZATION AND DATA ISOLATION
+==================================================
+
+Test server-side authorization for:
+
+- branch users;
+- Stock staff;
+- Finance;
+- MIS;
+- GM;
+- Director;
+- unauthorized users;
+- cross-branch access attempts.
+
+Verify that:
+
+- branch users cannot read or mutate another branch’s stock;
+- role restrictions apply to exports and print views;
+- guessed IDs cannot bypass scope;
+- worker credentials have only required permissions;
+- worker tasks cannot invoke unrelated administrative operations;
+- audit records identify the actor or service identity.
+
+==================================================
+12. PRODUCTION-SAFE SMOKE CONTRACT
+==================================================
+
+Retain the previously approved exact read-only GET allowlist.
+
+Do not broaden it during this task.
+
+Do not treat normal authenticated browser navigation as read-only until /api/auth/me and every route it invokes are proved mutation-free.
+
+The production smoke harness must:
+
+- issue only exact allowlisted GET requests;
+- reject redirects to unapproved routes;
+- send no POST, PUT, PATCH or DELETE requests;
+- trigger no database writes;
+- start no jobs or timers;
+- create no files;
+- leave database fingerprints unchanged;
+- log each requested URL, status and duration without secrets.
+
+Do not use a normal browser session as a zero-write production smoke test when page loading may call mutation-capable endpoints.
+
+==================================================
+13. TESTING
+==================================================
+
+Run and record:
+
+- complete unit tests;
+- complete integration tests;
+- web startup-contract tests;
+- worker startup-contract tests;
+- task allowlist tests;
+- task idempotency tests;
+- distributed-lock and concurrency tests;
+- retry and partial-failure tests;
+- transaction rollback tests;
+- timezone and business-date tests;
+- branch and role-isolation tests;
+- DP/CP valuation tests;
+- batch and expiry tests;
+- transfer state-machine tests;
+- report freshness and fallback tests;
+- production-safe smoke-contract tests;
+- production build;
+- web-service release rehearsal;
+- worker release rehearsal;
+- guarded rollback rehearsal.
+
+Use realistic populated fixtures, not only empty databases.
+
+For database verification, compare before/after fingerprints of protected tables. Include row counts and stable checksums where practical.
+
+The main test suite, focused suites and build must all pass. Do not hide skipped, flaky or failing tests. Document any test that cannot run and treat material gaps as PARTIALLY VERIFIED or BLOCKED.
+
+==================================================
+14. RELEASE REHEARSAL
+==================================================
+
+Perform a non-production rehearsal using the verified release candidate plus the worker changes.
+
+Verify:
+
+- clean dependency installation;
+- successful build;
+- web startup with code-only variables;
+- separate worker startup;
+- disabled tasks remain stopped;
+- enabled tasks run only on schedule or explicit authorized invocation;
+- web restart does not execute worker tasks;
+- worker restart does not duplicate work;
+- no schema changes happen during startup;
+- health and readiness checks are mutation-free;
+- shutdown completes without abandoned locks.
+
+Do not publish.
+
+==================================================
+15. GUARDED ROLLBACK REHEARSAL
+==================================================
+
+Verify that the guarded rollback commit exists and is usable:
+
+fcbb9d774853200d52be59ff8745b50c5fdcb6e5
+
+The rollback must preserve safe code-only startup and must not restore unsafe startup mutations.
+
+Test rollback in an isolated rehearsal environment:
+
+- build;
+- startup-contract tests;
+- approved HTTP allowlist;
+- database fingerprints;
+- no write attempts;
+- no scheduler startup;
+- no filesystem mutation.
+
+Do not execute rollback in production.
+
+Document separate rollback behavior for:
+
+- web code;
+- worker code;
+- environment variables;
+- database migrations.
+
+Do not propose destructive database rollback. Use forward-compatible or forward-fix procedures for schema changes.
+
+==================================================
+16. MANUAL OPERATIONS DURING QUARANTINE
+==================================================
+
+For every disabled task, document a temporary manual procedure including:
+
+- responsible role;
+- frequency;
+- read-only review steps;
+- authorized action steps;
+- duplicate-prevention check;
+- audit evidence;
+- escalation path.
+
+At minimum cover:
+
+- pending scheduled price review;
+- stock-summary freshness;
+- expiry review;
+- unreceived dispatches;
+- stuck approvals;
+- open reorder requests;
+- health-digest replacement checks;
+- inventory discrepancies.
+
+Do not automate unsafe tasks merely to remove manual work.
+
+==================================================
+17. REQUIRED ARTIFACTS
+==================================================
+
+Create:
+
+generated-artifacts/stock-worker/report.md
+generated-artifacts/stock-worker/task-matrix.md
+generated-artifacts/stock-worker/database-access-map.md
+generated-artifacts/stock-worker/test-matrix.md
+generated-artifacts/stock-worker/release-runbook.md
+generated-artifacts/stock-worker/rollback-runbook.md
+generated-artifacts/stock-worker/manual-operations.md
+generated-artifacts/stock-worker/test-evidence/
+
+The main report must include:
+
+- starting and final branch/commit;
+- files changed;
+- commits created;
+- unrelated changes preserved;
+- exact web and worker commands;
+- production environment variables;
+- complete task inventory;
+- task classifications and reasons;
+- schedules and timezone rules;
+- database reads and writes;
+- safety controls;
+- authorization findings;
+- sales-to-stock trace results;
+- DP/CP findings;
+- report behavior;
+- test commands and totals;
+- build result;
+- release-rehearsal result;
+- rollback-rehearsal result;
+- unresolved risks;
+- manual procedures;
+- exact recommended release sequence.
+
+Do not include credentials, tokens or connection strings.
+
+==================================================
+18. REQUIRED PRODUCTION CONFIGURATION
+==================================================
+
+Document, but do not apply, the final web configuration:
+
+STARTUP_MODE=code-only
+ALLOW_SCHEMA_SYNC=false
+ALLOW_REFERENCE_SEEDS=false
+ALLOW_INVENTORY_SEED=false
+ALLOW_STOCK_SUMMARY_DDL=false
+ENABLE_STOCK_SCHEDULER=false
+ENABLE_STOCK_HEALTH_DIGEST=false
+
+Document separate worker configuration using explicit task flags. All worker tasks must default to false unless deliberately approved.
+
+Example only; adapt names to the codebase:
+
+WORKER_ENABLED=true
+WORKER_TIMEZONE=Africa/Windhoek
+WORKER_DAILY_SUMMARY=false
+WORKER_WEEKLY_SUMMARY=false
+WORKER_MONTHLY_SUMMARY=false
+WORKER_SUMMARY_BACKFILL=false
+WORKER_EXPIRY_SCAN=false
+WORKER_RECEIPT_REMINDERS=false
+WORKER_APPROVAL_ESCALATION=false
+WORKER_REORDER_REQUESTS=false
+WORKER_REDISTRIBUTION=false
+WORKER_DRIFT_DETECTION=false
+WORKER_DRIFT_REPAIR=false
+WORKER_HEALTH_DIGEST=false
+WORKER_SCHEDULED_PRICE_ACTIVATION=false
+WORKER_STUCK_APPROVALS=false
+
+Enable only tasks proven safe by this task. Record every enabled value and its evidence.
+
+==================================================
+19. FINAL RELEASE GATE
+==================================================
+
+Return exactly one headline status:
+
+READY FOR EXPLICIT PUBLICATION AUTHORIZATION
+
+or:
+
+PARTIALLY VERIFIED - DO NOT PUBLISH
+
+or:
+
+BLOCKED - DO NOT PUBLISH
+
+Mark READY only when all of the following are true:
+
+- web startup is code-only and mutation-free;
+- production startup configuration fails closed;
+- the worker is independently deployable;
+- web startup cannot start worker tasks;
+- each enabled task is allowlisted, tested, idempotent, locked and auditable;
+- unsafe tasks remain disabled;
+- stock health digest is repaired and verified or remains quarantined;
+- scheduled price behavior is safe or remains quarantined;
+- reports cannot silently present stale data as current;
+- branch and role isolation pass;
+- DP/CP valuation tests pass;
+- transfer and batch traceability tests pass;
+- full tests pass;
+- production build passes;
+- release rehearsal passes;
+- guarded rollback rehearsal passes;
+- no production write, configuration change, restart or publication occurred.
+
+If READY, provide a proposed publication runbook but do not execute it.
+
+End with these explicit declarations:
+
+Production database modified: YES or NO
+Production environment modified: YES or NO
+Production restarted: YES or NO
+Production published: YES or NO
+Production rollback executed: YES or NO
+
+All five values must remain NO for this task.

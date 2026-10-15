@@ -518,3 +518,17 @@ mtime_ms = 1792057778142
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/1ad8a260-b12f-48f4-9b3d-77ebd1d0c66c/97636ad5-2119-456a-8e18-459e909ed40a"
 storage_version_token = "1792057863117554"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "SDfQqQKvM2CYh8-Yjdlou"
+uri = "file://generated-artifacts/stock-worker/report.md"
+type = "text"
+title = "Stock worker and sales audit report"
+description = "Implementation, isolated test evidence, remaining release blockers, migration plan and rollback boundaries. PARTIALLY VERIFIED — do not publish."
+logical_id = "dcd98a62-97af-4960-879a-6b0b4363d336"
+content_hash = "sha256:fcd052f67bac44c0abddf0611586713834e1d3bc75ec2221f4550e80d7cadaef"
+size = 10504
+mtime_ms = 1792061911790
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/dcd98a62-97af-4960-879a-6b0b4363d336/95d68dcf-df5f-4e2a-9a05-5b7877d7eb1c"
+storage_version_token = "1792062030462154"
+content_type = "text/markdown"
