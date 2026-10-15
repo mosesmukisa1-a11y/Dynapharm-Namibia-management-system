@@ -1,0 +1,261 @@
+# Replit Publication Script: Verified Sales and Stock Release
+
+Paste this prompt into Replit Agent to publish the verified release.
+
+---
+
+## Replit Agent Prompt
+
+Publish the verified Sales and Stock code release for the Dynapharm Namibia Management System under the exact controls below.
+
+This authorization is for a **code deployment only**. It does not authorize database migrations, stock transactions, financial transactions, historical repairs, backfills, balance changes, price changes, deletions, or automated data correction.
+
+## Verified release basis
+
+The narrow release gate passed:
+
+- Full unit suite: `273/273` passed.
+- Preserved isolated database suite: `25/25` passed.
+- Production build passed.
+- Stock 10-route sidebar/direct/reload matrix passed.
+- Stock cross-portal rendering matrix passed.
+- Read-only GET error/Retry behavior passed.
+- Delayed stale-branch response protection passed.
+- GM and Finance dashboard branch reads use explicit authorized branch scopes.
+- Partial branch failures show `Incomplete data` and do not masquerade as company-wide zero totals.
+- Daily Sales toggle and Refresh are accessible sibling buttons with no nested-button warning.
+- No business records were changed during verification.
+
+Candidate source checkpoint under review:
+
+```text
+90b7ab975536150f133afcc56e1143410c969231
+```
+
+Source rollback checkpoint before the narrow GM/Finance repair:
+
+```text
+84df93b7a1df34219db5c8e9c01741325d7efaf9
+```
+
+Confirm the release candidate contains the verified fixes before deployment. Do not assume the branch HEAD is identical without checking.
+
+## Step 1: Pre-publication safety gate
+
+Before deploying:
+
+1. Record the currently deployed production version/checkpoint.
+2. Record the release candidate commit/checkpoint.
+3. Confirm the production rollback mechanism is available.
+4. Confirm there are no pending migrations required by this release.
+5. Confirm no deployment hook will run a migration, seed, backfill, repair, stock automation, or destructive task.
+6. Confirm environment variables and production database target are unchanged.
+7. Confirm the diff contains only the reviewed application changes and intended supporting files.
+
+Required report fields:
+
+```text
+Current production checkpoint:
+Release candidate checkpoint:
+Rollback checkpoint:
+Migration plan: NONE
+Data repair plan: NONE
+Business write plan: NONE
+```
+
+If the current production checkpoint cannot be identified or rollback cannot be prepared, stop. Do not publish.
+
+## Step 2: Final build gate
+
+Run once against the exact release candidate:
+
+```sh
+npm run build
+npx vitest run --project=unit --reporter=json --outputFile=generated-artifacts/sales-stock-integration/publication-unit-results.json
+```
+
+Expected minimum:
+
+- build exit code `0`
+- unit tests at least `273/273` passing
+- zero failed or skipped tests unless explicitly explained and reviewed
+
+If totals change because new tests were added, report the exact new authoritative totals. Any failure blocks publication.
+
+Do not rerun or mutate production database tests during publication.
+
+## Step 3: Publish code only
+
+Publish the verified application code using the project's normal Replit deployment workflow.
+
+During publication:
+
+- do not run SQL migrations;
+- do not execute seeds;
+- do not run historical repair scripts;
+- do not run stock reconstruction;
+- do not write off stock;
+- do not create sales, imports, transfers, receipts, approvals, returns, counts, or refunds;
+- do not change product prices;
+- do not clear caches by deleting business data;
+- do not weaken branch authorization;
+- do not enable automatic repair jobs.
+
+Capture:
+
+- deployment ID/version
+- deployed commit/checkpoint
+- start and finish timestamps
+- deployment logs
+- application health result
+
+If deployment reports an unexpected migration or business-write action, stop or roll back immediately.
+
+## Step 4: Immediate read-only production health check
+
+After deployment, use authenticated read-only GET/navigation checks only.
+
+Verify:
+
+```text
+/branch
+/finance
+/gm
+/director
+/mis
+/stock?view=aiDashboard
+/stock?view=branchStock
+/stock?view=inventory
+/stock?view=batch
+/stock?view=stockReports
+/stock?view=costReport
+/stock?view=valuation
+/stock?view=reorder
+/stock?view=barcode
+/stock?view=trace
+```
+
+For each relevant page confirm:
+
+- authenticated content renders, not only the shell;
+- no unexpected `400` or `500` response occurs;
+- no endless loading state occurs;
+- no nested-button/hydration warning occurs;
+- branch scope is correct;
+- foreign-branch requests remain denied;
+- Finance/GM partial data does not display as a false complete zero;
+- Stock Retry/error boundary remains available for read failures.
+
+Do not click any control that submits a business transaction.
+
+## Step 5: Mandatory populated-history smoke test
+
+Using an approved authenticated administrator/read scope, perform read-only searches for:
+
+```text
+TU-2026-000122
+WALK-1791966024927-UDFO
+QA-20261014-001
+TRF-1791971012005-B2ZFQ4
+```
+
+Search Trace Stock and the paged Stock Movement Ledger.
+
+For each reference record:
+
+- found/not found
+- source table/type exposed by the application
+- receipt/sale/transfer/movement identity
+- product
+- batch
+- branch/location scope
+- quantity
+- DP value
+- customer charged value where applicable
+- original received DP/CIF evidence status
+- timestamp/business date
+- pagination page/cursor if applicable
+- any explicit source gap or exclusion
+
+Rules:
+
+- Do not invent linkage from similar product or customer names.
+- Do not backfill missing records.
+- Do not alter balances.
+- Do not substitute current catalogue prices as original evidence.
+- Keep DP, CP/charged revenue, original received DP, CIF, and estimates separate.
+
+## Step 6: Production numeric invariants
+
+Capture read-only before/after production summaries for the deployment window:
+
+```text
+Total company units
+Warehouse units
+Branch units
+In-transit units
+Reserved/held units
+Stock Value (original DP)
+Missing original-DP units
+Original CIF value
+Missing original-CIF units
+Sales count
+Open stock request count
+```
+
+The deployment itself must not change business balances or counts. Natural concurrent user transactions may occur; if values change, identify recorded business references and timestamps before deciding whether the deployment caused the difference.
+
+Do not force totals to match across portals when scopes or evidence bases differ. Explain exact scope/basis differences.
+
+## Step 7: Residual protections
+
+Do not rely on the scheduled health digest until this separate known issue is reviewed:
+
+```text
+api/services/stockAutomation.js references nonexistent
+live_product_prices.distributor_price
+```
+
+If that automation is currently enabled and failing, report it. Do not change or enable it as part of this publication unless separately authorized.
+
+Finance Remittance, Deposit, and Expense tabs are outside the narrow verified dashboard scope. Perform only basic read-only load checks and report any scope errors; do not expand this deployment with new fixes.
+
+## Rollback conditions
+
+Roll back the code deployment if any of these occur:
+
+- application fails health check;
+- authenticated core portals fail to render;
+- Stock views regress to shell-only content;
+- GM/Finance unscoped branch requests return unexpected `400` responses;
+- cross-branch data becomes visible to unauthorized branch roles;
+- deployment triggers an unauthorized migration or business write;
+- stock totals change without a recorded business transaction;
+- severe frontend runtime errors block normal use.
+
+Rollback means restoring the recorded last-known-healthy production code/deployment checkpoint. Do not restore or rewrite the business database merely to reverse this code release.
+
+## Final publication report
+
+Stop after publication and read-only smoke verification. Report:
+
+```text
+Publication status: SUCCESS / ROLLED BACK / BLOCKED
+Previous production checkpoint:
+Deployed checkpoint:
+Deployment ID:
+Build result:
+Unit result:
+Migration executed: NO
+Business writes executed: NO
+Core portal smoke result:
+Stock route smoke result:
+Populated-history references:
+Numeric invariant result:
+Console/network errors:
+Residual risks:
+Rollback readiness:
+```
+
+Do not perform additional repairs automatically. If a smoke test fails, stop, preserve evidence, and report whether rollback was performed.
+

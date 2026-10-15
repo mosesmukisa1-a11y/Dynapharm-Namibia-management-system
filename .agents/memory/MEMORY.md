@@ -26,3 +26,4 @@
 - [Client history safety](client-history-safety.md) — captured-source history is not clinical approval or a second stock/accounting posting; test real session and HTTP contracts.
 - [Bulk stock maintenance](bulk-stock-maintenance.md) — operator execution, exact scope freezing, stale staff authority and safe audit-resource cleanup.
 - [Historical repair authority](historical-sale-repair-authority.md) — read-only scope is not live approval; canonical primary plans and verified backups require separate operator authorization.
+- [Code-only release gates](code-only-release-gates.md) — verify actual production source/recovery and startup side-effect controls before offering publication.

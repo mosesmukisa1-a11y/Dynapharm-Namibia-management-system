@@ -476,3 +476,17 @@ mtime_ms = 1792053440762
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/ab37a4ef-2c0c-415c-8e78-e3bcda558558/7c352555-9902-46f6-b957-bcc2a01405ea"
 storage_version_token = "1792053480054310"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "mTfQQOxpXw-vJN6oZYLu2"
+uri = "file://generated-artifacts/sales-stock-integration/publication/report.md"
+type = "text"
+title = "Publication preflight — blocked safety gates"
+description = "Records verified candidate, current public health, missing production checkpoint/rollback identity, existing startup migration/seed/scheduler side effects, and exact unblocking requirements. No publication or production data operations performed."
+logical_id = "d1bb47c3-23ee-410d-b8f4-c07678962edd"
+content_hash = "sha256:b10ccb3fb9b8848ae8cccc18ca9fa694472151a79f3e24c64b6e1290d7529ece"
+size = 9440
+mtime_ms = 1792054123266
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/d1bb47c3-23ee-410d-b8f4-c07678962edd/fcb982b6-8288-4e96-9652-78f082647d78"
+storage_version_token = "1792054157441665"
+content_type = "text/markdown"
