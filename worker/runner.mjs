@@ -32,9 +32,9 @@ export async function runTask({pool,config,taskId,businessDate=windhoekParts().d
   try{
     locked=(await client.query('SELECT pg_try_advisory_lock($1::bigint) AS locked',[lock])).rows[0].locked;
     if(!locked){emit('skip',{reason:'distributed_lock_busy'});return {status:'skipped',reason:'locked'};}
-    await client.query(`INSERT INTO stock_worker_runs(id,idempotency_key,task_id,business_date,scope_hash,service_actor,status)
-      VALUES($1,$2,$3,$4,$5,'stock-worker','pending') ON CONFLICT(idempotency_key) DO NOTHING`,
-    [randomUUID(),key,taskId,businessDate,scopeHash]);
+    await client.query(`INSERT INTO stock_worker_runs(id,idempotency_key,task_id,business_date,scope_hash,scope_manifest,service_actor,status)
+      VALUES($1,$2,$3,$4,$5,$6::jsonb,'stock-worker','pending') ON CONFLICT(idempotency_key) DO NOTHING`,
+    [randomUUID(),key,taskId,businessDate,scopeHash,JSON.stringify(config.scope)]);
     let run=(await client.query('SELECT * FROM stock_worker_runs WHERE idempotency_key=$1',[key])).rows[0];id=run.id;
     if(['succeeded','dry_run'].includes(run.status)){
       await event('skip',run.attempts,{reason:'already_completed'});return {status:'skipped',runId:id,reason:'completed'};

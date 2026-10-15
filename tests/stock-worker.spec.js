@@ -51,9 +51,14 @@ beforeEach(async()=>{
   }
 });
 afterEach(async context=>{
+  const runs=(await admin.query('SELECT id,task_id,business_date,status,attempts,rows_read,rows_written,service_actor,scope_manifest FROM stock_worker_runs ORDER BY created_at')).rows;
+  for(const run of runs){
+    expect(run.scope_manifest.length).toBeGreaterThan(0);
+    expect(run.scope_manifest.every(s=>['branch','warehouse'].includes(s.type)&&typeof s.id==='string')).toBe(true);
+  }
   stages.push({stage:context.task.name,at:new Date().toISOString(),
     protectedFingerprint:await fingerprint(),
-    runs:(await admin.query('SELECT id,task_id,business_date,status,attempts,rows_read,rows_written,service_actor FROM stock_worker_runs ORDER BY created_at')).rows,
+    runs,
     events:(await admin.query('SELECT kind,attempt,detail FROM stock_worker_events ORDER BY event_at')).rows,
     findings:(await admin.query('SELECT location_type,location_id,finding_type,cached_quantity,known_physical_quantity,difference FROM stock_worker_findings')).rows});
   await mkdir('generated-artifacts/stock-worker/test-evidence',{recursive:true});

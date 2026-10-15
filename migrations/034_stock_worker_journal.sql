@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS stock_worker_runs (
   task_id TEXT NOT NULL,
   business_date DATE NOT NULL,
   scope_hash TEXT NOT NULL,
+  scope_manifest JSONB,
   service_actor TEXT NOT NULL CHECK(service_actor='stock-worker'),
   status TEXT NOT NULL CHECK(status IN ('pending','running','succeeded','failed','dry_run','cancelled')),
   attempts INTEGER NOT NULL DEFAULT 0,
@@ -38,4 +39,7 @@ CREATE TABLE IF NOT EXISTS stock_worker_findings (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE(run_id,location_type,location_id,product_name)
 );
+-- Compatible with an earlier isolated draft: retain old evidence unchanged;
+-- NULL means the old row did not capture its scope, never invent a manifest.
+ALTER TABLE stock_worker_runs ADD COLUMN IF NOT EXISTS scope_manifest JSONB;
 CREATE INDEX IF NOT EXISTS stock_worker_runs_retry_idx ON stock_worker_runs(status,next_retry_at);

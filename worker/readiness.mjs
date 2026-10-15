@@ -1,7 +1,7 @@
 export const JOURNAL_TABLES=['stock_worker_runs','stock_worker_events','stock_worker_findings'];
 export const SOURCE_TABLES=['branches','warehouse_locations','inventory_balances','stock_batches','branch_inventory_batches'];
 const columns={
-  stock_worker_runs:['id','idempotency_key','task_id','business_date','scope_hash','service_actor','status','attempts','next_retry_at','rows_read','rows_written','finished_at'],
+  stock_worker_runs:['id','idempotency_key','task_id','business_date','scope_hash','scope_manifest','service_actor','status','attempts','next_retry_at','rows_read','rows_written','finished_at'],
   stock_worker_events:['id','run_id','kind','attempt','business_date','detail'],
   stock_worker_findings:['id','run_id','location_type','location_id','product_name','finding_type','cached_quantity','known_physical_quantity','difference'],
   branches:['id','status'],warehouse_locations:['id','status'],
