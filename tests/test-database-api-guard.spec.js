@@ -36,6 +36,7 @@ it('verifies the server before permitting application SQL, even without Vitest s
       },
     };
   });
+  client.on=vi.fn(); // Real pg Clients are EventEmitters, including during verification.
   await expect(query('DELETE FROM stock_batches')).rejects.toThrow('shared business databases');
   expect(client.query.mock.calls).toEqual([['SELECT current_database() AS name']]);
   expect(applicationQuery).not.toHaveBeenCalled();
