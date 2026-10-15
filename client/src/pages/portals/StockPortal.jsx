@@ -30,7 +30,7 @@ import {HistoricalRefundLinkForm} from '../../components/HistoricalRefundEvidenc
 import { CustomerReturnInspection, DispatchReturnsTab } from '../../components/LinkedCustomerReturns';
 import { buildReceiptPayload, clearReceiptDraft, readReceiptDraft, writeReceiptDraft, receiptMoney } from '../../lib/stockLifecycle';
 import { getCIFPrice, getDPCPrice, getProductProfit, findProductPrice, getLiveProductList, setLivePrices } from '../../lib/pricing';
-import { formatCurrency, formatDateTime, formatDate, BRANCHES, BRANCH_DETAILS } from '../../lib/constants';
+import { formatCurrency, formatDateTime, formatDate, BRANCHES, BRANCH_DETAILS, getBranchDisplayName } from '../../lib/constants';
 import { Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
 import { Package, Warehouse, Truck, ArrowLeftRight, Globe, BarChart3, ClipboardList, FileSpreadsheet, Zap, Share2, ShoppingCart, Plus, Download, Filter, Search, DollarSign, TrendingUp, Ship, Calendar, CheckCircle, Printer, Tag, Edit2, Clock, XCircle, Brain, AlertTriangle, TrendingDown, MapPin, Users, Activity, Shield, Bell, RefreshCw, Target, Cpu, Megaphone } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -150,7 +150,7 @@ const fmtLocation = (loc) => {
   if (loc === 'country_stock') return 'Country Stock';
   if (loc === 'windhoek_warehouse') return 'Windhoek Warehouse';
   if (loc === 'ondangwa_warehouse') return 'Ondangwa Warehouse';
-  if (loc === 'windhoek_cbd') return 'Windhoek CBD';
+  if (['townshop', 'windhoek_cbd', 'windhoek', 'cbd', 'cdb'].includes(String(loc).toLowerCase())) return getBranchDisplayName(loc);
   // General title case with acronym preservation
   return loc.replace(/_/g, ' ').replace(/\b\w+/g, word =>
     word.toUpperCase() === word && word.length > 1 ? word : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()

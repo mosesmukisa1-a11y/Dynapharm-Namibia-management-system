@@ -26,3 +26,9 @@ A safe release smoke allowlist is endpoint- and mode-specific. Do not equate an 
 **Why:** Legacy read handlers can normalize persisted identity data, and portal scripts automatically request additional endpoints. Startup guards intentionally do not disable normal staff business transactions.
 
 **How to apply:** Audit shared authentication/providers and page-initiated requests; exclude write-capable and unresolved reads. Label HTTP shell/API checks separately from rendered authenticated browser evidence, and do not expand a reviewed smoke allowlist implicitly.
+
+Owner approval packages do not themselves authorize production inspection. Human acceptance of disabled-job manual procedures and monitored alert acknowledgement cannot be supplied by the agent.
+
+**Why:** The owner explicitly separates operational acceptance, narrowly scoped production read-only inspection, and later mutation/publication authority. Sending an instruction attachment is not any of those approvals.
+
+**How to apply:** Prepare the allowlist first; wait for “I authorize the listed read-only production readiness checks.” Inspect only approved metadata/health, never unrestricted business rows or credentials. This approval still excludes migration, service retirement/restart, configuration changes, worker activation, repairs and publication. Keep unsigned staff/alert fields visibly unaccepted.

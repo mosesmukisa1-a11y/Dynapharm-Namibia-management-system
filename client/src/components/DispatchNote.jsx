@@ -94,6 +94,8 @@ const BRANCH_INFO = {
 function lookupBranch(key) {
   if (!key) return null;
   const k = key.toLowerCase().replace(/\s+/g, '_').replace(/_branch$/, '');
+  // Display alias only: retain the persisted townshop identity on transactions.
+  if (k === 'townshop') return BRANCH_INFO.windhoek_cbd;
   return BRANCH_INFO[k] || BRANCH_INFO[k.replace(/_branch$/, '')] || null;
 }
 

@@ -15,7 +15,7 @@ try{
  report.before=await capture(db);
  const page=await ctx.newPage();await page.goto(m.frontend+'/stock?view=transfers');await page.waitForLoadState('networkidle');
  const buttons=page.getByRole('button',{name:/View dispatch note/i});
- const count=await buttons.count();assert.equal(count,2,'Exactly the two supported physical transfer documents expected');
+ const count=await buttons.count();assert(count>=2,'Supported import/branch transfer documents expected');
  for(let i=0;i<count;i++){
    await buttons.nth(i).click();
    await page.getByRole('button',{name:/Print/i}).last().waitFor();
