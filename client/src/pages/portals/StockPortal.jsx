@@ -11536,31 +11536,39 @@ function StockReportsTab({ branch }) {
   const [misReport, setMisReport] = useState(null);
   const [companySnapshot,setCompanySnapshot]=useState(null);
   const [reportError,setReportError]=useState('');
+  const [reportNotices,setReportNotices]=useState([]);
+  const [retrievedAt,setRetrievedAt]=useState(null);
+  const reportEpoch=useRef(0);
   const [period, setPeriod] = useState(getDefaultPeriod);
 
   const loadData = useCallback(() => {
+    const epoch=++reportEpoch.current;
     setLoading(true);
     setReportError('');
     const params = new URLSearchParams();
     if (period.from) params.set('date_from', period.from);
     if (period.to) params.set('date_to', period.to);
     Promise.all([
-      api.branch.stockSummary(params.toString()).then(d => d.branches || []),
-      api.stock.batches().then(d => Array.isArray(d) ? d : d.batches || []).catch(() => []),
-      api.mis.stockReport().catch(() => null),
-      api.stock.movements().then(d => Array.isArray(d) ? d : d.movements || []).catch(() => []),
+      api.branch.stockSummary(params.toString()).then(d => {if(!Array.isArray(d.branches))throw Error('Branch summary unavailable');return d.branches;}),
+      api.stock.batches().then(d => {const rows=Array.isArray(d)?d:d.batches;if(!Array.isArray(rows))throw Error('Batch report unavailable');return rows;}),
+      api.mis.stockReport().then(value=>({value})).catch(()=>({value:null,error:'MIS supplementary report unavailable for this request; its totals are not shown.'})),
+      api.stock.movements().then(d => {const rows=Array.isArray(d)?d:d.movements;if(!Array.isArray(rows))throw Error('Movement report unavailable');return rows;}),
       api.get('/stock/current-overview'),
     ]).then(([bd, b, mis, m,current]) => {
+      if(epoch!==reportEpoch.current)return;
+      if(!current?.summary)throw Error('Current stock overview unavailable');
       setBranchData(bd);
       setBatches(b);
-      setMisReport(mis);
+      setMisReport(mis.value);
+      setReportNotices(mis.error?[mis.error]:[]);
+      setRetrievedAt(new Date().toISOString());
       setMovements(m);
       setCompanySnapshot(current.summary);
-    }).catch(error=>setReportError(error.message || 'Stock report could not be loaded'))
-      .finally(() => setLoading(false));
+    }).catch(error=>{if(epoch===reportEpoch.current)setReportError(error.message || 'Stock report could not be loaded');})
+      .finally(() => {if(epoch===reportEpoch.current)setLoading(false);});
   }, [period.from, period.to]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { loadData();return()=>{reportEpoch.current++;}; }, [loadData]);
 
   if (loading) return <LoadingSpinner />;
   if(reportError)return <Card><Alert type="error" message={reportError} /><Button onClick={loadData}>Retry stock report</Button></Card>;
@@ -11680,6 +11688,8 @@ function StockReportsTab({ branch }) {
         <div>
           <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.12em', margin: 0 }}>Stock Management · Reports</p>
           <h3 style={{ color: '#fff', fontSize: '1.1rem', fontWeight: 800, margin: '3px 0 0' }}>📋 Stock Formula Reports</h3>
+          {retrievedAt&&<p style={{color:'#fff',fontSize:'0.78rem'}}>Live queries retrieved {new Date(retrievedAt).toLocaleString('en-GB',{timeZone:'Africa/Windhoek'})} Africa/Windhoek. This is not a generated historical stock snapshot.</p>}
+          {reportNotices.map(message=><p key={message} role="status" style={{color:'#fff',fontSize:'0.78rem'}}>{message}</p>)}
           <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '0.78rem', margin: '3px 0 0' }}>Opening + Received − Sales − Dispensed − Write-offs − Transferred Out + Returns = Closing · {periodLabel}</p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
