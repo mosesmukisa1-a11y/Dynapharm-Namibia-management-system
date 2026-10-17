@@ -658,3 +658,17 @@ mtime_ms = 1792238162969
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/c9733e35-1341-4a4e-9d21-edb0b18c7ff3/bcdeefee-ef57-43c3-8aa1-73c66e07cbb0"
 storage_version_token = "1792238187540639"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "PKYibsBJ-GD5kLlJOpql4"
+uri = "file://generated-artifacts/security-schema-final-closure/security-schema-final-review.zip"
+type = "unspecified"
+title = "Final schema/security review — blocked"
+description = "Sanitized single-operation evidence, three canonical migrations’ contract/idempotency results, 429 passing unit tests, source-only candidate proof, scans, SQL classifications, cleanup records and release checklist. Four redacted defaults and 100 unresolved SQL locations remain blockers."
+logical_id = "f772adb6-01b5-4714-ba3b-190b32b4b1f9"
+content_hash = "sha256:b9f3ef53a471a658e014a6359b07ab2f58a20a21e965f73216287e20f4c47634"
+size = 77540
+mtime_ms = 1792241353293
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/f772adb6-01b5-4714-ba3b-190b32b4b1f9/1f248c4c-5240-442c-a505-90141e7b539e"
+storage_version_token = "1792241409612283"
+content_type = "application/octet-stream"

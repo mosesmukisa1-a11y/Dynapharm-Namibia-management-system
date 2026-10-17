@@ -4,11 +4,13 @@ import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {parse} from '@babel/parser';
+import {eligibleUntrackedSchemaSource,readVerifiedCandidateFiles} from './lib/schema-candidate-files.mjs';
 const root=process.cwd(),out='generated-artifacts/security-remediation-final';
 await fs.mkdir(out,{recursive:true});
-const tracked=execFileSync('git',['ls-files','-z'],{encoding:'utf8'}).split('\0').filter(Boolean);
-const untracked=execFileSync('git',['ls-files','--others','--exclude-standard','-z'],{encoding:'utf8'})
-  .split('\0').filter(f=>/^(api|scripts|tests)\//.test(f));
+const verifiedCandidate=await readVerifiedCandidateFiles(root);
+const tracked=verifiedCandidate||execFileSync('git',['ls-files','-z'],{encoding:'utf8'}).split('\0').filter(Boolean);
+const untracked=verifiedCandidate?[]:execFileSync('git',['ls-files','--others','--exclude-standard','-z'],{encoding:'utf8'})
+  .split('\0').filter(eligibleUntrackedSchemaSource);
 const files=[...new Set([...tracked,...untracked])].filter(f=>/\.(?:sql|js|mjs|jsx|ts)$/.test(f)&&
   !/^(?:attached_assets|node_modules|generated-artifacts|\.local)\//.test(f));
 function walk(n,fn){if(!n||typeof n!=='object')return;fn(n);for(const[k,v]of Object.entries(n)){

@@ -6,6 +6,7 @@ import os from 'node:os';
 import {createHash} from 'node:crypto';
 import {execFile,execFileSync,spawn} from 'node:child_process';
 import {promisify} from 'node:util';
+import {eligibleUntrackedSchemaSource} from './lib/schema-candidate-files.mjs';
 const root=process.cwd(),out=root+'/generated-artifacts/security-remediation-final';
 const hash=b=>createHash('sha256').update(b).digest('hex');
 const archive=out+'/exact-candidate-source.tar';
@@ -14,7 +15,7 @@ if(process.argv.includes('--prepare')){
   const files=[...new Set([
     ...execFileSync('git',['ls-files','-z'],{encoding:'utf8'}).split('\0'),
     ...execFileSync('git',['ls-files','--others','--exclude-standard','-z'],{encoding:'utf8'}).split('\0')
-      .filter(f=>/^(api|scripts|tests)\//.test(f))])].filter(Boolean).sort();
+      .filter(eligibleUntrackedSchemaSource)])].filter(Boolean).sort();
   const temp=await fs.mkdtemp(path.join(os.tmpdir(),'security-source-'));
   const manifest={recordedAt:new Date().toISOString(),
     head:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),
@@ -60,6 +61,7 @@ if(process.argv.includes('--prepare')){
     if(await fs.stat(source+'/node_modules').then(()=>true,()=>false))throw Error('Source unexpectedly has dependencies');
     for(const[file,digest]of Object.entries(manifest.files))
       if(hash(await fs.readFile(source+'/'+file))!==digest)throw Error('Extracted candidate mismatch');
+    await fs.writeFile(source+'/.verified-candidate-source.json',JSON.stringify({files:manifest.files}));
     const env={PATH:process.env.PATH,HOME:home,XDG_CONFIG_HOME:temp+'/config',CI:'true',NODE_ENV:'test'};
     async function stage(name,command,args,extra={}){
       const code=await new Promise(resolve=>{

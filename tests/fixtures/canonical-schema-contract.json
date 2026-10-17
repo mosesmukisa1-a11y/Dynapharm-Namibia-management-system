@@ -1,0 +1,78 @@
+{
+  "provenance": {
+    "source": "Single owner-authorized managed schema snapshot, 2026-10-17",
+    "evidence": "generated-artifacts/production-schema-metadata-final/",
+    "productionRowsCopied": false,
+    "completeFoundation": false,
+    "blockedObject": "public.branch_activity_transactions",
+    "blockedDefaults": ["stock_status", "prescription_status", "consultation_status", "reporting_status"],
+    "usersOrdinalExcluded": "Only additional_roles was authorized; other users column positions are not reconstructed."
+  },
+  "objects": [
+    {
+      "table": "branches",
+      "columnScope": null,
+      "columns": [
+        ["id","character varying(60)",false,null],
+        ["name","character varying(255)",false,null],
+        ["code","character varying(60)",true,null],
+        ["region","character varying(100)",true,null],
+        ["address","text",true,null],
+        ["phone","character varying(50)",true,null],
+        ["email","character varying(255)",true,null],
+        ["status","character varying(30)",true,"'active'::character varying"],
+        ["metadata","jsonb",true,null],
+        ["created_at","timestamp with time zone",true,"CURRENT_TIMESTAMP"],
+        ["updated_at","timestamp with time zone",true,"CURRENT_TIMESTAMP"]
+      ],
+      "constraints": [
+        ["branches_code_key","UNIQUE (code)"],
+        ["branches_pkey","PRIMARY KEY (id)"]
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX branches_code_key ON public.branches USING btree (code)",
+        "CREATE UNIQUE INDEX branches_pkey ON public.branches USING btree (id)",
+        "CREATE INDEX idx_branches_code ON public.branches USING btree (code)",
+        "CREATE INDEX idx_branches_status ON public.branches USING btree (status)"
+      ]
+    },
+    {
+      "table": "branch_distributor_profit",
+      "columnScope": null,
+      "columns": [
+        ["id","character varying(60)",false,null],
+        ["branch_id","character varying(60)",false,null],
+        ["distributor_nb","character varying(50)",false,null],
+        ["distributor_name","character varying(255)",true,null],
+        ["sale_id","character varying(60)",true,null],
+        ["sale_receipt","character varying(60)",true,null],
+        ["sale_date","timestamp with time zone",true,"now()"],
+        ["profit_amount","numeric(12,2)",false,"'0'::numeric"],
+        ["status","character varying(20)",false,"'pending'::character varying"],
+        ["paid_at","timestamp with time zone",true,null],
+        ["paid_by","character varying(100)",true,null],
+        ["payment_method","character varying(50)",true,null],
+        ["payment_note","text",true,null],
+        ["created_at","timestamp with time zone",true,"now()"],
+        ["updated_at","timestamp with time zone",true,"now()"],
+        ["original_profit_id","text",true,null],
+        ["reversal_reference","text",true,null]
+      ],
+      "constraints": [["branch_distributor_profit_pkey","PRIMARY KEY (id)"]],
+      "indexes": [
+        "CREATE UNIQUE INDEX branch_distributor_profit_pkey ON public.branch_distributor_profit USING btree (id)",
+        "CREATE INDEX idx_bdp_branch ON public.branch_distributor_profit USING btree (branch_id)",
+        "CREATE INDEX idx_bdp_distributor ON public.branch_distributor_profit USING btree (distributor_nb)",
+        "CREATE INDEX idx_bdp_sale ON public.branch_distributor_profit USING btree (sale_id)",
+        "CREATE INDEX idx_bdp_status ON public.branch_distributor_profit USING btree (status)"
+      ]
+    },
+    {
+      "table": "users",
+      "columnScope": "additional_roles",
+      "columns": [["additional_roles","jsonb",true,"'[]'::jsonb"]],
+      "constraints": [],
+      "indexes": []
+    }
+  ]
+}

@@ -22,3 +22,16 @@ single authorized query had already succeeded.
 **How to apply:** Decode the CSV envelope offline, then parse the JSON cell.
 Never repeat the database operation to fix a local parsing problem. Journal
 before invocation and preserve terminal/no-replay state after a failed gate.
+
+Schema-expression sanitization must not silently destroy the evidence required
+for exact offline reconstruction.
+
+**Why:** Expression sanitization removed four status-field default expressions.
+An application's row-write fallbacks are not proof of the database defaults.
+Without comparable expression provenance, a one-operation inspection cannot
+recover them after access has closed.
+
+**How to apply:** Before any future narrowly authorized snapshot, design an
+owner-approved safe expression policy and, where permitted, comparable
+fingerprints for expressions that may be redacted. Never infer a redacted
+default from a writer's fallback or weaken the terminal no-replay journal.

@@ -83,7 +83,15 @@ def scan():
                   "scripts/security-final-sql-rehearsal.mjs", "scripts/security-final-output-rehearsal.mjs",
                   "scripts/security-final-clean-gate.mjs", "scripts/security-final-evidence.mjs",
                   "api/services/sessionPolicy.js", "tests/session-policy.unit.test.js",
-                  "tests/credential-security.spec.js", "tests/credential-security.unit.test.js"]:
+                  "tests/credential-security.spec.js", "tests/credential-security.unit.test.js",
+                  "scripts/lib/final-managed-schema-query.mjs", "scripts/prepare-final-schema-operation.mjs",
+                  "scripts/test-final-schema-query-owned.mjs", "scripts/test-canonical-schema-owned.mjs",
+                  "scripts/lib/sql-caller-proof.mjs", "scripts/review-final-sql-callers.mjs",
+                  "scripts/lib/schema-candidate-files.mjs", "tests/schema-candidate-files.unit.test.js",
+                  "tests/final-managed-schema-query.unit.test.js", "tests/sql-caller-proof.unit.test.js",
+                  "tests/fixtures/canonical-schema-contract.json", "migrations/036_canonical_branches.sql",
+                  "migrations/037_canonical_branch_distributor_profit.sql",
+                  "migrations/038_canonical_users_additional_roles.sql"]:
         if extra not in tracked and Path(extra).exists():
             tracked.append(extra)
     current = []
