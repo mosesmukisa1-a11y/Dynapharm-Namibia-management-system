@@ -728,3 +728,17 @@ mtime_ms = 1792254982989
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/bacb0574-4603-4102-a454-e7c35190c166/2fa5d4c4-a22c-4aae-b04a-21be34043b01"
 storage_version_token = "1792255002107921"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "bPIbvW0aSzJYrx0WsYSVN"
+uri = "file://generated-artifacts/sql-architecture-final/report.md"
+type = "text"
+title = "SQL architecture closure — blocked release report"
+description = "Offline changes, 520 passing unit tests, 44 rejected source constructions, retained 61-site inventory, exact test commands, and explicit unverified release gates."
+logical_id = "5723ec99-be03-43e2-aca7-fd2308ecd6f8"
+content_hash = "sha256:7bf8da7a471d2e7237e47c2b9fc3fc647dd98b962adc7310b89b83922a026aaf"
+size = 8815
+mtime_ms = 1792257148633
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/5723ec99-be03-43e2-aca7-fd2308ecd6f8/a10eefdf-8ebd-4f75-a14f-218b89fd5907"
+storage_version_token = "1792257157703314"
+content_type = "text/markdown"

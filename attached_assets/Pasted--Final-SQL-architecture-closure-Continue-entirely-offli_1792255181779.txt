@@ -1,0 +1,266 @@
+## Final SQL architecture closure
+
+Continue entirely offline on the current security remediation branch.
+
+Do not connect to production, publish, migrate, restart, change production configuration, rotate credentials, invalidate sessions, stop schedulers or activate workers.
+
+Status remains:
+
+`BLOCKED - DO NOT PUBLISH`
+
+## Objective
+
+Eliminate unrestricted production use of the generic SQL executors and close all 61 retained SQL locations with enforceable runtime boundaries and endpoint-family tests.
+
+Preserve:
+
+- 425/425 database checks;
+- 496/496 unit checks;
+- migrations 036-041;
+- browser/session protections;
+- stock, finance, MIS, GM and branch behavior;
+- navigation and red/white design.
+
+## 1. Replace unrestricted executor access
+
+Audit these generic families and every alias/re-export:
+
+- `query`
+- `getOne`
+- `getMany`
+- transaction query callbacks
+- pool/client direct query wrappers
+- SQL-file execution helpers
+
+Production HTTP handlers and production-reachable services must not be able to pass arbitrary SQL strings into a generic executor.
+
+Introduce a narrow query-descriptor or registered-query boundary consistent with the repository’s existing patterns.
+
+A valid production query must be one of:
+
+- an immutable static SQL descriptor;
+- a registered fixed query ID;
+- a descriptor produced by a reviewed finite query builder;
+- a migration/tool descriptor that is provably unreachable from production runtime.
+
+Each descriptor must separately carry:
+
+- immutable SQL text;
+- bound values;
+- query identity;
+- operation type;
+- permitted execution context.
+
+Reject plain strings at the production-facing boundary unless they originate from an explicitly isolated, non-production-only tool.
+
+Do not depend only on TypeScript/JSDoc or comments. Enforce the boundary at runtime.
+
+## 2. Finite structural builders
+
+Create or retain dedicated builders for legitimate dynamic structure:
+
+- finite CRUD field maps;
+- finite table maps;
+- finite ordering maps;
+- finite status/type filters;
+- numeric limit/offset;
+- bound JSON recordsets;
+- fixed batch/value shapes;
+- fixed repository SQL files verified by path and hash.
+
+Builders must:
+
+- return immutable descriptors;
+- use bound values;
+- reject unknown, inherited, accessor or prototype fields;
+- reject mutated aliases;
+- reject comments, clauses, operators and statement separators;
+- never expose raw SQL-fragment arguments to request handlers.
+
+## 3. Trace and migrate all 61 locations
+
+For each retained location:
+
+1. identify its production reachability;
+2. identify every alias, callback, import and wrapper;
+3. migrate production-reachable use to an immutable descriptor or registered query;
+4. isolate genuine non-production tooling behind explicit production refusal;
+5. add a supporting hostile-input test;
+6. record its final classification.
+
+No location may remain `NOT VERIFIED`.
+
+Allowed final classifications:
+
+- immutable static descriptor with bound values;
+- finite reviewed builder with bound values;
+- registered fixed query;
+- production-unreachable isolated tool;
+- removed unsafe path.
+
+Generate a final inventory proving:
+
+- original location identity;
+- current location or removal;
+- descriptor/query ID;
+- caller chain;
+- runtime enforcement;
+- hostile test;
+- final disposition.
+
+## 4. Callback and transaction families
+
+Complete concrete traces through:
+
+- stock engine;
+- stock clearance;
+- cost-page and ledger-page families;
+- controlled register;
+- MIS CSI, receipts and stock reports;
+- branch summary and movements;
+- warehouse predicates;
+- Distributor and NB-number flows;
+- MIS drafts;
+- price import;
+- startup/schema-array contexts.
+
+Transaction callbacks must receive a restricted executor that accepts only approved descriptors. They must not expose the raw client or unrestricted `client.query` to application callbacks.
+
+Preserve atomic rollback and retry behavior.
+
+## 5. Hostile write-family matrix
+
+Run actual handler/service tests against positively owned disposable databases for:
+
+- multi-item stock requests;
+- transfers;
+- dispatch/cancel/reject races;
+- sale evidence and repair evidence;
+- profile/contact updates;
+- HR updates;
+- distributor/NB-number operations;
+- price import;
+- controlled stock changes.
+
+For each family test:
+
+- SQL comments;
+- quotes;
+- semicolons;
+- UNION and boolean payloads;
+- malicious object keys;
+- prototype/accessor keys;
+- mutable arrays and aliases;
+- malformed pagination/order/filter values;
+- native database failure;
+- rollback;
+- safe retry;
+- unrelated-row sentinel preservation.
+
+Verify hostile values remain bound data or are rejected before execution.
+
+## 6. Output and privacy closure
+
+Using synthetic canaries only, exercise actual server paths for:
+
+- authentication and authorization failures;
+- transaction rollback failures;
+- stock, finance, MIS, GM and branch report failures;
+- imports and exports;
+- streaming/download responses;
+- startup failures;
+- browser/API errors.
+
+Verify responses, logs and generated artifacts contain no:
+
+- passwords;
+- tokens;
+- cookies;
+- connection strings;
+- raw SQL;
+- database error details;
+- private filesystem paths;
+- synthetic secrets.
+
+## 7. Required regressions
+
+Run:
+
+- complete unit suite;
+- full 425 database checks;
+- credential database suite;
+- all migration/schema contracts;
+- startup contracts;
+- production build;
+- strict launcher;
+- browser security workflow;
+- settled Consultant rendering;
+- stock concurrency/retry;
+- managed scans;
+- exposure scan;
+- output/privacy matrix;
+- owned cleanup verification.
+
+Required outcome:
+
+- unresolved original SQL locations: 0;
+- production-facing plain-string generic executor calls: 0;
+- uncovered production-reachable SQL families: 0;
+- unit failures: 0;
+- database failures: 0;
+- browser-security failures: 0.
+
+## 8. Clean-install eligibility
+
+Only after all preceding requirements pass:
+
+1. prepare an exact installable candidate archive;
+2. verify manifest and lockfile hashes;
+3. provide this owner command:
+
+```sh
+cd /home/runner/workspace
+node scripts/security-final-clean-gate.mjs --owner-manual
+```
+
+Do not publish after running it. Its sanitized result requires separate review.
+
+## 9. Evidence and final status
+
+Write evidence to:
+
+`generated-artifacts/sql-architecture-final/`
+
+Include:
+
+- executor-boundary design;
+- all-61 disposition inventory;
+- endpoint-family coverage matrix;
+- hostile write-family results;
+- output/privacy results;
+- regression summaries;
+- scanner reconciliation;
+- exact candidate manifest;
+- cleanup records;
+- remaining blockers.
+
+Return exactly one:
+
+- `READY FOR OWNER CLEAN-INSTALL GATE - DO NOT PUBLISH`
+- `PARTIALLY VERIFIED - DO NOT PUBLISH`
+- `BLOCKED - DO NOT PUBLISH`
+
+Do not return readiness while any original SQL location or production-reachable family remains unverified.
+
+Finish with:
+
+Production database accessed: NO  
+Production database modified: NO  
+Production migration applied: NO  
+Production passwords rotated: NO  
+Production sessions invalidated: NO  
+Production environment modified: NO  
+Production restarted: NO  
+Production scheduler stopped: NO  
+Production worker activated: NO  
+Production published: NO

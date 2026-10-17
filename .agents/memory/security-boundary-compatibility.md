@@ -27,3 +27,16 @@ similarly depend on a safe fixed code rather than free-form error text.
 **How to apply:** Define a small typed public failure schema and test its
 compatibility alongside canary rejection. Never infer that a successful generic
 error-boundary test proves every application response/log/export path private.
+
+SQL descriptor migration must close the existing executor paths, not merely add
+a new descriptor API alongside unrestricted legacy helpers.
+
+**Why:** The owner requires complete runtime admission and restricted transaction
+callbacks. Source translation counts and isolated descriptor unit tests do not
+establish application-wide enforcement.
+
+**How to apply:** Keep release blocked until the retained caller inventory and
+actual native handler flows prove closure. A source translator must preserve
+helper calls and argument evaluation: a constant-returning helper can still
+validate authority, throw, or change transaction state. Reject unresolved
+constructions rather than adding raw-string fallbacks.
