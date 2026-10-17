@@ -1,5 +1,5 @@
-import {insertStatement,numericPage} from '../services/sqlShape.js';
-import {applicationRecord} from '../services/sqlFieldPolicy.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../services/queryDescriptors.js";import { insertStatement, numericPage } from '../services/sqlShape.js';
+import { applicationRecord } from '../services/sqlFieldPolicy.js';
 import { recordBranchSaleAllocationTx, reconcileSaleFinancialsTx } from '../services/stockSaleAllocations.js';
 import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
 import { query, getMany, getOne, withTransaction } from '../db.js';
@@ -12,7 +12,7 @@ import { postActivityRecord, generateBatId } from '../_lib/activityCapture.js';
 import { getPackageComponents } from '../_lib/packageDefinitions.js';
 import { completeSaleEvidenceTx } from '../services/saleEvidence.js';
 import { businessDatePredicate } from '../services/businessDates.js';
-import {withCapturedReceiptDP} from '../services/saleReceiptPricing.js';
+import { withCapturedReceiptDP } from '../services/saleReceiptPricing.js';
 
 async function parseJsonBody(req) {
   if (req.body && typeof req.body === 'object') {
@@ -60,20 +60,20 @@ function safeJsonParse(value, fallback) {
   }
 }
 
-async function normalizeSaleRows(rows){
-  const sales=rows.map(normalizeSaleRow).filter(Boolean);
-  if(!sales.length)return sales;
+async function normalizeSaleRows(rows) {
+  const sales = rows.map(normalizeSaleRow).filter(Boolean);
+  if (!sales.length) return sales;
   // Read the frozen sale DP, never today's price or caller-supplied dpPrice.
   // Do not select CIF/private original costs into the Branch response.
-  const facts=await getMany(`SELECT sm.reference_id,sm.product_name,ABS(sm.quantity) AS quantity,
-    sm.metadata->'sale_evidence'->>'dp_unit_price' AS dp_unit_price
-    FROM stock_movements sm JOIN branch_walkin_sales s
-      ON s.id=sm.reference_id AND s.branch_id=sm.source_location
-    WHERE sm.reference_id=ANY($1::text[])
-      AND sm.metadata->'sale_evidence'->>'sale_reference'=s.id
-      AND sm.status='posted' AND sm.metadata->'sale_evidence'->>'version'='1'`,
-    [sales.map(s=>String(s.id))]);
-  return withCapturedReceiptDP(sales,facts);
+  const facts = await __qd_executePlan(getMany, __qd_registeredPlan("api/branch/walkin-sales.js:68:0"),
+
+
+
+
+
+
+  [sales.map((s) => String(s.id))]);
+  return withCapturedReceiptDP(sales, facts);
 }
 
 function normalizeSaleRow(row) {
@@ -126,8 +126,8 @@ function normalizeSaleRow(row) {
     createdAt: createdAtVal,
     created_at: createdAtVal,
     updatedAt:
-      row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at || data.updatedAt || null,
-    metadata: metadata || null,
+    row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at || data.updatedAt || null,
+    metadata: metadata || null
   };
 
   return {
@@ -139,7 +139,7 @@ function normalizeSaleRow(row) {
     discount,
     totalBV,
     products: base.products,
-    timestamp: base.timestamp,
+    timestamp: base.timestamp
   };
 }
 
@@ -152,9 +152,9 @@ function buildSaleRecord(payload, existing = {}) {
   const branchId = payload.branch || payload.branchId || payload.branch_id || existing.branch_id || 'main';
 
   const saleDate =
-    parseDate(payload.timestamp || payload.saleDate) ||
-    existing.sale_date ||
-    new Date().toISOString();
+  parseDate(payload.timestamp || payload.saleDate) ||
+  existing.sale_date ||
+  new Date().toISOString();
 
   const subtotal = Number(payload.subtotal ?? payload.total ?? existing.subtotal ?? 0);
   const total = Number(payload.total ?? payload.totalAmount ?? subtotal);
@@ -167,10 +167,10 @@ function buildSaleRecord(payload, existing = {}) {
 
   // Determine if any items are campaign-tagged — used to stamp sale_type in data JSON
   // so daily-products.js campaign_refs CTE can identify campaign walk-in sales.
-  const campaignItems = products.filter(p => p.isCampaignSale);
+  const campaignItems = products.filter((p) => p.isCampaignSale);
   const hasCampaignItems = campaignItems.length > 0;
   // Build per-item data enrichment: stamp sale_type + discount_pct on campaign items
-  const enrichedProducts = products.map(p => {
+  const enrichedProducts = products.map((p) => {
     if (p.isCampaignSale && p.campaign_discount_pct > 0) {
       return { ...p, sale_type: 'campaign_sale', discount_pct: p.campaign_discount_pct };
     }
@@ -207,46 +207,46 @@ function buildSaleRecord(payload, existing = {}) {
         sale_type: 'campaign_sale',
         // Use the highest discount_pct among campaign items for the top-level record
         // (per-item discount_pct on each enrichedProduct is the authoritative per-item figure)
-        discount_pct: Math.max(...campaignItems.map(p => Number(p.campaign_discount_pct || 0))),
-      } : {}),
+        discount_pct: Math.max(...campaignItems.map((p) => Number(p.campaign_discount_pct || 0)))
+      } : {})
     }),
-    referral_nb: (
-      payload.referral_nb ||
-      payload.referralNB ||
-      payload.distributorReferral?.nb_number ||
-      existing.referral_nb ||
-      null
-    ),
-    distributor_nb: (
-      payload.distributor_nb ||
-      payload.distributorNB ||
-      payload.distributor_nb_number ||
-      existing.distributor_nb ||
-      null
-    ),
+    referral_nb:
+    payload.referral_nb ||
+    payload.referralNB ||
+    payload.distributorReferral?.nb_number ||
+    existing.referral_nb ||
+    null,
+
+    distributor_nb:
+    payload.distributor_nb ||
+    payload.distributorNB ||
+    payload.distributor_nb_number ||
+    existing.distributor_nb ||
+    null,
+
     metadata: JSON.stringify({
       distributorReferral: payload.distributorReferral || null,
       referralId:
-        payload.distributorReferral?.id ||
-        payload.referralId ||
-        existing.metadata?.referralId ||
-        null,
+      payload.distributorReferral?.id ||
+      payload.referralId ||
+      existing.metadata?.referralId ||
+      null,
       referralName:
-        payload.distributorReferral?.name ||
-        payload.referralName ||
-        existing.metadata?.referralName ||
-        null,
-      notes: payload.notes || existing.metadata?.notes || null,
+      payload.distributorReferral?.name ||
+      payload.referralName ||
+      existing.metadata?.referralName ||
+      null,
+      notes: payload.notes || existing.metadata?.notes || null
     }),
     created_by: payload.soldBy || existing.created_by || null,
     updated_at: new Date().toISOString(),
-    offline_id: payload.offline_id || existing.offline_id || null,
+    offline_id: payload.offline_id || existing.offline_id || null
   };
 }
 
 function buildSelectQuery(searchParams, scopedBranches, enforced) {
-  const params=saleReadParameters(searchParams,scopedBranches,enforced);
-  const queryText=`SELECT * FROM branch_walkin_sales WHERE
+  const params = saleReadParameters(searchParams, scopedBranches, enforced);
+  const queryText = `SELECT * FROM branch_walkin_sales WHERE
     ($1::text[] IS NULL OR branch_id=ANY($1))
     AND ($2::text IS NULL OR LOWER(REPLACE(branch_id,' ','_'))=LOWER(REPLACE($2,' ','_')))
     AND ($3::date IS NULL OR sale_date>=($3::date::timestamp AT TIME ZONE 'Africa/Windhoek'))
@@ -254,17 +254,17 @@ function buildSelectQuery(searchParams, scopedBranches, enforced) {
     AND ($5::text IS NULL OR LOWER(customer_name) LIKE $5)
     AND ($6::text IS NULL OR UPPER(referral_nb)=$6 OR UPPER(distributor_nb)=$6)
     ORDER BY sale_date DESC,created_at DESC LIMIT $7`;
-  return { queryText, params };
+  return { queryText: __qd_registeredPlan("api/branch/walkin-sales.js:257:2"), params };
 }
-function saleReadParameters(searchParams,branches,enforced){
-  const from=searchParams.get('from')||null,to=searchParams.get('to')||null;
-  const search=searchParams.get('search'),nb=searchParams.get('distributor_nb')||searchParams.get('referral_nb');
-  const requested=searchParams.get('limit'),fallback=from||to?5000:250;
-  const limit=requested==null||requested===''||requested==='0'?fallback:
-    numericPage(requested,{fallback,max:Number.MAX_SAFE_INTEGER});
-  return [enforced?(Array.isArray(branches)?branches:[]):null,
-    enforced?null:searchParams.get('branch')||searchParams.get('branch_id')||null,
-    from,to,search?`%${search.toLowerCase()}%`:null,nb?nb.toUpperCase():null,limit];
+function saleReadParameters(searchParams, branches, enforced) {
+  const from = searchParams.get('from') || null,to = searchParams.get('to') || null;
+  const search = searchParams.get('search'),nb = searchParams.get('distributor_nb') || searchParams.get('referral_nb');
+  const requested = searchParams.get('limit'),fallback = from || to ? 5000 : 250;
+  const limit = requested == null || requested === '' || requested === '0' ? fallback :
+  numericPage(requested, { fallback, max: Number.MAX_SAFE_INTEGER });
+  return [enforced ? Array.isArray(branches) ? branches : [] : null,
+  enforced ? null : searchParams.get('branch') || searchParams.get('branch_id') || null,
+  from, to, search ? `%${search.toLowerCase()}%` : null, nb ? nb.toUpperCase() : null, limit];
 }
 
 /**
@@ -273,8 +273,8 @@ function saleReadParameters(searchParams,branches,enforced){
  * filters as the regular walkin-sales query.
  */
 function buildRxQuery(searchParams, scopedBranches, enforced) {
-  const params=saleReadParameters(searchParams,scopedBranches,enforced);
-  const queryText=`SELECT * FROM branch_activity_transactions WHERE activity_type='prescription_dispensing'
+  const params = saleReadParameters(searchParams, scopedBranches, enforced);
+  const queryText = `SELECT * FROM branch_activity_transactions WHERE activity_type='prescription_dispensing'
     AND ($1::text[] IS NULL OR branch_id=ANY($1))
     AND ($2::text IS NULL OR LOWER(REPLACE(branch_id,' ','_'))=LOWER(REPLACE($2,' ','_')))
     AND ($3::date IS NULL OR service_date::date>=$3)
@@ -282,7 +282,7 @@ function buildRxQuery(searchParams, scopedBranches, enforced) {
     AND ($5::text IS NULL OR LOWER(client_name) LIKE $5 OR LOWER(id) LIKE $5 OR LOWER(COALESCE(form_reference_id,'')) LIKE $5)
     AND ($6::text IS NULL OR UPPER(referral_nb)=$6 OR UPPER(nb_number)=$6)
     ORDER BY service_date DESC,created_at DESC LIMIT $7`;
-  return { queryText, params };
+  return { queryText: __qd_registeredPlan("api/branch/walkin-sales.js:285:3"), params };
 }
 
 /** Normalize a BAT prescription_dispensing row into the same shape as normalizeSaleRow. */
@@ -290,12 +290,12 @@ function normalizeRxRow(row) {
   if (!row) return null;
   const clientType = row.client_type || 'patient';
   const isMember = clientType === 'member';
-  const serviceDate = row.service_date instanceof Date
-    ? row.service_date.toISOString()
-    : (row.service_date ? new Date(row.service_date).toISOString() : null);
-  const createdAt = row.created_at instanceof Date
-    ? row.created_at.toISOString()
-    : row.created_at || null;
+  const serviceDate = row.service_date instanceof Date ?
+  row.service_date.toISOString() :
+  row.service_date ? new Date(row.service_date).toISOString() : null;
+  const createdAt = row.created_at instanceof Date ?
+  row.created_at.toISOString() :
+  row.created_at || null;
   const total = Number(row.grand_total || 0);
 
   return {
@@ -324,7 +324,7 @@ function normalizeRxRow(row) {
     status: 'completed',
     soldBy: row.captured_by || null,
     created_at: createdAt,
-    updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at || null,
+    updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at || null
   };
 }
 
@@ -347,7 +347,7 @@ async function handler(req, res) {
   try {
     if (req.method === 'GET') {
       if (id) {
-        let row = await getOne('SELECT * FROM branch_walkin_sales WHERE id = $1', [id]);
+        let row = await __qd_executePlan(getOne, __qd_registeredPlan("api/branch/walkin-sales.js:350:1"), [id]);
         if (!row) {
           return res.status(404).json({ success: false, error: 'Sale not found' });
         }
@@ -368,10 +368,10 @@ async function handler(req, res) {
       const { queryText, params } = buildSelectQuery(searchParams, branchScope.branches, branchScope.enforced);
       const { queryText: rxQueryText, params: rxParams } = buildRxQuery(searchParams, branchScope.branches, branchScope.enforced);
 
-      const [rows, rxRows] = await Promise.all([
-        getMany(queryText, params),
-        getMany(rxQueryText, rxParams).catch(() => []),
-      ]);
+      const [rows, rxRows] = await Promise.all([__qd_executePlan(
+        getMany, queryText, params),
+      __qd_executePlan(getMany, rxQueryText, rxParams).catch(() => [])]
+      );
 
       const walkinSales = await normalizeSaleRows(rows);
       const rawRxSales = rxRows.map(normalizeRxRow).filter(Boolean);
@@ -380,15 +380,15 @@ async function handler(req, res) {
       // so the refund flow can show product items to select
       let rxSales = rawRxSales;
       if (rawRxSales.length > 0) {
-        const refs = rawRxSales.map(s => s.reportId).filter(Boolean);
+        const refs = rawRxSales.map((s) => s.reportId).filter(Boolean);
         if (refs.length > 0) {
-          const dispRows = await getMany(
-            `SELECT product_name, batch_no, SUM(ABS(quantity)) AS quantity, MAX(ABS(unit_price)) AS unit_price, reference
-             FROM branch_inventory_movements
-             WHERE type = 'prescription_dispense' AND reference = ANY($1::text[])
-             GROUP BY product_name, batch_no, reference`,
-            [refs]
-          ).catch(() => []);
+          const dispRows = await __qd_executePlan(getMany, __qd_registeredPlan("api/branch/walkin-sales.js:386:4"),
+
+
+
+
+          [refs]).
+          catch(() => []);
 
           // Build a map: reportId → [products]
           const prodMap = {};
@@ -405,13 +405,13 @@ async function handler(req, res) {
               qty: Number(d.quantity || 0),
               unit_price: Number(d.unit_price || 0),
               dpPrice: Number(d.unit_price || 0),
-              dp: Number(d.unit_price || 0),
+              dp: Number(d.unit_price || 0)
             });
           }
 
-          rxSales = rawRxSales.map(s => ({
+          rxSales = rawRxSales.map((s) => ({
             ...s,
-            products: prodMap[s.reportId] || [],
+            products: prodMap[s.reportId] || []
           }));
         }
       }
@@ -425,27 +425,27 @@ async function handler(req, res) {
 
       return res.status(200).json({
         success: true,
-        sales: allSales,
+        sales: allSales
       });
     }
 
     if (req.method === 'POST') {
       const body = await parseJsonBody(req);
       const salePayload = body.sale || body;
-      const retryIdentity=salePayload.offline_id || salePayload.id;
-      if(retryIdentity) {
-        await query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`walkin:${retryIdentity}`]);
-        const existing=await getOne('SELECT * FROM branch_walkin_sales WHERE id=$1 OR offline_id=$1',[retryIdentity]);
-        if(existing){
-          if(branchScope.enforced && !branchScope.branches.includes(existing.branch_id))return res.status(403).json({success:false,error:'Access denied'});
-          return res.status(200).json({success:true,sale:(await normalizeSaleRows([existing]))[0],duplicate:true});
+      const retryIdentity = salePayload.offline_id || salePayload.id;
+      if (retryIdentity) {
+        await __qd_executePlan(query, __qd_registeredPlan("api/branch/walkin-sales.js:437:5"), [`walkin:${retryIdentity}`]);
+        const existing = await __qd_executePlan(getOne, __qd_registeredPlan("api/branch/walkin-sales.js:438:6"), [retryIdentity]);
+        if (existing) {
+          if (branchScope.enforced && !branchScope.branches.includes(existing.branch_id)) return res.status(403).json({ success: false, error: 'Access denied' });
+          return res.status(200).json({ success: true, sale: (await normalizeSaleRows([existing]))[0], duplicate: true });
         }
       }
 
       if (salePayload.offline_id) {
-        const dup = await getOne('SELECT id FROM branch_walkin_sales WHERE offline_id = $1', [salePayload.offline_id]);
+        const dup = await __qd_executePlan(getOne, __qd_registeredPlan("api/branch/walkin-sales.js:446:7"), [salePayload.offline_id]);
         if (dup) {
-          const existing = await getOne('SELECT * FROM branch_walkin_sales WHERE id = $1', [dup.id]);
+          const existing = await __qd_executePlan(getOne, __qd_registeredPlan("api/branch/walkin-sales.js:448:8"), [dup.id]);
           return res.status(200).json({ success: true, sale: (await normalizeSaleRows([existing]))[0], duplicate: true });
         }
       }
@@ -454,7 +454,7 @@ async function handler(req, res) {
       record.created_by = req.user.fullName || req.user.username || req.user.id || req.user.sub;
       record.sale_date = new Date().toISOString();
       record.created_at = record.sale_date;
-      if(record.status !== 'completed') return res.status(400).json({success:false,error:'Only completed sales can deduct stock'});
+      if (record.status !== 'completed') return res.status(400).json({ success: false, error: 'Only completed sales can deduct stock' });
 
       if (branchScope.enforced && !branchScope.branches.includes(record.branch_id)) {
         return res.status(403).json({ success: false, error: 'Access denied: cannot create sales for this branch' });
@@ -467,12 +467,12 @@ async function handler(req, res) {
       const saleMovType = customerType === 'member' ? 'walk_in_member_sale' : customerType === 'non_member' ? 'walk_in_non_member_sale' : 'sale';
 
       const deductItems = [];
-      const isMemberSale = (record.customer_type === 'member');
+      const isMemberSale = record.customer_type === 'member';
 
-      const livePriceRows = await getMany(`SELECT description, dp, cp, bv, cif FROM live_product_prices
-        UNION ALL SELECT name AS description,dp,cp,0 AS bv,NULL AS cif FROM products p
-        WHERE is_active IS DISTINCT FROM false AND NOT EXISTS(
-          SELECT 1 FROM live_product_prices pp WHERE LOWER(TRIM(pp.description))=LOWER(TRIM(p.name)))`);
+      const livePriceRows = await __qd_executePlan(getMany, __qd_registeredPlan("api/branch/walkin-sales.js:472:9"), []);
+
+
+
       const livePriceMap = {};
       for (const row of livePriceRows) {
         if (row.description) livePriceMap[row.description.toLowerCase()] = row;
@@ -480,7 +480,7 @@ async function handler(req, res) {
 
       for (const item of saleItems) {
         const qty = Number(item.quantity || item.qty || 0);
-        if(!Number.isFinite(qty) || qty<=0)throw Object.assign(new Error('Sale quantities must be positive'),{statusCode:400});
+        if (!Number.isFinite(qty) || qty <= 0) throw Object.assign(new Error('Sale quantities must be positive'), { statusCode: 400 });
         // Always resolve DP (cost basis) — never CP — for BIM.unit_price and
         // stock_movements.unit_dp.  Reports already join product_prices.dp, but
         // writing DP here keeps inventory_balances.stock_value_dp accurate and
@@ -488,46 +488,46 @@ async function handler(req, res) {
         const itemName = item.product_name || item.name || item.description || '';
         const itemLivePrice = livePriceMap[itemName.toLowerCase()];
         // Prefer: (1) live product_prices.dp, (2) frontend dpPrice/dp, (3) unit_price fallback
-        const originalDP=itemLivePrice?.dp;
+        const originalDP = itemLivePrice?.dp;
         // CP is not evidence of distributor price. An unknown original DP
         // remains unknown; received CIF/source layers still determine COGS.
-        const unitPrice=originalDP==null ? null : Number(originalDP);
+        const unitPrice = originalDP == null ? null : Number(originalDP);
         const pkg = getPackageComponents(itemName);
         if (pkg) {
           for (const comp of pkg.products) {
             const livePrice = livePriceMap[comp.name.toLowerCase()];
             // Always DP for cost basis (same as dispense.js)
-            const dp = livePrice?.dp==null ? null : Number(livePrice.dp);
+            const dp = livePrice?.dp == null ? null : Number(livePrice.dp);
             deductItems.push({
               name: comp.name,
               qty: Number(comp.quantity || 1) * qty,
               unitPrice: dp,
-              revenueUnit:isMemberSale ? dp : (livePrice?.cp==null ? null : Number(livePrice.cp)),
+              revenueUnit: isMemberSale ? dp : livePrice?.cp == null ? null : Number(livePrice.cp)
             });
           }
         } else if (Array.isArray(item.components) && item.components.length > 0) {
           for (const comp of item.components) {
             const compLive = livePriceMap[(comp.name || comp.product_name || '').toLowerCase()];
             // Always DP for cost basis
-            const compDp = compLive?.dp==null ? null : Number(compLive.dp);
+            const compDp = compLive?.dp == null ? null : Number(compLive.dp);
             deductItems.push({
               name: comp.name || comp.product_name || '',
               qty: Number(comp.quantity || comp.qty || 1) * qty,
               unitPrice: compDp,
-              revenueUnit:isMemberSale ? compDp : (compLive?.cp==null ? null : Number(compLive.cp)),
+              revenueUnit: isMemberSale ? compDp : compLive?.cp == null ? null : Number(compLive.cp)
             });
           }
         } else {
-          const charged=isMemberSale ? itemLivePrice?.dp : itemLivePrice?.cp;
-          deductItems.push({ name: itemName, qty, unitPrice,revenueUnit:charged==null ? null : Number(charged),bvUnit:isMemberSale?Number(item.bv || item.bvPrice || 0):0 });
+          const charged = isMemberSale ? itemLivePrice?.dp : itemLivePrice?.cp;
+          deductItems.push({ name: itemName, qty, unitPrice, revenueUnit: charged == null ? null : Number(charged), bvUnit: isMemberSale ? Number(item.bv || item.bvPrice || 0) : 0 });
         }
       }
 
-      let insertedRow,completedEvidence;
+      let insertedRow, completedEvidence;
       try {
         insertedRow = await withTransaction(async (client) => {
-          const statement=insertStatement('branch_walkin_sales',applicationRecord('branch_walkin_sales',record));
-          const result = await client.query(statement.text,statement.params);
+          const statement = insertStatement('branch_walkin_sales', applicationRecord('branch_walkin_sales', record));
+          const result = await __qd_executePlan(client.query.bind(client), statement, statement.params);
           const saleId = result.rows[0].id;
 
           const insufficientItems = [];
@@ -536,45 +536,45 @@ async function handler(req, res) {
           for (const item of deductItems) {
             if (!item.name || item.qty <= 0 || !branchId) continue;
             let remaining = item.qty;
-            const batches = (await client.query(
-              `SELECT id, product_name, batch_no, expiry_date, quantity FROM branch_inventory_batches
-               WHERE LOWER(REPLACE(branch_id, ' ', '_')) = ANY($1)
-                 AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))
-                 AND quantity > 0
-                 AND COALESCE(status, 'in_stock') IN ('in_stock', 'available')
-                 AND (expiry_date IS NULL OR expiry_date >= (NOW() AT TIME ZONE 'Africa/Windhoek')::date)
-               ORDER BY expiry_date ASC NULLS LAST
-               FOR UPDATE`,
-              [saleBranchCandidates, item.name]
-            )).rows;
+            const batches = (await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/branch/walkin-sales.js:540:10"),
+
+
+
+
+
+
+
+
+            [saleBranchCandidates, item.name])).
+            rows;
             for (const batch of batches) {
               if (remaining <= 0) break;
               const take = Math.min(remaining, Number(batch.quantity));
-              await client.query(
-                `UPDATE branch_inventory_batches SET quantity = quantity - $1, updated_at = NOW() WHERE id = $2`,
-                [take, batch.id]
-              );
+              await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/branch/walkin-sales.js:554:11"),
+
+              [take, batch.id]);
+
               // Remove zero-qty rows immediately so they cannot be resurrected as
               // ghost stock by a stale inventory_balances entry before recompute runs.
               // Retain zero-quantity batches for count cutoffs and return provenance.
               const ts = Date.now();
               const bimId = 'BIM-' + ts + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
-              await client.query(
-                `INSERT INTO branch_inventory_movements (id, branch_id, type, product_name, batch_no, quantity, unit_price, reference, notes, created_by, created_at)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())`,
-                [bimId, branchId, saleMovType, batch.product_name, batch.batch_no || '', take, item.unitPrice ?? null, saleId, 'Walk-in ' + customerType + ' sale', record.created_by || '']
-              );
+              await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/branch/walkin-sales.js:563:12"),
+
+
+              [bimId, branchId, saleMovType, batch.product_name, batch.batch_no || '', take, item.unitPrice ?? null, saleId, 'Walk-in ' + customerType + ' sale', record.created_by || '']);
+
               const smId = 'MOV-' + ts + '-' + Math.random().toString(36).slice(2, 6);
-              await client.query(
-                `INSERT INTO stock_movements
-                   (id, product_name, batch_no, expiry_date, quantity, movement_type,
-                    source_location, source_location_type, destination_location, destination_location_type,
-                    reference_id, notes, status, unit_dp, movement_date, created_at, updated_at)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,'branch','customer',NULL,$8,$9,'posted',$10,NOW(),NOW(),NOW())`,
-                [smId, batch.product_name, batch.batch_no || '', batch.expiry_date || null,
-                 take, saleMovType, branchId, saleId, 'Walk-in ' + customerType + ' sale', item.unitPrice ?? null]
-              );
-              await recordBranchSaleAllocationTx(client,{movementId:smId,saleReference:saleId,batchId:batch.id,quantity:take,branchMovementId:bimId,revenueUnit:item.revenueUnit,bvUnit:item.bvUnit || 0,financialDpUnit:item.unitPrice});
+              await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/branch/walkin-sales.js:569:13"),
+
+
+
+
+
+              [smId, batch.product_name, batch.batch_no || '', batch.expiry_date || null,
+              take, saleMovType, branchId, saleId, 'Walk-in ' + customerType + ' sale', item.unitPrice ?? null]);
+
+              await recordBranchSaleAllocationTx(client, { movementId: smId, saleReference: saleId, batchId: batch.id, quantity: take, branchMovementId: bimId, revenueUnit: item.revenueUnit, bvUnit: item.bvUnit || 0, financialDpUnit: item.unitPrice });
               remaining -= take;
             }
             if (remaining > 0) {
@@ -583,12 +583,12 @@ async function handler(req, res) {
           }
 
           if (insufficientItems.length > 0) {
-            throw new Error(`Insufficient stock for: ${insufficientItems.map(i => `${i.product_name} (need ${i.requested}, have ${i.available})`).join(', ')}`);
+            throw new Error(`Insufficient stock for: ${insufficientItems.map((i) => `${i.product_name} (need ${i.requested}, have ${i.available})`).join(', ')}`);
           }
-          await reconcileSaleFinancialsTx(client,saleId,record.total,record.total_bv);
-          completedEvidence=await completeSaleEvidenceTx(client,{sourceKey:`walkin:${saleId}`,reference:saleId,
-            receipt:record.sale_number,branch:branchId,user:req.user,customerType,
-            paymentMethod:record.payment_method,chargedTotal:record.total,timestamp:record.sale_date});
+          await reconcileSaleFinancialsTx(client, saleId, record.total, record.total_bv);
+          completedEvidence = await completeSaleEvidenceTx(client, { sourceKey: `walkin:${saleId}`, reference: saleId,
+            receipt: record.sale_number, branch: branchId, user: req.user, customerType,
+            paymentMethod: record.payment_method, chargedTotal: record.total, timestamp: record.sale_date });
 
           return result.rows[0];
         });
@@ -600,25 +600,25 @@ async function handler(req, res) {
         return res.status(500).json({ success: false, error: txErr.message || 'Failed to record sale' });
       }
 
-      recomputeLocationBalances('branch', branchId).catch(e =>
-        console.error('[stockEngine] walkin-sale recompute error:', e.message)
+      recomputeLocationBalances('branch', branchId).catch((e) =>
+      console.error('[stockEngine] walkin-sale recompute error:', e.message)
       );
 
       // Push immediate SSE notification so every connected dashboard refreshes
       broadcastStockEvent('branch_sale', { branchId, customerType: record.customer_type });
 
-      const actType = record.customer_type === 'member' ? 'member_sale'
-        : record.customer_type === 'non_member' ? 'non_member_sale'
-        : record.customer_type === 'prescription' ? 'prescription_dispensing'
-        : record.customer_type === 'consultation' ? 'consultation'
-        : 'non_member_sale'; // default non-tagged walk-in to non_member_sale so it shows in Walk-in column
+      const actType = record.customer_type === 'member' ? 'member_sale' :
+      record.customer_type === 'non_member' ? 'non_member_sale' :
+      record.customer_type === 'prescription' ? 'prescription_dispensing' :
+      record.customer_type === 'consultation' ? 'consultation' :
+      'non_member_sale'; // default non-tagged walk-in to non_member_sale so it shows in Walk-in column
       const totalQty = saleItems.reduce((s, i) => s + Number(i.quantity || i.qty || 0), 0);
       // BAT product_total_dp: use live product_prices.dp as authoritative source.
       // Falls back to frontend dpPrice/dp for items not in the price list (e.g. checkup fees).
       const dpSubtotal = saleItems.reduce((s, i) => {
         const nm = (i.product_name || i.name || i.description || '').toLowerCase();
         const liveRow = livePriceMap[nm];
-        const dp = liveRow ? (Number(liveRow.dp) || Number(i.dpPrice || i.dp || 0)) : Number(i.dpPrice || i.dp || 0);
+        const dp = liveRow ? Number(liveRow.dp) || Number(i.dpPrice || i.dp || 0) : Number(i.dpPrice || i.dp || 0);
         return s + dp * Number(i.quantity || i.qty || 0);
       }, 0);
       await postActivityRecord({
@@ -633,7 +633,7 @@ async function handler(req, res) {
         activity_type: actType,
         workflow_source: 'branch_portal',
         form_reference_id: insertedRow.id,
-        created_at:record.sale_date,
+        created_at: record.sale_date,
         product_total_dp: completedEvidence?.dpTotal ?? null,
         product_total_cp: record.total,
         total_qty: totalQty,
@@ -645,7 +645,7 @@ async function handler(req, res) {
         prescription_status: 'none',
         consultation_status: 'none',
         reporting_status: 'posted',
-        captured_by: record.created_by || null,
+        captured_by: record.created_by || null
       });
 
       // Auto-record distributor profit for non-member sales
@@ -683,17 +683,17 @@ async function handler(req, res) {
         }, 0);
         if (profitAmount > 0) {
           const profitId = 'BDP-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
-          query(
-            `INSERT INTO branch_distributor_profit (id, branch_id, distributor_nb, distributor_name, sale_id, sale_receipt, sale_date, profit_amount, status, created_at, updated_at)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending',NOW(),NOW())`,
-            [profitId, record.branch_id, referralNb, referralName, insertedRow.id, record.sale_number, record.sale_date, profitAmount]
-          ).catch(e => console.error('[distributorProfit] insert error:', e.message));
+          __qd_executePlan(query, __qd_registeredPlan("api/branch/walkin-sales.js:687:14"),
+
+
+          [profitId, record.branch_id, referralNb, referralName, insertedRow.id, record.sale_number, record.sale_date, profitAmount]).
+          catch((e) => console.error('[distributorProfit] insert error:', e.message));
         }
       }
 
       return res.status(201).json({
         success: true,
-        sale: (await normalizeSaleRows([insertedRow]))[0],
+        sale: (await normalizeSaleRows([insertedRow]))[0]
       });
     }
 
@@ -706,7 +706,7 @@ async function handler(req, res) {
         return res.status(400).json({ success: false, error: 'Sale id is required' });
       }
 
-      const existing = await getOne('SELECT * FROM branch_walkin_sales WHERE id = $1 FOR UPDATE', [targetId]);
+      const existing = await __qd_executePlan(getOne, __qd_registeredPlan("api/branch/walkin-sales.js:709:15"), [targetId]);
       if (!existing) {
         return res.status(404).json({ success: false, error: 'Sale not found' });
       }
@@ -716,13 +716,13 @@ async function handler(req, res) {
       }
 
       const record = buildSaleRecord(salePayload, existing);
-      const nameOnlyEdit=Object.keys(salePayload).every(key=>['id','customer_name','customerName'].includes(key));
-      const immutableFields = ['branch_id','status','items','total_amount','total_dp','total_cp','payment_status',
-        'subtotal','discount','tax','total','total_bv','customer_type','distributor_nb','referral_nb','sale_number','sale_date','payment_method','data','metadata'];
+      const nameOnlyEdit = Object.keys(salePayload).every((key) => ['id', 'customer_name', 'customerName'].includes(key));
+      const immutableFields = ['branch_id', 'status', 'items', 'total_amount', 'total_dp', 'total_cp', 'payment_status',
+      'subtotal', 'discount', 'tax', 'total', 'total_bv', 'customer_type', 'distributor_nb', 'referral_nb', 'sale_number', 'sale_date', 'payment_method', 'data', 'metadata'];
       for (const field of immutableFields) {
         if (nameOnlyEdit) continue;
-        const canonical=value=>{
-          if (typeof value==='string' && ['items','data','metadata'].includes(field)) {try {return JSON.parse(value);} catch {}}
+        const canonical = (value) => {
+          if (typeof value === 'string' && ['items', 'data', 'metadata'].includes(field)) {try {return JSON.parse(value);} catch {}}
           return value;
         };
         if (record[field] != null && JSON.stringify(canonical(record[field])) !== JSON.stringify(canonical(existing[field]))) {
@@ -733,14 +733,14 @@ async function handler(req, res) {
         record.branch_id = existing.branch_id;
       }
       // An ordinary edit cannot rewrite price, BV, referral, or payment evidence.
-      const result = await query(
-        `UPDATE branch_walkin_sales SET customer_name=$1,updated_at=$2 WHERE id=$3 RETURNING *`,
-        [record.customer_name,record.updated_at,targetId],
-      );
+      const result = await __qd_executePlan(query, __qd_registeredPlan("api/branch/walkin-sales.js:737:16"),
+
+      [record.customer_name, record.updated_at, targetId]);
+
 
       return res.status(200).json({
         success: true,
-        sale: (await normalizeSaleRows([result.rows[0]]))[0],
+        sale: (await normalizeSaleRows([result.rows[0]]))[0]
       });
     }
 
@@ -751,21 +751,21 @@ async function handler(req, res) {
       if (!targetId) {
         return res.status(400).json({ success: false, error: 'Sale id is required' });
       }
-
-      if (branchScope.enforced) {
+       if (branchScope.enforced) {
         const toDelete = await getOne('SELECT branch_id FROM branch_walkin_sales WHERE id = $1', [targetId]);
         if (toDelete && !branchScope.branches.includes(toDelete.branch_id)) {
           return res.status(403).json({ success: false, error: 'Access denied' });
         }
       }
-
-      const result = await query('DELETE FROM branch_walkin_sales WHERE id = $1 RETURNING *', [targetId]);
+       const result = await query('DELETE FROM branch_walkin_sales WHERE id = $1 RETURNING *', [targetId]);
       if (result.rowCount === 0) {
         return res.status(404).json({ success: false, error: 'Sale not found' });
       }
-
-      return res.status(200).json({ success: true });
+       return res.status(200).json({ success: true });
       */
+
+
+
     }
 
     return res.status(405).json({ success: false, error: 'Method not allowed' });

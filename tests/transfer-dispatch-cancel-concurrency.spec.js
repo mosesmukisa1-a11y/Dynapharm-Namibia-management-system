@@ -1,3 +1,6 @@
+import {query as fixtureQuery} from './helpers/owned-raw-database.js';
+import {executionArguments} from '../api/services/queryDescriptors.js';
+import {ownedStatement} from './helpers/owned-statement.js';
 // @vitest-environment node
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {randomUUID} from 'node:crypto';
@@ -40,25 +43,25 @@ async function seed(label,sourceType){
         receipt_key:`${id}-receipt-b`,supplier_id:`${id}-supplier-b`}},
       {quantity:12,source:null},
     ];
-    await db.query(`INSERT INTO branch_inventory_batches
+    await fixtureQuery(`INSERT INTO branch_inventory_batches
       (id,branch_id,product_name,batch_no,expiry_date,quantity,unit_price,status,metadata)
       VALUES($1,$2,$3,$4,'2035-12-31',20,999,'in_stock',$5)`,
       [f.source,f.from,product,lot,JSON.stringify({cost_layers:f.layers,fixture:id})]);
   }else{
-    await db.query('INSERT INTO warehouse_locations(id,name,type) VALUES($1,$2,\'warehouse\')',
+    await fixtureQuery('INSERT INTO warehouse_locations(id,name,type) VALUES($1,$2,\'warehouse\')',
       [warehouse,`Isolated concurrency warehouse ${id}`]);
-    await db.query(`INSERT INTO stock_batches(id,description,batch_no,expiry_date,location,
+    await fixtureQuery(`INSERT INTO stock_batches(id,description,batch_no,expiry_date,location,
       quantity,remaining_quantity,dispatched_quantity,status,cif_unit_cost,dpc_unit_value)
       VALUES($1,$2,$3,'2035-12-31',$4,20,20,0,'available',3.123456,9)`,
       [f.source,product,lot,warehouse]);
-    await db.query(`INSERT INTO warehouse_inventory(id,warehouse_id,product_id,product_name,
+    await fixtureQuery(`INSERT INTO warehouse_inventory(id,warehouse_id,product_id,product_name,
       batch_no,expiry_date,quantity) VALUES($1,$2,$3,$3,$4,'2035-12-31',12)`,
       [f.mirror,warehouse,product,lot]);
   }
-  await db.query(`INSERT INTO stock_transfers(id,from_warehouse,to_branch,status,gm_approved_by)
+  await fixtureQuery(`INSERT INTO stock_transfers(id,from_warehouse,to_branch,status,gm_approved_by)
     VALUES($1,$2,$3,'approved','Isolated GM')`,[id,f.from,branch]);
-  const transfer=(await db.query('SELECT * FROM stock_transfers WHERE id=$1',[id])).rows[0];
-  const line=(await db.query(`INSERT INTO stock_transfer_items(transfer_id,product_id,product_name,
+  const transfer=(await fixtureQuery('SELECT * FROM stock_transfers WHERE id=$1',[id])).rows[0];
+  const line=(await fixtureQuery(`INSERT INTO stock_transfer_items(transfer_id,product_id,product_name,
     batch_no,expiry_date,quantity,quantity_approved) VALUES($1,$2,$2,$3,'2035-12-31',8,8)
     RETURNING *`,[id,product,lot])).rows[0];
   // Reserve the original physical layer through the real allocation service.
@@ -79,15 +82,15 @@ async function patch(f,status){
 }
 async function snapshot(f){
   const [transfer,batches,mirrors,movements,notes,allocations,branches,projection]=await Promise.all([
-    db.query('SELECT id,status FROM stock_transfers WHERE id=$1',[f.id]),
-    db.query('SELECT id,quantity,remaining_quantity,dispatched_quantity FROM stock_batches WHERE description=$1 ORDER BY id',[f.product]),
-    db.query('SELECT id,quantity FROM warehouse_inventory WHERE product_name=$1 ORDER BY id',[f.product]),
-    db.query(`SELECT id,movement_type,status,quantity,source_location,destination_location,
+    fixtureQuery('SELECT id,status FROM stock_transfers WHERE id=$1',[f.id]),
+    fixtureQuery('SELECT id,quantity,remaining_quantity,dispatched_quantity FROM stock_batches WHERE description=$1 ORDER BY id',[f.product]),
+    fixtureQuery('SELECT id,quantity FROM warehouse_inventory WHERE product_name=$1 ORDER BY id',[f.product]),
+    fixtureQuery(`SELECT id,movement_type,status,quantity,source_location,destination_location,
       destination_location_type,source_location_type,unit_cif,unit_dp,original_unit_cif,
       original_unit_dp FROM stock_movements WHERE reference_id=$1 ORDER BY id`,[f.id]),
-    db.query('SELECT id,status,transfer_id,from_warehouse,to_branch FROM dispatch_notes WHERE transfer_id=$1 ORDER BY id',[f.id]),
-    db.query('SELECT id,source_type,source_id,quantity,snapshot FROM stock_transfer_allocations WHERE transfer_id=$1 ORDER BY allocation_order',[f.id]),
-    db.query('SELECT id,branch_id,quantity,unit_price,metadata FROM branch_inventory_batches WHERE product_name=$1 ORDER BY id',[f.product]),
+    fixtureQuery('SELECT id,status,transfer_id,from_warehouse,to_branch FROM dispatch_notes WHERE transfer_id=$1 ORDER BY id',[f.id]),
+    fixtureQuery('SELECT id,source_type,source_id,quantity,snapshot FROM stock_transfer_allocations WHERE transfer_id=$1 ORDER BY allocation_order',[f.id]),
+    fixtureQuery('SELECT id,branch_id,quantity,unit_price,metadata FROM branch_inventory_batches WHERE product_name=$1 ORDER BY id',[f.product]),
     getStockCostProjection({productName:f.product}),
   ]);
   return {transfer:transfer.rows[0],batches:batches.rows,mirrors:mirrors.rows,
@@ -97,15 +100,15 @@ async function snapshot(f){
 async function cleanup(){
   vi.restoreAllMocks();
   for(const f of fixtures){
-    await db.query('DELETE FROM dispatch_notes WHERE transfer_id=$1',[f.id]);
-    await db.query('DELETE FROM stock_transfers WHERE id=$1',[f.id]); // items and allocations cascade
-    await db.query('DELETE FROM stock_movements WHERE reference_id=$1',[f.id]);
-    await db.query('DELETE FROM inventory_balances WHERE product_name=$1',[f.product]);
-    await db.query('DELETE FROM warehouse_inventory WHERE product_name=$1',[f.product]);
-    await db.query('DELETE FROM stock_batches WHERE description=$1',[f.product]);
-    await db.query('DELETE FROM branch_inventory_batches WHERE product_name=$1',[f.product]);
-    await db.query('DELETE FROM warehouse_locations WHERE id=$1',[f.warehouse]);
-    expect(Number((await db.query(`SELECT
+    await fixtureQuery('DELETE FROM dispatch_notes WHERE transfer_id=$1',[f.id]);
+    await fixtureQuery('DELETE FROM stock_transfers WHERE id=$1',[f.id]); // items and allocations cascade
+    await fixtureQuery('DELETE FROM stock_movements WHERE reference_id=$1',[f.id]);
+    await fixtureQuery('DELETE FROM inventory_balances WHERE product_name=$1',[f.product]);
+    await fixtureQuery('DELETE FROM warehouse_inventory WHERE product_name=$1',[f.product]);
+    await fixtureQuery('DELETE FROM stock_batches WHERE description=$1',[f.product]);
+    await fixtureQuery('DELETE FROM branch_inventory_batches WHERE product_name=$1',[f.product]);
+    await fixtureQuery('DELETE FROM warehouse_locations WHERE id=$1',[f.warehouse]);
+    expect(Number((await fixtureQuery(`SELECT
       (SELECT COUNT(*) FROM stock_movements WHERE reference_id=$1)+
       (SELECT COUNT(*) FROM dispatch_notes WHERE transfer_id=$1)+
       (SELECT COUNT(*) FROM stock_transfers WHERE id=$1)+
@@ -120,7 +123,7 @@ async function cleanup(){
   fixtures.length=0;
 }
 describe.sequential('real PATCH dispatch versus cancellation/rejection row-lock race',()=>{
-  beforeAll(()=>db.query(lifecycleSchema));afterEach(cleanup);
+  beforeAll(()=>fixtureQuery(lifecycleSchema));afterEach(cleanup);
   const races=['stock','branch'].flatMap(sourceType=>['cancelled','rejected'].flatMap(action=>[
     {sourceType,winner:'dispatched',loser:action},
     {sourceType,winner:action,loser:'dispatched'},
@@ -158,8 +161,8 @@ describe.sequential('real PATCH dispatch versus cancellation/rejection row-lock 
     // Delay only scheduling, not SQL results or handler behavior. The winner
     // owns the real FOR UPDATE lock while the other transaction attempts it.
     vi.spyOn(db,'getOne').mockImplementation(async(sql,params)=>{
-      if(sql==='SELECT * FROM stock_transfers WHERE id = $1 FOR UPDATE' && params[0]===f.id){
-        const {pid}=await getOne('SELECT pg_backend_pid() AS pid');
+      if(executionArguments(sql,params).text==='SELECT * FROM stock_transfers WHERE id = $1 FOR UPDATE' && params[0]===f.id){
+        const {pid}=await getOne(ownedStatement('owned-tests/backend-pid'));
         if(actions.getStore()===winner){
           const row=await getOne(sql,params);locked.resolve(pid);
           await release.promise;return row;
@@ -179,7 +182,7 @@ describe.sequential('real PATCH dispatch versus cancellation/rejection row-lock 
       const deadline=Date.now()+3000;
       let blocked=false;
       while(Date.now()<deadline){
-        const row=(await db.query(`SELECT wait_event_type,pg_blocking_pids(pid) AS blockers
+        const row=(await fixtureQuery(`SELECT wait_event_type,pg_blocking_pids(pid) AS blockers
           FROM pg_stat_activity WHERE pid=$1`,[loserPid])).rows[0];
         if(row?.wait_event_type==='Lock' && row.blockers.includes(winnerPid)){blocked=true;break;}
         await new Promise(r=>setTimeout(r,10));

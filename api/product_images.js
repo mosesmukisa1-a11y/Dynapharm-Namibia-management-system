@@ -1,4 +1,4 @@
-import { applyAuthCors } from './_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "./services/queryDescriptors.js";import { applyAuthCors } from './_lib/auth.js';
 import { query, getMany, getOne, insert, update, remove, publishRealtimeEvent } from './db.js';
 
 export default async function handler(req, res) {
@@ -18,44 +18,44 @@ export default async function handler(req, res) {
     if (method === 'GET') {
       if (id) {
         // Get single image
-        const image = await getOne('SELECT * FROM product_images WHERE id = $1', [id]);
+        const image = await __qd_executePlan(getOne, __qd_registeredPlan("api/product_images.js:21:0"), [id]);
         if (!image) {
           return res.status(404).json({ error: 'Product image not found' });
         }
         return res.json(image);
       } else if (product_id) {
         // Get images for a product by ID
-        const images = await getMany(
-          'SELECT * FROM product_images WHERE product_id = $1 ORDER BY is_primary DESC, created_at ASC',
-          [product_id]
-        );
+        const images = await __qd_executePlan(getMany, __qd_registeredPlan("api/product_images.js:29:1"),
+
+        [product_id]);
+
         return res.json(images);
       } else if (product_name) {
         // Get images for a product by name (join with products table)
-        const images = await getMany(
-          `SELECT pi.*, p.name as product_name, p.description as product_description 
-           FROM product_images pi 
-           JOIN products p ON pi.product_id = p.id 
-           WHERE p.name ILIKE $1 OR p.description ILIKE $1 
-           ORDER BY pi.is_primary DESC, pi.created_at ASC`,
-          [`%${product_name}%`]
-        );
+        const images = await __qd_executePlan(getMany, __qd_registeredPlan("api/product_images.js:36:2"),
+
+
+
+
+
+        [`%${product_name}%`]);
+
         return res.json(images);
       } else {
         // Get all images with product names
-        const images = await getMany(`
-          SELECT pi.*, p.name as product_name, p.description as product_description 
-          FROM product_images pi 
-          LEFT JOIN products p ON pi.product_id = p.id 
-          ORDER BY pi.created_at DESC
-        `);
+        const images = await __qd_executePlan(getMany, __qd_registeredPlan("api/product_images.js:46:3"), []);
+
+
+
+
+
         return res.json(images);
       }
     }
 
     if (method === 'POST') {
       const body = req.body;
-      
+
       if (Array.isArray(body)) {
         // Bulk insert images
         const results = [];
@@ -64,18 +64,18 @@ export default async function handler(req, res) {
             // If product_name provided, find product_id
             let productId = img.product_id;
             if (!productId && img.product_name) {
-              const product = await getOne(
-                'SELECT id FROM products WHERE name = $1 OR description = $1 LIMIT 1',
-                [img.product_name]
-              );
+              const product = await __qd_executePlan(getOne, __qd_registeredPlan("api/product_images.js:68:4"),
+
+              [img.product_name]);
+
               if (product) productId = product.id;
             }
-            
+
             if (!productId) {
               console.warn('Skipping image - product_id or product_name required');
               continue;
             }
-            
+
             const image = await insert('product_images', {
               product_id: productId,
               image_url: img.image_url || img.url || img.src,
@@ -88,27 +88,27 @@ export default async function handler(req, res) {
             console.error('Error inserting product image:', error);
           }
         }
-        
+
         if (results.length > 0) {
           await publishRealtimeEvent('product_images', 'create', results);
         }
-        
+
         return res.json({ success: true, count: results.length, images: results });
       } else {
         // Create single image
         let productId = body.product_id;
         if (!productId && body.product_name) {
-          const product = await getOne(
-            'SELECT id FROM products WHERE name = $1 OR description = $1 LIMIT 1',
-            [body.product_name]
-          );
+          const product = await __qd_executePlan(getOne, __qd_registeredPlan("api/product_images.js:102:5"),
+
+          [body.product_name]);
+
           if (product) productId = product.id;
         }
-        
+
         if (!productId) {
           return res.status(400).json({ error: 'product_id or product_name is required' });
         }
-        
+
         const image = await insert('product_images', {
           product_id: productId,
           image_url: body.image_url || body.url || body.src,
@@ -116,7 +116,7 @@ export default async function handler(req, res) {
           variant_data: body.variant_data || null,
           is_primary: body.is_primary || false
         });
-        
+
         await publishRealtimeEvent('product_images', 'create', image);
         return res.json(image);
       }
@@ -138,7 +138,7 @@ export default async function handler(req, res) {
         ...(body.file_size !== undefined && { file_size: body.file_size }),
         ...(body.is_primary !== undefined && { is_primary: body.is_primary }),
         ...(body.display_order !== undefined && { display_order: body.display_order }),
-        updated_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       };
       const image = await update('product_images', body.id, imagePayload, 'id');
       if (image) {
@@ -168,4 +168,3 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Internal server error' });
   }
 }
-

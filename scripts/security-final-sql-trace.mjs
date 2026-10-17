@@ -6,7 +6,7 @@ import {createHash} from 'node:crypto';
 import {parse} from '@babel/parser';
 import traverseModule from '@babel/traverse';
 const traverse=traverseModule.default||traverseModule;
-const base='generated-artifacts/sql-security-final-closure';
+const base='generated-artifacts/sql-runtime-enforcement-final';
 const prior='generated-artifacts/final-security-release-gate';
 const digest=value=>createHash('sha256').update(value).digest('hex');
 const read=async file=>JSON.parse(await fs.readFile(file,'utf8'));

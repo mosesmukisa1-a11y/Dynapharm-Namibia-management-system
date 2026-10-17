@@ -1,4 +1,4 @@
-import bcrypt from 'bcryptjs';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../services/queryDescriptors.js";import bcrypt from 'bcryptjs';
 import { applyAuthCors } from '../_lib/auth.js';
 import { getOne, query } from '../db.js';
 
@@ -45,8 +45,8 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
-  if (!req.user || !['admin','gm','super_admin'].includes(req.user.role))
-    return res.status(403).json({error:'Verified administrator account setup required'});
+  if (!req.user || !['admin', 'gm', 'super_admin'].includes(req.user.role))
+  return res.status(403).json({ error: 'Verified administrator account setup required' });
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -75,10 +75,10 @@ export default async function handler(req, res) {
 
     let distributor = null;
     if (distributorIdInput) {
-      distributor = await getOne('SELECT * FROM distributors WHERE id = $1', [distributorIdInput]);
+      distributor = await __qd_executePlan(getOne, __qd_registeredPlan("api/distributors/set-password.js:78:0"), [distributorIdInput]);
     }
     if (!distributor && distributorCodeInput) {
-      distributor = await getOne('SELECT * FROM distributors WHERE distributor_code = $1', [distributorCodeInput]);
+      distributor = await __qd_executePlan(getOne, __qd_registeredPlan("api/distributors/set-password.js:81:1"), [distributorCodeInput]);
     }
 
     if (!distributor) {
@@ -100,7 +100,7 @@ export default async function handler(req, res) {
     }
 
     const username = normalizedCode.toLowerCase();
-    const existingUser = await getOne('SELECT * FROM users WHERE username = $1 AND role = $2', [username, 'distributor']);
+    const existingUser = await __qd_executePlan(getOne, __qd_registeredPlan("api/distributors/set-password.js:103:2"), [username, 'distributor']);
 
     if (existingUser) {
       return res.status(409).json({ error: 'An account already exists for this number. Please use Forgot Password to reset your credentials.' });
@@ -118,40 +118,40 @@ export default async function handler(req, res) {
 
     {
       userId = `USR${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
-      await query(
-        `INSERT INTO users (
-            id, username, password_hash, role,
-            full_name, email, phone, branch, branches,
-            is_active, must_change_password, metadata, created_at, updated_at
-          )
-          VALUES (
-            $1, $2, $3, $4,
-            $5, $6, $7, $8, $9::jsonb,
-            TRUE, FALSE, $10::jsonb, NOW(), NOW()
-          )`,
-        [
-          userId,
-          username,
-          passwordHash,
-          'distributor',
-          fullName,
-          email,
-          phone,
-          branch,
-          branches,
-          metadata
-        ]
-      );
+      await __qd_executePlan(query, __qd_registeredPlan("api/distributors/set-password.js:122:3"),
+
+
+
+
+
+
+
+
+
+
+      [
+      userId,
+      username,
+      passwordHash,
+      'distributor',
+      fullName,
+      email,
+      phone,
+      branch,
+      branches,
+      metadata]);
+
+
     }
 
     const existingMetadata = normalizeMetadata(distributor.metadata);
     existingMetadata.passwordSet = true;
     existingMetadata.passwordUpdatedAt = new Date().toISOString();
 
-    await query(
-      'UPDATE distributors SET email = COALESCE($1, email), birthdate = COALESCE($2::date, birthdate), metadata = $3::jsonb, updated_at = NOW() WHERE id = $4',
-      [email, dobInput || null, JSON.stringify(existingMetadata), distributor.id]
-    );
+    await __qd_executePlan(query, __qd_registeredPlan("api/distributors/set-password.js:152:4"),
+
+    [email, dobInput || null, JSON.stringify(existingMetadata), distributor.id]);
+
 
     return res.status(200).json({
       success: true,
@@ -164,5 +164,3 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Internal server error' });
   }
 }
-
-

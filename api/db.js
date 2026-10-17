@@ -3,9 +3,19 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import {identifier as sqlIdentifier, insertStatement, findAllStatement,updateStatement} from './services/sqlShape.js';
 import {applicationTable,applicationRecord,applicationFields} from './services/sqlFieldPolicy.js';
 import {isTestProcess, assertIsolatedTestDatabase, verifyIsolatedTestConnection} from './testDatabaseGuard.js';
+import {executionArguments,restrictedDescriptorExecutor,withQueryContext,crudDescriptor,assertTransactionStatement} from './services/queryDescriptors.js';
 
 const requestTransactions = new AsyncLocalStorage();
 const connectionErrors = new WeakMap();
+function transactionFacade(context){
+  return restrictedDescriptorExecutor((text,values)=>{
+    if(!context.active)throw Object.assign(Error('Transaction context is closed'),{code:'TRANSACTION_CLOSED'});
+    const pending=context.client.query(text,values);
+    context.pending.add(pending);
+    pending.then(()=>context.pending.delete(pending),()=>context.pending.delete(pending));
+    return pending;
+  });
+}
 function watchConnection(client) {
   // pg-pool's idle listener is detached while a client is checked out.
   // A severed in-flight connection can emit a second error after its query
@@ -35,7 +45,7 @@ export async function withRequestTransaction(fn) {
   let result,releaseError;
   try {
     await client.query('BEGIN');
-    result = await requestTransactions.run(context, async () => {
+    result = await requestTransactions.run(context, () => withQueryContext('transaction',async () => {
       const value = await fn();
       while (context.pending.size) await Promise.all([...context.pending]);
       // COMMIT in an aborted PostgreSQL transaction returns ROLLBACK rather than
@@ -43,7 +53,7 @@ export async function withRequestTransaction(fn) {
       await client.query('SELECT 1');
       await client.query('COMMIT');
       return value;
-    });
+    }));
   } catch (error) {
     context.afterCommit = [];
     try { await client.query('ROLLBACK'); }
@@ -127,11 +137,15 @@ function getPool() {
   return pool;
 }
 
-export async function query(text, params) {
+export async function query(descriptor, params) {
+  // Admission MUST precede pool construction, connection acquisition and all
+  // driver interaction. Aliases/getOne/getMany cannot bypass this single path.
+  const admitted=executionArguments(descriptor,params);
   const context = requestTransactions.getStore();
+  if(context?.active)assertTransactionStatement(admitted);
   const executor = context?.active ? context.client : getPool();
   try {
-    const pending = executor.query(text, params);
+    const pending = executor.query(admitted.text, admitted.values);
     if (context?.active) context.pending.add(pending);
     let res;
     try { res = await pending; } finally { context?.pending.delete(pending); }
@@ -158,7 +172,7 @@ function sanitizeIdentifier(name) { return sqlIdentifier(name); }
 export async function insert(tableName, data) {
   data=applicationRecord(tableName,data);
   const statement=insertStatement(tableName,data);
-  const result = await query(statement.text, statement.params);
+  const result = await query(statement, statement.params);
   return result.rows[0];
 }
 
@@ -166,21 +180,19 @@ export async function update(tableName, id, data, idColumn = 'id') {
   data=applicationRecord(tableName,data);
   if(idColumn!=='id')throw Error('Invalid SQL identifier');
   const statement=updateStatement(tableName,id,data,applicationFields[tableName],idColumn);
-  const result = await query(statement.text,statement.params);
+  const result = await query(statement,statement.params);
   return result.rows[0];
 }
 
 export async function remove(tableName, id, idColumn = 'id') {
   applicationTable(tableName);if(idColumn!=='id')throw Error('Invalid SQL identifier');
-  const queryText = `DELETE FROM ${sanitizeIdentifier(tableName)} WHERE "${sanitizeIdentifier(idColumn)}" = $1 RETURNING *`;
-  const result = await query(queryText, [id]);
+  const result = await query(crudDescriptor('remove',tableName,{},id,idColumn));
   return result.rows[0];
 }
 
 export async function findById(tableName, id, idColumn = 'id') {
   applicationTable(tableName);if(idColumn!=='id')throw Error('Invalid SQL identifier');
-  const queryText = `SELECT * FROM ${sanitizeIdentifier(tableName)} WHERE "${sanitizeIdentifier(idColumn)}" = $1`;
-  return await getOne(queryText, [id]);
+  return await getOne(crudDescriptor('findById',tableName,{},id,idColumn));
 }
 
 export async function findAll(tableName, conditions = {}, orderBy = 'created_at DESC') {
@@ -192,7 +204,7 @@ export async function findAll(tableName, conditions = {}, orderBy = 'created_at 
     if(!allowed.includes(column))throw Error('Invalid SQL ordering');
   }
   const statement=findAllStatement(tableName,conditions,orderBy);
-  return await getMany(statement.text,statement.params);
+  return await getMany(statement,statement.params);
 }
 
 // Publish realtime events
@@ -233,11 +245,12 @@ export async function withTransaction(fn, { advisoryLockBeforeBegin } = {}) {
   if (context?.active) {
     if (advisoryLockBeforeBegin !== undefined)
       throw new Error('A pre-snapshot lock requires a new transaction');
-    return fn(context.client);
+    context.facade ??= transactionFacade(context);
+    return fn(context.facade);
   }
   const pool = getPool();
   const client = await pool.connect();
-  let lockHeld = false, lockAttempted = false, transactionStarted = false, releaseError;
+  let lockHeld = false, lockAttempted = false, transactionStarted = false, releaseError,result,committedCallbacks=[];
   try {
     if (advisoryLockBeforeBegin !== undefined) {
       lockAttempted = true;
@@ -246,10 +259,19 @@ export async function withTransaction(fn, { advisoryLockBeforeBegin } = {}) {
     }
     await client.query('BEGIN');
     transactionStarted = true;
-    const result = await fn(client);
+    const local={client,active:true,afterCommit:[],pending:new Set()};
+    local.facade=transactionFacade(local);
+    try{
+      result=await requestTransactions.run(local,()=>withQueryContext('transaction',async()=>{
+        const value=await fn(local.facade);
+        while(local.pending.size)await Promise.all([...local.pending]);
+        await client.query('SELECT 1');
+        return value;
+      }));
+    }finally{local.active=false;}
     await client.query('COMMIT');
     transactionStarted = false;
-    return result;
+    committedCallbacks=local.afterCommit;
   } catch (error) {
     if (lockAttempted && !lockHeld) releaseError = error;
     try {
@@ -272,4 +294,8 @@ export async function withTransaction(fn, { advisoryLockBeforeBegin } = {}) {
     }
     client.release(releaseError || connectionErrors.get(client));
   }
+  for(const callback of committedCallbacks){
+    try{await callback();}catch{console.error('[stock-after-commit] callback failed');}
+  }
+  return result;
 }

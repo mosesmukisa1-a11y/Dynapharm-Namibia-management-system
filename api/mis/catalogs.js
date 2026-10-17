@@ -1,4 +1,4 @@
-import { applyAuthCors } from '../_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../services/queryDescriptors.js";import { applyAuthCors } from '../_lib/auth.js';
 import { getMany } from '../db.js';
 
 function normalizeProduct(row) {
@@ -14,7 +14,7 @@ function normalizeProduct(row) {
     taxRate: row.tax_rate !== null ? Number(row.tax_rate) : 0,
     category: row.category || null,
     branch: row.branch || null,
-    isActive: row.is_active !== false,
+    isActive: row.is_active !== false
   };
 }
 
@@ -27,7 +27,7 @@ function normalizeDistributor(row) {
     mobile: row.mobile_no,
     email: row.email,
     branch: row.branch,
-    status: row.status || 'active',
+    status: row.status || 'active'
   };
 }
 
@@ -39,7 +39,7 @@ function buildBranchList({ products, distributors, salesBranches, draftBranches 
     if (!branches.has(key)) {
       branches.set(key, {
         id: id,
-        name: name || id,
+        name: name || id
       });
     }
   };
@@ -79,48 +79,48 @@ export default async function handler(req, res) {
 
   try {
     const [productRows, distributorRows, salesBranches, draftBranches] = await Promise.all([
-      // Join product_prices so dp/cp/bv always reflect the current GM price list.
-      // product_prices is the authoritative source; the products table columns are
-      // legacy fallbacks only.
-      getMany(
-        `
-          SELECT
-            p.id, p.sku, p.name, p.unit, p.tax_rate, p.category, p.branch, p.is_active,
-            COALESCE(NULLIF(pp.dp,  0), p.dp)  AS dp,
-            COALESCE(NULLIF(pp.cp,  0), p.cp)  AS cp,
-            COALESCE(NULLIF(pp.bv,  0), p.bv)  AS bv
-          FROM products p
-          LEFT JOIN live_product_prices pp
-            ON LOWER(TRIM(pp.description)) = LOWER(TRIM(p.name))
-          ORDER BY p.name
-        `,
-        []
-      ),
-      getMany(
-        `
-          SELECT id, distributor_code, distributor_name, mobile_no, email, branch, status
-          FROM distributors
-          ORDER BY distributor_name
-        `,
-        []
-      ),
-      getMany(
-        `
-          SELECT DISTINCT branch_id
-          FROM branch_walkin_sales
-          WHERE branch_id IS NOT NULL
-        `,
-        []
-      ),
-      getMany(
-        `
-          SELECT DISTINCT branch_id
-          FROM mis_sales_drafts
-          WHERE branch_id IS NOT NULL
-        `,
-        []
-      ),
-    ]);
+    // Join product_prices so dp/cp/bv always reflect the current GM price list.
+    // product_prices is the authoritative source; the products table columns are
+    // legacy fallbacks only.
+    __qd_executePlan(getMany, __qd_registeredPlan("api/mis/catalogs.js:86:0"),
+
+
+
+
+
+
+
+
+
+
+
+    []), __qd_executePlan(
+
+      getMany, __qd_registeredPlan("api/mis/catalogs.js:100:1"),
+
+
+
+
+
+      []), __qd_executePlan(
+
+      getMany, __qd_registeredPlan("api/mis/catalogs.js:108:2"),
+
+
+
+
+
+      []), __qd_executePlan(
+
+      getMany, __qd_registeredPlan("api/mis/catalogs.js:116:3"),
+
+
+
+
+
+      [])]
+
+    );
 
     const products = productRows.map(normalizeProduct).filter(Boolean);
     const distributors = distributorRows.map(normalizeDistributor).filter(Boolean);
@@ -131,16 +131,14 @@ export default async function handler(req, res) {
       catalogs: {
         products,
         distributors,
-        branches,
-      },
+        branches
+      }
     });
   } catch (error) {
     console.error('MIS catalogs API error:', error);
     return res.status(500).json({
       success: false,
-      error: error?.message || 'Internal server error',
+      error: error?.message || 'Internal server error'
     });
   }
 }
-
-

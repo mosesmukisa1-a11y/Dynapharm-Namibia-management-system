@@ -21,7 +21,7 @@ if(process.env.NODE_ENV==='production'||['1','true'].includes(process.env.REPLIT
 // Never re-use the earlier guessed legacy scaffolding. A missing canonical
 // definition blocks before any directory, socket, cluster or database exists.
 await assertRepositoryFoundation();
-const root=process.cwd(),runId=randomUUID(),base=path.join(root,'generated-artifacts/sql-security-final-closure');
+const root=process.cwd(),runId=randomUUID(),base=path.join(root,'generated-artifacts/sql-runtime-enforcement-final');
 const out=path.join(base,'fixture-runs',runId);
 await fs.mkdir(out,{recursive:true});
 const runKind=(process.argv.includes('--database-suites')||process.argv.includes('--sql-families-only'))?'database':
@@ -186,6 +186,24 @@ try{
   const testEnv={...env,DATABASE_URL:dbUrl,DATABASE_SSL:'0',STOCK_AUDIT_ISOLATED:'1',
     STOCK_AUDIT_DATABASE:name,REPLIT_DEPLOYMENT:'0',NODE_ENV:'test',AUTH_SECRET:markers[0],
     JWT_SECRET:markers[0],SESSION_SECRET:markers[0],SYNTHETIC_SERVER_ONLY_MARKER:markers[1],...profile};
+  const guardProbe=childEnv=>new Promise(resolve=>{
+    const child=spawn(process.execPath,['--input-type=module','-e',
+      'await import('+JSON.stringify(root+'/scripts/lib/owned-tool-context.mjs')+')'],
+      {cwd:root,env:childEnv,stdio:'ignore'});
+    child.once('error',()=>resolve(-1));child.once('exit',code=>resolve(code));
+  });
+  const toolEnv={...testEnv,OWNED_AUDIT_OUTPUT:out+'/tool-results'};
+  const toolChecks={
+    currentOwnedContextAccepted:await guardProbe(toolEnv)===0,
+    deploymentRejected:await guardProbe({...toolEnv,REPLIT_DEPLOYMENT:'1'})!==0,
+    nonTestRejected:await guardProbe({...toolEnv,NODE_ENV:'development'})!==0,
+    remoteTargetRejected:await guardProbe({...toolEnv,DATABASE_URL:'postgresql://fixture_owner@production.invalid/refused'})!==0,
+    unknownDatabaseRejected:await guardProbe({...toolEnv,DATABASE_URL:dbUrl+'unknown'})!==0,
+  };
+  await fs.writeFile(out+'/owned-tool-context-contract.json',JSON.stringify({
+    status:Object.values(toolChecks).every(Boolean)?'PASS':'FAIL',checks:toolChecks,
+    databaseConnectionsMade:0,production:false},null,2));
+  if(!Object.values(toolChecks).every(Boolean))throw Error('Owned tool namespace contract failed');
   if(process.argv.includes('--database-suites')||process.argv.includes('--credential-only')||process.argv.includes('--diagnose')||process.argv.includes('--sql-families-only')){
     if(process.argv.includes('--diagnose')||process.argv.includes('--query-diagnostics'))Object.assign(testEnv,{
       NODE_OPTIONS:'--import '+root+'/scripts/lib/owned-query-diagnostics.mjs',
@@ -218,6 +236,9 @@ try{
     await cleanup();
   }else{
     const entry=temp+'/entry.mjs';
+    const runtimeOnly=process.argv.includes('--runtime-http-only');
+    if(runtimeOnly)Object.assign(testEnv,{OWNED_AUDIT_OUTPUT:out+'/tool-results',
+      NODE_OPTIONS:'--import '+root+'/scripts/lib/owned-runtime-query-observer.mjs'});
     await fs.writeFile(entry,`await import(${JSON.stringify(root+'/scripts/start-code-only-web.mjs')});
       const {server}=await import(${JSON.stringify(root+'/server.js')});
       if(!server.listening)await new Promise(r=>server.once('listening',r));
@@ -260,14 +281,14 @@ try{
         'Production deployment artifacts and clean-install archive gate not verified.']},null,2));
     // One owned automation process receives synthetic material via IPC only.
     // No file, CLI argument, console, trace or screenshot contains credential values.
-    const child=spawn(process.execPath,[root+'/scripts/security-closure-browser.mjs'],{
-      env:{...env},stdio:['ignore','ignore','ignore','ipc']});
+    const child=spawn(process.execPath,[root+(runtimeOnly?'/scripts/security-runtime-http-probes.mjs':'/scripts/security-closure-browser.mjs')],{
+      env:runtimeOnly?{...testEnv,NODE_OPTIONS:''}:{...env},stdio:['ignore','ignore','ignore','ipc']});
     child.send({baseUrl,material,out,markers,adminOnly:process.argv.includes('--admin-only')});
     const result=await new Promise(r=>child.once('exit',code=>r(code)));
     await fs.writeFile(out+'/secret-log-check.json',JSON.stringify({status:markers.some(m=>logs.includes(m))||
       logs.includes(material.password)||logs.includes(material.permanent)?'FAIL':'PASS',
       scope:'full captured strict-launcher stdout and stderr',syntheticOnly:true}));
-    if(result!==0)throw Error('Browser rehearsal incomplete; see browser-results.json');
+    if(result!==0)throw Error(runtimeOnly?'Native HTTP rehearsal incomplete; see runtime-http-results.json':'Browser rehearsal incomplete; see browser-results.json');
     await cleanup();
   }
   }

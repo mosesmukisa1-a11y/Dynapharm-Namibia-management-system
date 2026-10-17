@@ -25,16 +25,31 @@ afterEach(()=>vi.unstubAllEnvs());
 it('locks before BEGIN and snapshot reads, then unlocks after COMMIT',async()=>{
   const {withTransaction}=await import('../api/db.js');
   const result=await withTransaction(async client=>{
-    await client.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+    expect(Object.isFrozen(client)).toBe(true);
+    expect(Object.keys(client)).toEqual(['query']);
+    expect(client.release).toBeUndefined();expect(client.connect).toBeUndefined();
+    const before=mocks.client.query.mock.calls.length;
+    expect(()=>client.query('COMMIT')).toThrow('Query boundary');
+    expect(mocks.client.query).toHaveBeenCalledTimes(before);
+    const {transactionIsolationDescriptor}=await import('../api/services/queryDescriptors.js');
+    await client.query(transactionIsolationDescriptor('repeatable-read'));
     return 42;
   },{advisoryLockBeforeBegin:123});
   expect(result).toBe(42);
   expect(mocks.client.query.mock.calls.map(([sql])=>sql)).toEqual([
     'SELECT pg_advisory_lock($1)','BEGIN',
-    'SET TRANSACTION ISOLATION LEVEL REPEATABLE READ','COMMIT',
+    'SET TRANSACTION ISOLATION LEVEL REPEATABLE READ','SELECT 1','COMMIT',
     'SELECT pg_advisory_unlock($1) AS unlocked',
   ]);
   expect(mocks.client.release).toHaveBeenCalledWith(undefined);
+});
+it('expires an escaped facade when the wrapper finishes',async()=>{
+  const {withTransaction}=await import('../api/db.js');
+  const {crudDescriptor}=await import('../api/services/queryDescriptors.js');
+  let escaped;await withTransaction(async client=>{escaped=client;});
+  const before=mocks.client.query.mock.calls.length;
+  expect(()=>escaped.query(crudDescriptor('findById','clients',{},'synthetic'))).toThrow('Transaction context is closed');
+  expect(mocks.client.query).toHaveBeenCalledTimes(before);
 });
 it('rolls back and releases the session lock when the callback fails',async()=>{
   const {withTransaction}=await import('../api/db.js');

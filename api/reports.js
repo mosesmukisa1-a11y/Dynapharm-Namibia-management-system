@@ -1,4 +1,4 @@
-import { applyAuthCors } from './_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, joinPlans as __qd_joinPlans, executePlan as __qd_executePlan } from "./services/queryDescriptors.js";import { applyAuthCors } from './_lib/auth.js';
 import { query, getMany, getOne, insert, update, remove, publishRealtimeEvent } from './db.js';
 import { postActivityRecord, generateBatId } from './_lib/activityCapture.js';
 import { atomicStockRequest } from './_lib/atomicStockRequest.js';
@@ -38,15 +38,15 @@ async function parseRequestBody(req) {
 function normalizeReportRow(row) {
   if (!row) return null;
   const payload =
-    typeof row.data === 'string'
-      ? (() => {
-          try {
-            return JSON.parse(row.data);
-          } catch {
-            return {};
-          }
-        })()
-      : row.data || {};
+  typeof row.data === 'string' ?
+  (() => {
+    try {
+      return JSON.parse(row.data);
+    } catch {
+      return {};
+    }
+  })() :
+  row.data || {};
 
   const createdAtVal = row.created_at || payload.createdAt || payload.timestamp || null;
   return {
@@ -60,7 +60,7 @@ function normalizeReportRow(row) {
     created_at: createdAtVal,
     updatedAt: row.updated_at || payload.updatedAt || payload.lastModified || null,
     ...payload,
-    date: payload.date || (createdAtVal ? createdAtVal : null),
+    date: payload.date || (createdAtVal ? createdAtVal : null)
   };
 }
 
@@ -93,49 +93,49 @@ async function handler(req, res) {
   const appointmentId = searchParams.get('appointment_id');
 
   try {
-    if(req.method!=='GET'){
-      const incoming=await parseRequestBody(req);
-      const existing=(incoming?.id||id)?await getOne('SELECT data FROM reports WHERE id=$1',[incoming?.id||id]):null;
-      if(existing?.data?.offSystemFulfilment||incoming?.data?.offSystemFulfilment||incoming?.offSystemFulfilment)
-        return res.status(409).json({error:'Historical collection receipts are immutable; use the original return workflow for corrections'});
+    if (req.method !== 'GET') {
+      const incoming = await parseRequestBody(req);
+      const existing = incoming?.id || id ? await __qd_executePlan(getOne, __qd_registeredPlan("api/reports.js:98:0"), [incoming?.id || id]) : null;
+      if (existing?.data?.offSystemFulfilment || incoming?.data?.offSystemFulfilment || incoming?.offSystemFulfilment)
+      return res.status(409).json({ error: 'Historical collection receipts are immutable; use the original return workflow for corrections' });
     }
     if (req.method === 'GET') {
-      let queryText = 'SELECT * FROM reports';
+      let queryText = __qd_registeredPlan("api/reports.js:103:1");
       const params = [];
       const conditions = [];
 
       if (id) {
-        conditions.push(`id = $${params.length + 1}`);
+        conditions.push(__qd_registeredPlan("api/reports.js:108:2", [params.length + 1]));
         params.push(id);
       }
       if (clientId) {
-        conditions.push(`client_id = $${params.length + 1}`);
+        conditions.push(__qd_registeredPlan("api/reports.js:112:3", [params.length + 1]));
         params.push(clientId);
       }
       if (branch) {
-        conditions.push(`branch = $${params.length + 1}`);
+        conditions.push(__qd_registeredPlan("api/reports.js:116:4", [params.length + 1]));
         params.push(branch);
       }
       if (consultant) {
-        conditions.push(`consultant = $${params.length + 1}`);
+        conditions.push(__qd_registeredPlan("api/reports.js:120:5", [params.length + 1]));
         params.push(consultant);
       }
       if (clientName) {
-        conditions.push(`LOWER(data->>'client_name') = LOWER($${params.length + 1})`);
+        conditions.push(__qd_registeredPlan("api/reports.js:124:6", [params.length + 1]));
         params.push(clientName);
       }
       if (appointmentId) {
-        conditions.push(`data->>'appointment_id' = $${params.length + 1}`);
+        conditions.push(__qd_registeredPlan("api/reports.js:128:7", [params.length + 1]));
         params.push(appointmentId);
       }
 
       if (conditions.length > 0) {
-        queryText += ` WHERE ${conditions.join(' AND ')}`;
+        queryText = __qd_joinPlans([queryText, __qd_registeredPlan("api/reports.js:133:8", [__qd_joinPlans(conditions, "and")])], "empty");
       }
 
-      queryText += ' ORDER BY created_at DESC';
+      queryText = __qd_joinPlans([queryText, __qd_registeredPlan("api/reports.js:136:9")], "empty");
 
-      const rows = await getMany(queryText, params);
+      const rows = await __qd_executePlan(getMany, queryText, params);
       return res.status(200).json(rows.map(normalizeReportRow).filter(Boolean));
     }
 
@@ -155,15 +155,15 @@ async function handler(req, res) {
       }
 
       const consultFee = Number(body.consultation_fee || 0);
-      const pendingMedicines = Array.isArray(body.medicines)
-        ? body.medicines.filter(m => !m.dispensed)
-        : [];
+      const pendingMedicines = Array.isArray(body.medicines) ?
+      body.medicines.filter((m) => !m.dispensed) :
+      [];
       const isStandaloneConsultation = consultFee > 0 && pendingMedicines.length === 0;
       if (isStandaloneConsultation) {
         let branchId = body.branch_id || body.branch || null;
         if (!branchId && body.appointment_id) {
           try {
-            const apt = await getOne('SELECT branch FROM appointments WHERE id = $1', [body.appointment_id]);
+            const apt = await __qd_executePlan(getOne, __qd_registeredPlan("api/reports.js:166:10"), [body.appointment_id]);
             if (apt && apt.branch) branchId = apt.branch;
           } catch (e) {
             console.error('[reports POST] failed to look up appointment branch:', e.message);
@@ -195,7 +195,7 @@ async function handler(req, res) {
               prescription_status: 'none',
               consultation_status: 'paid',
               reporting_status: 'posted',
-              captured_by: body.consultant || null,
+              captured_by: body.consultant || null
             });
           } catch (e) {
             console.error('[reports POST] consultation fee activity capture failed:', e.message);
@@ -214,7 +214,7 @@ async function handler(req, res) {
         return res.status(400).json({ success: false, error: 'Report id is required' });
       }
 
-      const existing = await getOne('SELECT * FROM reports WHERE id = $1 FOR UPDATE', [body.id]);
+      const existing = await __qd_executePlan(getOne, __qd_registeredPlan("api/reports.js:217:11"), [body.id]);
       if (!existing) {
         return res.status(404).json({ success: false, error: 'Report not found' });
       }
@@ -223,16 +223,16 @@ async function handler(req, res) {
         ...buildReportInsert({ ...normalizeReportRow(existing), ...body }),
         updated_at: new Date().toISOString()
       };
-      const posted=(await query('SELECT 1 FROM stock_sale_allocations WHERE sale_reference=$1 LIMIT 1',[body.id])).rowCount>0;
+      const posted = (await __qd_executePlan(query, __qd_registeredPlan("api/reports.js:226:12"), [body.id])).rowCount > 0;
       if (posted) {
-        const oldData=typeof existing.data==='string'?JSON.parse(existing.data):existing.data || {};
-        const newData=typeof updatePayload.data==='string'?JSON.parse(updatePayload.data):updatePayload.data || {};
-        const stockFields=data=>(data.medicines || []).map(m=>({
-          name:m.name || m.product_name,quantity:m.quantity,dispensed_qty:m.dispensed_qty,dispensed:m.dispensed,
-          dp:m.dp,cp:m.cp,bv:m.bv,unit_price:m.unit_price,is_free:m.is_free,
+        const oldData = typeof existing.data === 'string' ? JSON.parse(existing.data) : existing.data || {};
+        const newData = typeof updatePayload.data === 'string' ? JSON.parse(updatePayload.data) : updatePayload.data || {};
+        const stockFields = (data) => (data.medicines || []).map((m) => ({
+          name: m.name || m.product_name, quantity: m.quantity, dispensed_qty: m.dispensed_qty, dispensed: m.dispensed,
+          dp: m.dp, cp: m.cp, bv: m.bv, unit_price: m.unit_price, is_free: m.is_free
         }));
-        if (existing.branch!==updatePayload.branch || JSON.stringify(stockFields(oldData))!==JSON.stringify(stockFields(newData)))
-          return res.status(409).json({success:false,error:'Posted dispensing quantities, products and prices cannot be edited. Use a linked return and a new prescription authorization.'});
+        if (existing.branch !== updatePayload.branch || JSON.stringify(stockFields(oldData)) !== JSON.stringify(stockFields(newData)))
+        return res.status(409).json({ success: false, error: 'Posted dispensing quantities, products and prices cannot be edited. Use a linked return and a new prescription authorization.' });
       }
 
       const updated = await update('reports', body.id, updatePayload, 'id');
@@ -245,8 +245,8 @@ async function handler(req, res) {
       if (!id) {
         return res.status(400).json({ success: false, error: 'Report id is required' });
       }
-      if ((await query('SELECT 1 FROM stock_sale_allocations WHERE sale_reference=$1 LIMIT 1',[id])).rowCount)
-        return res.status(409).json({success:false,error:'Dispensed reports cannot be deleted. Preserve the history and use a linked return.'});
+      if ((await __qd_executePlan(query, __qd_registeredPlan("api/reports.js:248:13"), [id])).rowCount)
+      return res.status(409).json({ success: false, error: 'Dispensed reports cannot be deleted. Preserve the history and use a linked return.' });
       await remove('reports', id, 'id');
       await publishRealtimeEvent('reports', 'delete', { id });
       return res.status(200).json({ success: true });
@@ -258,5 +258,4 @@ async function handler(req, res) {
     return res.status(500).json({ success: false, error: 'Internal server error' });
   }
 }
-export default atomicStockRequest(handler,['PUT','PATCH','DELETE']);
-
+export default atomicStockRequest(handler, ['PUT', 'PATCH', 'DELETE']);

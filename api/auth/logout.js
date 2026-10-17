@@ -1,4 +1,4 @@
-import { applyAuthCors, clearAuthCookie } from '../_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../services/queryDescriptors.js";import { applyAuthCors, clearAuthCookie } from '../_lib/auth.js';
 import { getOne, query } from '../db.js';
 
 async function autoClockOut(user) {
@@ -9,15 +9,15 @@ async function autoClockOut(user) {
   const timeStr = now.toTimeString().slice(0, 5);
   const fullName = user.fullName || user.full_name || user.username;
   try {
-    const existing = await getOne(
-      `SELECT id FROM hr_records WHERE type='attendance' AND employee_name=$1 AND date=$2 ORDER BY created_at ASC LIMIT 1`,
-      [fullName, dateStr]
-    );
+    const existing = await __qd_executePlan(getOne, __qd_registeredPlan("api/auth/logout.js:13:0"),
+
+    [fullName, dateStr]);
+
     if (existing) {
-      await query(
-        `UPDATE hr_records SET clock_out=$1, updated_at=NOW() WHERE id=$2`,
-        [timeStr, existing.id]
-      );
+      await __qd_executePlan(query, __qd_registeredPlan("api/auth/logout.js:18:1"),
+
+      [timeStr, existing.id]);
+
     }
   } catch (e) {
     console.warn('[auto-attendance] clock-out failed:', e.message);

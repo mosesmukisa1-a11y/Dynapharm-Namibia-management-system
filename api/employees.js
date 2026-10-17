@@ -1,5 +1,5 @@
-import {insertStatement,updateStatement} from './services/sqlShape.js';
-import {applicationColumns,applicationFields} from './services/sqlFieldPolicy.js';
+import { registeredPlan as __qd_registeredPlan, joinPlans as __qd_joinPlans, executePlan as __qd_executePlan } from "./services/queryDescriptors.js";import { insertStatement, updateStatement } from './services/sqlShape.js';
+import { applicationColumns, applicationFields } from './services/sqlFieldPolicy.js';
 import { applyAuthCors } from './_lib/auth.js';
 import { query, getMany, getOne } from './db.js';
 
@@ -49,34 +49,34 @@ function generateEmployeeId(prefix) {
 function normalizeEmployeeRow(row) {
   if (!row) return null;
   const data =
-    typeof row.data === 'string'
-      ? (() => {
-          try {
-            return JSON.parse(row.data);
-          } catch {
-            return {};
-          }
-        })()
-      : row.data || {};
+  typeof row.data === 'string' ?
+  (() => {
+    try {
+      return JSON.parse(row.data);
+    } catch {
+      return {};
+    }
+  })() :
+  row.data || {};
 
   const hireDate =
-    row.hire_date instanceof Date
-      ? row.hire_date.toISOString().slice(0, 10)
-      : row.hire_date || data.hireDate || null;
+  row.hire_date instanceof Date ?
+  row.hire_date.toISOString().slice(0, 10) :
+  row.hire_date || data.hireDate || null;
 
   const dob =
-    row.dob instanceof Date ? row.dob.toISOString().slice(0, 10) : row.dob || data.dob || null;
+  row.dob instanceof Date ? row.dob.toISOString().slice(0, 10) : row.dob || data.dob || null;
 
   const branches =
-    Array.isArray(row.branches) && row.branches !== null
-      ? row.branches
-      : data.branches
-      ? Array.isArray(data.branches)
-        ? data.branches
-        : typeof data.branches === 'string'
-        ? data.branches.split(',').map((item) => item.trim()).filter(Boolean)
-        : []
-      : [];
+  Array.isArray(row.branches) && row.branches !== null ?
+  row.branches :
+  data.branches ?
+  Array.isArray(data.branches) ?
+  data.branches :
+  typeof data.branches === 'string' ?
+  data.branches.split(',').map((item) => item.trim()).filter(Boolean) :
+  [] :
+  [];
 
   const fullName = row.full_name || data.full_name || data.name || row.name || 'Team Member';
   return {
@@ -94,30 +94,30 @@ function normalizeEmployeeRow(row) {
     hireDate,
     employmentType: data.employmentType || row.employment_type || '',
     salary:
-      data.salary !== undefined
-        ? Number(data.salary)
-        : row.salary !== null && row.salary !== undefined
-        ? Number(row.salary)
-        : null,
+    data.salary !== undefined ?
+    Number(data.salary) :
+    row.salary !== null && row.salary !== undefined ?
+    Number(row.salary) :
+    null,
     address: data.address || row.address || '',
     dob,
     emergencyContactName:
-      data.emergencyContactName || row.emergency_contact_name || data.emergencyContact?.name || '',
+    data.emergencyContactName || row.emergency_contact_name || data.emergencyContact?.name || '',
     emergencyContactPhone:
-      data.emergencyContactPhone ||
-      row.emergency_contact_phone ||
-      data.emergencyContact?.phone ||
-      '',
+    data.emergencyContactPhone ||
+    row.emergency_contact_phone ||
+    data.emergencyContact?.phone ||
+    '',
     notes: data.notes || row.notes || '',
     data: data,
     createdAt:
-      row.created_at instanceof Date
-        ? row.created_at.toISOString()
-        : row.created_at || null,
+    row.created_at instanceof Date ?
+    row.created_at.toISOString() :
+    row.created_at || null,
     updatedAt:
-      row.updated_at instanceof Date
-        ? row.updated_at.toISOString()
-        : row.updated_at || null
+    row.updated_at instanceof Date ?
+    row.updated_at.toISOString() :
+    row.updated_at || null
   };
 }
 
@@ -125,22 +125,22 @@ export function buildEmployeeRecord(body, existing = {}) {
   const now = new Date().toISOString();
   const id = body.id || existing.id || generateEmployeeId('EMP');
   const employeeId =
-    body.employeeId ||
-    body.employee_id ||
-    existing.employee_id ||
-    existing.user_id ||
-    generateEmployeeId('STAFF');
+  body.employeeId ||
+  body.employee_id ||
+  existing.employee_id ||
+  existing.user_id ||
+  generateEmployeeId('STAFF');
 
   const previousData =
-    typeof existing.data === 'string'
-      ? (() => {
-          try {
-            return JSON.parse(existing.data);
-          } catch {
-            return {};
-          }
-        })()
-      : existing.data || {};
+  typeof existing.data === 'string' ?
+  (() => {
+    try {
+      return JSON.parse(existing.data);
+    } catch {
+      return {};
+    }
+  })() :
+  existing.data || {};
 
   const basic = {
     id,
@@ -151,11 +151,11 @@ export function buildEmployeeRecord(body, existing = {}) {
     full_name: body.full_name || body.name || body.fullName || existing.full_name || 'Team Member',
     role: body.role || existing.role || null,
     branch: body.branch || existing.branch || null,
-    branches: Array.isArray(body.branches)
-      ? body.branches
-      : Array.isArray(existing.branches)
-      ? existing.branches
-      : null,
+    branches: Array.isArray(body.branches) ?
+    body.branches :
+    Array.isArray(existing.branches) ?
+    existing.branches :
+    null,
     department: body.department || existing.department || null,
     position: body.position || existing.position || body.role || null,
     email: body.email || existing.email || null,
@@ -163,20 +163,20 @@ export function buildEmployeeRecord(body, existing = {}) {
     hire_date: toDate(body.hireDate || body.hire_date || existing.hire_date),
     employment_type: body.employmentType || existing.employment_type || null,
     salary:
-      body.salary !== undefined && body.salary !== null
-        ? Number(body.salary)
-        : existing.salary !== undefined
-        ? existing.salary
-        : null,
+    body.salary !== undefined && body.salary !== null ?
+    Number(body.salary) :
+    existing.salary !== undefined ?
+    existing.salary :
+    null,
     address: body.address || existing.address || null,
     dob: toDate(body.dob || body.dateOfBirth || existing.dob),
     emergency_contact_name:
-      body.emergencyContactName || body.emergencyContact?.name || existing.emergency_contact_name || null,
+    body.emergencyContactName || body.emergencyContact?.name || existing.emergency_contact_name || null,
     emergency_contact_phone:
-      body.emergencyContactPhone ||
-      body.emergencyContact?.phone ||
-      existing.emergency_contact_phone ||
-      null,
+    body.emergencyContactPhone ||
+    body.emergencyContact?.phone ||
+    existing.emergency_contact_phone ||
+    null,
     employment_status: body.employmentStatus || existing.employment_status || 'active',
     notes: body.notes || existing.notes || null,
     data: JSON.stringify({
@@ -192,17 +192,17 @@ export function buildEmployeeRecord(body, existing = {}) {
 
 async function insertEmployee(body) {
   const record = buildEmployeeRecord(body);
-  applicationColumns('employees',record);
-  const statement=insertStatement('employees',record);
-  const result = await query(statement.text,statement.params);
+  applicationColumns('employees', record);
+  const statement = insertStatement('employees', record);
+  const result = await __qd_executePlan(query, statement, statement.params);
   return normalizeEmployeeRow(result.rows[0]);
 }
 
 async function updateEmployee(id, body, existing) {
   const record = buildEmployeeRecord(body, existing);
-  applicationColumns('employees',record);
-  const statement=updateStatement('employees',id,record,applicationFields.employees);
-  const result = await query(statement.text,statement.params);
+  applicationColumns('employees', record);
+  const statement = updateStatement('employees', id, record, applicationFields.employees);
+  const result = await __qd_executePlan(query, statement, statement.params);
   return normalizeEmployeeRow(result.rows[0]);
 }
 
@@ -221,25 +221,25 @@ export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
       if (id) {
-        const row = await getOne('SELECT * FROM employees WHERE id = $1', [id]);
+        const row = await __qd_executePlan(getOne, __qd_registeredPlan("api/employees.js:224:0"), [id]);
         if (!row) return res.status(404).json({ success: false, error: 'Not found' });
         return res.status(200).json(normalizeEmployeeRow(row));
       }
 
       if (employeeId) {
-        const row = await getOne('SELECT * FROM employees WHERE employee_id = $1', [employeeId]);
+        const row = await __qd_executePlan(getOne, __qd_registeredPlan("api/employees.js:230:1"), [employeeId]);
         if (!row) return res.status(404).json({ success: false, error: 'Not found' });
         return res.status(200).json(normalizeEmployeeRow(row));
       }
 
-      let queryText = 'SELECT * FROM employees';
+      let queryText = __qd_registeredPlan("api/employees.js:235:2");
       const params = [];
       if (department) {
-        queryText += ' WHERE department = $1';
+        queryText = __qd_joinPlans([queryText, __qd_registeredPlan("api/employees.js:238:3")], "empty");
         params.push(department);
       }
-      queryText += ' ORDER BY updated_at DESC, full_name ASC';
-      const rows = await getMany(queryText, params);
+      queryText = __qd_joinPlans([queryText, __qd_registeredPlan("api/employees.js:241:4")], "empty");
+      const rows = await __qd_executePlan(getMany, queryText, params);
       return res.status(200).json(rows.map(normalizeEmployeeRow).filter(Boolean));
     }
 
@@ -258,9 +258,9 @@ export default async function handler(req, res) {
         return res.status(400).json({ success: false, error: 'Employee id is required' });
       }
 
-      const existing = targetId
-        ? await getOne('SELECT * FROM employees WHERE id = $1', [targetId])
-        : await getOne('SELECT * FROM employees WHERE employee_id = $1', [targetEmployeeId]);
+      const existing = targetId ?
+      await __qd_executePlan(getOne, __qd_registeredPlan("api/employees.js:262:5"), [targetId]) :
+      await __qd_executePlan(getOne, __qd_registeredPlan("api/employees.js:263:6"), [targetEmployeeId]);
 
       if (!existing) {
         return res.status(404).json({ success: false, error: 'Employee not found' });
@@ -275,10 +275,10 @@ export default async function handler(req, res) {
       if (!identifier) {
         return res.status(400).json({ success: false, error: 'id or employeeId is required' });
       }
-      const result = await query(
-        `DELETE FROM employees WHERE ${identifier.column} = $1 RETURNING *`,
-        [identifier.value]
-      );
+      const result = await __qd_executePlan(query, __qd_registeredPlan("api/employees.js:279:7", [
+      identifier.column]),
+      [identifier.value]);
+
       if (result.rowCount === 0) {
         return res.status(404).json({ success: false, error: 'Employee not found' });
       }
@@ -291,4 +291,3 @@ export default async function handler(req, res) {
     return res.status(500).json({ success: false, error: 'Internal server error' });
   }
 }
-

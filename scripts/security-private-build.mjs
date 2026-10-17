@@ -2,7 +2,7 @@
 import fs from 'node:fs/promises';
 import {spawn} from 'node:child_process';
 import {randomBytes,randomUUID,createHash} from 'node:crypto';
-const out='generated-artifacts/sql-security-final-closure',id=randomUUID();
+const out='generated-artifacts/sql-runtime-enforcement-final',id=randomUUID();
 const markers=[randomBytes(40).toString('hex'),randomBytes(40).toString('hex')];
 const digest=b=>createHash('sha256').update(b).digest('hex');
 await fs.mkdir(out,{recursive:true});

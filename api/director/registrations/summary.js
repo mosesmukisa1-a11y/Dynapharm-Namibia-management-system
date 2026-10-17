@@ -1,4 +1,4 @@
-/**
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../../services/queryDescriptors.js"; /**
  * GET /api/director/registrations/summary?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
  * Countrywide and per-branch registrations (clients + distributors).
  */
@@ -10,25 +10,25 @@ export default async function handler(req, res) {
 
   const { start, end } = getDateRange(req.query);
 
-  const [clientRows, distRows, branchRows] = await Promise.all([
-    getMany(
-      `SELECT COALESCE(branch,'unassigned') as branch_id, COUNT(*) as cnt
-       FROM clients
-       WHERE created_at >= $1::date AND created_at <= ($2 || 'T23:59:59')::timestamp
-       GROUP BY branch`,
-      [start, end]
-    ),
-    getMany(
-      `SELECT COALESCE(branch,'unassigned') as branch_id, COUNT(*) as cnt
-       FROM distributors
-       WHERE created_at >= $1::date AND created_at <= ($2 || 'T23:59:59')::timestamp
-       GROUP BY branch`,
-      [start, end]
-    ),
-    getMany(`SELECT id, name FROM branches WHERE status = 'active'`),
-  ]);
+  const [clientRows, distRows, branchRows] = await Promise.all([__qd_executePlan(
+    getMany, __qd_registeredPlan("api/director/registrations/summary.js:15:0"),
 
-  const branchMap = new Map(branchRows.map(b => [b.id, b.name]));
+
+
+
+    [start, end]), __qd_executePlan(
+
+    getMany, __qd_registeredPlan("api/director/registrations/summary.js:22:1"),
+
+
+
+
+    [start, end]), __qd_executePlan(
+
+    getMany, __qd_registeredPlan("api/director/registrations/summary.js:28:2"), [])]
+  );
+
+  const branchMap = new Map(branchRows.map((b) => [b.id, b.name]));
 
   const combined = new Map();
   for (const r of clientRows) {
@@ -47,7 +47,7 @@ export default async function handler(req, res) {
     branches.push({
       branchId,
       branchName: branchMap.get(branchId) || normalizeBranchName(branchId),
-      registrationsCount: count,
+      registrationsCount: count
     });
   }
   branches.sort((a, b) => b.registrationsCount - a.registrationsCount);
@@ -56,6 +56,6 @@ export default async function handler(req, res) {
     success: true,
     period: { start, end },
     countrywideRegistrations,
-    branches,
+    branches
   });
 }

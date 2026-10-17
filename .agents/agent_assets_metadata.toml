@@ -742,3 +742,17 @@ mtime_ms = 1792257148633
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/5723ec99-be03-43e2-aca7-fd2308ecd6f8/a10eefdf-8ebd-4f75-a14f-218b89fd5907"
 storage_version_token = "1792257157703314"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "O5LWlOPcPTjLEQTUdFkJQ"
+uri = "file://generated-artifacts/sql-runtime-enforcement-final/report.md"
+type = "text"
+title = "SQL runtime enforcement — offline release report"
+description = "Implementation, test evidence, security reviews, candidate integrity and the owner-only clean-install command. Do not publish."
+logical_id = "d8e06aec-1b0f-41c7-a244-e683681ceece"
+content_hash = "sha256:01f0f5aa5c390703b83215e59cab7668e1f94d52d0fd64465b9dfd3641c76d6a"
+size = 13719
+mtime_ms = 1792269585407
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/d8e06aec-1b0f-41c7-a244-e683681ceece/eb77be3e-6984-4ba6-970e-cb8dbaae0111"
+storage_version_token = "1792269607585661"
+content_type = "text/markdown"

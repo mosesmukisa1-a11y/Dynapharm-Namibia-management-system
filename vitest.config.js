@@ -13,8 +13,8 @@ export default defineConfig({
         test: {
           name: 'unit',
           environment: 'jsdom',
-          exclude: [...configDefaults.exclude, ...databaseSuites, 'scripts/**/*.test.mjs'],
-          setupFiles: ['./tests/helpers/test-connection-setup.js'],
+          exclude: [...configDefaults.exclude, ...databaseSuites, 'scripts/**/*.test.mjs','**/generated-artifacts/**'],
+          setupFiles: ['./tests/helpers/test-connection-setup.js','./tests/helpers/descriptor-diagnostics-setup.js'],
           fileParallelism: true,
           maxWorkers: 4,
         },
@@ -28,6 +28,8 @@ export default defineConfig({
           setupFiles: [
             './tests/helpers/isolated-database-setup.js',
             './tests/helpers/test-connection-setup.js',
+            './tests/helpers/owned-catalog-setup.js',
+            './tests/helpers/owned-query-coverage-setup.js',
           ],
           fileParallelism: false,
         },

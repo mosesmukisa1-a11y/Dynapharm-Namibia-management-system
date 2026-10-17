@@ -1,4 +1,4 @@
-import { recordBranchSaleAllocationTx } from '../services/stockSaleAllocations.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../services/queryDescriptors.js";import { recordBranchSaleAllocationTx } from '../services/stockSaleAllocations.js';
 import { applyAuthCors } from '../_lib/auth.js';
 import { authorizeBranchReturn } from '../services/linkedReversals.js';
 import { atomicSaleRequest } from '../_lib/atomicSaleRequest.js';
@@ -17,8 +17,8 @@ async function parseJsonBody(req) {
   if (req.body && typeof req.body === 'object') return req.body;
   return new Promise((resolve, reject) => {
     let raw = '';
-    req.on('data', c => raw += c);
-    req.on('end', () => { try { resolve(raw ? JSON.parse(raw) : {}); } catch { reject(new Error('Invalid JSON')); } });
+    req.on('data', (c) => raw += c);
+    req.on('end', () => {try {resolve(raw ? JSON.parse(raw) : {});} catch {reject(new Error('Invalid JSON'));}});
     req.on('error', reject);
   });
 }
@@ -37,16 +37,16 @@ async function handler(req, res) {
       const campDiscMap = {};
       if (campaignDiscounts && typeof campaignDiscounts === 'object') {
         for (const [name, disc] of Object.entries(campaignDiscounts)) {
-          const campaign=disc?.campaignId ? await getOne(`SELECT * FROM campaigns WHERE id=$1 AND status='approved'
-            AND start_date <= (NOW() AT TIME ZONE 'Africa/Windhoek')::date
-            AND end_date >= (NOW() AT TIME ZONE 'Africa/Windhoek')::date`,[disc.campaignId]) : null;
-          const cond=campaign?.conditions || {};
-          const scoped=campaign?.scope==='nationwide' || normalizeBranchSlug(campaign?.branch || '')===normalizeBranchSlug(branchId) ||
-            (campaign?.target_branches || []).some(b=>normalizeBranchSlug(b)===normalizeBranchSlug(branchId)) ||
-            (cond.stock_assignments || []).some(a=>normalizeBranchSlug(a.branch)===normalizeBranchSlug(branchId));
-          const pct=Number(campaign?.discount_percentage ?? cond.discount_pct ?? 0);
-          if(!campaign || !scoped || pct!==Number(disc.pct) || !(pct>0 && pct<=100))
-            throw Object.assign(new Error('Prescription discount requires the approved source campaign'),{statusCode:422});
+          const campaign = disc?.campaignId ? await __qd_executePlan(getOne, __qd_registeredPlan("api/branch/dispense.js:40:0"),
+
+          [disc.campaignId]) : null;
+          const cond = campaign?.conditions || {};
+          const scoped = campaign?.scope === 'nationwide' || normalizeBranchSlug(campaign?.branch || '') === normalizeBranchSlug(branchId) ||
+          (campaign?.target_branches || []).some((b) => normalizeBranchSlug(b) === normalizeBranchSlug(branchId)) ||
+          (cond.stock_assignments || []).some((a) => normalizeBranchSlug(a.branch) === normalizeBranchSlug(branchId));
+          const pct = Number(campaign?.discount_percentage ?? cond.discount_pct ?? 0);
+          if (!campaign || !scoped || pct !== Number(disc.pct) || !(pct > 0 && pct <= 100))
+          throw Object.assign(new Error('Prescription discount requires the approved source campaign'), { statusCode: 422 });
           if (pct > 0) campDiscMap[name.toLowerCase()] = pct;
         }
       }
@@ -54,7 +54,7 @@ async function handler(req, res) {
       if (!reportId || !branchId || !Array.isArray(items) || items.length === 0) {
         return res.status(400).json({ success: false, error: 'reportId, branchId, and items are required' });
       }
-      authorizeBranchReturn(req.user,branchId);
+      authorizeBranchReturn(req.user, branchId);
       await assertActivePriceProducts(items);
 
       const movType = 'prescription_dispense';
@@ -62,7 +62,7 @@ async function handler(req, res) {
       let completionEvidence;
       const insufficientItems = [];
 
-      const livePriceRows = await getMany(`SELECT description, dp, cp, bv, cif FROM live_product_prices`);
+      const livePriceRows = await __qd_executePlan(getMany, __qd_registeredPlan("api/branch/dispense.js:65:1"), []);
       const livePriceMap = {};
       for (const row of livePriceRows) {
         if (row.description) livePriceMap[row.description.toLowerCase()] = row;
@@ -73,7 +73,7 @@ async function handler(req, res) {
         const productName = item.product_name || item.name || '';
         const qty = Number(item.quantity ?? 1);
         if (!productName || !Number.isFinite(qty) || qty <= 0)
-          throw Object.assign(new Error('Dispensing requires product names and positive quantities'),{statusCode:400});
+        throw Object.assign(new Error('Dispensing requires product names and positive quantities'), { statusCode: 400 });
 
         // Free items (buy-X-get-Y companion) bypass normal pricing and go out at zero charge.
         if (item.is_free || item.campaign_free) {
@@ -87,7 +87,7 @@ async function handler(req, res) {
             cif_unit: 0,
             from_package: null,
             is_free: true,
-            campaign_bxgy: item.campaign_bxgy || null,
+            campaign_bxgy: item.campaign_bxgy || null
           });
           continue;
         }
@@ -97,28 +97,28 @@ async function handler(req, res) {
           const isMember = customerType === 'member';
           for (const comp of pkg.products) {
             const livePrice = livePriceMap[comp.name.toLowerCase()];
-             const dp = livePrice?.dp == null ? null : Number(livePrice.dp);
-             const cp = livePrice?.cp == null ? null : Number(livePrice.cp);
+            const dp = livePrice?.dp == null ? null : Number(livePrice.dp);
+            const cp = livePrice?.cp == null ? null : Number(livePrice.cp);
             const bv = livePrice ? Number(livePrice.bv) || 0 : 0;
             const cif = livePrice ? Number(livePrice.cif) || 0 : 0;
             const compDiscPct = campDiscMap[comp.name.toLowerCase()] || 0;
-            const compDiscMult = compDiscPct > 0 ? (1 - compDiscPct / 100) : 1;
+            const compDiscMult = compDiscPct > 0 ? 1 - compDiscPct / 100 : 1;
             const baseCharge = isMember ? dp : cp;
             resolvedItems.push({
               product_name: comp.name,
-               quantity: Number(comp.quantity || 1) * qty,
-              unit_price: dp,                                                    // BIM stock valuation always uses DP (cost basis)
-              charge_unit: Math.round(baseCharge * compDiscMult * 100) / 100,   // what the patient is actually charged (with discount)
+              quantity: Number(comp.quantity || 1) * qty,
+              unit_price: dp, // BIM stock valuation always uses DP (cost basis)
+              charge_unit: Math.round(baseCharge * compDiscMult * 100) / 100, // what the patient is actually charged (with discount)
               bv_unit: bv,
               cif_unit: cif,
               from_package: productName,
-              is_free: false,
+              is_free: false
             });
           }
         } else {
           // Try exact name, then TRIM-normalised name (handles stray whitespace differences)
-          const livePrice = livePriceMap[productName.toLowerCase()]
-            || livePriceMap[productName.toLowerCase().trim()];
+          const livePrice = livePriceMap[productName.toLowerCase()] ||
+          livePriceMap[productName.toLowerCase().trim()];
           const isMem = customerType === 'member';
           // DP = distributor / cost price; CP = consumer / selling price
           const dpPrice = livePrice ? Number(livePrice.dp) || 0 : 0;
@@ -126,18 +126,18 @@ async function handler(req, res) {
           // Frontend now sends explicit dp/cp fields — use as fallback when live lookup fails
           const passedDP = Number(item.dp || item.dp_price || 0);
           const passedCP = Number(item.cp || item.cp_price || 0);
-          const baseChargeUnit = isMem ? (livePrice?.dp == null ? null : Number(livePrice.dp)) : (livePrice?.cp == null ? null : Number(livePrice.cp));
+          const baseChargeUnit = isMem ? livePrice?.dp == null ? null : Number(livePrice.dp) : livePrice?.cp == null ? null : Number(livePrice.cp);
           const itemDiscPct = campDiscMap[productName.toLowerCase()] || 0;
-          const itemDiscMult = itemDiscPct > 0 ? (1 - itemDiscPct / 100) : 1;
+          const itemDiscMult = itemDiscPct > 0 ? 1 - itemDiscPct / 100 : 1;
           resolvedItems.push({
             product_name: productName,
             quantity: qty,
             unit_price: livePrice?.dp == null ? null : Number(livePrice.dp),
-            charge_unit: baseChargeUnit != null ? Math.round(baseChargeUnit * itemDiscMult * 100) / 100 : null,  // patient charge with discount
+            charge_unit: baseChargeUnit != null ? Math.round(baseChargeUnit * itemDiscMult * 100) / 100 : null, // patient charge with discount
             bv_unit: livePrice ? Number(livePrice.bv) || 0 : 0,
             cif_unit: livePrice ? Number(livePrice.cif) || 0 : 0,
             from_package: item.from_package || null,
-            is_free: false,
+            is_free: false
           });
         }
       }
@@ -146,59 +146,59 @@ async function handler(req, res) {
       const dispenseBranchCandidates = branchSearchTerms(branchId);
 
       await withTransaction(async (client) => {
-        const report=(await client.query('SELECT * FROM reports WHERE id=$1 FOR UPDATE',[reportId])).rows[0];
-        if (!report) throw Object.assign(new Error('Prescription report not found'),{statusCode:404});
-        const rptData=typeof report.data==='string'?JSON.parse(report.data):report.data || {};
-        if(rptData.offSystemFulfilment && req[OFF_SYSTEM_ISSUE]!==true)
-          throw Object.assign(new Error('Use assigned-branch pending fulfilment for this historical form'),{statusCode:409});
-        const prescribed=new Map((rptData.medicines || []).map(m=>[String(m.name || m.product_name || '').toLowerCase().trim(),Number(m.quantity || 1)]));
-        const prior=(await client.query(`SELECT a.product_name,SUM(a.quantity) AS quantity FROM stock_sale_allocations a
-          JOIN stock_movements m ON m.id=a.movement_id
-          WHERE a.sale_reference=$1 AND m.movement_type<>'campaign_free_item' GROUP BY a.product_name`,[reportId])).rows;
-        const already=new Map(prior.map(row=>[row.product_name.toLowerCase().trim(),Number(row.quantity)]));
-        const session=new Map();
+        const report = (await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/branch/dispense.js:149:2"), [reportId])).rows[0];
+        if (!report) throw Object.assign(new Error('Prescription report not found'), { statusCode: 404 });
+        const rptData = typeof report.data === 'string' ? JSON.parse(report.data) : report.data || {};
+        if (rptData.offSystemFulfilment && req[OFF_SYSTEM_ISSUE] !== true)
+        throw Object.assign(new Error('Use assigned-branch pending fulfilment for this historical form'), { statusCode: 409 });
+        const prescribed = new Map((rptData.medicines || []).map((m) => [String(m.name || m.product_name || '').toLowerCase().trim(), Number(m.quantity || 1)]));
+        const prior = (await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/branch/dispense.js:155:3"),
+
+        [reportId])).rows;
+        const already = new Map(prior.map((row) => [row.product_name.toLowerCase().trim(), Number(row.quantity)]));
+        const session = new Map();
         for (const item of resolvedItems) {
           if (item.is_free) continue;
-          const key=item.product_name.toLowerCase().trim();
-          session.set(key,(session.get(key)||0)+Number(item.quantity));
+          const key = item.product_name.toLowerCase().trim();
+          session.set(key, (session.get(key) || 0) + Number(item.quantity));
           // Original posted dispensing remains evidence even after a return.
           // Replacement dispensing requires a new prescription authorization.
-          const prescribedName=String(item.from_package || item.product_name).toLowerCase().trim();
-          const maximum=prescribed.get(key) ?? (item.from_package ? (getPackageComponents(item.from_package)?.products.find(p=>p.name.toLowerCase().trim()===key)?.quantity || 0)*(prescribed.get(prescribedName)||0) : null);
-          if (maximum==null || (already.get(key)||0)+session.get(key)>maximum)
-            throw Object.assign(new Error('Dispensing exceeds the unissued prescription quantity; posted issues cannot be replaced by editing the prescription'),{statusCode:409});
+          const prescribedName = String(item.from_package || item.product_name).toLowerCase().trim();
+          const maximum = prescribed.get(key) ?? (item.from_package ? (getPackageComponents(item.from_package)?.products.find((p) => p.name.toLowerCase().trim() === key)?.quantity || 0) * (prescribed.get(prescribedName) || 0) : null);
+          if (maximum == null || (already.get(key) || 0) + session.get(key) > maximum)
+          throw Object.assign(new Error('Dispensing exceeds the unissued prescription quantity; posted issues cannot be replaced by editing the prescription'), { statusCode: 409 });
         }
-        const freeClaims=new Map();
-        for (const item of resolvedItems.filter(item=>item.is_free)) {
-          const evidence=item.campaign_bxgy;
-          const campaign=evidence?.campId ? (await client.query('SELECT * FROM campaigns WHERE id=$1 FOR SHARE',[evidence.campId])).rows[0] : null;
-          const now=new Date();
-          if (!campaign || campaign.campaign_type!=='buy_x_get_y' || campaign.is_active===false ||
-            !['approved','active'].includes(campaign.status) ||
-            now<new Date(campaign.start_date) || now>new Date(campaign.end_date))
-            throw Object.assign(new Error('Free dispensing requires an active linked campaign and its paid items in the same issue'),{statusCode:409});
-          const conditions=typeof campaign.conditions==='string'?JSON.parse(campaign.conditions):campaign.conditions || {};
-          if (!['','nationwide','countrywide','all'].includes(String(campaign.scope || '').toLowerCase()) &&
-            !(conditions.stock_assignments || []).some(assignment=>
-              normalizeBranchSlug(assignment.branch)===normalizeBranchSlug(branchId)))
-            throw Object.assign(new Error('The free-item campaign is not assigned to this branch'),{statusCode:403});
-          const prize=typeof campaign.prize==='string'?JSON.parse(campaign.prize):campaign.prize || {};
-          const paid=String(evidence.paidProduct || '').trim().toLowerCase();
-          const eligible=(conditions.products_text || (Array.isArray(conditions.products)?conditions.products.join(','):''))
-            .split(',').map(value=>value.trim().toLowerCase()).filter(Boolean);
-          const freeProduct=String(prize.free_product || evidence.paidProduct || '').trim().toLowerCase();
-          const buy=Number(conditions.buy_qty || 1),get=Number(conditions.get_qty || 1);
-          const claimKey=`${campaign.id}:${paid}`;
-          freeClaims.set(claimKey,(freeClaims.get(claimKey)||0)+Number(item.quantity));
-          if ((eligible.length && !eligible.includes(paid)) || item.product_name.trim().toLowerCase()!==freeProduct ||
-            !Number.isSafeInteger(buy) || buy<=0 || !Number.isSafeInteger(get) || get<=0 ||
-            freeClaims.get(claimKey)>Math.floor((session.get(paid)||0)/buy)*get)
-            throw Object.assign(new Error('Free dispensing exceeds this issue’s verified paid campaign entitlement'),{statusCode:409});
+        const freeClaims = new Map();
+        for (const item of resolvedItems.filter((item) => item.is_free)) {
+          const evidence = item.campaign_bxgy;
+          const campaign = evidence?.campId ? (await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/branch/dispense.js:174:4"), [evidence.campId])).rows[0] : null;
+          const now = new Date();
+          if (!campaign || campaign.campaign_type !== 'buy_x_get_y' || campaign.is_active === false ||
+          !['approved', 'active'].includes(campaign.status) ||
+          now < new Date(campaign.start_date) || now > new Date(campaign.end_date))
+          throw Object.assign(new Error('Free dispensing requires an active linked campaign and its paid items in the same issue'), { statusCode: 409 });
+          const conditions = typeof campaign.conditions === 'string' ? JSON.parse(campaign.conditions) : campaign.conditions || {};
+          if (!['', 'nationwide', 'countrywide', 'all'].includes(String(campaign.scope || '').toLowerCase()) &&
+          !(conditions.stock_assignments || []).some((assignment) =>
+          normalizeBranchSlug(assignment.branch) === normalizeBranchSlug(branchId)))
+          throw Object.assign(new Error('The free-item campaign is not assigned to this branch'), { statusCode: 403 });
+          const prize = typeof campaign.prize === 'string' ? JSON.parse(campaign.prize) : campaign.prize || {};
+          const paid = String(evidence.paidProduct || '').trim().toLowerCase();
+          const eligible = (conditions.products_text || (Array.isArray(conditions.products) ? conditions.products.join(',') : '')).
+          split(',').map((value) => value.trim().toLowerCase()).filter(Boolean);
+          const freeProduct = String(prize.free_product || evidence.paidProduct || '').trim().toLowerCase();
+          const buy = Number(conditions.buy_qty || 1),get = Number(conditions.get_qty || 1);
+          const claimKey = `${campaign.id}:${paid}`;
+          freeClaims.set(claimKey, (freeClaims.get(claimKey) || 0) + Number(item.quantity));
+          if (eligible.length && !eligible.includes(paid) || item.product_name.trim().toLowerCase() !== freeProduct ||
+          !Number.isSafeInteger(buy) || buy <= 0 || !Number.isSafeInteger(get) || get <= 0 ||
+          freeClaims.get(claimKey) > Math.floor((session.get(paid) || 0) / buy) * get)
+          throw Object.assign(new Error('Free dispensing exceeds this issue’s verified paid campaign entitlement'), { statusCode: 409 });
         }
         for (const item of resolvedItems) {
           const productName = item.product_name;
           const qty = item.quantity;
-          const unitPrice = item.unit_price;   // DP (cost basis) — used in BIM / stock_movements
+          const unitPrice = item.unit_price; // DP (cost basis) — used in BIM / stock_movements
           const chargeUnit = item.charge_unit; // CP for non-members, DP for members — patient charge
           const fromPackage = item.from_package;
           const isFreeItem = !!item.is_free;
@@ -206,57 +206,57 @@ async function handler(req, res) {
 
           // Free items use campaign_free_item movement type; regular dispense uses prescription_dispense.
           const itemMovType = isFreeItem ? 'campaign_free_item' : movType;
-          const dispenseNote = isFreeItem
-            ? 'Campaign free item (prescription dispensing)'
-            : fromPackage
-              ? `Prescription dispense (individual from ${fromPackage})`
-              : 'Prescription dispense';
+          const dispenseNote = isFreeItem ?
+          'Campaign free item (prescription dispensing)' :
+          fromPackage ?
+          `Prescription dispense (individual from ${fromPackage})` :
+          'Prescription dispense';
 
           let remaining = qty;
-          const batches = (await client.query(
-            `SELECT id, product_name, batch_no, expiry_date, quantity FROM branch_inventory_batches
-             WHERE LOWER(REPLACE(branch_id, ' ', '_')) = ANY($1)
-               AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))
-               AND quantity > 0
-               AND COALESCE(status, 'in_stock') IN ('in_stock', 'available')
-               AND (expiry_date IS NULL OR expiry_date >= (NOW() AT TIME ZONE 'Africa/Windhoek')::date)
-             ORDER BY expiry_date ASC NULLS LAST
-             FOR UPDATE`,
-            [dispenseBranchCandidates, productName]
-          )).rows;
+          const batches = (await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/branch/dispense.js:217:5"),
+
+
+
+
+
+
+
+
+          [dispenseBranchCandidates, productName])).
+          rows;
 
           for (const batch of batches) {
             if (remaining <= 0) break;
             const take = Math.min(remaining, Number(batch.quantity));
 
-            await client.query(
-              `UPDATE branch_inventory_batches SET quantity = quantity - $1, updated_at = NOW() WHERE id = $2`,
-              [take, batch.id]
-            );
+            await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/branch/dispense.js:233:6"),
+
+            [take, batch.id]);
+
             // Remove zero-qty rows immediately so they cannot be resurrected as
             // ghost stock by a stale inventory_balances entry before recompute runs.
             // Retain zero-quantity batches for count cutoffs and return provenance.
 
             const ts = Date.now();
             const bimId = 'BIM-' + ts + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
-            await client.query(
-              `INSERT INTO branch_inventory_movements (id, branch_id, type, product_name, batch_no, quantity, unit_price, charge_unit, reference, notes, created_by, created_at)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())`,
-               [bimId, branchId, itemMovType, batch.product_name, batch.batch_no || '', take, unitPrice, chargeUnit, reportId, dispenseNote, actor || '']
-            );
+            await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/branch/dispense.js:243:7"),
+
+
+            [bimId, branchId, itemMovType, batch.product_name, batch.batch_no || '', take, unitPrice, chargeUnit, reportId, dispenseNote, actor || '']);
+
 
             const smId = 'MOV-' + ts + '-' + Math.random().toString(36).slice(2, 6);
-            await client.query(
-              `INSERT INTO stock_movements
-                 (id, product_name, batch_no, expiry_date, quantity, movement_type,
-                  source_location, source_location_type, destination_location, destination_location_type,
-                  reference_id, notes, status, unit_dp, movement_date, created_at, updated_at)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,'branch','patient',NULL,$8,$9,'posted',$10,NOW(),NOW(),NOW())`,
-              [smId, batch.product_name, batch.batch_no || '', batch.expiry_date || null, take, itemMovType, branchId, reportId, dispenseNote, unitPrice]
-            );
+            await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/branch/dispense.js:250:8"),
 
-            const actualCost=await recordBranchSaleAllocationTx(client,{movementId:smId,saleReference:reportId,batchId:batch.id,quantity:take,branchMovementId:bimId,revenueUnit:chargeUnit,bvUnit:customerType==='member'?item.bv_unit:0,financialDpUnit:isFreeItem?0:unitPrice});
-            deductions.push({ movement_id:smId, product_name: batch.product_name, batch_no: batch.batch_no, quantity: take, unit_price: isFreeItem?0:unitPrice, unit_cif:actualCost.unit_cost, missing_cost_quantity:actualCost.missing_cost_quantity, charge_unit: chargeUnit, bv_unit: item.bv_unit || 0, from_package: fromPackage, is_free: isFreeItem });
+
+
+
+
+            [smId, batch.product_name, batch.batch_no || '', batch.expiry_date || null, take, itemMovType, branchId, reportId, dispenseNote, unitPrice]);
+
+
+            const actualCost = await recordBranchSaleAllocationTx(client, { movementId: smId, saleReference: reportId, batchId: batch.id, quantity: take, branchMovementId: bimId, revenueUnit: chargeUnit, bvUnit: customerType === 'member' ? item.bv_unit : 0, financialDpUnit: isFreeItem ? 0 : unitPrice });
+            deductions.push({ movement_id: smId, product_name: batch.product_name, batch_no: batch.batch_no, quantity: take, unit_price: isFreeItem ? 0 : unitPrice, unit_cif: actualCost.unit_cost, missing_cost_quantity: actualCost.missing_cost_quantity, charge_unit: chargeUnit, bv_unit: item.bv_unit || 0, from_package: fromPackage, is_free: isFreeItem });
             remaining -= take;
           }
 
@@ -266,24 +266,24 @@ async function handler(req, res) {
         }
 
         if (insufficientItems.length > 0) {
-          throw new Error(`Insufficient stock for: ${insufficientItems.map(i => `${i.product_name} (need ${i.requested}, have ${i.available})`).join(', ')}`);
+          throw new Error(`Insufficient stock for: ${insufficientItems.map((i) => `${i.product_name} (need ${i.requested}, have ${i.available})`).join(', ')}`);
         }
         const quantities = new Map();
-        for(const d of deductions.filter(d=>!d.is_free))
-          quantities.set(d.product_name.toLowerCase().trim(),(quantities.get(d.product_name.toLowerCase().trim()) || 0)+d.quantity);
-        rptData.medicines=(rptData.medicines || []).map(m=>{
-          const issued=quantities.get(String(m.name || m.product_name || '').toLowerCase().trim()) || 0;
-          const dispensedQty=Number(m.dispensed_qty || 0)+issued;
-          return {...m,dispensed_qty:dispensedQty,dispensed:dispensedQty>=Number(m.quantity || 1)};
+        for (const d of deductions.filter((d) => !d.is_free))
+        quantities.set(d.product_name.toLowerCase().trim(), (quantities.get(d.product_name.toLowerCase().trim()) || 0) + d.quantity);
+        rptData.medicines = (rptData.medicines || []).map((m) => {
+          const issued = quantities.get(String(m.name || m.product_name || '').toLowerCase().trim()) || 0;
+          const dispensedQty = Number(m.dispensed_qty || 0) + issued;
+          return { ...m, dispensed_qty: dispensedQty, dispensed: dispensedQty >= Number(m.quantity || 1) };
         });
-        await client.query('UPDATE reports SET data=$1::jsonb,updated_at=NOW() WHERE id=$2',[JSON.stringify(rptData),reportId]);
-        completionEvidence=await completeSaleEvidenceTx(client,{sourceKey:`dispense:${completionId}`,reference:reportId,
-          receipt:reportId,branch:branchId,user:req.user,customerType,paymentMethod:paymentMethod || 'cash',
-          movementIds:deductions.map(d=>d.movement_id)});
+        await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/branch/dispense.js:279:9"), [JSON.stringify(rptData), reportId]);
+        completionEvidence = await completeSaleEvidenceTx(client, { sourceKey: `dispense:${completionId}`, reference: reportId,
+          receipt: reportId, branch: branchId, user: req.user, customerType, paymentMethod: paymentMethod || 'cash',
+          movementIds: deductions.map((d) => d.movement_id) });
       });
 
-      recomputeLocationBalances('branch', branchId).catch(e =>
-        console.error('[stockEngine] dispense recompute error:', e.message)
+      recomputeLocationBalances('branch', branchId).catch((e) =>
+      console.error('[stockEngine] dispense recompute error:', e.message)
       );
 
       // Push immediate SSE notification so every connected dashboard refreshes
@@ -291,13 +291,13 @@ async function handler(req, res) {
 
       const totalDispensedQty = deductions.reduce((s, d) => s + Number(d.quantity || 0), 0);
       // DP total = stock cost basis (branch_inventory_movements.unit_price is always DP).
-      const totalDispensedDP = deductions.some(d=>d.unit_price==null) ? null :
-        parseFloat(deductions.reduce((s, d) => s + Number(d.quantity)*Number(d.unit_price), 0).toFixed(2));
+      const totalDispensedDP = deductions.some((d) => d.unit_price == null) ? null :
+      parseFloat(deductions.reduce((s, d) => s + Number(d.quantity) * Number(d.unit_price), 0).toFixed(2));
       // Charge total = what the patient actually pays. Free campaign items are excluded (charge = 0).
-      const totalChargeToPatient = parseFloat(deductions
-        .filter(d => !d.is_free)
-        .reduce((s, d) => s + (Number(d.quantity || 0) * Number(d.charge_unit != null ? d.charge_unit : (d.unit_price || 0))), 0).toFixed(2));
-      const totalDispensedBV = deductions.filter(d => !d.is_free).reduce((s, d) => s + (Number(d.quantity || 0) * Number(d.bv_unit || 0)), 0);
+      const totalChargeToPatient = parseFloat(deductions.
+      filter((d) => !d.is_free).
+      reduce((s, d) => s + Number(d.quantity || 0) * Number(d.charge_unit != null ? d.charge_unit : d.unit_price || 0), 0).toFixed(2));
+      const totalDispensedBV = deductions.filter((d) => !d.is_free).reduce((s, d) => s + Number(d.quantity || 0) * Number(d.bv_unit || 0), 0);
       const now = new Date(completionEvidence?.timestamp || Date.now());
       const serviceDate = businessDay(now);
       const serviceTime = businessTime(now);
@@ -311,18 +311,18 @@ async function handler(req, res) {
           branch_name: branchId,
           client_name: patientName || 'Patient',
           client_type: customerType || 'patient',
-          nb_number: customerType === 'member' ? (nbNumber || null) : null,
-          referral_nb: customerType !== 'member' ? (referralNb || null) : null,
+          nb_number: customerType === 'member' ? nbNumber || null : null,
+          referral_nb: customerType !== 'member' ? referralNb || null : null,
           service_date: serviceDate,
           service_time: serviceTime,
           activity_type: 'prescription_dispensing',
           workflow_source: 'branch_portal',
           form_reference_id: reportId,
-          product_total_dp: totalDispensedDP,       // DP cost basis (stock valuation)
-          product_total_cp: totalChargeToPatient,   // patient charge (CP for non-members, DP for members)
+          product_total_dp: totalDispensedDP, // DP cost basis (stock valuation)
+          product_total_cp: totalChargeToPatient, // patient charge (CP for non-members, DP for members)
           total_qty: totalDispensedQty,
           total_bv: totalDispensedBV,
-          grand_total: totalChargeToPatient,         // revenue received from patient
+          grand_total: totalChargeToPatient, // revenue received from patient
           payment_status: 'paid',
           payment_method: pmNorm,
           stock_impact: true,
@@ -330,12 +330,12 @@ async function handler(req, res) {
           // full_dispense = all prescribed medicines dispensed in this or a prior session.
           // partial_dispense = some medicines still pending after this session.
           // Falls back to 'dispensed' if caller did not supply dispenseType (older clients).
-          prescription_status: dispenseType === 'full' ? 'full_dispense'
-            : dispenseType === 'partial' ? 'partial_dispense'
-            : 'dispensed',
+          prescription_status: dispenseType === 'full' ? 'full_dispense' :
+          dispenseType === 'partial' ? 'partial_dispense' :
+          'dispensed',
           consultation_status: 'none',
           reporting_status: 'posted',
-          captured_by: actor || null,
+          captured_by: actor || null
         });
       } catch (e) {
         throw e;
@@ -348,18 +348,18 @@ async function handler(req, res) {
       if (customerType !== 'member' && referralNb && rxProfitAmount > 0) {
         try {
           const profitId = 'RXPROF-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7).toUpperCase();
-          const distRow = await query(
-            `SELECT distributor_name FROM distributors WHERE distributor_code = $1 LIMIT 1`,
-            [referralNb]
-          ).then(r => (r.rows || [])[0]).catch(() => null);
+          const distRow = await __qd_executePlan(query, __qd_registeredPlan("api/branch/dispense.js:352:10"),
+
+          [referralNb]).
+          then((r) => (r.rows || [])[0]).catch(() => null);
           const distName = distRow?.distributor_name || null;
-          await query(
-            `INSERT INTO branch_distributor_profit
-               (id, branch_id, distributor_nb, distributor_name, sale_id, sale_receipt, sale_date, profit_amount, status, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', NOW(), NOW())
-             ON CONFLICT (id) DO NOTHING`,
-            [profitId, branchId, referralNb, distName, reportId, reportId, serviceDate, rxProfitAmount]
-          );
+          await __qd_executePlan(query, __qd_registeredPlan("api/branch/dispense.js:357:11"),
+
+
+
+
+          [profitId, branchId, referralNb, distName, reportId, reportId, serviceDate, rxProfitAmount]);
+
         } catch (e) {
           console.error('[dispense] distributor profit insert error:', e.message);
         }
@@ -374,8 +374,8 @@ async function handler(req, res) {
             branch_name: branchId,
             client_name: patientName || 'Patient',
             client_type: customerType || 'patient',
-            nb_number: customerType === 'member' ? (nbNumber || null) : null,
-            referral_nb: customerType !== 'member' ? (referralNb || null) : null,
+            nb_number: customerType === 'member' ? nbNumber || null : null,
+            referral_nb: customerType !== 'member' ? referralNb || null : null,
             service_date: serviceDate,
             service_time: serviceTime,
             activity_type: 'consultation',
@@ -392,7 +392,7 @@ async function handler(req, res) {
             prescription_status: 'dispensed',
             consultation_status: 'paid',
             reporting_status: 'posted',
-            captured_by: createdBy || null,
+            captured_by: createdBy || null
           });
         } catch (e) {
           console.error('[activityCapture] consult fee post error:', e.message);

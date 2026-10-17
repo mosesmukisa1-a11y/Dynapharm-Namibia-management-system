@@ -1,40 +1,40 @@
-import { getMany, query } from '../../db.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../../services/queryDescriptors.js";import { getMany, query } from '../../db.js';
 
 export async function getWarehouseBatches(warehouseKey) {
   try {
-    return await getMany(
-      `SELECT sb.id, sb.product_id, sb.description, sb.batch_no, sb.barcode, sb.location,
-              sb.remaining_quantity, sb.quantity,
-              sb.cif_unit_cost, sb.dpc_unit_value, sb.unit_price,
-              sb.expiry_date, sb.dispatched_quantity,
-              sb.import_date AS created_at,
-              sb.notes,
-              COALESCE(
-                wim.notes,
-                CASE WHEN sb.batch_no IS NOT NULL THEN (
-                  SELECT st.from_warehouse
-                  FROM stock_transfers st
-                  JOIN stock_transfer_items sti ON sti.transfer_id = st.id
-                  WHERE st.to_branch = $1
-                    AND LOWER(COALESCE(sti.batch_no, '')) = LOWER(sb.batch_no)
-                  ORDER BY st.created_at DESC LIMIT 1
-                ) END
-              ) AS dispatch_source
-       FROM stock_batches sb
-       LEFT JOIN (
-         SELECT DISTINCT ON (warehouse_id, batch_no)
-                warehouse_id, batch_no, notes, created_at
-         FROM warehouse_inventory_movements
-         WHERE movement_type = 'write_off_return'
-         ORDER BY warehouse_id, batch_no, created_at DESC
-       ) wim ON wim.warehouse_id = $1
-             AND wim.batch_no    = sb.batch_no
-       WHERE sb.location = $1
-         AND sb.remaining_quantity > 0
-         AND COALESCE(sb.status, '') != 'expired'
-       ORDER BY sb.description ASC, sb.expiry_date ASC NULLS LAST`,
-      [warehouseKey]
-    );
+    return await __qd_executePlan(getMany, __qd_registeredPlan("api/stock/warehouses/_warehouseHelper.js:6:0"),
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    [warehouseKey]);
+
   } catch (err) {
     console.error(`getWarehouseBatches(${warehouseKey}) error:`, err.message);
     return [];
@@ -44,96 +44,96 @@ export async function getWarehouseBatches(warehouseKey) {
 export async function getWarehouseTransfers(warehouseKey, direction = 'all') {
   let transferRows;
   if (direction === 'incoming') {
-    transferRows = await getMany(
-      `SELECT * FROM stock_transfers WHERE to_branch = $1 AND status != 'cancelled' ORDER BY created_at DESC LIMIT 200`,
-      [warehouseKey]
-    ).catch(() => []);
+    transferRows = await __qd_executePlan(getMany, __qd_registeredPlan("api/stock/warehouses/_warehouseHelper.js:48:1"),
+
+    [warehouseKey]).
+    catch(() => []);
   } else if (direction === 'outbound') {
-    transferRows = await getMany(
-      `SELECT * FROM stock_transfers WHERE from_warehouse = $1 AND status != 'cancelled' ORDER BY created_at DESC LIMIT 200`,
-      [warehouseKey]
-    ).catch(() => []);
+    transferRows = await __qd_executePlan(getMany, __qd_registeredPlan("api/stock/warehouses/_warehouseHelper.js:53:2"),
+
+    [warehouseKey]).
+    catch(() => []);
   } else {
-    transferRows = await getMany(
-      `SELECT * FROM stock_transfers WHERE (from_warehouse = $1 OR to_branch = $1) AND status != 'cancelled' ORDER BY created_at DESC LIMIT 200`,
-      [warehouseKey]
-    ).catch(() => []);
+    transferRows = await __qd_executePlan(getMany, __qd_registeredPlan("api/stock/warehouses/_warehouseHelper.js:58:3"),
+
+    [warehouseKey]).
+    catch(() => []);
   }
 
   if (transferRows.length === 0) return [];
 
-  const ids = transferRows.map(t => t.id);
+  const ids = transferRows.map((t) => t.id);
   let itemMap = {};
   try {
     // migration 013_stock_enhancements.sql adds expiry_date, quantity_approved, and
     // quantity_received to stock_transfer_items — include them here.
-    const itemRows = await getMany(
-      `SELECT id, transfer_id, product_id, product_name, batch_no,
-              expiry_date, quantity, quantity_approved, quantity_received,
-              unit, metadata, created_at
-       FROM stock_transfer_items WHERE transfer_id = ANY($1::text[]) ORDER BY created_at ASC`,
-      [ids]
-    );
+    const itemRows = await __qd_executePlan(getMany, __qd_registeredPlan("api/stock/warehouses/_warehouseHelper.js:71:4"),
+
+
+
+
+    [ids]);
+
     for (const row of itemRows) {
       if (!itemMap[row.transfer_id]) itemMap[row.transfer_id] = [];
       itemMap[row.transfer_id].push({
-        id:               row.id,
-        productId:        row.product_id || null,
-        productName:      row.product_name,
-        batchNo:          row.batch_no || null,
-        expiryDate:       row.expiry_date instanceof Date
-                            ? row.expiry_date.toISOString().split('T')[0]
-                            : (row.expiry_date || null),
-        quantity:         Number(row.quantity || 0),
+        id: row.id,
+        productId: row.product_id || null,
+        productName: row.product_name,
+        batchNo: row.batch_no || null,
+        expiryDate: row.expiry_date instanceof Date ?
+        row.expiry_date.toISOString().split('T')[0] :
+        row.expiry_date || null,
+        quantity: Number(row.quantity || 0),
         quantityApproved: row.quantity_approved != null ? Number(row.quantity_approved) : null,
         quantityReceived: row.quantity_received != null ? Number(row.quantity_received) : null,
-        unit:             row.unit || null,
-        metadata:         row.metadata || null,
+        unit: row.unit || null,
+        metadata: row.metadata || null
       });
     }
   } catch (_) {}
 
-  return transferRows.map(t => ({
+  return transferRows.map((t) => ({
     ...t,
-    items: itemMap[t.id] || [],
+    items: itemMap[t.id] || []
   }));
 }
 
 export async function getWarehouseMovements(warehouseKey) {
-  return getMany(
-    `SELECT * FROM stock_movements WHERE (source_location = $1 OR destination_location = $1) ORDER BY created_at DESC LIMIT 2000`,
-    [warehouseKey]
-  ).catch(() => []);
+  return __qd_executePlan(getMany, __qd_registeredPlan("api/stock/warehouses/_warehouseHelper.js:104:5"),
+
+  [warehouseKey]).
+  catch(() => []);
 }
 
 export async function getWarehouseWriteoffReturns(warehouseKey) {
-  return getMany(
-    `SELECT wim.id,
-            wim.warehouse_id,
-            wim.product_name,
-            wim.batch_no,
-            wim.quantity,
-            wim.reference,
-            wim.notes,
-            wim.created_by,
-            wim.created_at,
-            sm.source_location  AS source_branch,
-            sm.expiry_date      AS expiry_date,
-            sm.write_off_reason AS write_off_reason
-     FROM warehouse_inventory_movements wim
-     LEFT JOIN stock_movements sm
-            ON sm.reference_id = wim.reference
-           AND sm.movement_type = 'write_off'
-     WHERE wim.warehouse_id = $1
-       AND wim.movement_type = 'write_off_return'
-     ORDER BY wim.created_at DESC
-     LIMIT 200`,
-    [warehouseKey]
-  ).catch(() => []);
+  return __qd_executePlan(getMany, __qd_registeredPlan("api/stock/warehouses/_warehouseHelper.js:111:6"),
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  [warehouseKey]).
+  catch(() => []);
 }
 
 export function buildWarehouseSummary(warehouseName, batches, inbound, outbound) {
-  const totalProductLines = new Set(batches.map(b => b.description)).size;
+  const totalProductLines = new Set(batches.map((b) => b.description)).size;
   const totalUnits = batches.reduce((s, b) => s + Number(b.remaining_quantity ?? 0), 0);
   const cifValue = batches.reduce((s, b) => s + Number(b.remaining_quantity ?? 0) * Number(b.cif_unit_cost || b.unit_price || 0), 0);
   const dpcValue = batches.reduce((s, b) => s + Number(b.remaining_quantity ?? 0) * Number(b.dpc_unit_value || b.unit_price || 0), 0);
@@ -145,16 +145,16 @@ export function buildWarehouseSummary(warehouseName, batches, inbound, outbound)
     totalUnits,
     cifValue: parseFloat(cifValue.toFixed(2)),
     dpcValue: parseFloat(dpcValue.toFixed(2)),
-    pendingInbound: inbound.filter(t => ['pending', 'pending_approval', 'in_transit', 'dispatched', 'approved'].includes(t.status)).length,
-    pendingOutbound: outbound.filter(t => ['pending', 'pending_approval', 'approved', 'dispatched', 'in_transit'].includes(t.status)).length,
+    pendingInbound: inbound.filter((t) => ['pending', 'pending_approval', 'in_transit', 'dispatched', 'approved'].includes(t.status)).length,
+    pendingOutbound: outbound.filter((t) => ['pending', 'pending_approval', 'approved', 'dispatched', 'in_transit'].includes(t.status)).length
   };
 }
 
 export function formatBatchItems(batches) {
   const arr = Array.isArray(batches) ? batches : [];
-  return arr.map(b => ({
-    productId: b.product_id,   // product master ID (not the batch PK)
-    batchId:   b.id,           // stock_batches PK — kept for callers that need the row reference
+  return arr.map((b) => ({
+    productId: b.product_id, // product master ID (not the batch PK)
+    batchId: b.id, // stock_batches PK — kept for callers that need the row reference
     productName: b.description,
     batchNo: b.batch_no || b.barcode,
     availableQty: Number(b.remaining_quantity ?? 0),
@@ -162,6 +162,6 @@ export function formatBatchItems(batches) {
     expiryDate: b.expiry_date,
     unitCIF: Number(b.cif_unit_cost || b.unit_price || 0),
     unitDPC: Number(b.dpc_unit_value || b.unit_price || 0),
-    stockValueDPC: Number(b.remaining_quantity ?? 0) * Number(b.dpc_unit_value || b.unit_price || 0),
+    stockValueDPC: Number(b.remaining_quantity ?? 0) * Number(b.dpc_unit_value || b.unit_price || 0)
   }));
 }

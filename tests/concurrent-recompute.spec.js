@@ -10,18 +10,18 @@
  * Before task #145 the advisory lock was missing, so concurrent calls could
  * interleave their reads and writes and leave a stale or wrong balance.
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { query } from '../api/db.js';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';import {
+  query } from "./helpers/owned-raw-database.js";
 import { recomputeInventoryBalance, recomputeLocationBalances } from '../api/services/stockEngine.js';
 
-const BRANCH   = 'test_concurrent_recompute_branch';
-const PRODUCT  = 'CONCURRENT_RECOMPUTE_TEST_PRODUCT';
-const BATCH    = 'BATCH-CONCURRENT-TEST-001';
+const BRANCH = 'test_concurrent_recompute_branch';
+const PRODUCT = 'CONCURRENT_RECOMPUTE_TEST_PRODUCT';
+const BATCH = 'BATCH-CONCURRENT-TEST-001';
 const LOC_TYPE = 'branch';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function expectLedgerOnlyProjection(row,ledgerClosing) {
-  expect(Number(row.inward_qty)-Number(row.outward_qty)).toBe(ledgerClosing);
+function expectLedgerOnlyProjection(row, ledgerClosing) {
+  expect(Number(row.inward_qty) - Number(row.outward_qty)).toBe(ledgerClosing);
   expect(Number(row.closing_qty)).toBe(0);
 }
 
@@ -72,20 +72,20 @@ describe('recomputeInventoryBalance — concurrent recompute serialisation (DB-b
 
     const key = {
       locationType: LOC_TYPE,
-      locationId:   BRANCH,
-      productName:  PRODUCT,
-      batchNo:      BATCH,
+      locationId: BRANCH,
+      productName: PRODUCT,
+      batchNo: BATCH
     };
 
     // Run 5 concurrent recomputes — the advisory lock must serialise them so
     // they don't interleave their reads and writes.
     await Promise.all([
-      recomputeInventoryBalance(key),
-      recomputeInventoryBalance(key),
-      recomputeInventoryBalance(key),
-      recomputeInventoryBalance(key),
-      recomputeInventoryBalance(key),
-    ]);
+    recomputeInventoryBalance(key),
+    recomputeInventoryBalance(key),
+    recomputeInventoryBalance(key),
+    recomputeInventoryBalance(key),
+    recomputeInventoryBalance(key)]
+    );
 
     // Exactly one balance row should exist.
     const { rows } = await query(
@@ -101,27 +101,27 @@ describe('recomputeInventoryBalance — concurrent recompute serialisation (DB-b
     expect(rows).toHaveLength(1);
     expect(Number(rows[0].inward_qty)).toBe(15);
     expect(Number(rows[0].outward_qty)).toBe(7);
-    expectLedgerOnlyProjection(rows[0],8);
+    expectLedgerOnlyProjection(rows[0], 8);
   });
 
   it('second wave of movements followed by parallel recomputes reflects the updated total', async () => {
     // Add 2 more inward (+10) and 1 more outward (-2) on top of the previous state.
     // New totals: inward = 15+10 = 25, outward = 7+2 = 9, closing = 16.
     await insertMovement('positive_adjustment', 10, { dst: BRANCH, dstType: LOC_TYPE });
-    await insertMovement('negative_adjustment',  2, { src: BRANCH, srcType: LOC_TYPE });
+    await insertMovement('negative_adjustment', 2, { src: BRANCH, srcType: LOC_TYPE });
 
     const key = {
       locationType: LOC_TYPE,
-      locationId:   BRANCH,
-      productName:  PRODUCT,
-      batchNo:      BATCH,
+      locationId: BRANCH,
+      productName: PRODUCT,
+      batchNo: BATCH
     };
 
     await Promise.all([
-      recomputeInventoryBalance(key),
-      recomputeInventoryBalance(key),
-      recomputeInventoryBalance(key),
-    ]);
+    recomputeInventoryBalance(key),
+    recomputeInventoryBalance(key),
+    recomputeInventoryBalance(key)]
+    );
 
     const { rows } = await query(
       `SELECT inward_qty, outward_qty, closing_qty
@@ -136,7 +136,7 @@ describe('recomputeInventoryBalance — concurrent recompute serialisation (DB-b
     expect(rows).toHaveLength(1);
     expect(Number(rows[0].inward_qty)).toBe(25);
     expect(Number(rows[0].outward_qty)).toBe(9);
-    expectLedgerOnlyProjection(rows[0],16);
+    expectLedgerOnlyProjection(rows[0], 16);
   });
 });
 
@@ -157,10 +157,10 @@ describe('recomputeInventoryBalance — concurrent recompute serialisation (DB-b
 // recomputeInventoryBalance serialises them so neither overwrites the other
 // with a stale read.
 
-const WAREHOUSE    = 'test_concurrent_warehouse';
-const WH_PRODUCT   = 'CONCURRENT_WH_TEST_PRODUCT';
-const WH_BATCH     = 'WH-BATCH-CONCURRENT-001';
-const WH_LOC_TYPE  = 'warehouse';
+const WAREHOUSE = 'test_concurrent_warehouse';
+const WH_PRODUCT = 'CONCURRENT_WH_TEST_PRODUCT';
+const WH_BATCH = 'WH-BATCH-CONCURRENT-001';
+const WH_LOC_TYPE = 'warehouse';
 
 async function cleanupWarehouse() {
   await query(
@@ -187,7 +187,7 @@ async function insertWhMovement(type, qty, { src, srcType, dst, dstType } = {}) 
              $5, $6, $7, $8,
              'posted', NOW(), NOW(), NOW())`,
     [WH_PRODUCT, WH_BATCH, qty, type,
-     src || null, srcType || null, dst || null, dstType || null]
+    src || null, srcType || null, dst || null, dstType || null]
   );
 }
 
@@ -204,17 +204,17 @@ describe('recomputeLocationBalances — concurrent warehouse dispatch + receipt 
     // Outward from WAREHOUSE (warehouse_dispatch):
     //   -8, -5   →  outward total = 13
     // Expected closing_qty = 30 - 13 = 17
-    await insertWhMovement('warehouse_receipt',  20, { dst: WAREHOUSE, dstType: WH_LOC_TYPE });
-    await insertWhMovement('warehouse_receipt',  10, { dst: WAREHOUSE, dstType: WH_LOC_TYPE });
-    await insertWhMovement('warehouse_dispatch',  8, { src: WAREHOUSE, srcType: WH_LOC_TYPE });
-    await insertWhMovement('warehouse_dispatch',  5, { src: WAREHOUSE, srcType: WH_LOC_TYPE });
+    await insertWhMovement('warehouse_receipt', 20, { dst: WAREHOUSE, dstType: WH_LOC_TYPE });
+    await insertWhMovement('warehouse_receipt', 10, { dst: WAREHOUSE, dstType: WH_LOC_TYPE });
+    await insertWhMovement('warehouse_dispatch', 8, { src: WAREHOUSE, srcType: WH_LOC_TYPE });
+    await insertWhMovement('warehouse_dispatch', 5, { src: WAREHOUSE, srcType: WH_LOC_TYPE });
 
     // Simulate two concurrent callers (receive-request path + dispatch path) both
     // triggering recomputeLocationBalances for the same warehouse at the same time.
     await Promise.all([
-      recomputeLocationBalances(WH_LOC_TYPE, WAREHOUSE),
-      recomputeLocationBalances(WH_LOC_TYPE, WAREHOUSE),
-    ]);
+    recomputeLocationBalances(WH_LOC_TYPE, WAREHOUSE),
+    recomputeLocationBalances(WH_LOC_TYPE, WAREHOUSE)]
+    );
 
     // Exactly one balance row for the product.
     const { rows } = await query(
@@ -230,20 +230,20 @@ describe('recomputeLocationBalances — concurrent warehouse dispatch + receipt 
     expect(rows).toHaveLength(1);
     expect(Number(rows[0].inward_qty)).toBe(30);
     expect(Number(rows[0].outward_qty)).toBe(13);
-    expectLedgerOnlyProjection(rows[0],17);
+    expectLedgerOnlyProjection(rows[0], 17);
   });
 
   it('a third concurrent wave after more dispatches still lands on the correct balance', async () => {
     // Add one more inward (+6) and one more outward (-3).
     // New totals: inward = 36, outward = 16, closing = 20.
-    await insertWhMovement('warehouse_receipt',   6, { dst: WAREHOUSE, dstType: WH_LOC_TYPE });
-    await insertWhMovement('warehouse_dispatch',  3, { src: WAREHOUSE, srcType: WH_LOC_TYPE });
+    await insertWhMovement('warehouse_receipt', 6, { dst: WAREHOUSE, dstType: WH_LOC_TYPE });
+    await insertWhMovement('warehouse_dispatch', 3, { src: WAREHOUSE, srcType: WH_LOC_TYPE });
 
     await Promise.all([
-      recomputeLocationBalances(WH_LOC_TYPE, WAREHOUSE),
-      recomputeLocationBalances(WH_LOC_TYPE, WAREHOUSE),
-      recomputeLocationBalances(WH_LOC_TYPE, WAREHOUSE),
-    ]);
+    recomputeLocationBalances(WH_LOC_TYPE, WAREHOUSE),
+    recomputeLocationBalances(WH_LOC_TYPE, WAREHOUSE),
+    recomputeLocationBalances(WH_LOC_TYPE, WAREHOUSE)]
+    );
 
     const { rows } = await query(
       `SELECT inward_qty, outward_qty, closing_qty
@@ -258,7 +258,7 @@ describe('recomputeLocationBalances — concurrent warehouse dispatch + receipt 
     expect(rows).toHaveLength(1);
     expect(Number(rows[0].inward_qty)).toBe(36);
     expect(Number(rows[0].outward_qty)).toBe(16);
-    expectLedgerOnlyProjection(rows[0],20);
+    expectLedgerOnlyProjection(rows[0], 20);
   });
 });
 
@@ -279,10 +279,10 @@ describe('recomputeLocationBalances — concurrent warehouse dispatch + receipt 
 // recomputeInventoryBalance serialises them so neither overwrites the other
 // with a stale read.
 
-const CS_LOCATION  = 'country_stock';
-const CS_LOC_TYPE  = 'country';
-const CS_PRODUCT   = 'CONCURRENT_CS_TEST_PRODUCT';
-const CS_BATCH     = 'CS-BATCH-CONCURRENT-001';
+const CS_LOCATION = 'country_stock';
+const CS_LOC_TYPE = 'country';
+const CS_PRODUCT = 'CONCURRENT_CS_TEST_PRODUCT';
+const CS_BATCH = 'CS-BATCH-CONCURRENT-001';
 
 async function cleanupCountryStock() {
   await query(
@@ -309,7 +309,7 @@ async function insertCsMovement(type, qty, { src, srcType, dst, dstType } = {}) 
              $5, $6, $7, $8,
              'posted', NOW(), NOW(), NOW())`,
     [CS_PRODUCT, CS_BATCH, qty, type,
-     src || null, srcType || null, dst || null, dstType || null]
+    src || null, srcType || null, dst || null, dstType || null]
   );
 }
 
@@ -328,15 +328,15 @@ describe('recomputeLocationBalances — concurrent country_stock import receipt 
     // Expected closing_qty = 80 - 35 = 45
     await insertCsMovement('supplier_import_receipt', 50, { dst: CS_LOCATION, dstType: CS_LOC_TYPE });
     await insertCsMovement('supplier_import_receipt', 30, { dst: CS_LOCATION, dstType: CS_LOC_TYPE });
-    await insertCsMovement('warehouse_dispatch',      20, { src: CS_LOCATION, srcType: CS_LOC_TYPE });
-    await insertCsMovement('warehouse_dispatch',      15, { src: CS_LOCATION, srcType: CS_LOC_TYPE });
+    await insertCsMovement('warehouse_dispatch', 20, { src: CS_LOCATION, srcType: CS_LOC_TYPE });
+    await insertCsMovement('warehouse_dispatch', 15, { src: CS_LOCATION, srcType: CS_LOC_TYPE });
 
     // Simulate two concurrent callers (import-receive path + transfer-approve path)
     // both triggering recomputeLocationBalances for country_stock at the same time.
     await Promise.all([
-      recomputeLocationBalances(CS_LOC_TYPE, CS_LOCATION),
-      recomputeLocationBalances(CS_LOC_TYPE, CS_LOCATION),
-    ]);
+    recomputeLocationBalances(CS_LOC_TYPE, CS_LOCATION),
+    recomputeLocationBalances(CS_LOC_TYPE, CS_LOCATION)]
+    );
 
     // Exactly one balance row for the product.
     const { rows } = await query(
@@ -352,20 +352,20 @@ describe('recomputeLocationBalances — concurrent country_stock import receipt 
     expect(rows).toHaveLength(1);
     expect(Number(rows[0].inward_qty)).toBe(80);
     expect(Number(rows[0].outward_qty)).toBe(35);
-    expectLedgerOnlyProjection(rows[0],45);
+    expectLedgerOnlyProjection(rows[0], 45);
   });
 
   it('a third concurrent wave after more imports and dispatches still lands on the correct balance', async () => {
     // Add one more import receipt (+12) and one more warehouse dispatch (-7).
     // New totals: inward = 92, outward = 42, closing = 50.
     await insertCsMovement('supplier_import_receipt', 12, { dst: CS_LOCATION, dstType: CS_LOC_TYPE });
-    await insertCsMovement('warehouse_dispatch',       7, { src: CS_LOCATION, srcType: CS_LOC_TYPE });
+    await insertCsMovement('warehouse_dispatch', 7, { src: CS_LOCATION, srcType: CS_LOC_TYPE });
 
     await Promise.all([
-      recomputeLocationBalances(CS_LOC_TYPE, CS_LOCATION),
-      recomputeLocationBalances(CS_LOC_TYPE, CS_LOCATION),
-      recomputeLocationBalances(CS_LOC_TYPE, CS_LOCATION),
-    ]);
+    recomputeLocationBalances(CS_LOC_TYPE, CS_LOCATION),
+    recomputeLocationBalances(CS_LOC_TYPE, CS_LOCATION),
+    recomputeLocationBalances(CS_LOC_TYPE, CS_LOCATION)]
+    );
 
     const { rows } = await query(
       `SELECT inward_qty, outward_qty, closing_qty
@@ -380,7 +380,7 @@ describe('recomputeLocationBalances — concurrent country_stock import receipt 
     expect(rows).toHaveLength(1);
     expect(Number(rows[0].inward_qty)).toBe(92);
     expect(Number(rows[0].outward_qty)).toBe(42);
-    expectLedgerOnlyProjection(rows[0],50);
+    expectLedgerOnlyProjection(rows[0], 50);
   });
 });
 
@@ -405,10 +405,10 @@ describe('recomputeLocationBalances — concurrent country_stock import receipt 
 // not INWARD_TYPES, so it cannot count as inward to in_transit in the engine.
 // transfer_in is the correct inward counterpart.
 
-const IT_LOCATION  = 'in_transit_test_001';
-const IT_LOC_TYPE  = 'in_transit';
-const IT_PRODUCT   = 'CONCURRENT_IT_TEST_PRODUCT';
-const IT_BATCH     = 'IT-BATCH-CONCURRENT-001';
+const IT_LOCATION = 'in_transit_test_001';
+const IT_LOC_TYPE = 'in_transit';
+const IT_PRODUCT = 'CONCURRENT_IT_TEST_PRODUCT';
+const IT_BATCH = 'IT-BATCH-CONCURRENT-001';
 
 async function cleanupInTransit() {
   await query(
@@ -435,7 +435,7 @@ async function insertItMovement(type, qty, { src, srcType, dst, dstType } = {}) 
              $5, $6, $7, $8,
              'posted', NOW(), NOW(), NOW())`,
     [IT_PRODUCT, IT_BATCH, qty, type,
-     src || null, srcType || null, dst || null, dstType || null]
+    src || null, srcType || null, dst || null, dstType || null]
   );
 }
 
@@ -452,17 +452,17 @@ describe('recomputeLocationBalances — concurrent in_transit transfer in + bran
     // Outward from in_transit (branch_receipt — OUTWARD_TYPES when source=in_transit):
     //   -10, -6   →  outward total = 16
     // Expected closing_qty = 40 - 16 = 24
-    await insertItMovement('transfer_in',    25, { dst: IT_LOCATION, dstType: IT_LOC_TYPE });
-    await insertItMovement('transfer_in',    15, { dst: IT_LOCATION, dstType: IT_LOC_TYPE });
+    await insertItMovement('transfer_in', 25, { dst: IT_LOCATION, dstType: IT_LOC_TYPE });
+    await insertItMovement('transfer_in', 15, { dst: IT_LOCATION, dstType: IT_LOC_TYPE });
     await insertItMovement('branch_receipt', 10, { src: IT_LOCATION, srcType: IT_LOC_TYPE });
-    await insertItMovement('branch_receipt',  6, { src: IT_LOCATION, srcType: IT_LOC_TYPE });
+    await insertItMovement('branch_receipt', 6, { src: IT_LOCATION, srcType: IT_LOC_TYPE });
 
     // Simulate two concurrent callers both triggering recomputeLocationBalances
     // for the same in_transit ID at the same time.
     await Promise.all([
-      recomputeLocationBalances(IT_LOC_TYPE, IT_LOCATION),
-      recomputeLocationBalances(IT_LOC_TYPE, IT_LOCATION),
-    ]);
+    recomputeLocationBalances(IT_LOC_TYPE, IT_LOCATION),
+    recomputeLocationBalances(IT_LOC_TYPE, IT_LOCATION)]
+    );
 
     // Exactly one balance row for the product.
     const { rows } = await query(
@@ -478,20 +478,20 @@ describe('recomputeLocationBalances — concurrent in_transit transfer in + bran
     expect(rows).toHaveLength(1);
     expect(Number(rows[0].inward_qty)).toBe(40);
     expect(Number(rows[0].outward_qty)).toBe(16);
-    expectLedgerOnlyProjection(rows[0],24);
+    expectLedgerOnlyProjection(rows[0], 24);
   });
 
   it('a third concurrent wave after more in-transit movements still lands on the correct balance', async () => {
     // Add one more transfer_in (+8) and one more branch_receipt (-5).
     // New totals: inward = 48, outward = 21, closing = 27.
-    await insertItMovement('transfer_in',    8, { dst: IT_LOCATION, dstType: IT_LOC_TYPE });
+    await insertItMovement('transfer_in', 8, { dst: IT_LOCATION, dstType: IT_LOC_TYPE });
     await insertItMovement('branch_receipt', 5, { src: IT_LOCATION, srcType: IT_LOC_TYPE });
 
     await Promise.all([
-      recomputeLocationBalances(IT_LOC_TYPE, IT_LOCATION),
-      recomputeLocationBalances(IT_LOC_TYPE, IT_LOCATION),
-      recomputeLocationBalances(IT_LOC_TYPE, IT_LOCATION),
-    ]);
+    recomputeLocationBalances(IT_LOC_TYPE, IT_LOCATION),
+    recomputeLocationBalances(IT_LOC_TYPE, IT_LOCATION),
+    recomputeLocationBalances(IT_LOC_TYPE, IT_LOCATION)]
+    );
 
     const { rows } = await query(
       `SELECT inward_qty, outward_qty, closing_qty
@@ -506,7 +506,7 @@ describe('recomputeLocationBalances — concurrent in_transit transfer in + bran
     expect(rows).toHaveLength(1);
     expect(Number(rows[0].inward_qty)).toBe(48);
     expect(Number(rows[0].outward_qty)).toBe(21);
-    expectLedgerOnlyProjection(rows[0],27);
+    expectLedgerOnlyProjection(rows[0], 27);
   });
 });
 
@@ -525,8 +525,8 @@ describe('recomputeLocationBalances — concurrent in_transit transfer in + bran
 // interfering with the cumulative movement totals in the concurrent tests above.
 
 const IT_CANCEL_LOCATION = 'in_transit_cancel_test_001';
-const IT_CANCEL_PRODUCT  = 'IT_CANCEL_TEST_PRODUCT';
-const IT_CANCEL_BATCH    = 'IT-CANCEL-BATCH-001';
+const IT_CANCEL_PRODUCT = 'IT_CANCEL_TEST_PRODUCT';
+const IT_CANCEL_BATCH = 'IT-CANCEL-BATCH-001';
 
 async function cleanupInTransitCancel() {
   await query(
@@ -580,7 +580,7 @@ describe('recomputeLocationBalances — in_transit balance drops to zero after c
 
     expect(before).toHaveLength(1);
     expect(Number(before[0].inward_qty)).toBe(30);
-    expectLedgerOnlyProjection(before[0],30);
+    expectLedgerOnlyProjection(before[0], 30);
 
     // Step 3 — void the movements by setting their status to 'cancelled',
     // mirroring what the transfer cancellation handler does in transfers.js.
@@ -644,7 +644,7 @@ describe('recomputeLocationBalances — in_transit balance drops to zero after c
          AND COALESCE(batch_no, '') = $4`,
       [IT_LOC_TYPE, IT_CANCEL_LOCATION, IT_CANCEL_PRODUCT, IT_CANCEL_BATCH]
     );
-    expectLedgerOnlyProjection(full[0],30);
+    expectLedgerOnlyProjection(full[0], 30);
 
     // Cancel only the qty=15 movement, leaving 10 + 5 = 15 posted.
     await query(
@@ -669,8 +669,8 @@ describe('recomputeLocationBalances — in_transit balance drops to zero after c
     );
 
     expect(partial).toHaveLength(1);
-    expect(Number(partial[0].inward_qty)).toBe(15);  // 10 + 5
+    expect(Number(partial[0].inward_qty)).toBe(15); // 10 + 5
     expect(Number(partial[0].outward_qty)).toBe(0);
-    expectLedgerOnlyProjection(partial[0],15);
+    expectLedgerOnlyProjection(partial[0], 15);
   });
 });

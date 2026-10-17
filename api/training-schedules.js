@@ -1,15 +1,15 @@
-import { applyAuthCors } from './_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "./services/queryDescriptors.js";import { applyAuthCors } from './_lib/auth.js';
 import { query } from './db.js';
 
 async function ensureColumns() {
-  const cols = [
-    `ALTER TABLE training_schedules ADD COLUMN IF NOT EXISTS platform VARCHAR(50)`,
-    `ALTER TABLE training_schedules ADD COLUMN IF NOT EXISTS meeting_link TEXT`,
-    `ALTER TABLE training_schedules ADD COLUMN IF NOT EXISTS target_audience VARCHAR(50) DEFAULT 'all'`,
-    `ALTER TABLE training_schedules ADD COLUMN IF NOT EXISTS description TEXT`,
-  ];
+  const cols = [__qd_registeredPlan("api/training-schedules.js:6:0"), __qd_registeredPlan("api/training-schedules.js:7:1"), __qd_registeredPlan("api/training-schedules.js:8:2"), __qd_registeredPlan("api/training-schedules.js:9:3")];
+
+
+
+
+
   for (const sql of cols) {
-    await query(sql).catch(() => {});
+    await __qd_executePlan(query, sql, []).catch(() => {});
   }
 }
 
@@ -21,13 +21,13 @@ export default async function handler(req, res) {
     await ensureColumns();
 
     if (req.method === 'GET') {
-      const { rows } = await query(
-        `SELECT id, title, date, time, location, trainer, platform, meeting_link,
-                target_audience, description, created_at
-         FROM training_schedules
-         ORDER BY date ASC, time ASC
-         LIMIT 500`
-      );
+      const { rows } = await __qd_executePlan(query, __qd_registeredPlan("api/training-schedules.js:25:4"), []);
+
+
+
+
+
+
       return res.json(rows);
     }
 
@@ -36,45 +36,45 @@ export default async function handler(req, res) {
       if (!title || !date) {
         return res.status(400).json({ success: false, error: 'title and date are required' });
       }
-      const { rows } = await query(
-        `INSERT INTO training_schedules
-           (title, date, time, location, trainer, platform, meeting_link, target_audience, description, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
-         RETURNING *`,
-        [
-          title,
-          date,
-          time || null,
-          location || null,
-          trainer || null,
-          platform || 'in_person',
-          meeting_link || null,
-          target_audience || 'all',
-          description || null,
-        ]
-      );
+      const { rows } = await __qd_executePlan(query, __qd_registeredPlan("api/training-schedules.js:40:5"),
+
+
+
+
+      [
+      title,
+      date,
+      time || null,
+      location || null,
+      trainer || null,
+      platform || 'in_person',
+      meeting_link || null,
+      target_audience || 'all',
+      description || null]);
+
+
       return res.status(201).json({ success: true, schedule: rows[0] });
     }
 
     if (req.method === 'PUT' || req.method === 'PATCH') {
       const { id, title, date, time, location, trainer, platform, meeting_link, target_audience, description } = req.body || {};
       if (!id) return res.status(400).json({ success: false, error: 'id is required' });
-      const { rows } = await query(
-        `UPDATE training_schedules SET
-           title = COALESCE($1, title),
-           date = COALESCE($2, date),
-           time = $3,
-           location = $4,
-           trainer = $5,
-           platform = COALESCE($6, platform),
-           meeting_link = $7,
-           target_audience = COALESCE($8, target_audience),
-           description = $9
-         WHERE id = $10
-         RETURNING *`,
-        [title || null, date || null, time ?? null, location ?? null, trainer ?? null,
-         platform || null, meeting_link ?? null, target_audience || null, description ?? null, id]
-      );
+      const { rows } = await __qd_executePlan(query, __qd_registeredPlan("api/training-schedules.js:63:6"),
+
+
+
+
+
+
+
+
+
+
+
+
+      [title || null, date || null, time ?? null, location ?? null, trainer ?? null,
+      platform || null, meeting_link ?? null, target_audience || null, description ?? null, id]);
+
       if (!rows.length) return res.status(404).json({ success: false, error: 'Schedule not found' });
       return res.json({ success: true, schedule: rows[0] });
     }
@@ -82,7 +82,7 @@ export default async function handler(req, res) {
     if (req.method === 'DELETE') {
       const { id } = req.query;
       if (!id) return res.status(400).json({ success: false, error: 'id is required' });
-      await query(`DELETE FROM training_schedules WHERE id = $1`, [id]);
+      await __qd_executePlan(query, __qd_registeredPlan("api/training-schedules.js:85:7"), [id]);
       return res.json({ success: true });
     }
 

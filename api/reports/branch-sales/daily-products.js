@@ -1,4 +1,4 @@
-import { applyAuthCors } from '../../_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../../services/queryDescriptors.js";import { applyAuthCors } from '../../_lib/auth.js';
 import { getMany } from '../../db.js';
 import { businessDay } from '../../services/businessDates.js';
 
@@ -13,133 +13,133 @@ export default async function handler(req, res) {
     const branchId = url.searchParams.get('branch_id') || '';
     const date = url.searchParams.get('date') || businessDay();
 
-    const normBranchId = branchId && branchId !== 'all'
-      ? branchId.toLowerCase().replace(/ /g, '_')
-      : null;
+    const normBranchId = branchId && branchId !== 'all' ?
+    branchId.toLowerCase().replace(/ /g, '_') :
+    null;
 
     const params = [date];
-    let branchClause = '';
-    let campSubBranchClause = '';
+    let branchClause = __qd_registeredPlan("api/reports/branch-sales/daily-products.js:21:2");
+    let campSubBranchClause = __qd_registeredPlan("api/reports/branch-sales/daily-products.js:22:0");
     if (normBranchId) {
-      branchClause = ` AND LOWER(REPLACE(bim.branch_id, ' ', '_')) = $${params.push(normBranchId) && params.length}`;
+      branchClause = __qd_registeredPlan("api/reports/branch-sales/daily-products.js:24:3", [params.push(normBranchId) && params.length]);
       // Same $2 param used in the CTE subquery
-      campSubBranchClause = `AND LOWER(REPLACE(branch_id, ' ', '_')) = $2`;
+      campSubBranchClause = __qd_registeredPlan("api/reports/branch-sales/daily-products.js:26:1");
     }
 
     // Two-CTE approach:
     //  campaign_refs — identifies all campaign sale references (member + non-member)
     //  agg           — aggregates per (normalised product name, sale_type)
     // The outer SELECT can then ORDER BY sale_type as a plain column.
-    const rows = await getMany(`
-      WITH campaign_refs AS (
-        SELECT id,
-               COALESCE(NULLIF((data->>'discount_pct')::numeric, 0), 0) AS discount_pct
-        FROM branch_walkin_sales
-        WHERE sale_date>=($1::date::timestamp AT TIME ZONE 'Africa/Windhoek')
-          AND sale_date<(($1::date+1)::timestamp AT TIME ZONE 'Africa/Windhoek')
-          ${campSubBranchClause}
-          AND data->>'sale_type' = 'campaign_sale'
-      ),
-      agg AS (
-        SELECT
-          MIN(TRIM(bim.product_name))                                       AS product_name,
-          CASE
-            WHEN bim.type = 'campaign_free_item'                        THEN 'campaign_free'
-            WHEN bim.type = 'campaign_sale'                             THEN 'campaign_paid'
-            WHEN cr.id   IS NOT NULL                                    THEN 'campaign_paid'
-            WHEN bim.type IN ('prescription_dispense', 'dispense')      THEN 'prescription'
-            ELSE                                                              'regular'
-          END                                                               AS sale_type,
-          SUM(ABS(bim.quantity))                                            AS total_qty,
-          -- dp_amount: revenue at DP level for each movement type.
-          --   campaign_sale (member paid): use bim.unit_price which now stores the actual
-          --     discounted DP the member paid (paidUnitPrice). For bxgy campaigns this equals
-          --     pp.dp; for discount campaigns it is pp.dp × (1-disc%). Falls back to pp.dp
-          --     for older records that stored the full list DP.
-          --   walk_in_non_member_sale (regular OR campaign non-member): bim.unit_price always
-          --     stores the selling CP, never DP. An explicit branch here ensures we never fall
-          --     back to bim.unit_price and accidentally use CP as the DP figure — for both
-          --     regular rows (where it was always CP) and campaign rows (where it is the
-          --     discounted CP after the non-member BIM unit_price fix).
-          --   campaign_free_item: always 0 (free, no revenue).
-          --   walk_in_non_member_sale (discount campaign): pp.dp × (1-discount_pct/100)
-          --     so "Actual Figure" reflects the real discounted DP charged.
-          --   walk_in_non_member_sale (regular/bxgy): pp.dp only.
-          --   All other types: pp.dp is authoritative; bim.unit_price as last resort fallback.
-          SUM((bim.metadata->'sale_evidence'->>'dp_value')::numeric) AS dp_amount,
-          SUM(CASE WHEN bim.metadata->'sale_evidence'->>'dp_value' IS NULL THEN ABS(bim.quantity) ELSE 0 END) AS missing_dp_qty,
-          -- unit_dp: per-unit DP price for display in the price column.
-          --   campaign_sale: bim.unit_price (actual discounted/charged price).
-          --   campaign_free_item: 0 (free, no charge).
-          --   walk_in_non_member_sale (campaign, discounted): pp.dp × (1-discount_pct/100)
-          --     so the report shows the discounted DP equivalent (for strikethrough display).
-          --   walk_in_non_member_sale (regular/bxgy no discount): pp.dp only.
-          --   All others: pp.dp authoritative; bim.unit_price as fallback.
-          SUM((bim.metadata->'sale_evidence'->>'dp_value')::numeric)/NULLIF(SUM(ABS(bim.quantity)),0) AS unit_dp,
-          -- list_dp: product price list DP (the "Normal DP" / full list price).
-          NULL::numeric AS list_dp,
-          -- discount_pct: campaign discount percentage (0 for regular / bxgy sales).
-          MAX(COALESCE(cr.discount_pct, 0))                                 AS discount_pct,
-          -- bv_total: only member-type movements earn BV.
-          --   walk_in_non_member_sale (regular & campaign non-member) → 0 BV.
-          --   campaign_free_item → 0 BV (free items never earn BV).
-          --   All others (member sales, prescriptions) → pp.bv × qty.
-          COALESCE(MAX(pp.bv), 0) * SUM(
-            CASE WHEN bim.type IN ('campaign_free_item', 'walk_in_non_member_sale') THEN 0
-                 ELSE ABS(bim.quantity) END
-          )                                                                 AS bv_total
-        FROM branch_inventory_movements bim
-        LEFT JOIN LATERAL (SELECT MAX(bv) AS bv FROM live_product_prices
-          WHERE LOWER(TRIM(description))=LOWER(TRIM(bim.product_name))) pp ON TRUE
-        LEFT JOIN campaign_refs cr ON cr.id = bim.reference
-        WHERE bim.created_at>=($1::date::timestamp AT TIME ZONE 'Africa/Windhoek')
-          AND bim.created_at<(($1::date+1)::timestamp AT TIME ZONE 'Africa/Windhoek')
-          AND bim.type IN (
-            'walk_in_member_sale', 'walk_in_non_member_sale',
-            'prescription_dispense', 'sale', 'campaign_sale', 'campaign_free_item',
-            'field_use', 'dispense'
-          )
-          ${branchClause}
-        GROUP BY
-          LOWER(TRIM(bim.product_name)),
-          CASE
-            WHEN bim.type = 'campaign_free_item'                        THEN 'campaign_free'
-            WHEN bim.type = 'campaign_sale'                             THEN 'campaign_paid'
-            WHEN cr.id   IS NOT NULL                                    THEN 'campaign_paid'
-            WHEN bim.type IN ('prescription_dispense', 'dispense')      THEN 'prescription'
-            ELSE                                                              'regular'
-          END
-      ),
-      -- Approved refunds on this date (recognised on approval date)
-      refund_agg AS (
-        SELECT
-          LOWER(TRIM(bim.product_name))                                          AS pkey,
-          SUM(ABS(bim.quantity))                                                 AS refund_qty,
-          -- bim.unit_price first: stores the ACTUAL refunded (campaign) price paid.
-          -- Fall back to pp.dp only for legacy entries where bim.unit_price is 0/null.
-          SUM(ABS(bim.quantity) * COALESCE(bim.charge_unit, NULLIF(bim.unit_price, 0), NULLIF(pp.dp, 0), 0)) AS refund_dp
-        FROM branch_inventory_movements bim
-        LEFT JOIN live_product_prices pp ON LOWER(TRIM(pp.description)) = LOWER(TRIM(bim.product_name))
-        WHERE bim.created_at>=($1::date::timestamp AT TIME ZONE 'Africa/Windhoek')
-          AND bim.created_at<(($1::date+1)::timestamp AT TIME ZONE 'Africa/Windhoek')
-          AND bim.type = 'refund_return'
-          ${branchClause}
-        GROUP BY LOWER(TRIM(bim.product_name))
-      )
-      SELECT a.product_name, a.sale_type, a.total_qty, a.dp_amount, a.unit_dp, a.list_dp, a.discount_pct, a.bv_total,a.missing_dp_qty,
-             COALESCE(r.refund_qty, 0) AS refund_qty,
-             COALESCE(r.refund_dp,  0) AS refund_dp
-      FROM agg a
-      LEFT JOIN refund_agg r ON r.pkey = LOWER(TRIM(a.product_name))
-      ORDER BY
-        CASE a.sale_type
-          WHEN 'regular'      THEN 0
-          WHEN 'prescription' THEN 1
-          WHEN 'campaign_paid' THEN 2
-          ELSE 3
-        END,
-        a.dp_amount DESC
-    `, params);
+    const rows = await __qd_executePlan(getMany, __qd_registeredPlan("api/reports/branch-sales/daily-products.js:33:4", [
+
+
+
+
+
+
+    campSubBranchClause,
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    branchClause,
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    branchClause]),
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    params);
 
     // Totals: dp_amount and bv_total are already 0 for free items (unit_price = NULL).
     // total_qty includes ALL movements (qty of stock actually deducted).
@@ -156,7 +156,7 @@ export default async function handler(req, res) {
       if (!refundByKey.has(pkey)) {
         refundByKey.set(pkey, {
           qty: Number(r.refund_qty || 0),
-          dp:  Number(r.refund_dp  || 0),
+          dp: Number(r.refund_dp || 0)
         });
       }
     }
@@ -164,7 +164,7 @@ export default async function handler(req, res) {
     // Build net product rows: subtract refund from sold qty/dp, keep only net_qty > 0.
     const netProducts = [];
     let totalRefundQty = 0;
-    let totalRefundDp  = 0;
+    let totalRefundDp = 0;
     const seenRefundKeys = new Set();
 
     // Sort so 'regular' rows come before prescription, then campaign rows per product.
@@ -180,69 +180,69 @@ export default async function handler(req, res) {
       if (!seenRefundKeys.has(pkey)) {
         seenRefundKeys.add(pkey);
         totalRefundQty += ref.qty;
-        totalRefundDp  += ref.dp;
+        totalRefundDp += ref.dp;
       }
     }
 
     for (const r of sortedRows) {
-      const pkey    = (r.product_name || '').toLowerCase().trim();
-      const soldQty = Number(r.total_qty  || 0);
-      const soldDp  = Number(r.dp_amount  || 0);
-      const soldBv  = Number(r.bv_total   || 0);
-      const ref     = remainingRefund.get(pkey) || { qty: 0, dp: 0 };
+      const pkey = (r.product_name || '').toLowerCase().trim();
+      const soldQty = Number(r.total_qty || 0);
+      const soldDp = Number(r.dp_amount || 0);
+      const soldBv = Number(r.bv_total || 0);
+      const ref = remainingRefund.get(pkey) || { qty: 0, dp: 0 };
 
       // Deduct as much refund as this row covers.
       const deductQty = Math.min(ref.qty, soldQty);
-      const deductDp  = soldQty > 0 ? (deductQty / soldQty) * soldDp : 0;
+      const deductDp = soldQty > 0 ? deductQty / soldQty * soldDp : 0;
 
       const netQty = soldQty - deductQty;
-      const netDp  = soldDp  - deductDp;
-      const netBv  = soldQty > 0 ? soldBv * (netQty / soldQty) : 0;
+      const netDp = soldDp - deductDp;
+      const netBv = soldQty > 0 ? soldBv * (netQty / soldQty) : 0;
 
       // Update remaining refund budget for subsequent rows of the same product.
       remainingRefund.set(pkey, {
         qty: ref.qty - deductQty,
-        dp:  ref.dp  - deductDp,
+        dp: ref.dp - deductDp
       });
 
       // Only include rows where net qty is positive after refund netting.
       if (netQty > 0) {
         netProducts.push({
-          product_name:  r.product_name,
-          sale_type:     r.sale_type,
-          total_qty:     parseFloat(netQty.toFixed(4)),
-          dp_amount:     parseFloat(netDp.toFixed(2)),
-          missing_dp_qty:Number(r.missing_dp_qty || 0),
-          dp_complete:Number(r.missing_dp_qty || 0)===0,
-          unit_dp:       parseFloat(Number(r.unit_dp      || 0).toFixed(2)),
-          list_dp:       parseFloat(Number(r.list_dp      || 0).toFixed(2)),
-          discount_pct:  parseFloat(Number(r.discount_pct || 0).toFixed(2)),
-          bv_total:      parseFloat(netBv.toFixed(2)),
-          refund_qty:    Number(r.refund_qty || 0),
-          refund_dp:     parseFloat(Number(r.refund_dp    || 0).toFixed(2)),
+          product_name: r.product_name,
+          sale_type: r.sale_type,
+          total_qty: parseFloat(netQty.toFixed(4)),
+          dp_amount: parseFloat(netDp.toFixed(2)),
+          missing_dp_qty: Number(r.missing_dp_qty || 0),
+          dp_complete: Number(r.missing_dp_qty || 0) === 0,
+          unit_dp: parseFloat(Number(r.unit_dp || 0).toFixed(2)),
+          list_dp: parseFloat(Number(r.list_dp || 0).toFixed(2)),
+          discount_pct: parseFloat(Number(r.discount_pct || 0).toFixed(2)),
+          bv_total: parseFloat(netBv.toFixed(2)),
+          refund_qty: Number(r.refund_qty || 0),
+          refund_dp: parseFloat(Number(r.refund_dp || 0).toFixed(2))
         });
       }
     }
 
     const totals = {
-      missing_dp_qty: rows.reduce((n,r)=>n+Number(r.missing_dp_qty || 0),0),
-      dp_complete: rows.every(r=>Number(r.missing_dp_qty || 0)===0),
-      total_qty:  netProducts.reduce((s, r) => s + r.total_qty,  0),
-      paid_qty:   netProducts.filter(r => r.sale_type !== 'campaign_free')
-                             .reduce((s, r) => s + r.total_qty, 0),
-      dp_amount:  parseFloat(netProducts.reduce((s, r) => s + r.dp_amount,  0).toFixed(2)),
-      bv_total:   parseFloat(netProducts.reduce((s, r) => s + r.bv_total,   0).toFixed(2)),
+      missing_dp_qty: rows.reduce((n, r) => n + Number(r.missing_dp_qty || 0), 0),
+      dp_complete: rows.every((r) => Number(r.missing_dp_qty || 0) === 0),
+      total_qty: netProducts.reduce((s, r) => s + r.total_qty, 0),
+      paid_qty: netProducts.filter((r) => r.sale_type !== 'campaign_free').
+      reduce((s, r) => s + r.total_qty, 0),
+      dp_amount: parseFloat(netProducts.reduce((s, r) => s + r.dp_amount, 0).toFixed(2)),
+      bv_total: parseFloat(netProducts.reduce((s, r) => s + r.bv_total, 0).toFixed(2)),
       // Breakdown totals — mirror the Sales Review columns
-      walkin_dp:  parseFloat(netProducts.filter(r => r.sale_type === 'regular')
-                                        .reduce((s, r) => s + r.dp_amount, 0).toFixed(2)),
-      rx_dp:      parseFloat(netProducts.filter(r => r.sale_type === 'prescription')
-                                        .reduce((s, r) => s + r.dp_amount, 0).toFixed(2)),
-      campaign_dp:parseFloat(netProducts.filter(r => r.sale_type === 'campaign_paid')
-                                        .reduce((s, r) => s + r.dp_amount, 0).toFixed(2)),
-      campaign_free_qty: netProducts.filter(r => r.sale_type === 'campaign_free')
-                                    .reduce((s, r) => s + r.total_qty, 0),
+      walkin_dp: parseFloat(netProducts.filter((r) => r.sale_type === 'regular').
+      reduce((s, r) => s + r.dp_amount, 0).toFixed(2)),
+      rx_dp: parseFloat(netProducts.filter((r) => r.sale_type === 'prescription').
+      reduce((s, r) => s + r.dp_amount, 0).toFixed(2)),
+      campaign_dp: parseFloat(netProducts.filter((r) => r.sale_type === 'campaign_paid').
+      reduce((s, r) => s + r.dp_amount, 0).toFixed(2)),
+      campaign_free_qty: netProducts.filter((r) => r.sale_type === 'campaign_free').
+      reduce((s, r) => s + r.total_qty, 0),
       refund_qty: totalRefundQty,
-      refund_dp:  parseFloat(totalRefundDp.toFixed(2)),
+      refund_dp: parseFloat(totalRefundDp.toFixed(2))
     };
 
     return res.json({
@@ -250,7 +250,7 @@ export default async function handler(req, res) {
       date,
       branch_id: branchId || 'all',
       products: netProducts,
-      totals,
+      totals
     });
   } catch (err) {
     console.error('daily-products report error:', err);

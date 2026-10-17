@@ -1,4 +1,4 @@
-/**
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../../services/queryDescriptors.js"; /**
  * GET /api/director/branches/expenses?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
  * Rent, overheads, and bonus per branch.
  */
@@ -11,38 +11,38 @@ export default async function handler(req, res) {
   const { start, end } = getDateRange(req.query);
 
   const [branchLocations, expRows] = await Promise.all([
-    getAllBranchLocations(),
-    getMany(
-      `SELECT branch_id,
-         COALESCE(SUM(CASE WHEN LOWER(category) LIKE '%rent%' THEN amount ELSE 0 END), 0) as rent,
-         COALESCE(SUM(CASE WHEN LOWER(category) NOT LIKE '%rent%' AND LOWER(category) NOT LIKE '%bonus%' THEN amount ELSE 0 END), 0) as overheads,
-         COALESCE(SUM(CASE WHEN LOWER(category) LIKE '%bonus%' THEN amount ELSE 0 END), 0) as bonus
-       FROM branch_expenses
-       WHERE date >= $1::date AND date <= $2::date
-       GROUP BY branch_id`,
-      [start, end]
-    ),
-  ]);
+  getAllBranchLocations(), __qd_executePlan(
+    getMany, __qd_registeredPlan("api/director/branches/expenses.js:16:0"),
 
-  const expMap = new Map(expRows.map(r => [r.branch_id, {
-    rent: Number(r.rent), overheads: Number(r.overheads), bonus: Number(r.bonus),
+
+
+
+
+
+
+    [start, end])]
+
+  );
+
+  const expMap = new Map(expRows.map((r) => [r.branch_id, {
+    rent: Number(r.rent), overheads: Number(r.overheads), bonus: Number(r.bonus)
   }]));
 
-  const branchNameMap = new Map(branchLocations.map(l => [l.locationId, l.locationName]));
+  const branchNameMap = new Map(branchLocations.map((l) => [l.locationId, l.locationName]));
 
   const allBranchIds = new Set([
-    ...branchLocations.map(l => l.locationId),
-    ...expRows.map(r => r.branch_id),
-  ]);
+  ...branchLocations.map((l) => l.locationId),
+  ...expRows.map((r) => r.branch_id)]
+  );
 
-  const result = [...allBranchIds].map(branchId => {
+  const result = [...allBranchIds].map((branchId) => {
     const exp = expMap.get(branchId) || { rent: 0, overheads: 0, bonus: 0 };
     return {
       branchId,
       branchName: branchNameMap.get(branchId) || normalizeBranchName(branchId),
       rentExpense: exp.rent,
       monthlyOverheads: exp.overheads,
-      bonusPayout: exp.bonus,
+      bonusPayout: exp.bonus
     };
   });
 

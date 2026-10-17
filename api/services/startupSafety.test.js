@@ -64,7 +64,7 @@ describe('read-only existing-schema compatibility', () => {
   it('uses one catalogue SELECT, passes complete schema and exposes only safe policy fields', async () => {
     const query = vi.fn(async sql => {
       expect(sql.trim()).toMatch(/^SELECT/);
-      expect(sql).not.toMatch(/\b(INSERT|UPDATE|DELETE|ALTER|CREATE|DROP|CALL|BEGIN|COMMIT)\b/i);
+      expect(String(sql)).not.toMatch(/\b(INSERT|UPDATE|DELETE|ALTER|CREATE|DROP|CALL|BEGIN|COMMIT)\b/i);
       return {rows:completeRows()};
     });
     const result = await checkStartupCompatibility(query,policy);

@@ -1,4 +1,4 @@
-import { query, getMany, getOne } from './db.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "./services/queryDescriptors.js";import { query, getMany, getOne } from './db.js';
 import { applyAuthCors, getTokenFromRequest, verifyAuthToken } from './_lib/auth.js';
 
 // ── Parse the raw statement file into a map of DRN → section text ──────────
@@ -12,9 +12,9 @@ function parseStatementFile(raw) {
   // We also handle both ASCII apostrophe (U+0027) and Unicode right single
   // quote (U+2019) since some systems produce the latter in the header.
 
-  const pages = raw
-    .split(/(?=[ \t]{8,}DYNAPHARM\s+INT[\u2019'`]?L)/i)
-    .filter(p => p.trim());
+  const pages = raw.
+  split(/(?=[ \t]{8,}DYNAPHARM\s+INT[\u2019'`]?L)/i).
+  filter((p) => p.trim());
 
   const sections = {};
   let currentDrn = null;
@@ -53,39 +53,39 @@ export default async function handler(req, res) {
   applyAuthCors(req, res);
   if (req.method === 'OPTIONS') return res.status(204).end();
 
-  const url   = new URL(req.url, 'http://localhost');
+  const url = new URL(req.url, 'http://localhost');
   const month = url.searchParams.get('month') || null;
-  const nb    = (url.searchParams.get('nb') || '').toUpperCase().trim();
+  const nb = (url.searchParams.get('nb') || '').toUpperCase().trim();
 
   // ── GET ──────────────────────────────────────────────────────────────────
   if (req.method === 'GET') {
     // List available months (no nb param)
     if (!nb) {
-      const rows = await getMany(
-        `SELECT id, month, label, uploaded_by, uploaded_at, total_sections
-         FROM distributor_statements
-         ORDER BY month DESC`
-      );
+      const rows = await __qd_executePlan(getMany, __qd_registeredPlan("api/distributor-statements.js:65:0"), []);
+
+
+
+
       return res.json({ success: true, months: rows });
     }
 
     // Return just the summary (netAmount) for a distributor across all months — no raw text
     const summaryOnly = url.searchParams.get('summary') === 'true';
     if (summaryOnly) {
-      const rows = await getMany(
-        `SELECT month, label, summary_index->$1 AS summary
-         FROM distributor_statements
-         WHERE summary_index ? $1
-         ORDER BY month DESC`,
-        [nb]
-      );
-      const result = rows.map(r => {
+      const rows = await __qd_executePlan(getMany, __qd_registeredPlan("api/distributor-statements.js:76:1"),
+
+
+
+
+      [nb]);
+
+      const result = rows.map((r) => {
         const s = r.summary || {};
         return {
           month: r.month,
           label: r.label,
           name: s.name || null,
-          net_amount: s.netAmount != null ? Number(s.netAmount) : null,
+          net_amount: s.netAmount != null ? Number(s.netAmount) : null
         };
       });
       return res.json({ success: true, months: result });
@@ -94,25 +94,25 @@ export default async function handler(req, res) {
     // Get a specific distributor's section for a given month
     if (!month) {
       // Return the latest month available
-      const latest = await getOne(
-        `SELECT id, month, label, sections->$1 AS section_text
-         FROM distributor_statements
-         WHERE sections ? $1
-         ORDER BY month DESC LIMIT 1`,
-        [nb]
-      );
+      const latest = await __qd_executePlan(getOne, __qd_registeredPlan("api/distributor-statements.js:98:2"),
+
+
+
+
+      [nb]);
+
       if (!latest || !latest.section_text) {
         return res.json({ success: true, section: null, month: null });
       }
       return res.json({ success: true, section: latest.section_text, month: latest.month, label: latest.label });
     }
 
-    const row = await getOne(
-      `SELECT id, month, label, sections->$1 AS section_text
-       FROM distributor_statements
-       WHERE month = $2`,
-      [nb, month]
-    );
+    const row = await __qd_executePlan(getOne, __qd_registeredPlan("api/distributor-statements.js:111:3"),
+
+
+
+    [nb, month]);
+
     if (!row || !row.section_text) {
       return res.json({ success: true, section: null, month, label: null });
     }
@@ -125,7 +125,7 @@ export default async function handler(req, res) {
     try {
       const token = getTokenFromRequest(req);
       const decoded = verifyAuthToken(token);
-      if (decoded?.sub) user = await getOne('SELECT id, username, role FROM users WHERE id = $1 AND is_active != false', [decoded.sub]);
+      if (decoded?.sub) user = await __qd_executePlan(getOne, __qd_registeredPlan("api/distributor-statements.js:128:4"), [decoded.sub]);
     } catch {}
     if (!user || !['admin', 'gm', 'mis', 'finance', 'director'].includes(user.role)) {
       return res.status(403).json({ error: 'Insufficient permissions' });
@@ -150,7 +150,7 @@ export default async function handler(req, res) {
     for (const [drn, text] of Object.entries(sections)) {
       summaryIndex[drn] = {
         name: extractName(text),
-        netAmount: extractNetAmount(text),
+        netAmount: extractNetAmount(text)
       };
     }
 
@@ -158,20 +158,20 @@ export default async function handler(req, res) {
     const finalLabel = uploadLabel || uploadMonth;
 
     // Upsert — replace if same month already uploaded
-    await query(
-      `INSERT INTO distributor_statements (id, month, label, uploaded_by, uploaded_at, total_sections, sections, summary_index)
-       VALUES ($1,$2,$3,$4,NOW(),$5,$6::jsonb,$7::jsonb)
-       ON CONFLICT (month) DO UPDATE
-         SET id = EXCLUDED.id,
-             label = EXCLUDED.label,
-             uploaded_by = EXCLUDED.uploaded_by,
-             uploaded_at = EXCLUDED.uploaded_at,
-             total_sections = EXCLUDED.total_sections,
-             sections = EXCLUDED.sections,
-             summary_index = EXCLUDED.summary_index`,
-      [id, uploadMonth, finalLabel, user.username || user.role, count,
-       JSON.stringify(sections), JSON.stringify(summaryIndex)]
-    );
+    await __qd_executePlan(query, __qd_registeredPlan("api/distributor-statements.js:162:5"),
+
+
+
+
+
+
+
+
+
+
+    [id, uploadMonth, finalLabel, user.username || user.role, count,
+    JSON.stringify(sections), JSON.stringify(summaryIndex)]);
+
 
     return res.json({ success: true, month: uploadMonth, count, label: finalLabel });
   }
@@ -182,14 +182,14 @@ export default async function handler(req, res) {
     try {
       const token = getTokenFromRequest(req);
       const decoded = verifyAuthToken(token);
-      if (decoded?.sub) user = await getOne('SELECT id, username, role FROM users WHERE id = $1 AND is_active != false', [decoded.sub]);
+      if (decoded?.sub) user = await __qd_executePlan(getOne, __qd_registeredPlan("api/distributor-statements.js:185:6"), [decoded.sub]);
     } catch {}
     if (!user || !['admin', 'gm', 'mis', 'director'].includes(user.role)) {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
     const delMonth = url.searchParams.get('month') || req.body?.month;
     if (!delMonth) return res.status(400).json({ error: 'month is required' });
-    await query(`DELETE FROM distributor_statements WHERE month = $1`, [delMonth]);
+    await __qd_executePlan(query, __qd_registeredPlan("api/distributor-statements.js:192:7"), [delMonth]);
     return res.json({ success: true });
   }
 

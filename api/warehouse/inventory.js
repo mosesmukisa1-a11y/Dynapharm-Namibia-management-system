@@ -1,4 +1,4 @@
-import {numericPage} from '../services/sqlShape.js';
+import { registeredPlan as __qd_registeredPlan, joinPlans as __qd_joinPlans, executePlan as __qd_executePlan } from "../services/queryDescriptors.js";import { numericPage } from '../services/sqlShape.js';
 import { applyAuthCors } from '../_lib/auth.js';
 import { getMany, getOne, withTransaction } from '../db.js';
 
@@ -73,7 +73,7 @@ function normalizeInventoryRow(row) {
     status: row.status,
     metadata: safeParseJson(row.metadata),
     createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
-    updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
+    updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at
   };
 }
 
@@ -93,7 +93,7 @@ function normalizeMovementRow(row) {
     notes: row.notes,
     metadata: safeParseJson(row.metadata),
     createdBy: row.created_by,
-    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at
   };
 }
 
@@ -101,7 +101,7 @@ async function ensureWarehouseExists(client, warehouseId) {
   if (!warehouseId) {
     throw new Error('warehouseId is required');
   }
-  const existing = await client.query('SELECT id FROM warehouse_locations WHERE id = $1', [warehouseId]);
+  const existing = await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/warehouse/inventory.js:104:0"), [warehouseId]);
   if (existing.rowCount === 0) {
     throw new Error(`Warehouse ${warehouseId} not found`);
   }
@@ -111,92 +111,92 @@ async function ensureWarehouseExistsStandalone(warehouseId) {
   if (!warehouseId) {
     throw new Error('warehouseId is required');
   }
-  const existing = await getOne('SELECT id FROM warehouse_locations WHERE id = $1', [warehouseId]);
+  const existing = await __qd_executePlan(getOne, __qd_registeredPlan("api/warehouse/inventory.js:114:1"), [warehouseId]);
   if (!existing) {
     throw new Error(`Warehouse ${warehouseId} not found`);
   }
 }
 
 async function findInventoryRow(client, warehouseId, productId, batchNo, expiryDate) {
-  return await client.query(
-    `
-      SELECT *
-      FROM warehouse_inventory
-      WHERE warehouse_id = $1
-        AND product_id = $2
-        AND (batch_no IS NOT DISTINCT FROM $3)
-        AND (expiry_date IS NOT DISTINCT FROM $4)
-      LIMIT 1;
-    `,
-    [warehouseId, productId, batchNo || null, expiryDate || null]
-  ).then((res) => res.rows[0] || null);
+  return await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/warehouse/inventory.js:122:2"),
+
+
+
+
+
+
+
+
+
+  [warehouseId, productId, batchNo || null, expiryDate || null]).
+  then((res) => res.rows[0] || null);
 }
 
 async function insertInventoryRow(client, payload) {
-  const row = await client.query(
-    `
-      INSERT INTO warehouse_inventory (
-        id, warehouse_id, product_id, product_name, batch_no, expiry_date,
-        quantity, reserved_quantity, unit, reorder_level, status, metadata,
-        created_at, updated_at
-      )
-      VALUES (
-        $1, $2, $3, $4, $5, $6,
-        $7, $8, $9, $10, $11, $12,
-        COALESCE($13, NOW()), NOW()
-      )
-      RETURNING *;
-    `,
-    [
-      payload.id || generateId('WHINV'),
-      payload.warehouseId,
-      payload.productId,
-      payload.productName || null,
-      payload.batchNo || null,
-      payload.expiryDate || null,
-      parseNumber(payload.quantity),
-      parseNumber(payload.reservedQuantity),
-      payload.unit || 'units',
-      parseNumber(payload.reorderLevel),
-      payload.status || 'available',
-      payload.metadata ? JSON.stringify(payload.metadata) : null,
-      payload.createdAt || null,
-    ]
-  );
+  const row = await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/warehouse/inventory.js:137:3"),
+
+
+
+
+
+
+
+
+
+
+
+
+
+  [
+  payload.id || generateId('WHINV'),
+  payload.warehouseId,
+  payload.productId,
+  payload.productName || null,
+  payload.batchNo || null,
+  payload.expiryDate || null,
+  parseNumber(payload.quantity),
+  parseNumber(payload.reservedQuantity),
+  payload.unit || 'units',
+  parseNumber(payload.reorderLevel),
+  payload.status || 'available',
+  payload.metadata ? JSON.stringify(payload.metadata) : null,
+  payload.createdAt || null]);
+
+
   return row.rows[0];
 }
 
 async function saveMovement(client, payload) {
-  const row = await client.query(
-    `
-      INSERT INTO warehouse_inventory_movements (
-        id, warehouse_id, inventory_id, product_id, product_name, batch_no,
-        movement_type, quantity, balance_after, reference, notes, metadata,
-        created_by, created_at
-      ) VALUES (
-        $1, $2, $3, $4, $5, $6,
-        $7, $8, $9, $10, $11, $12,
-        $13, COALESCE($14, NOW())
-      )
-      RETURNING *;
-    `,
-    [
-      payload.id || generateId('WHMOVE'),
-      payload.warehouseId,
-      payload.inventoryId || null,
-      payload.productId || null,
-      payload.productName || null,
-      payload.batchNo || null,
-      payload.type,
-      parseNumber(payload.quantity),
-      parseNumber(payload.balanceAfter),
-      payload.reference || null,
-      payload.notes || null,
-      payload.metadata ? JSON.stringify(payload.metadata) : null,
-      payload.createdBy || null,
-      payload.createdAt || null,
-    ]
-  );
+  const row = await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/warehouse/inventory.js:171:4"),
+
+
+
+
+
+
+
+
+
+
+
+
+  [
+  payload.id || generateId('WHMOVE'),
+  payload.warehouseId,
+  payload.inventoryId || null,
+  payload.productId || null,
+  payload.productName || null,
+  payload.batchNo || null,
+  payload.type,
+  parseNumber(payload.quantity),
+  parseNumber(payload.balanceAfter),
+  payload.reference || null,
+  payload.notes || null,
+  payload.metadata ? JSON.stringify(payload.metadata) : null,
+  payload.createdBy || null,
+  payload.createdAt || null]);
+
+
   return row.rows[0];
 }
 
@@ -214,7 +214,7 @@ async function adjustInventory(client, options) {
     metadata,
     reference,
     notes,
-    actor,
+    actor
   } = options;
 
   await ensureWarehouseExists(client, warehouseId);
@@ -239,7 +239,7 @@ async function adjustInventory(client, options) {
       unit,
       reorderLevel,
       status: 'available',
-      metadata,
+      metadata
     });
   }
 
@@ -276,46 +276,46 @@ async function adjustInventory(client, options) {
       nextReserved = Math.max(0, currentReserved - qty);
       movementType = 'release';
       break;
-    case 'set': {
-      const { quantity: newQuantity, reservedQuantity: newReserved } = options;
-      nextQuantity = parseNumber(newQuantity, currentQuantity);
-      nextReserved = parseNumber(newReserved, currentReserved);
-      if (nextReserved > nextQuantity) {
-        nextReserved = nextQuantity;
+    case 'set':{
+        const { quantity: newQuantity, reservedQuantity: newReserved } = options;
+        nextQuantity = parseNumber(newQuantity, currentQuantity);
+        nextReserved = parseNumber(newReserved, currentReserved);
+        if (nextReserved > nextQuantity) {
+          nextReserved = nextQuantity;
+        }
+        movementType = 'set';
+        break;
       }
-      movementType = 'set';
-      break;
-    }
     default:
       throw new Error(`Unsupported action "${movementAction}"`);
   }
 
-  const updated = await client.query(
-    `
-      UPDATE warehouse_inventory
-      SET quantity = $1,
-          reserved_quantity = $2,
-          unit = COALESCE($3, unit),
-          reorder_level = COALESCE($4, reorder_level),
-          status = CASE
-            WHEN $1 <= 0 THEN 'depleted'
-            WHEN $1 - $2 <= COALESCE(reorder_level, 0) THEN 'low_stock'
-            ELSE 'available'
-          END,
-          metadata = COALESCE($5, metadata),
-          updated_at = NOW()
-      WHERE id = $6
-      RETURNING *;
-    `,
-    [
-      nextQuantity,
-      nextReserved,
-      unit || null,
-      reorderLevel !== undefined ? parseNumber(reorderLevel) : null,
-      metadata ? JSON.stringify(metadata) : null,
-      inventoryRow.id,
-    ]
-  );
+  const updated = await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/warehouse/inventory.js:294:5"),
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  [
+  nextQuantity,
+  nextReserved,
+  unit || null,
+  reorderLevel !== undefined ? parseNumber(reorderLevel) : null,
+  metadata ? JSON.stringify(metadata) : null,
+  inventoryRow.id]);
+
+
 
   const updatedRow = updated.rows[0];
 
@@ -331,12 +331,12 @@ async function adjustInventory(client, options) {
     reference,
     notes,
     metadata,
-    createdBy: actor,
+    createdBy: actor
   });
 
   return {
     inventory: normalizeInventoryRow(updatedRow),
-    movement: normalizeMovementRow(movementRow),
+    movement: normalizeMovementRow(movementRow)
   };
 }
 
@@ -365,100 +365,100 @@ async function listInventory(searchParams) {
   const params = [];
 
   if (warehouseId) {
-    outerConditions.push('warehouse_id = $' + (params.length + 1));
+    outerConditions.push(__qd_registeredPlan("api/warehouse/inventory.js:368:7", [params.length + 1]));
     params.push(warehouseId);
   }
   if (productId) {
-    outerConditions.push('product_id = $' + (params.length + 1));
+    outerConditions.push(__qd_registeredPlan("api/warehouse/inventory.js:372:8", [params.length + 1]));
     params.push(productId);
   }
 
   // Map 'status' param to derived quantity condition applied on the outer query.
   let statusCondition;
   if (status === 'depleted') {
-    statusCondition = 'quantity <= 0';
+    statusCondition = __qd_registeredPlan("api/warehouse/inventory.js:379:9");
   } else if (status === 'low_stock') {
-    statusCondition = 'quantity > 0 AND quantity <= 10';
+    statusCondition = __qd_registeredPlan("api/warehouse/inventory.js:381:10");
   } else if (status === 'available') {
-    statusCondition = 'quantity > 10';
+    statusCondition = __qd_registeredPlan("api/warehouse/inventory.js:383:11");
   } else if (status === 'reserved') {
-    statusCondition = 'reserved_quantity > 0';
+    statusCondition = __qd_registeredPlan("api/warehouse/inventory.js:385:12");
   } else {
     // Default: only rows with effective stock (covers both legs)
-    statusCondition = 'quantity > 0';
+    statusCondition = __qd_registeredPlan("api/warehouse/inventory.js:388:13");
   }
   outerConditions.push(statusCondition);
 
-  const whereClause = outerConditions.length
-    ? 'WHERE ' + outerConditions.join(' AND ')
-    : '';
+  const whereClause = outerConditions.length ? __qd_joinPlans([__qd_registeredPlan("api/warehouse/inventory.js:393:6"), __qd_joinPlans(
+    outerConditions, "and")], "empty") : __qd_registeredPlan("api/warehouse/inventory.js:394:14");
 
-  const queryText = `
-    SELECT id, warehouse_id, product_id, product_name, batch_no, expiry_date,
-           quantity, reserved_quantity, unit, reorder_level, status,
-           metadata, created_at, updated_at
-    FROM (
-      -- Leg A: warehouse_inventory rows at known warehouse locations (adjustment-tracked)
-      SELECT
-        wi.id,
-        wi.warehouse_id,
-        wi.product_id,
-        wi.product_name,
-        wi.batch_no,
-        wi.expiry_date,
-        wi.quantity,
-        wi.reserved_quantity,
-        COALESCE(wi.unit, 'units')       AS unit,
-        COALESCE(wi.reorder_level, 0)    AS reorder_level,
-        COALESCE(wi.status, 'available') AS status,
-        wi.metadata,
-        wi.created_at,
-        wi.updated_at
-      FROM warehouse_locations wl
-      JOIN warehouse_inventory wi ON wi.warehouse_id = wl.id
-      WHERE wl.type = 'warehouse'
 
-      UNION ALL
+  const queryText = __qd_registeredPlan("api/warehouse/inventory.js:396:15", [
 
-      -- Leg B: stock_batches at warehouse locations with no warehouse_inventory overlay.
-      -- Matched on all lot-identity fields to avoid duplicates with Leg A.
-      SELECT
-        sb.id,
-        sb.location      AS warehouse_id,
-        sb.product_id,
-        sb.description   AS product_name,
-        sb.batch_no,
-        sb.expiry_date,
-        sb.remaining_quantity AS quantity,
-        0                AS reserved_quantity,
-        'units'          AS unit,
-        0                AS reorder_level,
-        CASE
-          WHEN sb.remaining_quantity <= 0  THEN 'depleted'
-          WHEN sb.remaining_quantity <= 10 THEN 'low_stock'
-          ELSE 'available'
-        END              AS status,
-        NULL             AS metadata,
-        sb.import_date   AS created_at,
-        sb.import_date   AS updated_at
-      FROM warehouse_locations wl
-      JOIN stock_batches sb ON sb.location = wl.id
-      WHERE wl.type = 'warehouse'
-        AND COALESCE(sb.status, '') != 'expired'
-        AND NOT EXISTS (
-          SELECT 1
-          FROM warehouse_inventory wi2
-          WHERE wi2.warehouse_id = sb.location
-            AND wi2.product_id   IS NOT DISTINCT FROM sb.product_id
-            AND wi2.batch_no     IS NOT DISTINCT FROM sb.batch_no
-            AND wi2.expiry_date  IS NOT DISTINCT FROM sb.expiry_date
-        )
-    ) combined
-    ${whereClause}
-    ORDER BY warehouse_id ASC, product_name ASC, expiry_date ASC NULLS LAST
-  `;
 
-  const rows = await getMany(queryText, params);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  whereClause]);
+
+
+
+  const rows = await __qd_executePlan(getMany, queryText, params);
   return rows.map(normalizeInventoryRow).filter(Boolean);
 }
 
@@ -468,29 +468,29 @@ async function listMovements(searchParams) {
     throw new Error('warehouse parameter is required for movements');
   }
   const productId = searchParams.get('product');
-  const limit = numericPage(searchParams.get('limit'),{fallback:200,max:1000});
+  const limit = numericPage(searchParams.get('limit'), { fallback: 200, max: 1000 });
 
   const params = [warehouseId];
-  const conditions = ['warehouse_id = $1'];
+  const conditions = [__qd_registeredPlan("api/warehouse/inventory.js:474:16")];
 
   if (productId) {
     params.push(productId);
-    conditions.push('product_id = $' + params.length);
+    conditions.push(__qd_registeredPlan("api/warehouse/inventory.js:478:17", [params.length]));
   }
 
-  let queryText = `
-    SELECT *
-    FROM warehouse_inventory_movements
-    WHERE ${conditions.join(' AND ')}
-    ORDER BY created_at DESC
-  `;
+  let queryText = __qd_registeredPlan("api/warehouse/inventory.js:481:18", [__qd_joinPlans(
+
+
+    conditions, "and")]);
+
+
 
   if (!Number.isNaN(limit) && limit > 0) {
-    params.push(Math.min(limit,1000));
-    queryText += ` LIMIT $${params.length}`;
+    params.push(Math.min(limit, 1000));
+    queryText = __qd_joinPlans([queryText, __qd_registeredPlan("api/warehouse/inventory.js:490:19", [params.length])], "empty");
   }
 
-  const rows = await getMany(queryText, params);
+  const rows = await __qd_executePlan(getMany, queryText, params);
   return rows.map(normalizeMovementRow).filter(Boolean);
 }
 
@@ -515,7 +515,7 @@ export default async function handler(req, res) {
       const inventory = await listInventory(searchParams);
       const response = {
         success: true,
-        inventory,
+        inventory
       };
       if (includeMovements) {
         response.movements = await listMovements(searchParams);
@@ -540,14 +540,14 @@ export default async function handler(req, res) {
           metadata: body.metadata || null,
           reference: body.reference || null,
           notes: body.notes || null,
-          actor: currentUser?.fullName || currentUser?.username || body.actor || null,
+          actor: currentUser?.fullName || currentUser?.username || body.actor || null
         });
       });
 
       return res.status(200).json({
         success: true,
         inventory: result.inventory,
-        movement: result.movement,
+        movement: result.movement
       });
     }
 
@@ -557,5 +557,3 @@ export default async function handler(req, res) {
     return res.status(500).json({ success: false, error: 'Internal server error' });
   }
 }
-
-

@@ -1,4 +1,4 @@
-import { applyAuthCors } from '../../_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, joinPlans as __qd_joinPlans, executePlan as __qd_executePlan } from "../../services/queryDescriptors.js";import { applyAuthCors } from '../../_lib/auth.js';
 import { getMany } from '../../db.js';
 
 export default async function handler(req, res) {
@@ -18,24 +18,24 @@ export default async function handler(req, res) {
     const location = url.searchParams.get('location') || '';
     const search = url.searchParams.get('search') || '';
 
-    let conditions = ['1=1'];
+    let conditions = [__qd_registeredPlan("api/stock/reports/movements.js:21:0")];
     const params = [];
-    if (from) { params.push(from); conditions.push(`created_at >= $${params.length}`); }
-    if (to) { params.push(to + 'T23:59:59'); conditions.push(`created_at <= $${params.length}`); }
-    if (movementType) { params.push(movementType); conditions.push(`movement_type = $${params.length}`); }
-    if (location) { params.push(`%${location}%`); conditions.push(`(source_location ILIKE $${params.length} OR destination_location ILIKE $${params.length})`); }
+    if (from) {params.push(from);conditions.push(__qd_registeredPlan("api/stock/reports/movements.js:23:1", [params.length]));}
+    if (to) {params.push(to + 'T23:59:59');conditions.push(__qd_registeredPlan("api/stock/reports/movements.js:24:2", [params.length]));}
+    if (movementType) {params.push(movementType);conditions.push(__qd_registeredPlan("api/stock/reports/movements.js:25:3", [params.length]));}
+    if (location) {params.push(`%${location}%`);conditions.push(__qd_registeredPlan("api/stock/reports/movements.js:26:4", [params.length, params.length]));}
 
-    const movements = await getMany(
-      `SELECT * FROM stock_movements WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC LIMIT 500`,
-      params
-    );
+    const movements = await __qd_executePlan(getMany, __qd_registeredPlan("api/stock/reports/movements.js:29:5", [__qd_joinPlans(
+      conditions, "and")]),
+    params);
+
 
     // Fix #2: coerce product_name to string before calling .toLowerCase() so numeric
     // or NULL values returned by the DB never throw a TypeError.
     let filtered = movements;
     if (search) {
       const searchLower = search.toLowerCase();
-      filtered = filtered.filter(m => String(m.product_name || '').toLowerCase().includes(searchLower));
+      filtered = filtered.filter((m) => String(m.product_name || '').toLowerCase().includes(searchLower));
     }
 
     res.status(200).json({ success: true, movements: filtered, total: filtered.length });

@@ -1,4 +1,4 @@
-import { applyAuthCors } from './_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, joinPlans as __qd_joinPlans, executePlan as __qd_executePlan } from "./services/queryDescriptors.js";import { applyAuthCors } from './_lib/auth.js';
 import { getMany, getOne, insert, update, remove, query } from './db.js';
 
 function parseBody(req) {
@@ -49,23 +49,23 @@ function normalizeWarehouse(row) {
     contact: safeParseJson(row.contact),
     metadata: safeParseJson(row.metadata),
     createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
-    updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
+    updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at
   };
 }
 
 async function ensureDefaultWarehouse() {
-  const rows = await getMany('SELECT id FROM warehouse_locations LIMIT 1', []);
+  const rows = await __qd_executePlan(getMany, __qd_registeredPlan("api/warehouses.js:57:0"), []);
   if (rows.length === 0) {
-    await query(
-      `
-        INSERT INTO warehouse_locations (id, name, code, type, status)
-        VALUES
-          ('warehouse-windhoek', 'Windhoek Warehouse', 'WH-WINDHOEK', 'warehouse', 'active'),
-          ('warehouse-ondangwa', 'Ondangwa Warehouse', 'WH-ONDANGWA', 'warehouse', 'active')
-        ON CONFLICT (id) DO NOTHING;
-      `,
-      []
-    );
+    await __qd_executePlan(query, __qd_registeredPlan("api/warehouses.js:60:1"),
+
+
+
+
+
+
+
+    []);
+
   }
 }
 
@@ -89,7 +89,7 @@ export default async function handler(req, res) {
       const type = searchParams.get('type');
 
       if (id) {
-        const row = await getOne('SELECT * FROM warehouse_locations WHERE id = $1', [id]);
+        const row = await __qd_executePlan(getOne, __qd_registeredPlan("api/warehouses.js:92:2"), [id]);
         if (!row) {
           return res.status(404).json({ success: false, error: 'Warehouse not found' });
         }
@@ -100,28 +100,28 @@ export default async function handler(req, res) {
       const params = [];
 
       if (code) {
-        conditions.push('code = $' + (params.length + 1));
+        conditions.push(__qd_registeredPlan("api/warehouses.js:103:5", [params.length + 1]));
         params.push(code);
       }
       if (status) {
-        conditions.push('status = $' + (params.length + 1));
+        conditions.push(__qd_registeredPlan("api/warehouses.js:107:6", [params.length + 1]));
         params.push(status);
       }
       if (type) {
-        conditions.push('type = $' + (params.length + 1));
+        conditions.push(__qd_registeredPlan("api/warehouses.js:111:7", [params.length + 1]));
         params.push(type);
       }
 
-      let queryText = 'SELECT * FROM warehouse_locations';
+      let queryText = __qd_registeredPlan("api/warehouses.js:115:3");
       if (conditions.length > 0) {
-        queryText += ' WHERE ' + conditions.join(' AND ');
+        queryText = __qd_joinPlans([queryText, __qd_joinPlans([__qd_registeredPlan("api/warehouses.js:117:4"), __qd_joinPlans(conditions, "and")], "empty")], "empty");
       }
-      queryText += ' ORDER BY created_at ASC';
+      queryText = __qd_joinPlans([queryText, __qd_registeredPlan("api/warehouses.js:119:8")], "empty");
 
-      const rows = await getMany(queryText, params);
+      const rows = await __qd_executePlan(getMany, queryText, params);
       return res.status(200).json({
         success: true,
-        warehouses: rows.map(normalizeWarehouse).filter(Boolean),
+        warehouses: rows.map(normalizeWarehouse).filter(Boolean)
       });
     }
 
@@ -139,7 +139,7 @@ export default async function handler(req, res) {
         status: body.status || 'active',
         timezone: body.timezone || null,
         contact: body.contact ? JSON.stringify(body.contact) : null,
-        metadata: body.metadata ? JSON.stringify(body.metadata) : null,
+        metadata: body.metadata ? JSON.stringify(body.metadata) : null
       };
       const row = await insert('warehouse_locations', payload);
       return res.status(201).json({ success: true, warehouse: normalizeWarehouse(row) });
@@ -187,5 +187,3 @@ export default async function handler(req, res) {
     return res.status(500).json({ success: false, error: 'Internal server error' });
   }
 }
-
-

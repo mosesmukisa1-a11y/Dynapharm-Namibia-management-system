@@ -1,0 +1,25 @@
+import drift from './registeredSql/drift.js';
+import reconciliation from './registeredSql/reconciliation.js';
+// Fixed repository SQL catalog. Generated offline; never extended at runtime.
+import p0 from './registeredSql/part-01.js';
+import p1 from './registeredSql/part-02.js';
+import p2 from './registeredSql/part-03.js';
+import p3 from './registeredSql/part-04.js';
+import p4 from './registeredSql/part-05.js';
+import p5 from './registeredSql/part-06.js';
+import p6 from './registeredSql/part-07.js';
+import p7 from './registeredSql/part-08.js';
+import p8 from './registeredSql/part-09.js';
+import p9 from './registeredSql/part-10.js';
+import p10 from './registeredSql/part-11.js';
+import p11 from './registeredSql/part-12.js';
+import p12 from './registeredSql/part-13.js';
+import p13 from './registeredSql/part-14.js';
+import p14 from './registeredSql/part-15.js';
+import p15 from './registeredSql/part-16.js';
+import p16 from './registeredSql/part-17.js';
+import p17 from './registeredSql/part-18.js';
+import p18 from './registeredSql/part-19.js';
+import p19 from './registeredSql/part-20.js';
+import p20 from './registeredSql/part-21.js';
+export default Object.freeze({...drift,...reconciliation,...p0,...p1,...p2,...p3,...p4,...p5,...p6,...p7,...p8,...p9,...p10,...p11,...p12,...p13,...p14,...p15,...p16,...p17,...p18,...p19,...p20});

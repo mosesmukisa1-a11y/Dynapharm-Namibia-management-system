@@ -1,4 +1,4 @@
-import bcrypt from 'bcryptjs';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../services/queryDescriptors.js";import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { getOne, getMany, insert, query } from '../db.js';
 import { applyAuthCors } from '../_lib/auth.js';
@@ -18,21 +18,21 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'NB/DZ number is required' });
     }
 
-    const distributor = await getOne(
-      `SELECT distributor_code, distributor_name, mobile_no, email, branch 
-       FROM distributors 
-       WHERE UPPER(distributor_code) = $1`,
-      [code]
-    );
+    const distributor = await __qd_executePlan(getOne, __qd_registeredPlan("api/auth/distributor-register.js:22:0"),
+
+
+
+    [code]);
+
 
     if (!distributor) {
       return res.status(404).json({ error: 'NB/DZ number not found in the system. Please contact your branch for registration.' });
     }
 
-    const existingUser = await getOne(
-      'SELECT id, is_active FROM users WHERE LOWER(username) = $1',
-      [code.toLowerCase()]
-    );
+    const existingUser = await __qd_executePlan(getOne, __qd_registeredPlan("api/auth/distributor-register.js:33:1"),
+
+    [code.toLowerCase()]);
+
 
     if (existingUser) {
       if (existingUser.is_active) {
@@ -43,15 +43,15 @@ export default async function handler(req, res) {
     }
 
     const nameParts = (distributor.distributor_name || '').split(' ');
-    const maskedName = nameParts.length > 1
-      ? `${nameParts[0]} ${'*'.repeat(nameParts.slice(1).join(' ').length)}`
-      : distributor.distributor_name;
+    const maskedName = nameParts.length > 1 ?
+    `${nameParts[0]} ${'*'.repeat(nameParts.slice(1).join(' ').length)}` :
+    distributor.distributor_name;
 
     return res.json({
       distributor_code: distributor.distributor_code,
       distributor_name: distributor.distributor_name,
       display_name: maskedName,
-      branch: distributor.branch || '',
+      branch: distributor.branch || ''
     });
   }
 
@@ -77,22 +77,22 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Please select your primary branch' });
     }
 
-    const distributor = await getOne(
-      `SELECT distributor_code, distributor_name, mobile_no, email, branch 
-       FROM distributors 
-       WHERE UPPER(distributor_code) = $1`,
-      [nbNumber]
-    );
+    const distributor = await __qd_executePlan(getOne, __qd_registeredPlan("api/auth/distributor-register.js:81:2"),
+
+
+
+    [nbNumber]);
+
 
     if (!distributor) {
       return res.status(404).json({ error: 'NB/DZ number not found. Please contact your branch.' });
     }
 
     const username = nbNumber.toLowerCase();
-    const existingUser = await getOne(
-      'SELECT id, is_active FROM users WHERE LOWER(username) = $1',
-      [username]
-    );
+    const existingUser = await __qd_executePlan(getOne, __qd_registeredPlan("api/auth/distributor-register.js:93:3"),
+
+    [username]);
+
 
     if (existingUser) {
       if (existingUser.is_active) {
@@ -122,16 +122,16 @@ export default async function handler(req, res) {
       metadata: JSON.stringify({
         distributor_code: nbNumber,
         registration_type: 'distributor_self_service',
-        registered_at: new Date().toISOString(),
-      }),
+        registered_at: new Date().toISOString()
+      })
     });
 
     // Sync the confirmed branch back to the distributors table so the list stays accurate
     if (effectiveBranch) {
-      await query(
-        `UPDATE distributors SET branch = $1 WHERE UPPER(distributor_code) = $2`,
-        [effectiveBranch, nbNumber]
-      ).catch(err => console.warn('Branch sync to distributors table failed (non-critical):', err.message));
+      await __qd_executePlan(query, __qd_registeredPlan("api/auth/distributor-register.js:132:4"),
+
+      [effectiveBranch, nbNumber]).
+      catch((err) => console.warn('Branch sync to distributors table failed (non-critical):', err.message));
     }
 
     return res.status(201).json({
@@ -139,7 +139,7 @@ export default async function handler(req, res) {
       message: 'Account created! Your account is pending admin approval. You will be able to login once approved.',
       nb_number: nbNumber,
       name: distributor.distributor_name,
-      branch: effectiveBranch,
+      branch: effectiveBranch
     });
   } catch (error) {
     console.error('Distributor registration error:', error);

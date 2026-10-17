@@ -1,11 +1,11 @@
-import { applyAuthCors } from '../../_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../../services/queryDescriptors.js";import { applyAuthCors } from '../../_lib/auth.js';
 import {
   getDateRange,
   getAllBranchLocations,
   getLocationStockSummary,
   getLocationMovements,
-  getBranchSalesRevenue,
-} from '../../services/gmFinanceMisEngine.js';
+  getBranchSalesRevenue } from
+'../../services/gmFinanceMisEngine.js';
 import { getMany } from '../../db.js';
 
 export default async function handler(req, res) {
@@ -19,16 +19,16 @@ export default async function handler(req, res) {
 
     const results = await Promise.all(branches.map(async (b) => {
       const [stock, movements, sales, lastMov] = await Promise.all([
-        getLocationStockSummary('branch', b.locationId),
-        getLocationMovements('branch', b.locationId, start, end),
-        getBranchSalesRevenue(b.locationId, start, end),
-        getMany(
-          `SELECT MAX(created_at) as last_at FROM stock_movements
-           WHERE status = 'posted'
-             AND (source_location = $1 OR destination_location = $1)`,
-          [b.locationId]
-        ),
-      ]);
+      getLocationStockSummary('branch', b.locationId),
+      getLocationMovements('branch', b.locationId, start, end),
+      getBranchSalesRevenue(b.locationId, start, end), __qd_executePlan(
+        getMany, __qd_registeredPlan("api/gm/branches/performance.js:26:0"),
+
+
+
+        [b.locationId])]
+
+      );
 
       return {
         branchId: b.locationId,
@@ -43,7 +43,7 @@ export default async function handler(req, res) {
         writeOffValueDP: movements.writeOffValueDP,
         lowStockCount: stock.lowStockCount,
         expiringCount: stock.expiringCount,
-        lastMovementAt: lastMov[0]?.last_at || null,
+        lastMovementAt: lastMov[0]?.last_at || null
       };
     }));
 

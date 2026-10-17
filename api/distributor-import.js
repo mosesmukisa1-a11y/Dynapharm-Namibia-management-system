@@ -1,4 +1,4 @@
-import { query, getMany, withTransaction } from './db.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "./services/queryDescriptors.js";import { query, getMany, withTransaction } from './db.js';
 import { ensureDistributorsTable } from './distributors.js';
 import { applyAuthCors } from './_lib/auth.js';
 
@@ -9,7 +9,7 @@ const POSITION_MAP = {
   'CDM': 'Country Director Manager',
   'RM': 'Regional Manager',
   'DM': 'District Manager',
-  'PM': 'Provincial Manager',
+  'PM': 'Provincial Manager'
 };
 
 function excelDateToISO(serial) {
@@ -62,7 +62,7 @@ function parseRow(row) {
     status: statusMapped,
     email: email && email !== 'null' ? email : null,
     level: level ? Number(level) : null,
-    entity_type: 'distributor',
+    entity_type: 'distributor'
   };
 }
 
@@ -82,15 +82,15 @@ export default async function handler(req, res) {
   try {
     await ensureDistributorsTable();
 
-    await query(`ALTER TABLE distributors ADD COLUMN IF NOT EXISTS position TEXT DEFAULT 'Distributor'`);
-    await query(`ALTER TABLE distributors ADD COLUMN IF NOT EXISTS position_code TEXT`);
-    await query(`ALTER TABLE distributors ADD COLUMN IF NOT EXISTS date_joined TEXT`);
-    await query(`ALTER TABLE distributors ADD COLUMN IF NOT EXISTS sponsor_code TEXT`);
-    await query(`ALTER TABLE distributors ADD COLUMN IF NOT EXISTS sex TEXT`);
-    await query(`ALTER TABLE distributors ADD COLUMN IF NOT EXISTS level INTEGER`);
-    await query(`ALTER TABLE distributors ADD COLUMN IF NOT EXISTS photo_url TEXT`);
-    await query(`ALTER TABLE distributors ADD COLUMN IF NOT EXISTS photo_filename TEXT`);
-    await query(`ALTER TABLE distributors ADD COLUMN IF NOT EXISTS photo_updated_at TEXT`);
+    await __qd_executePlan(query, __qd_registeredPlan("api/distributor-import.js:85:0"), []);
+    await __qd_executePlan(query, __qd_registeredPlan("api/distributor-import.js:86:1"), []);
+    await __qd_executePlan(query, __qd_registeredPlan("api/distributor-import.js:87:2"), []);
+    await __qd_executePlan(query, __qd_registeredPlan("api/distributor-import.js:88:3"), []);
+    await __qd_executePlan(query, __qd_registeredPlan("api/distributor-import.js:89:4"), []);
+    await __qd_executePlan(query, __qd_registeredPlan("api/distributor-import.js:90:5"), []);
+    await __qd_executePlan(query, __qd_registeredPlan("api/distributor-import.js:91:6"), []);
+    await __qd_executePlan(query, __qd_registeredPlan("api/distributor-import.js:92:7"), []);
+    await __qd_executePlan(query, __qd_registeredPlan("api/distributor-import.js:93:8"), []);
 
     const body = req.body || {};
     const rows = body.distributors || [];
@@ -104,8 +104,8 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'No valid distributor rows found. Each row must have at least a DRN/NB/DZ code and NAME.' });
     }
 
-    const existing = await getMany('SELECT distributor_code FROM distributors WHERE entity_type = $1', ['distributor']);
-    const existingSet = new Set(existing.map(e => e.distributor_code));
+    const existing = await __qd_executePlan(getMany, __qd_registeredPlan("api/distributor-import.js:107:9"), ['distributor']);
+    const existingSet = new Set(existing.map((e) => e.distributor_code));
 
     let inserted = 0;
     let updated = 0;
@@ -120,57 +120,57 @@ export default async function handler(req, res) {
         for (const dist of chunk) {
           try {
             if (existingSet.has(dist.distributor_code)) {
-              await client.query(
-                `UPDATE distributors SET
-                   distributor_name = $1,
-                   position = $2,
-                   position_code = $3,
-                   mobile_no = COALESCE($4, mobile_no),
-                   sex = COALESCE($5, sex),
-                   location = COALESCE($6, location),
-                   status = $7,
-                   email = COALESCE($8, email),
-                   level = COALESCE($9, level),
-                   date_joined = COALESCE($10, date_joined),
-                   sponsor_code = COALESCE($11, sponsor_code),
-                   updated_at = NOW()
-                 WHERE distributor_code = $12`,
-                [
-                  dist.distributor_name,
-                  dist.position,
-                  dist.position_code,
-                  dist.mobile_no,
-                  dist.sex,
-                  dist.location,
-                  dist.status,
-                  dist.email,
-                  dist.level,
-                  dist.date_joined,
-                  dist.sponsor_code,
-                  dist.distributor_code,
-                ]
-              );
+              await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/distributor-import.js:124:10"),
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+              [
+              dist.distributor_name,
+              dist.position,
+              dist.position_code,
+              dist.mobile_no,
+              dist.sex,
+              dist.location,
+              dist.status,
+              dist.email,
+              dist.level,
+              dist.date_joined,
+              dist.sponsor_code,
+              dist.distributor_code]);
+
+
               updated++;
             } else {
               const id = `DIST-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
-              await client.query(
-                `INSERT INTO distributors (id, distributor_code, distributor_name, position, position_code, date_joined, sponsor_code, mobile_no, sex, location, status, email, level, entity_type)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-                 ON CONFLICT (distributor_code) DO UPDATE SET
-                   distributor_name = EXCLUDED.distributor_name,
-                   position = EXCLUDED.position,
-                   position_code = EXCLUDED.position_code,
-                   mobile_no = COALESCE(EXCLUDED.mobile_no, distributors.mobile_no),
-                   sex = COALESCE(EXCLUDED.sex, distributors.sex),
-                   location = COALESCE(EXCLUDED.location, distributors.location),
-                   status = EXCLUDED.status,
-                   email = COALESCE(EXCLUDED.email, distributors.email),
-                   level = COALESCE(EXCLUDED.level, distributors.level),
-                   date_joined = COALESCE(EXCLUDED.date_joined, distributors.date_joined),
-                   sponsor_code = COALESCE(EXCLUDED.sponsor_code, distributors.sponsor_code),
-                   updated_at = NOW()`,
-                [id, dist.distributor_code, dist.distributor_name, dist.position, dist.position_code, dist.date_joined, dist.sponsor_code, dist.mobile_no, dist.sex, dist.location, dist.status, dist.email, dist.level, dist.entity_type]
-              );
+              await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/distributor-import.js:157:11"),
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+              [id, dist.distributor_code, dist.distributor_name, dist.position, dist.position_code, dist.date_joined, dist.sponsor_code, dist.mobile_no, dist.sex, dist.location, dist.status, dist.email, dist.level, dist.entity_type]);
+
               inserted++;
             }
           } catch (rowErr) {
@@ -187,10 +187,10 @@ export default async function handler(req, res) {
         inserted,
         updated,
         skipped,
-        errors: errors.length,
+        errors: errors.length
       },
       errors: errors.slice(0, 50),
-      message: `Import complete: ${inserted} new, ${updated} updated, ${skipped} unchanged, ${errors.length} errors`,
+      message: `Import complete: ${inserted} new, ${updated} updated, ${skipped} unchanged, ${errors.length} errors`
     });
   } catch (error) {
     console.error('Distributor import error:', error);

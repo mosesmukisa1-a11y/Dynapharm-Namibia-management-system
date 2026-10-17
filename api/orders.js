@@ -1,8 +1,8 @@
-import { applyAuthCors, getBranchScope } from './_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, joinPlans as __qd_joinPlans, executePlan as __qd_executePlan } from "./services/queryDescriptors.js";import { applyAuthCors, getBranchScope } from './_lib/auth.js';
 import { getMany, getOne, insert, update, query, withTransaction, publishRealtimeEvent } from './db.js';
 import { postActivityRecord, generateBatId } from './_lib/activityCapture.js';
 import { recomputeLocationBalances } from './services/stockEngine.js';
-import {requireMemberWrite} from './services/memberEligibility.js';
+import { requireMemberWrite } from './services/memberEligibility.js';
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
@@ -22,7 +22,7 @@ export default async function handler(req, res) {
       const { id, order_number, status, customer_email, customer_phone, distributor_code } = req.query;
 
       if (id) {
-        const order = await getOne('SELECT * FROM online_orders WHERE id = $1', [id]);
+        const order = await __qd_executePlan(getOne, __qd_registeredPlan("api/orders.js:25:0"), [id]);
         if (!order) {
           return res.status(404).json({ error: 'Order not found' });
         }
@@ -33,7 +33,7 @@ export default async function handler(req, res) {
       }
 
       if (order_number) {
-        const order = await getOne('SELECT * FROM online_orders WHERE order_number = $1', [order_number]);
+        const order = await __qd_executePlan(getOne, __qd_registeredPlan("api/orders.js:36:1"), [order_number]);
         if (!order) {
           return res.status(404).json({ error: 'Order not found' });
         }
@@ -43,50 +43,50 @@ export default async function handler(req, res) {
         return res.json(order);
       }
 
-      let queryText = 'SELECT o.*, b.name as branch_name, t.name as town_name FROM online_orders o LEFT JOIN branches b ON o.branch_id = b.id LEFT JOIN towns t ON o.town_id = t.id WHERE 1=1';
+      let queryText = __qd_registeredPlan("api/orders.js:46:2");
       const params = [];
       let paramIndex = 1;
 
       if (branchScope.enforced) {
-        queryText += ` AND o.branch_id = ANY($${paramIndex})`;
+        queryText = __qd_joinPlans([queryText, __qd_registeredPlan("api/orders.js:51:3", [paramIndex])], "empty");
         params.push(branchScope.branches);
         paramIndex++;
       }
 
       if (status) {
-        queryText += ` AND o.status = $${paramIndex}`;
+        queryText = __qd_joinPlans([queryText, __qd_registeredPlan("api/orders.js:57:4", [paramIndex])], "empty");
         params.push(status);
         paramIndex++;
       }
 
       if (customer_email) {
-        queryText += ` AND o.customer_email = $${paramIndex}`;
+        queryText = __qd_joinPlans([queryText, __qd_registeredPlan("api/orders.js:63:5", [paramIndex])], "empty");
         params.push(customer_email);
         paramIndex++;
       }
 
       if (customer_phone) {
-        queryText += ` AND o.customer_phone = $${paramIndex}`;
+        queryText = __qd_joinPlans([queryText, __qd_registeredPlan("api/orders.js:69:6", [paramIndex])], "empty");
         params.push(customer_phone);
         paramIndex++;
       }
 
       if (distributor_code) {
-        queryText += ` AND (o.distributor_code = $${paramIndex} OR o.notes ILIKE $${paramIndex + 1})`;
+        queryText = __qd_joinPlans([queryText, __qd_registeredPlan("api/orders.js:75:7", [paramIndex, paramIndex + 1])], "empty");
         params.push(distributor_code, `%${distributor_code}%`);
         paramIndex += 2;
       }
 
-      queryText += ' ORDER BY o.created_at DESC';
+      queryText = __qd_joinPlans([queryText, __qd_registeredPlan("api/orders.js:80:8")], "empty");
 
-      const orders = await getMany(queryText, params);
+      const orders = await __qd_executePlan(getMany, queryText, params);
       return res.json(orders);
     }
 
     if (req.method === 'POST') {
-      if(['member','distributor'].includes(String(req.body?.customer_type || '').toLowerCase())){
-        try{await requireMemberWrite(req.user,req.body.distributor_code);}
-        catch(error){return res.status(error.statusCode || 503).json({error:error.statusCode?error.message:'Membership verification unavailable'});}
+      if (['member', 'distributor'].includes(String(req.body?.customer_type || '').toLowerCase())) {
+        try {await requireMemberWrite(req.user, req.body.distributor_code);}
+        catch (error) {return res.status(error.statusCode || 503).json({ error: error.statusCode ? error.message : 'Membership verification unavailable' });}
       }
       const {
         customer_name,
@@ -101,7 +101,7 @@ export default async function handler(req, res) {
         items,
         notes,
         payment_method,
-        distributor_code,
+        distributor_code
       } = req.body;
 
       if (!customer_name) {
@@ -113,7 +113,7 @@ export default async function handler(req, res) {
 
       const effectiveDeliveryMethod = delivery_method || 'pickup';
 
-      const serverSubtotal = items.reduce((sum, item) => sum + (parseFloat(item.unit_price || 0) * parseInt(item.quantity || 1, 10)), 0);
+      const serverSubtotal = items.reduce((sum, item) => sum + parseFloat(item.unit_price || 0) * parseInt(item.quantity || 1, 10), 0);
       const effectiveSubtotal = serverSubtotal || parseFloat(subtotal || 0);
 
       if (effectiveDeliveryMethod === 'delivery' && !town_id && !delivery_address) {
@@ -128,17 +128,17 @@ export default async function handler(req, res) {
         try {
           let distance;
           if (branch_id) {
-            distance = await getOne(
-              'SELECT * FROM delivery_distances WHERE branch_id = $1 AND town_id = $2',
-              [branch_id, town_id]
-            );
+            distance = await __qd_executePlan(getOne, __qd_registeredPlan("api/orders.js:132:9"),
+
+            [branch_id, town_id]);
+
           }
 
           if (!distance) {
-            distance = await getOne(
-              'SELECT * FROM delivery_distances WHERE town_id = $1 ORDER BY distance_km ASC LIMIT 1',
-              [town_id]
-            );
+            distance = await __qd_executePlan(getOne, __qd_registeredPlan("api/orders.js:139:10"),
+
+            [town_id]);
+
           }
 
           if (distance) {
@@ -152,11 +152,11 @@ export default async function handler(req, res) {
             distanceKm = null;
           }
 
-          deliveryFee = (parseFloat(effectiveSubtotal) * deliveryFeePercentage) / 100;
+          deliveryFee = parseFloat(effectiveSubtotal) * deliveryFeePercentage / 100;
         } catch (error) {
           console.error('Error calculating delivery fee:', error);
           deliveryFeePercentage = 20.00;
-          deliveryFee = (parseFloat(effectiveSubtotal) * 20.00) / 100;
+          deliveryFee = parseFloat(effectiveSubtotal) * 20.00 / 100;
         }
       }
 
@@ -186,7 +186,7 @@ export default async function handler(req, res) {
         payment_method: payment_method || null,
         notes: notes || null,
         distributor_code: distributor_code || null,
-        items: JSON.stringify(items),
+        items: JSON.stringify(items)
       });
 
       await publishRealtimeEvent('orders', 'created', order);
@@ -200,7 +200,7 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Order ID is required' });
       }
 
-      const existing = await getOne('SELECT * FROM online_orders WHERE id = $1', [id]);
+      const existing = await __qd_executePlan(getOne, __qd_registeredPlan("api/orders.js:203:11"), [id]);
       if (!existing) {
         return res.status(404).json({ error: 'Order not found' });
       }
@@ -214,7 +214,7 @@ export default async function handler(req, res) {
         payment_status,
         payment_method,
         delivery_address,
-        notes,
+        notes
       } = req.body || {};
 
       const updates = {};
@@ -234,81 +234,81 @@ export default async function handler(req, res) {
       const newStatus = status || existing.status;
       const newPaymentStatus = payment_status || existing.payment_status;
       const shouldFulfil =
-        newStatus === 'delivered' &&
-        newPaymentStatus === 'paid' &&
-        !existing.stock_deducted &&
-        existing.branch_id;
+      newStatus === 'delivered' &&
+      newPaymentStatus === 'paid' &&
+      !existing.stock_deducted &&
+      existing.branch_id;
 
       if (shouldFulfil) {
         const branchId = existing.branch_id;
-        const orderItems = Array.isArray(existing.items)
-          ? existing.items
-          : (typeof existing.items === 'string' ? JSON.parse(existing.items) : []);
+        const orderItems = Array.isArray(existing.items) ?
+        existing.items :
+        typeof existing.items === 'string' ? JSON.parse(existing.items) : [];
 
         const customerType = existing.customer_type === 'member' ? 'member' : 'non_member';
         const movType = customerType === 'member' ? 'walk_in_member_sale' : 'walk_in_non_member_sale';
 
-        const livePriceRows = await getMany(`SELECT description, dp, cp FROM live_product_prices`);
+        const livePriceRows = await __qd_executePlan(getMany, __qd_registeredPlan("api/orders.js:251:12"), []);
         const livePriceMap = {};
         for (const row of livePriceRows) {
           if (row.description) livePriceMap[row.description.toLowerCase()] = row;
         }
 
-        const deductItems = orderItems.map(item => {
+        const deductItems = orderItems.map((item) => {
           const name = item.product_name || item.name || item.description || '';
           const qty = Number(item.quantity || 1);
           const liveRow = livePriceMap[name.toLowerCase()];
-          const unitPrice = liveRow
-            ? (Number(liveRow.dp) || Number(item.unit_price || 0))
-            : Number(item.unit_price || 0);
+          const unitPrice = liveRow ?
+          Number(liveRow.dp) || Number(item.unit_price || 0) :
+          Number(item.unit_price || 0);
           return { name, qty, unitPrice };
-        }).filter(i => i.name && i.qty > 0);
+        }).filter((i) => i.name && i.qty > 0);
 
         let stockDeductionOk = false;
         try {
           await withTransaction(async (client) => {
             for (const item of deductItems) {
               let remaining = item.qty;
-              const batches = (await client.query(
-                `SELECT id, product_name, batch_no, expiry_date, quantity
-                 FROM branch_inventory_batches
-                 WHERE branch_id = $1
-                   AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))
-                   AND quantity > 0
-                 ORDER BY expiry_date ASC NULLS LAST
-                 FOR UPDATE`,
-                [branchId, item.name]
-              )).rows;
+              const batches = (await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/orders.js:273:13"),
+
+
+
+
+
+
+
+              [branchId, item.name])).
+              rows;
 
               for (const batch of batches) {
                 if (remaining <= 0) break;
                 const take = Math.min(remaining, Number(batch.quantity));
-                await client.query(
-                  `UPDATE branch_inventory_batches SET quantity = quantity - $1, updated_at = NOW() WHERE id = $2`,
-                  [take, batch.id]
-                );
+                await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/orders.js:287:14"),
+
+                [take, batch.id]);
+
                 const ts = Date.now();
                 const bimId = `BIM-${ts}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
-                await client.query(
-                  `INSERT INTO branch_inventory_movements
-                     (id, branch_id, type, product_name, batch_no, quantity, unit_price, reference, notes, created_by, created_at)
-                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())`,
-                  [bimId, branchId, movType, batch.product_name, batch.batch_no || '', take,
-                   item.unitPrice || null, existing.id,
-                   `Online order ${existing.order_number || existing.id}`,
-                   req.user?.username || '']
-                );
+                await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/orders.js:293:15"),
+
+
+
+                [bimId, branchId, movType, batch.product_name, batch.batch_no || '', take,
+                item.unitPrice || null, existing.id,
+                `Online order ${existing.order_number || existing.id}`,
+                req.user?.username || '']);
+
                 const smId = `MOV-${ts}-${Math.random().toString(36).slice(2, 6)}`;
-                await client.query(
-                  `INSERT INTO stock_movements
-                     (id, product_name, batch_no, expiry_date, quantity, movement_type,
-                      source_location, source_location_type, destination_location, destination_location_type,
-                      reference_id, notes, status, unit_dp, movement_date, created_at, updated_at)
-                   VALUES ($1,$2,$3,$4,$5,$6,$7,'branch','customer',NULL,$8,$9,'posted',$10,NOW(),NOW(),NOW())`,
-                  [smId, batch.product_name, batch.batch_no || '', batch.expiry_date || null,
-                   take, movType, branchId, existing.id,
-                   `Online order ${existing.order_number || existing.id}`, item.unitPrice || null]
-                );
+                await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/orders.js:303:16"),
+
+
+
+
+
+                [smId, batch.product_name, batch.batch_no || '', batch.expiry_date || null,
+                take, movType, branchId, existing.id,
+                `Online order ${existing.order_number || existing.id}`, item.unitPrice || null]);
+
                 remaining -= take;
               }
 
@@ -317,24 +317,24 @@ export default async function handler(req, res) {
               }
             }
 
-            await client.query(
-              `UPDATE online_orders SET stock_deducted = TRUE, fulfilled_at = NOW(), updated_at = NOW() WHERE id = $1`,
-              [id]
-            );
+            await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/orders.js:321:17"),
+
+            [id]);
+
           });
 
           stockDeductionOk = true;
           updates.stock_deducted = true;
           updates.fulfilled_at = new Date().toISOString();
 
-          recomputeLocationBalances('branch', branchId).catch(e =>
-            console.error('[orders] recomputeLocationBalances error:', e.message)
+          recomputeLocationBalances('branch', branchId).catch((e) =>
+          console.error('[orders] recomputeLocationBalances error:', e.message)
           );
 
           const totalQty = deductItems.reduce((s, i) => s + i.qty, 0);
           const dpSubtotal = deductItems.reduce((s, i) => {
             const liveRow = livePriceMap[i.name.toLowerCase()];
-            const dp = liveRow ? (Number(liveRow.dp) || i.unitPrice) : i.unitPrice;
+            const dp = liveRow ? Number(liveRow.dp) || i.unitPrice : i.unitPrice;
             return s + dp * i.qty;
           }, 0);
           const cpTotal = Number(existing.subtotal || existing.total_amount || 0);
@@ -363,13 +363,13 @@ export default async function handler(req, res) {
             prescription_status: 'none',
             consultation_status: 'none',
             reporting_status: 'posted',
-            captured_by: req.user?.username || null,
-          }).catch(e => console.error('[orders] BAT post error:', e.message));
+            captured_by: req.user?.username || null
+          }).catch((e) => console.error('[orders] BAT post error:', e.message));
 
         } catch (fulfilErr) {
           console.error('[orders] fulfillment error:', fulfilErr.message);
           return res.status(409).json({
-            error: `Order fulfillment failed: ${fulfilErr.message}`,
+            error: `Order fulfillment failed: ${fulfilErr.message}`
           });
         }
       }
@@ -389,7 +389,7 @@ export default async function handler(req, res) {
       const id = req.query?.id || req.body?.id;
       if (!id) return res.status(400).json({ error: 'Order ID is required' });
 
-      const existing = await getOne('SELECT * FROM online_orders WHERE id = $1', [id]);
+      const existing = await __qd_executePlan(getOne, __qd_registeredPlan("api/orders.js:392:18"), [id]);
       if (!existing) return res.status(404).json({ error: 'Order not found' });
 
       if (branchScope.enforced && !branchScope.branches.includes(existing.branch_id || null)) {
@@ -407,7 +407,7 @@ export default async function handler(req, res) {
         }
       }
 
-      await query('DELETE FROM online_orders WHERE id = $1', [id]);
+      await __qd_executePlan(query, __qd_registeredPlan("api/orders.js:410:19"), [id]);
       await publishRealtimeEvent('orders', 'deleted', { id });
       return res.json({ success: true });
     }

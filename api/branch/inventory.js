@@ -1,11 +1,11 @@
-import { movementSaleEvidence } from '../services/saleEvidence.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../services/queryDescriptors.js";import { movementSaleEvidence } from '../services/saleEvidence.js';
 import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
 import { query, getMany, getOne, withTransaction } from '../db.js';
 import { recomputeLocationBalances } from '../services/stockEngine.js';
 import { normalizeBranchSlug } from '../_lib/branchUtils.js';
 import { atomicStockRequest } from '../_lib/atomicStockRequest.js';
 import { lockStockBatchTx } from '../services/stockLocks.js';
-import {branchLayers} from '../services/stockCostLayers.js';
+import { branchLayers } from '../services/stockCostLayers.js';
 
 function parseNumber(value, fallback = 0) {
   if (value === null || value === undefined || value === '') return fallback;
@@ -58,18 +58,18 @@ async function parseJsonBody(req) {
 
 function normalizeInventoryRow(row) {
   if (!row) return null;
-  const expiryDate = row.expiry_date ? (row.expiry_date instanceof Date ? row.expiry_date.toISOString().slice(0, 10) : String(row.expiry_date).slice(0, 10)) : null;
+  const expiryDate = row.expiry_date ? row.expiry_date instanceof Date ? row.expiry_date.toISOString().slice(0, 10) : String(row.expiry_date).slice(0, 10) : null;
   const qty = parseNumber(row.quantity);
   const uPrice = row.unit_price !== null ? Number(row.unit_price) : null;
   const createdAt = row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at;
   const updatedAt = row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at;
-  const originalLayers=branchLayers(row);
-  const originalValue=(field)=>originalLayers.reduce((n,l)=>n+l.quantity*Number(l.source?.[field] ?? 0),0);
-  const missing=(field)=>originalLayers.reduce((n,l)=>n+(l.source?.[field]==null?l.quantity:0),0);
+  const originalLayers = branchLayers(row);
+  const originalValue = (field) => originalLayers.reduce((n, l) => n + l.quantity * Number(l.source?.[field] ?? 0), 0);
+  const missing = (field) => originalLayers.reduce((n, l) => n + (l.source?.[field] == null ? l.quantity : 0), 0);
   return {
     id: row.id,
-    stock_value_dp:originalValue('dpc_unit_value'),stock_value_cif:originalValue('cif_unit_cost'),
-    missing_dpc_quantity:missing('dpc_unit_value'),missing_cif_quantity:missing('cif_unit_cost'),
+    stock_value_dp: originalValue('dpc_unit_value'), stock_value_cif: originalValue('cif_unit_cost'),
+    missing_dpc_quantity: missing('dpc_unit_value'), missing_cif_quantity: missing('cif_unit_cost'),
     branchId: row.branch_id, branch_id: row.branch_id,
     productName: row.product_name, product_name: row.product_name,
     productCode: row.product_code, product_code: row.product_code,
@@ -82,7 +82,7 @@ function normalizeInventoryRow(row) {
     status: row.status || (qty > 0 ? 'in_stock' : 'out_of_stock'),
     metadata: typeof row.metadata === 'object' ? row.metadata : null,
     createdAt, created_at: createdAt,
-    updatedAt, updated_at: updatedAt,
+    updatedAt, updated_at: updatedAt
   };
 }
 
@@ -105,7 +105,7 @@ function normalizeMovementRow(row) {
     notes: row.notes,
     metadata: typeof row.metadata === 'object' ? row.metadata : null,
     createdBy: row.created_by,
-    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at
   };
 }
 
@@ -126,19 +126,19 @@ async function resolveBranchId(raw) {
   if (key === 'katima_mulilo') candidates.push('katima');
   if (key === 'katima') candidates.push('katima_mulilo');
   // Exact match first
-  const result = await getOne(
-    `SELECT branch_id FROM branch_inventory_batches WHERE branch_id = ANY($1) LIMIT 1`,
-    [candidates]
-  );
+  const result = await __qd_executePlan(getOne, __qd_registeredPlan("api/branch/inventory.js:130:0"),
+
+  [candidates]);
+
   if (result) return result.branch_id;
   // Case-insensitive + whitespace-normalised fallback:
   // Normalise DB values the same way normalizeBranchId does (lowercase + spaces→underscores)
   // so "Oshakati Branch", "oshakati_branch", and "oshakati" all match.
-  const ciResult = await getOne(
-    `SELECT branch_id FROM branch_inventory_batches
-     WHERE LOWER(REPLACE(branch_id, ' ', '_')) = ANY($1) LIMIT 1`,
-    [candidates]
-  );
+  const ciResult = await __qd_executePlan(getOne, __qd_registeredPlan("api/branch/inventory.js:138:1"),
+
+
+  [candidates]);
+
   return ciResult ? ciResult.branch_id : key;
 }
 
@@ -155,22 +155,22 @@ function buildBranchCandidates(...ids) {
     set.add(s);
     set.add(id); // original casing preserved as well
     // _branch suffix variants
-    if (s.endsWith('_branch')) set.add(s.replace(/_branch$/, ''));
-    else                        set.add(s + '_branch');
+    if (s.endsWith('_branch')) set.add(s.replace(/_branch$/, ''));else
+    set.add(s + '_branch');
     // Katima Mulilo
-    if (s === 'katima_mulilo') { set.add('katima'); set.add('katima-mulilo'); set.add('katima_branch'); set.add('katima_mulilo_branch'); }
-    if (s === 'katima')         set.add('katima_mulilo');
+    if (s === 'katima_mulilo') {set.add('katima');set.add('katima-mulilo');set.add('katima_branch');set.add('katima_mulilo_branch');}
+    if (s === 'katima') set.add('katima_mulilo');
     // Oshakati
     if (s === 'oshakati_branch') set.add('oshakati');
-    if (s === 'oshakati')        set.add('oshakati_branch');
+    if (s === 'oshakati') set.add('oshakati_branch');
     // Hochland Park
-    if (s === 'hochland-park')   { set.add('hochlandpark'); set.add('hochland_park'); }
+    if (s === 'hochland-park') {set.add('hochlandpark');set.add('hochland_park');}
     if (s === 'hochlandpark' || s === 'hochland_park') set.add('hochland-park');
     // Walvis Bay
-    if (s === 'walvisbay')       { set.add('walvis_bay'); set.add('walvis bay'); }
-    if (s === 'walvis_bay')      set.add('walvisbay');
+    if (s === 'walvisbay') {set.add('walvis_bay');set.add('walvis bay');}
+    if (s === 'walvis_bay') set.add('walvisbay');
     // Windhoek CBD / Townshop
-    if (s === 'townshop')        { set.add('windhoek'); set.add('windhoek_cbd'); }
+    if (s === 'townshop') {set.add('windhoek');set.add('windhoek_cbd');}
     if (s === 'windhoek_cbd' || s === 'windhoek') set.add('townshop');
   }
   return [...set].filter(Boolean);
@@ -183,13 +183,13 @@ async function getInventoryByBranch(branchId, enriched = false) {
   // Fetch ALL BIB rows — including zero-quantity ones — so that recently-depleted
   // batches (qty just set to 0 by a sale/dispense) still appear in the guard set
   // and cannot be re-injected as ghost stock from a stale inventory_balances entry.
-  const rows = await getMany(
-    `SELECT * FROM branch_inventory_batches WHERE branch_id = ANY($1::text[]) ORDER BY product_name ASC, expiry_date ASC NULLS LAST`,
-    [allCandidates]
-  );
+  const rows = await __qd_executePlan(getMany, __qd_registeredPlan("api/branch/inventory.js:187:2"),
+
+  [allCandidates]);
+
   // Only positive-qty rows shown to the user; zero-qty rows are kept in the full set
   // purely to block inventory_balances from resurrecting them as synthetic ghosts.
-  const normalized = rows.filter(r => Number(r.quantity || 0) > 0).map(normalizeInventoryRow).filter(Boolean);
+  const normalized = rows.filter((r) => Number(r.quantity || 0) > 0).map(normalizeInventoryRow).filter(Boolean);
 
   // Available stock comes only from physical batches. Unexplained legacy
   // ledger/cache-only quantities require review, not synthetic stock rows.
@@ -207,45 +207,45 @@ async function getInventoryByBranch(branchId, enriched = false) {
     // Also pull source_warehouse directly from branch_inventory_batches as a fallback for
     // historical dispatch receipts that were inserted before source_branch_id was recorded
     // in branch_inventory_movements.
-    const bibSources = await getMany(
-      `SELECT LOWER(TRIM(product_name)) AS pname, source_warehouse
-       FROM branch_inventory_batches
-       WHERE branch_id = $1 AND source_warehouse IS NOT NULL`,
-      [resolvedId]
-    );
+    const bibSources = await __qd_executePlan(getMany, __qd_registeredPlan("api/branch/inventory.js:211:3"),
+
+
+
+    [resolvedId]);
+
     for (const row of bibSources) {
       if (row.pname && row.source_warehouse) bibSourceMap[row.pname] = row.source_warehouse;
     }
   } catch (_) {}
   try {
-    [movAgg, walkinSoldAgg] = await Promise.all([
-      getMany(
-        `SELECT product_name,
-           type,
-           SUM(ABS(quantity)) as total_qty,
-           MAX(created_at) as last_date,
-           (array_agg(DISTINCT source_branch_id) FILTER (WHERE source_branch_id IS NOT NULL))[1] as source
-         FROM branch_inventory_movements
-         WHERE branch_id = $1
-         GROUP BY product_name, type`,
-        [resolvedId]
-      ),
-      // Walkin sales: items use camelCase productName and quantity
-      getMany(
-        `SELECT
-           COALESCE(item->>'product_name', item->>'productName') AS product_name,
-           SUM(COALESCE((item->>'quantity')::numeric, (item->>'qty')::numeric, 0)) AS total_sold,
-           MAX(created_at) AS last_date
-         FROM branch_walkin_sales,
-              jsonb_array_elements(items) AS item
-         WHERE branch_id = $1
-           AND status != 'cancelled'
-           AND items IS NOT NULL
-           AND jsonb_array_length(items) > 0
-         GROUP BY COALESCE(item->>'product_name', item->>'productName')`,
-        [resolvedId]
-      ),
-    ]);
+    [movAgg, walkinSoldAgg] = await Promise.all([__qd_executePlan(
+      getMany, __qd_registeredPlan("api/branch/inventory.js:223:4"),
+
+
+
+
+
+
+
+
+      [resolvedId]),
+
+    // Walkin sales: items use camelCase productName and quantity
+    __qd_executePlan(getMany, __qd_registeredPlan("api/branch/inventory.js:235:5"),
+
+
+
+
+
+
+
+
+
+
+
+    [resolvedId])]
+
+    );
   } catch (err) {
     console.error('[inventory] enrichment query error:', err.message);
   }
@@ -281,16 +281,16 @@ async function getInventoryByBranch(branchId, enriched = false) {
       // source_branch_id in branch_inventory_movements is the warehouse that dispatched this stock.
       // Fall back to branch_inventory_batches.source_warehouse for historical records where
       // source_branch_id was not recorded at receipt time.
-      if (r.source) a.source_warehouse = r.source;
-      else if (!a.source_warehouse && bibSourceMap[key]) a.source_warehouse = bibSourceMap[key];
-    }
-    else if (t === 'sale' || t === 'walk_in_member_sale' || t === 'walk_in_non_member_sale' || t === 'online_order_sale') a.walkin_sold += q;
-    else if (t === 'dispense' || t === 'prescription_dispense' || t === 'field_use') a.dispensed += q;
-    else if (t === 'transfer_out' || t === 'transfer') a.transferred += q;
-    else if (t === 'write_off') a.written_off += q;
-    else if (t === 'adjustment' || t === 'return' || t === 'return_in') a.adjusted += q;
+      if (r.source) a.source_warehouse = r.source;else
+      if (!a.source_warehouse && bibSourceMap[key]) a.source_warehouse = bibSourceMap[key];
+    } else
+    if (t === 'sale' || t === 'walk_in_member_sale' || t === 'walk_in_non_member_sale' || t === 'online_order_sale') a.walkin_sold += q;else
+    if (t === 'dispense' || t === 'prescription_dispense' || t === 'field_use') a.dispensed += q;else
+    if (t === 'transfer_out' || t === 'transfer') a.transferred += q;else
+    if (t === 'write_off') a.written_off += q;else
+    if (t === 'adjustment' || t === 'return' || t === 'return_in') a.adjusted += q;
     const ld = r.last_date instanceof Date ? r.last_date.toISOString() : r.last_date;
-    if (!a.last_movement || (ld && ld > a.last_movement)) a.last_movement = ld;
+    if (!a.last_movement || ld && ld > a.last_movement) a.last_movement = ld;
   }
   // Apply bibSourceMap fallback for products that never had a 'receive' movement recorded
   // (e.g. stock loaded via the startup backfill or direct DB insert) so SOURCE always shows.
@@ -312,7 +312,7 @@ async function getInventoryByBranch(branchId, enriched = false) {
   }
 
   // Track which norm keys already have a batch record
-  const batchNormKeys = new Set(normalized.map(inv => norm(inv.product_name)));
+  const batchNormKeys = new Set(normalized.map((inv) => norm(inv.product_name)));
 
   // When a branch has multiple batches of the same product, distribute aggregated
   // quantities proportionally by batch size (or equally if all zero).
@@ -323,7 +323,7 @@ async function getInventoryByBranch(branchId, enriched = false) {
     productBatches[key].push(inv);
   }
 
-  const batchRows = normalized.map(inv => {
+  const batchRows = normalized.map((inv) => {
     const key = norm(inv.product_name);
     const agg = aggMap[key] || EMPTY_AGG();
     const siblings = productBatches[key] || [inv];
@@ -339,7 +339,7 @@ async function getInventoryByBranch(branchId, enriched = false) {
       qty_written_off: scale(agg.written_off), qtyWrittenOff: scale(agg.written_off),
       qty_adjusted: scale(agg.adjusted), qtyAdjusted: scale(agg.adjusted),
       source_warehouse: agg.source_warehouse, sourceWarehouse: agg.source_warehouse,
-      last_movement_date: agg.last_movement, lastMovementDate: agg.last_movement,
+      last_movement_date: agg.last_movement, lastMovementDate: agg.last_movement
     };
   });
 
@@ -362,14 +362,14 @@ async function getInventoryByBranch(branchId, enriched = false) {
       unit_price: null,
       status: 'out_of_stock',
       is_synthetic: true,
-      qty_received: Math.round(agg.received),  qtyReceived: Math.round(agg.received),
-      qty_sold: Math.round(agg.sold),           qtySold: Math.round(agg.sold),
+      qty_received: Math.round(agg.received), qtyReceived: Math.round(agg.received),
+      qty_sold: Math.round(agg.sold), qtySold: Math.round(agg.sold),
       qty_dispensed: Math.round(agg.dispensed), qtyDispensed: Math.round(agg.dispensed),
       qty_transferred: Math.round(agg.transferred), qtyTransferred: Math.round(agg.transferred),
-      qty_written_off: Math.round(agg.written_off),  qtyWrittenOff: Math.round(agg.written_off),
-      qty_adjusted: Math.round(agg.adjusted),   qtyAdjusted: Math.round(agg.adjusted),
+      qty_written_off: Math.round(agg.written_off), qtyWrittenOff: Math.round(agg.written_off),
+      qty_adjusted: Math.round(agg.adjusted), qtyAdjusted: Math.round(agg.adjusted),
       source_warehouse: agg.source_warehouse, sourceWarehouse: agg.source_warehouse,
-      last_movement_date: agg.last_movement,  lastMovementDate: agg.last_movement,
+      last_movement_date: agg.last_movement, lastMovementDate: agg.last_movement
     });
   }
 
@@ -378,10 +378,10 @@ async function getInventoryByBranch(branchId, enriched = false) {
 
 async function getMovementsByBranch(branchId, limit = 100) {
   const resolvedId = await resolveBranchId(branchId);
-  const rows = await getMany(
-    `SELECT * FROM branch_inventory_movements WHERE branch_id = $1 ORDER BY created_at DESC LIMIT $2`,
-    [resolvedId, limit]
-  );
+  const rows = await __qd_executePlan(getMany, __qd_registeredPlan("api/branch/inventory.js:382:6"),
+
+  [resolvedId, limit]);
+
   return rows.map(normalizeMovementRow).filter(Boolean);
 }
 
@@ -398,68 +398,68 @@ async function upsertInventoryBatch(client, payload) {
     unit = 'units',
     unitPrice = null,
     status = null,
-    metadata = null,
+    metadata = null
   } = payload;
 
   const expirySqlDate = toSqlDate(expiryDate);
   const computedStatus = status || (parseNumber(quantity) > 0 ? 'in_stock' : 'out_of_stock');
-  const prior = (await client.query(
-    `SELECT id FROM branch_inventory_batches WHERE branch_id=$1 AND LOWER(TRIM(product_name))=LOWER(TRIM($2))
-      AND batch_no IS NOT DISTINCT FROM $3 AND expiry_date IS NOT DISTINCT FROM $4::date ORDER BY created_at,id LIMIT 1 FOR UPDATE`,
-    [branchId,productName,batchNo || null,expirySqlDate]
-  )).rows[0];
+  const prior = (await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/branch/inventory.js:407:7"),
+
+
+  [branchId, productName, batchNo || null, expirySqlDate])).
+  rows[0];
   if (prior) {
-    const updated = await client.query(
-      `UPDATE branch_inventory_batches SET quantity=quantity+$1,unit_price=COALESCE($2,unit_price),status=$3,updated_at=NOW() WHERE id=$4 RETURNING *`,
-      [quantity,unitPrice,computedStatus,prior.id]
-    );
+    const updated = await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/branch/inventory.js:413:8"),
+
+    [quantity, unitPrice, computedStatus, prior.id]);
+
     return normalizeInventoryRow(updated.rows[0]);
   }
 
-  const result = await client.query(
-    `
-      INSERT INTO branch_inventory_batches (id, branch_id, product_name, product_code, batch_no, expiry_date, quantity, unit, unit_price, status, metadata, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, COALESCE($12, NOW()), NOW())
-      ON CONFLICT (branch_id, product_name, batch_no, expiry_date)
-      DO UPDATE SET
-        quantity = branch_inventory_batches.quantity + EXCLUDED.quantity,
-        unit_price = COALESCE(EXCLUDED.unit_price, branch_inventory_batches.unit_price),
-        unit = COALESCE(EXCLUDED.unit, branch_inventory_batches.unit),
-        status = EXCLUDED.status,
-        metadata = COALESCE(EXCLUDED.metadata, branch_inventory_batches.metadata),
-        updated_at = NOW()
-      RETURNING *;
-    `,
-    [
-      id,
-      branchId,
-      productName,
-      productCode,
-      batchNo || null,
-      expirySqlDate,
-      Math.round(parseNumber(quantity)),
-      unit,
-      unitPrice !== null ? parseNumber(unitPrice) : null,
-      computedStatus,
-      metadata ? JSON.stringify(metadata) : null,
-      parseDate(payload.createdAt || payload.created_at || null),
-    ]
-  );
+  const result = await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/branch/inventory.js:420:9"),
+
+
+
+
+
+
+
+
+
+
+
+
+
+  [
+  id,
+  branchId,
+  productName,
+  productCode,
+  batchNo || null,
+  expirySqlDate,
+  Math.round(parseNumber(quantity)),
+  unit,
+  unitPrice !== null ? parseNumber(unitPrice) : null,
+  computedStatus,
+  metadata ? JSON.stringify(metadata) : null,
+  parseDate(payload.createdAt || payload.created_at || null)]);
+
+
 
   return normalizeInventoryRow(result.rows[0]);
 }
 
 async function setInventoryQuantity(client, batchRow, quantity) {
   const status = parseNumber(quantity) > 0 ? 'in_stock' : 'out_of_stock';
-  const result = await client.query(
-    `
-      UPDATE branch_inventory_batches
-      SET quantity = $1, status = $2, updated_at = NOW()
-      WHERE id = $3
-      RETURNING *;
-    `,
-    [parseNumber(quantity), status, batchRow.id]
-  );
+  const result = await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/branch/inventory.js:455:10"),
+
+
+
+
+
+
+  [parseNumber(quantity), status, batchRow.id]);
+
   return normalizeInventoryRow(result.rows[0]);
 }
 
@@ -480,60 +480,60 @@ async function recordMovement(client, payload) {
     notes: payload.notes || null,
     metadata: payload.metadata ? JSON.stringify(payload.metadata) : null,
     created_by: payload.createdBy || null,
-    created_at: parseDate(payload.createdAt || null) || new Date().toISOString(),
+    created_at: parseDate(payload.createdAt || null) || new Date().toISOString()
   };
 
-  const result = await client.query(
-    `
-      INSERT INTO branch_inventory_movements
-        (id, branch_id, type, product_name, product_code, batch_no, quantity, unit, source_branch_id, destination_branch_id, related_batch_id, reference, notes, metadata, created_by, created_at)
-      VALUES
-        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-      RETURNING *;
-    `,
-    [
-      movement.id,
-      movement.branch_id,
-      movement.type,
-      movement.product_name,
-      movement.product_code,
-      movement.batch_no,
-      movement.quantity,
-      movement.unit,
-      movement.source_branch_id,
-      movement.destination_branch_id,
-      movement.related_batch_id,
-      movement.reference,
-      movement.notes,
-      movement.metadata,
-      movement.created_by,
-      movement.created_at,
-    ]
-  );
+  const result = await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/branch/inventory.js:487:11"),
+
+
+
+
+
+
+
+  [
+  movement.id,
+  movement.branch_id,
+  movement.type,
+  movement.product_name,
+  movement.product_code,
+  movement.batch_no,
+  movement.quantity,
+  movement.unit,
+  movement.source_branch_id,
+  movement.destination_branch_id,
+  movement.related_batch_id,
+  movement.reference,
+  movement.notes,
+  movement.metadata,
+  movement.created_by,
+  movement.created_at]);
+
+
 
   const quantity = Number(movement.quantity);
-  const type = movement.type === 'adjustment'
-    ? (quantity >= 0 ? 'positive_adjustment' : 'negative_adjustment')
-    : movement.type === 'receive' ? 'received' : movement.type;
-  const batch = payload.relatedBatchId
-    ? (await client.query('SELECT expiry_date FROM branch_inventory_batches WHERE id = $1', [payload.relatedBatchId])).rows[0]
-    : null;
+  const type = movement.type === 'adjustment' ?
+  quantity >= 0 ? 'positive_adjustment' : 'negative_adjustment' :
+  movement.type === 'receive' ? 'received' : movement.type;
+  const batch = payload.relatedBatchId ?
+  (await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/branch/inventory.js:519:12"), [payload.relatedBatchId])).rows[0] :
+  null;
   const inward = ['received', 'transfer_in', 'positive_adjustment'].includes(type);
-  await client.query(
-    `INSERT INTO stock_movements
-       (id, product_name, batch_no, expiry_date, quantity, movement_type,
-        source_location, source_location_type, destination_location, destination_location_type,
-        reference_id, notes, created_by, status, movement_date, created_at, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'posted',NOW(),NOW(),NOW())`,
-    [`SM-${movement.id}`, movement.product_name, movement.batch_no, batch?.expiry_date || null,
-     Math.abs(quantity), type,
-     inward ? (movement.source_branch_id || 'manual_source') : movement.branch_id,
-     inward ? (movement.source_branch_id ? 'branch' : 'external') : 'branch',
-     inward ? movement.branch_id : (movement.destination_branch_id || 'manual_destination'),
-     inward ? 'branch' : (movement.destination_branch_id ? 'branch' : 'external'),
-     movement.reference || movement.id, movement.notes, movement.created_by]
-  );
-  recomputeLocationBalances('branch', movement.branch_id).catch(error => console.error('[branch-movement-balance]', error.message));
+  await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/branch/inventory.js:523:13"),
+
+
+
+
+
+  [`SM-${movement.id}`, movement.product_name, movement.batch_no, batch?.expiry_date || null,
+  Math.abs(quantity), type,
+  inward ? movement.source_branch_id || 'manual_source' : movement.branch_id,
+  inward ? movement.source_branch_id ? 'branch' : 'external' : 'branch',
+  inward ? movement.branch_id : movement.destination_branch_id || 'manual_destination',
+  inward ? 'branch' : movement.destination_branch_id ? 'branch' : 'external',
+  movement.reference || movement.id, movement.notes, movement.created_by]);
+
+  recomputeLocationBalances('branch', movement.branch_id).catch((error) => console.error('[branch-movement-balance]', error.message));
   return normalizeMovementRow(result.rows[0]);
 }
 
@@ -549,7 +549,7 @@ async function handleReceive(body, currentUser) {
     unitPrice = null,
     source = null,
     notes = null,
-    metadata = null,
+    metadata = null
   } = body;
 
   if (!branchId || !productName || !batchNo) {
@@ -568,7 +568,7 @@ async function handleReceive(body, currentUser) {
       quantity,
       unit,
       unitPrice,
-      metadata,
+      metadata
     });
 
     const movement = await recordMovement(client, {
@@ -584,7 +584,7 @@ async function handleReceive(body, currentUser) {
       notes,
       metadata,
       relatedBatchId: batch.id,
-      createdBy,
+      createdBy
     });
 
     const inventory = await getInventoryByBranch(branchId, true);
@@ -605,7 +605,7 @@ async function handleTransfer(body, currentUser) {
     quantity,
     unit = 'units',
     notes = null,
-    metadata = null,
+    metadata = null
   } = body;
 
   if (!fromBranchId || !toBranchId || !productName || !batchNo) {
@@ -616,10 +616,10 @@ async function handleTransfer(body, currentUser) {
 
   const result = await withTransaction(async (client) => {
     // Fetch source batch
-    const sourceRow = await getOne(
-      'SELECT * FROM branch_inventory_batches WHERE branch_id = $1 AND product_name = $2 AND batch_no = $3 AND (expiry_date IS NOT DISTINCT FROM $4) FOR UPDATE',
-      [fromBranchId, productName, batchNo, toSqlDate(expiryDate)]
-    );
+    const sourceRow = await __qd_executePlan(getOne, __qd_registeredPlan("api/branch/inventory.js:620:14"),
+
+    [fromBranchId, productName, batchNo, toSqlDate(expiryDate)]);
+
 
     if (!sourceRow) {
       throw new Error('Source batch not found');
@@ -642,7 +642,7 @@ async function handleTransfer(body, currentUser) {
       quantity,
       unit,
       unitPrice: sourceRow.unit_price,
-      metadata,
+      metadata
     });
 
     // Record movements for both branches
@@ -658,7 +658,7 @@ async function handleTransfer(body, currentUser) {
       notes,
       metadata,
       relatedBatchId: updatedSource.id,
-      createdBy,
+      createdBy
     });
 
     const movementIn = await recordMovement(client, {
@@ -673,7 +673,7 @@ async function handleTransfer(body, currentUser) {
       notes,
       metadata,
       relatedBatchId: destBatch.id,
-      createdBy,
+      createdBy
     });
 
     const inventory = await getInventoryByBranch(fromBranchId, true);
@@ -692,7 +692,7 @@ async function handleAdjustment(body, currentUser) {
     quantity,
     unit = 'units',
     notes = null,
-    metadata = null,
+    metadata = null
   } = body;
 
   if (!branchId || !productName || !batchNo || quantity === undefined || quantity === null) {
@@ -702,10 +702,10 @@ async function handleAdjustment(body, currentUser) {
   const createdBy = currentUser?.fullName || currentUser?.username || body.createdBy || null;
 
   const result = await withTransaction(async (client) => {
-    const existing = await getOne(
-      'SELECT * FROM branch_inventory_batches WHERE branch_id = $1 AND product_name = $2 AND batch_no = $3 AND (expiry_date IS NOT DISTINCT FROM $4) FOR UPDATE',
-      [branchId, productName, batchNo, toSqlDate(expiryDate)]
-    );
+    const existing = await __qd_executePlan(getOne, __qd_registeredPlan("api/branch/inventory.js:706:15"),
+
+    [branchId, productName, batchNo, toSqlDate(expiryDate)]);
+
 
     if (!existing) {
       throw new Error('Inventory batch not found');
@@ -724,7 +724,7 @@ async function handleAdjustment(body, currentUser) {
       notes,
       metadata,
       relatedBatchId: updated.id,
-      createdBy,
+      createdBy
     });
 
     const inventory = await getInventoryByBranch(branchId, true);
@@ -754,18 +754,18 @@ async function handler(req, res) {
     if (req.method === 'GET') {
       const rawRequestedBranch = searchParams.get('branch') || searchParams.get('branch_id');
       // Normalize to canonical slug so 'katima', 'Katima Mulilo', etc. all resolve correctly.
-      const requestedBranch = rawRequestedBranch
-        ? (normalizeBranchSlug(rawRequestedBranch) || rawRequestedBranch)
-        : null;
+      const requestedBranch = rawRequestedBranch ?
+      normalizeBranchSlug(rawRequestedBranch) || rawRequestedBranch :
+      null;
       // Normalize the scope branches for comparison (handles users whose DB branch value is
       // a non-canonical alias like 'katima' instead of 'katima_mulilo').
-      const normalizedScopeBranches = branchScope.enforced
-        ? branchScope.branches.map(b => normalizeBranchSlug(b) || b)
-        : null;
+      const normalizedScopeBranches = branchScope.enforced ?
+      branchScope.branches.map((b) => normalizeBranchSlug(b) || b) :
+      null;
 
       if (branchScope.enforced && !requestedBranch) {
         const inventory = [];
-        for (const b of (normalizedScopeBranches || [])) {
+        for (const b of normalizedScopeBranches || []) {
           const inv = await getInventoryByBranch(b, true);
           inventory.push(...inv);
         }
@@ -784,7 +784,7 @@ async function handler(req, res) {
       const inventory = await getInventoryByBranch(requestedBranch, true);
       const response = {
         success: true,
-        inventory,
+        inventory
       };
       if (includeMovements) {
         const limit = parseInt(searchParams.get('limit') || '100', 10);
@@ -799,11 +799,11 @@ async function handler(req, res) {
       const rawTargetBranchId = body.branchId || body.fromBranchId;
       const rawDestBranchId = body.toBranchId || null;
       // Normalize to canonical slugs so non-canonical values ('katima', 'Katima Mulilo', etc.) are handled.
-      const targetBranchId = rawTargetBranchId ? (normalizeBranchSlug(rawTargetBranchId) || rawTargetBranchId) : null;
-      const destBranchId = rawDestBranchId ? (normalizeBranchSlug(rawDestBranchId) || rawDestBranchId) : null;
-      const normalizedPostScopeBranches = branchScope.enforced
-        ? branchScope.branches.map(b => normalizeBranchSlug(b) || b)
-        : null;
+      const targetBranchId = rawTargetBranchId ? normalizeBranchSlug(rawTargetBranchId) || rawTargetBranchId : null;
+      const destBranchId = rawDestBranchId ? normalizeBranchSlug(rawDestBranchId) || rawDestBranchId : null;
+      const normalizedPostScopeBranches = branchScope.enforced ?
+      branchScope.branches.map((b) => normalizeBranchSlug(b) || b) :
+      null;
 
       if (branchScope.enforced) {
         if (!targetBranchId) {
@@ -818,29 +818,29 @@ async function handler(req, res) {
       }
 
       let result;
-      if (action === 'transfer') return res.status(409).json({ success:false, error:'Create a stock transfer request instead. Transfers require approval, dispatch and destination staff receipt; they cannot immediately credit another branch.' });
+      if (action === 'transfer') return res.status(409).json({ success: false, error: 'Create a stock transfer request instead. Transfers require approval, dispatch and destination staff receipt; they cannot immediately credit another branch.' });
       const quantity = Number(body.quantity);
-      if (!Number.isFinite(quantity) || quantity < 0 || (action !== 'adjust' && quantity <= 0) || !Number.isInteger(quantity)) {
+      if (!Number.isFinite(quantity) || quantity < 0 || action !== 'adjust' && quantity <= 0 || !Number.isInteger(quantity)) {
         return res.status(400).json({ success: false, error: 'Quantity must be a valid whole base-unit quantity; receipt/transfer quantities must be positive.' });
       }
       if (action === 'adjust' && !String(body.notes || '').trim()) {
         return res.status(400).json({ success: false, error: 'An adjustment reason is required.' });
       }
-      if (action === 'adjust' && !['gm','admin','superadmin','super_admin'].includes(String(currentUser.role || '').toLowerCase())) {
-        return res.status(403).json({ success:false, error:'Stock-count differences require General Manager approval; branch staff cannot directly change counted quantities.' });
+      if (action === 'adjust' && !['gm', 'admin', 'superadmin', 'super_admin'].includes(String(currentUser.role || '').toLowerCase())) {
+        return res.status(403).json({ success: false, error: 'Stock-count differences require General Manager approval; branch staff cannot directly change counted quantities.' });
       }
       if (['receive', 'adjust'].includes(action) && !['stock', 'stock_manager', 'gm', 'admin', 'superadmin', 'super_admin'].includes(String(currentUser.role || '').toLowerCase())) {
         return res.status(403).json({ success: false, error: 'Manual receipts and adjustments require Stock Manager or administrator approval.' });
       }
-      await query('SELECT pg_advisory_xact_lock(hashtext($1))', [`branch-manual:${[targetBranchId, destBranchId].filter(Boolean).sort().join(':')}:${String(body.productName || '').toLowerCase().trim()}`]);
+      await __qd_executePlan(query, __qd_registeredPlan("api/branch/inventory.js:835:16"), [`branch-manual:${[targetBranchId, destBranchId].filter(Boolean).sort().join(':')}:${String(body.productName || '').toLowerCase().trim()}`]);
       switch (action) {
         // Pass a normalized body so all handler functions receive canonical branch slugs.
         case 'receive':
           result = await handleReceive({ ...body, branchId: targetBranchId, fromBranchId: targetBranchId }, currentUser);
           // Refresh inventory_balances cache for the branch after receiving stock
           if (targetBranchId) {
-            recomputeLocationBalances('branch', targetBranchId).catch(e =>
-              console.error('[branch/inventory] post-receive recompute error:', e.message)
+            recomputeLocationBalances('branch', targetBranchId).catch((e) =>
+            console.error('[branch/inventory] post-receive recompute error:', e.message)
             );
           }
           break;
@@ -856,7 +856,7 @@ async function handler(req, res) {
 
       return res.status(200).json({
         success: true,
-        ...result,
+        ...result
       });
     }
 
@@ -867,4 +867,3 @@ async function handler(req, res) {
   }
 }
 export default atomicStockRequest(handler, ['POST']);
-

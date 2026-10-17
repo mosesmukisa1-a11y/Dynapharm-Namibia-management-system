@@ -1,4 +1,4 @@
-import { applyAuthCors } from '../_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../services/queryDescriptors.js";import { applyAuthCors } from '../_lib/auth.js';
 import { getMany } from '../db.js';
 
 const ADMIN_ROLES = new Set(['admin', 'gm', 'director', 'finance']);
@@ -38,29 +38,29 @@ export default async function handler(req, res) {
       nbUpper = nb.toUpperCase();
     }
 
-    const bonuses = await getMany(
-      `SELECT b.id, b.period, b.nb_number, b.distributor_name,
-              b.amount_earned, b.amount_paid, b.status,
-              b.paid_by_branch_id, b.payment_date, b.created_at,
-              COALESCE(b.amount_earned, 0) - COALESCE(b.amount_paid, 0) AS outstanding
-       FROM distributor_bonuses b
-       WHERE b.nb_number = $1
-       ORDER BY b.period DESC`,
-      [nbUpper]
-    );
+    const bonuses = await __qd_executePlan(getMany, __qd_registeredPlan("api/distributor/bonus.js:42:0"),
+
+
+
+
+
+
+
+    [nbUpper]);
+
 
     if (bonuses.length === 0) {
       return res.json({ success: true, bonuses: [], payments: [], hasOutstanding: false, nbNumber: nbUpper });
     }
 
-    const bonusIds = bonuses.map(b => b.id);
-    const payments = await getMany(
-      `SELECT p.id, p.bonus_id, p.branch_id, p.amount, p.paid_at, p.recorded_by, p.notes, p.created_at
-       FROM distributor_bonus_payments p
-       WHERE p.bonus_id = ANY($1)
-       ORDER BY p.paid_at DESC`,
-      [bonusIds]
-    );
+    const bonusIds = bonuses.map((b) => b.id);
+    const payments = await __qd_executePlan(getMany, __qd_registeredPlan("api/distributor/bonus.js:58:1"),
+
+
+
+
+    [bonusIds]);
+
 
     const payMap = {};
     for (const p of payments) {
@@ -68,13 +68,13 @@ export default async function handler(req, res) {
       payMap[p.bonus_id].push(p);
     }
 
-    const enriched = bonuses.map(b => ({
+    const enriched = bonuses.map((b) => ({
       ...b,
       outstanding: Number(b.amount_earned) - Number(b.amount_paid),
-      payments: payMap[b.id] || [],
+      payments: payMap[b.id] || []
     }));
 
-    const hasOutstanding = enriched.some(b => b.outstanding > 0.01);
+    const hasOutstanding = enriched.some((b) => b.outstanding > 0.01);
     const totalEarned = enriched.reduce((s, b) => s + Number(b.amount_earned), 0);
     const totalPaid = enriched.reduce((s, b) => s + Number(b.amount_paid), 0);
 
@@ -87,8 +87,8 @@ export default async function handler(req, res) {
       summary: {
         totalEarned,
         totalPaid,
-        totalOutstanding: totalEarned - totalPaid,
-      },
+        totalOutstanding: totalEarned - totalPaid
+      }
     });
   } catch (err) {
     console.error('[distributor/bonus]', err);

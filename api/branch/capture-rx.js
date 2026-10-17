@@ -1,4 +1,4 @@
-/**
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../services/queryDescriptors.js"; /**
  * POST /api/branch/capture-rx
  * Lightweight prescription activity recorder — no stock deduction.
  * Used when staff save a completed prescription draft (all medicines dispensed + paid).
@@ -30,7 +30,7 @@ const BRANCH_NAMES = {
   rundu: 'Rundu',
   khomasdal: 'Khomasdal',
   okongo: 'Okongo',
-  nkurenkuru: 'Nkurenkuru',
+  nkurenkuru: 'Nkurenkuru'
 };
 
 export default async function handler(req, res) {
@@ -48,7 +48,7 @@ export default async function handler(req, res) {
     serviceDate,
     paymentMethod = 'cash',
     nbNumber = null,
-    referralNb = null,
+    referralNb = null
   } = req.body || {};
 
   if (!reportId || !branchId) {
@@ -56,16 +56,16 @@ export default async function handler(req, res) {
   }
 
   try {
-    const existing = await getOne(
-      `SELECT id FROM branch_activity_transactions
-       WHERE form_reference_id = $1 AND activity_type = 'prescription_dispensing'`,
-      [reportId]
-    );
+    const existing = await __qd_executePlan(getOne, __qd_registeredPlan("api/branch/capture-rx.js:60:0"),
+
+
+    [reportId]);
+
     if (existing) {
       return res.json({ success: true, alreadyCaptured: true, id: existing.id });
     }
 
-    const branchName = BRANCH_NAMES[branchId] || branchId.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    const branchName = BRANCH_NAMES[branchId] || branchId.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
     const productTotalDp = items.reduce(
       (sum, i) => sum + (Number(i.unit_price) || 0) * (Number(i.quantity) || 1),
@@ -81,57 +81,57 @@ export default async function handler(req, res) {
 
     const isMember = customerType === 'member';
     const rxId = generateBatId();
-    await query(
-      `INSERT INTO branch_activity_transactions
-         (id, branch_id, branch_name, activity_type, workflow_source, form_reference_id,
-          product_total_dp, product_total_cp, total_qty, consultation_fee, grand_total,
-          payment_status, payment_method, stock_impact, stock_status, client_type,
-          nb_number, referral_nb,
-          prescription_status, consultation_status, reporting_status,
-          captured_by, service_date, service_time, created_at, updated_at)
-       VALUES
-         ($1,$2,$3,'prescription_dispensing','dispense_draft',$4,
-          $5,$5,$6,$7,$8,
-          'paid',$9,false,'no_change',$10,
-          $11,$12,
-          'completed','completed','captured',
-          $13,$14,$15,$16,$16)`,
-      [
-        rxId, branchId, branchName, reportId,
-        productTotalDp, totalQty, consultFee, grandTotal,
-        paymentMethod, customerType || 'referred',
-        isMember ? (nbNumber || null) : null,
-        !isMember ? (referralNb || null) : null,
-        capturedBy, date, time, now,
-      ]
-    );
+    await __qd_executePlan(query, __qd_registeredPlan("api/branch/capture-rx.js:85:1"),
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    [
+    rxId, branchId, branchName, reportId,
+    productTotalDp, totalQty, consultFee, grandTotal,
+    paymentMethod, customerType || 'referred',
+    isMember ? nbNumber || null : null,
+    !isMember ? referralNb || null : null,
+    capturedBy, date, time, now]);
+
+
 
     if (consultFee > 0) {
       const consultId = generateBatId();
-      await query(
-        `INSERT INTO branch_activity_transactions
-           (id, branch_id, branch_name, activity_type, workflow_source, form_reference_id,
-            consultation_fee, grand_total, payment_status, payment_method,
-            stock_impact, stock_status, client_type,
-            nb_number, referral_nb,
-            prescription_status, consultation_status, reporting_status,
-            captured_by, service_date, service_time, created_at, updated_at)
-         VALUES
-           ($1,$2,$3,'consultation','dispense_draft',$4,
-            $5,$5,'paid',$6,
-            false,'no_change',$7,
-            $8,$9,
-            'n/a','completed','captured',
-            $10,$11,$12,$13,$13)`,
+      await __qd_executePlan(query, __qd_registeredPlan("api/branch/capture-rx.js:112:2"),
+
+
+
+
+
+
+
+
+
+
+
+
+
+
       [
-        consultId, branchId, branchName, reportId,
-        consultFee, paymentMethod,
-        customerType || 'referred',
-        isMember ? (nbNumber || null) : null,
-        !isMember ? (referralNb || null) : null,
-        capturedBy, date, time, now,
-      ]
-      );
+      consultId, branchId, branchName, reportId,
+      consultFee, paymentMethod,
+      customerType || 'referred',
+      isMember ? nbNumber || null : null,
+      !isMember ? referralNb || null : null,
+      capturedBy, date, time, now]);
+
+
     }
 
     return res.json({ success: true, id: rxId });

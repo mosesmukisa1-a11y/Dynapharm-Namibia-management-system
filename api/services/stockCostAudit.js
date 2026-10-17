@@ -1,10 +1,10 @@
-import {getMany} from '../db.js';
-import {salesEvidenceSql} from './stockCostReporting.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "./queryDescriptors.js";import { getMany } from '../db.js';
+import { salesEvidenceSql } from './stockCostReporting.js';
 
-const MAX_LAYERS=10000;
+const MAX_LAYERS = 10000;
 // Only frozen sale/source evidence is used: never join current products, prices,
 // imports or surviving physical batches to reconstruct a historical cost.
-const auditSql=`${salesEvidenceSql},
+const auditSql = `${salesEvidenceSql},
  layers AS (
    SELECT e.*,l.value AS layer,l.ordinality AS layer_index,
      l.value->'source' AS source,(l.value->>'quantity')::numeric AS layer_quantity
@@ -83,57 +83,57 @@ const auditSql=`${salesEvidenceSql},
  ORDER BY a.created_at,a.movement_id,layer_index LIMIT $5`;
 
 export function csvCell(value) {
-  let text=value==null ? '' : String(value);
+  let text = value == null ? '' : String(value);
   // Neutralize spreadsheet formulas, including hidden whitespace prefixes.
-  if(/^[\s]*[=+\-@]/.test(text) && !/^-?\d+(?:\.\d+)?(?:e[+-]?\d+)?$/i.test(text))
-    text="'"+text;
-  return '"'+text.replaceAll('"','""')+'"';
+  if (/^[\s]*[=+\-@]/.test(text) && !/^-?\d+(?:\.\d+)?(?:e[+-]?\d+)?$/i.test(text))
+  text = "'" + text;
+  return '"' + text.replaceAll('"', '""') + '"';
 }
 
-export async function getStockCostAudit({aliases,from,to,productName}={},read=getMany) {
-  const rows=await read(auditSql,[aliases || null,from || null,to || null,productName || null,MAX_LAYERS+1]);
-  if(rows.length>MAX_LAYERS){
-    const error=new Error('Audit export exceeds 10,000 source layers. Narrow the branch, date or product filters.');
-    error.statusCode=413;throw error;
+export async function getStockCostAudit({ aliases, from, to, productName } = {}, read = getMany) {
+  const rows = await __qd_executePlan(read, __qd_registeredPlan("api/services/stockCostAudit.js:94:0"), [aliases || null, from || null, to || null, productName || null, MAX_LAYERS + 1]);
+  if (rows.length > MAX_LAYERS) {
+    const error = new Error('Audit export exceeds 10,000 source layers. Narrow the branch, date or product filters.');
+    error.statusCode = 413;throw error;
   }
-  const firsts=rows.filter(r=>r.layer_index===1);
+  const firsts = rows.filter((r) => r.layer_index === 1);
   // Preserve all decimal fields as database strings in both CSV and JSON.
-  const fields=[
-    'movement_id','sale_reference','branch_id','product_name','sale_recorded_at','sold_branch_batch_id',
-    'frozen_sale_base_quantity','sale_batch','sale_expiry','sale_base_quantity','layer_index','layer_base_quantity',
-    'source_batch_id','consumed_source_batch_id','supplier_import_id','import_reference','source_batch','source_expiry','received_location',
-    'receipt_key','base_unit','received_entered_quantity','received_entered_unit','conversion_factor',
-    'receipt_base_quantity','receipt_purchase_value','receipt_allocated_expenses_nonadditive','expense_allocation_basis',
-    'receipt_landed_value_nonadditive','exact_received_unit_cif','frozen_sale_unit_cif','exact_received_layer_cost',
-    'frozen_sale_layer_cost','landed_expenses_for_sold_layer','actual_sale_revenue_first_layer',
-    'sale_known_cost_subtotal_first_layer','matched_sale_profit_first_layer','complete_audit_profit_first_layer',
-    'scope_known_cost_subtotal_nonadditive','scope_known_revenue_subtotal_nonadditive','scope_complete_audit_profit_nonadditive',
-    'missing_source_batch','missing_import_reference','missing_source_expiry','missing_cost','missing_expense_evidence',
-    'missing_revenue','layer_quantity_mismatch',
-  ];
-  const warnings={
-    missingSource:rows.some(r=>r.missing_source_batch),missingCost:rows.some(r=>r.missing_cost),
-    missingRevenue:rows.some(r=>r.missing_revenue),missingExpenseEvidence:rows.some(r=>r.missing_expense_evidence),
-    missingImportReference:rows.some(r=>r.missing_import_reference),
-    missingExpiry:rows.some(r=>r.missing_source_expiry),quantityMismatch:rows.some(r=>r.layer_quantity_mismatch),
+  const fields = [
+  'movement_id', 'sale_reference', 'branch_id', 'product_name', 'sale_recorded_at', 'sold_branch_batch_id',
+  'frozen_sale_base_quantity', 'sale_batch', 'sale_expiry', 'sale_base_quantity', 'layer_index', 'layer_base_quantity',
+  'source_batch_id', 'consumed_source_batch_id', 'supplier_import_id', 'import_reference', 'source_batch', 'source_expiry', 'received_location',
+  'receipt_key', 'base_unit', 'received_entered_quantity', 'received_entered_unit', 'conversion_factor',
+  'receipt_base_quantity', 'receipt_purchase_value', 'receipt_allocated_expenses_nonadditive', 'expense_allocation_basis',
+  'receipt_landed_value_nonadditive', 'exact_received_unit_cif', 'frozen_sale_unit_cif', 'exact_received_layer_cost',
+  'frozen_sale_layer_cost', 'landed_expenses_for_sold_layer', 'actual_sale_revenue_first_layer',
+  'sale_known_cost_subtotal_first_layer', 'matched_sale_profit_first_layer', 'complete_audit_profit_first_layer',
+  'scope_known_cost_subtotal_nonadditive', 'scope_known_revenue_subtotal_nonadditive', 'scope_complete_audit_profit_nonadditive',
+  'missing_source_batch', 'missing_import_reference', 'missing_source_expiry', 'missing_cost', 'missing_expense_evidence',
+  'missing_revenue', 'layer_quantity_mismatch'];
+
+  const warnings = {
+    missingSource: rows.some((r) => r.missing_source_batch), missingCost: rows.some((r) => r.missing_cost),
+    missingRevenue: rows.some((r) => r.missing_revenue), missingExpenseEvidence: rows.some((r) => r.missing_expense_evidence),
+    missingImportReference: rows.some((r) => r.missing_import_reference),
+    missingExpiry: rows.some((r) => r.missing_source_expiry), quantityMismatch: rows.some((r) => r.layer_quantity_mismatch)
   };
-  const generatedAt=new Date().toISOString();
-  const scope={aliases:aliases || null,from:from || null,to:to || null,productName:productName || null};
-  const csvRows=rows.map(row=>({export_generated_at:generatedAt,filter_branch_scope:JSON.stringify(scope.aliases),
-    filter_from:scope.from,filter_to:scope.to,filter_product:scope.productName,...row}));
-  const csvFields=['export_generated_at','filter_branch_scope','filter_from','filter_to','filter_product',...fields];
-  return {schemaVersion:1,generatedAt,scope,
-    saleCount:new Set(firsts.map(row=>row.sale_reference || row.movement_id)).size,
-    saleLineCount:firsts.length,sourceLayerCount:rows.length,warnings,
-    notes:[
-      'All matching sales, not only the displayed detail page. Sources are frozen sale snapshots, not current catalogue values.',
-      'Decimal amounts are strings to retain precision. Import CSV decimal columns as text; JSON retains exact decimal strings.',
-      'Actual revenue, known-cost subtotal and profit appear on the first layer of each movement only. Scope totals repeat and are nonadditive.',
-      'Receipt-level expense and landed-value totals repeat for traceability and must not be summed across sale layers.',
-      'Matched profit requires revenue, known costs and matching base quantity. Complete audit profit additionally requires source/import, expiry and allocated-expense evidence on every layer.',
-    ],summary:{knownCostSubtotal:rows[0]?.scope_known_cost_subtotal_nonadditive ?? '0',
-      knownRevenueSubtotal:rows[0]?.scope_known_revenue_subtotal_nonadditive ?? '0',
-      completeAuditProfit:rows.length ? rows[0].scope_complete_audit_profit_nonadditive : '0'},
-    records:rows,
-    csv:[csvFields.map(csvCell).join(','),...csvRows.map(row=>csvFields.map(field=>csvCell(row[field])).join(','))].join('\r\n')+'\r\n'};
+  const generatedAt = new Date().toISOString();
+  const scope = { aliases: aliases || null, from: from || null, to: to || null, productName: productName || null };
+  const csvRows = rows.map((row) => ({ export_generated_at: generatedAt, filter_branch_scope: JSON.stringify(scope.aliases),
+    filter_from: scope.from, filter_to: scope.to, filter_product: scope.productName, ...row }));
+  const csvFields = ['export_generated_at', 'filter_branch_scope', 'filter_from', 'filter_to', 'filter_product', ...fields];
+  return { schemaVersion: 1, generatedAt, scope,
+    saleCount: new Set(firsts.map((row) => row.sale_reference || row.movement_id)).size,
+    saleLineCount: firsts.length, sourceLayerCount: rows.length, warnings,
+    notes: [
+    'All matching sales, not only the displayed detail page. Sources are frozen sale snapshots, not current catalogue values.',
+    'Decimal amounts are strings to retain precision. Import CSV decimal columns as text; JSON retains exact decimal strings.',
+    'Actual revenue, known-cost subtotal and profit appear on the first layer of each movement only. Scope totals repeat and are nonadditive.',
+    'Receipt-level expense and landed-value totals repeat for traceability and must not be summed across sale layers.',
+    'Matched profit requires revenue, known costs and matching base quantity. Complete audit profit additionally requires source/import, expiry and allocated-expense evidence on every layer.'],
+    summary: { knownCostSubtotal: rows[0]?.scope_known_cost_subtotal_nonadditive ?? '0',
+      knownRevenueSubtotal: rows[0]?.scope_known_revenue_subtotal_nonadditive ?? '0',
+      completeAuditProfit: rows.length ? rows[0].scope_complete_audit_profit_nonadditive : '0' },
+    records: rows,
+    csv: [csvFields.map(csvCell).join(','), ...csvRows.map((row) => csvFields.map((field) => csvCell(row[field])).join(','))].join('\r\n') + '\r\n' };
 }

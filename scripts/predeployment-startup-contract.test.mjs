@@ -39,7 +39,7 @@ const rows=Object.entries(schema.REQUIRED_STARTUP_SCHEMA).flatMap(([table,names]
   names.map(column=>({table_name:table,column_name:column,readable:true})));
 test('exact complete contract uses metadata SELECT only',async()=>{
   let calls=0;const result=await schema.checkStartupCompatibility(async sql=>{
-    calls++;assert.match(sql,/^\s*SELECT/i);assert(!/\b(INSERT|UPDATE|DELETE|CREATE|ALTER|DROP)\b/i.test(sql));return {rows};
+    calls++;assert.match(String(sql),/^\s*SELECT/i);assert(!/\b(INSERT|UPDATE|DELETE|CREATE|ALTER|DROP)\b/i.test(sql));return {rows};
   },policy.createStartupPolicy(config));
   assert.equal(result.compatible,true);assert.equal(calls,1);
 });

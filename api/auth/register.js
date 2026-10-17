@@ -1,35 +1,35 @@
-import bcrypt from 'bcryptjs';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../services/queryDescriptors.js";import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { getOne, insert } from '../db.js';
 import { applyAuthCors } from '../_lib/auth.js';
 import { normalizeBranchSlug } from '../_lib/branchUtils.js';
 
 const VALID_ROLES = [
-  'frontdesk',
-  'consultant',
-  'dispenser',
-  'branch_manager',
-  'finance',
-  'hr_manager',
-  'gm',
-  'director',
-  'mis',
-  'stock',
-  'warehouse',
-  'training',
-  'trainer',
-  'cleaner',
-  'security_guard',
-  'support_staff',
-];
+'frontdesk',
+'consultant',
+'dispenser',
+'branch_manager',
+'finance',
+'hr_manager',
+'gm',
+'director',
+'mis',
+'stock',
+'warehouse',
+'training',
+'trainer',
+'cleaner',
+'security_guard',
+'support_staff'];
+
 
 function generateUsername(fullName) {
-  const parts = fullName
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z\s]/g, '')
-    .split(/\s+/)
-    .filter(Boolean);
+  const parts = fullName.
+  toLowerCase().
+  trim().
+  replace(/[^a-z\s]/g, '').
+  split(/\s+/).
+  filter(Boolean);
 
   if (parts.length === 0) return null;
   if (parts.length === 1) return parts[0];
@@ -101,15 +101,15 @@ export default async function handler(req, res) {
 
     // Use provided username if valid, otherwise generate from full name
     const requestedUsername = (body?.username || '').trim().toLowerCase();
-    let username = (requestedUsername && /^[a-z0-9._-]+$/.test(requestedUsername))
-      ? requestedUsername
-      : generateUsername(fullName);
+    let username = requestedUsername && /^[a-z0-9._-]+$/.test(requestedUsername) ?
+    requestedUsername :
+    generateUsername(fullName);
 
     if (!username) {
       return res.status(400).json({ error: 'Could not generate username from full_name' });
     }
 
-    const existing = await getOne('SELECT id FROM users WHERE username = $1', [username]);
+    const existing = await __qd_executePlan(getOne, __qd_registeredPlan("api/auth/register.js:112:0"), [username]);
     if (existing) {
       if (requestedUsername === username) {
         return res.status(409).json({ error: 'Username already taken. Please choose a different username.' });
@@ -117,7 +117,7 @@ export default async function handler(req, res) {
       let suffix = 1;
       let candidate = `${username}${suffix}`;
       while (true) {
-        const check = await getOne('SELECT id FROM users WHERE username = $1', [candidate]);
+        const check = await __qd_executePlan(getOne, __qd_registeredPlan("api/auth/register.js:120:1"), [candidate]);
         if (!check) {
           username = candidate;
           break;
@@ -145,7 +145,7 @@ export default async function handler(req, res) {
 
     const warehouseLocation = body?.warehouse_location?.trim() || null;
     const warehouseRole = body?.warehouse_role?.trim() || null;
-    const rawEffectiveBranch = (['stock', 'warehouse'].includes(role) && warehouseLocation) ? warehouseLocation : (branch || null);
+    const rawEffectiveBranch = ['stock', 'warehouse'].includes(role) && warehouseLocation ? warehouseLocation : branch || null;
     const effectiveBranch = normalizeBranchSlug(rawEffectiveBranch) || rawEffectiveBranch || null;
 
     const metadata = JSON.stringify({ dob, position, department, branch: effectiveBranch, phone, id_number: idNumber, gender, address, warehouse_location: warehouseLocation, warehouse_role: warehouseRole });
@@ -159,7 +159,7 @@ export default async function handler(req, res) {
       email,
       branch: effectiveBranch,
       is_active: false,
-      metadata,
+      metadata
     });
 
     try {
@@ -178,7 +178,7 @@ export default async function handler(req, res) {
         hire_date: new Date().toISOString().slice(0, 10),
         employment_status: 'pending',
         address: address || null,
-        dob: dob || null,
+        dob: dob || null
       });
     } catch (empErr) {
       console.error('Employee record creation (non-critical):', empErr.message);
@@ -187,7 +187,7 @@ export default async function handler(req, res) {
     return res.status(201).json({
       success: true,
       message: 'Account created! Pending admin approval before login is enabled.',
-      username,
+      username
     });
   } catch (error) {
     console.error('Registration error:', error);

@@ -1,19 +1,19 @@
-import './api/services/runtimeDiagnostics.js';
+import { registeredPlan as __qd_registeredPlan, joinPlans as __qd_joinPlans, executePlan as __qd_executePlan } from "./api/services/queryDescriptors.js";import './api/services/runtimeDiagnostics.js';
 import express from 'express';
-import {errorOutputBoundary} from './api/services/errorOutputBoundary.js';
+import { errorOutputBoundary } from './api/services/errorOutputBoundary.js';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
 import { atomicStockRequest } from './api/_lib/atomicStockRequest.js';
-import {createStartupPolicy, runStartupOperation} from './api/services/startupPolicy.js';
-import {checkStartupCompatibility, readinessFor, setStartupReadiness,
-  startupReadinessGate} from './api/services/startupSchema.js';
+import { createStartupPolicy, runStartupOperation } from './api/services/startupPolicy.js';
+import { checkStartupCompatibility, readinessFor, setStartupReadiness,
+startupReadinessGate } from './api/services/startupSchema.js';
 
 const startupPolicy = createStartupPolicy(process.env);
 setStartupReadiness(readinessFor(startupPolicy));
-console.info(JSON.stringify({event:'startup.policy', ...startupPolicy}));
+console.info(JSON.stringify({ event: 'startup.policy', ...startupPolicy }));
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 5000;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -22,11 +22,11 @@ const __dirname = path.dirname(__filename);
 
 const DEPLOY_VERSION = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const VERSION_FILE = path.join(__dirname, 'version.json');
-runStartupOperation(startupPolicy, 'runtime-version-file', () => { try {
-  fs.writeFileSync(VERSION_FILE, JSON.stringify({ version: DEPLOY_VERSION, deployedAt: new Date().toISOString() }), 'utf8');
-} catch (e) {
-  console.warn('Could not write version.json:', e.message);
-} });
+runStartupOperation(startupPolicy, 'runtime-version-file', () => {try {
+    fs.writeFileSync(VERSION_FILE, JSON.stringify({ version: DEPLOY_VERSION, deployedAt: new Date().toISOString() }), 'utf8');
+  } catch (e) {
+    console.warn('Could not write version.json:', e.message);
+  }});
 
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
 runStartupOperation(startupPolicy, 'uploads-directory', () => {
@@ -58,7 +58,7 @@ app.use('/uploads', express.static(UPLOADS_DIR, {
     if (['.mp4', '.webm', '.ogg', '.mov'].includes(ext)) {
       res.setHeader('Accept-Ranges', 'bytes');
     }
-  },
+  }
 }));
 
 // Serve files from Replit persistent object storage — new uploads go here
@@ -90,8 +90,8 @@ app.get('/api/obj/*', async (req, res) => {
   try {
     const objectName = req.path.replace(/^\/api\/obj\//, '');
     // Clinical attachments are served only by the scoped authenticated endpoint.
-    if(decodeURIComponent(objectName).includes('client-history-private'))
-      return res.status(404).json({error:'File not found'});
+    if (decodeURIComponent(objectName).includes('client-history-private'))
+    return res.status(404).json({ error: 'File not found' });
     const client = await getStorageClient();
     if (!objectName) return res.status(400).json({ error: 'No object path specified' });
 
@@ -101,7 +101,7 @@ app.get('/api/obj/*', async (req, res) => {
       '.ogg': 'video/ogg', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
       '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp',
       '.pdf': 'application/pdf', '.doc': 'application/msword',
-      '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     };
     const contentType = mimeMap[ext] || 'application/octet-stream';
     const isVideo = ['.mp4', '.webm', '.ogg', '.mov', '.avi', '.mkv', '.m4v', '.3gp'].includes(ext);
@@ -167,68 +167,68 @@ app.use((req, res, next) => {
 });
 
 const PUBLIC_ROUTE_PREFIXES = [
-  '/api/auth/',
-  '/api/health',
-  '/api/distributor-login',
-  '/api/distributors',
-  '/api/distributor-agreement',
-  '/api/distributor-import',
-  '/api/orders',
-  '/api/delivery',
-  '/api/appointments',
-  '/api/collect',
-  '/api/realtime_publish',
-  '/api/send-email',
-  '/api/reports',
-  '/api/clients',
-  '/api/employees',
-  '/api/users',
-  '/api/stock-batches',
-  '/api/stock-requests',
-  '/api/stock-movements',
-  '/api/stock/',
-  '/api/stock/transfers',
-  '/api/stock/import',
-  '/api/stock/dispatch',
-  '/api/supplier-imports',
-  '/api/field-stock',
-  '/api/branch/',
-  '/api/leave-requests',
-  '/api/cash-requests',
-  '/api/mis/',
-  '/api/admin/',
-  '/api/distributor-statements',
-  '/api/gm/',
-  '/api/finance/',
-  '/api/director/',
-  '/api/system',
-  '/api/sales',
-  '/api/consultations',
-  '/api/prescriptions',
-  '/api/receipts',
-  '/api/prices',
-  '/api/upload',
-  '/api/field_program_requests',
-  '/api/campaigns',
-  '/api/products',
-  '/api/branches',
-  '/api/product_images',
-  '/api/notifications',
-  '/api/media',
-  '/api/obj/',
-  '/api/branch-activity',
-  '/api/branch-client-visits',
-  '/api/reports/branch-sales',
-  '/api/jobs/',
-  '/api/hr/',
-  '/api/version',
-];
+'/api/auth/',
+'/api/health',
+'/api/distributor-login',
+'/api/distributors',
+'/api/distributor-agreement',
+'/api/distributor-import',
+'/api/orders',
+'/api/delivery',
+'/api/appointments',
+'/api/collect',
+'/api/realtime_publish',
+'/api/send-email',
+'/api/reports',
+'/api/clients',
+'/api/employees',
+'/api/users',
+'/api/stock-batches',
+'/api/stock-requests',
+'/api/stock-movements',
+'/api/stock/',
+'/api/stock/transfers',
+'/api/stock/import',
+'/api/stock/dispatch',
+'/api/supplier-imports',
+'/api/field-stock',
+'/api/branch/',
+'/api/leave-requests',
+'/api/cash-requests',
+'/api/mis/',
+'/api/admin/',
+'/api/distributor-statements',
+'/api/gm/',
+'/api/finance/',
+'/api/director/',
+'/api/system',
+'/api/sales',
+'/api/consultations',
+'/api/prescriptions',
+'/api/receipts',
+'/api/prices',
+'/api/upload',
+'/api/field_program_requests',
+'/api/campaigns',
+'/api/products',
+'/api/branches',
+'/api/product_images',
+'/api/notifications',
+'/api/media',
+'/api/obj/',
+'/api/branch-activity',
+'/api/branch-client-visits',
+'/api/reports/branch-sales',
+'/api/jobs/',
+'/api/hr/',
+'/api/version'];
+
 
 function isPublicRoute(routePath) {
-  return PUBLIC_ROUTE_PREFIXES.some(prefix =>
-    routePath === prefix ||
-    routePath.startsWith(prefix.endsWith('/') ? prefix : prefix + '/') ||
-    routePath.startsWith(prefix + '?')
+  return PUBLIC_ROUTE_PREFIXES.some((prefix) =>
+  routePath === prefix ||
+  routePath.startsWith(prefix.endsWith('/') ? prefix : prefix + '/') ||
+  routePath.startsWith(prefix + '?')
   );
 }
 
@@ -237,22 +237,22 @@ app.use('/api', async (req, res, next) => {
 
   const routePath = req.baseUrl + req.path.replace(/\/$/, '');
   const isPublic = isPublicRoute(routePath);
-  const {isFreshCredentialLogin}=await import('./api/services/sessionPolicy.js');
-  if(isFreshCredentialLogin(req.method,routePath))return next();
+  const { isFreshCredentialLogin } = await import('./api/services/sessionPolicy.js');
+  if (isFreshCredentialLogin(req.method, routePath)) return next();
 
   try {
     const { getTokenFromRequest, verifyAuthToken } = await import('./api/_lib/auth.js');
     const token = getTokenFromRequest(req);
     const decoded = verifyAuthToken(token);
     if (decoded && decoded.sub) {
-      const {resolveSession} = await import('./api/services/credentialSecurity.js');
+      const { resolveSession } = await import('./api/services/credentialSecurity.js');
       req.user = await resolveSession(decoded);
-      if (!req.user) return res.status(401).json({error:'Session expired. Sign in again.'});
+      if (!req.user) return res.status(401).json({ error: 'Session expired. Sign in again.' });
       if (req.user.mustChangePassword && ![
-        '/api/auth/credential-security', '/api/auth/me', '/api/auth/logout'
-      ].includes(routePath))
-        return res.status(403).json({error:'Change your temporary password before continuing.',
-          code:'PASSWORD_CHANGE_REQUIRED'});
+      '/api/auth/credential-security', '/api/auth/me', '/api/auth/logout'].
+      includes(routePath))
+      return res.status(403).json({ error: 'Change your temporary password before continuing.',
+        code: 'PASSWORD_CHANGE_REQUIRED' });
     } else if (!isPublic) {
       return res.status(401).json({ success: false, error: 'Authentication required' });
     }
@@ -267,26 +267,26 @@ app.use('/api', async (req, res, next) => {
 
 // Retired legacy client contained local credential handling. Keep bookmarked URLs
 // usable, but serve the supported server-authenticated React application instead.
-app.get(['/dynapharm-complete-system','/dynapharm-complete-system.html'],
-  (req, res) => res.redirect('/'));
+app.get(['/dynapharm-complete-system', '/dynapharm-complete-system.html'],
+(req, res) => res.redirect('/'));
 // Apply due prices before any API handler can use the current catalogue.
-let priceActivationDay = null, priceActivationFlight = null;
-app.use('/api', async (req,res,next) => {
-  if(req.method === 'OPTIONS') return next();
+let priceActivationDay = null,priceActivationFlight = null;
+app.use('/api', async (req, res, next) => {
+  if (req.method === 'OPTIONS') return next();
   // A health/read-only request must not activate scheduled prices in code-only.
   if (!startupPolicy.writesAllowed) return next();
   try {
-    const {businessToday} = await import('./shared/price-list-import.js');
-    const day=businessToday();
-    if(priceActivationDay!==day) {
-      if(!priceActivationFlight) priceActivationFlight=(async()=>{
-        const {activateDuePrices}=await import('./api/services/priceImport.js');
-        await activateDuePrices(); priceActivationDay=day;
-      })().finally(()=>{priceActivationFlight=null;});
+    const { businessToday } = await import('./shared/price-list-import.js');
+    const day = businessToday();
+    if (priceActivationDay !== day) {
+      if (!priceActivationFlight) priceActivationFlight = (async () => {
+        const { activateDuePrices } = await import('./api/services/priceImport.js');
+        await activateDuePrices();priceActivationDay = day;
+      })().finally(() => {priceActivationFlight = null;});
       await priceActivationFlight;
     }
     next();
-  } catch(error) {res.status(503).json({error:'Live prices could not be refreshed. Please retry.'});}
+  } catch (error) {res.status(503).json({ error: 'Live prices could not be refreshed. Please retry.' });}
 });
 app.get('/distributor/guest', (req, res) => res.redirect('/distributor-guest.html'));
 app.get('/staff/appointments', (req, res) => res.redirect('/appointments-admin.html'));
@@ -370,17 +370,17 @@ app.get('/api/leave-requests', async (req, res) => {
   try {
     const { query } = await import('./api/db.js');
     const username = (req.user?.sub || req.user?.username || '').toLowerCase();
-    const { rows } = await query(
-      `SELECT id, employee_id AS staff, employee_name AS "staffName", leave_type AS type,
-              start_date AS "startDate", end_date AS "endDate", reason,
-              INITCAP(status) AS status,
-              COALESCE(urgent, false) AS urgent,
-              created_at AS "submittedAt"
-       FROM hr_leave_requests
-       WHERE LOWER(employee_id) = $1
-       ORDER BY created_at DESC`,
-      [username]
-    );
+    const { rows } = await __qd_executePlan(query, __qd_registeredPlan("server.js:374:0"),
+
+
+
+
+
+
+
+
+    [username]);
+
     res.json(rows);
   } catch (err) {
     console.error('leave-requests GET:', err);
@@ -397,11 +397,11 @@ app.post('/api/leave-requests', async (req, res) => {
     if (!type || !startDate || !endDate || !reason) {
       return res.status(400).json({ success: false, error: 'Missing required fields' });
     }
-    await query(
-      `INSERT INTO hr_leave_requests (employee_id, employee_name, leave_type, start_date, end_date, reason, urgent, status, created_by, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8, NOW(), NOW())`,
-      [username, staffName, type, startDate, endDate, reason, !!urgent, username]
-    );
+    await __qd_executePlan(query, __qd_registeredPlan("server.js:401:1"),
+
+
+    [username, staffName, type, startDate, endDate, reason, !!urgent, username]);
+
     res.json({ success: true });
   } catch (err) {
     console.error('leave-requests POST:', err);
@@ -417,33 +417,33 @@ app.get('/api/leave-requests/admin', async (req, res) => {
     const allowed = ['admin', 'finance', 'gm', 'director', 'mis'];
     if (!allowed.includes(role)) return res.status(403).json({ error: 'Access denied' });
     const { status } = req.query;
-    let sql = `SELECT l.id,
-                      l.employee_id AS staff,
-                      COALESCE(l.employee_name, u.full_name, l.employee_id) AS "staffName",
-                      COALESCE(u.branch, e.branch, '') AS branch,
-                      COALESCE(u.role, e.position, '') AS "staffRole",
-                      l.leave_type AS type,
-                      l.start_date AS "startDate",
-                      l.end_date AS "endDate",
-                      l.reason,
-                      INITCAP(l.status) AS status,
-                      COALESCE(l.urgent, false) AS urgent,
-                      l.created_at AS "submittedAt",
-                      l.approved_by AS "approvedBy",
-                      l.approved_at AS "approvedAt",
-                      l.notes
-               FROM hr_leave_requests l
-               LEFT JOIN users u
-                 ON LOWER(TRIM(u.username)) = LOWER(TRIM(l.employee_id))
-                 OR LOWER(TRIM(u.id::text)) = LOWER(TRIM(l.employee_id))
-               LEFT JOIN employees e
-                 ON LOWER(TRIM(e.full_name)) = LOWER(TRIM(l.employee_name))`;
+    let sql = __qd_registeredPlan("server.js:420:2");
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     const params = [];
     const conds = [];
-    if (status) { params.push(status); conds.push(`LOWER(l.status) = LOWER($${params.length})`); }
-    if (conds.length) sql += ' WHERE ' + conds.join(' AND ');
-    sql += ' ORDER BY l.created_at DESC LIMIT 500';
-    const { rows } = await query(sql, params);
+    if (status) {params.push(status);conds.push(__qd_registeredPlan("server.js:443:4", [params.length]));}
+    if (conds.length) sql = __qd_joinPlans([sql, __qd_joinPlans([__qd_registeredPlan("server.js:444:3"), __qd_joinPlans(conds, "and")], "empty")], "empty");
+    sql = __qd_joinPlans([sql, __qd_registeredPlan("server.js:445:5")], "empty");
+    const { rows } = await __qd_executePlan(query, sql, params);
     res.json(rows);
   } catch (err) {
     console.error('leave-requests/admin GET:', err);
@@ -463,15 +463,15 @@ app.patch('/api/leave-requests/:id', atomicStockRequest(async (req, res) => {
     if (!['approved', 'rejected'].includes(status)) {
       return res.status(400).json({ error: 'Status must be approved or rejected' });
     }
-    const existing = await getOne('SELECT * FROM hr_leave_requests WHERE id = $1 FOR UPDATE', [id]);
+    const existing = await __qd_executePlan(getOne, __qd_registeredPlan("server.js:466:6"), [id]);
     if (!existing) return res.status(404).json({ error: 'Leave request not found' });
-    if (existing.status===status) return res.json({success:true,status});
-    if (existing.status!=='pending') return res.status(409).json({error:'Leave request is already reviewed'});
+    if (existing.status === status) return res.json({ success: true, status });
+    if (existing.status !== 'pending') return res.status(409).json({ error: 'Leave request is already reviewed' });
     const actorName = req.user?.sub || req.user?.id || req.user?.username;
-    await query(
-      `UPDATE hr_leave_requests SET status = $1, approved_by = $2, notes = $3, approved_at = NOW(), updated_at = NOW() WHERE id = $4`,
-      [status, actorName, note || null, id]
-    );
+    await __qd_executePlan(query, __qd_registeredPlan("server.js:472:7"),
+
+    [status, actorName, note || null, id]);
+
     res.json({ success: true, status });
   } catch (err) {
     console.error('leave-requests PATCH:', err);
@@ -483,19 +483,19 @@ app.get('/api/cash-requests', async (req, res) => {
   try {
     const { query } = await import('./api/db.js');
     const username = (req.user?.sub || req.user?.username || '').toLowerCase();
-    const { rows } = await query(
-      `SELECT id, request_number AS "requestNumber", requested_by AS staff,
-              branch,
-              COALESCE(data->>'expenseCategory', 'General') AS "expenseCategory",
-              CAST(amount AS TEXT) AS amount, purpose,
-              INITCAP(status) AS status,
-              data->>'neededBy' AS "neededBy",
-              created_at AS "submittedAt"
-       FROM finance_cash_requests
-       WHERE LOWER(requested_by) = $1
-       ORDER BY created_at DESC`,
-      [username]
-    );
+    const { rows } = await __qd_executePlan(query, __qd_registeredPlan("server.js:487:8"),
+
+
+
+
+
+
+
+
+
+
+    [username]);
+
     res.json(rows);
   } catch (err) {
     console.error('cash-requests GET:', err);
@@ -514,19 +514,19 @@ app.post('/api/cash-requests', async (req, res) => {
     }
     const reqNum = 'CAS-' + Date.now();
     const branchName = req.user?.branch || 'unknown';
-    await query(
-      `INSERT INTO finance_cash_requests (id, request_number, branch, amount, purpose, status, requested_by, created_at, data)
-       VALUES ($1, $2, $3, $4, $5, 'pending', $6, NOW(), $7::jsonb)`,
-      [
-        'CAS-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
-        reqNum,
-        branchName,
-        parseFloat(amount),
-        purpose,
-        username,
-        JSON.stringify({ submittedByName: staffName, expenseCategory: expenseCategory || 'General', neededBy: neededBy || null }),
-      ]
-    );
+    await __qd_executePlan(query, __qd_registeredPlan("server.js:518:9"),
+
+
+    [
+    'CAS-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+    reqNum,
+    branchName,
+    parseFloat(amount),
+    purpose,
+    username,
+    JSON.stringify({ submittedByName: staffName, expenseCategory: expenseCategory || 'General', neededBy: neededBy || null })]);
+
+
     res.json({ success: true });
   } catch (err) {
     console.error('cash-requests POST:', err);
@@ -543,25 +543,25 @@ app.get('/api/cash-requests/admin', async (req, res) => {
     if (!allowed.includes(role)) return res.status(403).json({ error: 'Access denied' });
     const { status, branch } = req.query;
     // JOIN users to resolve requester full name, role, and branch
-    let sql = `SELECT r.id, r.request_number, r.branch, r.amount, r.purpose, r.status,
-                      r.requested_by,
-                      COALESCE(u.full_name, r.data->>'submittedByName', r.data->>'staffName', r.requested_by) AS submitted_by_name,
-                      COALESCE(r.data->>'expenseCategory', 'General') AS expense_category,
-                      r.data->>'neededBy'    AS needed_by,
-                      r.data->>'financeNote' AS finance_note,
-                      r.data->>'gmNote'      AS gm_note,
-                      r.data->>'reviewedBy'  AS reviewed_by,
-                      r.data->>'gmApprovedBy' AS gm_approved_by,
-                      r.created_at, r.updated_at
-               FROM finance_cash_requests r
-               LEFT JOIN users u ON LOWER(TRIM(u.username)) = LOWER(TRIM(r.requested_by))`;
+    let sql = __qd_registeredPlan("server.js:546:10");
+
+
+
+
+
+
+
+
+
+
+
     const params = [];
     const conds = [];
-    if (status) { params.push(status); conds.push(`r.status = $${params.length}`); }
-    if (branch) { params.push(branch); conds.push(`r.branch = $${params.length}`); }
-    if (conds.length) sql += ' WHERE ' + conds.join(' AND ');
-    sql += ' ORDER BY r.created_at DESC';
-    const { rows } = await query(sql, params);
+    if (status) {params.push(status);conds.push(__qd_registeredPlan("server.js:560:12", [params.length]));}
+    if (branch) {params.push(branch);conds.push(__qd_registeredPlan("server.js:561:13", [params.length]));}
+    if (conds.length) sql = __qd_joinPlans([sql, __qd_joinPlans([__qd_registeredPlan("server.js:562:11"), __qd_joinPlans(conds, "and")], "empty")], "empty");
+    sql = __qd_joinPlans([sql, __qd_registeredPlan("server.js:563:14")], "empty");
+    const { rows } = await __qd_executePlan(query, sql, params);
     res.json(rows);
   } catch (err) {
     console.error('cash-requests/admin GET:', err);
@@ -578,14 +578,14 @@ app.patch('/api/cash-requests/:id', atomicStockRequest(async (req, res) => {
     if (!allowed.includes(role)) return res.status(403).json({ error: 'Access denied' });
     const { id } = req.params;
     const { status, note } = req.body;
-    if (!['finance_reviewed','approved','rejected'].includes(status)) return res.status(400).json({error:'Invalid review status'});
-    if (['approved','rejected'].includes(status) && role==='finance') return res.status(403).json({error:'GM approval access required'});
-    if (status==='finance_reviewed' && !['finance','admin'].includes(role)) return res.status(403).json({error:'Finance review access required'});
+    if (!['finance_reviewed', 'approved', 'rejected'].includes(status)) return res.status(400).json({ error: 'Invalid review status' });
+    if (['approved', 'rejected'].includes(status) && role === 'finance') return res.status(403).json({ error: 'GM approval access required' });
+    if (status === 'finance_reviewed' && !['finance', 'admin'].includes(role)) return res.status(403).json({ error: 'Finance review access required' });
     const actorName = req.user?.sub || req.user?.id || req.user?.username;
-    const existing = await getOne('SELECT * FROM finance_cash_requests WHERE id = $1 FOR UPDATE', [id]);
+    const existing = await __qd_executePlan(getOne, __qd_registeredPlan("server.js:585:15"), [id]);
     if (!existing) return res.status(404).json({ error: 'Request not found' });
-    if (existing.status===status) return res.json({success:true,status});
-    if (!['pending','finance_reviewed'].includes(existing.status)) return res.status(409).json({error:'Cash request is already reviewed'});
+    if (existing.status === status) return res.json({ success: true, status });
+    if (!['pending', 'finance_reviewed'].includes(existing.status)) return res.status(409).json({ error: 'Cash request is already reviewed' });
     // Merge additional tracking into JSONB data
     const currentData = existing.data || {};
     const dataUpdates = { ...currentData };
@@ -602,10 +602,10 @@ app.patch('/api/cash-requests/:id', atomicStockRequest(async (req, res) => {
       dataUpdates.gmNote = note || null;
       dataUpdates.rejectedAt = new Date().toISOString();
     }
-    await query(
-      `UPDATE finance_cash_requests SET status = $1, data = $2::jsonb, updated_at = NOW() WHERE id = $3`,
-      [status, JSON.stringify(dataUpdates), id]
-    );
+    await __qd_executePlan(query, __qd_registeredPlan("server.js:606:16"),
+
+    [status, JSON.stringify(dataUpdates), id]);
+
     res.json({ success: true, status });
   } catch (err) {
     console.error('cash-requests PATCH:', err);
@@ -623,16 +623,16 @@ app.get('/api/dept-expenses', async (req, res) => {
     let rows;
     if (adminRoles.includes(role)) {
       const { department } = req.query;
-      let sql = 'SELECT * FROM dept_expenses';
+      let sql = __qd_registeredPlan("server.js:626:17");
       const params = [];
-      if (department) { params.push(department); sql += ' WHERE department = $1'; }
-      sql += ' ORDER BY created_at DESC LIMIT 500';
-      ({ rows } = await query(sql, params));
+      if (department) {params.push(department);sql = __qd_joinPlans([sql, __qd_registeredPlan("server.js:628:18")], "empty");}
+      sql = __qd_joinPlans([sql, __qd_registeredPlan("server.js:629:19")], "empty");
+      ({ rows } = await __qd_executePlan(query, sql, params));
     } else {
-      ({ rows } = await query(
-        'SELECT * FROM dept_expenses WHERE LOWER(submitted_by) = $1 ORDER BY created_at DESC',
-        [username]
-      ));
+      ({ rows } = await __qd_executePlan(query, __qd_registeredPlan("server.js:633:20"),
+
+      [username]));
+
     }
     res.json({ success: true, expenses: rows });
   } catch (err) {
@@ -649,11 +649,11 @@ app.post('/api/dept-expenses', async (req, res) => {
     if (!department || !category || !amount || !description) {
       return res.status(400).json({ success: false, error: 'Department, category, amount, and description are required' });
     }
-    const { rows } = await query(
-      `INSERT INTO dept_expenses (submitted_by, department, category, amount, description, date, receipt_ref, status, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', NOW(), NOW()) RETURNING *`,
-      [username, department, category, Number(amount), description, date || new Date().toISOString().slice(0, 10), receipt_ref || null]
-    );
+    const { rows } = await __qd_executePlan(query, __qd_registeredPlan("server.js:653:21"),
+
+
+    [username, department, category, Number(amount), description, date || new Date().toISOString().slice(0, 10), receipt_ref || null]);
+
     res.status(201).json({ success: true, expense: rows[0] });
   } catch (err) {
     console.error('dept-expenses POST:', err);
@@ -671,10 +671,10 @@ app.patch('/api/dept-expenses/:id', async (req, res) => {
     const { status, notes } = req.body;
     if (!['approved', 'rejected'].includes(status)) return res.status(400).json({ error: 'Invalid status' });
     const actorName = req.user?.full_name || req.user?.username || role;
-    const { rows } = await query(
-      `UPDATE dept_expenses SET status=$1, reviewed_by=$2, reviewed_at=NOW(), notes=$3, updated_at=NOW() WHERE id=$4 RETURNING *`,
-      [status, actorName, notes || null, id]
-    );
+    const { rows } = await __qd_executePlan(query, __qd_registeredPlan("server.js:675:22"),
+
+    [status, actorName, notes || null, id]);
+
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
     res.json({ success: true, expense: rows[0] });
   } catch (err) {
@@ -690,19 +690,19 @@ app.get('/api/stock-adjustments', async (req, res) => {
     const { status, target_id } = req.query;
     const params = [];
     const conds = [];
-    if (status) { params.push(status); conds.push(`sa.status = $${params.length}`); }
-    if (target_id) { params.push(target_id); conds.push(`sa.target_id = $${params.length}`); }
-    const whereClause = conds.length ? ' WHERE ' + conds.join(' AND ') : '';
-    const sql = `SELECT sa.*,
-      COALESCE(
-        CASE WHEN sa.requested_by_name IS NOT NULL AND sa.requested_by_name != sa.requested_by THEN sa.requested_by_name END,
-        u.full_name, u.username, sa.requested_by_name, sa.requested_by
-      ) AS requested_by_name
-      FROM stock_adjustments sa
-      LEFT JOIN users u ON u.id::text = sa.requested_by OR (u.username = sa.requested_by AND sa.requested_by NOT LIKE '%-%-%-%-%')
-      ${whereClause}
-      ORDER BY sa.created_at DESC`;
-    const { rows } = await query(sql, params);
+    if (status) {params.push(status);conds.push(__qd_registeredPlan("server.js:693:24", [params.length]));}
+    if (target_id) {params.push(target_id);conds.push(__qd_registeredPlan("server.js:694:25", [params.length]));}
+    const whereClause = conds.length ? __qd_joinPlans([__qd_registeredPlan("server.js:695:23"), __qd_joinPlans(conds, "and")], "empty") : __qd_registeredPlan("server.js:695:26");
+    const sql = __qd_registeredPlan("server.js:696:27", [
+
+
+
+
+
+
+    whereClause]);
+
+    const { rows } = await __qd_executePlan(query, sql, params);
     res.json(rows);
   } catch (err) {
     console.error('stock-adjustments GET:', err);
@@ -721,11 +721,11 @@ app.post('/api/stock-adjustments', async (req, res) => {
     const adj_number = 'ADJ-' + String(Date.now()).slice(-6);
     const requested_by = req.user?.username || req.user?.sub || 'unknown';
     const requested_by_name = req.user?.fullName || req.user?.full_name || req.user?.name || requested_by;
-    await query(
-      `INSERT INTO stock_adjustments (id, adj_number, target_type, target_id, product_name, location, field_to_adjust, old_value, new_value, reason, requested_by, requested_by_name, status, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'pending',NOW(),NOW())`,
-      [id, adj_number, target_type, target_id || null, product_name || null, location || null, field_to_adjust, old_value || null, new_value, reason, requested_by, requested_by_name]
-    );
+    await __qd_executePlan(query, __qd_registeredPlan("server.js:725:28"),
+
+
+    [id, adj_number, target_type, target_id || null, product_name || null, location || null, field_to_adjust, old_value || null, new_value, reason, requested_by, requested_by_name]);
+
     res.status(201).json({ success: true, id, adj_number });
   } catch (err) {
     console.error('stock-adjustments POST:', err);
@@ -749,9 +749,9 @@ const approveStockAdjustment = atomicStockRequest(async (req, res) => {
     const approved_by = req.user?.sub || req.user?.username || 'gm';
     const approved_by_name = req.user?.fullName || req.user?.full_name || req.user?.name || approved_by;
 
-    const adj = await getOne('SELECT * FROM stock_adjustments WHERE id = $1 FOR UPDATE', [adjId]);
+    const adj = await __qd_executePlan(getOne, __qd_registeredPlan("server.js:752:29"), [adjId]);
     if (!adj) return res.status(404).json({ error: 'Adjustment not found' });
-    if (adj.status === 'approved') return res.json({success:true,message:'Adjustment already approved'});
+    if (adj.status === 'approved') return res.json({ success: true, message: 'Adjustment already approved' });
     if (adj.status !== 'pending') return res.status(409).json({ error: 'Already processed' });
 
     const { field_to_adjust, new_value, target_id, target_type } = adj;
@@ -766,7 +766,7 @@ const approveStockAdjustment = atomicStockRequest(async (req, res) => {
       expiry_date: 'expiry_date',
       unit_price: 'unit_price',
       dpc_unit_value: 'dpc_unit_value',
-      notes: 'notes',
+      notes: 'notes'
     };
 
     // Helper: map target_type → location_type string used by stockEngine
@@ -781,11 +781,11 @@ const approveStockAdjustment = atomicStockRequest(async (req, res) => {
 
     if (target_id && field_to_adjust) {
       if (['import', 'country_stock', 'warehouse', 'branch'].includes(target_type)) {
-        const dbCol = Object.hasOwn(batchColumnMap,field_to_adjust) ? batchColumnMap[field_to_adjust] : null;
+        const dbCol = Object.hasOwn(batchColumnMap, field_to_adjust) ? batchColumnMap[field_to_adjust] : null;
         if (!dbCol) return res.status(400).json({ error: `Field '${field_to_adjust}' is not adjustable` });
 
         // Fetch current batch for audit trail (batch_no, expiry_date, location)
-        const batchRow = await getOne('SELECT batch_no, expiry_date, location, warehouse_id, remaining_quantity FROM stock_batches WHERE id = $1 FOR UPDATE', [target_id]);
+        const batchRow = await __qd_executePlan(getOne, __qd_registeredPlan("server.js:788:30"), [target_id]);
         if (!batchRow) return res.status(404).json({ error: 'Target stock batch not found; approval was not applied.' });
         const qtyDelta = field_to_adjust === 'quantity' ? Number(new_value) - Number(batchRow.remaining_quantity || 0) : 0;
         if (field_to_adjust === 'quantity' && (!Number.isFinite(Number(new_value)) || Number(new_value) < 0 || !Number.isInteger(Number(new_value)))) return res.status(400).json({ error: 'Quantity must be a nonnegative whole base-unit quantity.' });
@@ -798,14 +798,14 @@ const approveStockAdjustment = atomicStockRequest(async (req, res) => {
           // every server restart.  'positive_adjustment'/'negative_adjustment' are
           // already in the reconciliation exclusion list, so the audit movement
           // won't re-trigger it.
-          await query(
-            `UPDATE stock_batches
-             SET remaining_quantity = $1,
-                 quantity           = GREATEST(quantity + $2, $1),
-                 updated_at         = NOW()
-             WHERE id = $3`,
-            [Number(new_value), qtyDelta, target_id]
-          );
+          await __qd_executePlan(query, __qd_registeredPlan("server.js:802:31"),
+
+
+
+
+
+          [Number(new_value), qtyDelta, target_id]);
+
 
           // B/C: Only insert a movement for quantity changes (not for metadata edits).
           // F: Use positive_adjustment vs negative_adjustment based on delta direction.
@@ -816,28 +816,28 @@ const approveStockAdjustment = atomicStockRequest(async (req, res) => {
           const batchLocType = toLocType(target_type);
           const movId = 'MOV-ADJ-' + Date.now() + '-' + Math.floor(Math.random() * 9999);
           if (qtyDelta !== 0) {
-          try {
-            await query(
-              `INSERT INTO stock_movements
-                 (id, product_name, batch_no, expiry_date, quantity, movement_type,
-                  source_location, source_location_type,
-                  destination_location, destination_location_type,
-                  reference_id, notes, created_by, status, created_at, updated_at)
-               VALUES ($1,$2,$3,$4::date,$5,$6,$7,$8,$7,$8,$9,$10,$11,'posted',NOW(),NOW())`,
+            try {
+              await __qd_executePlan(query, __qd_registeredPlan("server.js:821:32"),
+
+
+
+
+
+
               [movId, adj.product_name || 'Unknown',
-               batchRow?.batch_no || null, batchRow?.expiry_date || null,
-               movQty, movType,
-               batchLoc, batchLocType,
-               adjId,
-               `Approved correction: ${field_to_adjust} changed from ${adj.old_value} to ${new_value}. Ref: ${adj.adj_number}`,
-               approved_by]
-            );
-          } catch (movErr) {
-            console.warn('stock_movements insert skipped:', movErr.message);
-          }
+              batchRow?.batch_no || null, batchRow?.expiry_date || null,
+              movQty, movType,
+              batchLoc, batchLocType,
+              adjId,
+              `Approved correction: ${field_to_adjust} changed from ${adj.old_value} to ${new_value}. Ref: ${adj.adj_number}`,
+              approved_by]);
+
+            } catch (movErr) {
+              console.warn('stock_movements insert skipped:', movErr.message);
+            }
           }
         } else {
-          await query(`UPDATE stock_batches SET ${dbCol} = $1, updated_at = NOW() WHERE id = $2`, [new_value, target_id]);
+          await __qd_executePlan(query, __qd_registeredPlan("server.js:840:33", [dbCol]), [new_value, target_id]);
           // B: No movement for non-quantity field changes (expiry_date, batch_no, unit_price, notes).
           // These are metadata corrections and don't represent stock flow.
         }
@@ -851,14 +851,14 @@ const approveStockAdjustment = atomicStockRequest(async (req, res) => {
         // The linked stock_request_items represent the original request; the transfer items
         // drive what was actually dispatched and received.
         if (field_to_adjust === 'quantity') {
-          await query(
-            `UPDATE stock_transfer_items
-             SET quantity_approved = $1, updated_at = NOW()
-             WHERE transfer_id = $2 AND LOWER(TRIM(product_name)) = LOWER(TRIM($3))`,
-            [Number(new_value), target_id, adj.product_name || '']
-          );
+          await __qd_executePlan(query, __qd_registeredPlan("server.js:855:34"),
+
+
+
+          [Number(new_value), target_id, adj.product_name || '']);
+
         } else if (field_to_adjust === 'notes') {
-          await query(`UPDATE stock_transfers SET dispatch_notes = $1, updated_at = NOW() WHERE id = $2`, [new_value, target_id]);
+          await __qd_executePlan(query, __qd_registeredPlan("server.js:861:35"), [new_value, target_id]);
         }
 
         // Log movement for distribution quantity changes only.
@@ -867,20 +867,20 @@ const approveStockAdjustment = atomicStockRequest(async (req, res) => {
           const movType = qtyDelta >= 0 ? 'positive_adjustment' : 'negative_adjustment';
           const movId = 'MOV-ADJ-' + Date.now() + '-' + Math.floor(Math.random() * 9999);
           try {
-            await query(
-              `INSERT INTO stock_movements
-                 (id, product_name, quantity, movement_type,
-                  source_location, source_location_type,
-                  destination_location, destination_location_type,
-                  reference_id, notes, created_by, status, created_at, updated_at)
-               VALUES ($1,$2,$3,$4,$5,'warehouse',$5,'warehouse',$6,$7,$8,'posted',NOW(),NOW())`,
-              [movId, adj.product_name || 'Unknown',
-               Math.abs(qtyDelta), movType,
-               adj.location || 'distribution',
-               adjId,
-               `Approved distribution correction: ${field_to_adjust} changed from ${adj.old_value} to ${new_value}. Ref: ${adj.adj_number}`,
-               approved_by]
-            );
+            await __qd_executePlan(query, __qd_registeredPlan("server.js:871:36"),
+
+
+
+
+
+
+            [movId, adj.product_name || 'Unknown',
+            Math.abs(qtyDelta), movType,
+            adj.location || 'distribution',
+            adjId,
+            `Approved distribution correction: ${field_to_adjust} changed from ${adj.old_value} to ${new_value}. Ref: ${adj.adj_number}`,
+            approved_by]);
+
           } catch (movErr) {
             console.warn('stock_movements insert skipped:', movErr.message);
           }
@@ -888,15 +888,15 @@ const approveStockAdjustment = atomicStockRequest(async (req, res) => {
       }
     }
 
-    await query(
-      `UPDATE stock_adjustments SET status='approved', gm_notes=$1, approved_by=$2, approved_by_name=$3, approved_at=NOW(), updated_at=NOW() WHERE id=$4`,
-      [gm_notes, approved_by, approved_by_name, adjId]
-    );
+    await __qd_executePlan(query, __qd_registeredPlan("server.js:892:37"),
+
+    [gm_notes, approved_by, approved_by_name, adjId]);
+
 
     // A: Fire-and-forget recompute so inventory_balances reflects the approved change.
     if (recomputeNeeded) {
-      recomputeLocationBalances(recomputeNeeded.locType, recomputeNeeded.location)
-        .catch(e => console.warn('[stock-adj approve] recompute error:', e.message));
+      recomputeLocationBalances(recomputeNeeded.locType, recomputeNeeded.location).
+      catch((e) => console.warn('[stock-adj approve] recompute error:', e.message));
     }
 
     res.json({ success: true, message: 'Adjustment approved and applied' });
@@ -921,14 +921,14 @@ const rejectStockAdjustment = atomicStockRequest(async (req, res) => {
 
     const approved_by = req.user?.sub || req.user?.username || 'gm';
     const approved_by_name = req.user?.fullName || req.user?.full_name || req.user?.name || approved_by;
-    const adj=await query('SELECT status FROM stock_adjustments WHERE id=$1 FOR UPDATE',[adjId]);
-    if (!adj.rows.length) return res.status(404).json({error:'Adjustment not found'});
-    if (adj.rows[0].status==='rejected') return res.json({success:true,message:'Adjustment rejected'});
-    if (adj.rows[0].status!=='pending') return res.status(409).json({error:'Adjustment is already reviewed'});
-    await query(
-      `UPDATE stock_adjustments SET status='rejected', gm_notes=$1, approved_by=$2, approved_by_name=$3, approved_at=NOW(), updated_at=NOW() WHERE id=$4`,
-      [gm_notes, approved_by, approved_by_name, adjId]
-    );
+    const adj = await __qd_executePlan(query, __qd_registeredPlan("server.js:924:38"), [adjId]);
+    if (!adj.rows.length) return res.status(404).json({ error: 'Adjustment not found' });
+    if (adj.rows[0].status === 'rejected') return res.json({ success: true, message: 'Adjustment rejected' });
+    if (adj.rows[0].status !== 'pending') return res.status(409).json({ error: 'Adjustment is already reviewed' });
+    await __qd_executePlan(query, __qd_registeredPlan("server.js:929:39"),
+
+    [gm_notes, approved_by, approved_by_name, adjId]);
+
     res.json({ success: true, message: 'Adjustment rejected' });
   } catch (err) {
     console.error('stock-adjustments reject:', err);
@@ -946,7 +946,7 @@ app.post('/api/stock-adjustments/bulk-decision', atomicStockRequest(async (req, 
   }
   const { action, ids } = req.body || {};
   if (!['approve', 'reject'].includes(action) || !Array.isArray(ids) || !ids.length ||
-      ids.length > 500 || ids.some(id => typeof id !== 'string' || !id.trim())) {
+  ids.length > 500 || ids.some((id) => typeof id !== 'string' || !id.trim())) {
     return res.status(400).json({ error: 'Choose approve or reject and between 1 and 500 stock edit request IDs.' });
   }
   // Stable lock order prevents opposing concurrent batches from deadlocking.
@@ -956,17 +956,17 @@ app.post('/api/stock-adjustments/bulk-decision', atomicStockRequest(async (req, 
     let status = 200;
     let result;
     const response = {
-      status(code) { status = code; return this; },
-      json(body) { result = body; return this; },
+      status(code) {status = code;return this;},
+      json(body) {result = body;return this;},
       getHeader() {},
-      setHeader() {},
+      setHeader() {}
     };
     await decide({ ...req, method: 'PATCH', params: { id },
       body: { gm_notes: req.body.gm_notes || `Bulk ${action} by GM` } }, response);
     if (status >= 400 || result?.success !== true) {
       return res.status(status >= 400 ? status : 500).json({
         success: false, failed_id: id, applied: 0,
-        error: `No stock edits were ${action === 'approve' ? 'approved' : 'rejected'}. Request ${id}: ${result?.error || 'Decision failed'}`,
+        error: `No stock edits were ${action === 'approve' ? 'approved' : 'rejected'}. Request ${id}: ${result?.error || 'Decision failed'}`
       });
     }
   }
@@ -975,260 +975,260 @@ app.post('/api/stock-adjustments/bulk-decision', atomicStockRequest(async (req, 
 // ── End Stock Adjustment Routes ────────────────────────────────────────────────
 
 // ── Stock Request Status Update (GM Approval) ──────────────────────────────────
-app.put('/api/stock-requests/:id', atomicStockRequest(async (req,res)=>{
-  const {default: handler}=await import('./api/stock-requests.js');
-  req.body={...req.body,id:req.params.id};
-  return handler(req,res);
+app.put('/api/stock-requests/:id', atomicStockRequest(async (req, res) => {
+  const { default: handler } = await import('./api/stock-requests.js');
+  req.body = { ...req.body, id: req.params.id };
+  return handler(req, res);
 }));
 // ── End Stock Request Update Route ─────────────────────────────────────────────
 
 // ── Product Price Routes ────────────────────────────────────────────────────────
 const STATIC_PRICE_LIST = [
-  {description:"ARABICA COFFEE MIX W/GOAT'S AND GANO 25gx20's",dp:260,cp:320,bv:43,cif:110},
-  {description:"BEE POLLEN CAPSULE (30's)",dp:182,cp:237,bv:32,cif:78},
-  {description:"BEE POLLEN CAPSULE (100's)",dp:320,cp:390,bv:75,cif:136},
-  {description:"BODY CONTOUR CREAM",dp:290,cp:377,bv:75,cif:123},
-  {description:"COMPACT POWDER 12g",dp:190,cp:247,bv:55,cif:81},
-  {description:"D.I GROW (GREEN) (1 LITER)",dp:300,cp:400,bv:38,cif:128},
-  {description:"D.I GROW (GREEN) (4LITERS)",dp:800,cp:1000,bv:115,cif:340},
-  {description:"D.I GROW (RED) (1 LITER)",dp:300,cp:400,bv:38,cif:128},
-  {description:"D.I GROW (RED) (4LITERS)",dp:650,cp:800,bv:115,cif:276},
-  {description:"D.I GROW BIO-8 1 LTR",dp:220,cp:286,bv:27,cif:94},
-  {description:"D.I GROW K 1 LTR",dp:220,cp:286,bv:30,cif:94},
-  {description:"D.I. INSTANT GOAT'S MILK POWDER PREMIX 20's x 21g",dp:325,cp:400,bv:43,cif:138},
-  {description:"D.I. INSTANT SOYBEAN MIXTURE WITH GINGER 25g x 20'",dp:221,cp:287,bv:38,cif:94},
-  {description:"DI LIQUID ALFALFA PLUS GUARANA (500ml)",dp:430,cp:530,bv:75,cif:183},
-  {description:"DI LIQUID ALFALFAPLUS GUARANA (150ml)",dp:200,cp:260,bv:21,cif:85},
-  {description:"DI LIQUID CHLOROPHYLL PLUS GUARANA 500ml",dp:430,cp:530,bv:75,cif:183},
-  {description:"DI NONI 500ml",dp:350,cp:455,bv:110,cif:149},
-  {description:"DI NONI JUICE 1 L",dp:750,cp:950,bv:175,cif:319},
-  {description:"DYNA C- 100 TABLET 150's",dp:140,cp:182,bv:32,cif:60},
-  {description:"DYNA C- 250 TABLET 90's",dp:140,cp:182,bv:27,cif:60},
-  {description:"DYNA 'S' TABLET 120's",dp:290,cp:360,bv:65,cif:123},
-  {description:"DYNA SERENOA TABLET 100's",dp:520,cp:620,bv:115,cif:221},
-  {description:"DYNA SERENOA TABLET 30's",dp:195,cp:254,bv:38,cif:83},
-  {description:"DYNA TONIC (150ml)",dp:208,cp:270,bv:27,cif:88},
-  {description:"DYNA TONIC (780ml)",dp:600,cp:710,bv:120,cif:255},
-  {description:"DYNA TOOTHBRUSH (SET 3 OF 3)",dp:70,cp:91,bv:15,cif:30},
-  {description:"DYNA-RH CAPSULE 100's",dp:300,cp:390,bv:60,cif:128},
-  {description:"E-VITA CREAM (50g)",dp:610,cp:700,bv:165,cif:259},
-  {description:"GANODERMA LOTION 150ML",dp:182,cp:237,bv:38,cif:77},
-  {description:"GANODERMA SHOWER GEL 150ml(GANODERMA BODY SCRUB)",dp:220,cp:285,bv:38,cif:94},
-  {description:"GANODERMA SOAP 2 x 100g",dp:140,cp:182,bv:30,cif:60},
-  {description:"GANODERMA TOOTHPASTE (150g)",dp:150,cp:194,bv:20,cif:64},
-  {description:"GINALI CAPSULE 100's",dp:403,cp:493,bv:80,cif:171},
-  {description:"GINALI CAPSULE 30's",dp:195,cp:254,bv:38,cif:83},
-  {description:"GINSENG CAPSULE 9 x 10's",dp:546,cp:655,bv:115,cif:232},
-  {description:"GOAT'S MILK SOAP (100g)",dp:70,cp:91,bv:15,cif:30},
-  {description:"GOAT'S MILK TABLET 150's",dp:286,cp:372,bv:48,cif:122},
-  {description:"GOAT'S MILK TABLET 75's",dp:170,cp:221,bv:27,cif:72},
-  {description:"GREEN TEA CAPSULE 30's",dp:195,cp:254,bv:43,cif:83},
-  {description:"GREEN TEA CAPSULE 60's",dp:344,cp:430,bv:85,cif:146},
-  {description:"HERBA WARISAN MAHARANI 6 x 10g",dp:520,cp:620,bv:110,cif:221},
-  {description:"HIGH FIBER NUTRITION FOOD 30'sx25g",dp:660,cp:790,bv:120,cif:281},
-  {description:"INSTANT CAPPUCCINO W/ GANO 15's x 35g",dp:260,cp:320,bv:38,cif:110},
-  {description:"INSTANT CEREAL 15's x 32g",dp:325,cp:423,bv:48,cif:138},
-  {description:"INSTANT CEREAL 30's x 32g",dp:510,cp:610,bv:95,cif:217},
-  {description:"INSTANT CHOC W/ GANO 30's x 30g",dp:325,cp:423,bv:43,cif:138},
-  {description:"INSTANT COFFEE MIX W/GANODERMA, COLLAGEN & KACIP",dp:260,cp:320,bv:38,cif:110},
-  {description:"INSTANT COFFEE MIX W/TONGKAT & MACA POWDER(15'sx21g)",dp:250,cp:300,bv:38,cif:107},
-  {description:"INSTANT COFFEE MIX WITH GANODERMA 4-IN-1(SACHET) (20's x 21g)",dp:260,cp:320,bv:38,cif:110},
-  {description:"INSTANT COFFEE W/ GANO, GREEN TEA 20's x 21g",dp:260,cp:320,bv:38,cif:110},
-  {description:"INSTANT COFFEE W/ GINKGO & GINSENG 20's x 21g",dp:260,cp:320,bv:38,cif:110},
-  {description:"INSTANT COFFEE W/ TONGKAT ALI 20's x 21g",dp:260,cp:320,bv:38,cif:110},
-  {description:"INSTANT COFFEE W/GANO & TONGKAT ALI BLACK 30's x 5g",dp:276,cp:359,bv:59,cif:117},
-  {description:"INSTANT GINSENG HONEY GINGER 500g",dp:350,cp:420,bv:43,cif:149},
-  {description:"INSTANT PEGAGA CAFE 25G x 15s",dp:260,cp:320,bv:38,cif:110},
-  {description:"INSTANT PREMIX COFFEE WITH MANGOSTEEN(25'sx15g)",dp:260,cp:320,bv:38,cif:110},
-  {description:"INSTANT WHEATGRASS W/ CHLOROPHYLL 20's x 10g",dp:286,cp:372,bv:43,cif:122},
-  {description:"MILK TEA WITH TONGKAT ALI 21g x 20's",dp:230,cp:290,bv:43,cif:98},
-  {description:"MILK THISTLE TABLET 120's",dp:500,cp:592,bv:125,cif:213},
-  {description:"MILK THISTLE TABLET 30's",dp:195,cp:254,bv:32,cif:83},
-  {description:"MINERAL POT",dp:1250,cp:1625,bv:265,cif:531},
-  {description:"Nano Home Feminine Wash Antiseptic w/ Sirih 60ml",dp:100,cp:130,bv:11.5,cif:43},
-  {description:"Nano Home Feminine Wash Kacip Fatimah 60ml",dp:100,cp:130,bv:11.5,cif:43},
-  {description:"NANO HOME FEMININE WASH with GAMAT 60ml",dp:100,cp:130,bv:11.5,cif:43},
-  {description:"NANO HOME GAMAT SOAP 100g",dp:70,cp:91,bv:15,cif:30},
-  {description:"NANO HOME PEGAGA SOAP 100g",dp:70,cp:91,bv:8,cif:30},
-  {description:"NONI PLUS TEA 30's x 3g",dp:299,cp:360,bv:65,cif:127},
-  {description:"NUTMEG OINTMENT (2's x 20g)",dp:180,cp:234,bv:19.5,cif:77},
-  {description:"PRESIDENT'S CHOICE 4 IN 1 AND CHOCOLATE COFFEE 20'",dp:288,cp:374,bv:43,cif:122},
-  {description:"PRO- LSB TABLET 150's",dp:455,cp:573,bv:100,cif:193},
-  {description:"PROLINK 20's x 20g",dp:588,cp:688,bv:135,cif:250},
-  {description:"PROLINK 30's x 20g",dp:600,cp:719,bv:170,cif:255},
-  {description:"RED COFFEE W/ GINSENG (12's x 25g)",dp:260,cp:320,bv:38,cif:110},
-  {description:"REGISTRATION KIT WITH FERT,COFFEE & RI(PERMANENT)",dp:1200,cp:1200,bv:150,cif:510},
-  {description:"REGISTRATION KIT WITH ALFALFA,COFFEE&RI(PERMANENT)",dp:1200,cp:1200,bv:150,cif:510},
-  {description:"SEA CUCUMBER JELLY (250ml)",dp:312,cp:406,bv:55,cif:133},
-  {description:"SEA CUCUMBER JELLY (500ml)",dp:533,cp:633,bv:110,cif:227},
-  {description:"SEA WATER SPIRULINA POWDER 500g",dp:340,cp:420,bv:48,cif:145},
-  {description:"SOYBEAN POWDER 454g",dp:260,cp:338,bv:38,cif:110},
-  {description:"SPIRULINA TABLET (1,000's)",dp:750,cp:900,bv:150,cif:319},
-  {description:"SPIRULINA TABLET (100's)",dp:208,cp:270,bv:27,cif:88},
-  {description:"SPIRULINA TABLET (300's)",dp:351,cp:456,bv:64,cif:149},
-  {description:"TEA TREE OIL FEMININE WASH (250ml)",dp:190,cp:247,bv:43,cif:81},
-  {description:"TEA TREE OIL LOTION (250ml)",dp:180,cp:234,bv:19.5,cif:77},
-  {description:"TEA TREE OIL TOOTHPASTE (175g)",dp:150,cp:194,bv:20,cif:64},
-  {description:"TONGKAT ALI CAPSULE 100's",dp:400,cp:490,bv:80,cif:170},
-  {description:"TONGKAT ALI CAPSULE 30's",dp:195,cp:254,bv:32,cif:83},
-  {description:"YEEGANO CAPSULE 30's",dp:195,cp:254,bv:27,cif:83},
-  {description:"YEEGANO CAPSULE 90's",dp:364,cp:454,bv:75,cif:155},
-  {description:"YEEGARLIC CAPSULE 90's",dp:300,cp:390,bv:64,cif:128},
-  {description:"YEEGINKGO TABLET (30's)",dp:234,cp:304,bv:27,cif:99},
-  {description:"YEEGINKGO TABLETS 90's",dp:420,cp:500,bv:80,cif:179},
-  {description:"YEEYANGYEN TABLET 30's",dp:195,cp:254,bv:32,cif:83},
-  {description:"YEEYANGYEN TABLET 90's",dp:370,cp:455,bv:90,cif:157},
-  {description:"INSTANT COFFEE MIX 20's x 30g",dp:260,cp:320,bv:38,cif:110},
-];
+{ description: "ARABICA COFFEE MIX W/GOAT'S AND GANO 25gx20's", dp: 260, cp: 320, bv: 43, cif: 110 },
+{ description: "BEE POLLEN CAPSULE (30's)", dp: 182, cp: 237, bv: 32, cif: 78 },
+{ description: "BEE POLLEN CAPSULE (100's)", dp: 320, cp: 390, bv: 75, cif: 136 },
+{ description: "BODY CONTOUR CREAM", dp: 290, cp: 377, bv: 75, cif: 123 },
+{ description: "COMPACT POWDER 12g", dp: 190, cp: 247, bv: 55, cif: 81 },
+{ description: "D.I GROW (GREEN) (1 LITER)", dp: 300, cp: 400, bv: 38, cif: 128 },
+{ description: "D.I GROW (GREEN) (4LITERS)", dp: 800, cp: 1000, bv: 115, cif: 340 },
+{ description: "D.I GROW (RED) (1 LITER)", dp: 300, cp: 400, bv: 38, cif: 128 },
+{ description: "D.I GROW (RED) (4LITERS)", dp: 650, cp: 800, bv: 115, cif: 276 },
+{ description: "D.I GROW BIO-8 1 LTR", dp: 220, cp: 286, bv: 27, cif: 94 },
+{ description: "D.I GROW K 1 LTR", dp: 220, cp: 286, bv: 30, cif: 94 },
+{ description: "D.I. INSTANT GOAT'S MILK POWDER PREMIX 20's x 21g", dp: 325, cp: 400, bv: 43, cif: 138 },
+{ description: "D.I. INSTANT SOYBEAN MIXTURE WITH GINGER 25g x 20'", dp: 221, cp: 287, bv: 38, cif: 94 },
+{ description: "DI LIQUID ALFALFA PLUS GUARANA (500ml)", dp: 430, cp: 530, bv: 75, cif: 183 },
+{ description: "DI LIQUID ALFALFAPLUS GUARANA (150ml)", dp: 200, cp: 260, bv: 21, cif: 85 },
+{ description: "DI LIQUID CHLOROPHYLL PLUS GUARANA 500ml", dp: 430, cp: 530, bv: 75, cif: 183 },
+{ description: "DI NONI 500ml", dp: 350, cp: 455, bv: 110, cif: 149 },
+{ description: "DI NONI JUICE 1 L", dp: 750, cp: 950, bv: 175, cif: 319 },
+{ description: "DYNA C- 100 TABLET 150's", dp: 140, cp: 182, bv: 32, cif: 60 },
+{ description: "DYNA C- 250 TABLET 90's", dp: 140, cp: 182, bv: 27, cif: 60 },
+{ description: "DYNA 'S' TABLET 120's", dp: 290, cp: 360, bv: 65, cif: 123 },
+{ description: "DYNA SERENOA TABLET 100's", dp: 520, cp: 620, bv: 115, cif: 221 },
+{ description: "DYNA SERENOA TABLET 30's", dp: 195, cp: 254, bv: 38, cif: 83 },
+{ description: "DYNA TONIC (150ml)", dp: 208, cp: 270, bv: 27, cif: 88 },
+{ description: "DYNA TONIC (780ml)", dp: 600, cp: 710, bv: 120, cif: 255 },
+{ description: "DYNA TOOTHBRUSH (SET 3 OF 3)", dp: 70, cp: 91, bv: 15, cif: 30 },
+{ description: "DYNA-RH CAPSULE 100's", dp: 300, cp: 390, bv: 60, cif: 128 },
+{ description: "E-VITA CREAM (50g)", dp: 610, cp: 700, bv: 165, cif: 259 },
+{ description: "GANODERMA LOTION 150ML", dp: 182, cp: 237, bv: 38, cif: 77 },
+{ description: "GANODERMA SHOWER GEL 150ml(GANODERMA BODY SCRUB)", dp: 220, cp: 285, bv: 38, cif: 94 },
+{ description: "GANODERMA SOAP 2 x 100g", dp: 140, cp: 182, bv: 30, cif: 60 },
+{ description: "GANODERMA TOOTHPASTE (150g)", dp: 150, cp: 194, bv: 20, cif: 64 },
+{ description: "GINALI CAPSULE 100's", dp: 403, cp: 493, bv: 80, cif: 171 },
+{ description: "GINALI CAPSULE 30's", dp: 195, cp: 254, bv: 38, cif: 83 },
+{ description: "GINSENG CAPSULE 9 x 10's", dp: 546, cp: 655, bv: 115, cif: 232 },
+{ description: "GOAT'S MILK SOAP (100g)", dp: 70, cp: 91, bv: 15, cif: 30 },
+{ description: "GOAT'S MILK TABLET 150's", dp: 286, cp: 372, bv: 48, cif: 122 },
+{ description: "GOAT'S MILK TABLET 75's", dp: 170, cp: 221, bv: 27, cif: 72 },
+{ description: "GREEN TEA CAPSULE 30's", dp: 195, cp: 254, bv: 43, cif: 83 },
+{ description: "GREEN TEA CAPSULE 60's", dp: 344, cp: 430, bv: 85, cif: 146 },
+{ description: "HERBA WARISAN MAHARANI 6 x 10g", dp: 520, cp: 620, bv: 110, cif: 221 },
+{ description: "HIGH FIBER NUTRITION FOOD 30'sx25g", dp: 660, cp: 790, bv: 120, cif: 281 },
+{ description: "INSTANT CAPPUCCINO W/ GANO 15's x 35g", dp: 260, cp: 320, bv: 38, cif: 110 },
+{ description: "INSTANT CEREAL 15's x 32g", dp: 325, cp: 423, bv: 48, cif: 138 },
+{ description: "INSTANT CEREAL 30's x 32g", dp: 510, cp: 610, bv: 95, cif: 217 },
+{ description: "INSTANT CHOC W/ GANO 30's x 30g", dp: 325, cp: 423, bv: 43, cif: 138 },
+{ description: "INSTANT COFFEE MIX W/GANODERMA, COLLAGEN & KACIP", dp: 260, cp: 320, bv: 38, cif: 110 },
+{ description: "INSTANT COFFEE MIX W/TONGKAT & MACA POWDER(15'sx21g)", dp: 250, cp: 300, bv: 38, cif: 107 },
+{ description: "INSTANT COFFEE MIX WITH GANODERMA 4-IN-1(SACHET) (20's x 21g)", dp: 260, cp: 320, bv: 38, cif: 110 },
+{ description: "INSTANT COFFEE W/ GANO, GREEN TEA 20's x 21g", dp: 260, cp: 320, bv: 38, cif: 110 },
+{ description: "INSTANT COFFEE W/ GINKGO & GINSENG 20's x 21g", dp: 260, cp: 320, bv: 38, cif: 110 },
+{ description: "INSTANT COFFEE W/ TONGKAT ALI 20's x 21g", dp: 260, cp: 320, bv: 38, cif: 110 },
+{ description: "INSTANT COFFEE W/GANO & TONGKAT ALI BLACK 30's x 5g", dp: 276, cp: 359, bv: 59, cif: 117 },
+{ description: "INSTANT GINSENG HONEY GINGER 500g", dp: 350, cp: 420, bv: 43, cif: 149 },
+{ description: "INSTANT PEGAGA CAFE 25G x 15s", dp: 260, cp: 320, bv: 38, cif: 110 },
+{ description: "INSTANT PREMIX COFFEE WITH MANGOSTEEN(25'sx15g)", dp: 260, cp: 320, bv: 38, cif: 110 },
+{ description: "INSTANT WHEATGRASS W/ CHLOROPHYLL 20's x 10g", dp: 286, cp: 372, bv: 43, cif: 122 },
+{ description: "MILK TEA WITH TONGKAT ALI 21g x 20's", dp: 230, cp: 290, bv: 43, cif: 98 },
+{ description: "MILK THISTLE TABLET 120's", dp: 500, cp: 592, bv: 125, cif: 213 },
+{ description: "MILK THISTLE TABLET 30's", dp: 195, cp: 254, bv: 32, cif: 83 },
+{ description: "MINERAL POT", dp: 1250, cp: 1625, bv: 265, cif: 531 },
+{ description: "Nano Home Feminine Wash Antiseptic w/ Sirih 60ml", dp: 100, cp: 130, bv: 11.5, cif: 43 },
+{ description: "Nano Home Feminine Wash Kacip Fatimah 60ml", dp: 100, cp: 130, bv: 11.5, cif: 43 },
+{ description: "NANO HOME FEMININE WASH with GAMAT 60ml", dp: 100, cp: 130, bv: 11.5, cif: 43 },
+{ description: "NANO HOME GAMAT SOAP 100g", dp: 70, cp: 91, bv: 15, cif: 30 },
+{ description: "NANO HOME PEGAGA SOAP 100g", dp: 70, cp: 91, bv: 8, cif: 30 },
+{ description: "NONI PLUS TEA 30's x 3g", dp: 299, cp: 360, bv: 65, cif: 127 },
+{ description: "NUTMEG OINTMENT (2's x 20g)", dp: 180, cp: 234, bv: 19.5, cif: 77 },
+{ description: "PRESIDENT'S CHOICE 4 IN 1 AND CHOCOLATE COFFEE 20'", dp: 288, cp: 374, bv: 43, cif: 122 },
+{ description: "PRO- LSB TABLET 150's", dp: 455, cp: 573, bv: 100, cif: 193 },
+{ description: "PROLINK 20's x 20g", dp: 588, cp: 688, bv: 135, cif: 250 },
+{ description: "PROLINK 30's x 20g", dp: 600, cp: 719, bv: 170, cif: 255 },
+{ description: "RED COFFEE W/ GINSENG (12's x 25g)", dp: 260, cp: 320, bv: 38, cif: 110 },
+{ description: "REGISTRATION KIT WITH FERT,COFFEE & RI(PERMANENT)", dp: 1200, cp: 1200, bv: 150, cif: 510 },
+{ description: "REGISTRATION KIT WITH ALFALFA,COFFEE&RI(PERMANENT)", dp: 1200, cp: 1200, bv: 150, cif: 510 },
+{ description: "SEA CUCUMBER JELLY (250ml)", dp: 312, cp: 406, bv: 55, cif: 133 },
+{ description: "SEA CUCUMBER JELLY (500ml)", dp: 533, cp: 633, bv: 110, cif: 227 },
+{ description: "SEA WATER SPIRULINA POWDER 500g", dp: 340, cp: 420, bv: 48, cif: 145 },
+{ description: "SOYBEAN POWDER 454g", dp: 260, cp: 338, bv: 38, cif: 110 },
+{ description: "SPIRULINA TABLET (1,000's)", dp: 750, cp: 900, bv: 150, cif: 319 },
+{ description: "SPIRULINA TABLET (100's)", dp: 208, cp: 270, bv: 27, cif: 88 },
+{ description: "SPIRULINA TABLET (300's)", dp: 351, cp: 456, bv: 64, cif: 149 },
+{ description: "TEA TREE OIL FEMININE WASH (250ml)", dp: 190, cp: 247, bv: 43, cif: 81 },
+{ description: "TEA TREE OIL LOTION (250ml)", dp: 180, cp: 234, bv: 19.5, cif: 77 },
+{ description: "TEA TREE OIL TOOTHPASTE (175g)", dp: 150, cp: 194, bv: 20, cif: 64 },
+{ description: "TONGKAT ALI CAPSULE 100's", dp: 400, cp: 490, bv: 80, cif: 170 },
+{ description: "TONGKAT ALI CAPSULE 30's", dp: 195, cp: 254, bv: 32, cif: 83 },
+{ description: "YEEGANO CAPSULE 30's", dp: 195, cp: 254, bv: 27, cif: 83 },
+{ description: "YEEGANO CAPSULE 90's", dp: 364, cp: 454, bv: 75, cif: 155 },
+{ description: "YEEGARLIC CAPSULE 90's", dp: 300, cp: 390, bv: 64, cif: 128 },
+{ description: "YEEGINKGO TABLET (30's)", dp: 234, cp: 304, bv: 27, cif: 99 },
+{ description: "YEEGINKGO TABLETS 90's", dp: 420, cp: 500, bv: 80, cif: 179 },
+{ description: "YEEYANGYEN TABLET 30's", dp: 195, cp: 254, bv: 32, cif: 83 },
+{ description: "YEEYANGYEN TABLET 90's", dp: 370, cp: 455, bv: 90, cif: 157 },
+{ description: "INSTANT COFFEE MIX 20's x 30g", dp: 260, cp: 320, bv: 38, cif: 110 }];
+
 
 // CIF breakdown data from official price list PDF (before August 2026)
 // Keys are normalized descriptions matching STATIC_PRICE_LIST entries
 const CIF_DATA = {
-  "ARABICA COFFEE MIX W/GOAT'S AND GANO 25GX20'S":          { code:'NB1208',   orig:120,  vat:15, duty:20, clearing:1 },
-  "BEE POLLEN CAPSULE (30'S)":                               { code:'NB3801',   orig:75,   vat:15, duty:0,  clearing:1 },
-  "BEE POLLEN CAPSULE (100'S)":                              { code:'NB3802',   orig:158,  vat:15, duty:0,  clearing:1 },
-  "BODY CONTOUR CREAM":                                      { code:'NB7825',   orig:162,  vat:15, duty:20, clearing:1 },
-  "COMPACT POWDER 12G":                                      { code:'NB7859',   orig:108,  vat:15, duty:20, clearing:1 },
-  "D.I GROW (GREEN) (1 LITER)":                              { code:'NB9845',   orig:98,   vat:15, duty:0,  clearing:1 },
-  "D.I GROW (GREEN) (4LITERS)":                              { code:'NB9830',   orig:328,  vat:15, duty:0,  clearing:1 },
-  "D.I GROW (RED) (1 LITER)":                               { code:'NB9846',   orig:98,   vat:15, duty:0,  clearing:1 },
-  "D.I GROW (RED) (4LITERS)":                               { code:'NB9829',   orig:328,  vat:15, duty:0,  clearing:1 },
-  "D.I GROW BIO-8 1 LTR":                                   { code:'NB9848',   orig:135,  vat:15, duty:0,  clearing:1 },
-  "D.I GROW K 1 LTR":                                       { code:'NB9850',   orig:158,  vat:15, duty:0,  clearing:1 },
-  "D.I. INSTANT GOAT'S MILK POWDER PREMIX 20'S X 21G":      { code:'NB2814',   orig:135,  vat:15, duty:25, clearing:1 },
-  "D.I. INSTANT SOYBEAN MIXTURE WITH GINGER 25G X 20'":     { code:'NB2813',   orig:113,  vat:15, duty:10, clearing:1 },
-  "DI LIQUID ALFALFA PLUS GUARANA (500ML)":                  { code:'NB1802A',  orig:141,  vat:15, duty:20, clearing:1 },
-  "DI LIQUID ALFALFAPLUS GUARANA (150ML)":                   { code:'NB1801A',  orig:53,   vat:15, duty:20, clearing:1 },
-  "DI NONI 500ML":                                           { code:'NB5802N',  orig:225,  vat:15, duty:0,  clearing:1 },
-  "DI NONI JUICE 1 L":                                       { code:'NB5802A',  orig:352,  vat:15, duty:0,  clearing:1 },
-  "DYNA C- 100 TABLET 150'S":                                { code:'NB3805',   orig:78,   vat:15, duty:0,  clearing:1 },
-  "DYNA C- 250 TABLET 90'S":                                 { code:'NB3806',   orig:78,   vat:15, duty:0,  clearing:1 },
-  "DYNA 'S' TABLET 120'S":                                   { code:'NB5806',   orig:145,  vat:15, duty:0,  clearing:1 },
-  "DYNA SERENOA TABLET 100'S":                               { code:'NB9918',   orig:235,  vat:15, duty:0,  clearing:1 },
-  "DYNA SERENOA TABLET 30'S":                                { code:'NB9919',   orig:91,   vat:15, duty:0,  clearing:1 },
-  "DYNA TONIC (150ML)":                                      { code:'NB3803',   orig:75,   vat:15, duty:20, clearing:1 },
-  "DYNA TONIC (780ML)":                                      { code:'NB3804',   orig:230,  vat:15, duty:20, clearing:1 },
-  "DYNA TOOTHBRUSH (SET 3 OF 3)":                            { code:'NB7833',   orig:45,   vat:15, duty:10, clearing:1 },
-  "DYNA-RH CAPSULE 100'S":                                   { code:'NB6803',   orig:145,  vat:15, duty:0,  clearing:1 },
-  "E-VITA CREAM (50G)":                                      { code:'NB7816',   orig:412,  vat:15, duty:20, clearing:1 },
-  "GANODERMA LOTION 150ML":                                  { code:'NB7916',   orig:86,   vat:15, duty:20, clearing:1 },
-  "GANODERMA SHOWER GEL 150ML(GANODERMA BODY SCRUB)":       { code:'NB7920',   orig:98,   vat:15, duty:20, clearing:1 },
-  "GANODERMA SOAP 2 X 100G":                                 { code:'NB7839',   orig:75,   vat:15, duty:20, clearing:1 },
-  "GANODERMA TOOTHPASTE (150G)":                             { code:'NB7919',   orig:60,   vat:15, duty:20, clearing:1 },
-  "GINALI CAPSULE 100'S":                                    { code:'NB4811',   orig:165,  vat:15, duty:0,  clearing:1 },
-  "GINALI CAPSULE 30'S":                                     { code:'NB4812',   orig:90,   vat:15, duty:0,  clearing:1 },
-  "GINSENG CAPSULE 9 X 10'S":                                { code:'NB4805',   orig:260,  vat:15, duty:0,  clearing:1 },
-  "GOAT'S MILK SOAP (100G)":                                 { code:'NB7834',   orig:45,   vat:15, duty:20, clearing:1 },
-  "GOAT'S MILK TABLET 150'S":                                { code:'NB2802',   orig:110,  vat:15, duty:0,  clearing:1 },
-  "GOAT'S MILK TABLET 75'S":                                 { code:'NB2803',   orig:65,   vat:15, duty:0,  clearing:1 },
-  "GREEN TEA CAPSULE 30'S":                                  { code:'NB3811',   orig:90,   vat:15, duty:0,  clearing:1 },
-  "GREEN TEA CAPSULE 60'S":                                  { code:'NB3812',   orig:172,  vat:15, duty:0,  clearing:1 },
-  "HERBA WARISAN MAHARANI 6 X 10G":                          { code:'NB2812',   orig:230,  vat:15, duty:20, clearing:1 },
-  "HIGH FIBER NUTRITION FOOD 30'SX25G":                      { code:'NB5807',   orig:330,  vat:15, duty:0,  clearing:1 },
-  "INSTANT CAPPUCCINO W/ GANO 15'S X 35G":                  { code:'NB1205',   orig:113,  vat:15, duty:20, clearing:1 },
-  "INSTANT CEREAL 15'S X 32G":                               { code:'NB5801N',  orig:143,  vat:15, duty:10, clearing:1 },
-  "INSTANT CEREAL 30'S X 32G":                               { code:'NB5801',   orig:255,  vat:15, duty:10, clearing:1 },
-  "INSTANT CHOC W/ GANO 30'S X 30G":                        { code:'NB1814',   orig:150,  vat:15, duty:20, clearing:1 },
-  "INSTANT COFFEE MIX W/GANODERMA, COLLAGEN & KACIP":       { code:'NB1203',   orig:88,   vat:15, duty:20, clearing:1 },
-  "INSTANT COFFEE MIX W/TONGKAT & MACA POWDER(15'SX21G)":   { code:'NB1204',   orig:88,   vat:15, duty:20, clearing:1 },
-  "INSTANT COFFEE MIX WITH GANODERMA 4-IN-1(SACHET) (20'S X 21G)": { code:'NB1804', orig:88, vat:15, duty:20, clearing:1 },
-  "INSTANT COFFEE W/ GANO, GREEN TEA 20'S X 21G":           { code:'NB1202',   orig:105,  vat:15, duty:20, clearing:1 },
-  "INSTANT COFFEE W/ GINKGO & GINSENG 20'S X 21G":          { code:'NB1201',   orig:105,  vat:15, duty:20, clearing:1 },
-  "INSTANT COFFEE W/ TONGKAT ALI 20'S X 21G":               { code:'NB4810',   orig:88,   vat:15, duty:20, clearing:1 },
-  "INSTANT COFFEE W/GANO & TONGKAT ALI BLACK 30'S X 5G":    { code:'NB1818',   orig:120,  vat:15, duty:20, clearing:1 },
-  "INSTANT GINSENG HONEY GINGER 500G":                       { code:'NB4803',   orig:129,  vat:15, duty:20, clearing:1 },
-  "INSTANT PEGAGA CAFE 25G X 15S":                           { code:'NB1206',   orig:97,   vat:15, duty:20, clearing:1 },
-  "INSTANT PREMIX COFFEE WITH MANGOSTEEN(25'SX15G)":         { code:'NB1210',   orig:115,  vat:15, duty:20, clearing:1 },
-  "INSTANT WHEATGRASS W/ CHLOROPHYLL 20'S X 10G":            { code:'NB1812',   orig:102,  vat:15, duty:20, clearing:1 },
-  "MILK TEA WITH TONGKAT ALI 21G X 20'S":                    { code:'NB4810N',  orig:103,  vat:15, duty:20, clearing:1 },
-  "MILK THISTLE TABLET 120'S":                               { code:'NB4817',   orig:250,  vat:15, duty:0,  clearing:1 },
-  "MILK THISTLE TABLET 30'S":                                { code:'NB4816',   orig:77,   vat:15, duty:0,  clearing:1 },
-  "MINERAL POT":                                             { code:'NB8805',   orig:675,  vat:15, duty:20, clearing:1 },
-  "NANO HOME FEMININE WASH ANTISEPTIC W/ SIRIH 60ML":        { code:'NB7842',   orig:35,   vat:15, duty:20, clearing:1 },
-  "NANO HOME FEMININE WASH KACIP FATIMAH 60ML":              { code:'NB7841',   orig:36,   vat:15, duty:20, clearing:1 },
-  "NANO HOME FEMININE WASH WITH GAMAT 60ML":                 { code:'NB7843',   orig:35,   vat:15, duty:20, clearing:1 },
-  "NANO HOME GAMAT SOAP 100G":                               { code:'NB7840',   orig:41,   vat:15, duty:20, clearing:1 },
-  "NANO HOME PEGAGA SOAP 100G":                              { code:'NB7838',   orig:31,   vat:15, duty:20, clearing:1 },
-  "NONI PLUS TEA 30'S X 3G":                                 { code:'NB5803',   orig:145,  vat:15, duty:20, clearing:1 },
-  "NUTMEG OINTMENT (2'S X 20G)":                             { code:'NB6802',   orig:85,   vat:15, duty:20, clearing:1 },
-  "PRESIDENT'S CHOICE 4 IN 1 AND CHOCOLATE COFFEE 20'":     { code:'NB1817',   orig:135,  vat:15, duty:20, clearing:1 },
-  "PRO- LSB TABLET 150'S":                                   { code:'NB2809',   orig:225,  vat:15, duty:0,  clearing:1 },
-  "PROLINK 20'S X 20G":                                      { code:'NB3814',   orig:294,  vat:15, duty:20, clearing:1 },
-  "PROLINK 30'S X 20G":                                      { code:'NB3816N',  orig:382,  vat:15, duty:20, clearing:1 },
-  "RED COFFEE W/ GINSENG (12'S X 25G)":                     { code:'NB3810',   orig:90,   vat:15, duty:20, clearing:1 },
-  "REGISTRATION KIT WITH FERT,COFFEE & RI(PERMANENT)":      { code:'NB10804',  orig:375,  vat:15, duty:20, clearing:1 },
-  "REGISTRATION KIT WITH ALFALFA,COFFEE&RI(PERMANENT)":     { code:'NB10805A', orig:375,  vat:15, duty:20, clearing:1 },
-  "SEA CUCUMBER JELLY (250ML)":                              { code:'NB4808',   orig:125,  vat:15, duty:20, clearing:1 },
-  "SEA CUCUMBER JELLY (500ML)":                              { code:'NB4808A',  orig:227,  vat:15, duty:20, clearing:1 },
-  "SEA WATER SPIRULINA POWDER 500G":                         { code:'NB2805',   orig:141,  vat:15, duty:10, clearing:1 },
-  "SOYBEAN POWDER 454G":                                     { code:'NB2804',   orig:98,   vat:15, duty:10, clearing:1 },
-  "SPIRULINA TABLET (1,000'S)":                              { code:'NB2808',   orig:360,  vat:15, duty:0,  clearing:1 },
-  "SPIRULINA TABLET (100'S)":                                { code:'NB2806',   orig:68,   vat:15, duty:0,  clearing:1 },
-  "SPIRULINA TABLET (300'S)":                                { code:'NB2807',   orig:150,  vat:15, duty:0,  clearing:1 },
-  "TEA TREE OIL FEMININE WASH (250ML)":                      { code:'NB7835',   orig:100,  vat:15, duty:20, clearing:1 },
-  "TEA TREE OIL LOTION (250ML)":                             { code:'NB7813',   orig:96,   vat:15, duty:20, clearing:1 },
-  "TEA TREE OIL TOOTHPASTE (175G)":                          { code:'NB7837',   orig:60,   vat:15, duty:20, clearing:1 },
-  "TONGKAT ALI CAPSULE 100'S":                               { code:'NB4823',   orig:188,  vat:15, duty:0,  clearing:1 },
-  "TONGKAT ALI CAPSULE 30'S":                                { code:'NB4822',   orig:77,   vat:15, duty:0,  clearing:1 },
-  "YEEGANO CAPSULE 30'S":                                    { code:'NB1809',   orig:68,   vat:15, duty:0,  clearing:1 },
-  "YEEGANO CAPSULE 90'S":                                    { code:'NB1810',   orig:158,  vat:15, duty:0,  clearing:1 },
-  "YEEGARLIC CAPSULE 90'S":                                  { code:'NB1811',   orig:135,  vat:15, duty:0,  clearing:1 },
-  "YEEGINKGO TABLET (30'S)":                                 { code:'NB4814',   orig:68,   vat:15, duty:0,  clearing:1 },
-  "YEEGINKGO TABLETS 90'S":                                  { code:'NB4815',   orig:165,  vat:15, duty:0,  clearing:1 },
-  "YEEYANGYEN TABLET 30'S":                                  { code:'NB3808',   orig:74,   vat:15, duty:0,  clearing:1 },
-  "YEEYANGYEN TABLET 90'S":                                  { code:'NB3809',   orig:185,  vat:15, duty:0,  clearing:1 },
+  "ARABICA COFFEE MIX W/GOAT'S AND GANO 25GX20'S": { code: 'NB1208', orig: 120, vat: 15, duty: 20, clearing: 1 },
+  "BEE POLLEN CAPSULE (30'S)": { code: 'NB3801', orig: 75, vat: 15, duty: 0, clearing: 1 },
+  "BEE POLLEN CAPSULE (100'S)": { code: 'NB3802', orig: 158, vat: 15, duty: 0, clearing: 1 },
+  "BODY CONTOUR CREAM": { code: 'NB7825', orig: 162, vat: 15, duty: 20, clearing: 1 },
+  "COMPACT POWDER 12G": { code: 'NB7859', orig: 108, vat: 15, duty: 20, clearing: 1 },
+  "D.I GROW (GREEN) (1 LITER)": { code: 'NB9845', orig: 98, vat: 15, duty: 0, clearing: 1 },
+  "D.I GROW (GREEN) (4LITERS)": { code: 'NB9830', orig: 328, vat: 15, duty: 0, clearing: 1 },
+  "D.I GROW (RED) (1 LITER)": { code: 'NB9846', orig: 98, vat: 15, duty: 0, clearing: 1 },
+  "D.I GROW (RED) (4LITERS)": { code: 'NB9829', orig: 328, vat: 15, duty: 0, clearing: 1 },
+  "D.I GROW BIO-8 1 LTR": { code: 'NB9848', orig: 135, vat: 15, duty: 0, clearing: 1 },
+  "D.I GROW K 1 LTR": { code: 'NB9850', orig: 158, vat: 15, duty: 0, clearing: 1 },
+  "D.I. INSTANT GOAT'S MILK POWDER PREMIX 20'S X 21G": { code: 'NB2814', orig: 135, vat: 15, duty: 25, clearing: 1 },
+  "D.I. INSTANT SOYBEAN MIXTURE WITH GINGER 25G X 20'": { code: 'NB2813', orig: 113, vat: 15, duty: 10, clearing: 1 },
+  "DI LIQUID ALFALFA PLUS GUARANA (500ML)": { code: 'NB1802A', orig: 141, vat: 15, duty: 20, clearing: 1 },
+  "DI LIQUID ALFALFAPLUS GUARANA (150ML)": { code: 'NB1801A', orig: 53, vat: 15, duty: 20, clearing: 1 },
+  "DI NONI 500ML": { code: 'NB5802N', orig: 225, vat: 15, duty: 0, clearing: 1 },
+  "DI NONI JUICE 1 L": { code: 'NB5802A', orig: 352, vat: 15, duty: 0, clearing: 1 },
+  "DYNA C- 100 TABLET 150'S": { code: 'NB3805', orig: 78, vat: 15, duty: 0, clearing: 1 },
+  "DYNA C- 250 TABLET 90'S": { code: 'NB3806', orig: 78, vat: 15, duty: 0, clearing: 1 },
+  "DYNA 'S' TABLET 120'S": { code: 'NB5806', orig: 145, vat: 15, duty: 0, clearing: 1 },
+  "DYNA SERENOA TABLET 100'S": { code: 'NB9918', orig: 235, vat: 15, duty: 0, clearing: 1 },
+  "DYNA SERENOA TABLET 30'S": { code: 'NB9919', orig: 91, vat: 15, duty: 0, clearing: 1 },
+  "DYNA TONIC (150ML)": { code: 'NB3803', orig: 75, vat: 15, duty: 20, clearing: 1 },
+  "DYNA TONIC (780ML)": { code: 'NB3804', orig: 230, vat: 15, duty: 20, clearing: 1 },
+  "DYNA TOOTHBRUSH (SET 3 OF 3)": { code: 'NB7833', orig: 45, vat: 15, duty: 10, clearing: 1 },
+  "DYNA-RH CAPSULE 100'S": { code: 'NB6803', orig: 145, vat: 15, duty: 0, clearing: 1 },
+  "E-VITA CREAM (50G)": { code: 'NB7816', orig: 412, vat: 15, duty: 20, clearing: 1 },
+  "GANODERMA LOTION 150ML": { code: 'NB7916', orig: 86, vat: 15, duty: 20, clearing: 1 },
+  "GANODERMA SHOWER GEL 150ML(GANODERMA BODY SCRUB)": { code: 'NB7920', orig: 98, vat: 15, duty: 20, clearing: 1 },
+  "GANODERMA SOAP 2 X 100G": { code: 'NB7839', orig: 75, vat: 15, duty: 20, clearing: 1 },
+  "GANODERMA TOOTHPASTE (150G)": { code: 'NB7919', orig: 60, vat: 15, duty: 20, clearing: 1 },
+  "GINALI CAPSULE 100'S": { code: 'NB4811', orig: 165, vat: 15, duty: 0, clearing: 1 },
+  "GINALI CAPSULE 30'S": { code: 'NB4812', orig: 90, vat: 15, duty: 0, clearing: 1 },
+  "GINSENG CAPSULE 9 X 10'S": { code: 'NB4805', orig: 260, vat: 15, duty: 0, clearing: 1 },
+  "GOAT'S MILK SOAP (100G)": { code: 'NB7834', orig: 45, vat: 15, duty: 20, clearing: 1 },
+  "GOAT'S MILK TABLET 150'S": { code: 'NB2802', orig: 110, vat: 15, duty: 0, clearing: 1 },
+  "GOAT'S MILK TABLET 75'S": { code: 'NB2803', orig: 65, vat: 15, duty: 0, clearing: 1 },
+  "GREEN TEA CAPSULE 30'S": { code: 'NB3811', orig: 90, vat: 15, duty: 0, clearing: 1 },
+  "GREEN TEA CAPSULE 60'S": { code: 'NB3812', orig: 172, vat: 15, duty: 0, clearing: 1 },
+  "HERBA WARISAN MAHARANI 6 X 10G": { code: 'NB2812', orig: 230, vat: 15, duty: 20, clearing: 1 },
+  "HIGH FIBER NUTRITION FOOD 30'SX25G": { code: 'NB5807', orig: 330, vat: 15, duty: 0, clearing: 1 },
+  "INSTANT CAPPUCCINO W/ GANO 15'S X 35G": { code: 'NB1205', orig: 113, vat: 15, duty: 20, clearing: 1 },
+  "INSTANT CEREAL 15'S X 32G": { code: 'NB5801N', orig: 143, vat: 15, duty: 10, clearing: 1 },
+  "INSTANT CEREAL 30'S X 32G": { code: 'NB5801', orig: 255, vat: 15, duty: 10, clearing: 1 },
+  "INSTANT CHOC W/ GANO 30'S X 30G": { code: 'NB1814', orig: 150, vat: 15, duty: 20, clearing: 1 },
+  "INSTANT COFFEE MIX W/GANODERMA, COLLAGEN & KACIP": { code: 'NB1203', orig: 88, vat: 15, duty: 20, clearing: 1 },
+  "INSTANT COFFEE MIX W/TONGKAT & MACA POWDER(15'SX21G)": { code: 'NB1204', orig: 88, vat: 15, duty: 20, clearing: 1 },
+  "INSTANT COFFEE MIX WITH GANODERMA 4-IN-1(SACHET) (20'S X 21G)": { code: 'NB1804', orig: 88, vat: 15, duty: 20, clearing: 1 },
+  "INSTANT COFFEE W/ GANO, GREEN TEA 20'S X 21G": { code: 'NB1202', orig: 105, vat: 15, duty: 20, clearing: 1 },
+  "INSTANT COFFEE W/ GINKGO & GINSENG 20'S X 21G": { code: 'NB1201', orig: 105, vat: 15, duty: 20, clearing: 1 },
+  "INSTANT COFFEE W/ TONGKAT ALI 20'S X 21G": { code: 'NB4810', orig: 88, vat: 15, duty: 20, clearing: 1 },
+  "INSTANT COFFEE W/GANO & TONGKAT ALI BLACK 30'S X 5G": { code: 'NB1818', orig: 120, vat: 15, duty: 20, clearing: 1 },
+  "INSTANT GINSENG HONEY GINGER 500G": { code: 'NB4803', orig: 129, vat: 15, duty: 20, clearing: 1 },
+  "INSTANT PEGAGA CAFE 25G X 15S": { code: 'NB1206', orig: 97, vat: 15, duty: 20, clearing: 1 },
+  "INSTANT PREMIX COFFEE WITH MANGOSTEEN(25'SX15G)": { code: 'NB1210', orig: 115, vat: 15, duty: 20, clearing: 1 },
+  "INSTANT WHEATGRASS W/ CHLOROPHYLL 20'S X 10G": { code: 'NB1812', orig: 102, vat: 15, duty: 20, clearing: 1 },
+  "MILK TEA WITH TONGKAT ALI 21G X 20'S": { code: 'NB4810N', orig: 103, vat: 15, duty: 20, clearing: 1 },
+  "MILK THISTLE TABLET 120'S": { code: 'NB4817', orig: 250, vat: 15, duty: 0, clearing: 1 },
+  "MILK THISTLE TABLET 30'S": { code: 'NB4816', orig: 77, vat: 15, duty: 0, clearing: 1 },
+  "MINERAL POT": { code: 'NB8805', orig: 675, vat: 15, duty: 20, clearing: 1 },
+  "NANO HOME FEMININE WASH ANTISEPTIC W/ SIRIH 60ML": { code: 'NB7842', orig: 35, vat: 15, duty: 20, clearing: 1 },
+  "NANO HOME FEMININE WASH KACIP FATIMAH 60ML": { code: 'NB7841', orig: 36, vat: 15, duty: 20, clearing: 1 },
+  "NANO HOME FEMININE WASH WITH GAMAT 60ML": { code: 'NB7843', orig: 35, vat: 15, duty: 20, clearing: 1 },
+  "NANO HOME GAMAT SOAP 100G": { code: 'NB7840', orig: 41, vat: 15, duty: 20, clearing: 1 },
+  "NANO HOME PEGAGA SOAP 100G": { code: 'NB7838', orig: 31, vat: 15, duty: 20, clearing: 1 },
+  "NONI PLUS TEA 30'S X 3G": { code: 'NB5803', orig: 145, vat: 15, duty: 20, clearing: 1 },
+  "NUTMEG OINTMENT (2'S X 20G)": { code: 'NB6802', orig: 85, vat: 15, duty: 20, clearing: 1 },
+  "PRESIDENT'S CHOICE 4 IN 1 AND CHOCOLATE COFFEE 20'": { code: 'NB1817', orig: 135, vat: 15, duty: 20, clearing: 1 },
+  "PRO- LSB TABLET 150'S": { code: 'NB2809', orig: 225, vat: 15, duty: 0, clearing: 1 },
+  "PROLINK 20'S X 20G": { code: 'NB3814', orig: 294, vat: 15, duty: 20, clearing: 1 },
+  "PROLINK 30'S X 20G": { code: 'NB3816N', orig: 382, vat: 15, duty: 20, clearing: 1 },
+  "RED COFFEE W/ GINSENG (12'S X 25G)": { code: 'NB3810', orig: 90, vat: 15, duty: 20, clearing: 1 },
+  "REGISTRATION KIT WITH FERT,COFFEE & RI(PERMANENT)": { code: 'NB10804', orig: 375, vat: 15, duty: 20, clearing: 1 },
+  "REGISTRATION KIT WITH ALFALFA,COFFEE&RI(PERMANENT)": { code: 'NB10805A', orig: 375, vat: 15, duty: 20, clearing: 1 },
+  "SEA CUCUMBER JELLY (250ML)": { code: 'NB4808', orig: 125, vat: 15, duty: 20, clearing: 1 },
+  "SEA CUCUMBER JELLY (500ML)": { code: 'NB4808A', orig: 227, vat: 15, duty: 20, clearing: 1 },
+  "SEA WATER SPIRULINA POWDER 500G": { code: 'NB2805', orig: 141, vat: 15, duty: 10, clearing: 1 },
+  "SOYBEAN POWDER 454G": { code: 'NB2804', orig: 98, vat: 15, duty: 10, clearing: 1 },
+  "SPIRULINA TABLET (1,000'S)": { code: 'NB2808', orig: 360, vat: 15, duty: 0, clearing: 1 },
+  "SPIRULINA TABLET (100'S)": { code: 'NB2806', orig: 68, vat: 15, duty: 0, clearing: 1 },
+  "SPIRULINA TABLET (300'S)": { code: 'NB2807', orig: 150, vat: 15, duty: 0, clearing: 1 },
+  "TEA TREE OIL FEMININE WASH (250ML)": { code: 'NB7835', orig: 100, vat: 15, duty: 20, clearing: 1 },
+  "TEA TREE OIL LOTION (250ML)": { code: 'NB7813', orig: 96, vat: 15, duty: 20, clearing: 1 },
+  "TEA TREE OIL TOOTHPASTE (175G)": { code: 'NB7837', orig: 60, vat: 15, duty: 20, clearing: 1 },
+  "TONGKAT ALI CAPSULE 100'S": { code: 'NB4823', orig: 188, vat: 15, duty: 0, clearing: 1 },
+  "TONGKAT ALI CAPSULE 30'S": { code: 'NB4822', orig: 77, vat: 15, duty: 0, clearing: 1 },
+  "YEEGANO CAPSULE 30'S": { code: 'NB1809', orig: 68, vat: 15, duty: 0, clearing: 1 },
+  "YEEGANO CAPSULE 90'S": { code: 'NB1810', orig: 158, vat: 15, duty: 0, clearing: 1 },
+  "YEEGARLIC CAPSULE 90'S": { code: 'NB1811', orig: 135, vat: 15, duty: 0, clearing: 1 },
+  "YEEGINKGO TABLET (30'S)": { code: 'NB4814', orig: 68, vat: 15, duty: 0, clearing: 1 },
+  "YEEGINKGO TABLETS 90'S": { code: 'NB4815', orig: 165, vat: 15, duty: 0, clearing: 1 },
+  "YEEYANGYEN TABLET 30'S": { code: 'NB3808', orig: 74, vat: 15, duty: 0, clearing: 1 },
+  "YEEYANGYEN TABLET 90'S": { code: 'NB3809', orig: 185, vat: 15, duty: 0, clearing: 1 }
 };
 
 const STATIC_PACKAGE_LIST = [
-  { description: 'Gastric Package', dp: 2054, cp: 2432, cif: 0, bv: 381 },
-  { description: 'Womens Package', dp: 2543, cp: 2950, cif: 0, bv: 481 },
-  { description: 'Mens Health Package', dp: 2033, cp: 2362, cif: 0, bv: 388 },
-  { description: 'Blood Circulation Pack', dp: 3290, cp: 3854, cif: 0, bv: 657 },
-  { description: 'Cleansing And Detoxification Package', dp: 2183, cp: 2596, cif: 0, bv: 447 },
-  { description: 'Weight Management Pack', dp: 2283, cp: 2680, cif: 0, bv: 448 },
-  { description: 'Healthy Joints Package', dp: 3538, cp: 4177, cif: 0, bv: 687.5 },
-];
+{ description: 'Gastric Package', dp: 2054, cp: 2432, cif: 0, bv: 381 },
+{ description: 'Womens Package', dp: 2543, cp: 2950, cif: 0, bv: 481 },
+{ description: 'Mens Health Package', dp: 2033, cp: 2362, cif: 0, bv: 388 },
+{ description: 'Blood Circulation Pack', dp: 3290, cp: 3854, cif: 0, bv: 657 },
+{ description: 'Cleansing And Detoxification Package', dp: 2183, cp: 2596, cif: 0, bv: 447 },
+{ description: 'Weight Management Pack', dp: 2283, cp: 2680, cif: 0, bv: 448 },
+{ description: 'Healthy Joints Package', dp: 3538, cp: 4177, cif: 0, bv: 687.5 }];
+
 
 async function initProductPricesTable() {
   try {
     const { query } = await import('./api/db.js');
-    await query(`
-      CREATE TABLE IF NOT EXISTS product_prices (
-        id SERIAL PRIMARY KEY,
-        description TEXT NOT NULL UNIQUE,
-        dp NUMERIC(10,2) NOT NULL DEFAULT 0,
-        cp NUMERIC(10,2) NOT NULL DEFAULT 0,
-        cif NUMERIC(10,2) NOT NULL DEFAULT 0,
-        bv NUMERIC(10,2) NOT NULL DEFAULT 0,
-        updated_at TIMESTAMPTZ DEFAULT NOW(),
-        updated_by TEXT DEFAULT 'system'
-      )
-    `);
-    await query(`ALTER TABLE product_prices ADD COLUMN IF NOT EXISTS is_package BOOLEAN DEFAULT FALSE`);
+    await __qd_executePlan(query, __qd_registeredPlan("server.js:1195:40"), []);
+
+
+
+
+
+
+
+
+
+
+
+    await __qd_executePlan(query, __qd_registeredPlan("server.js:1207:41"), []);
 
     // ── Price change history ──────────────────────────────────────────────────
-    await query(`
-      CREATE TABLE IF NOT EXISTS product_price_history (
-        id            SERIAL PRIMARY KEY,
-        product_id    INTEGER REFERENCES product_prices(id) ON DELETE CASCADE,
-        description   TEXT NOT NULL,
-        old_dp        NUMERIC(10,2),
-        old_cp        NUMERIC(10,2),
-        old_cif       NUMERIC(10,2),
-        old_bv        NUMERIC(10,2),
-        new_dp        NUMERIC(10,2),
-        new_cp        NUMERIC(10,2),
-        new_cif       NUMERIC(10,2),
-        new_bv        NUMERIC(10,2),
-        changed_by    TEXT DEFAULT 'system',
-        changed_at    TIMESTAMPTZ DEFAULT NOW()
-      )
-    `);
-    await query(`CREATE INDEX IF NOT EXISTS idx_pph_product_id ON product_price_history (product_id)`);
-    await query(`CREATE INDEX IF NOT EXISTS idx_pph_changed_at ON product_price_history (changed_at DESC)`);
-    await query(`ALTER TABLE product_price_history ADD COLUMN IF NOT EXISTS effective_from DATE DEFAULT CURRENT_DATE`);
-    await query(`ALTER TABLE product_price_history ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'applied'`);
-    await query(`CREATE INDEX IF NOT EXISTS idx_pph_status ON product_price_history (status) WHERE status = 'pending'`);
+    await __qd_executePlan(query, __qd_registeredPlan("server.js:1210:42"), []);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    await __qd_executePlan(query, __qd_registeredPlan("server.js:1227:43"), []);
+    await __qd_executePlan(query, __qd_registeredPlan("server.js:1228:44"), []);
+    await __qd_executePlan(query, __qd_registeredPlan("server.js:1229:45"), []);
+    await __qd_executePlan(query, __qd_registeredPlan("server.js:1230:46"), []);
+    await __qd_executePlan(query, __qd_registeredPlan("server.js:1231:47"), []);
 
     // Never delete/rename duplicates during startup: cascading deletion destroys
     // price history. Reconciliation is a backed-up, GM-confirmed operation.
@@ -1237,49 +1237,49 @@ async function initProductPricesTable() {
     await ensurePriceImportSchema();
     const { withRequestTransaction } = await import('./api/db.js');
     await withRequestTransaction(async () => {
-    await query("SELECT pg_advisory_xact_lock(hashtext('price-import-catalogue'))");
-    const seedRows = (await query(`SELECT description FROM product_prices
-      UNION ALL SELECT description FROM price_import_additions WHERE status IN('pending','conflict')`)).rows;
-    const seededNames = new Set(seedRows.map(row => nameKey(row.description)));
+      await __qd_executePlan(query, __qd_registeredPlan("server.js:1240:48"), []);
+      const seedRows = (await __qd_executePlan(query, __qd_registeredPlan("server.js:1241:49"), [])).
+      rows;
+      const seededNames = new Set(seedRows.map((row) => nameKey(row.description)));
 
-    let inserted = 0, updated = 0;
-    for (const p of STATIC_PRICE_LIST) {
-      if (seededNames.has(nameKey(p.description))) continue;
-      const res = await query(
-        `INSERT INTO product_prices (description, dp, cp, cif, bv) VALUES ($1,$2,$3,$4,$5)
-         ON CONFLICT (description) DO NOTHING`,
-        [String(p.description).trim().toUpperCase().replace(/\s+/g,' '), p.dp, p.cp, p.cif, p.bv]
-      );
-      if (res.rowCount > 0) { if (res.command === 'INSERT') inserted++; else updated++; }
-    }
-    if (inserted > 0) console.log(`Seeded ${inserted} new products into product_prices`);
-    if (updated > 0) console.log(`Corrected prices for ${updated} system-seeded products`);
-    for (const pkg of STATIC_PACKAGE_LIST) {
-      if (seededNames.has(nameKey(pkg.description))) continue;
-      await query(
-        `INSERT INTO product_prices (description, dp, cp, cif, bv, is_package) VALUES ($1,$2,$3,$4,$5,TRUE)
-          ON CONFLICT (description) DO NOTHING`,
-        [String(pkg.description).trim().toUpperCase().replace(/\s+/g,' '), pkg.dp, pkg.cp, pkg.cif, pkg.bv]
-      );
-    }
-    console.log(`Ensured ${STATIC_PACKAGE_LIST.length} packages in product_prices`);
+      let inserted = 0,updated = 0;
+      for (const p of STATIC_PRICE_LIST) {
+        if (seededNames.has(nameKey(p.description))) continue;
+        const res = await __qd_executePlan(query, __qd_registeredPlan("server.js:1249:50"),
 
-    // Seed product codes and CIF breakdown data from official PDF price list
-    let cifSeeded = 0;
-    for (const [normalizedDesc, d] of Object.entries(CIF_DATA)) {
-      const res = await query(
-        `UPDATE product_prices
-         SET product_code = $1, original_cif = $2, vat_pct = $3, import_duty_pct = $4, clearing_fee = $5
-         WHERE UPPER(TRIM(REGEXP_REPLACE(description, '\\s+', ' ', 'g'))) = $6
-            AND product_code IS NULL AND updated_by = 'system' AND merged_into_id IS NULL
-            AND NOT EXISTS(SELECT 1 FROM product_prices other WHERE other.product_code=$1)
-            AND (SELECT COUNT(*) FROM product_prices other
-              WHERE UPPER(TRIM(REGEXP_REPLACE(other.description, '\\s+', ' ', 'g')))=$6 AND other.merged_into_id IS NULL)=1`,
-        [d.code, d.orig, d.vat, d.duty, d.clearing, normalizedDesc]
-      );
-      if (res.rowCount > 0) cifSeeded++;
-    }
-    if (cifSeeded > 0) console.log(`[prices] Seeded CIF data + codes for ${cifSeeded} products`);
+
+        [String(p.description).trim().toUpperCase().replace(/\s+/g, ' '), p.dp, p.cp, p.cif, p.bv]);
+
+        if (res.rowCount > 0) {if (res.command === 'INSERT') inserted++;else updated++;}
+      }
+      if (inserted > 0) console.log(`Seeded ${inserted} new products into product_prices`);
+      if (updated > 0) console.log(`Corrected prices for ${updated} system-seeded products`);
+      for (const pkg of STATIC_PACKAGE_LIST) {
+        if (seededNames.has(nameKey(pkg.description))) continue;
+        await __qd_executePlan(query, __qd_registeredPlan("server.js:1260:51"),
+
+
+        [String(pkg.description).trim().toUpperCase().replace(/\s+/g, ' '), pkg.dp, pkg.cp, pkg.cif, pkg.bv]);
+
+      }
+      console.log(`Ensured ${STATIC_PACKAGE_LIST.length} packages in product_prices`);
+
+      // Seed product codes and CIF breakdown data from official PDF price list
+      let cifSeeded = 0;
+      for (const [normalizedDesc, d] of Object.entries(CIF_DATA)) {
+        const res = await __qd_executePlan(query, __qd_registeredPlan("server.js:1271:52"),
+
+
+
+
+
+
+
+        [d.code, d.orig, d.vat, d.duty, d.clearing, normalizedDesc]);
+
+        if (res.rowCount > 0) cifSeeded++;
+      }
+      if (cifSeeded > 0) console.log(`[prices] Seeded CIF data + codes for ${cifSeeded} products`);
     });
   } catch (err) {
     console.error('initProductPricesTable error:', err.message);
@@ -1317,53 +1317,53 @@ async function applyPendingPriceChanges() {
 }
 // Run once at startup and then every hour
 runStartupOperation(startupPolicy, 'price-activation-timer',
-  () => setInterval(applyPendingPriceChanges, 60 * 60 * 1000));
+() => setInterval(applyPendingPriceChanges, 60 * 60 * 1000));
 
-app.use('/api/prices', (req,res,next) => {
-  if(req.method==='GET'||req.method==='OPTIONS')return next();
-  if(!req.user)return res.status(401).json({error:'Authentication required'});
-  if(!['gm','admin','superadmin','super_admin'].includes(String(req.user.role).toLowerCase()))return res.status(403).json({error:'General Manager permission required'});
+app.use('/api/prices', (req, res, next) => {
+  if (req.method === 'GET' || req.method === 'OPTIONS') return next();
+  if (!req.user) return res.status(401).json({ error: 'Authentication required' });
+  if (!['gm', 'admin', 'superadmin', 'super_admin'].includes(String(req.user.role).toLowerCase())) return res.status(403).json({ error: 'General Manager permission required' });
   next();
 });
-const priceActor=req=>req.user?.fullName || req.user?.username || req.user?.sub;
-const priceMutation=handler=>atomicStockRequest(async(req,res)=>{
-  const {query}=await import('./api/db.js');
-  await query("SELECT pg_advisory_xact_lock(hashtext('price-import-catalogue'))");
-  await handler(req,res);
+const priceActor = (req) => req.user?.fullName || req.user?.username || req.user?.sub;
+const priceMutation = (handler) => atomicStockRequest(async (req, res) => {
+  const { query } = await import('./api/db.js');
+  await __qd_executePlan(query, __qd_registeredPlan("server.js:1331:53"), []);
+  await handler(req, res);
 });
-const priceEndpoint=fn=>async(req,res)=>{
-  try {res.json(await fn(req));}catch(error){res.status(error.status || 500).json({error:error.message});}
+const priceEndpoint = (fn) => async (req, res) => {
+  try {res.json(await fn(req));} catch (error) {res.status(error.status || 500).json({ error: error.message });}
 };
-app.post('/api/prices/import-preview',priceEndpoint(async req=>{
-  const {ensurePriceImportSchema,previewImport}=await import('./api/services/priceImport.js');
-  const {withTransaction}=await import('./api/db.js');
+app.post('/api/prices/import-preview', priceEndpoint(async (req) => {
+  const { ensurePriceImportSchema, previewImport } = await import('./api/services/priceImport.js');
+  const { withTransaction } = await import('./api/db.js');
   await ensurePriceImportSchema();
-  return withTransaction(client=>previewImport(client,req.body.products,req.body.effective_from));
+  return withTransaction((client) => previewImport(client, req.body.products, req.body.effective_from));
 }));
-app.post('/api/prices/bulk-import',priceEndpoint(async req=>{
-  const {importPrices}=await import('./api/services/priceImport.js');
-  return importPrices(req.body.products,req.body.effective_from,priceActor(req));
+app.post('/api/prices/bulk-import', priceEndpoint(async (req) => {
+  const { importPrices } = await import('./api/services/priceImport.js');
+  return importPrices(req.body.products, req.body.effective_from, priceActor(req));
 }));
-const manualPriceEndpoint=fn=>priceEndpoint(async req=>{
-  try{return await fn(req);}catch(error){
-    if(['42P01','42703'].includes(error.code))throw Object.assign(new Error('Manual price control requires reviewed additive migration 035; no schema changes were attempted'),{status:503});
+const manualPriceEndpoint = (fn) => priceEndpoint(async (req) => {
+  try {return await fn(req);} catch (error) {
+    if (['42P01', '42703'].includes(error.code)) throw Object.assign(new Error('Manual price control requires reviewed additive migration 035; no schema changes were attempted'), { status: 503 });
     throw error;
   }
 });
-app.get('/api/prices/manual-schedules',manualPriceEndpoint(async req=>
-  (await import('./api/services/manualPriceControl.js')).listManualPrices(req.user)));
-app.post('/api/prices/manual-schedules/:id/activate',manualPriceEndpoint(async req=>
-  (await import('./api/services/manualPriceControl.js')).activateManualPrice(req.params.id,req.body,req.user)));
-app.post('/api/prices/manual-schedules/:id/compensate',manualPriceEndpoint(async req=>
-  (await import('./api/services/manualPriceControl.js')).compensateManualPrice(req.params.id,req.body,req.user)));
-app.get('/api/prices/duplicates',priceEndpoint(async req=>{
-  if(!req.user)throw Object.assign(new Error('Authentication required'),{status:401});
-  if(!['gm','admin','superadmin','super_admin'].includes(String(req.user.role).toLowerCase()))throw Object.assign(new Error('General Manager permission required'),{status:403});
+app.get('/api/prices/manual-schedules', manualPriceEndpoint(async (req) =>
+(await import('./api/services/manualPriceControl.js')).listManualPrices(req.user)));
+app.post('/api/prices/manual-schedules/:id/activate', manualPriceEndpoint(async (req) =>
+(await import('./api/services/manualPriceControl.js')).activateManualPrice(req.params.id, req.body, req.user)));
+app.post('/api/prices/manual-schedules/:id/compensate', manualPriceEndpoint(async (req) =>
+(await import('./api/services/manualPriceControl.js')).compensateManualPrice(req.params.id, req.body, req.user)));
+app.get('/api/prices/duplicates', priceEndpoint(async (req) => {
+  if (!req.user) throw Object.assign(new Error('Authentication required'), { status: 401 });
+  if (!['gm', 'admin', 'superadmin', 'super_admin'].includes(String(req.user.role).toLowerCase())) throw Object.assign(new Error('General Manager permission required'), { status: 403 });
   return (await import('./api/services/priceImport.js')).reviewDuplicates();
 }));
-app.post('/api/prices/reconcile',priceEndpoint(async req=>{
-  const result=await (await import('./api/services/priceImport.js')).reconcileDuplicates(req.body,priceActor(req));
-  await (await import('./api/db.js')).publishRealtimeEvent('prices','reconciled',result);
+app.post('/api/prices/reconcile', priceEndpoint(async (req) => {
+  const result = await (await import('./api/services/priceImport.js')).reconcileDuplicates(req.body, priceActor(req));
+  await (await import('./api/db.js')).publishRealtimeEvent('prices', 'reconciled', result);
   return result;
 }));
 
@@ -1372,9 +1372,9 @@ app.get('/api/prices', async (req, res) => {
     const { query } = await import('./api/db.js');
     // Show every active identity. Unresolved distinct-code products must never
     // be hidden by a description-only DISTINCT or client-side heuristic.
-    const { rows } = await query(`
-      SELECT * FROM live_product_prices WHERE catalogue_entry ORDER BY description,id
-    `);
+    const { rows } = await __qd_executePlan(query, __qd_registeredPlan("server.js:1375:54"), []);
+
+
     res.json(rows);
   } catch (err) {
     console.error('GET /api/prices error:', err.message);
@@ -1386,42 +1386,42 @@ app.put('/api/prices', priceMutation(async (req, res) => {
   try {
     const { query } = await import('./api/db.js');
     // Accept both legacy array body and new {updates, effective_from} body
-    const updates = Array.isArray(req.body) ? req.body : (req.body?.updates || []);
-    const effectiveFrom = Array.isArray(req.body) ? null : (req.body?.effective_from || null);
+    const updates = Array.isArray(req.body) ? req.body : req.body?.updates || [];
+    const effectiveFrom = Array.isArray(req.body) ? null : req.body?.effective_from || null;
     if (!Array.isArray(updates) || updates.length === 0) return res.status(400).json({ error: 'Expected array of price updates' });
     const { businessToday } = await import('./shared/price-list-import.js');
     const { validateDate } = await import('./api/services/priceImport.js');
     const today = businessToday();
-    validateDate(effectiveFrom,today);
+    validateDate(effectiveFrom, today);
     const isImmediate = !effectiveFrom || effectiveFrom === today;
     const updatedBy = priceActor(req);
     let count = 0;
     for (const u of updates) {
       if (!u.id) continue;
-      const { rows: old } = await query(`SELECT dp, cp, cif, bv, description FROM live_product_prices WHERE id=$1`, [u.id]);
+      const { rows: old } = await __qd_executePlan(query, __qd_registeredPlan("server.js:1401:55"), [u.id]);
       if (!old.length) continue;
       const o = old[0];
-      const newDp = Number(u.dp)||0, newCp = Number(u.cp)||0, newCif = Number(u.cif)||0, newBv = Number(u.bv)||0;
+      const newDp = Number(u.dp) || 0,newCp = Number(u.cp) || 0,newCif = Number(u.cif) || 0,newBv = Number(u.bv) || 0;
       const changed = o.dp != newDp || o.cp != newCp || o.cif != newCif || o.bv != newBv;
       if (changed) {
-        await query(
-          `INSERT INTO product_price_history (product_id, description, old_dp, old_cp, old_cif, old_bv, new_dp, new_cp, new_cif, new_bv, changed_by, effective_from, status)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-          [u.id, o.description, o.dp, o.cp, o.cif, o.bv, newDp, newCp, newCif, newBv, updatedBy, effectiveFrom || today, isImmediate ? 'applied' : 'pending']
-        );
+        await __qd_executePlan(query, __qd_registeredPlan("server.js:1408:56"),
+
+
+        [u.id, o.description, o.dp, o.cp, o.cif, o.bv, newDp, newCp, newCif, newBv, updatedBy, effectiveFrom || today, isImmediate ? 'applied' : 'pending']);
+
       }
       if (isImmediate) {
         // Build dynamic SET for price + any CIF breakdown fields included in update
-        const setClauses = ['dp=$1','cp=$2','cif=$3','bv=$4','updated_at=NOW()','updated_by=$5'];
+        const setClauses = [__qd_registeredPlan("server.js:1415:57"), __qd_registeredPlan("server.js:1415:58"), __qd_registeredPlan("server.js:1415:59"), __qd_registeredPlan("server.js:1415:60"), __qd_registeredPlan("server.js:1415:61"), __qd_registeredPlan("server.js:1415:62")];
         const setVals = [newDp, newCp, newCif, newBv, updatedBy];
         let sIdx = 6;
-        if (u.product_code !== undefined) { setClauses.push(`product_code=$${sIdx++}`); setVals.push(u.product_code || null); }
-        if (u.original_cif !== undefined) { setClauses.push(`original_cif=$${sIdx++}`); setVals.push(u.original_cif != null ? Number(u.original_cif) : null); }
-        if (u.vat_pct !== undefined) { setClauses.push(`vat_pct=$${sIdx++}`); setVals.push(Number(u.vat_pct)||15); }
-        if (u.import_duty_pct !== undefined) { setClauses.push(`import_duty_pct=$${sIdx++}`); setVals.push(Number(u.import_duty_pct)||0); }
-        if (u.clearing_fee !== undefined) { setClauses.push(`clearing_fee=$${sIdx++}`); setVals.push(Number(u.clearing_fee)||1); }
+        if (u.product_code !== undefined) {setClauses.push(__qd_registeredPlan("server.js:1418:63", [sIdx++]));setVals.push(u.product_code || null);}
+        if (u.original_cif !== undefined) {setClauses.push(__qd_registeredPlan("server.js:1419:64", [sIdx++]));setVals.push(u.original_cif != null ? Number(u.original_cif) : null);}
+        if (u.vat_pct !== undefined) {setClauses.push(__qd_registeredPlan("server.js:1420:65", [sIdx++]));setVals.push(Number(u.vat_pct) || 15);}
+        if (u.import_duty_pct !== undefined) {setClauses.push(__qd_registeredPlan("server.js:1421:66", [sIdx++]));setVals.push(Number(u.import_duty_pct) || 0);}
+        if (u.clearing_fee !== undefined) {setClauses.push(__qd_registeredPlan("server.js:1422:67", [sIdx++]));setVals.push(Number(u.clearing_fee) || 1);}
         setVals.push(u.id);
-        await query(`UPDATE product_prices SET ${setClauses.join(',')} WHERE id=$${sIdx}`, setVals);
+        await __qd_executePlan(query, __qd_registeredPlan("server.js:1424:68", [__qd_joinPlans(setClauses, "compactComma"), sIdx]), setVals);
       }
       count++;
     }
@@ -1439,36 +1439,36 @@ app.patch('/api/prices/:id', priceMutation(async (req, res) => {
     const { dp, cp, cif, bv, description, product_code, original_cif, vat_pct, import_duty_pct, clearing_fee } = req.body;
     const updatedBy = req.user?.name || req.user?.username || 'gm';
     // Snapshot old values before patching
-    const { rows: old } = await query(`SELECT dp, cp, cif, bv, description FROM live_product_prices WHERE id=$1`, [id]);
-    if(!old.length)return res.status(409).json({error:'This product is absent or archived. Refresh the active price list.'});
+    const { rows: old } = await __qd_executePlan(query, __qd_registeredPlan("server.js:1442:69"), [id]);
+    if (!old.length) return res.status(409).json({ error: 'This product is absent or archived. Refresh the active price list.' });
     const fields = [];
     const vals = [];
     let i = 1;
-    if (dp !== undefined) { fields.push(`dp=$${i++}`); vals.push(Number(dp)||0); }
-    if (cp !== undefined) { fields.push(`cp=$${i++}`); vals.push(Number(cp)||0); }
-    if (cif !== undefined) { fields.push(`cif=$${i++}`); vals.push(Number(cif)||0); }
-    if (bv !== undefined) { fields.push(`bv=$${i++}`); vals.push(Number(bv)||0); }
-    if (description !== undefined) { fields.push(`description=$${i++}`); vals.push(String(description)); }
-    if (product_code !== undefined) { fields.push(`product_code=$${i++}`); vals.push(product_code || null); }
-    if (original_cif !== undefined) { fields.push(`original_cif=$${i++}`); vals.push(original_cif != null ? Number(original_cif) : null); }
-    if (vat_pct !== undefined) { fields.push(`vat_pct=$${i++}`); vals.push(Number(vat_pct)||15); }
-    if (import_duty_pct !== undefined) { fields.push(`import_duty_pct=$${i++}`); vals.push(Number(import_duty_pct)||0); }
-    if (clearing_fee !== undefined) { fields.push(`clearing_fee=$${i++}`); vals.push(Number(clearing_fee)||1); }
+    if (dp !== undefined) {fields.push(__qd_registeredPlan("server.js:1447:70", [i++]));vals.push(Number(dp) || 0);}
+    if (cp !== undefined) {fields.push(__qd_registeredPlan("server.js:1448:71", [i++]));vals.push(Number(cp) || 0);}
+    if (cif !== undefined) {fields.push(__qd_registeredPlan("server.js:1449:72", [i++]));vals.push(Number(cif) || 0);}
+    if (bv !== undefined) {fields.push(__qd_registeredPlan("server.js:1450:73", [i++]));vals.push(Number(bv) || 0);}
+    if (description !== undefined) {fields.push(__qd_registeredPlan("server.js:1451:74", [i++]));vals.push(String(description));}
+    if (product_code !== undefined) {fields.push(__qd_registeredPlan("server.js:1452:75", [i++]));vals.push(product_code || null);}
+    if (original_cif !== undefined) {fields.push(__qd_registeredPlan("server.js:1453:76", [i++]));vals.push(original_cif != null ? Number(original_cif) : null);}
+    if (vat_pct !== undefined) {fields.push(__qd_registeredPlan("server.js:1454:77", [i++]));vals.push(Number(vat_pct) || 15);}
+    if (import_duty_pct !== undefined) {fields.push(__qd_registeredPlan("server.js:1455:78", [i++]));vals.push(Number(import_duty_pct) || 0);}
+    if (clearing_fee !== undefined) {fields.push(__qd_registeredPlan("server.js:1456:79", [i++]));vals.push(Number(clearing_fee) || 1);}
     if (fields.length === 0) return res.status(400).json({ error: 'No fields to update' });
-    fields.push(`updated_at=NOW()`, `updated_by=$${i++}`);
+    fields.push(__qd_registeredPlan("server.js:1458:80"), __qd_registeredPlan("server.js:1458:81", [i++]));
     vals.push(updatedBy, id);
-    await query(`UPDATE product_prices SET ${fields.join(',')} WHERE id=$${i}`, vals);
-    const { rows } = await query('SELECT * FROM product_prices WHERE id=$1', [id]);
+    await __qd_executePlan(query, __qd_registeredPlan("server.js:1460:82", [__qd_joinPlans(fields, "compactComma"), i]), vals);
+    const { rows } = await __qd_executePlan(query, __qd_registeredPlan("server.js:1461:83"), [id]);
     // Log history if price values changed
     if (old.length && rows.length) {
-      const o = old[0], n = rows[0];
+      const o = old[0],n = rows[0];
       const changed = o.dp != n.dp || o.cp != n.cp || o.cif != n.cif || o.bv != n.bv;
       if (changed) {
-        await query(
-          `INSERT INTO product_price_history (product_id, description, old_dp, old_cp, old_cif, old_bv, new_dp, new_cp, new_cif, new_bv, changed_by)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-          [id, o.description, o.dp, o.cp, o.cif, o.bv, n.dp, n.cp, n.cif, n.bv, updatedBy]
-        );
+        await __qd_executePlan(query, __qd_registeredPlan("server.js:1468:84"),
+
+
+        [id, o.description, o.dp, o.cp, o.cif, o.bv, n.dp, n.cp, n.cif, n.bv, updatedBy]);
+
       }
     }
     res.json(rows[0] || { success: true });
@@ -1482,30 +1482,30 @@ app.patch('/api/prices/:id', priceMutation(async (req, res) => {
 app.get('/api/prices/analytics', async (req, res) => {
   try {
     const { query } = await import('./api/db.js');
-    const { rows } = await query(`
-      SELECT
-        pp.id,
-        pp.description,
-        pp.product_code,
-        pp.dp, pp.cp, pp.cif,
-        pp.original_cif, pp.vat_pct, pp.import_duty_pct, pp.clearing_fee,
-        pp.bv, pp.is_package,
-        COALESCE(SUM(CASE WHEN m.type IN ('walk_in_member_sale','walk_in_non_member_sale','sale','prescription_dispense','campaign_sale','campaign_free_item')
-                          THEN ABS(m.quantity) ELSE 0 END), 0)::NUMERIC(14,2) AS units_sold_90d,
-        COALESCE(SUM(CASE WHEN m.type IN ('walk_in_member_sale','walk_in_non_member_sale','sale','prescription_dispense','campaign_sale')
-                          THEN ABS(m.quantity) * COALESCE(m.unit_price, pp.dp, 0) ELSE 0 END), 0)::NUMERIC(14,2) AS revenue_dp_90d,
-        COALESCE(SUM(CASE WHEN m.type IN ('walk_in_member_sale','walk_in_non_member_sale','sale','prescription_dispense','campaign_sale')
-                          THEN ABS(m.quantity) * (COALESCE(m.unit_price, pp.dp, 0) - COALESCE(pp.cif, 0)) ELSE 0 END), 0)::NUMERIC(14,2) AS gross_profit_90d,
-        COALESCE(COUNT(DISTINCT DATE_TRUNC('month', m.created_at)), 0)::INTEGER AS active_months
-      FROM live_product_prices pp
-      LEFT JOIN branch_inventory_movements m
-        ON UPPER(TRIM(REGEXP_REPLACE(m.product_name, '\\s+', ' ', 'g'))) = UPPER(TRIM(REGEXP_REPLACE(pp.description, '\\s+', ' ', 'g')))
-        AND m.created_at >= NOW() - INTERVAL '90 days'
-        AND m.type IN ('walk_in_member_sale','walk_in_non_member_sale','sale','prescription_dispense','campaign_sale','campaign_free_item')
-      WHERE pp.is_package IS NOT TRUE
-      GROUP BY pp.id
-      ORDER BY units_sold_90d DESC, pp.description ASC
-    `);
+    const { rows } = await __qd_executePlan(query, __qd_registeredPlan("server.js:1485:85"), []);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     res.json({ success: true, products: rows });
   } catch (err) {
     console.error('GET /api/prices/analytics error:', err.message);
@@ -1516,20 +1516,20 @@ app.get('/api/prices/analytics', async (req, res) => {
 app.get('/api/prices/pending', async (req, res) => {
   try {
     const { query } = await import('./api/db.js');
-    const { rows } = await query(
-      `SELECT h.*, pp.description AS current_description, pp.dp AS live_dp, pp.cp AS live_cp, pp.cif AS live_cif, pp.bv AS live_bv
-       FROM product_price_history h
-       LEFT JOIN product_prices pp ON pp.id = h.product_id
-       WHERE h.status = 'pending'
-       ORDER BY h.effective_from ASC, h.id ASC`
-    );
-    const additions=(await query(`SELECT 'staged:' || id AS id,NULL::integer AS product_id,
-      description,current_date AS changed_at,changed_by,effective_from,status,activation_error,
-      dp AS new_dp,cp AS new_cp,cif AS new_cif,bv AS new_bv,description AS current_description,
-      NULL::numeric AS live_dp,NULL::numeric AS live_cp,NULL::numeric AS live_cif,NULL::numeric AS live_bv,
-      'new_product' AS change_type,product_code
-      FROM price_import_additions WHERE status IN('pending','conflict') ORDER BY effective_from,id`)).rows;
-    res.json({ success: true, pending: [...rows,...additions] });
+    const { rows } = await __qd_executePlan(query, __qd_registeredPlan("server.js:1520:86"), []);
+
+
+
+
+
+
+    const additions = (await __qd_executePlan(query, __qd_registeredPlan("server.js:1526:87"), [])).
+
+
+
+
+    rows;
+    res.json({ success: true, pending: [...rows, ...additions] });
   } catch (err) {
     console.error('GET /api/prices/pending error:', err.message);
     res.status(500).json({ error: err.message });
@@ -1542,15 +1542,15 @@ app.get('/api/prices/history', async (req, res) => {
     const { product_id, limit = 200 } = req.query;
     const cond = product_id ? `WHERE h.product_id = $1` : '';
     const params = product_id ? [product_id] : [];
-    const { rows } = await query(
-      `SELECT h.*, pp.description AS current_description
-       FROM product_price_history h
-       LEFT JOIN product_prices pp ON pp.id = h.product_id
-       ${cond}
-       ORDER BY h.changed_at DESC
-       LIMIT ${Number(limit) || 200}`,
-      params
-    );
+    const { rows } = await __qd_executePlan(query, __qd_registeredPlan("server.js:1546:88", [
+
+
+
+    cond,
+
+    Number(limit) || 200]),
+    params);
+
     res.json({ success: true, history: rows });
   } catch (err) {
     console.error('GET /api/prices/history error:', err.message);
@@ -1561,11 +1561,11 @@ app.get('/api/prices/history', async (req, res) => {
 app.post('/api/prices', priceMutation(async (req, res) => {
   try {
     const { query } = await import('./api/db.js');
-    const { importPrices }=await import('./api/services/priceImport.js');
-    const { businessToday,resolveProduct }=await import('./shared/price-list-import.js');
-    await importPrices([req.body],businessToday(),priceActor(req));
-    const {rows}=await query('SELECT * FROM live_product_prices WHERE catalogue_entry');
-    res.json(resolveProduct(req.body,rows).existing);
+    const { importPrices } = await import('./api/services/priceImport.js');
+    const { businessToday, resolveProduct } = await import('./shared/price-list-import.js');
+    await importPrices([req.body], businessToday(), priceActor(req));
+    const { rows } = await __qd_executePlan(query, __qd_registeredPlan("server.js:1567:89"), []);
+    res.json(resolveProduct(req.body, rows).existing);
   } catch (err) {
     console.error('POST /api/prices error:', err.message);
     res.status(err.status || 500).json({ error: err.message });
@@ -1575,10 +1575,10 @@ app.post('/api/prices', priceMutation(async (req, res) => {
 app.delete('/api/prices/:id', priceMutation(async (req, res) => {
   try {
     const { query } = await import('./api/db.js');
-    const evidence=await query(`SELECT id FROM product_price_history WHERE product_id=$1
-      UNION ALL SELECT id FROM product_prices WHERE (id=$1 AND merged_into_id IS NOT NULL) OR merged_into_id=$1`,[req.params.id]);
-    if(evidence.rowCount)return res.status(409).json({error:'This identity has price history or reconciliation evidence. It cannot be deleted; use the GM duplicate review.'});
-    await query('DELETE FROM product_prices WHERE id=$1', [req.params.id]);
+    const evidence = await __qd_executePlan(query, __qd_registeredPlan("server.js:1578:90"),
+    [req.params.id]);
+    if (evidence.rowCount) return res.status(409).json({ error: 'This identity has price history or reconciliation evidence. It cannot be deleted; use the GM duplicate review.' });
+    await __qd_executePlan(query, __qd_registeredPlan("server.js:1581:91"), [req.params.id]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1595,30 +1595,30 @@ app.get('/api/stock/branch/:branchId/card', async (req, res) => {
     const startDate = req.query.from || new Date(new Date().setDate(1)).toISOString().slice(0, 10);
     const endDate = req.query.to || new Date().toISOString().slice(0, 10);
 
-    const [balances, movements] = await Promise.all([
-      getMany(
-        `SELECT * FROM inventory_balances WHERE location_type = 'branch' AND location_id = $1`,
-        [branchId]
-      ),
-      getMany(
-        `SELECT movement_type, quantity, source_location, destination_location, product_name
-         FROM stock_movements
-         WHERE status = 'posted'
-           AND created_at >= $1::date AND created_at <= ($2 || 'T23:59:59')::timestamp
-           AND (source_location = $3 OR destination_location = $3)`,
-        [startDate, endDate, branchId]
-      ),
-    ]);
+    const [balances, movements] = await Promise.all([__qd_executePlan(
+      getMany, __qd_registeredPlan("server.js:1600:92"),
 
-    const productCount = new Set(balances.filter(b => Number(b.closing_qty) > 0).map(b => b.product_name)).size;
+      [branchId]), __qd_executePlan(
+
+      getMany, __qd_registeredPlan("server.js:1604:93"),
+
+
+
+
+
+      [startDate, endDate, branchId])]
+
+    );
+
+    const productCount = new Set(balances.filter((b) => Number(b.closing_qty) > 0).map((b) => b.product_name)).size;
     const closingStock = balances.reduce((s, b) => s + Number(b.closing_qty || 0), 0);
     const stockValueDP = balances.reduce((s, b) => s + Number(b.stock_value_dp || 0), 0);
-    const salesUnits = movements
-      .filter(m => ['walkin_sale', 'walkin_member_sale', 'walkin_non_member_sale', 'walk_in_member_sale', 'walk_in_non_member_sale', 'sale'].includes(m.movement_type) && m.source_location === branchId)
-      .reduce((s, m) => s + Number(m.quantity || 0), 0);
-    const dispensedUnits = movements
-      .filter(m => m.movement_type === 'prescription_dispense' && m.source_location === branchId)
-      .reduce((s, m) => s + Number(m.quantity || 0), 0);
+    const salesUnits = movements.
+    filter((m) => ['walkin_sale', 'walkin_member_sale', 'walkin_non_member_sale', 'walk_in_member_sale', 'walk_in_non_member_sale', 'sale'].includes(m.movement_type) && m.source_location === branchId).
+    reduce((s, m) => s + Number(m.quantity || 0), 0);
+    const dispensedUnits = movements.
+    filter((m) => m.movement_type === 'prescription_dispense' && m.source_location === branchId).
+    reduce((s, m) => s + Number(m.quantity || 0), 0);
 
     res.json({ success: true, branchId, productCount, closingStock, stockValueDP, salesUnits, dispensedUnits });
   } catch (err) {
@@ -1635,42 +1635,42 @@ app.get('/api/stock/branch/:branchId/inventory', async (req, res) => {
 
     // Build a comprehensive candidate list so any alias variant stored in the DB matches.
     const canonical = normalizeBranchSlug(rawId) || rawId.trim().toLowerCase();
-    const raw_lc   = rawId.trim().toLowerCase();
+    const raw_lc = rawId.trim().toLowerCase();
     const candidateSet = new Set([canonical, raw_lc]);
     // _branch suffix variants
-    if (canonical.endsWith('_branch')) candidateSet.add(canonical.replace(/_branch$/, ''));
-    else                                candidateSet.add(canonical + '_branch');
-    if (raw_lc.endsWith('_branch'))    candidateSet.add(raw_lc.replace(/_branch$/, ''));
-    else                                candidateSet.add(raw_lc + '_branch');
+    if (canonical.endsWith('_branch')) candidateSet.add(canonical.replace(/_branch$/, ''));else
+    candidateSet.add(canonical + '_branch');
+    if (raw_lc.endsWith('_branch')) candidateSet.add(raw_lc.replace(/_branch$/, ''));else
+    candidateSet.add(raw_lc + '_branch');
     // Known alias pairs
-    if (['townshop','windhoek_cbd','windhoek'].includes(canonical)) {
-      ['townshop','windhoek_cbd','windhoek'].forEach(a => candidateSet.add(a));
+    if (['townshop', 'windhoek_cbd', 'windhoek'].includes(canonical)) {
+      ['townshop', 'windhoek_cbd', 'windhoek'].forEach((a) => candidateSet.add(a));
     }
-    if (['katima_mulilo','katima','katima-mulilo'].includes(canonical)) {
-      ['katima_mulilo','katima','katima-mulilo','katima_branch','katima_mulilo_branch'].forEach(a => candidateSet.add(a));
+    if (['katima_mulilo', 'katima', 'katima-mulilo'].includes(canonical)) {
+      ['katima_mulilo', 'katima', 'katima-mulilo', 'katima_branch', 'katima_mulilo_branch'].forEach((a) => candidateSet.add(a));
     }
-    if (['oshakati_branch','oshakati'].includes(canonical)) {
-      ['oshakati_branch','oshakati'].forEach(a => candidateSet.add(a));
+    if (['oshakati_branch', 'oshakati'].includes(canonical)) {
+      ['oshakati_branch', 'oshakati'].forEach((a) => candidateSet.add(a));
     }
-    if (['hochland-park','hochlandpark','hochland_park'].includes(canonical)) {
-      ['hochland-park','hochlandpark','hochland_park'].forEach(a => candidateSet.add(a));
+    if (['hochland-park', 'hochlandpark', 'hochland_park'].includes(canonical)) {
+      ['hochland-park', 'hochlandpark', 'hochland_park'].forEach((a) => candidateSet.add(a));
     }
-    if (['walvisbay','walvis_bay'].includes(canonical)) {
-      ['walvisbay','walvis_bay','walvis bay'].forEach(a => candidateSet.add(a));
+    if (['walvisbay', 'walvis_bay'].includes(canonical)) {
+      ['walvisbay', 'walvis_bay', 'walvis bay'].forEach((a) => candidateSet.add(a));
     }
 
     const candidates = [...candidateSet].filter(Boolean);
 
     // Query branch_inventory_batches — physical stock source of truth for branches
     // that use the transactional batch system (e.g. townshop).
-    const rows = await getMany(
-      `SELECT product_name, SUM(quantity) AS total_qty, MIN(expiry_date) AS earliest_expiry
-       FROM branch_inventory_batches
-       WHERE LOWER(TRIM(branch_id)) = ANY($1::text[])
-       GROUP BY product_name
-       ORDER BY product_name ASC`,
-      [candidates]
-    );
+    const rows = await __qd_executePlan(getMany, __qd_registeredPlan("server.js:1667:94"),
+
+
+
+
+
+    [candidates]);
+
 
     // Build inventory map keyed by lowercase product name.
     const inventoryMap = new Map();
@@ -1683,8 +1683,8 @@ app.get('/api/stock/branch/:branchId/inventory', async (req, res) => {
         inventoryMap.set(key, {
           productName: r.product_name,
           availableQty: qty,
-          closingQty:   qty,
-          expiryDate:   r.earliest_expiry ? String(r.earliest_expiry).slice(0, 10) : null,
+          closingQty: qty,
+          expiryDate: r.earliest_expiry ? String(r.earliest_expiry).slice(0, 10) : null
         });
       }
     }
@@ -1695,14 +1695,14 @@ app.get('/api/stock/branch/:branchId/inventory', async (req, res) => {
     // BIB rows take precedence over IB rows for the same product (BIB is authoritative
     // when it exists).
     try {
-      const ibRows = await getMany(
-        `SELECT product_name, SUM(GREATEST(closing_qty, 0)) AS total_qty, MIN(expiry_date) AS earliest_expiry
-         FROM inventory_balances
-         WHERE location_type = 'branch'
-           AND LOWER(TRIM(location_id)) = ANY($1::text[])
-         GROUP BY product_name`,
-        [candidates]
-      );
+      const ibRows = await __qd_executePlan(getMany, __qd_registeredPlan("server.js:1699:95"),
+
+
+
+
+
+      [candidates]);
+
       for (const r of ibRows) {
         const key = (r.product_name || '').trim().toLowerCase();
         if (!key) continue;
@@ -1711,8 +1711,8 @@ app.get('/api/stock/branch/:branchId/inventory', async (req, res) => {
         inventoryMap.set(key, {
           productName: r.product_name,
           availableQty: qty,
-          closingQty:   qty,
-          expiryDate:   r.earliest_expiry ? String(r.earliest_expiry).slice(0, 10) : null,
+          closingQty: qty,
+          expiryDate: r.earliest_expiry ? String(r.earliest_expiry).slice(0, 10) : null
         });
       }
     } catch (ibErr) {
@@ -1720,7 +1720,7 @@ app.get('/api/stock/branch/:branchId/inventory', async (req, res) => {
     }
 
     const inventory = [...inventoryMap.values()].sort((a, b) =>
-      (a.productName || '').localeCompare(b.productName || '')
+    (a.productName || '').localeCompare(b.productName || '')
     );
     res.json({ success: true, branchId: rawId, inventory });
   } catch (err) {
@@ -1736,18 +1736,18 @@ app.get('/api/branch/inventory-movements', async (req, res) => {
     const from = req.query.from || null;
     const to = req.query.to || null;
     const params = [limit];
-    let dateFilter = '';
-    if (from) { params.push(from); dateFilter += ` AND created_at >= $${params.length}::date`; }
-    if (to)   { params.push(to + 'T23:59:59'); dateFilter += ` AND created_at <= $${params.length}::timestamp`; }
-    const rows = await getMany(
-      `SELECT id, branch_id, type, product_name, batch_no, quantity, reference, notes, created_by, created_at
-       FROM branch_inventory_movements
-       WHERE 1=1 ${dateFilter}
-       ORDER BY created_at DESC LIMIT $1`,
-      params
-    );
-    const fmt = d => d ? (d instanceof Date ? d.toISOString() : String(d)) : null;
-    res.json(rows.map(r => ({ ...r, quantity: Number(r.quantity || 0), created_at: fmt(r.created_at) })));
+    let dateFilter = __qd_registeredPlan("server.js:1739:96");
+    if (from) {params.push(from);dateFilter = __qd_joinPlans([dateFilter, __qd_registeredPlan("server.js:1740:97", [params.length])], "empty");}
+    if (to) {params.push(to + 'T23:59:59');dateFilter = __qd_joinPlans([dateFilter, __qd_registeredPlan("server.js:1741:98", [params.length])], "empty");}
+    const rows = await __qd_executePlan(getMany, __qd_registeredPlan("server.js:1743:99", [
+
+
+    dateFilter]),
+
+    params);
+
+    const fmt = (d) => d ? d instanceof Date ? d.toISOString() : String(d) : null;
+    res.json(rows.map((r) => ({ ...r, quantity: Number(r.quantity || 0), created_at: fmt(r.created_at) })));
   } catch (err) {
     console.error('[branch/inventory-movements]', err);
     res.status(500).json({ success: false, error: err.message });
@@ -1759,28 +1759,28 @@ app.get('/api/branch/inventory-movements', async (req, res) => {
 app.get('/api/stock/branch-batches', async (req, res) => {
   try {
     const { getMany } = await import('./api/db.js');
-    const rows = await getMany(`
-      SELECT b.id, b.branch_id, b.product_name, b.batch_no, b.expiry_date,
-             b.quantity, b.status, b.source_warehouse, b.created_at,
-             COALESCE(NULLIF(p.dp,  0), NULLIF(b.unit_price, 0), 0) AS dp,
-             COALESCE(NULLIF(p.cif, 0), 0)                          AS cif
-      FROM   branch_inventory_batches b
-      LEFT JOIN live_product_prices p
-             ON LOWER(TRIM(p.description)) = LOWER(TRIM(b.product_name))
-      WHERE  b.quantity > 0
-      ORDER  BY b.branch_id, b.product_name, b.expiry_date NULLS LAST
-    `);
-    res.json(rows.map(r => ({
+    const rows = await __qd_executePlan(getMany, __qd_registeredPlan("server.js:1762:100"), []);
+
+
+
+
+
+
+
+
+
+
+    res.json(rows.map((r) => ({
       ...r,
-      quantity:   Number(r.quantity  || 0),
-      dp:         Number(r.dp        || 0),
-      cif:        Number(r.cif       || 0),
-      location:   r.branch_id,
+      quantity: Number(r.quantity || 0),
+      dp: Number(r.dp || 0),
+      cif: Number(r.cif || 0),
+      location: r.branch_id,
       locationType: 'branch',
       description: r.product_name,
       remaining_quantity: Number(r.quantity || 0),
-      dpc_unit_value: Number(r.dp  || 0),
-      cif_unit_cost:  Number(r.cif || 0),
+      dpc_unit_value: Number(r.dp || 0),
+      cif_unit_cost: Number(r.cif || 0)
     })));
   } catch (err) {
     console.error('[stock/branch-batches]', err);
@@ -1797,25 +1797,25 @@ app.get('/api/stock/branch/:branchId/movements', async (req, res) => {
     const to = req.query.to || null;
 
     const params = [branchId, branchId, limit];
-    let dateFilter = '';
-    if (from) { params.push(from); dateFilter += ` AND created_at >= $${params.length}::date`; }
-    if (to) { params.push(to + 'T23:59:59'); dateFilter += ` AND created_at <= $${params.length}::timestamp`; }
+    let dateFilter = __qd_registeredPlan("server.js:1800:101");
+    if (from) {params.push(from);dateFilter = __qd_joinPlans([dateFilter, __qd_registeredPlan("server.js:1801:102", [params.length])], "empty");}
+    if (to) {params.push(to + 'T23:59:59');dateFilter = __qd_joinPlans([dateFilter, __qd_registeredPlan("server.js:1802:103", [params.length])], "empty");}
 
-    const rows = await getMany(
-      `SELECT id, product_name, batch_no, expiry_date, quantity, movement_type,
-              source_location, source_location_type, destination_location, destination_location_type,
-              reference_id, notes, created_by, status, movement_date, created_at
-       FROM stock_movements
-       WHERE status = 'posted'
-         AND (source_location = $1 OR destination_location = $2)
-         ${dateFilter}
-       ORDER BY created_at DESC
-       LIMIT $3`,
-      params
-    );
+    const rows = await __qd_executePlan(getMany, __qd_registeredPlan("server.js:1805:104", [
 
-    const fmt = (d) => d ? (d instanceof Date ? d.toISOString() : String(d)) : null;
-    const movements = rows.map(r => ({
+
+
+
+
+
+    dateFilter]),
+
+
+    params);
+
+
+    const fmt = (d) => d ? d instanceof Date ? d.toISOString() : String(d) : null;
+    const movements = rows.map((r) => ({
       id: r.id,
       productName: r.product_name,
       batchNo: r.batch_no,
@@ -1829,7 +1829,7 @@ app.get('/api/stock/branch/:branchId/movements', async (req, res) => {
       referenceId: r.reference_id,
       notes: r.notes,
       createdBy: r.created_by,
-      createdAt: fmt(r.created_at),
+      createdAt: fmt(r.created_at)
     }));
     res.json({ success: true, branchId, movements });
   } catch (err) {
@@ -1842,13 +1842,13 @@ app.get('/api/stock/warehouse/:warehouseId/inventory', async (req, res) => {
   try {
     const { getMany } = await import('./api/db.js');
     const warehouseId = req.params.warehouseId;
-    const rows = await getMany(
-      `SELECT * FROM inventory_balances
-       WHERE location_type = 'warehouse' AND location_id = $1
-       ORDER BY product_name ASC, expiry_date ASC NULLS LAST`,
-      [warehouseId]
-    );
-    const inventory = rows.map(r => ({
+    const rows = await __qd_executePlan(getMany, __qd_registeredPlan("server.js:1846:105"),
+
+
+
+    [warehouseId]);
+
+    const inventory = rows.map((r) => ({
       id: r.id,
       productName: r.product_name,
       batchNo: r.batch_no,
@@ -1857,7 +1857,7 @@ app.get('/api/stock/warehouse/:warehouseId/inventory', async (req, res) => {
       inwardQty: Number(r.inward_qty || 0),
       outwardQty: Number(r.outward_qty || 0),
       unitDP: r.unit_dp ? Number(r.unit_dp) : null,
-      stockValueDP: Number(r.stock_value_dp || 0),
+      stockValueDP: Number(r.stock_value_dp || 0)
     }));
     res.json({ success: true, warehouseId, inventory });
   } catch (err) {
@@ -1869,23 +1869,23 @@ app.get('/api/stock/warehouse/:warehouseId/inventory', async (req, res) => {
 app.get('/api/stock/country/summary', async (req, res) => {
   try {
     const { getMany } = await import('./api/db.js');
-    const rows = await getMany(
-      `SELECT product_name,
-              SUM(inward_qty) as total_in,
-              SUM(outward_qty) as total_out,
-              SUM(closing_qty) as closing_qty,
-              SUM(stock_value_dp) as stock_value_dp
-       FROM inventory_balances
-       WHERE location_type = 'country'
-       GROUP BY product_name
-       ORDER BY product_name ASC`
-    );
-    const summary = rows.map(r => ({
+    const rows = await __qd_executePlan(getMany, __qd_registeredPlan("server.js:1873:106"), []);
+
+
+
+
+
+
+
+
+
+
+    const summary = rows.map((r) => ({
       productName: r.product_name,
       totalIn: Number(r.total_in || 0),
       totalOut: Number(r.total_out || 0),
       closingQty: Number(r.closing_qty || 0),
-      stockValueDP: Number(r.stock_value_dp || 0),
+      stockValueDP: Number(r.stock_value_dp || 0)
     }));
     res.json({ success: true, summary });
   } catch (err) {
@@ -1913,12 +1913,12 @@ app.get('/api/distributors/by-nb/:nb', async (req, res) => {
   try {
     const { getOne } = await import('./api/db.js');
     const nb = req.params.nb;
-    const dist = await getOne(
-      `SELECT id as distributor_id, distributor_name as full_name, distributor_code as nb_number,
-              branch as branch_id, COALESCE(status,'active') as status, mobile_no, email
-       FROM distributors WHERE distributor_code = $1`,
-      [nb]
-    );
+    const dist = await __qd_executePlan(getOne, __qd_registeredPlan("server.js:1917:107"),
+
+
+
+    [nb]);
+
     if (!dist) return res.status(404).json({ success: false, error: `No distributor found with NB number: ${nb}` });
     return res.json({ success: true, ...dist });
   } catch (err) {
@@ -1932,19 +1932,19 @@ app.get('/api/consultations/:id/full', async (req, res) => {
   try {
     const { getOne, getMany } = await import('./api/db.js');
     const id = req.params.id;
-    const report = await getOne(`SELECT * FROM reports WHERE id = $1`, [id]);
+    const report = await __qd_executePlan(getOne, __qd_registeredPlan("server.js:1935:108"), [id]);
     if (!report) return res.status(404).json({ success: false, error: 'Consultation not found' });
-    const data = typeof report.data === 'string' ? JSON.parse(report.data || '{}') : (report.data || {});
-    const dispenses = await getMany(
-      `SELECT product_name, batch_no, quantity, created_at FROM branch_inventory_movements
-       WHERE reference = $1 AND type = 'prescription_dispense' ORDER BY created_at`,
-      [id]
-    );
+    const data = typeof report.data === 'string' ? JSON.parse(report.data || '{}') : report.data || {};
+    const dispenses = await __qd_executePlan(getMany, __qd_registeredPlan("server.js:1939:109"),
+
+
+    [id]);
+
     const dispensedByProduct = {};
     for (const d of dispenses) {
       dispensedByProduct[d.product_name] = (dispensedByProduct[d.product_name] || 0) + Number(d.quantity);
     }
-    const prescription = (data.prescription || []).map(item => {
+    const prescription = (data.prescription || []).map((item) => {
       const dispensed = dispensedByProduct[item.productName || item.product_name] || 0;
       const prescribed = Number(item.prescribedQty || item.quantity || 0);
       return {
@@ -1953,7 +1953,7 @@ app.get('/api/consultations/:id/full', async (req, res) => {
         prescribedQty: prescribed,
         dispensedQtyTotal: dispensed,
         remainingQty: Math.max(0, prescribed - dispensed),
-        status: dispensed === 0 ? 'pending' : dispensed >= prescribed ? 'fully_dispensed' : 'partially_dispensed',
+        status: dispensed === 0 ? 'pending' : dispensed >= prescribed ? 'fully_dispensed' : 'partially_dispensed'
       };
     });
     return res.json({
@@ -1964,7 +1964,7 @@ app.get('/api/consultations/:id/full', async (req, res) => {
         phone: data.phone || data.client?.phone || '',
         clientType: data.clientType || data.client_type || 'non_member',
         referralDistributorName: data.referralDistributorName || data.referral?.name || null,
-        referralNb: data.referralNb || data.referral?.nb || null,
+        referralNb: data.referralNb || data.referral?.nb || null
       },
       assessment: { symptoms: data.symptoms || '', notes: data.notes || '' },
       prescription,
@@ -1972,7 +1972,7 @@ app.get('/api/consultations/:id/full', async (req, res) => {
       branch: report.branch,
       consultant: report.consultant,
       createdAt: report.created_at,
-      clientWantsReport: data.clientWantsReport !== undefined ? data.clientWantsReport : true,
+      clientWantsReport: data.clientWantsReport !== undefined ? data.clientWantsReport : true
     });
   } catch (err) {
     console.error('[consultations/:id/full]', err);
@@ -1985,14 +1985,14 @@ app.get('/api/consultations/:id/preview', async (req, res) => {
   try {
     const { getOne } = await import('./api/db.js');
     const id = req.params.id;
-    const report = await getOne(`SELECT * FROM reports WHERE id = $1`, [id]);
+    const report = await __qd_executePlan(getOne, __qd_registeredPlan("server.js:1988:110"), [id]);
     if (!report) return res.status(404).json({ success: false, error: 'Consultation not found' });
-    const data = typeof report.data === 'string' ? JSON.parse(report.data || '{}') : (report.data || {});
+    const data = typeof report.data === 'string' ? JSON.parse(report.data || '{}') : report.data || {};
     return res.json({
       success: true,
       consultation: { ...data, id: report.id, branch: report.branch, consultant: report.consultant, createdAt: report.created_at },
       prescription: data.prescription || [],
-      reportEligible: data.clientWantsReport !== false,
+      reportEligible: data.clientWantsReport !== false
     });
   } catch (err) {
     console.error('[consultations/:id/preview]', err);
@@ -2011,11 +2011,11 @@ app.patch('/api/consultations/:id/report-preference', async (req, res) => {
     if (typeof clientWantsReport !== 'boolean') {
       return res.status(400).json({ success: false, error: 'clientWantsReport (boolean) is required' });
     }
-    const existing = await getOne(`SELECT data FROM reports WHERE id = $1`, [id]);
+    const existing = await __qd_executePlan(getOne, __qd_registeredPlan("server.js:2014:111"), [id]);
     if (!existing) return res.status(404).json({ success: false, error: 'Consultation not found' });
-    const data = typeof existing.data === 'string' ? JSON.parse(existing.data || '{}') : (existing.data || {});
+    const data = typeof existing.data === 'string' ? JSON.parse(existing.data || '{}') : existing.data || {};
     data.clientWantsReport = clientWantsReport;
-    await query(`UPDATE reports SET data = $1, updated_at = NOW() WHERE id = $2`, [JSON.stringify(data), id]);
+    await __qd_executePlan(query, __qd_registeredPlan("server.js:2018:112"), [JSON.stringify(data), id]);
     return res.json({ success: true, consultationId: id, clientWantsReport });
   } catch (err) {
     console.error('[consultations/:id/report-preference]', err);
@@ -2029,8 +2029,8 @@ app.post('/api/prescriptions/:id/dispense', async (req, res) => {
     const { query: dbQuery, getMany, withTransaction: dbTransaction } = await import('./api/db.js');
     const { recomputeLocationBalances } = await import('./api/services/stockEngine.js');
     const prescriptionId = req.params.id;
-    const historicalIssue=(await dbQuery('SELECT data FROM reports WHERE id=$1',[prescriptionId])).rows[0];
-    if(historicalIssue?.data?.offSystemFulfilment)return res.status(409).json({error:'Use assigned-branch pending fulfilment for this historical form'});
+    const historicalIssue = (await dbQuery('SELECT data FROM reports WHERE id=$1', [prescriptionId])).rows[0];
+    if (historicalIssue?.data?.offSystemFulfilment) return res.status(409).json({ error: 'Use assigned-branch pending fulfilment for this historical form' });
     let body = req.body || {};
     if (typeof body === 'string') body = JSON.parse(body || '{}');
     const { branchId, dispensedBy, items, saveMode } = body;
@@ -2059,28 +2059,28 @@ app.post('/api/prescriptions/:id/dispense', async (req, res) => {
         const unitDP = Number(item.unitDP || 0);
 
         // Deduct from branch_inventory_batches (WHERE quantity >= $1 prevents negative stock)
-        await client.query(
-          `UPDATE branch_inventory_batches SET quantity = quantity - $1, updated_at = NOW()
-           WHERE branch_id = $2 AND LOWER(TRIM(product_name)) = LOWER(TRIM($3))
-             AND (batch_no = $4 OR batch_no IS NULL) AND quantity >= $1`,
-          [qty, branchId, productName, item.batchNo]
-        );
+        await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("server.js:2063:113"),
+
+
+
+        [qty, branchId, productName, item.batchNo]);
+
 
         // Insert branch_inventory_movements record
         const movId = `BIM-${ts}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
-        await client.query(
-          `INSERT INTO branch_inventory_movements (id, branch_id, type, product_name, batch_no, quantity, reference, notes, created_by, created_at)
-           VALUES ($1,$2,'prescription_dispense',$3,$4,$5,$6,$7,$8,NOW())`,
-          [movId, branchId, productName, item.batchNo, qty, prescriptionId, `Partial dispense ref ${prescriptionId}`, dispensedBy || 'system']
-        );
+        await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("server.js:2072:114"),
+
+
+        [movId, branchId, productName, item.batchNo, qty, prescriptionId, `Partial dispense ref ${prescriptionId}`, dispensedBy || 'system']);
+
 
         // Post to stock_movements
         const smId = `MOV-${ts}-${Math.random().toString(36).slice(2, 6)}`;
-        await client.query(
-          `INSERT INTO stock_movements (id, product_name, batch_no, expiry_date, quantity, movement_type, source_location, source_location_type, destination_location, reference_id, notes, status, unit_dp, movement_date, created_at, updated_at)
-           VALUES ($1,$2,$3,$4,$5,'prescription_dispense',$6,'branch','patient',$7,$8,'posted',$9,NOW(),NOW(),NOW())`,
-          [smId, productName, item.batchNo, item.expiryDate, qty, branchId, prescriptionId, `Prescription dispense ${prescriptionId}`, unitDP]
-        );
+        await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("server.js:2080:115"),
+
+
+        [smId, productName, item.batchNo, item.expiryDate, qty, branchId, prescriptionId, `Prescription dispense ${prescriptionId}`, unitDP]);
+
 
         posted.push({ productName, batchNo: item.batchNo, dispenseQty: qty, dispenseRef });
       }
@@ -2095,7 +2095,7 @@ app.post('/api/prescriptions/:id/dispense', async (req, res) => {
       dispenseRef,
       itemsDispensed: posted.length,
       items: posted,
-      message: `${saveMode === 'full' ? 'Full' : 'Partial'} dispense recorded for prescription ${prescriptionId}`,
+      message: `${saveMode === 'full' ? 'Full' : 'Partial'} dispense recorded for prescription ${prescriptionId}`
     });
   } catch (err) {
     console.error('[prescriptions/:id/dispense]', err);
@@ -2108,22 +2108,22 @@ app.get('/api/prescriptions/:id/dispensing-history', async (req, res) => {
   try {
     const { getMany } = await import('./api/db.js');
     const prescriptionId = req.params.id;
-    const rows = await getMany(
-      `SELECT bim.product_name, bim.batch_no, bim.quantity as dispensed_qty,
-              bim.created_by as dispensed_by, bim.created_at as dispense_date,
-              bim.id as receipt_id
-       FROM branch_inventory_movements bim
-       WHERE bim.reference = $1 AND bim.type = 'prescription_dispense'
-       ORDER BY bim.created_at ASC`,
-      [prescriptionId]
-    );
-    const history = rows.map(r => ({
+    const rows = await __qd_executePlan(getMany, __qd_registeredPlan("server.js:2112:116"),
+
+
+
+
+
+
+    [prescriptionId]);
+
+    const history = rows.map((r) => ({
       dispenseDate: r.dispense_date,
       productName: r.product_name,
       batchNo: r.batch_no,
       dispensedQty: Number(r.dispensed_qty),
       dispensedBy: r.dispensed_by,
-      receiptId: r.receipt_id,
+      receiptId: r.receipt_id
     }));
     return res.json({ success: true, prescriptionId, history, totalRecords: history.length });
   } catch (err) {
@@ -2137,18 +2137,18 @@ app.get('/api/prescriptions/:id/status', async (req, res) => {
   try {
     const { getOne, getMany } = await import('./api/db.js');
     const prescriptionId = req.params.id;
-    const report = await getOne(`SELECT data FROM reports WHERE id = $1`, [prescriptionId]);
-    const data = report ? (typeof report.data === 'string' ? JSON.parse(report.data || '{}') : (report.data || {})) : {};
+    const report = await __qd_executePlan(getOne, __qd_registeredPlan("server.js:2140:117"), [prescriptionId]);
+    const data = report ? typeof report.data === 'string' ? JSON.parse(report.data || '{}') : report.data || {} : {};
     const prescription = data.prescription || [];
-    const dispenses = await getMany(
-      `SELECT product_name, SUM(quantity) as total_dispensed
-       FROM branch_inventory_movements
-       WHERE reference = $1 AND type = 'prescription_dispense'
-       GROUP BY product_name`,
-      [prescriptionId]
-    );
-    const dispensedMap = new Map(dispenses.map(d => [d.product_name, Number(d.total_dispensed)]));
-    const items = prescription.map(item => {
+    const dispenses = await __qd_executePlan(getMany, __qd_registeredPlan("server.js:2144:118"),
+
+
+
+
+    [prescriptionId]);
+
+    const dispensedMap = new Map(dispenses.map((d) => [d.product_name, Number(d.total_dispensed)]));
+    const items = prescription.map((item) => {
       const name = item.productName || item.product_name || '';
       const prescribed = Number(item.prescribedQty || item.quantity || 0);
       const dispensed = dispensedMap.get(name) || 0;
@@ -2158,13 +2158,13 @@ app.get('/api/prescriptions/:id/status', async (req, res) => {
         prescribedQty: prescribed,
         dispensedQtyTotal: dispensed,
         remainingQty: remaining,
-        status: dispensed === 0 ? 'pending' : remaining === 0 ? 'fully_dispensed' : 'partially_dispensed',
+        status: dispensed === 0 ? 'pending' : remaining === 0 ? 'fully_dispensed' : 'partially_dispensed'
       };
     });
-    const overallStatus = items.length === 0 ? 'no_prescription'
-      : items.every(i => i.status === 'fully_dispensed') ? 'fully_dispensed'
-      : items.some(i => i.dispensedQtyTotal > 0) ? 'partially_dispensed'
-      : 'pending';
+    const overallStatus = items.length === 0 ? 'no_prescription' :
+    items.every((i) => i.status === 'fully_dispensed') ? 'fully_dispensed' :
+    items.some((i) => i.dispensedQtyTotal > 0) ? 'partially_dispensed' :
+    'pending';
     return res.json({ success: true, prescriptionId, status: overallStatus, items });
   } catch (err) {
     console.error('[prescriptions/:id/status]', err);
@@ -2177,10 +2177,10 @@ app.get('/api/sales/:saleId', async (req, res) => {
   try {
     const { getOne } = await import('./api/db.js');
     const saleId = req.params.saleId;
-    const sale = await getOne(`SELECT * FROM branch_walkin_sales WHERE id = $1`, [saleId]);
+    const sale = await __qd_executePlan(getOne, __qd_registeredPlan("server.js:2180:119"), [saleId]);
     if (!sale) return res.status(404).json({ success: false, error: `Sale ${saleId} not found` });
-    const items = typeof sale.items === 'string' ? JSON.parse(sale.items || '[]') : (sale.items || []);
-    const meta = typeof sale.metadata === 'string' ? JSON.parse(sale.metadata || '{}') : (sale.metadata || {});
+    const items = typeof sale.items === 'string' ? JSON.parse(sale.items || '[]') : sale.items || [];
+    const meta = typeof sale.metadata === 'string' ? JSON.parse(sale.metadata || '{}') : sale.metadata || {};
     return res.json({
       success: true,
       saleId: sale.id,
@@ -2197,7 +2197,7 @@ app.get('/api/sales/:saleId', async (req, res) => {
       referralDistributorName: meta.referralName || null,
       referralNb: meta.referralNb || null,
       createdBy: sale.created_by,
-      createdAt: sale.created_at,
+      createdAt: sale.created_at
     });
   } catch (err) {
     console.error('[sales/:saleId]', err);
@@ -2213,22 +2213,22 @@ app.get('/api/receipts/:receiptId/render', async (req, res) => {
     const copyType = req.query.copyType || 'branch';
     const copyLabel = copyType === 'distributor' ? 'Distributor Copy' : 'Branch Copy';
 
-    const sale = await getOne(`SELECT * FROM branch_walkin_sales WHERE id = $1`, [receiptId]);
+    const sale = await __qd_executePlan(getOne, __qd_registeredPlan("server.js:2216:120"), [receiptId]);
     if (!sale) return res.status(404).json({ success: false, error: `Receipt ${receiptId} not found` });
 
-    const rawItems = typeof sale.items === 'string' ? JSON.parse(sale.items || '[]') : (sale.items || []);
-    const meta = typeof sale.metadata === 'string' ? JSON.parse(sale.metadata || '{}') : (sale.metadata || {});
+    const rawItems = typeof sale.items === 'string' ? JSON.parse(sale.items || '[]') : sale.items || [];
+    const meta = typeof sale.metadata === 'string' ? JSON.parse(sale.metadata || '{}') : sale.metadata || {};
 
     const { getOne: branchRow } = await import('./api/db.js');
     const branch = await branchRow(`SELECT name FROM branches WHERE id = $1`, [sale.branch_id]);
 
-    const items = rawItems.map(i => ({
+    const items = rawItems.map((i) => ({
       productName: i.productName || i.name || i.product_name || '',
       quantity: Number(i.quantity || i.qty || 0),
       unitPrice: Number(i.unitPrice || i.unit_price || i.price || 0),
-      lineTotal: Number(i.lineTotal || i.line_total || (i.quantity * (i.unitPrice || i.unit_price || 0)) || 0),
+      lineTotal: Number(i.lineTotal || i.line_total || i.quantity * (i.unitPrice || i.unit_price || 0) || 0),
       batchNo: i.batchNo || i.batch_no || null,
-      expiryDate: i.expiryDate || i.expiry_date || null,
+      expiryDate: i.expiryDate || i.expiry_date || null
     }));
 
     return res.json({
@@ -2247,7 +2247,7 @@ app.get('/api/receipts/:receiptId/render', async (req, res) => {
       total: Number(sale.total),
       referralDistributorName: meta.referralName || null,
       referralNb: meta.referralNb || null,
-      createdBy: sale.created_by,
+      createdBy: sale.created_by
     });
   } catch (err) {
     console.error('[receipts/:receiptId/render]', err);
@@ -2261,18 +2261,18 @@ app.get('/api/finance/bonus-periods', async (req, res) => {
     const { query } = await import('./api/db.js');
     const role = req.user?.role || '';
     if (!['admin', 'finance', 'gm', 'director'].includes(role)) return res.status(403).json({ error: 'Access denied' });
-    const { rows } = await query(
-      `SELECT period,
-              COUNT(*) AS total,
-              SUM(CASE WHEN status != 'paid' THEN 1 ELSE 0 END) AS unpaid_count,
-              COALESCE(SUM(amount_earned), 0) AS total_earned,
-              COALESCE(SUM(amount_paid), 0) AS total_paid,
-              COALESCE(SUM(amount_earned) - SUM(amount_paid), 0) AS outstanding
-       FROM distributor_bonuses
-       GROUP BY period
-       ORDER BY period DESC
-       LIMIT 60`
-    );
+    const { rows } = await __qd_executePlan(query, __qd_registeredPlan("server.js:2265:121"), []);
+
+
+
+
+
+
+
+
+
+
+
     res.json(rows);
   } catch (err) {
     console.error('bonus-periods GET:', err);
@@ -2292,20 +2292,20 @@ app.get('/api/finance/bonus-search', async (req, res) => {
     if (q.trim()) {
       params.push(`%${q.trim()}%`);
       const n = params.length;
-      conds.push(`(nb_number ILIKE $${n} OR distributor_name ILIKE $${n})`);
+      conds.push(__qd_registeredPlan("server.js:2295:123", [n, n]));
     }
-    if (period) { params.push(period); conds.push(`period = $${params.length}`); }
-    if (status) { params.push(status); conds.push(`status = $${params.length}`); }
-    const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
-    const { rows } = await query(
-      `SELECT id, nb_number, distributor_name, period, status,
-              amount_earned, amount_paid,
-              COALESCE(amount_earned, 0) - COALESCE(amount_paid, 0) AS outstanding
-       FROM distributor_bonuses ${where}
-       ORDER BY period DESC, distributor_name
-       LIMIT 30`,
-      params
-    );
+    if (period) {params.push(period);conds.push(__qd_registeredPlan("server.js:2297:124", [params.length]));}
+    if (status) {params.push(status);conds.push(__qd_registeredPlan("server.js:2298:125", [params.length]));}
+    const where = conds.length ? __qd_joinPlans([__qd_registeredPlan("server.js:2299:122"), __qd_joinPlans(conds, "and")], "empty") : __qd_registeredPlan("server.js:2299:126");
+    const { rows } = await __qd_executePlan(query, __qd_registeredPlan("server.js:2301:127", [
+
+
+
+    where]),
+
+
+    params);
+
     res.json(rows);
   } catch (err) {
     console.error('bonus-search GET:', err);
@@ -2323,15 +2323,15 @@ app.get('/api/payment-vouchers', async (req, res) => {
     const { status, type, from, to, limit: lim } = req.query;
     const params = [];
     const conds = [];
-    if (status) { params.push(status); conds.push(`status = $${params.length}`); }
-    if (type) { params.push(type); conds.push(`payment_type = $${params.length}`); }
-    if (from) { params.push(from); conds.push(`payment_date >= $${params.length}`); }
-    if (to) { params.push(to); conds.push(`payment_date <= $${params.length}`); }
-    const where = conds.length ? ' WHERE ' + conds.join(' AND ') : '';
-    const rows = (await query(
-      `SELECT * FROM payment_vouchers${where} ORDER BY created_at DESC LIMIT ${parseInt(lim) || 200}`,
-      params
-    )).rows;
+    if (status) {params.push(status);conds.push(__qd_registeredPlan("server.js:2326:129", [params.length]));}
+    if (type) {params.push(type);conds.push(__qd_registeredPlan("server.js:2327:130", [params.length]));}
+    if (from) {params.push(from);conds.push(__qd_registeredPlan("server.js:2328:131", [params.length]));}
+    if (to) {params.push(to);conds.push(__qd_registeredPlan("server.js:2329:132", [params.length]));}
+    const where = conds.length ? __qd_joinPlans([__qd_registeredPlan("server.js:2330:128"), __qd_joinPlans(conds, "and")], "empty") : __qd_registeredPlan("server.js:2330:133");
+    const rows = (await __qd_executePlan(query, __qd_registeredPlan("server.js:2332:134", [
+    where, parseInt(lim) || 200]),
+    params)).
+    rows;
     res.json(rows);
   } catch (err) {
     console.error('payment-vouchers GET:', err);
@@ -2354,45 +2354,45 @@ app.post('/api/payment-vouchers', async (req, res) => {
     }
     const prepared_by = req.user?.full_name || req.user?.username || 'Finance';
     const id = 'PV' + Date.now();
-    const countRow = await getOne('SELECT COUNT(*) AS c FROM payment_vouchers');
+    const countRow = await __qd_executePlan(getOne, __qd_registeredPlan("server.js:2357:135"), []);
     const seq = (parseInt(countRow?.c || 0) + 1).toString().padStart(5, '0');
     const year = new Date().getFullYear();
     const voucher_number = `DPI-PV-${year}-${seq}`;
-    await query(
-      `INSERT INTO payment_vouchers
-        (id, voucher_number, payment_type, payee_name, payee_bank, payee_account, payee_branch_code,
-         amount, currency, payment_method, reference_number, narration, authorised_by, prepared_by,
-         status, linked_request_id, linked_request_type, payment_date, notes, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,NOW(),NOW())`,
-      [id, voucher_number, payment_type, payee_name, payee_bank || null, payee_account || null,
-       payee_branch_code || null, parseFloat(amount), currency || 'NAD', payment_method,
-       reference_number || null, narration || null, authorised_by || null, prepared_by,
-       status || 'draft', linked_request_id || null, linked_request_type || null,
-       payment_date || null, notes || null]
-    );
-    const created = await getOne('SELECT * FROM payment_vouchers WHERE id = $1', [id]);
+    await __qd_executePlan(query, __qd_registeredPlan("server.js:2362:136"),
+
+
+
+
+
+    [id, voucher_number, payment_type, payee_name, payee_bank || null, payee_account || null,
+    payee_branch_code || null, parseFloat(amount), currency || 'NAD', payment_method,
+    reference_number || null, narration || null, authorised_by || null, prepared_by,
+    status || 'draft', linked_request_id || null, linked_request_type || null,
+    payment_date || null, notes || null]);
+
+    const created = await __qd_executePlan(getOne, __qd_registeredPlan("server.js:2373:137"), [id]);
     let bonusReceipt = null;
     if (status === 'paid' && payment_type === 'bonus' && linked_request_id) {
       try {
-        const bonus = await getOne(`SELECT * FROM distributor_bonuses WHERE id = $1`, [linked_request_id]);
+        const bonus = await __qd_executePlan(getOne, __qd_registeredPlan("server.js:2377:138"), [linked_request_id]);
         if (bonus && bonus.status !== 'paid') {
           const payAmount = parseFloat(bonus.amount_earned) - parseFloat(bonus.amount_paid);
           if (payAmount > 0.01) {
             const payId = `BPAY-PV-${Date.now()}`;
             const paidDate = payment_date || new Date().toISOString().slice(0, 10);
-            await query(
-              `INSERT INTO distributor_bonus_payments (id, bonus_id, branch_id, amount, paid_at, recorded_by, notes, created_at)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())`,
-              [payId, linked_request_id, 'finance', payAmount, paidDate, prepared_by, `Paid via voucher ${voucher_number}`]
-            );
-            await query(
-              `UPDATE distributor_bonuses SET amount_paid=amount_earned, status='paid', paid_by_branch_id='finance', payment_date=$1, updated_at=NOW() WHERE id=$2`,
-              [paidDate, linked_request_id]
-            );
+            await __qd_executePlan(query, __qd_registeredPlan("server.js:2384:139"),
+
+
+            [payId, linked_request_id, 'finance', payAmount, paidDate, prepared_by, `Paid via voucher ${voucher_number}`]);
+
+            await __qd_executePlan(query, __qd_registeredPlan("server.js:2389:140"),
+
+            [paidDate, linked_request_id]);
+
             bonusReceipt = { payment_id: payId, bonus_id: linked_request_id, amount: payAmount };
           }
         }
-      } catch (bErr) { console.warn('Auto bonus payment failed:', bErr.message); }
+      } catch (bErr) {console.warn('Auto bonus payment failed:', bErr.message);}
     }
     res.json({ success: true, voucher: created, bonusReceipt });
   } catch (err) {
@@ -2408,42 +2408,42 @@ app.patch('/api/payment-vouchers/:id', async (req, res) => {
     if (!['admin', 'finance', 'gm'].includes(role)) return res.status(403).json({ error: 'Access denied' });
     const { id } = req.params;
     const allowed_fields = ['status', 'payment_method', 'reference_number', 'narration', 'authorised_by',
-      'payment_date', 'notes', 'payee_bank', 'payee_account', 'payee_branch_code'];
+    'payment_date', 'notes', 'payee_bank', 'payee_account', 'payee_branch_code'];
     const updates = [];
     const params = [];
     for (const f of allowed_fields) {
-      if (req.body[f] !== undefined) { params.push(req.body[f]); updates.push(`${f} = $${params.length}`); }
+      if (req.body[f] !== undefined) {params.push(req.body[f]);updates.push(__qd_registeredPlan("server.js:2415:141", [f, params.length]));}
     }
     if (!updates.length) return res.status(400).json({ error: 'No fields to update' });
     params.push(id);
-    await query(
-      `UPDATE payment_vouchers SET ${updates.join(', ')}, updated_at=NOW() WHERE id = $${params.length}`,
-      params
-    );
-    const updated = await getOne('SELECT * FROM payment_vouchers WHERE id = $1', [id]);
+    await __qd_executePlan(query, __qd_registeredPlan("server.js:2420:142", [__qd_joinPlans(
+      updates, "comma"), params.length]),
+    params);
+
+    const updated = await __qd_executePlan(getOne, __qd_registeredPlan("server.js:2423:143"), [id]);
     let bonusReceipt = null;
     if (req.body.status === 'paid' && updated.payment_type === 'bonus' && updated.linked_request_id) {
       try {
-        const bonus = await getOne(`SELECT * FROM distributor_bonuses WHERE id = $1`, [updated.linked_request_id]);
+        const bonus = await __qd_executePlan(getOne, __qd_registeredPlan("server.js:2427:144"), [updated.linked_request_id]);
         if (bonus && bonus.status !== 'paid') {
           const payAmount = parseFloat(bonus.amount_earned) - parseFloat(bonus.amount_paid);
           if (payAmount > 0.01) {
             const preparedBy = req.user?.full_name || req.user?.username || 'Finance';
             const payId = `BPAY-PV-${Date.now()}`;
             const paidDate = updated.payment_date || new Date().toISOString().slice(0, 10);
-            await query(
-              `INSERT INTO distributor_bonus_payments (id, bonus_id, branch_id, amount, paid_at, recorded_by, notes, created_at)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())`,
-              [payId, updated.linked_request_id, 'finance', payAmount, paidDate, preparedBy, `Paid via voucher ${updated.voucher_number}`]
-            );
-            await query(
-              `UPDATE distributor_bonuses SET amount_paid=amount_earned, status='paid', paid_by_branch_id='finance', payment_date=$1, updated_at=NOW() WHERE id=$2`,
-              [paidDate, updated.linked_request_id]
-            );
+            await __qd_executePlan(query, __qd_registeredPlan("server.js:2435:145"),
+
+
+            [payId, updated.linked_request_id, 'finance', payAmount, paidDate, preparedBy, `Paid via voucher ${updated.voucher_number}`]);
+
+            await __qd_executePlan(query, __qd_registeredPlan("server.js:2440:146"),
+
+            [paidDate, updated.linked_request_id]);
+
             bonusReceipt = { payment_id: payId, bonus_id: updated.linked_request_id, amount: payAmount };
           }
         }
-      } catch (bErr) { console.warn('Auto bonus payment failed (PATCH):', bErr.message); }
+      } catch (bErr) {console.warn('Auto bonus payment failed (PATCH):', bErr.message);}
     }
     res.json({ success: true, voucher: updated, bonusReceipt });
   } catch (err) {
@@ -2457,7 +2457,7 @@ app.delete('/api/payment-vouchers/:id', async (req, res) => {
     const { query } = await import('./api/db.js');
     const role = req.user?.role || '';
     if (!['admin', 'finance'].includes(role)) return res.status(403).json({ error: 'Access denied' });
-    await query('DELETE FROM payment_vouchers WHERE id = $1 AND status = $2', [req.params.id, 'draft']);
+    await __qd_executePlan(query, __qd_registeredPlan("server.js:2460:147"), [req.params.id, 'draft']);
     res.json({ success: true });
   } catch (err) {
     console.error('payment-vouchers DELETE:', err);
@@ -2487,7 +2487,7 @@ app.all('/api/*', async (req, res) => {
     if (!res.headersSent) {
       res.status(500).json({
         success: false,
-        error: 'Internal server error',
+        error: 'Internal server error'
       });
     }
   }
@@ -2512,7 +2512,7 @@ if (hasReactBuild) {
       } else {
         res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
       }
-    },
+    }
   }));
 }
 
@@ -2520,17 +2520,17 @@ app.use((req, res, next) => {
   // Repository source, scripts, migrations and reports are not public assets.
   const safeRootFiles = new Set(['/favicon.ico', '/robots.txt', '/manifest.json']);
   const allowed = safeRootFiles.has(req.path) ||
-    /^\/[a-zA-Z0-9_-]+\.html$/.test(req.path) ||
-    /^\/(?:assets|images|fonts|css)\/[a-zA-Z0-9_./-]+$/.test(req.path);
-  if (!allowed || req.path.split('/').some(p => p === '..' || p.startsWith('.')))
-    return next();
+  /^\/[a-zA-Z0-9_-]+\.html$/.test(req.path) ||
+  /^\/(?:assets|images|fonts|css)\/[a-zA-Z0-9_./-]+$/.test(req.path);
+  if (!allowed || req.path.split('/').some((p) => p === '..' || p.startsWith('.')))
+  return next();
   return express.static(__dirname, {
     extensions: ['html', 'htm'],
     setHeaders(res, filePath) {
       if (filePath.endsWith('.html')) {
         res.setHeader('Cache-Control', 'no-store');
       }
-    },
+    }
   })(req, res, next);
 });
 
@@ -2543,10 +2543,10 @@ app.use((req, res) => {
 });
 
 if (startupPolicy.startupMode === 'code-only') {
-  const {query} = await import('./api/db.js');
+  const { query } = await import('./api/db.js');
   const readiness = await checkStartupCompatibility(query, startupPolicy);
   setStartupReadiness(readiness);
-  console.info(JSON.stringify({event:'startup.compatibility', ...readiness}));
+  console.info(JSON.stringify({ event: 'startup.compatibility', ...readiness }));
 }
 
 const server = app.listen(PORT, HOST, () => {
@@ -2566,15 +2566,15 @@ server.on('error', (error) => {
 runStartupOperation(startupPolicy, 'legacy-database-bootstrap', async () => {
   try {
     const { query, getOne } = await import('./api/db.js');
-    await query('SELECT 1');
+    await __qd_executePlan(query, __qd_registeredPlan("server.js:2569:148"), []);
     console.log('Database connection verified');
 
-    await query(`INSERT INTO warehouse_locations (id, name, code, type, status, created_at, updated_at)
-      VALUES ('country_stock', 'Country Stock', 'CS', 'country', 'active', NOW(), NOW()),
-             ('windhoek_warehouse', 'Windhoek Warehouse', 'WHK', 'warehouse', 'active', NOW(), NOW()),
-             ('ondangwa_warehouse', 'Ondangwa Warehouse', 'OND', 'warehouse', 'active', NOW(), NOW()),
-             ('ondangwa', 'Ondangwa', 'ONDG', 'warehouse', 'active', NOW(), NOW())
-      ON CONFLICT (id) DO NOTHING`);
+    await __qd_executePlan(query, __qd_registeredPlan("server.js:2572:149"), []);
+
+
+
+
+
 
     // Authentication accounts are never created or reset by web bootstrap.
 
@@ -2583,7 +2583,7 @@ runStartupOperation(startupPolicy, 'legacy-database-bootstrap', async () => {
     // Applied to branch_walkin_sales, stock_movements, branch_inventory_batches,
     // branch_inventory_movements, inventory_balances, and users.branch.
     const BRANCH_ALIAS_MAP = {
-      'Windhoek CBD': 'townshop',  'windhoek cbd': 'townshop',
+      'Windhoek CBD': 'townshop', 'windhoek cbd': 'townshop',
       'windhoek_cbd': 'townshop',
       'main': 'townshop',
       'Khomasdal': 'khomasdal',
@@ -2604,28 +2604,28 @@ runStartupOperation(startupPolicy, 'legacy-database-bootstrap', async () => {
       // Warehouse display names → warehouse slugs (for stock-role users)
       'Windhoek Warehouse': 'windhoek_warehouse', 'windhoek warehouse': 'windhoek_warehouse',
       'Ondangwa Warehouse': 'ondangwa_warehouse', 'ondangwa warehouse': 'ondangwa_warehouse',
-      'Country Stock': 'country_stock', 'country stock': 'country_stock',
+      'Country Stock': 'country_stock', 'country stock': 'country_stock'
     };
 
     let branchMigrationsApplied = 0;
     for (const [alias, canonical] of Object.entries(BRANCH_ALIAS_MAP)) {
       const tables = [
-        { table: 'branch_walkin_sales', col: 'branch_id' },
-        { table: 'stock_movements', col: 'source_location' },
-        { table: 'stock_movements', col: 'destination_location' },
-        { table: 'branch_inventory_batches', col: 'branch_id' },
-        { table: 'branch_inventory_movements', col: 'branch_id' },
-        { table: 'inventory_balances', col: 'location_id' },
-        { table: 'users', col: 'branch' },
-        { table: 'appointments', col: 'branch' },
-        { table: 'reports', col: 'branch' },
-      ];
+      { table: 'branch_walkin_sales', col: 'branch_id' },
+      { table: 'stock_movements', col: 'source_location' },
+      { table: 'stock_movements', col: 'destination_location' },
+      { table: 'branch_inventory_batches', col: 'branch_id' },
+      { table: 'branch_inventory_movements', col: 'branch_id' },
+      { table: 'inventory_balances', col: 'location_id' },
+      { table: 'users', col: 'branch' },
+      { table: 'appointments', col: 'branch' },
+      { table: 'reports', col: 'branch' }];
+
       for (const { table, col } of tables) {
         try {
-          const r = await query(
-            `UPDATE ${table} SET ${col} = $1 WHERE ${col} = $2`,
-            [canonical, alias]
-          );
+          const r = await __qd_executePlan(query, __qd_registeredPlan("server.js:2626:150", [
+          table, col, col]),
+          [canonical, alias]);
+
           if (r && r.rowCount > 0) branchMigrationsApplied += r.rowCount;
         } catch {}
       }
@@ -2640,17 +2640,17 @@ runStartupOperation(startupPolicy, 'legacy-database-bootstrap', async () => {
     // ('oshakati_branch', 'katima_mulilo'). Insert canonical rows so that
     // any JOIN on branches.id = branch_inventory_batches.branch_id succeeds.
     const canonicalBranchRows = [
-      { id: 'oshakati_branch', name: 'Oshakati',      region: 'Oshana' },
-      { id: 'katima_mulilo',   name: 'Katima Mulilo', region: 'Zambezi' },
-    ];
+    { id: 'oshakati_branch', name: 'Oshakati', region: 'Oshana' },
+    { id: 'katima_mulilo', name: 'Katima Mulilo', region: 'Zambezi' }];
+
     for (const b of canonicalBranchRows) {
       try {
-        await query(
-          `INSERT INTO branches (id, name, region, status, created_at, updated_at)
-           VALUES ($1, $2, $3, 'active', NOW(), NOW())
-           ON CONFLICT (id) DO NOTHING`,
-          [b.id, b.name, b.region]
-        );
+        await __qd_executePlan(query, __qd_registeredPlan("server.js:2649:151"),
+
+
+
+        [b.id, b.name, b.region]);
+
       } catch (e) {
         console.warn(`[canonical branch insert] ${b.id}:`, e.message);
       }
@@ -2658,9 +2658,9 @@ runStartupOperation(startupPolicy, 'legacy-database-bootstrap', async () => {
 
     // ── Normalize status values: legacy 'completed' → 'posted' ─────────────
     // All new movements use 'posted'. Old records used 'completed'. Align them.
-    const statusFix = await query(
-      `UPDATE stock_movements SET status = 'posted' WHERE status = 'completed'`
-    );
+    const statusFix = await __qd_executePlan(query, __qd_registeredPlan("server.js:2662:152"), []);
+
+
     if (statusFix && statusFix.rowCount > 0) {
       console.log(`Status normalization: updated ${statusFix.rowCount} stock_movements rows`);
     }
@@ -2670,271 +2670,271 @@ runStartupOperation(startupPolicy, 'legacy-database-bootstrap', async () => {
     // They repair any production databases that were created before these
     // migrations were authored, without touching existing data.
     const schemaSyncs = [
-      ...(process.env.REPLIT_DEPLOYMENT==='1'?[]:[
-        await (await import('node:fs/promises')).readFile(
-          new URL('./migrations/032_client_history.sql',import.meta.url),'utf8')]),
-      (await import('./api/services/stockCostLayers.js')).lifecycleSchema,
-      (await import('./api/services/stockSaleAllocations.js')).saleAllocationSchema,
-      (await import('./api/services/saleEvidence.js')).saleEvidenceSchema,
-      (await import('./api/_lib/atomicSaleRequest.js')).saleRetrySchema,
-      `ALTER TABLE branch_activity_transactions ALTER COLUMN total_qty TYPE NUMERIC`,
-      (await import('./api/services/linkedReversals.js')).reversalSchema,
-      await (await import('node:fs/promises')).readFile(
-        new URL('./migrations/028_stock_cost_reporting_indexes.sql',import.meta.url),'utf8'),
-      await (await import('node:fs/promises')).readFile(
-        new URL('./migrations/029_historical_refund_evidence.sql',import.meta.url),'utf8'),
-      // Migration 019: GM dispatch approval columns on stock_transfers
-      `ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS prepared_by_id VARCHAR(255)`,
-      `ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS prepared_by_role VARCHAR(100)`,
-      `ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS destination_branch_staff JSONB`,
-      `ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS gm_approved_at TIMESTAMPTZ`,
-      `ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS gm_approved_by VARCHAR(255)`,
-      `ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS gm_approved_by_id VARCHAR(255)`,
-      // Migration 020: CIF unit cost on stock_movements
-      `ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS unit_cif NUMERIC(14,4)`,
-      // Campaigns extended schema
-      `ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS campaign_type VARCHAR(50) DEFAULT 'custom'`,
-      `ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS scope VARCHAR(50) DEFAULT 'countrywide'`,
-      `ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS conditions JSONB DEFAULT '{}'`,
-      `ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS prize JSONB DEFAULT '{}'`,
-      `ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS discount_percentage NUMERIC(5,2) DEFAULT 0`,
-      `ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS target_branches JSONB DEFAULT '[]'`,
-      // Distributor referral tracking on branch walk-in sales
-      `ALTER TABLE branch_walkin_sales ADD COLUMN IF NOT EXISTS referral_nb VARCHAR(50)`,
-      `ALTER TABLE branch_walkin_sales ADD COLUMN IF NOT EXISTS distributor_nb VARCHAR(50)`,
-      // Distributor profile photo persistence
-      `ALTER TABLE distributors ADD COLUMN IF NOT EXISTS photo_url TEXT`,
-      `ALTER TABLE distributors ADD COLUMN IF NOT EXISTS photo_filename TEXT`,
-      `ALTER TABLE distributors ADD COLUMN IF NOT EXISTS photo_updated_at TEXT`,
-      // CAS: finance_cash_requests updated_at column (unblocks Finance PATCH)
-      `ALTER TABLE stock_requests ADD COLUMN IF NOT EXISTS dispatch_warehouse VARCHAR(100)`,
-      `ALTER TABLE stock_requests ADD COLUMN IF NOT EXISTS updated_by VARCHAR(255)`,
-      `ALTER TABLE stock_requests ADD COLUMN IF NOT EXISTS last_status_change TIMESTAMPTZ`,
-      `ALTER TABLE stock_requests ADD COLUMN IF NOT EXISTS dispatched_by VARCHAR(255)`,
-      `ALTER TABLE stock_requests ADD COLUMN IF NOT EXISTS dispatched_at TIMESTAMPTZ`,
-      `ALTER TABLE online_orders ADD COLUMN IF NOT EXISTS stock_deducted BOOLEAN DEFAULT FALSE`,
-      `ALTER TABLE online_orders ADD COLUMN IF NOT EXISTS fulfilled_at TIMESTAMPTZ`,
-      `ALTER TABLE stock_requests ADD COLUMN IF NOT EXISTS rejection_reason TEXT`,
-      `ALTER TABLE stock_requests ADD COLUMN IF NOT EXISTS rejected_by VARCHAR(255)`,
-      `ALTER TABLE stock_requests ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMPTZ`,
-      `ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS rejection_reason TEXT`,
-      `ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS rejected_by VARCHAR(255)`,
-      `ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMPTZ`,
-      `ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS gm_action VARCHAR(50)`,
-      `ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS gm_comment TEXT`,
-      `ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS amended_by_gm VARCHAR(255)`,
-      `ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS amended_at TIMESTAMPTZ`,
-      `ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS signature_name VARCHAR(255)`,
-      `ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS branch_receipt_note TEXT`,
-      `ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS discrepancy_flag BOOLEAN DEFAULT FALSE`,
-      `ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS discrepancy_note TEXT`,
-      `ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS receipt_status VARCHAR(50)`,
-      `ALTER TABLE stock_transfer_items ADD COLUMN IF NOT EXISTS expiry_date DATE`,
-      `ALTER TABLE stock_transfer_items ADD COLUMN IF NOT EXISTS quantity_approved NUMERIC(14,2)`,
-      `ALTER TABLE stock_transfer_items ADD COLUMN IF NOT EXISTS quantity_received NUMERIC(14,2)`,
-      `ALTER TABLE stock_transfer_items ADD COLUMN IF NOT EXISTS discrepancy_note TEXT`,
-      `ALTER TABLE finance_cash_requests ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()`,
-      // file_uploads: description and category for training content
-      `ALTER TABLE file_uploads ADD COLUMN IF NOT EXISTS description TEXT`,
-      `ALTER TABLE file_uploads ADD COLUMN IF NOT EXISTS category VARCHAR(100)`,
-      `ALTER TABLE file_uploads ADD COLUMN IF NOT EXISTS media_type VARCHAR(50)`,
-      // field_program_requests: distributor info and signature fields
-      `ALTER TABLE field_program_requests ADD COLUMN IF NOT EXISTS distributor_id TEXT`,
-      `ALTER TABLE field_program_requests ADD COLUMN IF NOT EXISTS distributor_name TEXT`,
-      `ALTER TABLE field_program_requests ADD COLUMN IF NOT EXISTS distributor_code TEXT`,
-      `ALTER TABLE field_program_requests ADD COLUMN IF NOT EXISTS signature TEXT`,
-      `ALTER TABLE field_program_requests ADD COLUMN IF NOT EXISTS distributors JSONB DEFAULT '[]'`,
-      `ALTER TABLE field_program_requests ADD COLUMN IF NOT EXISTS reconciled_at TIMESTAMPTZ`,
-      `ALTER TABLE field_program_requests ADD COLUMN IF NOT EXISTS reconciled_by TEXT`,
-      // Write-off disposal tracking: written-off stock stays in a disposal queue
-      // until the stock manager physically disposes of it
-      `ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS disposal_status VARCHAR(30) DEFAULT NULL`,
-      `ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS disposed_by VARCHAR(255) DEFAULT NULL`,
-      `ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS disposed_at TIMESTAMPTZ DEFAULT NULL`,
-      `ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS write_off_reason VARCHAR(100) DEFAULT NULL`,
-      // Offline sync: idempotency keys to prevent duplicate submissions on reconnect
-      `ALTER TABLE branch_walkin_sales ADD COLUMN IF NOT EXISTS offline_id VARCHAR(100) DEFAULT NULL`,
-      `ALTER TABLE branch_expenses ADD COLUMN IF NOT EXISTS offline_id VARCHAR(100) DEFAULT NULL`,
-      `CREATE UNIQUE INDEX IF NOT EXISTS idx_walkin_sales_offline_id ON branch_walkin_sales (offline_id) WHERE offline_id IS NOT NULL`,
-      `CREATE UNIQUE INDEX IF NOT EXISTS idx_branch_expenses_offline_id ON branch_expenses (offline_id) WHERE offline_id IS NOT NULL`,
-      `CREATE TABLE IF NOT EXISTS branch_refund_requests (
-        id               VARCHAR(60)   PRIMARY KEY,
-        branch_id        VARCHAR(100)  NOT NULL,
-        sale_reference   VARCHAR(100),
-        product_name     VARCHAR(200)  NOT NULL,
-        batch_no         VARCHAR(100),
-        quantity         NUMERIC(10,2) NOT NULL,
-        unit_price       NUMERIC(10,2) NOT NULL,
-        refund_amount    NUMERIC(10,2) NOT NULL,
-        reason           TEXT          NOT NULL,
-        status           VARCHAR(20)   NOT NULL DEFAULT 'pending',
-        requested_by     VARCHAR(150),
-        approved_by      VARCHAR(150),
-        rejection_reason TEXT,
-        movement_id      VARCHAR(100),
-        created_at       TIMESTAMPTZ   DEFAULT NOW(),
-        processed_at     TIMESTAMPTZ
-      )`,
-      `ALTER TABLE branch_refund_requests ADD COLUMN IF NOT EXISTS return_condition TEXT`,
-      `ALTER TABLE branch_refund_requests ADD COLUMN IF NOT EXISTS stock_disposition TEXT`,
-      // charge_unit: what the patient is actually charged per unit (CP for non-members, DP for members)
-      // Stored alongside unit_price (always DP / cost basis) so the correction script and reports
-      // can distinguish company cost from patient revenue without re-joining product_prices.
-      `ALTER TABLE branch_inventory_movements ADD COLUMN IF NOT EXISTS charge_unit NUMERIC(14,4)`,
-      `ALTER TABLE stock_transfers DROP CONSTRAINT IF EXISTS stock_transfers_from_warehouse_fkey`,
-      // stock_adjustments: GM-approval workflow for stock record corrections
-      `CREATE TABLE IF NOT EXISTS stock_adjustments (
-        id                VARCHAR(100)  PRIMARY KEY,
-        adj_number        VARCHAR(50),
-        target_type       VARCHAR(50),
-        target_id         VARCHAR(100),
-        product_name      VARCHAR(255),
-        location          VARCHAR(100),
-        field_to_adjust   VARCHAR(100),
-        old_value         TEXT,
-        new_value         TEXT,
-        reason            TEXT,
-        requested_by      VARCHAR(255),
-        requested_by_name VARCHAR(255),
-        status            VARCHAR(20)   DEFAULT 'pending',
-        gm_notes          TEXT,
-        approved_by       VARCHAR(255),
-        approved_by_name  VARCHAR(255),
-        approved_at       TIMESTAMPTZ,
-        created_at        TIMESTAMPTZ   DEFAULT NOW(),
-        updated_at        TIMESTAMPTZ   DEFAULT NOW()
-      )`,
-      // Legacy column aliases (field_name was the old name before field_to_adjust)
-      `ALTER TABLE stock_adjustments ADD COLUMN IF NOT EXISTS adj_number        VARCHAR(50)`,
-      `ALTER TABLE stock_adjustments ADD COLUMN IF NOT EXISTS target_type       VARCHAR(50)`,
-      `ALTER TABLE stock_adjustments ADD COLUMN IF NOT EXISTS target_id         VARCHAR(100)`,
-      `ALTER TABLE stock_adjustments ADD COLUMN IF NOT EXISTS location          VARCHAR(100)`,
-      `ALTER TABLE stock_adjustments ADD COLUMN IF NOT EXISTS field_to_adjust   VARCHAR(100)`,
-      `ALTER TABLE stock_adjustments ADD COLUMN IF NOT EXISTS requested_by_name VARCHAR(255)`,
-      `ALTER TABLE stock_adjustments ADD COLUMN IF NOT EXISTS gm_notes          TEXT`,
-      `ALTER TABLE stock_adjustments ADD COLUMN IF NOT EXISTS approved_by       VARCHAR(255)`,
-      `ALTER TABLE stock_adjustments ADD COLUMN IF NOT EXISTS approved_by_name  VARCHAR(255)`,
-      `ALTER TABLE stock_adjustments ADD COLUMN IF NOT EXISTS approved_at       TIMESTAMPTZ`,
-      // Back-fill field_to_adjust from old field_name column — wrapped in DO block so it
-      // silently succeeds even when the legacy field_name column never existed.
-      `DO $$ BEGIN
-         UPDATE stock_adjustments SET field_to_adjust = field_name
-         WHERE field_to_adjust IS NULL AND field_name IS NOT NULL;
-       EXCEPTION WHEN undefined_column THEN NULL;
-       END $$`,
-      // Product codes and CIF breakdown columns
-      `ALTER TABLE product_prices ADD COLUMN IF NOT EXISTS product_code VARCHAR(30)`,
-      `ALTER TABLE product_prices ADD COLUMN IF NOT EXISTS original_cif NUMERIC(10,2)`,
-      `ALTER TABLE product_prices ADD COLUMN IF NOT EXISTS vat_pct NUMERIC(5,2) DEFAULT 15`,
-      `ALTER TABLE product_prices ADD COLUMN IF NOT EXISTS import_duty_pct NUMERIC(5,2) DEFAULT 0`,
-      `ALTER TABLE product_prices ADD COLUMN IF NOT EXISTS clearing_fee NUMERIC(10,2) DEFAULT 1`,
-      `CREATE UNIQUE INDEX IF NOT EXISTS idx_pp_product_code ON product_prices(product_code) WHERE product_code IS NOT NULL`,
-      // QR code field on stock_batches (separate from Code128 barcode)
-      `ALTER TABLE stock_batches ADD COLUMN IF NOT EXISTS qr_code VARCHAR(200)`,
-      `CREATE UNIQUE INDEX IF NOT EXISTS idx_stock_batches_qr_code ON stock_batches(qr_code) WHERE qr_code IS NOT NULL`,
-      // ── Stock Automation tables ──────────────────────────────────────────────
-      `CREATE TABLE IF NOT EXISTS stock_automation_config (
-         key         TEXT PRIMARY KEY,
-         value       TEXT NOT NULL,
-         description TEXT,
-         updated_at  TIMESTAMPTZ DEFAULT NOW()
-       )`,
-      `CREATE TABLE IF NOT EXISTS stock_reorder_rules (
-         id                  TEXT PRIMARY KEY,
-         branch_id           TEXT NOT NULL,
-         product_name        TEXT NOT NULL,
-         min_qty             NUMERIC NOT NULL DEFAULT 5,
-         reorder_qty         NUMERIC NOT NULL DEFAULT 20,
-         preferred_warehouse TEXT DEFAULT 'windhoek_warehouse',
-         active              BOOLEAN DEFAULT TRUE,
-         created_at          TIMESTAMPTZ DEFAULT NOW(),
-         updated_at          TIMESTAMPTZ DEFAULT NOW(),
-         UNIQUE (branch_id, product_name)
-       )`,
-      `CREATE TABLE IF NOT EXISTS stock_automation_log (
-         id              TEXT PRIMARY KEY,
-         automation_type TEXT NOT NULL,
-         branch_id       TEXT,
-         product_name    TEXT,
-         quantity        NUMERIC,
-         details         JSONB,
-         status          TEXT DEFAULT 'success',
-         error_message   TEXT,
-         created_at      TIMESTAMPTZ DEFAULT NOW()
-       )`,
-      `CREATE INDEX IF NOT EXISTS idx_sal_type_branch ON stock_automation_log (automation_type, branch_id)`,
-      `CREATE INDEX IF NOT EXISTS idx_sal_created    ON stock_automation_log (created_at DESC)`,
-      // ── #10 Batch traceability: link branch batches back to source stock_batch ──
-      `ALTER TABLE branch_inventory_batches ADD COLUMN IF NOT EXISTS source_batch_id TEXT`,
-      // ── #4 Short-delivery discrepancy records ────────────────────────────────
-      `CREATE TABLE IF NOT EXISTS stock_transfer_discrepancies (
-         id               TEXT PRIMARY KEY,
-         transfer_id      TEXT NOT NULL,
-         dispatch_note_id TEXT,
-         branch_id        TEXT NOT NULL,
-         product_name     TEXT NOT NULL,
-         batch_no         TEXT,
-         dispatched_qty   NUMERIC NOT NULL DEFAULT 0,
-         received_qty     NUMERIC NOT NULL DEFAULT 0,
-         shortfall_qty    NUMERIC NOT NULL DEFAULT 0,
-         notes            TEXT,
-         resolved         BOOLEAN DEFAULT FALSE,
-         resolved_by      TEXT,
-         resolved_at      TIMESTAMPTZ,
-         created_at       TIMESTAMPTZ DEFAULT NOW()
-       )`,
-      `CREATE INDEX IF NOT EXISTS idx_std_transfer   ON stock_transfer_discrepancies (transfer_id)`,
-      `CREATE INDEX IF NOT EXISTS idx_std_branch      ON stock_transfer_discrepancies (branch_id)`,
-      `CREATE INDEX IF NOT EXISTS idx_std_unresolved  ON stock_transfer_discrepancies (resolved) WHERE resolved = FALSE`,
-      // ── #73 Prevent negative stock at database level ──────────────────────────
-      // These constraints serve as the last line of defence after application-layer guards.
-      // PostgreSQL does not support "ADD CONSTRAINT IF NOT EXISTS" — use DO blocks instead.
-      `DO $$ BEGIN ALTER TABLE stock_batches ADD CONSTRAINT chk_sb_remaining_qty_gte_zero CHECK (remaining_quantity >= 0); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
-      `DO $$ BEGIN ALTER TABLE stock_batches ADD CONSTRAINT chk_sb_dispatched_qty_gte_zero CHECK (dispatched_quantity >= 0); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
-      `DO $$ BEGIN ALTER TABLE warehouse_inventory ADD CONSTRAINT chk_wi_qty_gte_zero CHECK (quantity >= 0); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
-      `DO $$ BEGIN ALTER TABLE branch_inventory_batches ADD CONSTRAINT chk_bib_qty_gte_zero CHECK (quantity >= 0); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
-      // ── priority column on stock_transfers (used by escalation scheduler) ────
-      `ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS priority VARCHAR(50) DEFAULT 'normal'`,
-      // ── Extended HR profile fields on users ──────────────────────────────────
-      `ALTER TABLE users ADD COLUMN IF NOT EXISTS address TEXT`,
-      `ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_contact_name TEXT`,
-      `ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_contact_phone TEXT`,
-      `ALTER TABLE users ADD COLUMN IF NOT EXISTS national_id TEXT`,
-      `ALTER TABLE users ADD COLUMN IF NOT EXISTS date_of_birth DATE`,
-      `ALTER TABLE users ADD COLUMN IF NOT EXISTS gender VARCHAR(20)`,
-      `ALTER TABLE users ADD COLUMN IF NOT EXISTS bank_name TEXT`,
-      `ALTER TABLE users ADD COLUMN IF NOT EXISTS bank_account_no TEXT`,
-      // ── Extended personal / qualification fields on users ─────────────────────
-      `ALTER TABLE users ADD COLUMN IF NOT EXISTS marital_status VARCHAR(30)`,
-      `ALTER TABLE users ADD COLUMN IF NOT EXISTS nationality TEXT`,
-      `ALTER TABLE users ADD COLUMN IF NOT EXISTS home_language TEXT`,
-      `ALTER TABLE users ADD COLUMN IF NOT EXISTS next_of_kin_name TEXT`,
-      `ALTER TABLE users ADD COLUMN IF NOT EXISTS next_of_kin_relationship TEXT`,
-      `ALTER TABLE users ADD COLUMN IF NOT EXISTS next_of_kin_phone TEXT`,
-      `ALTER TABLE users ADD COLUMN IF NOT EXISTS highest_qualification TEXT`,
-      `ALTER TABLE users ADD COLUMN IF NOT EXISTS institution_name TEXT`,
-      `ALTER TABLE users ADD COLUMN IF NOT EXISTS graduation_year VARCHAR(10)`,
-      `ALTER TABLE users ADD COLUMN IF NOT EXISTS field_of_study TEXT`,
-      `ALTER TABLE users ADD COLUMN IF NOT EXISTS professional_certifications TEXT`,
-      // ── staff_documents table ─────────────────────────────────────────────────
-      `CREATE TABLE IF NOT EXISTS staff_documents (
-         id           SERIAL PRIMARY KEY,
-         user_id      TEXT NOT NULL,
-         doc_type     TEXT NOT NULL,
-         doc_name     TEXT,
-         file_url     TEXT NOT NULL,
-         file_size    INTEGER,
-         uploaded_at  TIMESTAMPTZ DEFAULT NOW(),
-         uploaded_by  TEXT
-       )`,
-      `CREATE INDEX IF NOT EXISTS idx_staff_docs_user ON staff_documents (user_id)`,
-      // ── profile_update support in hr_staff_change_requests ───────────────────
-      `ALTER TABLE hr_staff_change_requests ADD COLUMN IF NOT EXISTS profile_changes JSONB`,
-      `ALTER TABLE hr_staff_change_requests ADD COLUMN IF NOT EXISTS user_id TEXT`,
-    ];
+    ...(process.env.REPLIT_DEPLOYMENT === '1' ? [] : [__qd_registeredPlan("server.js:2674:153")]), __qd_registeredPlan("server.js:2676:154"), __qd_registeredPlan("server.js:2677:155"), __qd_registeredPlan("server.js:2678:156"), __qd_registeredPlan("server.js:2679:157"), __qd_registeredPlan("server.js:2680:158"), __qd_registeredPlan("server.js:2681:159"), __qd_registeredPlan("server.js:2682:160"), __qd_registeredPlan("server.js:2684:161"),
+
+
+
+
+
+
+
+
+
+
+
+
+    // Migration 019: GM dispatch approval columns on stock_transfers
+    __qd_registeredPlan("server.js:2687:162"), __qd_registeredPlan("server.js:2688:163"), __qd_registeredPlan("server.js:2689:164"), __qd_registeredPlan("server.js:2690:165"), __qd_registeredPlan("server.js:2691:166"), __qd_registeredPlan("server.js:2692:167"),
+
+
+
+
+
+    // Migration 020: CIF unit cost on stock_movements
+    __qd_registeredPlan("server.js:2694:168"),
+    // Campaigns extended schema
+    __qd_registeredPlan("server.js:2696:169"), __qd_registeredPlan("server.js:2697:170"), __qd_registeredPlan("server.js:2698:171"), __qd_registeredPlan("server.js:2699:172"), __qd_registeredPlan("server.js:2700:173"), __qd_registeredPlan("server.js:2701:174"),
+
+
+
+
+
+    // Distributor referral tracking on branch walk-in sales
+    __qd_registeredPlan("server.js:2703:175"), __qd_registeredPlan("server.js:2704:176"),
+
+    // Distributor profile photo persistence
+    __qd_registeredPlan("server.js:2706:177"), __qd_registeredPlan("server.js:2707:178"), __qd_registeredPlan("server.js:2708:179"),
+
+
+    // CAS: finance_cash_requests updated_at column (unblocks Finance PATCH)
+    __qd_registeredPlan("server.js:2710:180"), __qd_registeredPlan("server.js:2711:181"), __qd_registeredPlan("server.js:2712:182"), __qd_registeredPlan("server.js:2713:183"), __qd_registeredPlan("server.js:2714:184"), __qd_registeredPlan("server.js:2715:185"), __qd_registeredPlan("server.js:2716:186"), __qd_registeredPlan("server.js:2717:187"), __qd_registeredPlan("server.js:2718:188"), __qd_registeredPlan("server.js:2719:189"), __qd_registeredPlan("server.js:2720:190"), __qd_registeredPlan("server.js:2721:191"), __qd_registeredPlan("server.js:2722:192"), __qd_registeredPlan("server.js:2723:193"), __qd_registeredPlan("server.js:2724:194"), __qd_registeredPlan("server.js:2725:195"), __qd_registeredPlan("server.js:2726:196"), __qd_registeredPlan("server.js:2727:197"), __qd_registeredPlan("server.js:2728:198"), __qd_registeredPlan("server.js:2729:199"), __qd_registeredPlan("server.js:2730:200"), __qd_registeredPlan("server.js:2731:201"), __qd_registeredPlan("server.js:2732:202"), __qd_registeredPlan("server.js:2733:203"), __qd_registeredPlan("server.js:2734:204"), __qd_registeredPlan("server.js:2735:205"), __qd_registeredPlan("server.js:2736:206"),
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    // file_uploads: description and category for training content
+    __qd_registeredPlan("server.js:2738:207"), __qd_registeredPlan("server.js:2739:208"), __qd_registeredPlan("server.js:2740:209"),
+
+
+    // field_program_requests: distributor info and signature fields
+    __qd_registeredPlan("server.js:2742:210"), __qd_registeredPlan("server.js:2743:211"), __qd_registeredPlan("server.js:2744:212"), __qd_registeredPlan("server.js:2745:213"), __qd_registeredPlan("server.js:2746:214"), __qd_registeredPlan("server.js:2747:215"), __qd_registeredPlan("server.js:2748:216"),
+
+
+
+
+
+
+    // Write-off disposal tracking: written-off stock stays in a disposal queue
+    // until the stock manager physically disposes of it
+    __qd_registeredPlan("server.js:2751:217"), __qd_registeredPlan("server.js:2752:218"), __qd_registeredPlan("server.js:2753:219"), __qd_registeredPlan("server.js:2754:220"),
+
+
+
+    // Offline sync: idempotency keys to prevent duplicate submissions on reconnect
+    __qd_registeredPlan("server.js:2756:221"), __qd_registeredPlan("server.js:2757:222"), __qd_registeredPlan("server.js:2758:223"), __qd_registeredPlan("server.js:2759:224"), __qd_registeredPlan("server.js:2760:225"), __qd_registeredPlan("server.js:2778:226"), __qd_registeredPlan("server.js:2779:227"),
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    // charge_unit: what the patient is actually charged per unit (CP for non-members, DP for members)
+    // Stored alongside unit_price (always DP / cost basis) so the correction script and reports
+    // can distinguish company cost from patient revenue without re-joining product_prices.
+    __qd_registeredPlan("server.js:2783:228"), __qd_registeredPlan("server.js:2784:229"),
+
+    // stock_adjustments: GM-approval workflow for stock record corrections
+    __qd_registeredPlan("server.js:2786:230"),
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    // Legacy column aliases (field_name was the old name before field_to_adjust)
+    __qd_registeredPlan("server.js:2808:231"), __qd_registeredPlan("server.js:2809:232"), __qd_registeredPlan("server.js:2810:233"), __qd_registeredPlan("server.js:2811:234"), __qd_registeredPlan("server.js:2812:235"), __qd_registeredPlan("server.js:2813:236"), __qd_registeredPlan("server.js:2814:237"), __qd_registeredPlan("server.js:2815:238"), __qd_registeredPlan("server.js:2816:239"), __qd_registeredPlan("server.js:2817:240"),
+
+
+
+
+
+
+
+
+
+    // Back-fill field_to_adjust from old field_name column — wrapped in DO block so it
+    // silently succeeds even when the legacy field_name column never existed.
+    __qd_registeredPlan("server.js:2820:241"),
+
+
+
+
+    // Product codes and CIF breakdown columns
+    __qd_registeredPlan("server.js:2826:242"), __qd_registeredPlan("server.js:2827:243"), __qd_registeredPlan("server.js:2828:244"), __qd_registeredPlan("server.js:2829:245"), __qd_registeredPlan("server.js:2830:246"), __qd_registeredPlan("server.js:2831:247"),
+
+
+
+
+
+    // QR code field on stock_batches (separate from Code128 barcode)
+    __qd_registeredPlan("server.js:2833:248"), __qd_registeredPlan("server.js:2834:249"),
+
+    // ── Stock Automation tables ──────────────────────────────────────────────
+    __qd_registeredPlan("server.js:2836:250"), __qd_registeredPlan("server.js:2842:251"), __qd_registeredPlan("server.js:2854:252"), __qd_registeredPlan("server.js:2865:253"), __qd_registeredPlan("server.js:2866:254"),
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    // ── #10 Batch traceability: link branch batches back to source stock_batch ──
+    __qd_registeredPlan("server.js:2868:255"),
+    // ── #4 Short-delivery discrepancy records ────────────────────────────────
+    __qd_registeredPlan("server.js:2870:256"), __qd_registeredPlan("server.js:2886:257"), __qd_registeredPlan("server.js:2887:258"), __qd_registeredPlan("server.js:2888:259"),
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    // ── #73 Prevent negative stock at database level ──────────────────────────
+    // These constraints serve as the last line of defence after application-layer guards.
+    // PostgreSQL does not support "ADD CONSTRAINT IF NOT EXISTS" — use DO blocks instead.
+    __qd_registeredPlan("server.js:2892:260"), __qd_registeredPlan("server.js:2893:261"), __qd_registeredPlan("server.js:2894:262"), __qd_registeredPlan("server.js:2895:263"),
+
+
+
+    // ── priority column on stock_transfers (used by escalation scheduler) ────
+    __qd_registeredPlan("server.js:2897:264"),
+    // ── Extended HR profile fields on users ──────────────────────────────────
+    __qd_registeredPlan("server.js:2899:265"), __qd_registeredPlan("server.js:2900:266"), __qd_registeredPlan("server.js:2901:267"), __qd_registeredPlan("server.js:2902:268"), __qd_registeredPlan("server.js:2903:269"), __qd_registeredPlan("server.js:2904:270"), __qd_registeredPlan("server.js:2905:271"), __qd_registeredPlan("server.js:2906:272"),
+
+
+
+
+
+
+
+    // ── Extended personal / qualification fields on users ─────────────────────
+    __qd_registeredPlan("server.js:2908:273"), __qd_registeredPlan("server.js:2909:274"), __qd_registeredPlan("server.js:2910:275"), __qd_registeredPlan("server.js:2911:276"), __qd_registeredPlan("server.js:2912:277"), __qd_registeredPlan("server.js:2913:278"), __qd_registeredPlan("server.js:2914:279"), __qd_registeredPlan("server.js:2915:280"), __qd_registeredPlan("server.js:2916:281"), __qd_registeredPlan("server.js:2917:282"), __qd_registeredPlan("server.js:2918:283"),
+
+
+
+
+
+
+
+
+
+
+    // ── staff_documents table ─────────────────────────────────────────────────
+    __qd_registeredPlan("server.js:2920:284"), __qd_registeredPlan("server.js:2930:285"),
+
+
+
+
+
+
+
+
+
+
+    // ── profile_update support in hr_staff_change_requests ───────────────────
+    __qd_registeredPlan("server.js:2932:286"), __qd_registeredPlan("server.js:2933:287")];
+
+
     let schemaSynced = 0;
     for (const sql of schemaSyncs) {
-      try { await query(sql); schemaSynced++; } catch {}
+      try {await __qd_executePlan(query, sql, []);schemaSynced++;} catch {}
     }
     if (schemaSynced > 0) {
       console.log(`Schema sync: applied ${schemaSynced} column additions`);
@@ -2946,37 +2946,37 @@ runStartupOperation(startupPolicy, 'legacy-database-bootstrap', async () => {
     // ── Seed default stock automation config (idempotent ON CONFLICT DO NOTHING) ──
     try {
       const defaultAutomationConfig = [
-        ['auto_writeoff_enabled',       'true',              'Enable nightly auto write-off submission for expired batches'],
-        ['auto_stock_request_enabled',  'true',              'Enable auto stock requests when branch stock falls below minimum'],
-        ['auto_receive_enabled',        'true',              'Enable auto-receive for dispatches idle longer than threshold hours'],
-        ['auto_receive_hours',          '24',                'Hours before a dispatched transfer is auto-received'],
-        ['small_transfer_auto_approve', 'true',              'Enable auto-dispatch for small transfers at or below the threshold'],
-        ['small_transfer_threshold',    '5',                 'Max total units for a transfer to qualify for auto-dispatch (skip GM)'],
-        ['stock_request_min_qty',       '5',                 'Global minimum stock qty before auto stock request is raised'],
-        ['stock_request_reorder_qty',   '20',                'Global default reorder quantity per product in auto stock requests'],
-        ['preferred_warehouse',         'windhoek_warehouse','Default warehouse for auto-generated stock requests'],
-        // ── New automation config keys ────────────────────────────────────────────
-        ['stuck_approval_enabled',       'true',              'Enable stuck-approval cleanup alerts for approved transfers not dispatched'],
-        ['stuck_approval_hours',         '8',                 'Hours an approved transfer can sit undispatched before alert is triggered'],
-        ['stuck_approval_auto_revert',   'false',             'Auto-revert stuck approved transfers to pending_approval (restores stock)'],
-        ['pending_escalation_enabled',   'true',              'Enable escalation notifications for transfers awaiting GM approval too long'],
-        ['pending_escalation_hours',     '4',                 'Hours before pending-approval transfer triggers escalation alert to GM'],
-        ['drift_repair_enabled',         'true',              'Enable nightly inventory balance drift repair between cache and stock_movements'],
-        ['drift_tolerance_units',        '1',                 'Units of difference allowed before drift repair recomputes a location'],
-        ['warehouse_reorder_enabled',    'true',              'Enable auto-reorder requests when warehouse stock falls below minimum'],
-        ['warehouse_min_qty',            '20',                'Warehouse minimum qty below which a reorder request is auto-raised'],
-        ['warehouse_reorder_qty',        '50',                'Default reorder quantity for warehouse reorder requests from country stock'],
-        ['inter_branch_redistrib_enabled','true',             'Enable inter-branch surplus redistribution suggestions sent to GM'],
-        ['inter_branch_surplus_ratio',   '2',                 'Branch is surplus when its qty > avgQty * this ratio'],
-        ['health_digest_enabled',        'true',              'Enable nightly stock health digest sent to GM and stock manager at 06:00'],
-      ];
+      ['auto_writeoff_enabled', 'true', 'Enable nightly auto write-off submission for expired batches'],
+      ['auto_stock_request_enabled', 'true', 'Enable auto stock requests when branch stock falls below minimum'],
+      ['auto_receive_enabled', 'true', 'Enable auto-receive for dispatches idle longer than threshold hours'],
+      ['auto_receive_hours', '24', 'Hours before a dispatched transfer is auto-received'],
+      ['small_transfer_auto_approve', 'true', 'Enable auto-dispatch for small transfers at or below the threshold'],
+      ['small_transfer_threshold', '5', 'Max total units for a transfer to qualify for auto-dispatch (skip GM)'],
+      ['stock_request_min_qty', '5', 'Global minimum stock qty before auto stock request is raised'],
+      ['stock_request_reorder_qty', '20', 'Global default reorder quantity per product in auto stock requests'],
+      ['preferred_warehouse', 'windhoek_warehouse', 'Default warehouse for auto-generated stock requests'],
+      // ── New automation config keys ────────────────────────────────────────────
+      ['stuck_approval_enabled', 'true', 'Enable stuck-approval cleanup alerts for approved transfers not dispatched'],
+      ['stuck_approval_hours', '8', 'Hours an approved transfer can sit undispatched before alert is triggered'],
+      ['stuck_approval_auto_revert', 'false', 'Auto-revert stuck approved transfers to pending_approval (restores stock)'],
+      ['pending_escalation_enabled', 'true', 'Enable escalation notifications for transfers awaiting GM approval too long'],
+      ['pending_escalation_hours', '4', 'Hours before pending-approval transfer triggers escalation alert to GM'],
+      ['drift_repair_enabled', 'true', 'Enable nightly inventory balance drift repair between cache and stock_movements'],
+      ['drift_tolerance_units', '1', 'Units of difference allowed before drift repair recomputes a location'],
+      ['warehouse_reorder_enabled', 'true', 'Enable auto-reorder requests when warehouse stock falls below minimum'],
+      ['warehouse_min_qty', '20', 'Warehouse minimum qty below which a reorder request is auto-raised'],
+      ['warehouse_reorder_qty', '50', 'Default reorder quantity for warehouse reorder requests from country stock'],
+      ['inter_branch_redistrib_enabled', 'true', 'Enable inter-branch surplus redistribution suggestions sent to GM'],
+      ['inter_branch_surplus_ratio', '2', 'Branch is surplus when its qty > avgQty * this ratio'],
+      ['health_digest_enabled', 'true', 'Enable nightly stock health digest sent to GM and stock manager at 06:00']];
+
       for (const [key, value, description] of defaultAutomationConfig) {
-        await query(
-          `INSERT INTO stock_automation_config (key, value, description, updated_at)
-           VALUES ($1, $2, $3, NOW())
-           ON CONFLICT (key) DO NOTHING`,
-          [key, value, description]
-        );
+        await __qd_executePlan(query, __qd_registeredPlan("server.js:2975:288"),
+
+
+
+        [key, value, description]);
+
       }
       console.log('[automation] Default automation config seeded');
     } catch (acErr) {
@@ -2986,249 +2986,249 @@ runStartupOperation(startupPolicy, 'legacy-database-bootstrap', async () => {
 
     // ── Campaign participation and winners tables ─────────────────────────────
     try {
-      await query(`
-        CREATE TABLE IF NOT EXISTS campaign_participants (
-          id VARCHAR(100) PRIMARY KEY,
-          campaign_id VARCHAR(100) NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
-          distributor_code VARCHAR(50) NOT NULL,
-          distributor_name VARCHAR(255),
-          branch VARCHAR(100),
-          enrolled_at TIMESTAMPTZ DEFAULT NOW(),
-          status VARCHAR(30) DEFAULT 'active',
-          current_bv NUMERIC(12,2) DEFAULT 0,
-          current_recruits INTEGER DEFAULT 0,
-          notes TEXT,
-          updated_at TIMESTAMPTZ DEFAULT NOW()
-        )
-      `);
-      await query(`CREATE INDEX IF NOT EXISTS idx_campaign_participants_campaign ON campaign_participants(campaign_id)`);
-      await query(`CREATE INDEX IF NOT EXISTS idx_campaign_participants_code ON campaign_participants(distributor_code)`);
+      await __qd_executePlan(query, __qd_registeredPlan("server.js:2989:289"), []);
 
-      await query(`
-        CREATE TABLE IF NOT EXISTS campaign_winners (
-          id VARCHAR(100) PRIMARY KEY,
-          campaign_id VARCHAR(100) NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
-          distributor_code VARCHAR(50) NOT NULL,
-          distributor_name VARCHAR(255),
-          branch VARCHAR(100),
-          prize_tier VARCHAR(255),
-          prize_description TEXT,
-          prize_rank INTEGER DEFAULT 1,
-          won_at TIMESTAMPTZ DEFAULT NOW(),
-          status VARCHAR(30) DEFAULT 'pending',
-          verified_by VARCHAR(100),
-          notes TEXT
-        )
-      `);
-      await query(`CREATE INDEX IF NOT EXISTS idx_campaign_winners_campaign ON campaign_winners(campaign_id)`);
+
+
+
+
+
+
+
+
+
+
+
+
+
+      await __qd_executePlan(query, __qd_registeredPlan("server.js:3004:290"), []);
+      await __qd_executePlan(query, __qd_registeredPlan("server.js:3005:291"), []);
+
+      await __qd_executePlan(query, __qd_registeredPlan("server.js:3007:292"), []);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+      await __qd_executePlan(query, __qd_registeredPlan("server.js:3023:293"), []);
     } catch (e) {
       console.warn('[campaign tables init]', e.message);
     }
 
     // ── Petty cash tables ────────────────────────────────────────────────────
     try {
-      await query(`
-        CREATE TABLE IF NOT EXISTS petty_cash_accounts (
-          id VARCHAR(100) PRIMARY KEY,
-          location VARCHAR(100) UNIQUE NOT NULL,
-          balance NUMERIC(14,2) DEFAULT 0,
-          last_topped_up_at TIMESTAMPTZ,
-          last_topped_up_by VARCHAR(255),
-          created_at TIMESTAMPTZ DEFAULT NOW(),
-          updated_at TIMESTAMPTZ DEFAULT NOW()
-        )
-      `);
-      await query(`
-        CREATE TABLE IF NOT EXISTS petty_cash_requests (
-          id VARCHAR(100) PRIMARY KEY,
-          request_number VARCHAR(100),
-          amount NUMERIC(14,2) NOT NULL,
-          purpose TEXT NOT NULL,
-          location VARCHAR(100) DEFAULT 'head_office',
-          status VARCHAR(50) DEFAULT 'pending_gm',
-          requested_by VARCHAR(255),
-          gm_approved_by VARCHAR(255),
-          gm_approved_at TIMESTAMPTZ,
-          issued_by VARCHAR(255),
-          issued_at TIMESTAMPTZ,
-          rejected_by VARCHAR(255),
-          rejected_at TIMESTAMPTZ,
-          notes TEXT,
-          created_at TIMESTAMPTZ DEFAULT NOW(),
-          updated_at TIMESTAMPTZ DEFAULT NOW()
-        )
-      `);
-      await query(`
-        CREATE TABLE IF NOT EXISTS petty_cash_transactions (
-          id VARCHAR(100) PRIMARY KEY,
-          location VARCHAR(100) NOT NULL,
-          type VARCHAR(30) NOT NULL,
-          amount NUMERIC(14,2) NOT NULL,
-          description TEXT,
-          category VARCHAR(100),
-          branch_id VARCHAR(100),
-          reference_id VARCHAR(100),
-          performed_by VARCHAR(255),
-          created_at TIMESTAMPTZ DEFAULT NOW()
-        )
-      `);
-      await query(`CREATE INDEX IF NOT EXISTS idx_pct_location ON petty_cash_transactions(location)`);
-      await query(`CREATE INDEX IF NOT EXISTS idx_pct_type ON petty_cash_transactions(type)`);
-      await query(`CREATE INDEX IF NOT EXISTS idx_pcr_status ON petty_cash_requests(status)`);
+      await __qd_executePlan(query, __qd_registeredPlan("server.js:3030:294"), []);
+
+
+
+
+
+
+
+
+
+
+      await __qd_executePlan(query, __qd_registeredPlan("server.js:3041:295"), []);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+      await __qd_executePlan(query, __qd_registeredPlan("server.js:3061:296"), []);
+
+
+
+
+
+
+
+
+
+
+
+
+
+      await __qd_executePlan(query, __qd_registeredPlan("server.js:3075:297"), []);
+      await __qd_executePlan(query, __qd_registeredPlan("server.js:3076:298"), []);
+      await __qd_executePlan(query, __qd_registeredPlan("server.js:3077:299"), []);
     } catch (e) {
       console.warn('[petty cash tables init]', e.message);
     }
     // ── Distributor bonus tables ──────────────────────────────────────────────
     try {
-      await query(`
-        CREATE TABLE IF NOT EXISTS distributor_bonuses (
-          id TEXT PRIMARY KEY,
-          period TEXT NOT NULL,
-          distributor_id TEXT,
-          nb_number TEXT NOT NULL,
-          distributor_name TEXT NOT NULL,
-          amount_earned NUMERIC(14,2) NOT NULL DEFAULT 0,
-          amount_paid NUMERIC(14,2) NOT NULL DEFAULT 0,
-          paid_by_branch_id TEXT,
-          payment_date DATE,
-          status TEXT NOT NULL DEFAULT 'pending',
-          uploaded_by TEXT,
-          created_at TIMESTAMPTZ DEFAULT NOW(),
-          updated_at TIMESTAMPTZ DEFAULT NOW()
-        )
-      `);
-      await query(`CREATE INDEX IF NOT EXISTS idx_dist_bonuses_nb ON distributor_bonuses (nb_number)`);
-      await query(`CREATE INDEX IF NOT EXISTS idx_dist_bonuses_period ON distributor_bonuses (period)`);
-      await query(`
-        CREATE TABLE IF NOT EXISTS distributor_bonus_payments (
-          id TEXT PRIMARY KEY,
-          bonus_id TEXT NOT NULL REFERENCES distributor_bonuses(id) ON DELETE CASCADE,
-          branch_id TEXT NOT NULL,
-          amount NUMERIC(14,2) NOT NULL,
-          paid_at DATE NOT NULL,
-          recorded_by TEXT,
-          notes TEXT,
-          created_at TIMESTAMPTZ DEFAULT NOW()
-        )
-      `);
-      await query(`CREATE INDEX IF NOT EXISTS idx_dist_bonus_payments_bonus_id ON distributor_bonus_payments (bonus_id)`);
-      await query(`CREATE INDEX IF NOT EXISTS idx_dist_bonus_payments_branch ON distributor_bonus_payments (branch_id)`);
+      await __qd_executePlan(query, __qd_registeredPlan("server.js:3083:300"), []);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+      await __qd_executePlan(query, __qd_registeredPlan("server.js:3100:301"), []);
+      await __qd_executePlan(query, __qd_registeredPlan("server.js:3101:302"), []);
+      await __qd_executePlan(query, __qd_registeredPlan("server.js:3102:303"), []);
+
+
+
+
+
+
+
+
+
+
+
+      await __qd_executePlan(query, __qd_registeredPlan("server.js:3114:304"), []);
+      await __qd_executePlan(query, __qd_registeredPlan("server.js:3115:305"), []);
     } catch (e) {
       console.warn('[distributor bonus tables init]', e.message);
     }
     // ── Supplier Purchase Orders ──────────────────────────────────────────────
     try {
-      await query(`
-        CREATE TABLE IF NOT EXISTS supplier_purchase_orders (
-          id SERIAL PRIMARY KEY,
-          order_ref VARCHAR(60) NOT NULL UNIQUE,
-          product_name VARCHAR(255) NOT NULL,
-          quantity_ordered INTEGER NOT NULL,
-          days_remaining NUMERIC(10,1),
-          daily_rate NUMERIC(10,4),
-          priority_label VARCHAR(80),
-          location VARCHAR(120),
-          notes TEXT,
-          status VARCHAR(40) NOT NULL DEFAULT 'draft',
-          requested_by VARCHAR(255),
-          requested_by_name VARCHAR(255),
-          submitted_by VARCHAR(255),
-          submitted_at TIMESTAMPTZ,
-          created_at TIMESTAMPTZ DEFAULT NOW(),
-          updated_at TIMESTAMPTZ DEFAULT NOW()
-        )
-      `);
-      await query(`CREATE INDEX IF NOT EXISTS idx_spo_status ON supplier_purchase_orders (status)`);
-      await query(`CREATE INDEX IF NOT EXISTS idx_spo_product ON supplier_purchase_orders (product_name)`);
+      await __qd_executePlan(query, __qd_registeredPlan("server.js:3121:306"), []);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+      await __qd_executePlan(query, __qd_registeredPlan("server.js:3141:307"), []);
+      await __qd_executePlan(query, __qd_registeredPlan("server.js:3142:308"), []);
     } catch (e) {
       console.warn('[supplier_purchase_orders init]', e.message);
     }
     // ── Payment Vouchers ──────────────────────────────────────────────────────
     try {
-      await query(`
-        CREATE TABLE IF NOT EXISTS payment_vouchers (
-          id TEXT PRIMARY KEY,
-          voucher_number VARCHAR(30) NOT NULL UNIQUE,
-          payment_type VARCHAR(60) NOT NULL,
-          payee_name VARCHAR(255) NOT NULL,
-          payee_bank VARCHAR(255),
-          payee_account VARCHAR(120),
-          payee_branch_code VARCHAR(60),
-          amount NUMERIC(14,2) NOT NULL,
-          currency VARCHAR(10) NOT NULL DEFAULT 'NAD',
-          payment_method VARCHAR(40) NOT NULL,
-          reference_number VARCHAR(120),
-          narration TEXT,
-          authorised_by VARCHAR(255),
-          prepared_by VARCHAR(255) NOT NULL,
-          status VARCHAR(30) NOT NULL DEFAULT 'draft',
-          linked_request_id TEXT,
-          linked_request_type VARCHAR(60),
-          payment_date DATE,
-          notes TEXT,
-          created_at TIMESTAMPTZ DEFAULT NOW(),
-          updated_at TIMESTAMPTZ DEFAULT NOW()
-        )
-      `);
-      await query(`CREATE INDEX IF NOT EXISTS idx_pv_type ON payment_vouchers (payment_type)`);
-      await query(`CREATE INDEX IF NOT EXISTS idx_pv_status ON payment_vouchers (status)`);
-      await query(`CREATE INDEX IF NOT EXISTS idx_pv_date ON payment_vouchers (payment_date)`);
+      await __qd_executePlan(query, __qd_registeredPlan("server.js:3148:309"), []);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+      await __qd_executePlan(query, __qd_registeredPlan("server.js:3173:310"), []);
+      await __qd_executePlan(query, __qd_registeredPlan("server.js:3174:311"), []);
+      await __qd_executePlan(query, __qd_registeredPlan("server.js:3175:312"), []);
     } catch (e) {
       console.warn('[payment_vouchers init]', e.message);
     }
     // ── Distributor Bonus Statements (monthly upload by admin/GM/MIS) ─────────
     try {
-      await query(`
-        CREATE TABLE IF NOT EXISTS distributor_statements (
-          id TEXT PRIMARY KEY,
-          month VARCHAR(7) NOT NULL UNIQUE,
-          label VARCHAR(60),
-          uploaded_by VARCHAR(120),
-          uploaded_at TIMESTAMPTZ DEFAULT NOW(),
-          total_sections INTEGER DEFAULT 0,
-          sections JSONB DEFAULT '{}'::jsonb,
-          summary_index JSONB DEFAULT '{}'::jsonb
-        )
-      `);
-      await query(`CREATE INDEX IF NOT EXISTS idx_dstmt_month ON distributor_statements (month DESC)`);
+      await __qd_executePlan(query, __qd_registeredPlan("server.js:3181:313"), []);
+
+
+
+
+
+
+
+
+
+
+
+      await __qd_executePlan(query, __qd_registeredPlan("server.js:3193:314"), []);
     } catch (e) {
       console.warn('[distributor_statements init]', e.message);
     }
     // ── System-wide admin settings (key/value store) ──────────────────────
     try {
-      await query(`
-        CREATE TABLE IF NOT EXISTS system_settings (
-          key VARCHAR(120) PRIMARY KEY,
-          value TEXT NOT NULL DEFAULT '',
-          updated_at TIMESTAMPTZ DEFAULT NOW()
-        )
-      `);
+      await __qd_executePlan(query, __qd_registeredPlan("server.js:3199:315"), []);
+
+
+
+
+
+
     } catch (e) {
       console.warn('[system_settings init]', e.message);
     }
     // ── Receipt number counters (guaranteed unique sequential per branch/year) ──
     try {
-      await query(`
-        CREATE TABLE IF NOT EXISTS receipt_counters (
-          branch_id VARCHAR(50) NOT NULL,
-          year      SMALLINT    NOT NULL,
-          last_seq  INTEGER     NOT NULL DEFAULT 0,
-          PRIMARY KEY (branch_id, year)
-        )
-      `);
+      await __qd_executePlan(query, __qd_registeredPlan("server.js:3211:316"), []);
+
+
+
+
+
+
+
     } catch (e) {
       console.warn('[receipt_counters init]', e.message);
     }
     // ────────────────────────────────────────────────────────────────────────
     // ── Normalize appointment branch display names → branch IDs (idempotent) ──
     try {
-      const aptNorm = await query(
-        `UPDATE appointments a
-         SET branch = b.id
-         FROM branches b
-         WHERE LOWER(a.branch) = LOWER(b.name)
-           AND a.branch IS DISTINCT FROM b.id`
-      );
+      const aptNorm = await __qd_executePlan(query, __qd_registeredPlan("server.js:3226:317"), []);
+
+
+
+
+
+
       if (aptNorm && aptNorm.rowCount > 0) {
         console.log(`Appointment branch normalization: updated ${aptNorm.rowCount} records`);
       }
@@ -3254,20 +3254,20 @@ runStartupOperation(startupPolicy, 'legacy-database-bootstrap', async () => {
         'Rundu': 'rundu', 'rundu': 'rundu',
         'Tsumeb': 'tsumeb', 'tsumeb': 'tsumeb',
         'Okahao': 'okahao', 'okahao': 'okahao',
-        'Outapi': 'outapi', 'outapi': 'outapi',
+        'Outapi': 'outapi', 'outapi': 'outapi'
       };
-      const bfResult = await query(
-        `SELECT r.id, a.branch as apt_branch
-         FROM reports r
-         JOIN appointments a ON a.id = r.data->>'appointment_id'
-         WHERE r.branch IS NULL AND a.branch IS NOT NULL`
-      );
+      const bfResult = await __qd_executePlan(query, __qd_registeredPlan("server.js:3260:318"), []);
+
+
+
+
+
       const nullBranchReports = bfResult?.rows || [];
       let backfilled = 0;
       for (const row of nullBranchReports) {
         const branchId = branchNameToId[row.apt_branch] || row.apt_branch;
         if (branchId) {
-          await query(`UPDATE reports SET branch = $1 WHERE id = $2`, [branchId, row.id]);
+          await __qd_executePlan(query, __qd_registeredPlan("server.js:3270:319"), [branchId, row.id]);
           backfilled++;
         }
       }
@@ -3295,19 +3295,19 @@ runStartupOperation(startupPolicy, 'legacy-database-bootstrap', async () => {
         'Rundu': 'rundu', 'rundu': 'rundu',
         'Tsumeb': 'tsumeb', 'tsumeb': 'tsumeb',
         'Okahao': 'okahao', 'okahao': 'okahao',
-        'Outapi': 'outapi', 'outapi': 'outapi',
+        'Outapi': 'outapi', 'outapi': 'outapi'
       };
       const canonicalIds = new Set(Object.values(branchNameToId));
       // Fetch all reports whose branch is NOT already a canonical ID
-      const { rows: nonCanonical } = await query(
-        `SELECT id, branch FROM reports WHERE branch IS NOT NULL AND branch != ''`
-      );
+      const { rows: nonCanonical } = await __qd_executePlan(query, __qd_registeredPlan("server.js:3303:320"), []);
+
+
       let normalised = 0;
       for (const row of nonCanonical) {
         if (canonicalIds.has(row.branch)) continue; // already correct
         const mapped = branchNameToId[row.branch] || branchNameToId[(row.branch || '').toLowerCase()];
         if (mapped && mapped !== row.branch) {
-          await query(`UPDATE reports SET branch = $1 WHERE id = $2`, [mapped, row.id]);
+          await __qd_executePlan(query, __qd_registeredPlan("server.js:3310:321"), [mapped, row.id]);
           normalised++;
         }
       }
@@ -3318,7 +3318,7 @@ runStartupOperation(startupPolicy, 'legacy-database-bootstrap', async () => {
     // ─────────────────────────────────────────────────────────────────────────
 
     // ── Auto-seed inventory_balances if empty ───────────────────────────────
-    const ibCount = await getOne(`SELECT COUNT(*) as cnt FROM inventory_balances`);
+    const ibCount = await __qd_executePlan(getOne, __qd_registeredPlan("server.js:3321:322"), []);
     if (Number(ibCount?.cnt || 0) === 0) {
       try {
         const { seedInventoryBalances } = await import('./api/services/stockEngine.js');
@@ -3334,492 +3334,492 @@ runStartupOperation(startupPolicy, 'legacy-database-bootstrap', async () => {
     // Preserve the legacy routines for audit, but never run them on startup.
     const runLegacyStockRepairs = false;
     if (runLegacyStockRepairs) {
-    // ── Mark all NULL-status stock_movements as 'posted' ────────────────────
-    // Historical records created before the status field was enforced have
-    // status = NULL.  The stockEngine only counts 'posted' movements, so
-    // these must be promoted before any balance recompute.
-    try {
-      const nullMovFix = await query(
-        `UPDATE stock_movements SET status = 'posted'
-         WHERE (status IS NULL OR status = '') AND movement_type IS NOT NULL`
-      );
-      if (nullMovFix && nullMovFix.rowCount > 0) {
-        console.log(`[startup] Promoted ${nullMovFix.rowCount} NULL-status stock_movements to 'posted'`);
-      }
-    } catch (nmErr) {
-      console.warn('[startup NULL-status fix]', nmErr.message);
-    }
-    // ────────────────────────────────────────────────────────────────────────
+      // ── Mark all NULL-status stock_movements as 'posted' ────────────────────
+      // Historical records created before the status field was enforced have
+      // status = NULL.  The stockEngine only counts 'posted' movements, so
+      // these must be promoted before any balance recompute.
+      try {
+        const nullMovFix = await __qd_executePlan(query, __qd_registeredPlan("server.js:3343:323"), []);
 
-    // ── Restore branch_inventory_batches.quantity from movement logs ─────────
-    // The previous (now-removed) sync job overwrote correct physical quantities
-    // with stale inventory_balances values (which missed unposted transfers).
-    // Rebuild quantities from branch_inventory_movements for any row showing 0.
-    try {
-      const restoreResult = await query(
-        `UPDATE branch_inventory_batches bib
-         SET quantity = GREATEST(net.net_qty, 0),
-             status   = CASE WHEN GREATEST(net.net_qty, 0) > 0 THEN 'in_stock' ELSE 'out_of_stock' END,
-             updated_at = NOW()
-         FROM (
-           SELECT
-             bim.branch_id,
-             LOWER(TRIM(bim.product_name)) AS norm_product,
-             bim.batch_no,
-             SUM(CASE
-               WHEN bim.type IN ('receive','transfer_in','purchase','return') THEN bim.quantity
-               WHEN bim.type IN ('dispense','transfer_out','sold','sale','write_off') THEN -bim.quantity
-               ELSE 0
-             END) AS net_qty
-           FROM branch_inventory_movements bim
-           GROUP BY bim.branch_id, LOWER(TRIM(bim.product_name)), bim.batch_no
-         ) net
-         WHERE bib.branch_id = net.branch_id
-           AND LOWER(TRIM(bib.product_name)) = net.norm_product
-           AND bib.batch_no IS NOT DISTINCT FROM net.batch_no
-           AND bib.quantity = 0
-           AND net.net_qty > 0`
-      );
-      if (restoreResult && restoreResult.rowCount > 0) {
-        console.log(`[startup] Restored quantities for ${restoreResult.rowCount} branch_inventory_batches rows from movement log`);
-      }
-    } catch (restErr) {
-      console.warn('[startup quantity restore]', restErr.message);
-    }
-    // ────────────────────────────────────────────────────────────────────────
 
-    // ── Reconcile stock_batches.remaining_quantity ───────────────────────────
-    // When stock leaves a location via postStockMovement (stockEngine path) but
-    // fefoDeductStockBatches was NOT called, stock_batches.remaining_quantity is
-    // left too high — the same units appear in both stock_batches and branch
-    // inventory (double-counting).  Fix: compute the un-captured outflow
-    // (sm_outflow - dispatched_quantity) and subtract it from remaining_quantity.
-    try {
-      const reconResult = await query(
-        `UPDATE stock_batches sb
-         SET remaining_quantity   = GREATEST(0, sb.quantity - new_dispatched),
-             dispatched_quantity  = new_dispatched,
-             updated_at           = NOW()
-         FROM (
-           SELECT
-             sb2.id,
-             GREATEST(
-               sb2.dispatched_quantity,
-               COALESCE((
-                 SELECT SUM(sm.quantity)
-                 FROM stock_movements sm
-                 WHERE sm.status IN ('posted','approved')
-                   AND sm.source_location = sb2.location
-                   AND LOWER(TRIM(sm.product_name)) = LOWER(TRIM(sb2.description))
-                   AND COALESCE(sm.batch_no,'') = COALESCE(sb2.batch_no,'')
-                   AND sm.movement_type NOT IN (
-                     'reserved','supplier_import_receipt','positive_adjustment',
-                     'return_in','received','warehouse_receipt','inward_receipt'
-                   )
-               ), 0)
-             ) AS new_dispatched
-           FROM stock_batches sb2
-           WHERE sb2.status NOT IN ('depleted','expired')
-         ) calc
-         WHERE sb.id = calc.id
-           AND (
-             calc.new_dispatched > sb.dispatched_quantity
-             OR GREATEST(0, sb.quantity - calc.new_dispatched) < sb.remaining_quantity
-           )`
-      );
-      if (reconResult && reconResult.rowCount > 0) {
-        console.log(`[startup] Reconciled stock_batches.remaining_quantity for ${reconResult.rowCount} row(s)`);
-      }
-    } catch (reconErr) {
-      console.warn('[startup stock_batches reconcile]', reconErr.message);
-    }
-    // ────────────────────────────────────────────────────────────────────────
 
-    // ── Deduplicate inventory_balances ──────────────────────────────────────
-    // Multiple rows for the same (location_type, location_id, product_name,
-    // batch_no, expiry_date) can accumulate over time, inflating stock totals.
-    // Keep the row with the highest closing_qty; delete the rest.
-    try {
-      const dedupIB = await query(
-        `DELETE FROM inventory_balances ib1
-         WHERE EXISTS (
-           SELECT 1 FROM inventory_balances ib2
-           WHERE ib2.location_type = ib1.location_type
-             AND LOWER(TRIM(ib2.location_id))  = LOWER(TRIM(ib1.location_id))
-             AND LOWER(TRIM(ib2.product_name)) = LOWER(TRIM(ib1.product_name))
-             AND COALESCE(ib2.batch_no,'')     = COALESCE(ib1.batch_no,'')
-             AND ib2.expiry_date IS NOT DISTINCT FROM ib1.expiry_date
-             AND (ib2.closing_qty > ib1.closing_qty
-               OR (ib2.closing_qty = ib1.closing_qty AND ib2.id > ib1.id))
-         )`
-      );
-      if (dedupIB && dedupIB.rowCount > 0) {
-        console.log(`[startup] Removed ${dedupIB.rowCount} duplicate inventory_balances row(s)`);
+        if (nullMovFix && nullMovFix.rowCount > 0) {
+          console.log(`[startup] Promoted ${nullMovFix.rowCount} NULL-status stock_movements to 'posted'`);
+        }
+      } catch (nmErr) {
+        console.warn('[startup NULL-status fix]', nmErr.message);
       }
-      // Remove stale non-branch rows with negative / zero closing_qty
-      // (country_stock and warehouse balances are tracked via stock_batches, not here)
-      const cleanNeg = await query(
-        `DELETE FROM inventory_balances
-         WHERE location_type NOT IN ('branch')
-           AND closing_qty <= 0`
-      );
-      if (cleanNeg && cleanNeg.rowCount > 0) {
-        console.log(`[startup] Removed ${cleanNeg.rowCount} negative/zero non-branch inventory_balances row(s)`);
+      // ────────────────────────────────────────────────────────────────────────
+
+      // ── Restore branch_inventory_batches.quantity from movement logs ─────────
+      // The previous (now-removed) sync job overwrote correct physical quantities
+      // with stale inventory_balances values (which missed unposted transfers).
+      // Rebuild quantities from branch_inventory_movements for any row showing 0.
+      try {
+        const restoreResult = await __qd_executePlan(query, __qd_registeredPlan("server.js:3360:324"), []);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        if (restoreResult && restoreResult.rowCount > 0) {
+          console.log(`[startup] Restored quantities for ${restoreResult.rowCount} branch_inventory_batches rows from movement log`);
+        }
+      } catch (restErr) {
+        console.warn('[startup quantity restore]', restErr.message);
       }
-    } catch (dedupErr) {
-      console.warn('[startup inventory_balances dedup]', dedupErr.message);
-    }
-    // ────────────────────────────────────────────────────────────────────────
+      // ────────────────────────────────────────────────────────────────────────
 
-    // ── Backfill branch_inventory_batches from inventory_balances ───────────
-    // Any branch stock that arrived via the centralized stockEngine path
-    // is imported here so the branch portal can see it.
-    // Uses bare ON CONFLICT DO NOTHING (no target) to suppress ALL conflicts
-    // (both PK and unique-index) — fully idempotent across restarts.
-    try {
-      const bfBatch = await query(
-        `INSERT INTO branch_inventory_batches
-           (id, branch_id, product_name, batch_no, expiry_date, quantity, unit_price, status, created_at, updated_at)
-         SELECT
-           'BIB-IB-' || ib.id AS id,
-           ib.location_id AS branch_id,
-           ib.product_name,
-           ib.batch_no,
-           ib.expiry_date,
-           GREATEST(ib.closing_qty, 0) AS quantity,
-           ib.unit_dp AS unit_price,
-           CASE WHEN GREATEST(ib.closing_qty, 0) > 0 THEN 'in_stock' ELSE 'out_of_stock' END AS status,
-           COALESCE(ib.updated_at, NOW()) AS created_at,
-           COALESCE(ib.updated_at, NOW()) AS updated_at
-         FROM inventory_balances ib
-         WHERE ib.location_type = 'branch'
-           AND GREATEST(ib.closing_qty, 0) > 0
-           -- Never re-insert stock that has an approved write-off at this branch/product/batch.
-           -- Without this guard a stale inventory_balances row (under a different branch_id
-           -- slug variant) would resurrect written-off stock on every server restart.
-           AND NOT EXISTS (
-             SELECT 1 FROM stock_movements sm
-             WHERE sm.movement_type = 'write_off'
-               AND sm.status        = 'approved'
-               AND LOWER(TRIM(sm.product_name)) = LOWER(TRIM(ib.product_name))
-               AND COALESCE(sm.batch_no,'')     = COALESCE(ib.batch_no,'')
-               AND LOWER(REPLACE(sm.source_location,' ','_')) = ANY(ARRAY[
-                     LOWER(REPLACE(ib.location_id,' ','_')),
-                     LOWER(REPLACE(ib.location_id,' ','_')) || '_branch',
-                     REGEXP_REPLACE(LOWER(REPLACE(ib.location_id,' ','_')),'_branch$','')
-                   ])
-           )
-         ON CONFLICT DO NOTHING`
-      );
-      if (bfBatch && bfBatch.rowCount > 0) {
-        console.log(`branch_inventory_batches backfill: inserted ${bfBatch.rowCount} rows from inventory_balances`);
+      // ── Reconcile stock_batches.remaining_quantity ───────────────────────────
+      // When stock leaves a location via postStockMovement (stockEngine path) but
+      // fefoDeductStockBatches was NOT called, stock_batches.remaining_quantity is
+      // left too high — the same units appear in both stock_batches and branch
+      // inventory (double-counting).  Fix: compute the un-captured outflow
+      // (sm_outflow - dispatched_quantity) and subtract it from remaining_quantity.
+      try {
+        const reconResult = await __qd_executePlan(query, __qd_registeredPlan("server.js:3399:325"), []);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        if (reconResult && reconResult.rowCount > 0) {
+          console.log(`[startup] Reconciled stock_batches.remaining_quantity for ${reconResult.rowCount} row(s)`);
+        }
+      } catch (reconErr) {
+        console.warn('[startup stock_batches reconcile]', reconErr.message);
       }
-    } catch (bfErr) {
-      console.warn('[branch_inventory_batches backfill]', bfErr.message);
-    }
+      // ────────────────────────────────────────────────────────────────────────
 
-    // ── Deduplicate branch_inventory_batches ─────────────────────────────────
-    // Rows with a NULL batch_no can accumulate if the backfill or other code
-    // paths insert multiple rows for the same (branch, product, NULL batch).
-    // Keep the row with the highest quantity; delete the rest.
-    try {
-      const dedupBIB = await query(
-        `DELETE FROM branch_inventory_batches bib1
-         WHERE EXISTS (
-           SELECT 1 FROM branch_inventory_batches bib2
-           WHERE bib2.branch_id = bib1.branch_id
-             AND LOWER(TRIM(bib2.product_name)) = LOWER(TRIM(bib1.product_name))
-             AND bib2.batch_no IS NOT DISTINCT FROM bib1.batch_no
-             AND bib2.expiry_date IS NOT DISTINCT FROM bib1.expiry_date
-             AND (bib2.quantity > bib1.quantity
-               OR (bib2.quantity = bib1.quantity AND bib2.id > bib1.id))
-         )`
-      );
-      if (dedupBIB && dedupBIB.rowCount > 0) {
-        console.log(`[startup] Removed ${dedupBIB.rowCount} duplicate branch_inventory_batches row(s)`);
+      // ── Deduplicate inventory_balances ──────────────────────────────────────
+      // Multiple rows for the same (location_type, location_id, product_name,
+      // batch_no, expiry_date) can accumulate over time, inflating stock totals.
+      // Keep the row with the highest closing_qty; delete the rest.
+      try {
+        const dedupIB = await __qd_executePlan(query, __qd_registeredPlan("server.js:3444:326"), []);
+
+
+
+
+
+
+
+
+
+
+
+
+        if (dedupIB && dedupIB.rowCount > 0) {
+          console.log(`[startup] Removed ${dedupIB.rowCount} duplicate inventory_balances row(s)`);
+        }
+        // Remove stale non-branch rows with negative / zero closing_qty
+        // (country_stock and warehouse balances are tracked via stock_batches, not here)
+        const cleanNeg = await __qd_executePlan(query, __qd_registeredPlan("server.js:3462:327"), []);
+
+
+
+
+        if (cleanNeg && cleanNeg.rowCount > 0) {
+          console.log(`[startup] Removed ${cleanNeg.rowCount} negative/zero non-branch inventory_balances row(s)`);
+        }
+      } catch (dedupErr) {
+        console.warn('[startup inventory_balances dedup]', dedupErr.message);
       }
-    } catch (dedupBIBErr) {
-      console.warn('[startup branch_inventory_batches dedup]', dedupBIBErr.message);
-    }
-    // ────────────────────────────────────────────────────────────────────────
+      // ────────────────────────────────────────────────────────────────────────
 
-    // ── Clean up NULL-expiry ghost rows created by pre-fix refund approvals ──
-    try {
-      const { runRefundGhostCleanup } = await import('./api/services/refundGhostCleanup.js');
-      await runRefundGhostCleanup();
-    } catch (ghostCleanupErr) {
-      console.warn('[refund-ghost-cleanup] Migration failed:', ghostCleanupErr.message);
-    }
-    // ────────────────────────────────────────────────────────────────────────
+      // ── Backfill branch_inventory_batches from inventory_balances ───────────
+      // Any branch stock that arrived via the centralized stockEngine path
+      // is imported here so the branch portal can see it.
+      // Uses bare ON CONFLICT DO NOTHING (no target) to suppress ALL conflicts
+      // (both PK and unique-index) — fully idempotent across restarts.
+      try {
+        const bfBatch = await __qd_executePlan(query, __qd_registeredPlan("server.js:3481:328"), []);
 
-    // ── Backfill stock_batches for write-offs returned to warehouse ──────────
-    // Approved write-offs with disposal_status='returned_to_warehouse' wrote their
-    // stock credit to warehouse_inventory (a legacy table) but NOT to stock_batches
-    // (which is what the warehouse portal display reads from).  Find all such
-    // write-offs and ensure a stock_batches row exists for each.
-    try {
-      // ── One-time bulk migration: mark all previously-credited write-off returns ─
-      // Earlier versions of this backfill loop lacked a persistent marker, so they
-      // re-credited stock_batches on every server restart (inflating warehouse quantities
-      // or re-inserting cleared country_stock rows).  Stamp them all as processed now
-      // so the SELECT below returns 0 rows for historical items.  Any new
-      // returned_to_warehouse records created after this run will be marked in the
-      // per-item loop below immediately after crediting.
-      const bulkMark = await query(
-        `UPDATE stock_movements
-         SET disposal_status = 'warehouse_stock_credited'
-         WHERE movement_type = 'write_off'
-           AND status = 'approved'
-           AND disposal_status = 'returned_to_warehouse'`
-      ).catch(() => null);
-      if (bulkMark && bulkMark.rowCount > 0) {
-        console.log(`[write-off backfill] Marked ${bulkMark.rowCount} historical returned write-offs as warehouse_stock_credited (one-time migration)`);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        if (bfBatch && bfBatch.rowCount > 0) {
+          console.log(`branch_inventory_batches backfill: inserted ${bfBatch.rowCount} rows from inventory_balances`);
+        }
+      } catch (bfErr) {
+        console.warn('[branch_inventory_batches backfill]', bfErr.message);
       }
 
-      const woReturns = await query(
-        `SELECT sm.id, sm.product_name, sm.batch_no, sm.expiry_date, sm.quantity,
-                sm.unit_cif, sm.unit_dp, sm.source_location, sm.reference_id,
-                wim.warehouse_id AS returned_warehouse_id
-         FROM stock_movements sm
-         LEFT JOIN warehouse_inventory_movements wim
-               ON wim.reference = sm.reference_id
-              AND wim.movement_type = 'write_off_return'
-         WHERE sm.movement_type = 'write_off'
-           AND sm.status = 'approved'
-           AND sm.disposal_status = 'returned_to_warehouse'`
-      );
-      let woBackfilled = 0;
-      for (const wo of (woReturns?.rows || [])) {
-        try {
-          const warehouseId = wo.returned_warehouse_id || (() => {
-            // Fallback: infer warehouse from branch name
-            const br = (wo.source_location || '').toLowerCase();
-            if (br.includes('ondangwa')) return 'ondangwa_warehouse';
-            return 'windhoek_warehouse';
-          })();
-          const qty = Number(wo.quantity || 0);
-          if (qty <= 0) {
-            // Mark zero-quantity movements as processed so they are never re-queried
-            await query(
-              `UPDATE stock_movements SET disposal_status = 'warehouse_stock_credited' WHERE id = $1`,
-              [wo.id]
-            ).catch(() => {});
-            continue;
-          }
-          const batchNo = wo.batch_no || '';
+      // ── Deduplicate branch_inventory_batches ─────────────────────────────────
+      // Rows with a NULL batch_no can accumulate if the backfill or other code
+      // paths insert multiple rows for the same (branch, product, NULL batch).
+      // Keep the row with the highest quantity; delete the rest.
+      try {
+        const dedupBIB = await __qd_executePlan(query, __qd_registeredPlan("server.js:3527:329"), []);
 
-          // Try to increment an existing batch first
-          const sbUpd = await query(
-            `UPDATE stock_batches
-             SET remaining_quantity = remaining_quantity + $1,
-                 quantity = quantity + $1,
-                 updated_at = NOW()
-             WHERE location = $2
-               AND LOWER(description) = LOWER($3)
-               AND LOWER(COALESCE(batch_no,'')) = LOWER($4)`,
-            [qty, warehouseId, wo.product_name, batchNo]
-          );
-          if (sbUpd && sbUpd.rowCount > 0) {
-            woBackfilled++;
-          } else {
-            // No existing row — create a new stock_batches entry
-            const sbId = `SB-WO-${Date.now()}-${Math.random().toString(36).slice(2,8).toUpperCase()}`;
-            const cif = Number(wo.unit_cif || 0);
-            const dpc = Number(wo.unit_dp || 0);
-            await query(
-              `INSERT INTO stock_batches
-                 (id, description, batch_no, expiry_date, quantity, remaining_quantity,
-                  location, status, cif_unit_cost, dpc_unit_value,
-                  cif_total_value, dpc_total_value, created_at, updated_at)
-               VALUES ($1,$2,$3,$4::date,$5,$5,$6,'available',$7,$8,$9,$10,NOW(),NOW())
-               ON CONFLICT DO NOTHING`,
+
+
+
+
+
+
+
+
+
+
+        if (dedupBIB && dedupBIB.rowCount > 0) {
+          console.log(`[startup] Removed ${dedupBIB.rowCount} duplicate branch_inventory_batches row(s)`);
+        }
+      } catch (dedupBIBErr) {
+        console.warn('[startup branch_inventory_batches dedup]', dedupBIBErr.message);
+      }
+      // ────────────────────────────────────────────────────────────────────────
+
+      // ── Clean up NULL-expiry ghost rows created by pre-fix refund approvals ──
+      try {
+        const { runRefundGhostCleanup } = await import('./api/services/refundGhostCleanup.js');
+        await runRefundGhostCleanup();
+      } catch (ghostCleanupErr) {
+        console.warn('[refund-ghost-cleanup] Migration failed:', ghostCleanupErr.message);
+      }
+      // ────────────────────────────────────────────────────────────────────────
+
+      // ── Backfill stock_batches for write-offs returned to warehouse ──────────
+      // Approved write-offs with disposal_status='returned_to_warehouse' wrote their
+      // stock credit to warehouse_inventory (a legacy table) but NOT to stock_batches
+      // (which is what the warehouse portal display reads from).  Find all such
+      // write-offs and ensure a stock_batches row exists for each.
+      try {
+        // ── One-time bulk migration: mark all previously-credited write-off returns ─
+        // Earlier versions of this backfill loop lacked a persistent marker, so they
+        // re-credited stock_batches on every server restart (inflating warehouse quantities
+        // or re-inserting cleared country_stock rows).  Stamp them all as processed now
+        // so the SELECT below returns 0 rows for historical items.  Any new
+        // returned_to_warehouse records created after this run will be marked in the
+        // per-item loop below immediately after crediting.
+        const bulkMark = await __qd_executePlan(query, __qd_registeredPlan("server.js:3569:330"), []).
+
+
+
+
+
+        catch(() => null);
+        if (bulkMark && bulkMark.rowCount > 0) {
+          console.log(`[write-off backfill] Marked ${bulkMark.rowCount} historical returned write-offs as warehouse_stock_credited (one-time migration)`);
+        }
+
+        const woReturns = await __qd_executePlan(query, __qd_registeredPlan("server.js:3580:331"), []);
+
+
+
+
+
+
+
+
+
+
+
+        let woBackfilled = 0;
+        for (const wo of woReturns?.rows || []) {
+          try {
+            const warehouseId = wo.returned_warehouse_id || (() => {
+              // Fallback: infer warehouse from branch name
+              const br = (wo.source_location || '').toLowerCase();
+              if (br.includes('ondangwa')) return 'ondangwa_warehouse';
+              return 'windhoek_warehouse';
+            })();
+            const qty = Number(wo.quantity || 0);
+            if (qty <= 0) {
+              // Mark zero-quantity movements as processed so they are never re-queried
+              await __qd_executePlan(query, __qd_registeredPlan("server.js:3604:332"),
+
+              [wo.id]).
+              catch(() => {});
+              continue;
+            }
+            const batchNo = wo.batch_no || '';
+
+            // Try to increment an existing batch first
+            const sbUpd = await __qd_executePlan(query, __qd_registeredPlan("server.js:3613:333"),
+
+
+
+
+
+
+
+            [qty, warehouseId, wo.product_name, batchNo]);
+
+            if (sbUpd && sbUpd.rowCount > 0) {
+              woBackfilled++;
+            } else {
+              // No existing row — create a new stock_batches entry
+              const sbId = `SB-WO-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+              const cif = Number(wo.unit_cif || 0);
+              const dpc = Number(wo.unit_dp || 0);
+              await __qd_executePlan(query, __qd_registeredPlan("server.js:3630:334"),
+
+
+
+
+
+
               [sbId, wo.product_name, batchNo || null, wo.expiry_date || null, qty,
-               warehouseId, cif, dpc, qty * cif, qty * dpc]
-            );
-            woBackfilled++;
-          }
-          // Mark this movement as fully processed — prevents re-crediting on every subsequent restart.
-          // The backfill query's WHERE clause filters on disposal_status = 'returned_to_warehouse',
-          // so setting it to 'warehouse_stock_credited' here makes this operation idempotent.
-          await query(
-            `UPDATE stock_movements SET disposal_status = 'warehouse_stock_credited' WHERE id = $1`,
-            [wo.id]
-          ).catch(() => {});
-        } catch (_) {}
-      }
-      if (woBackfilled > 0) {
-        console.log(`[write-off backfill] Credited ${woBackfilled} returned-to-warehouse item(s) into stock_batches`);
-      }
-    } catch (woErr) {
-      console.warn('[write-off backfill]', woErr.message);
-    }
-    // ───────────────────────────────────────────────────────────────────────
+              warehouseId, cif, dpc, qty * cif, qty * dpc]);
 
-    // Historical sales and movement prices are immutable during application startup.
-    // Evidence-backed historical corrections require a separately approved repair.
-    // ─────────────────────────────────────────────────────────────────────────
+              woBackfilled++;
+            }
+            // Mark this movement as fully processed — prevents re-crediting on every subsequent restart.
+            // The backfill query's WHERE clause filters on disposal_status = 'returned_to_warehouse',
+            // so setting it to 'warehouse_stock_credited' here makes this operation idempotent.
+            await __qd_executePlan(query, __qd_registeredPlan("server.js:3645:335"),
 
-    // ── Backfill source_warehouse on branch_inventory_batches ────────────────
-    // receive-request.js previously omitted source_warehouse from the INSERT.
-    // Recover it from the matching stock_movements (branch_receipt) record.
-    try {
-      const bfSw = await query(`
-        UPDATE branch_inventory_batches bib
-        SET source_warehouse = sm.source_location,
-            updated_at       = NOW()
-        FROM (
-          SELECT DISTINCT ON (destination_location, product_name, batch_no)
-                 destination_location, product_name, batch_no, source_location
-          FROM   stock_movements
-          WHERE  movement_type = 'branch_receipt'
-            AND  source_location IS NOT NULL
-          ORDER  BY destination_location, product_name, batch_no, created_at ASC
-        ) sm
-        WHERE bib.source_warehouse IS NULL
-          AND bib.branch_id   = sm.destination_location
-          AND LOWER(TRIM(bib.product_name)) = LOWER(TRIM(sm.product_name))
-          AND COALESCE(bib.batch_no, '') = COALESCE(sm.batch_no, '')
-      `);
-      if (bfSw.rowCount > 0)
+            [wo.id]).
+            catch(() => {});
+          } catch (_) {}
+        }
+        if (woBackfilled > 0) {
+          console.log(`[write-off backfill] Credited ${woBackfilled} returned-to-warehouse item(s) into stock_batches`);
+        }
+      } catch (woErr) {
+        console.warn('[write-off backfill]', woErr.message);
+      }
+      // ───────────────────────────────────────────────────────────────────────
+
+      // Historical sales and movement prices are immutable during application startup.
+      // Evidence-backed historical corrections require a separately approved repair.
+      // ─────────────────────────────────────────────────────────────────────────
+
+      // ── Backfill source_warehouse on branch_inventory_batches ────────────────
+      // receive-request.js previously omitted source_warehouse from the INSERT.
+      // Recover it from the matching stock_movements (branch_receipt) record.
+      try {
+        const bfSw = await __qd_executePlan(query, __qd_registeredPlan("server.js:3666:336"), []);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        if (bfSw.rowCount > 0)
         console.log(`[data-correction] Backfilled source_warehouse on ${bfSw.rowCount} branch_inventory_batches row(s).`);
-    } catch (swErr) {
-      console.warn('[data-correction] source_warehouse backfill error:', swErr.message);
-    }
-    // ─────────────────────────────────────────────────────────────────────────
+      } catch (swErr) {
+        console.warn('[data-correction] source_warehouse backfill error:', swErr.message);
+      }
+      // ─────────────────────────────────────────────────────────────────────────
 
-    // ── Heal delivered/received transfers missing their inward movements ─────
-    // Root cause: transfers.js UPDATE stock_transfers (line ~1108) runs BEFORE
-    // withTransaction.  If withTransaction errors (network blip, constraint
-    // violation, server restart mid-flight), the status row is permanently
-    // 'delivered'/'received' but no transfer_in movement or BIB row was written.
-    // This correction detects those gaps, backfills branch_inventory_batches and
-    // stock_movements, then recomputes inventory_balances for the affected branch.
-    try {
-      const gapQuery = await query(`
-        SELECT t.id, t.to_branch, t.from_warehouse,
-               json_agg(json_build_object(
-                 'product',   sti.product_name,
-                 'batch_no',  sti.batch_no,
-                 'expiry',    sti.expiry_date,
-                 'qty',       COALESCE(sti.quantity_approved, sti.quantity)
-               )) AS items
-        FROM stock_transfers t
-        JOIN stock_transfer_items sti ON sti.transfer_id = t.id
-        WHERE t.status IN ('delivered','received','partially_received')
-          AND NOT EXISTS (
-            SELECT 1 FROM stock_movements sm
-            WHERE sm.reference_id = t.id
-              AND sm.movement_type IN ('transfer_in','branch_receipt','received')
-              AND sm.status = 'posted'
-          )
-        GROUP BY t.id, t.to_branch, t.from_warehouse
-        HAVING COUNT(sti.id) > 0
-      `);
+      // ── Heal delivered/received transfers missing their inward movements ─────
+      // Root cause: transfers.js UPDATE stock_transfers (line ~1108) runs BEFORE
+      // withTransaction.  If withTransaction errors (network blip, constraint
+      // violation, server restart mid-flight), the status row is permanently
+      // 'delivered'/'received' but no transfer_in movement or BIB row was written.
+      // This correction detects those gaps, backfills branch_inventory_batches and
+      // stock_movements, then recomputes inventory_balances for the affected branch.
+      try {
+        const gapQuery = await __qd_executePlan(query, __qd_registeredPlan("server.js:3698:337"), []);
 
-      const { normalizeBranchSlug } = await import('./api/_lib/branchUtils.js');
-      const { withTransaction } = await import('./api/db.js');
-      const { recomputeLocationBalances } = await import('./api/services/stockEngine.js');
 
-      let healed = 0;
-      for (const gap of (gapQuery?.rows || [])) {
-        try {
-          const branchId = normalizeBranchSlug(gap.to_branch) || gap.to_branch;
-          const srcWarehouse = gap.from_warehouse || null;
-          const items = Array.isArray(gap.items) ? gap.items : [];
-          if (!branchId || items.length === 0) continue;
 
-          await withTransaction(async (client) => {
-            for (const item of items) {
-              const productName = (item.product || '').trim();
-              const batchNo     = item.batch_no || null;
-              const expiryDate  = item.expiry   || null;
-              const qty         = Number(item.qty || 0);
-              if (!productName || qty <= 0) continue;
 
-              // BIB: upsert so a double-heal is idempotent
-              const bibId = `BIB-HEAL-${Date.now()}-${Math.random().toString(36).slice(2,6).toUpperCase()}`;
-              if (batchNo && expiryDate) {
-                await client.query(
-                  `INSERT INTO branch_inventory_batches
-                     (id, branch_id, product_name, batch_no, expiry_date,
-                      quantity, source_warehouse, status, created_at, updated_at)
-                   VALUES ($1,$2,$3,$4,$5::date,$6,$7,'in_stock',NOW(),NOW())
-                   ON CONFLICT (branch_id, product_name, batch_no, expiry_date)
-                   DO UPDATE SET
-                     quantity         = branch_inventory_batches.quantity + EXCLUDED.quantity,
-                     source_warehouse = COALESCE(EXCLUDED.source_warehouse, branch_inventory_batches.source_warehouse),
-                     updated_at       = NOW()`,
-                  [bibId, branchId, productName, batchNo, expiryDate, qty, srcWarehouse]
-                );
-              } else {
-                const ex = (await client.query(
-                  `SELECT id FROM branch_inventory_batches
-                   WHERE branch_id=$1 AND LOWER(TRIM(product_name))=LOWER(TRIM($2))
-                     AND batch_no IS NOT DISTINCT FROM $3
-                     AND expiry_date IS NOT DISTINCT FROM $4
-                   FOR UPDATE`,
-                  [branchId, productName, batchNo, expiryDate]
-                )).rows;
-                if (ex.length > 0) {
-                  await client.query(
-                    `UPDATE branch_inventory_batches SET quantity=quantity+$1, updated_at=NOW() WHERE id=$2`,
-                    [qty, ex[0].id]
-                  );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        const { normalizeBranchSlug } = await import('./api/_lib/branchUtils.js');
+        const { withTransaction } = await import('./api/db.js');
+        const { recomputeLocationBalances } = await import('./api/services/stockEngine.js');
+
+        let healed = 0;
+        for (const gap of gapQuery?.rows || []) {
+          try {
+            const branchId = normalizeBranchSlug(gap.to_branch) || gap.to_branch;
+            const srcWarehouse = gap.from_warehouse || null;
+            const items = Array.isArray(gap.items) ? gap.items : [];
+            if (!branchId || items.length === 0) continue;
+
+            await withTransaction(async (client) => {
+              for (const item of items) {
+                const productName = (item.product || '').trim();
+                const batchNo = item.batch_no || null;
+                const expiryDate = item.expiry || null;
+                const qty = Number(item.qty || 0);
+                if (!productName || qty <= 0) continue;
+
+                // BIB: upsert so a double-heal is idempotent
+                const bibId = `BIB-HEAL-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+                if (batchNo && expiryDate) {
+                  await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("server.js:3743:338"),
+
+
+
+
+
+
+
+
+
+                  [bibId, branchId, productName, batchNo, expiryDate, qty, srcWarehouse]);
+
                 } else {
-                  await client.query(
-                    `INSERT INTO branch_inventory_batches
-                       (id, branch_id, product_name, batch_no, expiry_date,
-                        quantity, source_warehouse, status, created_at, updated_at)
-                     VALUES ($1,$2,$3,$4,$5,$6,$7,'in_stock',NOW(),NOW())`,
-                    [bibId, branchId, productName, batchNo, expiryDate, qty, srcWarehouse]
-                  );
+                  const ex = (await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("server.js:3756:339"),
+
+
+
+
+
+                  [branchId, productName, batchNo, expiryDate])).
+                  rows;
+                  if (ex.length > 0) {
+                    await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("server.js:3765:340"),
+
+                    [qty, ex[0].id]);
+
+                  } else {
+                    await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("server.js:3770:341"),
+
+
+
+
+                    [bibId, branchId, productName, batchNo, expiryDate, qty, srcWarehouse]);
+
+                  }
+                }
+
+                // stock_movements: idempotent — only insert if truly missing
+                const smExists = (await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("server.js:3781:342"),
+
+
+
+                [gap.id, productName])).
+                rowCount;
+                if (!smExists) {
+                  await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("server.js:3788:343"),
+
+
+
+
+
+
+
+
+                  [
+                  `MOV-HEAL-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+                  productName, batchNo, expiryDate, qty,
+                  srcWarehouse, branchId, gap.id]);
+
+
                 }
               }
+            });
 
-              // stock_movements: idempotent — only insert if truly missing
-              const smExists = (await client.query(
-                `SELECT 1 FROM stock_movements
-                 WHERE reference_id=$1 AND movement_type='transfer_in'
-                   AND LOWER(TRIM(product_name))=LOWER(TRIM($2)) AND status='posted'`,
-                [gap.id, productName]
-              )).rowCount;
-              if (!smExists) {
-                await client.query(
-                  `INSERT INTO stock_movements
-                     (id, product_name, batch_no, expiry_date, quantity, movement_type,
-                      source_location, source_location_type,
-                      destination_location, destination_location_type,
-                      reference_id, notes, status, created_at, updated_at)
-                   VALUES ($1,$2,$3,$4,$5,'transfer_in',$6,'warehouse',$7,'branch',$8,
-                           'Backfilled by startup heal — transfer previously lacked inward movement',
-                           'posted',NOW(),NOW())`,
-                  [
-                    `MOV-HEAL-${Date.now()}-${Math.random().toString(36).slice(2,6).toUpperCase()}`,
-                    productName, batchNo, expiryDate, qty,
-                    srcWarehouse, branchId, gap.id,
-                  ]
-                );
-              }
-            }
-          });
-
-          recomputeLocationBalances('branch', branchId).catch(() => {});
-          if (srcWarehouse) recomputeLocationBalances('warehouse', srcWarehouse).catch(() => {});
-          healed++;
-          console.log(`[transfer-heal] Backfilled missing inward movement/BIB for transfer ${gap.id} → ${branchId}`);
-        } catch (healItemErr) {
-          console.warn(`[transfer-heal] Could not heal transfer ${gap.id}:`, healItemErr.message);
+            recomputeLocationBalances('branch', branchId).catch(() => {});
+            if (srcWarehouse) recomputeLocationBalances('warehouse', srcWarehouse).catch(() => {});
+            healed++;
+            console.log(`[transfer-heal] Backfilled missing inward movement/BIB for transfer ${gap.id} → ${branchId}`);
+          } catch (healItemErr) {
+            console.warn(`[transfer-heal] Could not heal transfer ${gap.id}:`, healItemErr.message);
+          }
         }
+        if (healed === 0 && gapQuery?.rows?.length === 0) {
+
+          // Silently pass — no gaps found
+        } else if (healed > 0) {console.log(`[transfer-heal] Healed ${healed} transfer(s) missing inward movement.`);
+        }
+      } catch (healErr) {
+        console.warn('[transfer-heal] Startup heal failed:', healErr.message);
       }
-      if (healed === 0 && gapQuery?.rows?.length === 0) {
-        // Silently pass — no gaps found
-      } else if (healed > 0) {
-        console.log(`[transfer-heal] Healed ${healed} transfer(s) missing inward movement.`);
-      }
-    } catch (healErr) {
-      console.warn('[transfer-heal] Startup heal failed:', healErr.message);
-    }
-    // ─────────────────────────────────────────────────────────────────────────
+      // ─────────────────────────────────────────────────────────────────────────
 
     }
     console.log('[stock-safety] Automatic historical stock repairs are disabled.');
@@ -3842,4 +3842,4 @@ runStartupOperation(startupPolicy, 'legacy-database-bootstrap', async () => {
   }
 });
 
-export {server};
+export { server };

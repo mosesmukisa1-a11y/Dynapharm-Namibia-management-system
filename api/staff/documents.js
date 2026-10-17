@@ -1,37 +1,37 @@
-import { applyAuthCors } from '../_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../services/queryDescriptors.js";import { applyAuthCors } from '../_lib/auth.js';
 import { query, getOne } from '../db.js';
 import multer from 'multer';
 
 const ALLOWED_TYPES = new Set([
-  'application/pdf',
-  'image/jpeg', 'image/jpg', 'image/png', 'image/webp',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-]);
+'application/pdf',
+'image/jpeg', 'image/jpg', 'image/png', 'image/webp',
+'application/msword',
+'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+);
 
 const DOC_LABELS = {
-  national_id_copy:        'National ID / Passport Copy',
-  academic_certificate:    'Academic Certificate / Transcript',
-  professional_certificate:'Professional Certificate',
-  bank_statement:          'Bank Statement / Proof of Account',
-  police_clearance:        'Police Clearance Certificate',
-  drivers_license:         'Driver\'s License',
-  other:                   'Other Document',
+  national_id_copy: 'National ID / Passport Copy',
+  academic_certificate: 'Academic Certificate / Transcript',
+  professional_certificate: 'Professional Certificate',
+  bank_statement: 'Bank Statement / Proof of Account',
+  police_clearance: 'Police Clearance Certificate',
+  drivers_license: 'Driver\'s License',
+  other: 'Other Document'
 };
 
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
   fileFilter: (_req, file, cb) => {
-    if (ALLOWED_TYPES.has(file.mimetype)) cb(null, true);
-    else cb(new Error('Only PDF, images (JPEG/PNG/WebP) and Word documents are allowed'));
-  },
+    if (ALLOWED_TYPES.has(file.mimetype)) cb(null, true);else
+    cb(new Error('Only PDF, images (JPEG/PNG/WebP) and Word documents are allowed'));
+  }
 });
 
 function runMulter(req, res) {
   return new Promise((resolve, reject) => {
     upload.single('file')(req, res, (err) => {
-      if (err) reject(err); else resolve();
+      if (err) reject(err);else resolve();
     });
   });
 }
@@ -52,11 +52,11 @@ export default async function handler(req, res) {
   // GET — list own documents
   if (req.method === 'GET') {
     try {
-      const result = await query(
-        `SELECT id, doc_type, doc_name, file_url, file_size, uploaded_at
-         FROM staff_documents WHERE user_id = $1 ORDER BY uploaded_at DESC`,
-        [userId]
-      );
+      const result = await __qd_executePlan(query, __qd_registeredPlan("api/staff/documents.js:56:0"),
+
+
+      [userId]);
+
       return res.json({ success: true, documents: result.rows });
     } catch (err) {
       console.error('[staff/documents GET]', err);
@@ -75,7 +75,7 @@ export default async function handler(req, res) {
 
     const doc_type = req.body?.doc_type || 'other';
     if (!DOC_LABELS[doc_type])
-      return res.status(400).json({ success: false, error: 'Invalid doc_type' });
+    return res.status(400).json({ success: false, error: 'Invalid doc_type' });
 
     const ext = req.file.originalname.split('.').pop().toLowerCase();
     const safeUserId = String(userId).replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -85,15 +85,15 @@ export default async function handler(req, res) {
     try {
       const client = await getStorageClient();
       await client.uploadFromBytes(objectName, req.file.buffer, {
-        contentType: req.file.mimetype,
+        contentType: req.file.mimetype
       });
       const fileUrl = `/api/obj/${objectName}`;
 
-      const result = await query(
-        `INSERT INTO staff_documents (user_id, doc_type, doc_name, file_url, file_size, uploaded_at, uploaded_by)
-         VALUES ($1,$2,$3,$4,$5,NOW(),$6) RETURNING *`,
-        [userId, doc_type, doc_name, fileUrl, req.file.size, userId]
-      );
+      const result = await __qd_executePlan(query, __qd_registeredPlan("api/staff/documents.js:93:1"),
+
+
+      [userId, doc_type, doc_name, fileUrl, req.file.size, userId]);
+
       return res.status(201).json({ success: true, document: result.rows[0] });
     } catch (err) {
       console.error('[staff/documents POST upload]', err);
@@ -108,9 +108,9 @@ export default async function handler(req, res) {
     if (!id) return res.status(400).json({ success: false, error: 'id is required' });
 
     try {
-      const doc = await getOne(
-        `SELECT * FROM staff_documents WHERE id = $1 AND user_id = $2`, [id, userId]
-      );
+      const doc = await __qd_executePlan(getOne, __qd_registeredPlan("api/staff/documents.js:112:2"),
+      [id, userId]);
+
       if (!doc) return res.status(404).json({ success: false, error: 'Document not found' });
 
       // Try to remove from object storage
@@ -118,9 +118,9 @@ export default async function handler(req, res) {
         const client = await getStorageClient();
         const objKey = doc.file_url.replace(/^\/api\/obj\//, '');
         await client.delete(objKey);
-      } catch (e) { /* storage delete failure is non-fatal */ }
+      } catch (e) {/* storage delete failure is non-fatal */}
 
-      await query(`DELETE FROM staff_documents WHERE id = $1`, [id]);
+      await __qd_executePlan(query, __qd_registeredPlan("api/staff/documents.js:123:3"), [id]);
       return res.json({ success: true });
     } catch (err) {
       console.error('[staff/documents DELETE]', err);

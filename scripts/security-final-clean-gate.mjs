@@ -7,11 +7,14 @@ import {createHash,randomUUID} from 'node:crypto';
 import {execFile,execFileSync,spawn} from 'node:child_process';
 import {promisify} from 'node:util';
 import {eligibleUntrackedSchemaSource} from './lib/schema-candidate-files.mjs';
-const root=process.cwd(),out=root+'/generated-artifacts/security-remediation-final';
+const root=process.cwd(),out=root+'/generated-artifacts/sql-runtime-enforcement-final';
 const hash=b=>createHash('sha256').update(b).digest('hex');
 const archive=out+'/exact-candidate-source.tar';
 await fs.mkdir(out,{recursive:true});
 if(process.argv.includes('--prepare')){
+  const readiness=JSON.parse(await fs.readFile(out+'/release-gate.json','utf8'));
+  if(readiness.status!=='PASS'||readiness.unresolvedLocations!==0||readiness.uncoveredFamilies!==0)
+    throw Error('All offline release gates must pass before candidate preparation');
   const files=[...new Set([
     ...execFileSync('git',['ls-files','-z'],{encoding:'utf8'}).split('\0'),
     ...execFileSync('git',['ls-files','--others','--exclude-standard','-z'],{encoding:'utf8'}).split('\0')

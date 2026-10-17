@@ -1,4 +1,4 @@
-import { query, getMany, getOne, insert, update, remove, publishRealtimeEvent } from './db.js';
+import { registeredPlan as __qd_registeredPlan, joinPlans as __qd_joinPlans, executePlan as __qd_executePlan } from "./services/queryDescriptors.js";import { query, getMany, getOne, insert, update, remove, publishRealtimeEvent } from './db.js';
 import { applyAuthCors } from './_lib/auth.js';
 import { createDistributorNotification } from './notifications.js';
 
@@ -12,7 +12,7 @@ const BRANCH_ALIAS = {
   'Eenhana': 'eenhana', 'Ondangwa': 'ondangwa', 'Rundu': 'rundu',
   'Otjiwarongo': 'otjiwarongo', 'Tsumeb': 'tsumeb', 'Okahao': 'okahao', 'Outapi': 'outapi',
   'Okongo': 'okongo', 'okongo': 'okongo',
-  'Nkurenkuru': 'nkurenkuru', 'nkurenkuru': 'nkurenkuru',
+  'Nkurenkuru': 'nkurenkuru', 'nkurenkuru': 'nkurenkuru'
 };
 function normBranch(val) {
   if (!val) return val;
@@ -33,10 +33,10 @@ function getBranchAliases(canonical) {
 // Returns all branch aliases across a user's primary branch + multi-branch array
 function getUserAllBranchAliases(primaryBranch, extraBranches) {
   const allAliases = new Set();
-  if (primaryBranch) getBranchAliases(primaryBranch).forEach(a => allAliases.add(a));
-  for (const b of (extraBranches || [])) {
+  if (primaryBranch) getBranchAliases(primaryBranch).forEach((a) => allAliases.add(a));
+  for (const b of extraBranches || []) {
     const norm = normBranch(b);
-    if (norm) getBranchAliases(norm).forEach(a => allAliases.add(a));
+    if (norm) getBranchAliases(norm).forEach((a) => allAliases.add(a));
   }
   return [...allAliases];
 }
@@ -60,12 +60,12 @@ export default async function handler(req, res) {
 
   try {
     if (method === 'GET') {
-      let queryText = 'SELECT * FROM appointments';
+      let queryText = __qd_registeredPlan("api/appointments.js:63:0");
       const params = [];
       const conditions = [];
 
       const userRole = req.user ? (req.user.role || '').toLowerCase() : '';
-      const userBranch = normBranch(req.user ? (req.user.branch || '') : '');
+      const userBranch = normBranch(req.user ? req.user.branch || '' : '');
       const userExtraBranches = Array.isArray(req.user?.branches) ? req.user.branches : [];
       const FULL_ACCESS = new Set(['admin', 'gm', 'director', 'stock']);
       // Distributors querying their own checkups (via client_reference) or their referred
@@ -76,17 +76,17 @@ export default async function handler(req, res) {
         if (userBranch || userExtraBranches.length > 0) {
           // Restrict to all branches this user is assigned to (primary + multi-branch array)
           const aliases = getUserAllBranchAliases(userBranch, userExtraBranches);
-          conditions.push('branch = ANY($' + (params.length + 1) + '::text[])');
+          conditions.push(__qd_joinPlans([__qd_registeredPlan("api/appointments.js:79:2", [params.length + 1]), __qd_registeredPlan("api/appointments.js:79:3")], "empty"));
           params.push(aliases);
         } else {
           // No branch assigned to this user — fail-safe: return nothing
           // Prevents cross-branch data leakage for staff without a branch set
-          conditions.push('1 = 0');
+          conditions.push(__qd_registeredPlan("api/appointments.js:84:4"));
         }
       }
 
       if (id) {
-        conditions.push('id = $' + (params.length + 1));
+        conditions.push(__qd_registeredPlan("api/appointments.js:89:5", [params.length + 1]));
         params.push(id);
       }
       if (branch) {
@@ -94,43 +94,43 @@ export default async function handler(req, res) {
           // Allow only if the requested branch is within any of the user's assigned branches
           const allUserAliases = getUserAllBranchAliases(userBranch, userExtraBranches);
           const requestedAliases = getBranchAliases(normBranch(branch));
-          const overlaps = allUserAliases.some(a => requestedAliases.includes(a));
+          const overlaps = allUserAliases.some((a) => requestedAliases.includes(a));
           if (!overlaps) {
             return res.status(403).json({ error: 'Access denied to this branch' });
           }
         }
         const branchAliases = getBranchAliases(branch);
-        conditions.push('branch = ANY($' + (params.length + 1) + '::text[])');
+        conditions.push(__qd_joinPlans([__qd_registeredPlan("api/appointments.js:103:6", [params.length + 1]), __qd_registeredPlan("api/appointments.js:103:7")], "empty"));
         params.push(branchAliases);
       }
       if (date) {
-        conditions.push('date = $' + (params.length + 1));
+        conditions.push(__qd_registeredPlan("api/appointments.js:107:8", [params.length + 1]));
         params.push(date);
       }
       if (status) {
-        conditions.push('status = $' + (params.length + 1));
+        conditions.push(__qd_registeredPlan("api/appointments.js:111:9", [params.length + 1]));
         params.push(status);
       }
       if (type) {
-        conditions.push('type ILIKE $' + (params.length + 1));
+        conditions.push(__qd_registeredPlan("api/appointments.js:115:10", [params.length + 1]));
         params.push('%' + type + '%');
       }
       if (clientRef) {
-        conditions.push('UPPER(client_reference) = $' + (params.length + 1));
+        conditions.push(__qd_registeredPlan("api/appointments.js:119:11", [params.length + 1]));
         params.push(clientRef.toUpperCase().trim());
       }
       if (referralNb) {
-        conditions.push(`UPPER(data->>'referral_nb') = $${params.length + 1}`);
+        conditions.push(__qd_registeredPlan("api/appointments.js:123:12", [params.length + 1]));
         params.push(referralNb.toUpperCase().trim());
       }
 
       if (conditions.length > 0) {
-        queryText += ' WHERE ' + conditions.join(' AND ');
+        queryText = __qd_joinPlans([queryText, __qd_joinPlans([__qd_registeredPlan("api/appointments.js:128:1"), __qd_joinPlans(conditions, "and")], "empty")], "empty");
       }
-      
-      queryText += ' ORDER BY date DESC, time DESC';
-      
-      const appointments = await getMany(queryText, params);
+
+      queryText = __qd_joinPlans([queryText, __qd_registeredPlan("api/appointments.js:131:13")], "empty");
+
+      const appointments = await __qd_executePlan(getMany, queryText, params);
 
       // Enrich appointments: resolve any bare NB codes (client_reference or
       // data->>'referral_nb') to a distributor full name so the consultant
@@ -140,22 +140,22 @@ export default async function handler(req, res) {
         for (const apt of appointments) {
           const code = (apt.client_reference || '').trim().toUpperCase();
           if (code && code.startsWith('NB')) nbCodes.add(code);
-          const aptData = apt.data ? (typeof apt.data === 'string' ? JSON.parse(apt.data) : apt.data) : {};
+          const aptData = apt.data ? typeof apt.data === 'string' ? JSON.parse(apt.data) : apt.data : {};
           const refNb = (aptData.referral_nb || '').trim().toUpperCase();
           if (refNb && refNb.startsWith('NB')) nbCodes.add(refNb);
         }
         if (nbCodes.size > 0) {
-          const distRows = await getMany(
-            `SELECT UPPER(TRIM(distributor_code)) AS code, distributor_name
-             FROM distributors
-             WHERE UPPER(TRIM(distributor_code)) = ANY($1::text[])`,
-            [[...nbCodes]]
-          );
+          const distRows = await __qd_executePlan(getMany, __qd_registeredPlan("api/appointments.js:149:14"),
+
+
+
+          [[...nbCodes]]);
+
           const nameMap = {};
           for (const d of distRows) nameMap[d.code] = d.distributor_name;
           for (const apt of appointments) {
             const code = (apt.client_reference || '').trim().toUpperCase();
-            const aptData = apt.data ? (typeof apt.data === 'string' ? JSON.parse(apt.data) : apt.data) : {};
+            const aptData = apt.data ? typeof apt.data === 'string' ? JSON.parse(apt.data) : apt.data : {};
             const refNb = (aptData.referral_nb || '').trim().toUpperCase();
             const resolvedCode = code || refNb;
             if (resolvedCode && nameMap[resolvedCode]) {
@@ -185,7 +185,7 @@ export default async function handler(req, res) {
         const phone = sanitizeStr(apt.phone, 30);
         const date = sanitizeStr(apt.date, 20);
         const rawTime = sanitizeStr(apt.time, 10);
-        const time = (rawTime && rawTime.toUpperCase() !== 'TBD') ? rawTime : '00:00';
+        const time = rawTime && rawTime.toUpperCase() !== 'TBD' ? rawTime : '00:00';
         if (!fullName || !phone || !date) return null;
 
         const data = {
@@ -200,10 +200,10 @@ export default async function handler(req, res) {
           type: sanitizeStr(apt.type, 100),
           status: authenticated ? sanitizeStr(apt.status, 30) || 'pending' : 'pending',
           notes: sanitizeStr(apt.notes, 2000),
-          data: apt.data ? (typeof apt.data === 'string' ? apt.data.slice(0, 5000) : JSON.stringify(apt.data).slice(0, 5000)) : null
+          data: apt.data ? typeof apt.data === 'string' ? apt.data.slice(0, 5000) : JSON.stringify(apt.data).slice(0, 5000) : null
         };
 
-        Object.keys(data).forEach(key => {
+        Object.keys(data).forEach((key) => {
           if (data[key] === undefined) delete data[key];
         });
 
@@ -225,18 +225,18 @@ export default async function handler(req, res) {
             console.error('Error inserting appointment:', error);
           }
         }
-        
+
         if (results.length > 0) {
           await publishRealtimeEvent('appointments', 'create', results);
         }
-        
+
         return res.json({ success: true, count: results.length, appointments: results });
       } else {
         const appointmentData = buildAppointmentData(body, isAuthenticated);
         if (!appointmentData) {
           return res.status(400).json({ error: 'Missing required fields: full_name, phone, date' });
         }
-        
+
         try {
           const appointment = await insert('appointments', appointmentData);
           await publishRealtimeEvent('appointments', 'create', appointment);
@@ -251,16 +251,16 @@ export default async function handler(req, res) {
     if (method === 'PUT') {
       const body = req.body;
       if (!body.id) return res.status(400).json({ error: 'Missing appointment id' });
-      const oldAppointment = await getOne('SELECT * FROM appointments WHERE id = $1', [body.id]);
+      const oldAppointment = await __qd_executePlan(getOne, __qd_registeredPlan("api/appointments.js:254:15"), [body.id]);
       if (!oldAppointment) return res.status(404).json({ error: 'Appointment not found' });
 
       const putUserRole = req.user ? (req.user.role || '').toLowerCase() : '';
-      const putUserBranch = normBranch(req.user ? (req.user.branch || '') : '');
+      const putUserBranch = normBranch(req.user ? req.user.branch || '' : '');
       const putUserExtraBranches = Array.isArray(req.user?.branches) ? req.user.branches : [];
       const apptBranchNorm = normBranch(oldAppointment.branch || '');
       const allPutUserAliases = getUserAllBranchAliases(putUserBranch, putUserExtraBranches);
       const apptAliases = getBranchAliases(apptBranchNorm);
-      const putHasAccess = allPutUserAliases.some(a => apptAliases.includes(a));
+      const putHasAccess = allPutUserAliases.some((a) => apptAliases.includes(a));
       if (req.user && putUserRole !== 'admin' && (putUserBranch || putUserExtraBranches.length > 0) && !putHasAccess) {
         return res.status(403).json({ error: 'Access denied to this appointment' });
       }
@@ -284,18 +284,18 @@ export default async function handler(req, res) {
         ...(body.status !== undefined && { status: body.status }),
         ...(body.notes !== undefined && { notes: body.notes }),
         ...(body.data !== undefined && { data: typeof body.data === 'string' ? body.data : JSON.stringify(body.data) }),
-        updated_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       };
       const appointment = await update('appointments', body.id, appointmentPayload, 'id');
       await publishRealtimeEvent('appointments', 'update', appointment);
 
       const newStatus = (body.status || '').toLowerCase();
       const wasNotCompleted = oldAppointment && (oldAppointment.status || '').toLowerCase() !== 'completed';
-      const distributorRef = appointment.client_reference || (oldAppointment && oldAppointment.client_reference);
+      const distributorRef = appointment.client_reference || oldAppointment && oldAppointment.client_reference;
       if (newStatus === 'completed' && wasNotCompleted && distributorRef) {
         try {
           let apptData = {};
-          try { apptData = typeof appointment.data === 'string' ? JSON.parse(appointment.data) : (appointment.data || {}); } catch(e) {}
+          try {apptData = typeof appointment.data === 'string' ? JSON.parse(appointment.data) : appointment.data || {};} catch (e) {}
           const clientName = appointment.full_name || body.full_name || 'A client';
           await createDistributorNotification({
             distributorCode: distributorRef,
@@ -330,5 +330,3 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Internal server error' });
   }
 }
-
-

@@ -1,90 +1,90 @@
-import { applyAuthCors } from '../_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../services/queryDescriptors.js";import { applyAuthCors } from '../_lib/auth.js';
 import {
   getDateRange,
   getCompanyStockSummary,
-  getAllBranchesSalesRevenue,
-} from '../services/gmFinanceMisEngine.js';
+  getAllBranchesSalesRevenue } from
+'../services/gmFinanceMisEngine.js';
 import { getOne } from '../db.js';
-import {getSalesReturnsSummary} from '../services/stockFinancialReports.js';
+import { getSalesReturnsSummary } from '../services/stockFinancialReports.js';
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
-  if(!req.user)return res.status(401).json({success:false,error:'Authentication required'});
-  if(!['gm','general_manager','director','admin','superadmin','super_admin','finance','finance_manager','mis','stock'].includes(String(req.user.role).toLowerCase()))
-    return res.status(403).json({success:false,error:'Company reporting access required'});
+  if (!req.user) return res.status(401).json({ success: false, error: 'Authentication required' });
+  if (!['gm', 'general_manager', 'director', 'admin', 'superadmin', 'super_admin', 'finance', 'finance_manager', 'mis', 'stock'].includes(String(req.user.role).toLowerCase()))
+  return res.status(403).json({ success: false, error: 'Company reporting access required' });
 
   try {
     const { start, end } = getDateRange(req.query);
 
-    const [companyStock, sales,financial] = await Promise.all([
-      getCompanyStockSummary(),
-      getAllBranchesSalesRevenue(start, end),
-      getSalesReturnsSummary({from:start,to:end}),
-    ]);
+    const [companyStock, sales, financial] = await Promise.all([
+    getCompanyStockSummary(),
+    getAllBranchesSalesRevenue(start, end),
+    getSalesReturnsSummary({ from: start, to: end })]
+    );
 
     // Consultation fees: BAT rows for non-dispensing paid activities (walk-in and member check-ups).
     // Excludes prescription_dispensing (already counted in prescriptionSales).
-    const consultRow = await getOne(
-      `SELECT COALESCE(SUM(COALESCE(consultation_fee, grand_total, 0)), 0) AS total
-       FROM branch_activity_transactions
-       WHERE activity_type NOT IN ('prescription_dispensing', 'dispense_draft')
-         AND workflow_source IS DISTINCT FROM 'dispense_draft'
-         AND payment_status = 'paid'
-         AND service_date >= $1::date
-         AND service_date <= $2::date`,
-      [start, end]
-    );
+    const consultRow = await __qd_executePlan(getOne, __qd_registeredPlan("api/gm/summary.js:30:0"),
+
+
+
+
+
+
+
+    [start, end]);
+
     const consultationFees = Number(consultRow?.total || 0);
 
     // Actual paid revenue and returned original CIF are a different basis
     // from DP dashboard totals. Never substitute today's catalogue CIF.
-    const cifCostOfSales=Number(financial.netCostOfGoodsSold);
-    const grossProfit=financial.grossProfitAfterReturns==null?null:Number(financial.grossProfitAfterReturns);
+    const cifCostOfSales = Number(financial.netCostOfGoodsSold);
+    const grossProfit = financial.grossProfitAfterReturns == null ? null : Number(financial.grossProfitAfterReturns);
 
     // Verified bank deposits in the period (status='approved' is set by Finance verifyDeposit)
-    const depositRow = await getOne(
-      `SELECT COALESCE(SUM(amount),0) as total FROM branch_bank_deposits
-       WHERE status IN ('confirmed','approved') AND date >= $1::date AND date <= $2::date`,
-      [start, end]
-    );
+    const depositRow = await __qd_executePlan(getOne, __qd_registeredPlan("api/gm/summary.js:48:1"),
+
+
+    [start, end]);
+
     const totalDeposits = Number(depositRow?.total || 0);
 
     // Actual remittance payments already sent to supplier in the period
-    const remittedRow = await getOne(
-      `SELECT COALESCE(SUM(amount),0) as total FROM finance_remittances WHERE status = 'completed' AND payment_date >= $1 AND payment_date <= $2`,
-      [start, end]
-    );
+    const remittedRow = await __qd_executePlan(getOne, __qd_registeredPlan("api/gm/summary.js:56:2"),
+
+    [start, end]);
+
     const totalRemitted = Number(remittedRow?.total || 0);
     const remittanceDue = Math.max(0, cifCostOfSales - totalDeposits - totalRemitted);
 
     // Total walkin transaction count
-    const txnRow = await getOne(
-      `SELECT COUNT(*) as cnt FROM branch_walkin_sales
-       WHERE status='completed' AND sale_date >= ($1::date::timestamp AT TIME ZONE 'Africa/Windhoek') AND sale_date < (($2::date+1)::timestamp AT TIME ZONE 'Africa/Windhoek')`,
-      [start, end]
-    );
+    const txnRow = await __qd_executePlan(getOne, __qd_registeredPlan("api/gm/summary.js:64:3"),
+
+
+    [start, end]);
+
     const totalTransactions = Number(txnRow?.cnt || 0);
 
     // Total BV points from walkin sale items
-    const bvRow = await getOne(
-      `SELECT COALESCE(SUM((item->>'bv')::numeric), 0) as total_bv
-       FROM branch_walkin_sales,
-            jsonb_array_elements(CASE WHEN jsonb_typeof(items::jsonb) = 'array' THEN items::jsonb ELSE '[]'::jsonb END) AS item
-       WHERE status = 'completed'
-         AND sale_date >= ($1::date::timestamp AT TIME ZONE 'Africa/Windhoek')
-         AND sale_date < (($2::date+1)::timestamp AT TIME ZONE 'Africa/Windhoek')`,
-      [start, end]
-    );
+    const bvRow = await __qd_executePlan(getOne, __qd_registeredPlan("api/gm/summary.js:72:4"),
+
+
+
+
+
+
+    [start, end]);
+
     const totalBV = Number(bvRow?.total_bv || 0);
 
     // Active branch count
-    const branchRow = await getOne(`SELECT COUNT(*) as cnt FROM branches WHERE status = 'active'`);
+    const branchRow = await __qd_executePlan(getOne, __qd_registeredPlan("api/gm/summary.js:83:5"), []);
     const activeBranches = Number(branchRow?.cnt || 0);
 
     // Product range count
-    const productRow = await getOne(`SELECT COUNT(DISTINCT description) as cnt FROM live_product_prices WHERE catalogue_entry`);
+    const productRow = await __qd_executePlan(getOne, __qd_registeredPlan("api/gm/summary.js:87:6"), []);
     const productCount = Number(productRow?.cnt || 0);
 
     res.json({
@@ -98,7 +98,7 @@ export default async function handler(req, res) {
         branchQty: companyStock.branchQty,
         inTransitQty: companyStock.inTransitQty,
         lowStockCount: companyStock.lowStockCount,
-        expiringCount: companyStock.expiringCount,
+        expiringCount: companyStock.expiringCount
       },
       sales: {
         ...sales,
@@ -110,7 +110,7 @@ export default async function handler(req, res) {
         prescriptionSales: sales.prescriptionSales,
         totalSales: sales.totalSales,
         totalTransactions,
-        totalBV,
+        totalBV
       },
       finance: {
         ...financial,
@@ -118,12 +118,12 @@ export default async function handler(req, res) {
         grossProfit,
         totalDeposits,
         totalRemitted,
-        remittanceDue,
+        remittanceDue
       },
       network: {
         activeBranches,
-        productCount,
-      },
+        productCount
+      }
     });
   } catch (err) {
     console.error('[gm/summary]', err);

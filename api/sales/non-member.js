@@ -1,4 +1,4 @@
-/**
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../services/queryDescriptors.js"; /**
  * POST /api/sales/non-member
  * Create a non-member walk-in sale. Saves sale + reduces stock by batch.
  */
@@ -10,8 +10,8 @@ async function parseBody(req) {
   if (req.body && typeof req.body === 'object') return req.body;
   return new Promise((resolve, reject) => {
     let raw = '';
-    req.on('data', c => raw += c);
-    req.on('end', () => { try { resolve(raw ? JSON.parse(raw) : {}); } catch { reject(new Error('Invalid JSON')); } });
+    req.on('data', (c) => raw += c);
+    req.on('end', () => {try {resolve(raw ? JSON.parse(raw) : {});} catch {reject(new Error('Invalid JSON'));}});
     req.on('error', reject);
   });
 }
@@ -60,26 +60,26 @@ export default async function handler(req, res) {
   const saleNumber = `NM-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(Math.random() * 9000 + 1000)}`;
 
   // Get referral distributor name if provided
-  let referralName = null, referralNb = null;
+  let referralName = null,referralNb = null;
   if (referralDistributorId) {
-    const dist = await getOne(`SELECT distributor_name, distributor_code FROM distributors WHERE id = $1`, [referralDistributorId]);
+    const dist = await __qd_executePlan(getOne, __qd_registeredPlan("api/sales/non-member.js:65:0"), [referralDistributorId]);
     referralName = dist?.distributor_name || null;
     referralNb = dist?.distributor_code || null;
   }
 
   // Save to branch_walkin_sales
-  await query(
-    `INSERT INTO branch_walkin_sales
-       (id, branch_id, sale_number, sale_date, customer_name, customer_type, payment_method,
-        subtotal, discount, tax, total, status, items, created_by, created_at, updated_at, metadata)
-     VALUES ($1,$2,$3,NOW(),$4,'non_member',$5,$6,0,0,$6,'completed',$7,$8,NOW(),NOW(),$9)`,
-    [saleId, branchId, saleNumber, customerName || 'Walk-in', paymentMethod || 'cash',
-      totalAmount,
-      JSON.stringify(saleItems.map(i => ({ productName: i.productName, quantity: i.quantity, unitPrice: i.unitDP, lineTotal: i.quantity * i.unitDP, batchNo: i.batchNo, expiryDate: i.expiryDate }))),
-      soldBy || 'system',
-      JSON.stringify({ referralDistributorId, referralName, referralNb, notes }),
-    ]
-  );
+  await __qd_executePlan(query, __qd_registeredPlan("api/sales/non-member.js:72:1"),
+
+
+
+
+  [saleId, branchId, saleNumber, customerName || 'Walk-in', paymentMethod || 'cash',
+  totalAmount,
+  JSON.stringify(saleItems.map((i) => ({ productName: i.productName, quantity: i.quantity, unitPrice: i.unitDP, lineTotal: i.quantity * i.unitDP, batchNo: i.batchNo, expiryDate: i.expiryDate }))),
+  soldBy || 'system',
+  JSON.stringify({ referralDistributorId, referralName, referralNb, notes })]);
+
+
 
   // Post stock movements per item (reduces branch stock)
   for (const item of saleItems) {
@@ -98,12 +98,12 @@ export default async function handler(req, res) {
       notes: notes || `Non-member sale to ${customerName || 'Walk-in'}`,
       unitDP: item.unitDP,
       createdBy: soldBy || 'system',
-      status: 'posted',
+      status: 'posted'
     });
   }
 
-  recomputeLocationBalances('branch', branchId).catch(e =>
-    console.error('[stockEngine] non-member sale recompute error:', e.message)
+  recomputeLocationBalances('branch', branchId).catch((e) =>
+  console.error('[stockEngine] non-member sale recompute error:', e.message)
   );
 
   return res.status(201).json({
@@ -118,6 +118,6 @@ export default async function handler(req, res) {
     referralNb,
     totalAmount,
     itemsCount: saleItems.length,
-    message: `Non-member sale ${saleNumber} created successfully.`,
+    message: `Non-member sale ${saleNumber} created successfully.`
   });
 }

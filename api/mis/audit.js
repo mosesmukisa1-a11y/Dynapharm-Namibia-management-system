@@ -1,4 +1,4 @@
-import { applyAuthCors } from '../_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, joinPlans as __qd_joinPlans, executePlan as __qd_executePlan } from "../services/queryDescriptors.js";import { applyAuthCors } from '../_lib/auth.js';
 import { getMany, query } from '../db.js';
 import { businessDatePredicate, validateBusinessDates } from '../services/businessDates.js';
 
@@ -16,18 +16,18 @@ function normalizeLog(row) {
     recordId: row.record_id,
     user: row.user_name,
     details:
-      typeof row.details === 'object' && row.details !== null
-        ? row.details
-        : row.details
-        ? (() => {
-            try {
-              return JSON.parse(row.details);
-            } catch {
-              return row.details;
-            }
-          })()
-        : {},
-    createdAt: row.created_at,
+    typeof row.details === 'object' && row.details !== null ?
+    row.details :
+    row.details ?
+    (() => {
+      try {
+        return JSON.parse(row.details);
+      } catch {
+        return row.details;
+      }
+    })() :
+    {},
+    createdAt: row.created_at
   };
 }
 
@@ -42,9 +42,9 @@ export default async function handler(req, res) {
   if (req.method === 'GET') {
     try {
       const { searchParams } = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-       const startParam = searchParams.get('start');
-       const endParam = searchParams.get('end');
-       validateBusinessDates(startParam,endParam);
+      const startParam = searchParams.get('start');
+      const endParam = searchParams.get('end');
+      validateBusinessDates(startParam, endParam);
       const branchParam = searchParams.get('branch');
       const eventType = searchParams.get('event');
 
@@ -52,38 +52,38 @@ export default async function handler(req, res) {
       const where = [];
 
       if (startParam) {
-        where.push(businessDatePredicate('created_at',`$${params.length + 1}`));
+        where.push(businessDatePredicate('created_at', `$${params.length + 1}`));
         params.push(startParam);
       }
 
       if (endParam) {
-        where.push(businessDatePredicate('created_at',`$${params.length + 1}`,true));
+        where.push(businessDatePredicate('created_at', `$${params.length + 1}`, true));
         params.push(endParam);
       }
 
       if (eventType) {
-        where.push(`event_type = $${params.length + 1}`);
+        where.push(__qd_registeredPlan("api/mis/audit.js:65:1", [params.length + 1]));
         params.push(eventType);
       }
 
       if (branchParam) {
-        where.push(`(LOWER(REPLACE(details->>'branch',' ','_')) = LOWER(REPLACE($${params.length + 1},' ','_')))`);
+        where.push(__qd_registeredPlan("api/mis/audit.js:70:2", [params.length + 1]));
         params.push(branchParam);
       }
 
-      let queryText = `
-        SELECT *
-        FROM mis_sales_audit
-      `;
-      if (where.length > 0) {
-        queryText += ` WHERE ${where.join(' AND ')}`;
-      }
-      queryText += ' ORDER BY created_at DESC LIMIT 500';
+      let queryText = __qd_registeredPlan("api/mis/audit.js:74:0");
 
-      const rows = await getMany(queryText, params);
+
+
+      if (where.length > 0) {
+        queryText = __qd_joinPlans([queryText, __qd_registeredPlan("api/mis/audit.js:79:3", [__qd_joinPlans(where, "and")])], "empty");
+      }
+      queryText = __qd_joinPlans([queryText, __qd_registeredPlan("api/mis/audit.js:81:4")], "empty");
+
+      const rows = await __qd_executePlan(getMany, queryText, params);
       return res.status(200).json({
         success: true,
-        logs: rows.map(normalizeLog).filter(Boolean),
+        logs: rows.map(normalizeLog).filter(Boolean)
       });
     } catch (error) {
       console.error('MIS audit GET error:', error);
@@ -117,23 +117,23 @@ export default async function handler(req, res) {
         });
       }
 
-      const id = await query(
-        `
-          INSERT INTO mis_sales_audit (event_type, record_id, user_name, details, created_at)
-          VALUES ($1, $2, $3, $4, NOW())
-          RETURNING id
-        `,
-        [
-          body.eventType === 'sale_created' ? 'sale_created_unverified_client' : body.eventType || 'unknown',
-          body.recordId || null,
-          body.user || null,
-          body.details ? JSON.stringify(body.details) : null,
-        ]
-      );
+      const id = await __qd_executePlan(query, __qd_registeredPlan("api/mis/audit.js:121:5"),
+
+
+
+
+
+      [
+      body.eventType === 'sale_created' ? 'sale_created_unverified_client' : body.eventType || 'unknown',
+      body.recordId || null,
+      body.user || null,
+      body.details ? JSON.stringify(body.details) : null]);
+
+
 
       return res.status(201).json({
         success: true,
-        id: id.rows[0]?.id || null,
+        id: id.rows[0]?.id || null
       });
     } catch (error) {
       console.error('MIS audit POST error:', error);
@@ -143,5 +143,3 @@ export default async function handler(req, res) {
 
   return res.status(405).json({ success: false, error: 'Method not allowed' });
 }
-
-

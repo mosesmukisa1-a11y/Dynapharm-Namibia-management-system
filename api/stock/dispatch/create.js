@@ -1,4 +1,4 @@
-/**
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../../services/queryDescriptors.js"; /**
  * POST /api/stock/dispatch/create
  * Create a warehouse dispatch to a branch. Enforces batch + expiry per item.
  * Captures preparer identity from authenticated session, snapshots destination branch staff,
@@ -11,8 +11,8 @@ async function parseBody(req) {
   if (req.body && typeof req.body === 'object') return req.body;
   return new Promise((resolve, reject) => {
     let raw = '';
-    req.on('data', c => raw += c);
-    req.on('end', () => { try { resolve(raw ? JSON.parse(raw) : {}); } catch { reject(new Error('Invalid JSON')); } });
+    req.on('data', (c) => raw += c);
+    req.on('end', () => {try {resolve(raw ? JSON.parse(raw) : {});} catch {reject(new Error('Invalid JSON'));}});
     req.on('error', reject);
   });
 }
@@ -56,27 +56,27 @@ export default async function handler(req, res) {
     const batchNo = (item.batchNo || '').trim();
 
     // Primary: stock_batches.remaining_quantity — the most reliable physical stock figure
-    const batchRow = await getOne(
-      `SELECT COALESCE(SUM(remaining_quantity), 0) AS qty
-       FROM stock_batches
-       WHERE LOWER(TRIM(location)) = LOWER(TRIM($1))
-         AND LOWER(TRIM(description)) = LOWER(TRIM($2))
-         AND COALESCE(batch_no, '') = $3
-         AND status != 'expired'`,
-      [sourceWarehouseId, productName, batchNo]
-    );
+    const batchRow = await __qd_executePlan(getOne, __qd_registeredPlan("api/stock/dispatch/create.js:60:0"),
+
+
+
+
+
+
+    [sourceWarehouseId, productName, batchNo]);
+
     let availQty = Number(batchRow?.qty || 0);
 
     // Fallback 1: inventory_balances
     if (availQty <= 0) {
-      const ibRow = await getOne(
-        `SELECT COALESCE(closing_qty, 0) AS qty FROM inventory_balances
-         WHERE location_type = 'warehouse'
-           AND LOWER(TRIM(location_id)) = LOWER(TRIM($1))
-           AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))
-           AND COALESCE(batch_no, '') = $3`,
-        [sourceWarehouseId, productName, batchNo]
-      );
+      const ibRow = await __qd_executePlan(getOne, __qd_registeredPlan("api/stock/dispatch/create.js:73:1"),
+
+
+
+
+
+      [sourceWarehouseId, productName, batchNo]);
+
       availQty = Number(ibRow?.qty || 0);
     }
 
@@ -84,16 +84,16 @@ export default async function handler(req, res) {
     if (availQty <= 0) {
       const INWARD_TYPES = ['supplier_import_receipt', 'warehouse_receipt', 'branch_receipt', 'transfer_in', 'received', 'return_in', 'positive_adjustment'];
       const OUTWARD_TYPES = ['warehouse_dispatch', 'transfer_out', 'reserved', 'walkin_sale', 'walkin_member_sale', 'walkin_non_member_sale', 'walk_in_member_sale', 'walk_in_non_member_sale', 'online_order_fulfilment', 'prescription_dispense', 'write_off', 'return_out', 'negative_adjustment', 'sale', 'field_use'];
-      const movements = await getMany(
-        `SELECT movement_type, quantity, source_location, destination_location
-         FROM stock_movements
-         WHERE status = 'posted'
-           AND LOWER(TRIM(product_name)) = LOWER(TRIM($1))
-           AND COALESCE(batch_no, '') = $2`,
-        [productName, batchNo]
-      );
+      const movements = await __qd_executePlan(getMany, __qd_registeredPlan("api/stock/dispatch/create.js:88:2"),
+
+
+
+
+
+      [productName, batchNo]);
+
       const normalizedWarehouse = sourceWarehouseId.trim().toLowerCase();
-      let inward = 0, outward = 0;
+      let inward = 0,outward = 0;
       for (const m of movements) {
         const dst = (m.destination_location || '').trim().toLowerCase();
         const src = (m.source_location || '').trim().toLowerCase();
@@ -108,8 +108,8 @@ export default async function handler(req, res) {
           locationId: sourceWarehouseId,
           productName,
           batchNo,
-          expiryDate: item.expiryDate || item.expiry_date || null,
-        }).catch(e => console.error('[dispatch/create] recompute error:', e.message));
+          expiryDate: item.expiryDate || item.expiry_date || null
+        }).catch((e) => console.error('[dispatch/create] recompute error:', e.message));
         availQty = movementsNet;
       }
     }
@@ -131,26 +131,26 @@ export default async function handler(req, res) {
   // Snapshot destination branch staff at dispatch creation time.
   let destinationBranchStaff = null;
   try {
-    const branchStaff = await getMany(
-      `SELECT id, full_name, role, branch, email, phone FROM users
-       WHERE is_active = TRUE
-         AND LOWER(role) = 'dispenser'
-         AND (REPLACE(LOWER(branch), ' ', '_') = REPLACE(LOWER($1), ' ', '_')
-              OR EXISTS (
-                SELECT 1 FROM jsonb_array_elements_text(
-                  CASE WHEN jsonb_typeof(branches) = 'array' THEN branches ELSE '[]'::jsonb END
-                ) AS b WHERE REPLACE(LOWER(b), ' ', '_') = REPLACE(LOWER($1), ' ', '_')
-              ))
-       ORDER BY full_name`,
-      [destinationBranchId]
-    );
+    const branchStaff = await __qd_executePlan(getMany, __qd_registeredPlan("api/stock/dispatch/create.js:135:3"),
+
+
+
+
+
+
+
+
+
+
+    [destinationBranchId]);
+
     if (branchStaff.length > 0) {
-      destinationBranchStaff = branchStaff.map(u => ({
+      destinationBranchStaff = branchStaff.map((u) => ({
         id: u.id,
         name: u.full_name,
         role: u.role,
         phone: u.phone || null,
-        email: u.email || null,
+        email: u.email || null
       }));
     }
   } catch (e) {
@@ -161,25 +161,25 @@ export default async function handler(req, res) {
   const ts = Date.now();
   const dispatchId = `DISP-${ts}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
 
-  await query(
-    `INSERT INTO stock_transfers
-       (id, from_warehouse, to_branch, dispatch_notes, status,
-        created_by, prepared_by_id, prepared_by_role,
-        destination_branch_staff,
-        created_at, updated_at, metadata)
-     VALUES ($1, $2, $3, $4, 'pending_approval', $5, $6, $7, $8, NOW(), NOW(), $9)`,
-    [
-      dispatchId,
-      sourceWarehouseId,
-      destinationBranchId,
-      notes || `Dispatch from ${sourceWarehouseId}`,
-      preparedByName,
-      preparedById,
-      preparedByRole,
-      destinationBranchStaff ? JSON.stringify(destinationBranchStaff) : null,
-      JSON.stringify({ sourceWarehouseId, destinationBranchId, items }),
-    ]
-  );
+  await __qd_executePlan(query, __qd_registeredPlan("api/stock/dispatch/create.js:165:4"),
+
+
+
+
+
+
+  [
+  dispatchId,
+  sourceWarehouseId,
+  destinationBranchId,
+  notes || `Dispatch from ${sourceWarehouseId}`,
+  preparedByName,
+  preparedById,
+  preparedByRole,
+  destinationBranchStaff ? JSON.stringify(destinationBranchStaff) : null,
+  JSON.stringify({ sourceWarehouseId, destinationBranchId, items })]);
+
+
 
   return res.status(201).json({
     success: true,
@@ -188,6 +188,6 @@ export default async function handler(req, res) {
     destinationBranchId,
     itemsCount: items.length,
     status: 'pending_approval',
-    message: `Dispatch ${dispatchId} created and awaiting GM approval. Items have batch and expiry validated.`,
+    message: `Dispatch ${dispatchId} created and awaiting GM approval. Items have batch and expiry validated.`
   });
 }

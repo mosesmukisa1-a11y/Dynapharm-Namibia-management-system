@@ -1,5 +1,6 @@
 import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import {withTransaction} from '../api/db.js';
+import {transactionIsolationDescriptor} from '../api/services/queryDescriptors.js';
 import {getStockReconciliation,buildStockReconciliation,stockReconciliationSnapshotSql} from '../api/services/stockReadOnlyReconciliation.js';
 import {csvCell} from '../api/services/stockCostAudit.js';
 
@@ -28,8 +29,8 @@ if(partsIndex>=0){
 }
 const report=assembled?await buildStockReconciliation(assembled,{environment}):inputIndex>=0?await buildStockReconciliation(JSON.parse(await readFile(process.argv[inputIndex+1],'utf8')),{environment}):
   await withTransaction(async client=>{
-    await client.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY');
-    await client.query("SET LOCAL statement_timeout='15s'");
+    await client.query(transactionIsolationDescriptor('repeatable-read-read-only'));
+    await client.query(transactionIsolationDescriptor('report-timeout-15s'));
     return getStockReconciliation(async(sql,params)=>(await client.query(sql,params)).rows,{environment});
   });
 const columns=['location','locationType','product','batch','expiry','physicalQty','availableQty','reservedQty','quarantinedQty',

@@ -1,4 +1,4 @@
-/**
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "./queryDescriptors.js"; /**
  * refundGhostCleanup.js
  *
  * Cleans up NULL-expiry ghost rows created by pre-fix refund approvals.
@@ -18,47 +18,47 @@
 import { query } from '../db.js';
 
 export async function runRefundGhostCleanup() {
-  const ghostRows = await query(
-    `SELECT id, branch_id, product_name, batch_no, quantity
-     FROM branch_inventory_batches
-     WHERE id LIKE 'BIB-RFND-%'
-       AND expiry_date IS NULL
-       AND source_warehouse IS NULL
-       AND quantity > 0`
-  );
+  const ghostRows = await __qd_executePlan(query, __qd_registeredPlan("api/services/refundGhostCleanup.js:22:0"), []);
 
-  let merged  = 0;
+
+
+
+
+
+
+
+  let merged = 0;
   let orphans = 0;
 
-  for (const ghost of (ghostRows?.rows || [])) {
+  for (const ghost of ghostRows?.rows || []) {
     try {
       // Find the canonical expiry-dated batch for this branch/product/batch_no
-      const canon = await query(
-        `SELECT id, expiry_date
-         FROM branch_inventory_batches
-         WHERE LOWER(TRIM(branch_id))    = LOWER(TRIM($1))
-           AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))
-           AND batch_no IS NOT DISTINCT FROM $3
-           AND expiry_date IS NOT NULL
-         ORDER BY expiry_date ASC
-         LIMIT 1`,
-        [ghost.branch_id, ghost.product_name, ghost.batch_no]
-      );
+      const canon = await __qd_executePlan(query, __qd_registeredPlan("api/services/refundGhostCleanup.js:37:1"),
+
+
+
+
+
+
+
+
+      [ghost.branch_id, ghost.product_name, ghost.batch_no]);
+
 
       if (canon.rows.length > 0) {
         // Merge qty into the real batch and remove the ghost
-        await query(
-          `UPDATE branch_inventory_batches
-           SET quantity   = quantity + $1,
-               status     = 'in_stock',
-               updated_at = NOW()
-           WHERE id = $2`,
-          [ghost.quantity, canon.rows[0].id]
-        );
-        await query(
-          `DELETE FROM branch_inventory_batches WHERE id = $1`,
-          [ghost.id]
-        );
+        await __qd_executePlan(query, __qd_registeredPlan("api/services/refundGhostCleanup.js:51:2"),
+
+
+
+
+
+        [ghost.quantity, canon.rows[0].id]);
+
+        await __qd_executePlan(query, __qd_registeredPlan("api/services/refundGhostCleanup.js:59:3"),
+
+        [ghost.id]);
+
         merged++;
       } else {
         // No expiry-dated counterpart — leave for manual review

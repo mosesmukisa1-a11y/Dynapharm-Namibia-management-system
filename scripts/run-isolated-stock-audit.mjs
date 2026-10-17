@@ -32,7 +32,7 @@ const filters=args.filter(arg=>arg!=='--all');
 const suites=filters.length?filters:all?databaseSuites:stockAuditSuites;
 const outputRoot=process.env.OWNED_AUDIT_OUTPUT||'generated-artifacts/stock-audit';
 if(process.env.OWNED_AUDIT_OUTPUT){
-  const expected=path.resolve('generated-artifacts/sql-security-final-closure/fixture-runs')+path.sep;
+  const expected=path.resolve('generated-artifacts/sql-runtime-enforcement-final/fixture-runs')+path.sep;
   const resolved=path.resolve(outputRoot);
   if(!resolved.startsWith(expected)||!/^[a-f0-9-]{36}\/(?:full|credential)-results$/.test(resolved.slice(expected.length)))
     throw Error('Owned audit output refused');

@@ -3,7 +3,7 @@ from pathlib import Path
 import importlib.util, json, subprocess
 from datetime import datetime, timezone
 
-BASE = Path("generated-artifacts/sql-security-final-closure")
+BASE = Path("generated-artifacts/sql-runtime-enforcement-final")
 spec = importlib.util.spec_from_file_location("offline_source_audit", "scripts/audit-credential-exposure.py")
 audit = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(audit)  # Does not invoke its __main__ scan or production-tree inspection.

@@ -1,4 +1,4 @@
-import { query, getOne } from '../db.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../services/queryDescriptors.js";import { query, getOne } from '../db.js';
 import { applyAuthCors } from '../_lib/auth.js';
 
 const ALLOWED_KEYS = ['dispatch_shortfall_mode'];
@@ -18,7 +18,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: `Unknown setting key: ${key}` });
     }
     try {
-      const row = await getOne(`SELECT value FROM system_settings WHERE key = $1`, [key]);
+      const row = await __qd_executePlan(getOne, __qd_registeredPlan("api/admin/system-settings.js:21:0"), [key]);
       const value = row?.value ?? DEFAULT_VALUES[key] ?? null;
       return res.json({ key, value });
     } catch (err) {
@@ -39,11 +39,11 @@ export default async function handler(req, res) {
       if (key === 'dispatch_shortfall_mode' && !['block', 'warn'].includes(value)) {
         return res.status(400).json({ error: 'Invalid value. Must be "block" or "warn".' });
       }
-      await query(`
-        INSERT INTO system_settings (key, value, updated_at)
-        VALUES ($1, $2, NOW())
-        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
-      `, [key, value]);
+      await __qd_executePlan(query, __qd_registeredPlan("api/admin/system-settings.js:42:1"),
+
+
+
+      [key, value]);
       return res.json({ success: true, key, value });
     } catch (err) {
       console.error('[system-settings PUT]', err.message);

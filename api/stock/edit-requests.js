@@ -1,4 +1,4 @@
-import { applyAuthCors } from '../_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, joinPlans as __qd_joinPlans, executePlan as __qd_executePlan } from "../services/queryDescriptors.js";import { applyAuthCors } from '../_lib/auth.js';
 import { getMany, insert, update } from '../db.js';
 
 export default async function handler(req, res) {
@@ -10,14 +10,14 @@ export default async function handler(req, res) {
 
     if (req.method === 'GET') {
       const status = url.searchParams.get('status') || '';
-      const conditions = ['1=1'];
+      const conditions = [__qd_registeredPlan("api/stock/edit-requests.js:13:0")];
       const params = [];
-      if (status) { conditions.push(`status = $${params.length + 1}`); params.push(status); }
+      if (status) {conditions.push(__qd_registeredPlan("api/stock/edit-requests.js:15:1", [params.length + 1]));params.push(status);}
 
-      const requests = await getMany(
-        `SELECT * FROM stock_adjustments WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC LIMIT 200`,
-        params
-      );
+      const requests = await __qd_executePlan(getMany, __qd_registeredPlan("api/stock/edit-requests.js:18:2", [__qd_joinPlans(
+        conditions, "and")]),
+      params);
+
 
       return res.status(200).json({ success: true, requests, total: requests.length });
     }
@@ -38,7 +38,7 @@ export default async function handler(req, res) {
         requested_by: requestedBy,
         status: 'pending',
         created_at: new Date(),
-        updated_at: new Date(),
+        updated_at: new Date()
       });
       return res.status(201).json({ success: true, request: record });
     }

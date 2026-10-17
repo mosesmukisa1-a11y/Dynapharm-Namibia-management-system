@@ -1,22 +1,22 @@
-import { query, getMany, getOne, insert, update, remove, publishRealtimeEvent } from './db.js';
+import { registeredPlan as __qd_registeredPlan, joinPlans as __qd_joinPlans, executePlan as __qd_executePlan } from "./services/queryDescriptors.js";import { query, getMany, getOne, insert, update, remove, publishRealtimeEvent } from './db.js';
 import { applyAuthCors } from './_lib/auth.js';
 
 async function ensureNotificationsTable() {
-  await query(`
-    CREATE TABLE IF NOT EXISTS notifications (
-      id TEXT PRIMARY KEY,
-      recipient_type TEXT NOT NULL DEFAULT 'distributor',
-      recipient_id TEXT NOT NULL,
-      title TEXT NOT NULL,
-      message TEXT NOT NULL,
-      type TEXT DEFAULT 'info',
-      reference_id TEXT,
-      is_read BOOLEAN DEFAULT FALSE,
-      metadata JSONB,
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    )
-  `);
-  await query('CREATE INDEX IF NOT EXISTS idx_notifications_recipient ON notifications (recipient_id, is_read)');
+  await __qd_executePlan(query, __qd_registeredPlan("api/notifications.js:5:0"), []);
+
+
+
+
+
+
+
+
+
+
+
+
+
+  await __qd_executePlan(query, __qd_registeredPlan("api/notifications.js:19:1"), []);
 }
 
 let tableReady = false;
@@ -61,42 +61,42 @@ export default async function handler(req, res) {
         }
       }
 
-      let queryText = 'SELECT * FROM notifications';
+      let queryText = __qd_registeredPlan("api/notifications.js:64:2");
       const conditions = [];
       const params = [];
 
       if (recipientId) {
         params.push(recipientId.toLowerCase().trim());
-        conditions.push(`LOWER(recipient_id) = $${params.length}`);
+        conditions.push(__qd_registeredPlan("api/notifications.js:70:4", [params.length]));
       }
       if (recipientType) {
         params.push(recipientType);
-        conditions.push(`recipient_type = $${params.length}`);
+        conditions.push(__qd_registeredPlan("api/notifications.js:74:5", [params.length]));
       }
       if (unreadOnly) {
-        conditions.push('is_read = FALSE');
+        conditions.push(__qd_registeredPlan("api/notifications.js:77:6"));
       }
       if (id) {
         params.push(id);
-        conditions.push(`id = $${params.length}`);
+        conditions.push(__qd_registeredPlan("api/notifications.js:81:7", [params.length]));
       }
       if (since) {
         params.push(new Date(since).toISOString());
-        conditions.push(`created_at > $${params.length}`);
+        conditions.push(__qd_registeredPlan("api/notifications.js:85:8", [params.length]));
       }
 
       if (conditions.length > 0) {
-        queryText += ' WHERE ' + conditions.join(' AND ');
+        queryText = __qd_joinPlans([queryText, __qd_joinPlans([__qd_registeredPlan("api/notifications.js:89:3"), __qd_joinPlans(conditions, "and")], "empty")], "empty");
       }
-      queryText += ' ORDER BY created_at DESC';
+      queryText = __qd_joinPlans([queryText, __qd_registeredPlan("api/notifications.js:91:9")], "empty");
 
       const limit = searchParams.get('limit');
       if (limit) {
         params.push(parseInt(limit));
-        queryText += ` LIMIT $${params.length}`;
+        queryText = __qd_joinPlans([queryText, __qd_registeredPlan("api/notifications.js:96:10", [params.length])], "empty");
       }
 
-      const notifications = await getMany(queryText, params);
+      const notifications = await __qd_executePlan(getMany, queryText, params);
       return res.json(notifications);
     }
 
@@ -114,14 +114,14 @@ export default async function handler(req, res) {
         if (!isAdmin && body.recipient_id.toLowerCase().trim() !== callerUsername) {
           return res.status(403).json({ error: 'You are not authorised to update these notifications' });
         }
-        await query(
-          'UPDATE notifications SET is_read = TRUE WHERE LOWER(recipient_id) = $1 AND is_read = FALSE',
-          [body.recipient_id.toLowerCase().trim()]
-        );
+        await __qd_executePlan(query, __qd_registeredPlan("api/notifications.js:118:11"),
+
+        [body.recipient_id.toLowerCase().trim()]);
+
         return res.json({ success: true });
       }
       if (body.id && body.recipient_id) {
-        const notif = await getOne('SELECT * FROM notifications WHERE id = $1', [body.id]);
+        const notif = await __qd_executePlan(getOne, __qd_registeredPlan("api/notifications.js:124:12"), [body.id]);
         if (!notif) {
           return res.status(404).json({ error: 'Notification not found' });
         }
@@ -146,7 +146,7 @@ export default async function handler(req, res) {
         message: body.message,
         type: body.type || 'info',
         reference_id: body.reference_id || null,
-        metadata: body.metadata ? (typeof body.metadata === 'string' ? body.metadata : JSON.stringify(body.metadata)) : null
+        metadata: body.metadata ? typeof body.metadata === 'string' ? body.metadata : JSON.stringify(body.metadata) : null
       };
 
       const notification = await insert('notifications', notificationData);

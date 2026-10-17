@@ -1,4 +1,4 @@
-/**
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../services/queryDescriptors.js"; /**
  * Stock Automation Config API
  * GET  /api/stock/automation-config  — fetch config, reorder rules, recent logs
  * POST /api/stock/automation-config  — update config key or save a reorder rule, or trigger a job manually
@@ -12,8 +12,8 @@ import { getMany, query } from '../db.js';
 import {
   runAutoWriteOff,
   runAutoStockRequest,
-  runAutoReceiveDispatched,
-} from '../services/stockAutomation.js';
+  runAutoReceiveDispatched } from
+'../services/stockAutomation.js';
 
 const ALLOWED = new Set(['admin', 'gm', 'stock']);
 
@@ -26,11 +26,11 @@ export default async function handler(req, res) {
   try {
     // ── GET: return current config, rules and recent log ─────────────────────
     if (req.method === 'GET') {
-      const [config, rules, logs] = await Promise.all([
-        getMany('SELECT * FROM stock_automation_config ORDER BY key'),
-        getMany('SELECT * FROM stock_reorder_rules ORDER BY branch_id, product_name'),
-        getMany('SELECT * FROM stock_automation_log ORDER BY created_at DESC LIMIT 150'),
-      ]);
+      const [config, rules, logs] = await Promise.all([__qd_executePlan(
+        getMany, __qd_registeredPlan("api/stock/automation-config.js:30:0"), []), __qd_executePlan(
+        getMany, __qd_registeredPlan("api/stock/automation-config.js:31:1"), []), __qd_executePlan(
+        getMany, __qd_registeredPlan("api/stock/automation-config.js:32:2"), [])]
+      );
       return res.json({ success: true, config, rules, logs });
     }
 
@@ -54,12 +54,12 @@ export default async function handler(req, res) {
 
       // Update a config key
       if (key !== undefined && value !== undefined) {
-        await query(
-          `INSERT INTO stock_automation_config (key, value, updated_at)
-           VALUES ($1, $2, NOW())
-           ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
-          [String(key), String(value)]
-        );
+        await __qd_executePlan(query, __qd_registeredPlan("api/stock/automation-config.js:58:3"),
+
+
+
+        [String(key), String(value)]);
+
         return res.json({ success: true, message: `Config '${key}' updated to '${value}'` });
       }
 
@@ -70,21 +70,21 @@ export default async function handler(req, res) {
           return res.status(400).json({ success: false, error: 'branch_id and product_name are required' });
         }
         const id = rule.id || `RR-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
-        await query(
-          `INSERT INTO stock_reorder_rules
-             (id, branch_id, product_name, min_qty, reorder_qty, preferred_warehouse, active, created_at, updated_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,NOW(),NOW())
-           ON CONFLICT (branch_id, product_name) DO UPDATE
-             SET min_qty             = EXCLUDED.min_qty,
-                 reorder_qty         = EXCLUDED.reorder_qty,
-                 preferred_warehouse = EXCLUDED.preferred_warehouse,
-                 active              = EXCLUDED.active,
-                 updated_at          = NOW()`,
-          [id, branch_id, product_name,
-           Number(min_qty ?? 5), Number(reorder_qty ?? 20),
-           preferred_warehouse || 'windhoek_warehouse',
-           active !== false]
-        );
+        await __qd_executePlan(query, __qd_registeredPlan("api/stock/automation-config.js:74:4"),
+
+
+
+
+
+
+
+
+
+        [id, branch_id, product_name,
+        Number(min_qty ?? 5), Number(reorder_qty ?? 20),
+        preferred_warehouse || 'windhoek_warehouse',
+        active !== false]);
+
         return res.json({ success: true, message: 'Reorder rule saved', id });
       }
 
@@ -95,7 +95,7 @@ export default async function handler(req, res) {
     if (req.method === 'DELETE') {
       const { ruleId } = req.body || {};
       if (!ruleId) return res.status(400).json({ success: false, error: 'ruleId required' });
-      await query('DELETE FROM stock_reorder_rules WHERE id=$1', [ruleId]);
+      await __qd_executePlan(query, __qd_registeredPlan("api/stock/automation-config.js:98:5"), [ruleId]);
       return res.json({ success: true });
     }
 

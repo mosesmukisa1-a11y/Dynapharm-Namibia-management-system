@@ -3,12 +3,12 @@ import {it,expect} from 'vitest';
 import {identifier,insertStatement,findAllStatement,orderByClause} from '../api/services/sqlShape.js';
 it('hostile values cannot change insert or condition SQL shape',()=>{
   const hostile="needle'); DROP TABLE sql_sentinel; --";
-  const good=insertStatement('sql_sentinel',{value:'normal'});
-  const bad=insertStatement('sql_sentinel',{value:hostile});
+  const good=insertStatement('clients',{full_name:'normal'});
+  const bad=insertStatement('clients',{full_name:hostile});
   expect(bad.text).toBe(good.text);expect(bad.params).toEqual([hostile]);
   expect(bad.text).not.toContain(hostile);
-  expect(findAllStatement('sql_sentinel',{value:hostile}).text)
-    .toBe(findAllStatement('sql_sentinel',{value:'normal'}).text);
+  expect(findAllStatement('clients',{full_name:hostile}).text)
+    .toBe(findAllStatement('clients',{full_name:'normal'}).text);
 });
 it('rejects hostile table/column identifiers and does not echo input',()=>{
   for(const value of ['users;DROP TABLE users','x" OR TRUE--','a.b','x NULLS FIRST','x/* */']){

@@ -1,13 +1,13 @@
-import bcrypt from 'bcryptjs';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../services/queryDescriptors.js";import bcrypt from 'bcryptjs';
 import { getOne, query } from '../db.js';
 import {
   applyAuthCors,
   createAuthToken,
   setAuthCookie,
-  sanitizeUser
-} from '../_lib/auth.js';
+  sanitizeUser } from
+'../_lib/auth.js';
 import { normalizeBranchSlug } from '../_lib/branchUtils.js';
-import {comparePassword, sessionVersion, consumeTemporaryLogin} from '../services/credentialSecurity.js';
+import { comparePassword, sessionVersion, consumeTemporaryLogin } from '../services/credentialSecurity.js';
 
 async function autoClockIn(user) {
   const role = (user.role || '').toLowerCase();
@@ -17,10 +17,10 @@ async function autoClockIn(user) {
   const timeStr = now.toTimeString().slice(0, 5);
   const fullName = user.full_name || user.username;
   try {
-    const existing = await getOne(
-      `SELECT id, clock_in FROM hr_records WHERE type='attendance' AND employee_name=$1 AND date=$2 ORDER BY created_at ASC LIMIT 1`,
-      [fullName, dateStr]
-    );
+    const existing = await __qd_executePlan(getOne, __qd_registeredPlan("api/auth/login.js:21:0"),
+
+    [fullName, dateStr]);
+
     if (!existing) {
       const dow = now.getDay();
       if (dow === 0) return;
@@ -28,11 +28,11 @@ async function autoClockIn(user) {
       const mins = h * 60 + m;
       const shiftStart = dow === 6 ? 8 * 60 + 10 : 8 * 60 + 30;
       const subtype = mins > shiftStart ? 'Late' : 'Present';
-      await query(
-        `INSERT INTO hr_records (type, employee_name, employee_id, subtype, notes, date, clock_in, status, created_by, created_at, updated_at)
-         VALUES ('attendance',$1,$2,$3,'Auto-logged via system login',$4,$5,$3,'system',NOW(),NOW())`,
-        [fullName, String(user.id || ''), subtype, dateStr, timeStr]
-      );
+      await __qd_executePlan(query, __qd_registeredPlan("api/auth/login.js:32:1"),
+
+
+      [fullName, String(user.id || ''), subtype, dateStr, timeStr]);
+
     }
   } catch (e) {
     console.warn('[auto-attendance] clock-in failed:', e.message);
@@ -91,11 +91,11 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Username and password are required' });
     }
 
-    const user = await getOne(
-      `SELECT id, username, password_hash, role, full_name, email, phone, branch, branches, additional_roles, is_active, metadata, last_login, must_change_password
-         FROM users WHERE username = $1`,
-      [username]
-    );
+    const user = await __qd_executePlan(getOne, __qd_registeredPlan("api/auth/login.js:95:2"),
+
+
+    [username]);
+
 
     if (!user) {
       return res.status(401).json({ error: 'Invalid username or password' });
@@ -109,8 +109,8 @@ export default async function handler(req, res) {
     if (!passwordMatch) {
       return res.status(401).json({ error: 'Invalid username or password' });
     }
-    if (user.must_change_password && !await consumeTemporaryLogin(user.id, user.password_hash))
-      return res.status(401).json({error:'Temporary sign-in already used. Complete the password change in your existing session or request a new reset.'});
+    if (user.must_change_password && !(await consumeTemporaryLogin(user.id, user.password_hash)))
+    return res.status(401).json({ error: 'Temporary sign-in already used. Complete the password change in your existing session or request a new reset.' });
 
     const BRANCH_REQUIRED_ROLES = new Set(['consultant', 'frontdesk', 'dispenser', 'branch_manager']);
     const normalizedBranch = normalizeBranchSlug(user.branch);
@@ -122,7 +122,7 @@ export default async function handler(req, res) {
     }
 
     if (normalizedBranch && normalizedBranch !== user.branch) {
-      await query('UPDATE users SET branch = $1, updated_at = NOW() WHERE id = $2', [normalizedBranch, user.id]);
+      await __qd_executePlan(query, __qd_registeredPlan("api/auth/login.js:125:3"), [normalizedBranch, user.id]);
       user.branch = normalizedBranch;
     }
 
@@ -133,14 +133,14 @@ export default async function handler(req, res) {
       fullName: user.full_name || user.username,
       role: user.role,
       branch: normalizedBranch || null,
-      branches: user.branches || [],
+      branches: user.branches || []
     };
 
     const token = createAuthToken(payload);
     setAuthCookie(res, token);
 
     const previousLastLogin = user.last_login || null;
-    await query('UPDATE users SET last_login = NOW(), updated_at = NOW() WHERE id = $1', [user.id]);
+    await __qd_executePlan(query, __qd_registeredPlan("api/auth/login.js:143:4"), [user.id]);
 
     autoClockIn(user).catch(() => {});
 

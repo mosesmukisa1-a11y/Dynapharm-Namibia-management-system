@@ -1,6 +1,6 @@
-import { applyAuthCors } from './_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "./services/queryDescriptors.js";import { applyAuthCors } from './_lib/auth.js';
 import { query } from './db.js';
-import {getStartupReadiness} from './services/startupSchema.js';
+import { getStartupReadiness } from './services/startupSchema.js';
 
 function resolveCommitHash() {
   return (
@@ -8,8 +8,8 @@ function resolveCommitHash() {
     process.env.GIT_COMMIT ||
     process.env.COMMIT_SHA ||
     process.env.RAILWAY_GIT_COMMIT_SHA ||
-    null
-  );
+    null);
+
 }
 
 function resolveEnvironment() {
@@ -27,7 +27,7 @@ export default async function handler(req, res) {
     return res.status(405).json({
       status: 'error',
       ok: false,
-      message: `Method ${req.method} not allowed`,
+      message: `Method ${req.method} not allowed`
     });
   }
 
@@ -35,7 +35,7 @@ export default async function handler(req, res) {
   const startup = getStartupReadiness();
   if (startup.startupMode === 'code-only' && startup.compatible !== true) {
     if (req.method === 'HEAD') return res.status(503).end();
-    return res.status(503).json({ok:false, status:'not-ready', startup});
+    return res.status(503).json({ ok: false, status: 'not-ready', startup });
   }
 
   const started = Date.now();
@@ -45,7 +45,7 @@ export default async function handler(req, res) {
 
   try {
     const dbStart = Date.now();
-    await query('SELECT 1');
+    await __qd_executePlan(query, __qd_registeredPlan("api/health.js:48:0"), []);
     dbLatencyMs = Date.now() - dbStart;
     dbConnected = true;
   } catch (error) {
@@ -65,16 +65,16 @@ export default async function handler(req, res) {
     path: req.originalUrl || req.url,
     metrics: {
       responseTimeMs: Date.now() - started,
-      dbLatencyMs,
+      dbLatencyMs
     },
     db: {
       connected: dbConnected,
       latencyMs: dbLatencyMs,
-      error: dbError,
+      error: dbError
     },
     realtimeGateway: process.env.REALTIME_GATEWAY_URL || null,
     nodeVersion: process.version,
-    startup,
+    startup
   };
 
   const statusCode = dbConnected ? 200 : 503;
@@ -85,4 +85,3 @@ export default async function handler(req, res) {
 
   return res.status(statusCode).json(payload);
 }
-

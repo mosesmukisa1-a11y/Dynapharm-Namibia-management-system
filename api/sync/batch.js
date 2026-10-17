@@ -1,15 +1,15 @@
-import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
-import {branchSearchTerms} from '../_lib/branchUtils.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../services/queryDescriptors.js";import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
+import { branchSearchTerms } from '../_lib/branchUtils.js';
 import { query, getOne } from '../db.js';
 
 async function parseJsonBody(req) {
   if (req.body && typeof req.body === 'object') return req.body;
   return new Promise((resolve, reject) => {
     let raw = '';
-    req.on('data', (c) => { raw += c; });
+    req.on('data', (c) => {raw += c;});
     req.on('end', () => {
-      if (!raw) { resolve({}); return; }
-      try { resolve(JSON.parse(raw)); } catch (e) { reject(new Error('Invalid JSON')); }
+      if (!raw) {resolve({});return;}
+      try {resolve(JSON.parse(raw));} catch (e) {reject(new Error('Invalid JSON'));}
     });
     req.on('error', reject);
   });
@@ -44,11 +44,11 @@ export default async function handler(req, res) {
       }
 
       if (type === 'walkin_sale' || url?.includes('/branch/walkin-sales')) {
-        const dup = await getOne('SELECT id,branch_id FROM branch_walkin_sales WHERE offline_id = $1', [offlineId]);
+        const dup = await __qd_executePlan(getOne, __qd_registeredPlan("api/sync/batch.js:47:0"), [offlineId]);
         if (dup) {
-          const scope=getBranchScope(req.user);
-          if(scope.enforced && !scope.branches.some(b=>branchSearchTerms(b).some(t=>branchSearchTerms(dup.branch_id).includes(t)))){
-            results.push({offlineId,success:false,status:403,error:'Branch access denied'});continue;
+          const scope = getBranchScope(req.user);
+          if (scope.enforced && !scope.branches.some((b) => branchSearchTerms(b).some((t) => branchSearchTerms(dup.branch_id).includes(t)))) {
+            results.push({ offlineId, success: false, status: 403, error: 'Branch access denied' });continue;
           }
           results.push({ offlineId, success: true, duplicate: true, recordId: dup.id });
           continue;
@@ -58,10 +58,10 @@ export default async function handler(req, res) {
         const mockRes = buildMockRes();
         await wHandler(mockReq, mockRes);
         const respData = mockRes.getData();
-        results.push({ offlineId, success: mockRes.getStatus()<400 && respData?.success!==false, status:mockRes.getStatus(), error:respData?.error, duplicate: !!respData?.duplicate, recordId: respData?.sale?.id || null, data: respData });
+        results.push({ offlineId, success: mockRes.getStatus() < 400 && respData?.success !== false, status: mockRes.getStatus(), error: respData?.error, duplicate: !!respData?.duplicate, recordId: respData?.sale?.id || null, data: respData });
 
       } else if (type === 'expense' || url?.includes('/branch/expenses')) {
-        const dup = await getOne('SELECT id FROM branch_expenses WHERE offline_id = $1', [offlineId]);
+        const dup = await __qd_executePlan(getOne, __qd_registeredPlan("api/sync/batch.js:64:1"), [offlineId]);
         if (dup) {
           results.push({ offlineId, success: true, duplicate: true, recordId: dup.id });
           continue;
@@ -71,7 +71,7 @@ export default async function handler(req, res) {
         const mockRes = buildMockRes();
         await eHandler(mockReq, mockRes);
         const respData = mockRes.getData();
-        results.push({ offlineId, success: mockRes.getStatus()<400 && respData?.success!==false, status:mockRes.getStatus(), error:respData?.error, duplicate: !!respData?.duplicate, recordId: respData?.expense?.id || null, data: respData });
+        results.push({ offlineId, success: mockRes.getStatus() < 400 && respData?.success !== false, status: mockRes.getStatus(), error: respData?.error, duplicate: !!respData?.duplicate, recordId: respData?.expense?.id || null, data: respData });
 
       } else {
         results.push({ offlineId, success: false, error: `Unknown operation type: ${type}` });
@@ -92,7 +92,7 @@ function buildMockReq(originalReq, method, url, body) {
     headers: { ...originalReq.headers, host: originalReq.headers.host || 'localhost' },
     user: originalReq.user,
     body,
-    on: () => {},
+    on: () => {}
   };
 }
 
@@ -101,13 +101,13 @@ function buildMockRes() {
   let data = null;
   const headers = {};
   return {
-    status(code) { statusCode = code; return this; },
-    json(d) { data = d; return this; },
-    end() { return this; },
-    setHeader(k, v) { headers[k] = v; return this; },
-    getHeader(k) { return headers[k]; },
+    status(code) {statusCode = code;return this;},
+    json(d) {data = d;return this;},
+    end() {return this;},
+    setHeader(k, v) {headers[k] = v;return this;},
+    getHeader(k) {return headers[k];},
     headersSent: false,
-    getData() { return data; },
-    getStatus() { return statusCode; },
+    getData() {return data;},
+    getStatus() {return statusCode;}
   };
 }

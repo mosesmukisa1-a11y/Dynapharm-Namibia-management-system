@@ -19,8 +19,8 @@ describe('controlled register bounded read queries',()=>{
     const result=await readControlledStockRegister(client,{role:'branch_manager',branch:'townshop'},
       {view:'batches',batch_page_size:'100',batch_page:'2'},policy);
     expect(client.query).toHaveBeenCalledTimes(3);
-    expect(client.query.mock.calls[1][0]).toContain('LEFT JOIN stock_batches source');
-    expect(client.query.mock.calls[1][0]).toContain('LIMIT $9 OFFSET $10');
+    expect(String(client.query.mock.calls[1][0])).toContain('LEFT JOIN stock_batches source');
+    expect(String(client.query.mock.calls[1][0])).toContain('LIMIT $9 OFFSET $10');
     expect(client.query.mock.calls[1][1].slice(-2)).toEqual([100,100]);
     expect(client.query.mock.calls[1][1][0]).toBe(true);
     expect(result.batches).toHaveLength(100);

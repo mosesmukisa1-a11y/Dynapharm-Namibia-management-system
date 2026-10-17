@@ -1,5 +1,6 @@
 // Finite application CRUD identifiers, from repository-only owned bootstrap.
 // This is an SQL structure policy, not authority to change a database schema.
+import {types as nativeTypes} from 'node:util';
 const definitions={
   products:'branch bv category cp created_at created_by description dp id images is_active name sku tax_rate unit updated_at',
   product_images:'created_at display_order file_size filename height id image_data image_type image_url is_primary mime_type product_id product_name thumbnail_url updated_at uploaded_at variant_data width',
@@ -32,7 +33,7 @@ export function applicationTable(table){
   return table;
 }
 export function fieldSnapshot(data,fields){
-  if(!data||typeof data!=='object'||Array.isArray(data)||
+  if(!data||typeof data!=='object'||nativeTypes.isProxy(data)||Object.getOwnPropertySymbols(data).length||Array.isArray(data)||
     ![Object.prototype,null].includes(Object.getPrototypeOf(data)))throw Error('Invalid update fields');
   const descriptors=Object.getOwnPropertyDescriptors(data),keys=Object.keys(descriptors);
   if(keys.some(k=>!fields.includes(k)||!Object.hasOwn(descriptors[k],'value')))throw Error('Invalid update fields');

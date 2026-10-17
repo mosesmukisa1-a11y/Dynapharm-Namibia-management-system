@@ -1,4 +1,4 @@
-import { applyAuthCors } from '../_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, joinPlans as __qd_joinPlans, executePlan as __qd_executePlan } from "../services/queryDescriptors.js";import { applyAuthCors } from '../_lib/auth.js';
 import { query, getMany, getOne } from '../db.js';
 import * as XLSX from 'xlsx';
 import multer from 'multer';
@@ -8,54 +8,54 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 
 const FINANCE_ROLES = new Set(['admin', 'gm', 'director', 'finance']);
 
 async function ensureTables() {
-  await query(`
-    CREATE TABLE IF NOT EXISTS distributor_bonuses (
-      id TEXT PRIMARY KEY,
-      period TEXT NOT NULL,
-      distributor_id TEXT,
-      nb_number TEXT NOT NULL,
-      distributor_name TEXT NOT NULL,
-      amount_earned NUMERIC(14,2) NOT NULL DEFAULT 0,
-      amount_paid NUMERIC(14,2) NOT NULL DEFAULT 0,
-      paid_by_branch_id TEXT,
-      payment_date DATE,
-      status TEXT NOT NULL DEFAULT 'pending',
-      uploaded_by TEXT,
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      updated_at TIMESTAMPTZ DEFAULT NOW()
-    )
-  `);
-  await query(`CREATE INDEX IF NOT EXISTS idx_dist_bonuses_nb ON distributor_bonuses (nb_number)`);
-  await query(`CREATE INDEX IF NOT EXISTS idx_dist_bonuses_period ON distributor_bonuses (period)`);
-  await query(`
-    CREATE TABLE IF NOT EXISTS distributor_bonus_payments (
-      id TEXT PRIMARY KEY,
-      bonus_id TEXT NOT NULL REFERENCES distributor_bonuses(id) ON DELETE CASCADE,
-      branch_id TEXT NOT NULL,
-      amount NUMERIC(14,2) NOT NULL,
-      paid_at DATE NOT NULL,
-      recorded_by TEXT,
-      notes TEXT,
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    )
-  `);
-  await query(`CREATE INDEX IF NOT EXISTS idx_dist_bonus_payments_bonus_id ON distributor_bonus_payments (bonus_id)`);
-  await query(`CREATE INDEX IF NOT EXISTS idx_dist_bonus_payments_branch ON distributor_bonus_payments (branch_id)`);
-  await query(`
-    CREATE TABLE IF NOT EXISTS bonus_period_delete_requests (
-      id TEXT PRIMARY KEY,
-      period TEXT NOT NULL,
-      record_count INTEGER NOT NULL DEFAULT 0,
-      total_earned NUMERIC(14,2) NOT NULL DEFAULT 0,
-      reason TEXT,
-      requested_by TEXT NOT NULL,
-      requested_at TIMESTAMPTZ DEFAULT NOW(),
-      status TEXT NOT NULL DEFAULT 'pending_gm',
-      gm_actioned_by TEXT,
-      gm_actioned_at TIMESTAMPTZ,
-      gm_notes TEXT
-    )
-  `);
+  await __qd_executePlan(query, __qd_registeredPlan("api/finance/distributor-bonuses.js:11:0"), []);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  await __qd_executePlan(query, __qd_registeredPlan("api/finance/distributor-bonuses.js:28:1"), []);
+  await __qd_executePlan(query, __qd_registeredPlan("api/finance/distributor-bonuses.js:29:2"), []);
+  await __qd_executePlan(query, __qd_registeredPlan("api/finance/distributor-bonuses.js:30:3"), []);
+
+
+
+
+
+
+
+
+
+
+
+  await __qd_executePlan(query, __qd_registeredPlan("api/finance/distributor-bonuses.js:42:4"), []);
+  await __qd_executePlan(query, __qd_registeredPlan("api/finance/distributor-bonuses.js:43:5"), []);
+  await __qd_executePlan(query, __qd_registeredPlan("api/finance/distributor-bonuses.js:44:6"), []);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 }
 
 function parseExcelFile(buffer) {
@@ -71,11 +71,11 @@ function parseExcelFile(buffer) {
  */
 function parseNamibianAmount(str) {
   if (str == null || str === '') return 0;
-  const s = String(str)
-    .replace(/['"]/g, '')  // strip quotes
-    .trim()
-    .replace(/\s/g, '')    // remove spaces (thousands separator)
-    .replace(',', '.');    // comma → dot for decimal
+  const s = String(str).
+  replace(/['"]/g, '') // strip quotes
+  .trim().
+  replace(/\s/g, '') // remove spaces (thousands separator)
+  .replace(',', '.'); // comma → dot for decimal
   return parseFloat(s) || 0;
 }
 
@@ -86,18 +86,18 @@ function parseNamibianAmount(str) {
  * Handles comma and semicolon delimiters.
  */
 function parseDynapharmCSV(text) {
-  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
 
   // Find the column header row; detect delimiter (pipe, semicolon, comma)
   let headerIdx = -1;
   let delimiter = ',';
   for (let i = 0; i < Math.min(lines.length, 10); i++) {
     const upper = lines[i].toUpperCase();
-    if (upper.includes('DRN') || upper.includes('DZ') || (upper.includes('NB') && upper.includes('NAME')) || upper.includes('NAD')) {
+    if (upper.includes('DRN') || upper.includes('DZ') || upper.includes('NB') && upper.includes('NAME') || upper.includes('NAD')) {
       headerIdx = i;
-      if (upper.includes('|')) delimiter = '|';
-      else if (upper.includes(';')) delimiter = ';';
-      else delimiter = ',';
+      if (upper.includes('|')) delimiter = '|';else
+      if (upper.includes(';')) delimiter = ';';else
+      delimiter = ',';
       break;
     }
   }
@@ -110,24 +110,24 @@ function parseDynapharmCSV(text) {
     let cur = '';
     let inQ = false;
     for (const ch of line) {
-      if (ch === '"') { inQ = !inQ; }
-      else if (ch === delimiter && !inQ) { result.push(cur.trim()); cur = ''; }
-      else { cur += ch; }
+      if (ch === '"') {inQ = !inQ;} else
+      if (ch === delimiter && !inQ) {result.push(cur.trim());cur = '';} else
+      {cur += ch;}
     }
     result.push(cur.trim());
     return result;
   };
 
-  const headers = parseLine(lines[headerIdx]).map(h =>
-    h.replace(/['"]/g, '').toLowerCase().trim()
+  const headers = parseLine(lines[headerIdx]).map((h) =>
+  h.replace(/['"]/g, '').toLowerCase().trim()
   );
 
   const rows = [];
   for (let i = headerIdx + 1; i < lines.length; i++) {
     const vals = parseLine(lines[i]);
-    if (vals.every(v => !v)) continue;
+    if (vals.every((v) => !v)) continue;
     const row = {};
-    headers.forEach((h, idx) => { row[h] = vals[idx] || ''; });
+    headers.forEach((h, idx) => {row[h] = vals[idx] || '';});
     rows.push(row);
   }
   return rows;
@@ -181,37 +181,37 @@ async function handler(req, res) {
       const { period, reason } = req.body || {};
       if (!period) return res.status(400).json({ success: false, error: 'period is required' });
 
-      const existing = await getOne(
-        `SELECT id FROM bonus_period_delete_requests WHERE period = $1 AND status = 'pending_gm'`,
-        [period]
-      );
+      const existing = await __qd_executePlan(getOne, __qd_registeredPlan("api/finance/distributor-bonuses.js:185:7"),
+
+      [period]);
+
       if (existing) {
         return res.status(409).json({ success: false, error: `A deletion request for period ${period} is already pending GM approval.` });
       }
 
-      const agg = await getOne(
-        `SELECT COUNT(*) AS cnt, COALESCE(SUM(amount_earned), 0) AS total FROM distributor_bonuses WHERE period = $1`,
-        [period]
-      );
+      const agg = await __qd_executePlan(getOne, __qd_registeredPlan("api/finance/distributor-bonuses.js:193:8"),
+
+      [period]);
+
       const recordCount = parseInt(agg?.cnt || 0);
       if (recordCount === 0) {
         return res.status(404).json({ success: false, error: `No bonus records found for period ${period}.` });
       }
 
       const id = `bdr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      await query(
-        `INSERT INTO bonus_period_delete_requests (id, period, record_count, total_earned, reason, requested_by, status)
-         VALUES ($1, $2, $3, $4, $5, $6, 'pending_gm')`,
-        [id, period, recordCount, parseFloat(agg.total || 0), reason || null,
-         req.user.fullName || req.user.full_name || req.user.username || req.user.id]
-      );
+      await __qd_executePlan(query, __qd_registeredPlan("api/finance/distributor-bonuses.js:203:9"),
+
+
+      [id, period, recordCount, parseFloat(agg.total || 0), reason || null,
+      req.user.fullName || req.user.full_name || req.user.username || req.user.id]);
+
 
       return res.json({
         success: true,
         message: `Deletion request for period ${period} submitted. Awaiting GM approval.`,
         requestId: id,
         recordCount,
-        totalEarned: parseFloat(agg.total || 0),
+        totalEarned: parseFloat(agg.total || 0)
       });
     }
 
@@ -219,10 +219,10 @@ async function handler(req, res) {
     if (req.method === 'GET' && req.url.includes('/delete-requests')) {
       const url = new URL(req.url, `http://${req.headers.host}`);
       const statusFilter = url.searchParams.get('status') || 'pending_gm';
-      const rows = await getMany(
-        `SELECT * FROM bonus_period_delete_requests WHERE status = $1 ORDER BY requested_at DESC`,
-        [statusFilter]
-      );
+      const rows = await __qd_executePlan(getMany, __qd_registeredPlan("api/finance/distributor-bonuses.js:223:10"),
+
+      [statusFilter]);
+
       return res.json({ success: true, requests: rows });
     }
 
@@ -241,7 +241,7 @@ async function handler(req, res) {
         return res.status(400).json({ success: false, error: "action must be 'approve' or 'reject'" });
       }
 
-      const deleteReq = await getOne(`SELECT * FROM bonus_period_delete_requests WHERE id = $1 FOR UPDATE`, [reqId]);
+      const deleteReq = await __qd_executePlan(getOne, __qd_registeredPlan("api/finance/distributor-bonuses.js:244:11"), [reqId]);
       if (!deleteReq) return res.status(404).json({ success: false, error: 'Delete request not found.' });
       if (deleteReq.status !== 'pending_gm') {
         return res.status(409).json({ success: false, error: `Request is already ${deleteReq.status}.` });
@@ -250,24 +250,24 @@ async function handler(req, res) {
       const gmName = req.user.sub || req.user.id || req.user.username;
       const newStatus = action === 'approve' ? 'approved' : 'rejected';
 
-      await query(
-        `UPDATE bonus_period_delete_requests
-         SET status = $1, gm_actioned_by = $2, gm_actioned_at = NOW(), gm_notes = $3
-         WHERE id = $4`,
-        [newStatus, gmName, gm_notes || null, reqId]
-      );
+      await __qd_executePlan(query, __qd_registeredPlan("api/finance/distributor-bonuses.js:254:12"),
+
+
+
+      [newStatus, gmName, gm_notes || null, reqId]);
+
 
       if (action === 'approve') {
-        await query(`DELETE FROM distributor_bonuses WHERE period = $1`, [deleteReq.period]);
+        await __qd_executePlan(query, __qd_registeredPlan("api/finance/distributor-bonuses.js:261:13"), [deleteReq.period]);
       }
 
       return res.json({
         success: true,
-        message: action === 'approve'
-          ? `Period ${deleteReq.period} bonus records deleted (${deleteReq.record_count} records removed).`
-          : `Deletion request for period ${deleteReq.period} rejected.`,
+        message: action === 'approve' ?
+        `Period ${deleteReq.period} bonus records deleted (${deleteReq.record_count} records removed).` :
+        `Deletion request for period ${deleteReq.period} rejected.`,
         action,
-        period: deleteReq.period,
+        period: deleteReq.period
       });
     }
 
@@ -283,37 +283,37 @@ async function handler(req, res) {
 
       if (nb) {
         params.push(`%${nb}%`);
-        where.push(`(b.nb_number ILIKE $${params.length} OR b.distributor_name ILIKE $${params.length})`);
+        where.push(__qd_registeredPlan("api/finance/distributor-bonuses.js:286:14", [params.length, params.length]));
       }
 
       if (period) {
         params.push(period);
-        where.push(`b.period = $${params.length}`);
+        where.push(__qd_registeredPlan("api/finance/distributor-bonuses.js:291:15", [params.length]));
       }
 
       if (status) {
         params.push(status);
-        where.push(`b.status = $${params.length}`);
+        where.push(__qd_registeredPlan("api/finance/distributor-bonuses.js:296:16", [params.length]));
       }
 
-      const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
-      const bonuses = await getMany(
-        `SELECT b.* FROM distributor_bonuses b ${whereClause} ORDER BY b.period DESC, b.distributor_name`,
-        params
-      );
+      const whereClause = where.length ? __qd_registeredPlan("api/finance/distributor-bonuses.js:299:17", [__qd_joinPlans(where, "and")]) : __qd_registeredPlan("api/finance/distributor-bonuses.js:299:18");
+      const bonuses = await __qd_executePlan(getMany, __qd_registeredPlan("api/finance/distributor-bonuses.js:301:19", [
+      whereClause]),
+      params);
+
 
       if (includePayments && bonuses.length > 0) {
-        const bonusIds = bonuses.map(b => b.id);
-        const payments = await getMany(
-          `SELECT * FROM distributor_bonus_payments WHERE bonus_id = ANY($1) ORDER BY paid_at DESC`,
-          [bonusIds]
-        );
+        const bonusIds = bonuses.map((b) => b.id);
+        const payments = await __qd_executePlan(getMany, __qd_registeredPlan("api/finance/distributor-bonuses.js:308:20"),
+
+        [bonusIds]);
+
         const payMap = {};
         for (const p of payments) {
           if (!payMap[p.bonus_id]) payMap[p.bonus_id] = [];
           payMap[p.bonus_id].push(p);
         }
-        bonuses.forEach(b => { b.payments = payMap[b.id] || []; });
+        bonuses.forEach((b) => {b.payments = payMap[b.id] || [];});
       }
 
       return res.json({ success: true, bonuses, total: bonuses.length });
@@ -368,11 +368,11 @@ async function handleUpload(req, res) {
         }
 
         if (parsed.length > 0) {
-          const nbNumbers = [...new Set(parsed.map(r => r.nb_number))];
-          const existingDistributors = await getMany(
-            `SELECT distributor_code AS nb_number, id FROM distributors WHERE distributor_code = ANY($1)`,
-            [nbNumbers]
-          ).catch(() => []);
+          const nbNumbers = [...new Set(parsed.map((r) => r.nb_number))];
+          const existingDistributors = await __qd_executePlan(getMany, __qd_registeredPlan("api/finance/distributor-bonuses.js:373:21"),
+
+          [nbNumbers]).
+          catch(() => []);
           const distMap = {};
           for (const d of existingDistributors) {
             distMap[d.nb_number?.toUpperCase()] = d.id;

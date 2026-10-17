@@ -1,4 +1,4 @@
-import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../services/queryDescriptors.js";import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
 import { query, getMany, getOne } from '../db.js';
 
 async function parseJsonBody(req) {
@@ -38,11 +38,11 @@ function generateId(prefix = 'EXP') {
 function normalizeExpense(row) {
   if (!row) return null;
   const metadata =
-    row.metadata && typeof row.metadata === 'object'
-      ? row.metadata
-      : typeof row.metadata === 'string'
-      ? JSON.parse(row.metadata)
-      : null;
+  row.metadata && typeof row.metadata === 'object' ?
+  row.metadata :
+  typeof row.metadata === 'string' ?
+  JSON.parse(row.metadata) :
+  null;
   return {
     id: row.id,
     branchId: row.branch_id,
@@ -58,7 +58,7 @@ function normalizeExpense(row) {
     createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
     reviewedBy: row.reviewed_by || '',
     reviewedAt: row.reviewed_at instanceof Date ? row.reviewed_at.toISOString() : row.reviewed_at,
-    metadata,
+    metadata
   };
 }
 
@@ -82,7 +82,7 @@ export default async function handler(req, res) {
     if (req.method === 'GET') {
       const id = searchParams.get('id');
       if (id) {
-        const row = await getOne('SELECT * FROM branch_expenses WHERE id = $1', [id]);
+        const row = await __qd_executePlan(getOne, __qd_registeredPlan("api/branch/expenses.js:85:0"), [id]);
         if (!row) {
           return res.status(404).json({ success: false, error: 'Expense not found' });
         }
@@ -108,45 +108,45 @@ export default async function handler(req, res) {
 
       if (branchScope.enforced) {
         if (status) {
-          rows = await getMany(
-            'SELECT * FROM branch_expenses WHERE branch_id = ANY($1) AND status = $2 ORDER BY date DESC, created_at DESC LIMIT $3',
-            [branchScope.branches, status, queryLimit]
-          );
+          rows = await __qd_executePlan(getMany, __qd_registeredPlan("api/branch/expenses.js:112:1"),
+
+          [branchScope.branches, status, queryLimit]);
+
         } else {
-          rows = await getMany(
-            'SELECT * FROM branch_expenses WHERE branch_id = ANY($1) ORDER BY date DESC, created_at DESC LIMIT $2',
-            [branchScope.branches, queryLimit]
-          );
+          rows = await __qd_executePlan(getMany, __qd_registeredPlan("api/branch/expenses.js:117:2"),
+
+          [branchScope.branches, queryLimit]);
+
         }
       } else if (requestedBranch) {
         if (status) {
-          rows = await getMany(
-            'SELECT * FROM branch_expenses WHERE branch_id = $1 AND status = $2 ORDER BY date DESC, created_at DESC LIMIT $3',
-            [requestedBranch, status, queryLimit]
-          );
+          rows = await __qd_executePlan(getMany, __qd_registeredPlan("api/branch/expenses.js:124:3"),
+
+          [requestedBranch, status, queryLimit]);
+
         } else {
-          rows = await getMany(
-            'SELECT * FROM branch_expenses WHERE branch_id = $1 ORDER BY date DESC, created_at DESC LIMIT $2',
-            [requestedBranch, queryLimit]
-          );
+          rows = await __qd_executePlan(getMany, __qd_registeredPlan("api/branch/expenses.js:129:4"),
+
+          [requestedBranch, queryLimit]);
+
         }
       } else {
         if (status) {
-          rows = await getMany(
-            'SELECT * FROM branch_expenses WHERE status = $1 ORDER BY date DESC, created_at DESC LIMIT $2',
-            [status, queryLimit]
-          );
+          rows = await __qd_executePlan(getMany, __qd_registeredPlan("api/branch/expenses.js:136:5"),
+
+          [status, queryLimit]);
+
         } else {
-          rows = await getMany(
-            'SELECT * FROM branch_expenses ORDER BY date DESC, created_at DESC LIMIT $1',
-            [queryLimit]
-          );
+          rows = await __qd_executePlan(getMany, __qd_registeredPlan("api/branch/expenses.js:141:6"),
+
+          [queryLimit]);
+
         }
       }
 
       return res.status(200).json({
         success: true,
-        expenses: rows.map(normalizeExpense).filter(Boolean),
+        expenses: rows.map(normalizeExpense).filter(Boolean)
       });
     }
 
@@ -161,9 +161,9 @@ export default async function handler(req, res) {
       }
 
       if (body.offline_id) {
-        const dup = await getOne('SELECT id FROM branch_expenses WHERE offline_id = $1', [body.offline_id]);
+        const dup = await __qd_executePlan(getOne, __qd_registeredPlan("api/branch/expenses.js:164:7"), [body.offline_id]);
         if (dup) {
-          const existing = await getOne('SELECT * FROM branch_expenses WHERE id = $1', [dup.id]);
+          const existing = await __qd_executePlan(getOne, __qd_registeredPlan("api/branch/expenses.js:166:8"), [dup.id]);
           return res.status(200).json({ success: true, expense: normalizeExpense(existing), duplicate: true });
         }
       }
@@ -175,35 +175,35 @@ export default async function handler(req, res) {
       }
 
       const expenseId = generateId('EXP');
-      const result = await query(
-        `
-          INSERT INTO branch_expenses
-            (id, branch_id, session_id, date, amount, description, category, payment_method,
-             status, notes, created_by, created_at, metadata, offline_id)
-          VALUES
-            ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), $12, $13)
-          RETURNING *
-        `,
-        [
-          expenseId,
-          branchId,
-          body.sessionId || body.session || null,
-          date,
-          amount,
-          body.description || '',
-          body.category || '',
-          body.paymentMethod || body.method || 'cash',
-          body.status || 'recorded',
-          body.notes || '',
-          body.createdBy || currentUser?.fullName || currentUser?.username || 'system',
-          body.metadata ? JSON.stringify(body.metadata) : null,
-          body.offline_id || null,
-        ]
-      );
+      const result = await __qd_executePlan(query, __qd_registeredPlan("api/branch/expenses.js:179:9"),
+
+
+
+
+
+
+
+
+      [
+      expenseId,
+      branchId,
+      body.sessionId || body.session || null,
+      date,
+      amount,
+      body.description || '',
+      body.category || '',
+      body.paymentMethod || body.method || 'cash',
+      body.status || 'recorded',
+      body.notes || '',
+      body.createdBy || currentUser?.fullName || currentUser?.username || 'system',
+      body.metadata ? JSON.stringify(body.metadata) : null,
+      body.offline_id || null]);
+
+
 
       return res.status(201).json({
         success: true,
-        expense: normalizeExpense(result.rows[0]),
+        expense: normalizeExpense(result.rows[0])
       });
     }
 
@@ -214,7 +214,7 @@ export default async function handler(req, res) {
         return res.status(400).json({ success: false, error: 'id is required' });
       }
 
-      const row = await getOne('SELECT * FROM branch_expenses WHERE id = $1', [id]);
+      const row = await __qd_executePlan(getOne, __qd_registeredPlan("api/branch/expenses.js:217:10"), [id]);
       if (!row) {
         return res.status(404).json({ success: false, error: 'Expense not found' });
       }
@@ -229,49 +229,49 @@ export default async function handler(req, res) {
         return res.status(400).json({ success: false, error: 'Invalid status value' });
       }
 
-      const updatedRow = await query(
-        `
-          UPDATE branch_expenses
-          SET
-            status = COALESCE($1, status),
-            reviewed_by = CASE WHEN $1 IS NULL OR $1 = 'recorded' THEN reviewed_by ELSE $2 END,
-            reviewed_at = CASE WHEN $1 IS NULL OR $1 = 'recorded' THEN reviewed_at ELSE NOW() END,
-            notes = COALESCE($3, notes)
-          WHERE id = $4
-          RETURNING *
-        `,
-        [
-          status,
-          body.reviewedBy || currentUser?.fullName || currentUser?.username || 'system',
-          body.notes || null,
-          id,
-        ]
-      );
+      const updatedRow = await __qd_executePlan(query, __qd_registeredPlan("api/branch/expenses.js:233:11"),
+
+
+
+
+
+
+
+
+
+
+      [
+      status,
+      body.reviewedBy || currentUser?.fullName || currentUser?.username || 'system',
+      body.notes || null,
+      id]);
+
+
 
       if (status === 'approved' || status === 'rejected') {
         const branchId = row.branch_id || '';
-        const amount   = Number(row.amount || 0).toFixed(2);
+        const amount = Number(row.amount || 0).toFixed(2);
         const category = row.category || 'Expense';
-        const notifId  = `NOTIF-EXP-${Date.now()}-${Math.random().toString(36).slice(2,7).toUpperCase()}`;
+        const notifId = `NOTIF-EXP-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
         const isApproved = status === 'approved';
-        await query(
-          `INSERT INTO notifications (id, recipient_type, recipient_id, title, message, type, is_read, created_at)
-           VALUES ($1, 'branch_alert', $2, $3, $4, $5, false, NOW())`,
-          [
-            notifId,
-            branchId,
-            isApproved ? 'Expense Approved' : 'Expense Rejected',
-            isApproved
-              ? `Your ${category} expense of N$${amount} has been approved by Finance.`
-              : `Your ${category} expense of N$${amount} was rejected by Finance.${body.notes ? ' Reason: ' + body.notes : ''}`,
-            isApproved ? 'success' : 'warning',
-          ]
-        ).catch(e => console.error('[expenses] notification insert failed:', e));
+        await __qd_executePlan(query, __qd_registeredPlan("api/branch/expenses.js:258:12"),
+
+
+        [
+        notifId,
+        branchId,
+        isApproved ? 'Expense Approved' : 'Expense Rejected',
+        isApproved ?
+        `Your ${category} expense of N$${amount} has been approved by Finance.` :
+        `Your ${category} expense of N$${amount} was rejected by Finance.${body.notes ? ' Reason: ' + body.notes : ''}`,
+        isApproved ? 'success' : 'warning']).
+
+        catch((e) => console.error('[expenses] notification insert failed:', e));
       }
 
       return res.status(200).json({
         success: true,
-        expense: normalizeExpense(updatedRow.rows[0]),
+        expense: normalizeExpense(updatedRow.rows[0])
       });
     }
 
@@ -281,7 +281,3 @@ export default async function handler(req, res) {
     return res.status(500).json({ success: false, error: 'Internal server error' });
   }
 }
-
-
-
-

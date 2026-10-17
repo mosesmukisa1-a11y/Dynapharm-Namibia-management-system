@@ -1,4 +1,4 @@
-import { applyAuthCors } from './_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, joinPlans as __qd_joinPlans, executePlan as __qd_executePlan } from "./services/queryDescriptors.js";import { applyAuthCors } from './_lib/auth.js';
 import { query, getMany, getOne, insert, update, remove, publishRealtimeEvent } from './db.js';
 
 let distributorsTableChecked = false;
@@ -6,32 +6,32 @@ let distributorsTableChecked = false;
 export async function ensureDistributorsTable() {
   if (distributorsTableChecked) return;
   try {
-    await query(`
-      CREATE TABLE IF NOT EXISTS distributors (
-        id TEXT PRIMARY KEY,
-        distributor_code TEXT UNIQUE,
-        distributor_name TEXT NOT NULL,
-        mobile_no TEXT,
-        email TEXT,
-        commission_rate NUMERIC DEFAULT 0,
-        status TEXT DEFAULT 'active',
-        branch TEXT,
-        location TEXT,
-        entity_type TEXT DEFAULT 'distributor',
-        agreement_data JSONB,
-        metadata JSONB,
-        created_at TIMESTAMPTZ DEFAULT NOW(),
-        updated_at TIMESTAMPTZ DEFAULT NOW()
-      )
-    `);
-    await query(`ALTER TABLE distributors ADD COLUMN IF NOT EXISTS location TEXT`);
-    await query(`ALTER TABLE distributors ADD COLUMN IF NOT EXISTS entity_type TEXT DEFAULT 'distributor'`);
-    await query(`ALTER TABLE distributors ALTER COLUMN entity_type SET DEFAULT 'distributor'`);
-    await query(`UPDATE distributors SET entity_type = 'distributor' WHERE entity_type IS NULL`);
-    await query(`ALTER TABLE distributors ADD COLUMN IF NOT EXISTS metadata JSONB`);
-    await query('CREATE INDEX IF NOT EXISTS idx_distributors_name ON distributors (distributor_name)');
-    await query('CREATE INDEX IF NOT EXISTS idx_distributors_status ON distributors (status)');
-    await query('CREATE INDEX IF NOT EXISTS idx_distributors_entity_type ON distributors (entity_type)');
+    await __qd_executePlan(query, __qd_registeredPlan("api/distributors.js:9:0"), []);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    await __qd_executePlan(query, __qd_registeredPlan("api/distributors.js:27:1"), []);
+    await __qd_executePlan(query, __qd_registeredPlan("api/distributors.js:28:2"), []);
+    await __qd_executePlan(query, __qd_registeredPlan("api/distributors.js:29:3"), []);
+    await __qd_executePlan(query, __qd_registeredPlan("api/distributors.js:30:4"), []);
+    await __qd_executePlan(query, __qd_registeredPlan("api/distributors.js:31:5"), []);
+    await __qd_executePlan(query, __qd_registeredPlan("api/distributors.js:32:6"), []);
+    await __qd_executePlan(query, __qd_registeredPlan("api/distributors.js:33:7"), []);
+    await __qd_executePlan(query, __qd_registeredPlan("api/distributors.js:34:8"), []);
     distributorsTableChecked = true;
   } catch (error) {
     distributorsTableChecked = false;
@@ -94,7 +94,7 @@ function normalizeDistributorRow(row) {
   return {
     ...row,
     agreement_data: normalizeAgreementData(row.agreement_data),
-    metadata: normalizeMetadata(row.metadata),
+    metadata: normalizeMetadata(row.metadata)
   };
 }
 
@@ -124,11 +124,11 @@ async function parseRequestBody(req) {
 
 function resolveCode(payload, fallbackId) {
   const source =
-    payload?.distributor_code ||
-    payload?.distributorCode ||
-    payload?.code ||
-    payload?.id ||
-    fallbackId;
+  payload?.distributor_code ||
+  payload?.distributorCode ||
+  payload?.code ||
+  payload?.id ||
+  fallbackId;
   if (!source) {
     return `DIST-${Date.now().toString(36).toUpperCase()}`;
   }
@@ -170,7 +170,7 @@ export default async function handler(req, res) {
 
     if (method === 'GET') {
       if (id) {
-        const distributor = await getOne('SELECT * FROM distributors WHERE id = $1', [id]);
+        const distributor = await __qd_executePlan(getOne, __qd_registeredPlan("api/distributors.js:173:9"), [id]);
         if (!distributor) {
           return res.status(404).json({ error: 'Distributor not found' });
         }
@@ -178,7 +178,7 @@ export default async function handler(req, res) {
       }
 
       if (code) {
-        const distributor = await getOne('SELECT * FROM distributors WHERE distributor_code = $1', [code]);
+        const distributor = await __qd_executePlan(getOne, __qd_registeredPlan("api/distributors.js:181:10"), [code]);
         if (!distributor) {
           return res.status(404).json({ error: 'Distributor not found' });
         }
@@ -190,60 +190,60 @@ export default async function handler(req, res) {
 
       if (search) {
         params.push(`%${search}%`);
-        whereParts.push(`(distributor_name ILIKE $${params.length} OR distributor_code ILIKE $${params.length} OR mobile_no ILIKE $${params.length})`);
+        whereParts.push(__qd_registeredPlan("api/distributors.js:193:12", [params.length, params.length, params.length]));
         params.push(`${search}%`);
       }
 
       if (status) {
         params.push(status);
-        whereParts.push(`status = $${params.length}`);
+        whereParts.push(__qd_registeredPlan("api/distributors.js:199:13", [params.length]));
       }
 
       if (entityTypeParam) {
         params.push(entityTypeParam.toLowerCase());
-        whereParts.push(`entity_type = $${params.length}`);
+        whereParts.push(__qd_registeredPlan("api/distributors.js:204:14", [params.length]));
       } else {
         // Exclude branch-type records unless explicitly requesting them
-        whereParts.push(`(entity_type IS NULL OR entity_type != 'branch')`);
+        whereParts.push(__qd_registeredPlan("api/distributors.js:207:15"));
       }
 
-      let queryText = 'SELECT * FROM distributors';
+      let queryText = __qd_registeredPlan("api/distributors.js:210:11");
       if (whereParts.length > 0) {
-        queryText += ` WHERE ${whereParts.join(' AND ')}`;
+        queryText = __qd_joinPlans([queryText, __qd_registeredPlan("api/distributors.js:212:16", [__qd_joinPlans(whereParts, "and")])], "empty");
       }
       if (search) {
         const swIdx = params.length; // index of the starts-with param
-        queryText += ` ORDER BY
-          CASE WHEN distributor_code ILIKE $${swIdx} THEN 0
-               WHEN distributor_name ILIKE $${swIdx} THEN 1
-               ELSE 2 END,
-          distributor_name`;
+        queryText = __qd_joinPlans([queryText, __qd_registeredPlan("api/distributors.js:216:17", [
+        swIdx,
+        swIdx])], "empty");
+
+
       } else {
-        queryText += ' ORDER BY distributor_name';
+        queryText = __qd_joinPlans([queryText, __qd_registeredPlan("api/distributors.js:222:18")], "empty");
       }
 
       if (limit) {
         const parsedLimit = Number.parseInt(limit, 10);
         if (!Number.isNaN(parsedLimit) && parsedLimit > 0) {
           params.push(parsedLimit);
-          queryText += ` LIMIT $${params.length}`;
+          queryText = __qd_joinPlans([queryText, __qd_registeredPlan("api/distributors.js:229:19", [params.length])], "empty");
         }
       }
 
-      let distributors = await getMany(queryText, params);
+      let distributors = await __qd_executePlan(getMany, queryText, params);
       distributors = distributors.map(normalizeDistributorRow);
 
       // Always merge active distributor users from users table (not just on search)
       try {
-        const userQuery = search
-          ? `SELECT id, username AS distributor_code, full_name AS distributor_name, email, phone AS mobile_no, branch, 'distributor' AS entity_type, 'active' AS status
-             FROM users WHERE role = 'distributor' AND is_active = true AND (full_name ILIKE $1 OR username ILIKE $1 OR phone ILIKE $1) LIMIT 50`
-          : `SELECT id, username AS distributor_code, full_name AS distributor_name, email, phone AS mobile_no, branch, 'distributor' AS entity_type, 'active' AS status
-             FROM users WHERE role = 'distributor' AND is_active = true ORDER BY full_name LIMIT 500`;
+        const userQuery = search ? __qd_registeredPlan("api/distributors.js:239:20") : __qd_registeredPlan("api/distributors.js:241:21");
+
+
+
+
         const userParams = search ? [`%${search}%`] : [];
-        const userDistributors = await getMany(userQuery, userParams);
-        const existingCodes = new Set(distributors.map(d => (d.distributor_code || '').toUpperCase()));
-        userDistributors.forEach(u => {
+        const userDistributors = await __qd_executePlan(getMany, userQuery, userParams);
+        const existingCodes = new Set(distributors.map((d) => (d.distributor_code || '').toUpperCase()));
+        userDistributors.forEach((u) => {
           if (!existingCodes.has((u.distributor_code || '').toUpperCase())) {
             distributors.push(normalizeDistributorRow(u));
           }
@@ -257,7 +257,7 @@ export default async function handler(req, res) {
         let totalCount = distributors.length;
         if (!search) {
           try {
-            const countResult = await getMany('SELECT COUNT(*)::int AS count FROM distributors', []);
+            const countResult = await __qd_executePlan(getMany, __qd_registeredPlan("api/distributors.js:260:22"), []);
             totalCount = countResult[0]?.count || totalCount;
           } catch (e) {}
         }
@@ -284,7 +284,7 @@ export default async function handler(req, res) {
           location: payload.location || payload.address || payload.city || payload.branch_location || null,
           entity_type: resolveEntityType(payload),
           agreement_data: prepareAgreementDataForInsert(payload.agreement_data || payload.agreementData),
-          metadata: prepareMetadataForInsert(payload.metadata || payload.meta || payload.extra),
+          metadata: prepareMetadataForInsert(payload.metadata || payload.meta || payload.extra)
         };
         cleanupUndefined(record);
         const inserted = await insert('distributors', record);
@@ -331,7 +331,7 @@ export default async function handler(req, res) {
         entity_type: body.entity_type || body.entityType || body.type,
         agreement_data: body.agreement_data || body.agreementData || body.agreement_data_json,
         metadata: body.metadata || body.meta || body.extra,
-        updated_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       };
 
       if (updatePayload.distributor_code) {
@@ -371,17 +371,16 @@ export default async function handler(req, res) {
     console.error('Distributors API error:', error);
     if (error.code === '23505') {
       return res.status(409).json({
-        error: 'Distributor code already exists',
+        error: 'Distributor code already exists'
       });
     }
 
     if (error.code === '23503') {
       return res.status(400).json({
-        error: 'Invalid branch reference',
+        error: 'Invalid branch reference'
       });
     }
 
     return res.status(500).json({ error: 'Internal server error' });
   }
 }
-

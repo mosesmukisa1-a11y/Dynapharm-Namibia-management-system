@@ -18,31 +18,31 @@
  * Also tests the PATCH write_off handler (task #185):
  *   4. Write-off of a partially-sold ghost never pushes closing_qty below zero
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { query } from '../api/db.js';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';import {
+  query } from "./helpers/owned-raw-database.js";
 import { runRefundGhostCleanup } from '../api/services/refundGhostCleanup.js';
 
 // ── Isolated fixture identifiers ───────────────────────────────────────────────
-const BRANCH     = 'test_ghost_cleanup_branch';
-const PRODUCT    = 'TEST_GHOST_CLEANUP_PRODUCT';
-const BATCH_NO   = 'BATCH-GHOST-001';
-const EXPIRY     = '2027-09-30';
+const BRANCH = 'test_ghost_cleanup_branch';
+const PRODUCT = 'TEST_GHOST_CLEANUP_PRODUCT';
+const BATCH_NO = 'BATCH-GHOST-001';
+const EXPIRY = '2027-09-30';
 
 // IDs with the required BIB-RFND- prefix (ghost rows)
-const GHOST_ID   = 'BIB-RFND-TEST-GHOST-001';
-const ORPHAN_ID  = 'BIB-RFND-TEST-ORPHAN-001';
+const GHOST_ID = 'BIB-RFND-TEST-GHOST-001';
+const ORPHAN_ID = 'BIB-RFND-TEST-ORPHAN-001';
 
 // ID for the canonical expiry-dated batch (must NOT start with BIB-RFND-)
-const CANON_ID   = 'BIB-TEST-CANON-GHOST-001';
+const CANON_ID = 'BIB-TEST-CANON-GHOST-001';
 
 // ID for an unrelated row that must never be touched
-const UNRELATED_ID  = 'BIB-TEST-UNRELATED-GHOST-001';
+const UNRELATED_ID = 'BIB-TEST-UNRELATED-GHOST-001';
 const UNRELATED_QTY = 50;
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 async function cleanup() {
   await query(`DELETE FROM branch_inventory_batches WHERE id = ANY($1)`,
-    [[GHOST_ID, ORPHAN_ID, CANON_ID, UNRELATED_ID]]);
+  [[GHOST_ID, ORPHAN_ID, CANON_ID, UNRELATED_ID]]);
 }
 
 async function bib(id) {
@@ -61,7 +61,7 @@ describe('refund-ghost-cleanup migration', () => {
 
   it('merges a ghost row into the matching expiry-dated batch and deletes the ghost', async () => {
     const canonQtyBefore = 8;
-    const ghostQty       = 3;
+    const ghostQty = 3;
 
     // Canonical expiry-dated batch (the real one)
     await query(
@@ -140,7 +140,7 @@ describe('refund-ghost-cleanup migration', () => {
     // Running cleanup again should not re-add qty to the canonical batch
     const canonBefore = await bib(CANON_ID);
     await runRefundGhostCleanup();
-    const canonAfter  = await bib(CANON_ID);
+    const canonAfter = await bib(CANON_ID);
 
     if (canonBefore && canonAfter) {
       expect(Number(canonAfter.quantity)).toBe(Number(canonBefore.quantity));
@@ -165,10 +165,10 @@ describe('refund-ghost-cleanup migration', () => {
  * It does NOT add ghost_qty on top of a canonical that was already updated.
  */
 describe('confirm_no_expiry handler — stock total is not inflated', () => {
-  const CN_BRANCH  = 'test_confirm_noexp_branch';
+  const CN_BRANCH = 'test_confirm_noexp_branch';
   const CN_PRODUCT = 'TEST_CONFIRM_NOEXP_PRODUCT';
-  const CN_BATCH   = 'BATCH-CONFIRM-NOEXP-001';
-  const CN_EXPIRY  = '2028-06-30';
+  const CN_BATCH = 'BATCH-CONFIRM-NOEXP-001';
+  const CN_EXPIRY = '2028-06-30';
 
   // Ghost row alongside a canonical expiry-dated batch
   const CN_GHOST_ID = 'BIB-RFND-CONFIRM-NOEXP-001';
@@ -177,8 +177,8 @@ describe('confirm_no_expiry handler — stock total is not inflated', () => {
   // Ghost row with no matching canonical batch (genuinely no-expiry product)
   const CN_SOLO_GHOST_ID = 'BIB-RFND-CONFIRM-NOEXP-SOLO-001';
 
-  const CN_GHOST_QTY = 4;   // returned units — these are the refund qty
-  const CN_CANON_QTY = 6;   // units still in canonical batch after original sale
+  const CN_GHOST_QTY = 4; // returned units — these are the refund qty
+  const CN_CANON_QTY = 6; // units still in canonical batch after original sale
 
   async function cnCleanup() {
     await query(
@@ -192,18 +192,18 @@ describe('confirm_no_expiry handler — stock total is not inflated', () => {
     let responseBody;
     const res = {
       _status: 200,
-      status(code) { this._status = code; return this; },
-      json(data)   { responseBody = data; return this; },
-      end()        { return this; },
-      setHeader()  { return this; },
-      getHeader()  { return undefined; },
-      get captured() { return responseBody; },
+      status(code) {this._status = code;return this;},
+      json(data) {responseBody = data;return this;},
+      end() {return this;},
+      setHeader() {return this;},
+      getHeader() {return undefined;},
+      get captured() {return responseBody;}
     };
     const req = {
       method: 'PATCH',
       body,
       user: { fullName: 'Test GM', role: 'gm' },
-      headers: {},
+      headers: {}
     };
     return { req, res };
   }
@@ -324,14 +324,14 @@ describe('confirm_no_expiry handler — stock total is not inflated', () => {
  * is always ≥ 0.
  */
 describe('ghost write-off handler — inventory_balance stays non-negative', () => {
-  const WO_BRANCH   = 'test_woff_branch_185';
-  const WO_PRODUCT  = 'TEST_WOFF_PRODUCT_185';
-  const WO_BATCH    = 'BATCH-WOFF-185';
+  const WO_BRANCH = 'test_woff_branch_185';
+  const WO_PRODUCT = 'TEST_WOFF_PRODUCT_185';
+  const WO_BATCH = 'BATCH-WOFF-185';
   const WO_GHOST_ID = 'BIB-RFND-WOFF-TEST-185';
 
   // IDs for the synthetic stock_movements inserted as test fixtures.
-  const SM_INWARD   = 'SM-TEST-INWARD-WOFF-185';
-  const SM_SALE     = 'SM-TEST-SALE-WOFF-185';
+  const SM_INWARD = 'SM-TEST-INWARD-WOFF-185';
+  const SM_SALE = 'SM-TEST-SALE-WOFF-185';
 
   async function woCleanup() {
     await query(
@@ -402,17 +402,17 @@ describe('ghost write-off handler — inventory_balance stays non-negative', () 
     let responseBody;
     const mockRes = {
       _status: 200,
-      status(code) { this._status = code; return this; },
-      json(data)   { responseBody = data; return this; },
-      end()        { return this; },
-      setHeader()  { return this; },
-      getHeader()  { return undefined; },
+      status(code) {this._status = code;return this;},
+      json(data) {responseBody = data;return this;},
+      end() {return this;},
+      setHeader() {return this;},
+      getHeader() {return undefined;}
     };
     const mockReq = {
       method: 'PATCH',
-      body:   { id: WO_GHOST_ID, action: 'write_off' },
-      user:   { fullName: 'Test GM', role: 'gm' },
-      headers: {},
+      body: { id: WO_GHOST_ID, action: 'write_off' },
+      user: { fullName: 'Test GM', role: 'gm' },
+      headers: {}
     };
 
     await handler(mockReq, mockRes);

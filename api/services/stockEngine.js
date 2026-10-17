@@ -1,4 +1,4 @@
-/**
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "./queryDescriptors.js"; /**
  * Centralized Stock Movement Engine
  * Single source of truth: stock_movements
  * Fast-read cache: inventory_balances
@@ -7,47 +7,47 @@ import { query, getOne, withTransaction, publishRealtimeEvent, deferUntilCommit 
 
 // Movement types that INCREASE stock at the destination location
 export const INWARD_TYPES = new Set([
-  'supplier_import_receipt',
-  'warehouse_receipt',
-  'branch_receipt',
-  'transfer_in',
-  'received',
-  'return_in',
-  'refund_return',
-  'dispatch_return',
-  'transit_dispatch',
-  'transit_receipt',
-  'positive_adjustment',
-]);
+'supplier_import_receipt',
+'warehouse_receipt',
+'branch_receipt',
+'transfer_in',
+'received',
+'return_in',
+'refund_return',
+'dispatch_return',
+'transit_dispatch',
+'transit_receipt',
+'positive_adjustment']
+);
 
 // Movement types that DECREASE stock from the source location
 export const OUTWARD_TYPES = new Set([
-  'dispatch_return',
-  'warehouse_dispatch',
-  'branch_receipt',      // warehouse→branch transfer: outflow from the source warehouse
-  'transfer_out',
-  'transit_dispatch',
-  'transit_receipt',
-  // NOTE: 'reserved' is intentionally NOT here. It is a soft-reservation marker posted
-  // at GM approval to signal intent; the physical stock deduction happens via
-  // fefoDeductStockBatches() at that same moment.  Including 'reserved' in OUTWARD_TYPES
-  // would double-deduct inventory_balances (once via 'reserved', again via 'transfer_out'
-  // posted at dispatch). The timing gap between approval and dispatch is acceptable.
-  'walkin_sale',
-  'walkin_member_sale',
-  'walkin_non_member_sale',
-  'walk_in_member_sale',
-  'walk_in_non_member_sale',
-  'campaign_sale',       // member campaign sales (deduct stock like a walk-in sale)
-  'campaign_free_item',  // free items given away during campaigns (stock leaves branch)
-  'online_order_fulfilment',
-  'prescription_dispense',
-  'write_off',
-  'return_out',
-  'negative_adjustment',
-  'sale',
-  'field_use',
-]);
+'dispatch_return',
+'warehouse_dispatch',
+'branch_receipt', // warehouse→branch transfer: outflow from the source warehouse
+'transfer_out',
+'transit_dispatch',
+'transit_receipt',
+// NOTE: 'reserved' is intentionally NOT here. It is a soft-reservation marker posted
+// at GM approval to signal intent; the physical stock deduction happens via
+// fefoDeductStockBatches() at that same moment.  Including 'reserved' in OUTWARD_TYPES
+// would double-deduct inventory_balances (once via 'reserved', again via 'transfer_out'
+// posted at dispatch). The timing gap between approval and dispatch is acceptable.
+'walkin_sale',
+'walkin_member_sale',
+'walkin_non_member_sale',
+'walk_in_member_sale',
+'walk_in_non_member_sale',
+'campaign_sale', // member campaign sales (deduct stock like a walk-in sale)
+'campaign_free_item', // free items given away during campaigns (stock leaves branch)
+'online_order_fulfilment',
+'prescription_dispense',
+'write_off',
+'return_out',
+'negative_adjustment',
+'sale',
+'field_use']
+);
 
 /**
  * Infer the location type from a location string.
@@ -128,31 +128,31 @@ export async function recomputeInventoryBalanceTx(client, key, sharedLayers) {
 
   // Coordinate single-key/embedded READ COMMITTED writers with the location
   // refresh's pre-BEGIN session lock. Same connection acquisition is reentrant.
-  await client.query('SELECT pg_advisory_xact_lock($1)', [
-    locationBalanceLockKey(locationType, locationId),
-  ]);
+  await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/services/stockEngine.js:131:0"), [
+  locationBalanceLockKey(locationType, locationId)]);
+
   // Serialise concurrent recomputes for the same (locationId, productName, batchNo).
   // pg_advisory_xact_lock auto-releases on COMMIT/ROLLBACK — no leak risk.
   const lockKey = advisoryLockKey(locationId, productName, batchNoVal);
-  await client.query(`SELECT pg_advisory_xact_lock($1)`, [lockKey]);
+  await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/services/stockEngine.js:137:1"), [lockKey]);
 
   const expiryVal = expiryDate || null;
 
   // Fetch ALL finalized movements for this product+batch.
   // Include 'approved' as well as 'posted' because write-offs approved by GM
   // land in status='approved' (not 'posted') and must count as outward stock.
-  const result = await client.query(
-    `SELECT movement_type, quantity, source_location, destination_location,
-            source_location_type, destination_location_type,
-            unit_dp, unit_cif, expiry_date, created_at
-     FROM stock_movements
-     WHERE status IN ('posted', 'approved')
-       AND LOWER(TRIM(product_name)) = LOWER(TRIM($1))
-       AND COALESCE(batch_no, '') = $2
-       AND expiry_date IS NOT DISTINCT FROM $3::date
-     ORDER BY created_at ASC`,
-    [productName, batchNoVal,expiryVal]
-  );
+  const result = await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/services/stockEngine.js:145:2"),
+
+
+
+
+
+
+
+
+
+  [productName, batchNoVal, expiryVal]);
+
 
   let inwardQty = 0;
   let outwardQty = 0;
@@ -167,16 +167,16 @@ export async function recomputeInventoryBalanceTx(client, key, sharedLayers) {
     const qty = Number(m.quantity || 0);
 
     const isInbound = dstType === locationType &&
-      String(m.destination_location || '').trim().toLowerCase() === String(locationId).trim().toLowerCase() &&
-      INWARD_TYPES.has(m.movement_type);
+    String(m.destination_location || '').trim().toLowerCase() === String(locationId).trim().toLowerCase() &&
+    INWARD_TYPES.has(m.movement_type);
 
     const isOutbound = srcType === locationType &&
-      String(m.source_location || '').trim().toLowerCase() === String(locationId).trim().toLowerCase() &&
-      OUTWARD_TYPES.has(m.movement_type);
+    String(m.source_location || '').trim().toLowerCase() === String(locationId).trim().toLowerCase() &&
+    OUTWARD_TYPES.has(m.movement_type);
 
     if (isInbound || isOutbound) {
-      if (m.unit_dp!=null) unitDP = Number(m.unit_dp);
-      if (m.unit_cif!=null) unitCIF = Number(m.unit_cif);
+      if (m.unit_dp != null) unitDP = Number(m.unit_dp);
+      if (m.unit_cif != null) unitCIF = Number(m.unit_cif);
     }
 
     if (isInbound) {
@@ -189,32 +189,32 @@ export async function recomputeInventoryBalanceTx(client, key, sharedLayers) {
     }
   }
 
-  const {getStockCostProjection}=await import('./stockCostReporting.js');
-  const {day}=await import('./stockCostLayers.js');
-  const layers=(sharedLayers ?? await getStockCostProjection({locations:[locationId],productName},
-    async(sql,params)=>(await client.query(sql,params)).rows)).filter(r=>
-    r.locationType===locationType
-      && String(r.location).trim().toLowerCase()===String(locationId).trim().toLowerCase()
-      && String(r.productName).toLowerCase().trim()===productName.toLowerCase().trim()
-      && (r.batchNo || '')===batchNoVal && day(r.expiryDate)===day(expiryVal));
-  const sum=field=>layers.reduce((total,r)=>total+Number(r[field] || 0),0);
-  const physicalLocation=['branch','warehouse','country','in_transit'].includes(locationType);
-  const closingQty = physicalLocation ? sum('qty') : inwardQty-outwardQty;
-  const stockValueDP = physicalLocation ? layers.reduce((total,r)=>total+r.qty*(r.unitDPC ?? 0),0) : closingQty*(unitDP || 0);
-  const stockValueCIF = physicalLocation ? layers.reduce((total,r)=>total+r.qty*(r.unitCIF ?? 0),0) : closingQty*(unitCIF || 0);
-  unitDP=sum('missingDPCQuantity') ? null : closingQty ? stockValueDP/closingQty : null;
-  unitCIF=sum('missingCostQuantity') ? null : closingQty ? stockValueCIF/closingQty : null;
+  const { getStockCostProjection } = await import('./stockCostReporting.js');
+  const { day } = await import('./stockCostLayers.js');
+  const layers = (sharedLayers ?? (await getStockCostProjection({ locations: [locationId], productName },
+  async (sql, params) => (await __qd_executePlan(client.query.bind(client), sql, params)).rows))).filter((r) =>
+  r.locationType === locationType &&
+  String(r.location).trim().toLowerCase() === String(locationId).trim().toLowerCase() &&
+  String(r.productName).toLowerCase().trim() === productName.toLowerCase().trim() &&
+  (r.batchNo || '') === batchNoVal && day(r.expiryDate) === day(expiryVal));
+  const sum = (field) => layers.reduce((total, r) => total + Number(r[field] || 0), 0);
+  const physicalLocation = ['branch', 'warehouse', 'country', 'in_transit'].includes(locationType);
+  const closingQty = physicalLocation ? sum('qty') : inwardQty - outwardQty;
+  const stockValueDP = physicalLocation ? layers.reduce((total, r) => total + r.qty * (r.unitDPC ?? 0), 0) : closingQty * (unitDP || 0);
+  const stockValueCIF = physicalLocation ? layers.reduce((total, r) => total + r.qty * (r.unitCIF ?? 0), 0) : closingQty * (unitCIF || 0);
+  unitDP = sum('missingDPCQuantity') ? null : closingQty ? stockValueDP / closingQty : null;
+  unitCIF = sum('missingCostQuantity') ? null : closingQty ? stockValueCIF / closingQty : null;
 
   // Expiry is part of the logical key; unknown expiry is its own identity.
-  const existingRow = await client.query(
-    `SELECT id, location_id FROM inventory_balances
-     WHERE location_type = $1
-       AND LOWER(TRIM(location_id)) = LOWER(TRIM($2))
-       AND LOWER(TRIM(product_name)) = LOWER(TRIM($3))
-       AND COALESCE(batch_no, '') = $4
-       AND expiry_date IS NOT DISTINCT FROM $5::date`,
-    [locationType, locationId, productName, batchNoVal,expiryVal]
-  );
+  const existingRow = await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/services/stockEngine.js:210:3"),
+
+
+
+
+
+
+  [locationType, locationId, productName, batchNoVal, expiryVal]);
+
   const existing = existingRow.rows[0] || null;
   // Keep an existing row's spelling; do not create a second normalized identity
   // or choose an arbitrary historical duplicate.
@@ -226,47 +226,47 @@ export async function recomputeInventoryBalanceTx(client, key, sharedLayers) {
   }
 
   if (existing) {
-    await client.query(
-      `UPDATE inventory_balances
-       SET inward_qty = $1,
-           outward_qty = $2,
-           closing_qty = $3,
-           unit_dp = $4,
-           unit_cif = $5,
-           stock_value_dp = $6,
-           stock_value_cif = $7,
-           last_movement_date = $8,
-           expiry_date = $9::date,
-           updated_at = NOW()
-       WHERE id = $10`,
-      [inwardQty, outwardQty, closingQty,
-       unitDP ?? null, unitCIF ?? null,
-       stockValueDP, stockValueCIF,
-       lastMovementDate, expiryVal, existing.id]
-    );
+    await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/services/stockEngine.js:230:4"),
+
+
+
+
+
+
+
+
+
+
+
+
+    [inwardQty, outwardQty, closingQty,
+    unitDP ?? null, unitCIF ?? null,
+    stockValueDP, stockValueCIF,
+    lastMovementDate, expiryVal, existing.id]);
+
   } else {
     const balId = generateId('BAL');
-    await client.query(
-      `INSERT INTO inventory_balances
-         (id, location_type, location_id, product_name, batch_no, expiry_date,
-          opening_qty, inward_qty, outward_qty, closing_qty,
-          unit_dp, unit_cif, stock_value_dp, stock_value_cif,
-          last_movement_date, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6::date, 0,$7,$8,$9,$10,$11,$12,$13,$14,NOW())`,
-      [balId, locationType, locationId, productName, batchNoVal, expiryVal,
-       inwardQty, outwardQty, closingQty,
-       unitDP ?? null, unitCIF ?? null,
-       stockValueDP, stockValueCIF,
-       lastMovementDate]
-    );
+    await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/services/stockEngine.js:250:5"),
+
+
+
+
+
+
+    [balId, locationType, locationId, productName, batchNoVal, expiryVal,
+    inwardQty, outwardQty, closingQty,
+    unitDP ?? null, unitCIF ?? null,
+    stockValueDP, stockValueCIF,
+    lastMovementDate]);
+
   }
-  await client.query(`UPDATE inventory_balances SET
-    on_hand_qty=$6,available_qty=$7,reserved_qty=$8,quarantined_qty=$9,expired_qty=$10,in_transit_qty=$11,
-    missing_cost_qty=$12,missing_dp_qty=$13,projection_version=1
-    WHERE location_type=$1 AND LOWER(TRIM(location_id))=LOWER(TRIM($2)) AND LOWER(TRIM(product_name))=LOWER(TRIM($3))
-      AND COALESCE(batch_no,'')=$4 AND expiry_date IS NOT DISTINCT FROM $5::date`,
-    [locationType,locationId,productName,batchNoVal,expiryVal,sum('onHandQty'),sum('availableQty'),sum('reservedQty'),
-      sum('quarantinedQty'),sum('expiredQty'),sum('inTransitQty'),sum('missingCostQuantity'),sum('missingDPCQuantity')]);
+  await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/services/stockEngine.js:263:6"),
+
+
+
+
+  [locationType, locationId, productName, batchNoVal, expiryVal, sum('onHandQty'), sum('availableQty'), sum('reservedQty'),
+  sum('quarantinedQty'), sum('expiredQty'), sum('inTransitQty'), sum('missingCostQuantity'), sum('missingDPCQuantity')]);
 }
 
 /**
@@ -295,16 +295,16 @@ export async function recomputeInventoryBalance(key) {
  */
 export async function getAvailableStock(key) {
   const { locationType, locationId, productName, batchNo, expiryDate } = key;
-  const row = await getOne(
-    `SELECT available_qty AS closing_qty FROM inventory_balances
-     WHERE location_type = $1
-       AND location_id = $2
-       AND LOWER(TRIM(product_name)) = LOWER(TRIM($3))
-       AND COALESCE(batch_no, '') = $4
-       AND projection_version=1
-       AND (expiry_date IS NOT DISTINCT FROM $5::date)`,
-    [locationType, locationId, productName, batchNo || '', expiryDate || null]
-  );
+  const row = await __qd_executePlan(getOne, __qd_registeredPlan("api/services/stockEngine.js:299:7"),
+
+
+
+
+
+
+
+  [locationType, locationId, productName, batchNo || '', expiryDate || null]);
+
   return Number(row?.closing_qty ?? 0);
 }
 
@@ -353,18 +353,18 @@ async function _postStockMovementInternal(queryFn, input) {
   const notes = input.notes || null;
   const movementDate = input.movementDate || new Date();
 
-  await queryFn(
-    `INSERT INTO stock_movements
-       (id, product_name, product_id, batch_no, expiry_date, quantity,
-        movement_type, source_location, destination_location,
-        source_location_type, destination_location_type,
-        unit_dp, unit_cif, reference_type, reference_id, notes, created_by,
-        movement_date, status, created_at, updated_at, original_unit_dp, original_unit_cif)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'posted',NOW(),NOW(),$12,$13)`,
-    [id, input.productName, productId, batchNo, expiryDate, Number(input.quantity),
-     input.movementType, srcLoc, dstLoc, srcLocType, dstLocType,
-     unitDP, unitCIF, referenceType, referenceId, notes, createdBy, movementDate]
-  );
+  await __qd_executePlan(queryFn, __qd_registeredPlan("api/services/stockEngine.js:357:8"),
+
+
+
+
+
+
+
+  [id, input.productName, productId, batchNo, expiryDate, Number(input.quantity),
+  input.movementType, srcLoc, dstLoc, srcLocType, dstLocType,
+  unitDP, unitCIF, referenceType, referenceId, notes, createdBy, movementDate]);
+
 
   const recomputeTargets = [];
   if (srcLocType && srcLoc) {
@@ -387,14 +387,14 @@ async function _postStockMovementInternal(queryFn, input) {
     movementType: input.movementType,
     quantity: Number(input.quantity),
     sourceLocation: srcLoc,
-    destinationLocation: dstLoc,
+    destinationLocation: dstLoc
   }).catch(() => {});
 
   return id;
 }
 
 export async function postStockMovement(input) {
-  return _postStockMovementInternal((text, params) => query(text, params), input);
+  return _postStockMovementInternal((text, params) => __qd_executePlan(query, text, params), input);
 }
 
 /**
@@ -425,18 +425,18 @@ export async function postStockMovementTx(client, input) {
   const notes = input.notes || null;
   const movementDate = input.movementDate || new Date();
 
-  await client.query(
-    `INSERT INTO stock_movements
-       (id, product_name, product_id, batch_no, expiry_date, quantity,
-        movement_type, source_location, destination_location,
-        source_location_type, destination_location_type,
-        unit_dp, unit_cif, reference_type, reference_id, notes, created_by,
-        movement_date, status, created_at, updated_at, original_unit_dp, original_unit_cif)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'posted',NOW(),NOW(),$12,$13)`,
-    [id, input.productName, productId, batchNo, expiryDate, Number(input.quantity),
-     input.movementType, srcLoc, dstLoc, srcLocType, dstLocType,
-     unitDP, unitCIF, referenceType, referenceId, notes, createdBy, movementDate]
-  );
+  await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/services/stockEngine.js:429:9"),
+
+
+
+
+
+
+
+  [id, input.productName, productId, batchNo, expiryDate, Number(input.quantity),
+  input.movementType, srcLoc, dstLoc, srcLocType, dstLocType,
+  unitDP, unitCIF, referenceType, referenceId, notes, createdBy, movementDate]);
+
 
   const recomputeTargets = [];
   if (srcLocType && srcLoc) {
@@ -455,16 +455,16 @@ export async function postStockMovementTx(client, input) {
 export async function getOpeningStock(params) {
   const { locationType, locationId, productName, batchNo, startDate } = params;
 
-  const result = await query(
-    `SELECT movement_type, quantity, source_location, destination_location,
-            source_location_type, destination_location_type
-     FROM stock_movements
-     WHERE status = 'posted'
-       AND LOWER(TRIM(product_name)) = LOWER(TRIM($1))
-       AND COALESCE(batch_no, '') = $2
-       AND created_at < $3::timestamp`,
-    [productName, batchNo || '', startDate]
-  );
+  const result = await __qd_executePlan(query, __qd_registeredPlan("api/services/stockEngine.js:459:10"),
+
+
+
+
+
+
+
+  [productName, batchNo || '', startDate]);
+
 
   let inward = 0;
   let outward = 0;
@@ -490,19 +490,19 @@ export async function getOpeningStock(params) {
 export async function getMovementTotals(params) {
   const { locationType, locationId, productName, startDate, endDate } = params;
 
-  const result = await query(
-    `SELECT movement_type, quantity, source_location, destination_location,
-            source_location_type, destination_location_type
-     FROM stock_movements
-     WHERE status = 'posted'
-       AND ($1::text IS NULL OR LOWER(TRIM(product_name)) = LOWER(TRIM($1)))
-       AND created_at >= $2::timestamp
-       AND created_at <= $3::timestamp
-       AND (
-         source_location = $5 OR destination_location = $5
-       )`,
-    [productName || null, startDate, endDate, locationType, locationId]
-  );
+  const result = await __qd_executePlan(query, __qd_registeredPlan("api/services/stockEngine.js:494:11"),
+
+
+
+
+
+
+
+
+
+
+  [productName || null, startDate, endDate, locationType, locationId]);
+
 
   let inwardQty = 0;
   let outwardQty = 0;
@@ -527,15 +527,15 @@ export async function getMovementTotals(params) {
  */
 export async function getClosingStock(params) {
   const { locationType, locationId, productName, batchNo, expiryDate } = params;
-  const row = await getOne(
-    `SELECT closing_qty FROM inventory_balances
-     WHERE location_type = $1
-       AND location_id = $2
-       AND LOWER(TRIM(product_name)) = LOWER(TRIM($3))
-       AND COALESCE(batch_no, '') = $4
-       AND (expiry_date IS NOT DISTINCT FROM $5::date)`,
-    [locationType, locationId, productName, batchNo || '', expiryDate || null]
-  );
+  const row = await __qd_executePlan(getOne, __qd_registeredPlan("api/services/stockEngine.js:531:12"),
+
+
+
+
+
+
+  [locationType, locationId, productName, batchNo || '', expiryDate || null]);
+
   return Number(row?.closing_qty ?? 0);
 }
 
@@ -548,49 +548,49 @@ export async function getClosingStock(params) {
  */
 export async function recomputeLocationBalances(locationType, locationId) {
   if (deferUntilCommit(() => recomputeLocationBalances(locationType, locationId),
-    JSON.stringify(['stock-balances',locationType,locationId]))) return;
-  for(let attempt=0;attempt<3;attempt++){
-    try{return await withTransaction(async client=>{
-      await client.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
-  // Discover ALL product+batch combinations that have EVER had a movement at
-  // this location, regardless of status.  The recomputeInventoryBalance call
-  // below already filters on status IN ('posted','approved'), so products whose
-  // only remaining movements are cancelled/voided will correctly compute to
-  // inward=0 / outward=0 / closing=0 and the stale balance row will be zeroed.
-  // Filtering by status here would skip those products and leave stale balances.
-  const result = await client.query(
-    `SELECT DISTINCT product_name, COALESCE(batch_no,'') as batch_no, expiry_date
-     FROM stock_movements
-     WHERE (
-         (source_location_type = $1 AND source_location = $2)
-         OR (destination_location_type = $1 AND destination_location = $2)
-         OR (source_location_type IS NULL AND source_location = $2)
-         OR (destination_location_type IS NULL AND destination_location = $2)
-       )`,
-    [locationType, locationId]
-  );
+  JSON.stringify(['stock-balances', locationType, locationId]))) return;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {return await withTransaction(async (client) => {
+        await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/services/stockEngine.js:554:13"), []);
+        // Discover ALL product+batch combinations that have EVER had a movement at
+        // this location, regardless of status.  The recomputeInventoryBalance call
+        // below already filters on status IN ('posted','approved'), so products whose
+        // only remaining movements are cancelled/voided will correctly compute to
+        // inward=0 / outward=0 / closing=0 and the stale balance row will be zeroed.
+        // Filtering by status here would skip those products and leave stale balances.
+        const result = await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/services/stockEngine.js:562:14"),
 
-  const {getStockCostProjection}=await import('./stockCostReporting.js');
-  const {day}=await import('./stockCostLayers.js');
-  const projection=(await getStockCostProjection({locations:[locationId]},
-    async(sql,params)=>(await client.query(sql,params)).rows))
-    .filter(row=>row.locationType===locationType
-      && String(row.location).trim().toLowerCase()===String(locationId).trim().toLowerCase());
-  const identity=r=>JSON.stringify([String(r.productName).toLowerCase().trim(),r.batchNo || '',day(r.expiryDate)]);
-  const groups=new Map();
-  for(const row of projection){const id=identity(row);if(!groups.has(id))groups.set(id,[]);groups.get(id).push(row);}
-  // Deterministic lock order prevents opposite product discovery order deadlocks.
-  for (const r of result.rows.sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)))) {
-      await recomputeInventoryBalanceTx(client,{
-        locationType,
-        locationId,
-        productName: r.product_name,
-        batchNo: r.batch_no,
-        expiryDate: r.expiry_date,
-      },groups.get(identity({productName:r.product_name,batchNo:r.batch_no,expiryDate:r.expiry_date})) || []);
-  }
-    }, {advisoryLockBeforeBegin:locationBalanceLockKey(locationType,locationId)});
-    }catch(error){if(!['40001','40P01'].includes(error.code)||attempt===2)throw error;}
+
+
+
+
+
+
+
+        [locationType, locationId]);
+
+
+        const { getStockCostProjection } = await import('./stockCostReporting.js');
+        const { day } = await import('./stockCostLayers.js');
+        const projection = (await getStockCostProjection({ locations: [locationId] },
+        async (sql, params) => (await __qd_executePlan(client.query.bind(client), sql, params)).rows)).
+        filter((row) => row.locationType === locationType &&
+        String(row.location).trim().toLowerCase() === String(locationId).trim().toLowerCase());
+        const identity = (r) => JSON.stringify([String(r.productName).toLowerCase().trim(), r.batchNo || '', day(r.expiryDate)]);
+        const groups = new Map();
+        for (const row of projection) {const id = identity(row);if (!groups.has(id)) groups.set(id, []);groups.get(id).push(row);}
+        // Deterministic lock order prevents opposite product discovery order deadlocks.
+        for (const r of result.rows.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))) {
+          await recomputeInventoryBalanceTx(client, {
+            locationType,
+            locationId,
+            productName: r.product_name,
+            batchNo: r.batch_no,
+            expiryDate: r.expiry_date
+          }, groups.get(identity({ productName: r.product_name, batchNo: r.batch_no, expiryDate: r.expiry_date })) || []);
+        }
+      }, { advisoryLockBeforeBegin: locationBalanceLockKey(locationType, locationId) });
+    } catch (error) {if (!['40001', '40P01'].includes(error.code) || attempt === 2) throw error;}
   }
 }
 
@@ -599,14 +599,14 @@ export async function recomputeLocationBalances(locationType, locationId) {
  * Extracts unique (productName, batchNo, location) combos and recomputes each.
  */
 export async function seedInventoryBalances() {
-  const result = await query(
-    `SELECT product_name, COALESCE(batch_no,'') as batch_no,
-       source_location, source_location_type,
-       destination_location, destination_location_type,
-       expiry_date
-     FROM stock_movements
-     WHERE status = 'posted' AND product_name IS NOT NULL`
-  );
+  const result = await __qd_executePlan(query, __qd_registeredPlan("api/services/stockEngine.js:603:15"), []);
+
+
+
+
+
+
+
 
   const seen = new Map();
   const targets = [];
@@ -623,13 +623,13 @@ export async function seedInventoryBalances() {
           locationId: r.source_location,
           productName: r.product_name,
           batchNo: r.batch_no,
-          expiryDate: r.expiry_date || null,
+          expiryDate: r.expiry_date || null
         });
       } else if (!seen.get(k) && r.expiry_date) {
         seen.set(k, r.expiry_date);
         const target = targets.find(
-          t => t.locationType === srcType && t.locationId === r.source_location &&
-               t.productName === r.product_name && t.batchNo === r.batch_no
+          (t) => t.locationType === srcType && t.locationId === r.source_location &&
+          t.productName === r.product_name && t.batchNo === r.batch_no
         );
         if (target) target.expiryDate = r.expiry_date;
       }
@@ -645,13 +645,13 @@ export async function seedInventoryBalances() {
           locationId: r.destination_location,
           productName: r.product_name,
           batchNo: r.batch_no,
-          expiryDate: r.expiry_date || null,
+          expiryDate: r.expiry_date || null
         });
       } else if (!seen.get(k) && r.expiry_date) {
         seen.set(k, r.expiry_date);
         const target = targets.find(
-          t => t.locationType === dstType && t.locationId === r.destination_location &&
-               t.productName === r.product_name && t.batchNo === r.batch_no
+          (t) => t.locationType === dstType && t.locationId === r.destination_location &&
+          t.productName === r.product_name && t.batchNo === r.batch_no
         );
         if (target) target.expiryDate = r.expiry_date;
       }

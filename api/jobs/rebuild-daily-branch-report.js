@@ -1,4 +1,4 @@
-import { applyAuthCors } from '../_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, joinPlans as __qd_joinPlans, executePlan as __qd_executePlan } from "../services/queryDescriptors.js";import { applyAuthCors } from '../_lib/auth.js';
 import { getMany, query } from '../db.js';
 import { postActivityRecord, generateBatId } from '../_lib/activityCapture.js';
 
@@ -6,8 +6,8 @@ async function parseBody(req) {
   if (req.body && typeof req.body === 'object') return req.body;
   return new Promise((resolve, reject) => {
     let raw = '';
-    req.on('data', c => raw += c);
-    req.on('end', () => { try { resolve(raw ? JSON.parse(raw) : {}); } catch { reject(new Error('Invalid JSON')); } });
+    req.on('data', (c) => raw += c);
+    req.on('end', () => {try {resolve(raw ? JSON.parse(raw) : {});} catch {reject(new Error('Invalid JSON'));}});
     req.on('error', reject);
   });
 }
@@ -37,32 +37,32 @@ export default async function handler(req, res) {
       skipped: 0,
       errors: [],
       orphans_detected: [],
-      dry_run: dryRun,
+      dry_run: dryRun
     };
 
     const alreadyPostedIds = new Set(
-      (await getMany(
-        `SELECT form_reference_id FROM branch_activity_transactions WHERE service_date = $1${branchId ? ' AND branch_id = $2' : ''}`,
-        branchId ? [targetDate, branchId] : [targetDate]
-      )).map(r => r.form_reference_id).filter(Boolean)
+      (await __qd_executePlan(getMany, __qd_registeredPlan("api/jobs/rebuild-daily-branch-report.js:45:0", [
+      branchId ? ' AND branch_id = $2' : '']),
+      branchId ? [targetDate, branchId] : [targetDate])).
+      map((r) => r.form_reference_id).filter(Boolean)
     );
 
-    const salesConds = [`DATE(sale_date) = $1`];
+    const salesConds = [__qd_registeredPlan("api/jobs/rebuild-daily-branch-report.js:50:1")];
     const salesParams = [targetDate];
-    if (branchId) { salesConds.push(`branch_id = $${salesParams.length + 1}`); salesParams.push(branchId); }
-    const walkinSales = await getMany(
-      `SELECT * FROM branch_walkin_sales WHERE ${salesConds.join(' AND ')} ORDER BY sale_date ASC`,
-      salesParams
-    );
+    if (branchId) {salesConds.push(__qd_registeredPlan("api/jobs/rebuild-daily-branch-report.js:52:2", [salesParams.length + 1]));salesParams.push(branchId);}
+    const walkinSales = await __qd_executePlan(getMany, __qd_registeredPlan("api/jobs/rebuild-daily-branch-report.js:54:3", [__qd_joinPlans(
+      salesConds, "and")]),
+    salesParams);
+
 
     for (const row of walkinSales) {
       const refId = row.id;
-      if (alreadyPostedIds.has(refId)) { report.skipped++; continue; }
-      if (dryRun) { report.orphans_detected.push({ type: 'walkin_sale', id: refId, branch: row.branch_id, total: row.total }); continue; }
+      if (alreadyPostedIds.has(refId)) {report.skipped++;continue;}
+      if (dryRun) {report.orphans_detected.push({ type: 'walkin_sale', id: refId, branch: row.branch_id, total: row.total });continue;}
 
-      const items = typeof row.items === 'string' ? JSON.parse(row.items || '[]') : (row.items || []);
+      const items = typeof row.items === 'string' ? JSON.parse(row.items || '[]') : row.items || [];
       const totalQty = items.reduce((s, i) => s + Number(i.quantity || i.qty || 0), 0);
-      const meta = typeof row.metadata === 'string' ? JSON.parse(row.metadata || '{}') : (row.metadata || {});
+      const meta = typeof row.metadata === 'string' ? JSON.parse(row.metadata || '{}') : row.metadata || {};
       const actType = classifySaleType(row);
 
       try {
@@ -92,7 +92,7 @@ export default async function handler(req, res) {
           prescription_status: 'none',
           consultation_status: 'none',
           reporting_status: 'posted',
-          captured_by: row.created_by || 'system_rebuild',
+          captured_by: row.created_by || 'system_rebuild'
         });
         report.posted++;
       } catch (e) {
@@ -100,15 +100,15 @@ export default async function handler(req, res) {
       }
     }
 
-    const movConds = [`DATE(sm.created_at) = $1`, `sm.movement_type = 'prescription_dispense'`];
+    const movConds = [__qd_registeredPlan("api/jobs/rebuild-daily-branch-report.js:103:4"), __qd_registeredPlan("api/jobs/rebuild-daily-branch-report.js:103:5")];
     const movParams = [targetDate];
-    if (branchId) { movConds.push(`sm.source_location = $${movParams.length + 1}`); movParams.push(branchId); }
-    const rxMovements = await getMany(
-      `SELECT sm.*, bim.branch_id FROM stock_movements sm
-       LEFT JOIN branch_inventory_movements bim ON sm.reference_id = bim.reference
-       WHERE ${movConds.join(' AND ')} ORDER BY sm.created_at ASC`,
-      movParams
-    );
+    if (branchId) {movConds.push(__qd_registeredPlan("api/jobs/rebuild-daily-branch-report.js:105:6", [movParams.length + 1]));movParams.push(branchId);}
+    const rxMovements = await __qd_executePlan(getMany, __qd_registeredPlan("api/jobs/rebuild-daily-branch-report.js:107:7", [__qd_joinPlans(
+
+
+      movConds, "and")]),
+    movParams);
+
 
     const rxGrouped = {};
     for (const m of rxMovements) {
@@ -119,8 +119,8 @@ export default async function handler(req, res) {
     }
 
     for (const [refId, rx] of Object.entries(rxGrouped)) {
-      if (alreadyPostedIds.has(refId)) { report.skipped++; continue; }
-      if (dryRun) { report.orphans_detected.push({ type: 'prescription_dispensing', id: refId, branch: rx.branchId, qty: rx.qty }); continue; }
+      if (alreadyPostedIds.has(refId)) {report.skipped++;continue;}
+      if (dryRun) {report.orphans_detected.push({ type: 'prescription_dispensing', id: refId, branch: rx.branchId, qty: rx.qty });continue;}
 
       try {
         await postActivityRecord({
@@ -140,7 +140,7 @@ export default async function handler(req, res) {
           stock_status: 'deducted',
           prescription_status: 'dispensed',
           reporting_status: 'posted',
-          captured_by: 'system_rebuild',
+          captured_by: 'system_rebuild'
         });
         report.posted++;
       } catch (e) {
@@ -151,7 +151,7 @@ export default async function handler(req, res) {
     res.status(200).json({
       success: true,
       message: dryRun ? 'Dry run complete — no records written' : `Rebuild complete: ${report.posted} posted, ${report.skipped} already posted, ${report.errors.length} errors`,
-      report,
+      report
     });
   } catch (err) {
     console.error('rebuild-daily-branch-report error:', err);

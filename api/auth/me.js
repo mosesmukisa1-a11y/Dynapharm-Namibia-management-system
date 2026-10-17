@@ -1,12 +1,12 @@
-import { getOne, query } from '../db.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../services/queryDescriptors.js";import { getOne, query } from '../db.js';
 import {
   applyAuthCors,
   getTokenFromRequest,
   verifyAuthToken,
-  sanitizeUser,
-} from '../_lib/auth.js';
+  sanitizeUser } from
+'../_lib/auth.js';
 import { normalizeBranchSlug } from '../_lib/branchUtils.js';
-import {validSession} from '../services/credentialSecurity.js';
+import { validSession } from '../services/credentialSecurity.js';
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
@@ -27,11 +27,11 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const user = await getOne(
-      `SELECT id, username, role, full_name, email, phone, branch, branches, additional_roles, is_active, metadata, last_login, must_change_password
-         FROM users WHERE id = $1`,
-      [decoded.sub]
-    );
+    const user = await __qd_executePlan(getOne, __qd_registeredPlan("api/auth/me.js:31:0"),
+
+
+    [decoded.sub]);
+
 
     if (!validSession(user, decoded)) {
       return res.status(401).json({ error: 'Not authenticated' });
@@ -39,7 +39,7 @@ export default async function handler(req, res) {
 
     const normalizedBranch = normalizeBranchSlug(user.branch);
     if (normalizedBranch && normalizedBranch !== user.branch) {
-      await query('UPDATE users SET branch = $1, updated_at = NOW() WHERE id = $2', [normalizedBranch, user.id]);
+      await __qd_executePlan(query, __qd_registeredPlan("api/auth/me.js:42:1"), [normalizedBranch, user.id]);
       user.branch = normalizedBranch;
     }
 

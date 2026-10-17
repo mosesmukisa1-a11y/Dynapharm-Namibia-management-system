@@ -1,14 +1,14 @@
-import { applyAuthCors } from './_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, joinPlans as __qd_joinPlans, executePlan as __qd_executePlan } from "./services/queryDescriptors.js";import { applyAuthCors } from './_lib/auth.js';
 import { query, getMany, getOne, withTransaction } from './db.js';
 
 async function parseJsonBody(req) {
   if (req.body && typeof req.body === 'object') return req.body;
   return new Promise((resolve, reject) => {
     let raw = '';
-    req.on('data', c => (raw += c));
+    req.on('data', (c) => raw += c);
     req.on('end', () => {
-      try { resolve(raw ? JSON.parse(raw) : {}); }
-      catch { reject(new Error('Invalid JSON')); }
+      try {resolve(raw ? JSON.parse(raw) : {});}
+      catch {reject(new Error('Invalid JSON'));}
     });
     req.on('error', reject);
   });
@@ -31,18 +31,18 @@ async function handler(req, res) {
     // ── GET /api/campaigns ─────────────────────────────────────────────────────
     if (req.method === 'GET' && (path === '' || path === '/')) {
       // Auto-expire: campaigns whose end_date has passed automatically become 'completed'
-      await query(
-        `UPDATE campaigns SET status = 'completed', updated_at = NOW()
-         WHERE end_date::date < CURRENT_DATE AND status IN ('active', 'upcoming')`
-      ).catch(() => {});
+      await __qd_executePlan(query, __qd_registeredPlan("api/campaigns.js:35:0"), []).
+
+
+      catch(() => {});
       const status = searchParams.get('status');
-      let sql = `SELECT * FROM campaigns ORDER BY created_at DESC`;
+      let sql = __qd_registeredPlan("api/campaigns.js:39:1");
       const params = [];
       if (status) {
-        sql = `SELECT * FROM campaigns WHERE status = $1 ORDER BY created_at DESC`;
+        sql = __qd_registeredPlan("api/campaigns.js:42:2");
         params.push(status);
       }
-      const campaigns = await getMany(sql, params);
+      const campaigns = await __qd_executePlan(getMany, sql, params);
       return res.json({ campaigns });
     }
 
@@ -50,153 +50,153 @@ async function handler(req, res) {
     // NOTE: must appear BEFORE /:id so "analytics" is not treated as an id
     if (req.method === 'GET' && path === '/analytics') {
       const [overview, typeBreakdown, winnerStats, campaignDetails,
-             distributorLeaderboard, branchBvRanking, recentWinners, campaignSales] = await Promise.all([
+      distributorLeaderboard, branchBvRanking, recentWinners, campaignSales] = await Promise.all([
 
-        // 1. Overview counts
-        getOne(`
-          SELECT
-            COUNT(*)                                             AS total,
-            COUNT(*) FILTER (WHERE status = 'active')           AS active,
-            COUNT(*) FILTER (WHERE status = 'upcoming')         AS upcoming,
-            COUNT(*) FILTER (WHERE status = 'completed')        AS completed,
-            COUNT(*) FILTER (WHERE status = 'pending_approval') AS pending_approval,
-            COUNT(*) FILTER (WHERE status = 'rejected')         AS rejected
-          FROM campaigns
-        `),
+      // 1. Overview counts
+      __qd_executePlan(getOne, __qd_registeredPlan("api/campaigns.js:56:3"), []),
 
-        // 2. Type breakdown
-        getMany(`
-          SELECT campaign_type, COUNT(*) AS cnt
-          FROM   campaigns
-          WHERE  status NOT IN ('rejected')
-          GROUP  BY campaign_type
-          ORDER  BY cnt DESC
-        `),
 
-        // 3. Winner summary
-        getOne(`
-          SELECT
-            COUNT(*)                                          AS total,
-            COUNT(*) FILTER (WHERE status = 'pending')       AS pending,
-            COUNT(*) FILTER (WHERE status = 'verified')      AS verified,
-            COUNT(DISTINCT campaign_id)                       AS campaigns_with_winners,
-            COUNT(DISTINCT distributor_code)                  AS unique_winners
-          FROM campaign_winners
-        `),
 
-        // 4. Per-campaign detail with embedded participants and winners
-        getMany(`
-          SELECT
-            c.id, c.name, c.campaign_type, c.status, c.start_date, c.end_date,
-            c.branch, c.conditions, c.prize, c.discount_percentage,
-            COALESCE(pa.participant_count, 0)  AS participant_count,
-            COALESCE(pa.total_bv, 0)           AS total_bv,
-            COALESCE(wa.winner_count, 0)       AS winner_count,
-            COALESCE(pa.participants, '[]')    AS participants,
-            COALESCE(wa.winners, '[]')         AS winners
-          FROM campaigns c
-          LEFT JOIN (
-            SELECT
-              campaign_id,
-              COUNT(*)                         AS participant_count,
-              SUM(current_bv::numeric)         AS total_bv,
-              json_agg(
-                jsonb_build_object(
-                  'id',          id,
-                  'code',        distributor_code,
-                  'name',        distributor_name,
-                  'branch',      branch,
-                  'bv',          current_bv,
-                  'recruits',    current_recruits,
-                  'status',      status,
-                  'enrolled_at', enrolled_at
-                ) ORDER BY current_bv::numeric DESC NULLS LAST
-              ) AS participants
-            FROM campaign_participants
-            GROUP BY campaign_id
-          ) pa ON pa.campaign_id = c.id
-          LEFT JOIN (
-            SELECT
-              campaign_id,
-              COUNT(*)   AS winner_count,
-              json_agg(
-                jsonb_build_object(
-                  'id',               id,
-                  'code',             distributor_code,
-                  'name',             distributor_name,
-                  'branch',           branch,
-                  'prize_tier',       prize_tier,
-                  'prize_description',prize_description,
-                  'prize_rank',       prize_rank,
-                  'status',           status,
-                  'won_at',           won_at
-                ) ORDER BY prize_rank ASC
-              ) AS winners
-            FROM campaign_winners
-            GROUP BY campaign_id
-          ) wa ON wa.campaign_id = c.id
-          ORDER BY c.start_date DESC
-        `),
 
-        // 5. Distributor leaderboard — top by cumulative BV across all campaigns
-        getMany(`
-          SELECT
-            distributor_code,
-            MAX(distributor_name)              AS distributor_name,
-            COUNT(DISTINCT campaign_id)        AS campaigns,
-            SUM(current_bv::numeric)           AS total_bv,
-            SUM(current_recruits)              AS total_recruits,
-            string_agg(DISTINCT branch, ', ') AS branches
-          FROM campaign_participants
-          WHERE distributor_code IS NOT NULL AND distributor_code <> ''
-          GROUP BY distributor_code
-          ORDER BY total_bv DESC NULLS LAST
-          LIMIT 20
-        `),
 
-        // 6. Branch ranking by total BV
-        getMany(`
-          SELECT
-            branch,
-            COUNT(*)                     AS participants,
-            COUNT(DISTINCT campaign_id)  AS campaigns,
-            SUM(current_bv::numeric)     AS total_bv
-          FROM campaign_participants
-          WHERE branch IS NOT NULL AND branch <> ''
-          GROUP BY branch
-          ORDER BY total_bv DESC NULLS LAST
-          LIMIT 10
-        `),
 
-        // 7. Recent winners with campaign info
-        getMany(`
-          SELECT cw.*, c.name AS campaign_name, c.campaign_type
-          FROM   campaign_winners cw
-          JOIN   campaigns c ON c.id = cw.campaign_id
-          ORDER  BY cw.won_at DESC
-          LIMIT  30
-        `),
 
-        // 8. Campaign-tagged stock movements (product-level sales) with discount %
-        getMany(`
-          SELECT
-            sm.product_name,
-            COALESCE(c.discount_percentage, 0)                        AS discount_percentage,
-            SUM(ABS(sm.quantity))                                     AS total_qty,
-            SUM(ABS(sm.quantity) * COALESCE(sm.unit_dp, 0))          AS dp_value
-          FROM stock_movements sm
-          LEFT JOIN branch_walkin_sales bws ON bws.id = sm.reference_id
-          LEFT JOIN campaigns c ON c.id = (bws.data->>'campaign_id')
-          WHERE sm.movement_type = 'campaign_sale'
-          GROUP BY sm.product_name, c.discount_percentage
-          ORDER BY total_qty DESC
-          LIMIT 15
-        `),
-      ]);
+
+
+
+      // 2. Type breakdown
+      __qd_executePlan(getMany, __qd_registeredPlan("api/campaigns.js:68:4"), []),
+
+
+
+
+
+
+
+      // 3. Winner summary
+      __qd_executePlan(getOne, __qd_registeredPlan("api/campaigns.js:77:5"), []),
+
+
+
+
+
+
+
+
+
+      // 4. Per-campaign detail with embedded participants and winners
+      __qd_executePlan(getMany, __qd_registeredPlan("api/campaigns.js:88:6"), []),
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+      // 5. Distributor leaderboard — top by cumulative BV across all campaigns
+      __qd_executePlan(getMany, __qd_registeredPlan("api/campaigns.js:142:7"), []),
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+      // 6. Branch ranking by total BV
+      __qd_executePlan(getMany, __qd_registeredPlan("api/campaigns.js:158:8"), []),
+
+
+
+
+
+
+
+
+
+
+
+
+      // 7. Recent winners with campaign info
+      __qd_executePlan(getMany, __qd_registeredPlan("api/campaigns.js:172:9"), []),
+
+
+
+
+
+
+
+      // 8. Campaign-tagged stock movements (product-level sales) with discount %
+      __qd_executePlan(getMany, __qd_registeredPlan("api/campaigns.js:181:10"), [])]
+
+
+
+
+
+
+
+
+
+
+
+
+
+      );
 
       // Total campaign sales figures
       const salesTotal = campaignSales.reduce(
-        (acc, r) => { acc.total_units += Number(r.total_qty || 0); acc.dp_value += Number(r.dp_value || 0); return acc; },
+        (acc, r) => {acc.total_units += Number(r.total_qty || 0);acc.dp_value += Number(r.dp_value || 0);return acc;},
         { total_units: 0, dp_value: 0 }
       );
 
@@ -209,39 +209,39 @@ async function handler(req, res) {
         branchBvRanking,
         recentWinners,
         campaignSales: salesTotal,
-        campaignProducts: campaignSales,
+        campaignProducts: campaignSales
       });
     }
 
     // ── GET /api/campaigns/:id ─────────────────────────────────────────────────
     if (req.method === 'GET' && path.match(/^\/[^/]+$/)) {
       const id = path.slice(1);
-      const campaign = await getOne(`SELECT * FROM campaigns WHERE id = $1`, [id]);
+      const campaign = await __qd_executePlan(getOne, __qd_registeredPlan("api/campaigns.js:219:11"), [id]);
       if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
-      const participants = await getMany(
-        `SELECT * FROM campaign_participants WHERE campaign_id = $1 ORDER BY enrolled_at DESC`, [id]
-      );
-      const winners = await getMany(
-        `SELECT * FROM campaign_winners WHERE campaign_id = $1 ORDER BY won_at DESC`, [id]
-      );
+      const participants = await __qd_executePlan(getMany, __qd_registeredPlan("api/campaigns.js:222:12"),
+      [id]);
+
+      const winners = await __qd_executePlan(getMany, __qd_registeredPlan("api/campaigns.js:225:13"),
+      [id]);
+
       return res.json({ campaign, participants, winners });
     }
 
     // ── GET /api/campaigns/:id/participants ────────────────────────────────────
     if (req.method === 'GET' && path.match(/^\/[^/]+\/participants$/)) {
       const id = path.split('/')[1];
-      const rows = await getMany(
-        `SELECT * FROM campaign_participants WHERE campaign_id = $1 ORDER BY enrolled_at DESC`, [id]
-      );
+      const rows = await __qd_executePlan(getMany, __qd_registeredPlan("api/campaigns.js:234:14"),
+      [id]);
+
       return res.json({ participants: rows });
     }
 
     // ── GET /api/campaigns/:id/winners ─────────────────────────────────────────
     if (req.method === 'GET' && path.match(/^\/[^/]+\/winners$/)) {
       const id = path.split('/')[1];
-      const rows = await getMany(
-        `SELECT * FROM campaign_winners WHERE campaign_id = $1 ORDER BY prize_rank ASC, won_at DESC`, [id]
-      );
+      const rows = await __qd_executePlan(getMany, __qd_registeredPlan("api/campaigns.js:243:15"),
+      [id]);
+
       return res.json({ winners: rows });
     }
 
@@ -257,7 +257,7 @@ async function handler(req, res) {
         discount_percentage = 0,
         target_branches = [],
         submitted_by = null,
-        stock_assignments = [],
+        stock_assignments = []
       } = body;
 
       if (!name || !start_date || !end_date) {
@@ -285,24 +285,24 @@ async function handler(req, res) {
         status = 'pending_approval';
       }
 
-      const effectiveSubmittedBy = submitted_by || (status === 'pending_approval' ? (req.user?.username || null) : null);
+      const effectiveSubmittedBy = submitted_by || (status === 'pending_approval' ? req.user?.username || null : null);
 
       const conditionsWithAssignments = {
         ...conditions,
-        stock_assignments: Array.isArray(stock_assignments) ? stock_assignments.filter(a => a.product) : [],
+        stock_assignments: Array.isArray(stock_assignments) ? stock_assignments.filter((a) => a.product) : []
       };
 
-      await query(
-        `INSERT INTO campaigns (id, name, description, campaign_type, start_date, end_date, status, branch, scope, conditions, prize, discount_percentage, target_branches, created_by, submitted_by, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW(),NOW())`,
-        [id, name, description, campaign_type, start_date, end_date, status, branch, scope,
-         JSON.stringify(conditionsWithAssignments), JSON.stringify(prize),
-         Number(discount_percentage) || 0,
-         JSON.stringify(Array.isArray(target_branches) ? target_branches : []),
-         req.user?.username || 'system',
-         effectiveSubmittedBy]
-      );
-      const created = await getOne(`SELECT * FROM campaigns WHERE id = $1`, [id]);
+      await __qd_executePlan(query, __qd_registeredPlan("api/campaigns.js:296:16"),
+
+
+      [id, name, description, campaign_type, start_date, end_date, status, branch, scope,
+      JSON.stringify(conditionsWithAssignments), JSON.stringify(prize),
+      Number(discount_percentage) || 0,
+      JSON.stringify(Array.isArray(target_branches) ? target_branches : []),
+      req.user?.username || 'system',
+      effectiveSubmittedBy]);
+
+      const created = await __qd_executePlan(getOne, __qd_registeredPlan("api/campaigns.js:305:17"), [id]);
       return res.status(201).json({ success: true, campaign: created });
     }
 
@@ -322,22 +322,22 @@ async function handler(req, res) {
         return res.status(400).json({ error: 'action must be "approve" or "reject"' });
       }
 
-      const existing = await getOne(`SELECT * FROM campaigns WHERE id = $1 FOR UPDATE`, [id]);
+      const existing = await __qd_executePlan(getOne, __qd_registeredPlan("api/campaigns.js:325:18"), [id]);
       if (!existing) return res.status(404).json({ error: 'Campaign not found' });
 
-      const decision=action==='approve'?'upcoming':'rejected';
-      if(existing.status===decision) return res.json({success:true,campaign:existing});
+      const decision = action === 'approve' ? 'upcoming' : 'rejected';
+      if (existing.status === decision) return res.json({ success: true, campaign: existing });
       if (existing.status !== 'pending_approval') {
         return res.status(409).json({ error: 'Campaign is not pending approval' });
       }
 
       const newStatus = action === 'approve' ? 'upcoming' : 'rejected';
-      await query(
-        `UPDATE campaigns SET status = $1, rejection_note = $2, reviewed_at = NOW(), reviewed_by = $3, updated_at = NOW() WHERE id = $4`,
-        [newStatus, action === 'reject' ? rejection_note : null, req.user?.username || 'gm', id]
-      );
+      await __qd_executePlan(query, __qd_registeredPlan("api/campaigns.js:336:19"),
 
-      const updated = await getOne(`SELECT * FROM campaigns WHERE id = $1`, [id]);
+      [newStatus, action === 'reject' ? rejection_note : null, req.user?.username || 'gm', id]);
+
+
+      const updated = await __qd_executePlan(getOne, __qd_registeredPlan("api/campaigns.js:340:20"), [id]);
       return res.json({ success: true, campaign: updated });
     }
 
@@ -349,7 +349,7 @@ async function handler(req, res) {
       }
       const id = path.slice(1);
       const body = await parseJsonBody(req);
-      const existing = await getOne(`SELECT * FROM campaigns WHERE id = $1`, [id]);
+      const existing = await __qd_executePlan(getOne, __qd_registeredPlan("api/campaigns.js:352:21"), [id]);
       if (!existing) return res.status(404).json({ error: 'Campaign not found' });
 
       const fields = ['name', 'description', 'campaign_type', 'start_date', 'end_date', 'status', 'branch', 'scope', 'discount_percentage'];
@@ -358,15 +358,15 @@ async function handler(req, res) {
       const vals = [];
       let idx = 1;
       for (const f of fields) {
-        if (body[f] !== undefined) { setClauses.push(`${f} = $${idx++}`); vals.push(body[f]); }
+        if (body[f] !== undefined) {setClauses.push(__qd_registeredPlan("api/campaigns.js:361:22", [f, idx++]));vals.push(body[f]);}
       }
       for (const f of jsonFields) {
-        if (body[f] !== undefined) { setClauses.push(`${f} = $${idx++}`); vals.push(JSON.stringify(body[f])); }
+        if (body[f] !== undefined) {setClauses.push(__qd_registeredPlan("api/campaigns.js:364:23", [f, idx++]));vals.push(JSON.stringify(body[f]));}
       }
-      setClauses.push(`updated_at = NOW()`);
+      setClauses.push(__qd_registeredPlan("api/campaigns.js:366:24"));
       vals.push(id);
-      await query(`UPDATE campaigns SET ${setClauses.join(', ')} WHERE id = $${idx}`, vals);
-      const updated = await getOne(`SELECT * FROM campaigns WHERE id = $1`, [id]);
+      await __qd_executePlan(query, __qd_registeredPlan("api/campaigns.js:368:25", [__qd_joinPlans(setClauses, "comma"), idx]), vals);
+      const updated = await __qd_executePlan(getOne, __qd_registeredPlan("api/campaigns.js:369:26"), [id]);
       return res.json({ success: true, campaign: updated });
     }
 
@@ -377,9 +377,9 @@ async function handler(req, res) {
         return res.status(403).json({ error: 'Only GM, admin, or stock users can delete campaigns' });
       }
       const id = path.slice(1);
-      await query(`DELETE FROM campaign_winners WHERE campaign_id = $1`, [id]);
-      await query(`DELETE FROM campaign_participants WHERE campaign_id = $1`, [id]);
-      await query(`DELETE FROM campaigns WHERE id = $1`, [id]);
+      await __qd_executePlan(query, __qd_registeredPlan("api/campaigns.js:380:27"), [id]);
+      await __qd_executePlan(query, __qd_registeredPlan("api/campaigns.js:381:28"), [id]);
+      await __qd_executePlan(query, __qd_registeredPlan("api/campaigns.js:382:29"), [id]);
       return res.json({ success: true });
     }
 
@@ -390,19 +390,19 @@ async function handler(req, res) {
       const { distributor_code, distributor_name, branch } = body;
       if (!distributor_code) return res.status(400).json({ error: 'distributor_code required' });
 
-      const existing = await getOne(
-        `SELECT id FROM campaign_participants WHERE campaign_id=$1 AND distributor_code=$2`,
-        [campaignId, distributor_code]
-      );
+      const existing = await __qd_executePlan(getOne, __qd_registeredPlan("api/campaigns.js:394:30"),
+
+      [campaignId, distributor_code]);
+
       if (existing) return res.status(409).json({ error: 'Already enrolled in this campaign' });
 
       const id = genId('PART');
-      await query(
-        `INSERT INTO campaign_participants (id, campaign_id, distributor_code, distributor_name, branch, enrolled_at, status, current_bv, current_recruits, notes)
-         VALUES ($1,$2,$3,$4,$5,NOW(),'active',0,0,$6)`,
-        [id, campaignId, distributor_code, distributor_name || distributor_code, branch || '', body.notes || '']
-      );
-      const part = await getOne(`SELECT * FROM campaign_participants WHERE id=$1`, [id]);
+      await __qd_executePlan(query, __qd_registeredPlan("api/campaigns.js:401:31"),
+
+
+      [id, campaignId, distributor_code, distributor_name || distributor_code, branch || '', body.notes || '']);
+
+      const part = await __qd_executePlan(getOne, __qd_registeredPlan("api/campaigns.js:405:32"), [id]);
       return res.status(201).json({ success: true, participant: part });
     }
 
@@ -410,7 +410,7 @@ async function handler(req, res) {
     if (req.method === 'DELETE' && path.match(/^\/[^/]+\/participants\/[^/]+$/)) {
       const parts = path.split('/');
       const pid = parts[3];
-      await query(`DELETE FROM campaign_participants WHERE id=$1`, [pid]);
+      await __qd_executePlan(query, __qd_registeredPlan("api/campaigns.js:413:33"), [pid]);
       return res.json({ success: true });
     }
 
@@ -424,30 +424,30 @@ async function handler(req, res) {
       const vals = [];
       let idx = 1;
       for (const f of allowed) {
-        if (body[f] !== undefined) { setClauses.push(`${f} = $${idx++}`); vals.push(body[f]); }
+        if (body[f] !== undefined) {setClauses.push(__qd_registeredPlan("api/campaigns.js:427:34", [f, idx++]));vals.push(body[f]);}
       }
       if (!setClauses.length) return res.status(400).json({ error: 'Nothing to update' });
       vals.push(pid);
-      await query(`UPDATE campaign_participants SET ${setClauses.join(', ')} WHERE id=$${idx}`, vals);
-      const updated = await getOne(`SELECT * FROM campaign_participants WHERE id=$1`, [pid]);
+      await __qd_executePlan(query, __qd_registeredPlan("api/campaigns.js:431:35", [__qd_joinPlans(setClauses, "comma"), idx]), vals);
+      const updated = await __qd_executePlan(getOne, __qd_registeredPlan("api/campaigns.js:432:36"), [pid]);
       return res.json({ success: true, participant: updated });
     }
 
     // ── POST /api/campaigns/:id/generate-winners ───────────────────────────────
     if (req.method === 'POST' && path.match(/^\/[^/]+\/generate-winners$/)) {
       const campaignId = path.split('/')[1];
-      const campaign = await getOne(`SELECT * FROM campaigns WHERE id=$1`, [campaignId]);
+      const campaign = await __qd_executePlan(getOne, __qd_registeredPlan("api/campaigns.js:439:37"), [campaignId]);
       if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
 
-      const conditions = typeof campaign.conditions === 'string'
-        ? JSON.parse(campaign.conditions || '{}')
-        : (campaign.conditions || {});
-      const prize = typeof campaign.prize === 'string'
-        ? JSON.parse(campaign.prize || '{}')
-        : (campaign.prize || {});
-      const participants = await getMany(
-        `SELECT * FROM campaign_participants WHERE campaign_id=$1 AND status='active'`, [campaignId]
-      );
+      const conditions = typeof campaign.conditions === 'string' ?
+      JSON.parse(campaign.conditions || '{}') :
+      campaign.conditions || {};
+      const prize = typeof campaign.prize === 'string' ?
+      JSON.parse(campaign.prize || '{}') :
+      campaign.prize || {};
+      const participants = await __qd_executePlan(getMany, __qd_registeredPlan("api/campaigns.js:449:38"),
+      [campaignId]);
+
 
       const winners = [];
 
@@ -458,7 +458,7 @@ async function handler(req, res) {
           const bv = Number(p.current_bv || 0);
           let matchedTier = null;
           for (const tier of tiers.sort((a, b) => Number(b.bv_required) - Number(a.bv_required))) {
-            if (bv >= Number(tier.bv_required)) { matchedTier = tier; break; }
+            if (bv >= Number(tier.bv_required)) {matchedTier = tier;break;}
           }
           if (matchedTier) {
             winners.push({ participant: p, prize_tier: matchedTier.label, prize_description: matchedTier.prize, rank: 1 });
@@ -505,23 +505,23 @@ async function handler(req, res) {
 
       // Persist winners
       await withTransaction(async (client) => {
-        await client.query(`DELETE FROM campaign_winners WHERE campaign_id=$1`, [campaignId]);
+        await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/campaigns.js:508:39"), [campaignId]);
         for (const w of winners) {
           const wid = genId('WIN');
-          await client.query(
-            `INSERT INTO campaign_winners (id, campaign_id, distributor_code, distributor_name, branch, prize_tier, prize_description, prize_rank, won_at, status, verified_by, notes)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW(),'pending',$9,$10)`,
-            [wid, campaignId, w.participant.distributor_code, w.participant.distributor_name,
-             w.participant.branch, w.prize_tier, w.prize_description, w.rank,
-             req.user?.username || 'system', '']
-          );
+          await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/campaigns.js:512:40"),
+
+
+          [wid, campaignId, w.participant.distributor_code, w.participant.distributor_name,
+          w.participant.branch, w.prize_tier, w.prize_description, w.rank,
+          req.user?.username || 'system', '']);
+
         }
-        await client.query(`UPDATE campaigns SET status='completed', updated_at=NOW() WHERE id=$1`, [campaignId]);
+        await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/campaigns.js:519:41"), [campaignId]);
       });
 
-      const finalWinners = await getMany(
-        `SELECT * FROM campaign_winners WHERE campaign_id=$1 ORDER BY prize_rank ASC`, [campaignId]
-      );
+      const finalWinners = await __qd_executePlan(getMany, __qd_registeredPlan("api/campaigns.js:523:42"),
+      [campaignId]);
+
       return res.json({ success: true, winners_generated: finalWinners.length, winners: finalWinners });
     }
 
@@ -535,12 +535,12 @@ async function handler(req, res) {
       const vals = [];
       let idx = 1;
       for (const f of allowed) {
-        if (body[f] !== undefined) { setClauses.push(`${f} = $${idx++}`); vals.push(body[f]); }
+        if (body[f] !== undefined) {setClauses.push(__qd_registeredPlan("api/campaigns.js:538:43", [f, idx++]));vals.push(body[f]);}
       }
       if (!setClauses.length) return res.status(400).json({ error: 'Nothing to update' });
       vals.push(wid);
-      await query(`UPDATE campaign_winners SET ${setClauses.join(', ')} WHERE id=$${idx}`, vals);
-      const updated = await getOne(`SELECT * FROM campaign_winners WHERE id=$1`, [wid]);
+      await __qd_executePlan(query, __qd_registeredPlan("api/campaigns.js:542:44", [__qd_joinPlans(setClauses, "comma"), idx]), vals);
+      const updated = await __qd_executePlan(getOne, __qd_registeredPlan("api/campaigns.js:543:45"), [wid]);
       return res.json({ success: true, winner: updated });
     }
 

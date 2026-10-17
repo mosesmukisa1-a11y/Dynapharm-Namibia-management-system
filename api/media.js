@@ -1,4 +1,4 @@
-import { applyAuthCors } from './_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, joinPlans as __qd_joinPlans, executePlan as __qd_executePlan } from "./services/queryDescriptors.js";import { applyAuthCors } from './_lib/auth.js';
 import { getMany } from './db.js';
 
 export default async function handler(req, res) {
@@ -11,14 +11,14 @@ export default async function handler(req, res) {
   if (req.method === 'GET') {
     try {
       const { upload_type } = req.query || {};
-      let query = 'SELECT id, upload_type, entity_id, entity_name, filename, file_url, file_size, mime_type, uploaded_by, uploaded_at, description, category, media_type FROM file_uploads';
+      let query = __qd_registeredPlan("api/media.js:14:0");
       const params = [];
       if (upload_type) {
-        query += ' WHERE upload_type = $1';
+        query = __qd_joinPlans([query, __qd_registeredPlan("api/media.js:17:1")], "empty");
         params.push(upload_type);
       }
-      query += ' ORDER BY uploaded_at DESC LIMIT 100';
-      const rows = await getMany(query, params);
+      query = __qd_joinPlans([query, __qd_registeredPlan("api/media.js:20:2")], "empty");
+      const rows = await __qd_executePlan(getMany, query, params);
       return res.json(rows);
     } catch (error) {
       console.error('Media API error:', error);

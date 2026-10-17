@@ -1,4 +1,4 @@
-/**
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../services/queryDescriptors.js"; /**
  * GET /api/stock/overview
  * Compact summary used by the GM Portal overview panel.
  *
@@ -19,47 +19,47 @@ export default async function handler(req, res) {
 
   try {
     const [batches, branchBatches, branchNames, pendingRow, inTransitRow] = await Promise.all([
-      // Live warehouse + country stock quantities
-      getMany(
-        `SELECT location, description, remaining_quantity, cif_unit_cost, dpc_unit_value, unit_price
-         FROM stock_batches
-         WHERE remaining_quantity > 0
-           AND COALESCE(status, '') != 'expired'
-         ORDER BY location, description`
-      ),
-      // Authoritative branch on-hand stock
-      getMany(
-        `SELECT branch_id, product_name,
-                SUM(quantity) AS qty,
-                COUNT(DISTINCT product_name) AS product_count
-         FROM branch_inventory_batches
-         WHERE quantity > 0
-         GROUP BY branch_id, product_name
-         ORDER BY branch_id, product_name`
-      ),
-      getMany(`SELECT id, name FROM branches WHERE status = 'active'`),
-      // Direct COUNT queries — no LIMIT so all transfers are counted correctly
-      getOne(
-        `SELECT COUNT(*) AS cnt FROM stock_transfers
-         WHERE status IN ('pending','submitted','pending_approval','requested')`
-      ),
-      getOne(
-        `SELECT COUNT(*) AS cnt FROM stock_transfers
-         WHERE status IN ('in_transit','dispatched')`
-      ),
-    ]);
+    // Live warehouse + country stock quantities
+    __qd_executePlan(getMany, __qd_registeredPlan("api/stock/overview.js:24:0"), []),
 
-    const branchNameMap = Object.fromEntries(branchNames.map(b => [b.id, b.name]));
-    const resolveName = (id) => branchNameMap[id] || (id || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+
+
+
+
+    // Authoritative branch on-hand stock
+    __qd_executePlan(getMany, __qd_registeredPlan("api/stock/overview.js:32:1"), []), __qd_executePlan(
+
+
+
+
+
+
+
+
+      getMany, __qd_registeredPlan("api/stock/overview.js:40:2"), []),
+    // Direct COUNT queries — no LIMIT so all transfers are counted correctly
+    __qd_executePlan(getOne, __qd_registeredPlan("api/stock/overview.js:43:3"), []), __qd_executePlan(
+
+
+
+      getOne, __qd_registeredPlan("api/stock/overview.js:47:4"), [])]
+
+
+
+    );
+
+    const branchNameMap = Object.fromEntries(branchNames.map((b) => [b.id, b.name]));
+    const resolveName = (id) => branchNameMap[id] || (id || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
     const sumRq = (arr) => arr.reduce((s, b) => s + Number(b.remaining_quantity || 0), 0);
 
-    const countryBatches  = batches.filter(b => b.location === 'country_stock');
-    const windhoekBatches = batches.filter(b => b.location === 'windhoek_warehouse');
-    const ondangwaBatches = batches.filter(b => b.location === 'ondangwa_warehouse');
+    const countryBatches = batches.filter((b) => b.location === 'country_stock');
+    const windhoekBatches = batches.filter((b) => b.location === 'windhoek_warehouse');
+    const ondangwaBatches = batches.filter((b) => b.location === 'ondangwa_warehouse');
 
     // country_stock is staging/holding — excluded from all operational totals
-    const activeBatches = batches.filter(b => b.location !== 'country_stock');
+    const activeBatches = batches.filter((b) => b.location !== 'country_stock');
 
     const warehouseQty = activeBatches.reduce((s, b) => s + Number(b.remaining_quantity || 0), 0);
     const warehouseCIF = activeBatches.reduce((s, b) => s + Number(b.remaining_quantity || 0) * Number(b.cif_unit_cost || b.unit_price || 0), 0);
@@ -69,10 +69,10 @@ export default async function handler(req, res) {
     const branchQty = branchBatches.reduce((s, b) => s + Number(b.qty || 0), 0);
 
     const totalStockUnits = warehouseQty + branchQty;
-    const stockValueCIF   = warehouseCIF;
-    const stockValueDPC   = warehouseDPC;   // branch DPC omitted (no price in branch_inventory_batches without JOIN)
+    const stockValueCIF = warehouseCIF;
+    const stockValueDPC = warehouseDPC; // branch DPC omitted (no price in branch_inventory_batches without JOIN)
 
-    const pendingCount   = Number(pendingRow?.cnt   || 0);
+    const pendingCount = Number(pendingRow?.cnt || 0);
     const inTransitCount = Number(inTransitRow?.cnt || 0);
 
     // Build per-branch summary grouped by branch_id
@@ -80,40 +80,40 @@ export default async function handler(req, res) {
     for (const b of branchBatches) {
       const bid = b.branch_id;
       if (!branchGroups[bid]) branchGroups[bid] = { branchId: bid, closingQty: 0, productCount: 0 };
-      branchGroups[bid].closingQty    += Number(b.qty || 0);
-      branchGroups[bid].productCount  += 1;          // 1 product row per branch_id+product_name group
+      branchGroups[bid].closingQty += Number(b.qty || 0);
+      branchGroups[bid].productCount += 1; // 1 product row per branch_id+product_name group
     }
 
-    const branchStockCards = Object.values(branchGroups).map(b => ({
-      branchId:     b.branchId,
-      branchName:   resolveName(b.branchId),
-      closingQty:   b.closingQty,
+    const branchStockCards = Object.values(branchGroups).map((b) => ({
+      branchId: b.branchId,
+      branchName: resolveName(b.branchId),
+      closingQty: b.closingQty,
       productCount: b.productCount,
-      stockValueDPC: 0,   // price lookup would require a JOIN; omit to keep this endpoint fast
+      stockValueDPC: 0 // price lookup would require a JOIN; omit to keep this endpoint fast
     }));
 
     res.status(200).json({
       success: true,
       topCards: {
         totalStockUnits,
-        stockValueCIF:  parseFloat(warehouseCIF.toFixed(2)),
-        stockValueDPC:  parseFloat(stockValueDPC.toFixed(2)),
+        stockValueCIF: parseFloat(warehouseCIF.toFixed(2)),
+        stockValueDPC: parseFloat(stockValueDPC.toFixed(2)),
         pendingCount,
-        inTransitCount,
+        inTransitCount
       },
       locationCards: {
-        countryStockQty:     sumRq(countryBatches),
+        countryStockQty: sumRq(countryBatches),
         countryStockBatches: countryBatches.length,
-        windhoekQty:         sumRq(windhoekBatches),
-        windhoekBatches:     windhoekBatches.length,
-        ondangwaQty:         sumRq(ondangwaBatches),
-        ondangwaBatches:     ondangwaBatches.length,
+        windhoekQty: sumRq(windhoekBatches),
+        windhoekBatches: windhoekBatches.length,
+        ondangwaQty: sumRq(ondangwaBatches),
+        ondangwaBatches: ondangwaBatches.length
       },
       branchStockCards,
       allBranches: {
-        closingQty:    branchQty,
-        stockValueDPC: 0,
-      },
+        closingQty: branchQty,
+        stockValueDPC: 0
+      }
     });
   } catch (err) {
     console.error('Stock overview error:', err);

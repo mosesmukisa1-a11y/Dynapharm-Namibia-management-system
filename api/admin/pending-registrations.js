@@ -1,4 +1,4 @@
-import { getMany } from '../db.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../services/queryDescriptors.js";import { getMany } from '../db.js';
 import { applyAuthCors } from '../_lib/auth.js';
 
 export default async function handler(req, res) {
@@ -17,13 +17,13 @@ export default async function handler(req, res) {
       return res.status(403).json({ error: 'Admin access required' });
     }
 
-    const rows = await getMany(
-      `SELECT id, username, full_name, role, email, phone, branch, metadata, created_at
-       FROM users
-       WHERE is_active = FALSE
-       ORDER BY created_at DESC`,
-      []
-    );
+    const rows = await __qd_executePlan(getMany, __qd_registeredPlan("api/admin/pending-registrations.js:21:0"),
+
+
+
+
+    []);
+
 
     return res.status(200).json({ success: true, registrations: rows });
   } catch (error) {

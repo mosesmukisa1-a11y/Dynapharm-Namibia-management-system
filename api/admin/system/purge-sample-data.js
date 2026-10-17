@@ -1,4 +1,4 @@
-/**
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../../services/queryDescriptors.js"; /**
  * POST /api/admin/system/purge-sample-data
  * Purges any records flagged as sample/test data.
  */
@@ -8,8 +8,8 @@ async function parseBody(req) {
   if (req.body && typeof req.body === 'object') return req.body;
   return new Promise((resolve, reject) => {
     let raw = '';
-    req.on('data', c => raw += c);
-    req.on('end', () => { try { resolve(raw ? JSON.parse(raw) : {}); } catch { reject(new Error('Invalid JSON')); } });
+    req.on('data', (c) => raw += c);
+    req.on('end', () => {try {resolve(raw ? JSON.parse(raw) : {});} catch {reject(new Error('Invalid JSON'));}});
     req.on('error', reject);
   });
 }
@@ -22,21 +22,21 @@ export default async function handler(req, res) {
   const purged = [];
 
   // Purge test/sample stock movements
-  const testMovements = await getMany(
-    `SELECT id FROM stock_movements WHERE product_name ILIKE '%test%' OR notes ILIKE '%test%' OR notes ILIKE '%sample%' OR notes ILIKE '%demo%'`
-  );
+  const testMovements = await __qd_executePlan(getMany, __qd_registeredPlan("api/admin/system/purge-sample-data.js:26:0"), []);
+
+
   if (testMovements.length > 0) {
-    const ids = testMovements.map(r => r.id);
-    await query(`DELETE FROM stock_movements WHERE id = ANY($1)`, [ids]);
+    const ids = testMovements.map((r) => r.id);
+    await __qd_executePlan(query, __qd_registeredPlan("api/admin/system/purge-sample-data.js:30:1"), [ids]);
     purged.push(`${testMovements.length} test stock movements`);
   }
 
   // Purge test inventory_balances
-  const testBalances = await getMany(
-    `SELECT location_id, product_name FROM inventory_balances WHERE product_name ILIKE '%test%'`
-  );
+  const testBalances = await __qd_executePlan(getMany, __qd_registeredPlan("api/admin/system/purge-sample-data.js:36:2"), []);
+
+
   if (testBalances.length > 0) {
-    await query(`DELETE FROM inventory_balances WHERE product_name ILIKE '%test%'`);
+    await __qd_executePlan(query, __qd_registeredPlan("api/admin/system/purge-sample-data.js:39:3"), []);
     purged.push(`${testBalances.length} test inventory balances`);
   }
 
@@ -44,6 +44,6 @@ export default async function handler(req, res) {
     success: true,
     sampleDataEnabled: false,
     purged,
-    message: purged.length > 0 ? `Purged: ${purged.join(', ')}` : 'No sample/test records found to purge.',
+    message: purged.length > 0 ? `Purged: ${purged.join(', ')}` : 'No sample/test records found to purge.'
   });
 }

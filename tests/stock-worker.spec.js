@@ -6,8 +6,13 @@ import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import {spawn} from 'node:child_process';
 import {createIsolatedTestPool} from './helpers/isolated-test-pool.js';
 import {workerConfig} from '../worker/config.mjs';
-import {workerReadiness} from '../worker/readiness.mjs';
-import {runTask} from '../worker/runner.mjs';
+import {workerReadiness as actualWorkerReadiness} from '../worker/readiness.mjs';
+import {runTask as actualRunTask} from '../worker/runner.mjs';
+import {workerDescriptorPool} from '../worker/database.mjs';
+// Exercise the same strict private adapter used by worker/main.mjs. Raw owned
+// pools remain separate for provisioning and least-privilege denial probes.
+const workerReadiness=(pool,...args)=>actualWorkerReadiness(workerDescriptorPool(pool),...args);
+const runTask=options=>actualRunTask({...options,pool:workerDescriptorPool(options.pool)});
 import {detectDrift} from '../worker/drift.mjs';
 import {windhoekParts} from '../worker/dates.mjs';
 const admin=createIsolatedTestPool(),branch='worker_test_a',other='worker_test_b',product='Worker synthetic product';

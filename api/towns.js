@@ -1,4 +1,4 @@
-import { applyAuthCors } from './_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "./services/queryDescriptors.js";import { applyAuthCors } from './_lib/auth.js';
 import { getMany, getOne, insert, update, remove, query } from './db.js';
 
 export default async function handler(req, res) {
@@ -13,7 +13,7 @@ export default async function handler(req, res) {
       const { id, name } = req.query;
 
       if (id) {
-        const town = await getOne('SELECT * FROM towns WHERE id = $1', [id]);
+        const town = await __qd_executePlan(getOne, __qd_registeredPlan("api/towns.js:16:0"), [id]);
         if (!town) {
           return res.status(404).json({ error: 'Town not found' });
         }
@@ -21,7 +21,7 @@ export default async function handler(req, res) {
       }
 
       if (name) {
-        const town = await getOne('SELECT * FROM towns WHERE name ILIKE $1', [`%${name}%`]);
+        const town = await __qd_executePlan(getOne, __qd_registeredPlan("api/towns.js:24:1"), [`%${name}%`]);
         if (!town) {
           return res.status(404).json({ error: 'Town not found' });
         }
@@ -29,7 +29,7 @@ export default async function handler(req, res) {
       }
 
       // Get all towns
-      const towns = await getMany('SELECT * FROM towns ORDER BY name');
+      const towns = await __qd_executePlan(getMany, __qd_registeredPlan("api/towns.js:32:2"), []);
       return res.json(towns);
     }
 
@@ -46,7 +46,7 @@ export default async function handler(req, res) {
         name,
         region: region || null,
         latitude: latitude || null,
-        longitude: longitude || null,
+        longitude: longitude || null
       });
 
       return res.status(201).json(town);
@@ -93,4 +93,3 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Internal server error' });
   }
 }
-

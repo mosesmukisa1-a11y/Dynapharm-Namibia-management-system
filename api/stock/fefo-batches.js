@@ -1,4 +1,4 @@
-import { applyAuthCors } from '../_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../services/queryDescriptors.js";import { applyAuthCors } from '../_lib/auth.js';
 import { getMany } from '../db.js';
 
 /**
@@ -31,32 +31,32 @@ export default async function handler(req, res) {
   if (!location) return res.status(400).json({ error: 'location is required' });
 
   try {
-    const rows = await getMany(
-      `SELECT
-         batch_no,
-         expiry_date,
-         remaining_quantity AS available_qty
-       FROM stock_batches
-       WHERE (LOWER(TRIM(location)) = LOWER(TRIM($1)) OR LOWER(TRIM(warehouse_id)) = LOWER(TRIM($1)))
-         AND LOWER(TRIM(description)) = LOWER(TRIM($2))
-         AND remaining_quantity > 0
-         AND status != 'expired'
-       ORDER BY expiry_date ASC NULLS LAST, import_date ASC`,
-      [location, product]
-    );
+    const rows = await __qd_executePlan(getMany, __qd_registeredPlan("api/stock/fefo-batches.js:35:0"),
+
+
+
+
+
+
+
+
+
+
+    [location, product]);
+
 
     if (!rows.length) {
       return res.status(200).json({ batches: [], shortfall: neededQty ?? 0 });
     }
 
     if (neededQty === null || neededQty <= 0) {
-      const batches = rows.map(r => ({
+      const batches = rows.map((r) => ({
         batch_no: r.batch_no || null,
-        expiry_date: r.expiry_date
-          ? (r.expiry_date instanceof Date ? r.expiry_date.toISOString().slice(0, 10) : String(r.expiry_date).slice(0, 10))
-          : null,
+        expiry_date: r.expiry_date ?
+        r.expiry_date instanceof Date ? r.expiry_date.toISOString().slice(0, 10) : String(r.expiry_date).slice(0, 10) :
+        null,
         available_qty: Number(r.available_qty),
-        allocated_qty: Number(r.available_qty),
+        allocated_qty: Number(r.available_qty)
       }));
       return res.status(200).json({ batches, shortfall: 0 });
     }
@@ -70,11 +70,11 @@ export default async function handler(req, res) {
       const allocated = Math.min(remaining, avail);
       batches.push({
         batch_no: r.batch_no || null,
-        expiry_date: r.expiry_date
-          ? (r.expiry_date instanceof Date ? r.expiry_date.toISOString().slice(0, 10) : String(r.expiry_date).slice(0, 10))
-          : null,
+        expiry_date: r.expiry_date ?
+        r.expiry_date instanceof Date ? r.expiry_date.toISOString().slice(0, 10) : String(r.expiry_date).slice(0, 10) :
+        null,
         available_qty: avail,
-        allocated_qty: allocated,
+        allocated_qty: allocated
       });
       remaining -= allocated;
     }

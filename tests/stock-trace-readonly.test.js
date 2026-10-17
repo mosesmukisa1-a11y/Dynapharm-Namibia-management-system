@@ -29,7 +29,7 @@ it('returns original recorded timeline and separate sales bases using read-only 
   expect(res.body.events.map(e=>e.type)).toContain('GM approval');
   expect(res.body.events.find(e=>e.source==='sale_audit')).toMatchObject({receipt:'TU-2026-000122',dpValue:341,chargedValue:443,branchProfit:102});
    expect(getMany.mock.calls.every(([sql])=>/^(SELECT|WITH sources)/.test(sql.trim()))).toBe(true);
-  expect(getMany.mock.calls.find(([sql])=>sql.includes('stock_transfers'))[0]).toContain('item.transfer_id=t.id');
+   expect(String(getMany.mock.calls.find(([sql])=>sql.includes('stock_transfers'))[0])).toContain('item.transfer_id=t.id');
 });
 it('denies foreign branch and excludes warehouse imports from scoped staff trace',async()=>{
   const user={role:'branch_manager',branch:'townshop',id:'synthetic'};
@@ -38,7 +38,7 @@ it('denies foreign branch and excludes warehouse imports from scoped staff trace
   const res=reply();await trace(request(user,'/api/stock/trace?search=QA-TEST'),res);
   expect(res.statusCode).toBe(200);expect(getMany.mock.calls.some(([sql])=>sql.includes('supplier_imports'))).toBe(false);
    expect(getMany.mock.calls.filter(([sql])=>!sql.includes('WITH sources')).every(([,params])=>params[1]?.includes('townshop'))).toBe(true);
-  expect(getMany.mock.calls.find(([sql])=>sql.includes('mis_sales_audit'))[0]).toContain("details->>'branch'");
+   expect(String(getMany.mock.calls.find(([sql])=>sql.includes('mis_sales_audit'))[0])).toContain("details->>'branch'");
   expect(res.body.gaps.join(' ')).toContain('excluded');
 });
 it('reports missing sources rather than manufacturing imports or sales',async()=>{

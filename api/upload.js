@@ -1,4 +1,4 @@
-import { applyAuthCors } from './_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "./services/queryDescriptors.js";import { applyAuthCors } from './_lib/auth.js';
 import { getOne, insert, update, publishRealtimeEvent } from './db.js';
 import multer from 'multer';
 import path from 'path';
@@ -39,14 +39,14 @@ async function uploadToObjectStorage(buffer, filename, mimeType) {
 // ── Multer — always memory storage so we can forward the buffer ───────────────
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 500 * 1024 * 1024 }, // 500 MB
+  limits: { fileSize: 500 * 1024 * 1024 } // 500 MB
 });
 
 function runMulter(req, res) {
   return new Promise((resolve, reject) => {
     upload.single('file')(req, res, (err) => {
-      if (err) reject(err);
-      else resolve();
+      if (err) reject(err);else
+      resolve();
     });
   });
 }
@@ -77,17 +77,17 @@ export default async function handler(req, res) {
 
     const file = req.file;
     const uploadType = req.body?.type || req.body?.uploadType || 'generic';
-    const entityId    = req.body?.entityId || null;
-    const entityName  = req.body?.entityName || null;
-    const isPrimary   = req.body?.isPrimary === 'true' || req.body?.isPrimary === true;
+    const entityId = req.body?.entityId || null;
+    const entityName = req.body?.entityName || null;
+    const isPrimary = req.body?.isPrimary === 'true' || req.body?.isPrimary === true;
 
     if (!file) return res.status(400).json({ success: false, error: 'No file provided' });
 
     const mimeType = file.mimetype || 'application/octet-stream';
     const timestamp = Date.now();
-    const random    = Math.random().toString(36).substring(2, 10);
-    const ext       = path.extname(file.originalname || '').toLowerCase() || '.bin';
-    const filename  = `upload_${timestamp}_${random}${ext}`;
+    const random = Math.random().toString(36).substring(2, 10);
+    const ext = path.extname(file.originalname || '').toLowerCase() || '.bin';
+    const filename = `upload_${timestamp}_${random}${ext}`;
 
     // Try cloud storage first; fall back to local disk
     let fileUrl;
@@ -108,38 +108,38 @@ export default async function handler(req, res) {
     if (uploadType === 'product') {
       let productId = entityId;
       if (!productId && entityName) {
-        const product = await getOne(
-          'SELECT id FROM products WHERE name = $1 OR description = $1 LIMIT 1',
-          [entityName]
-        ).catch(() => null);
+        const product = await __qd_executePlan(getOne, __qd_registeredPlan("api/upload.js:112:0"),
+
+        [entityName]).
+        catch(() => null);
         if (product) productId = product.id;
       }
       if (!productId) return res.status(400).json({ success: false, error: 'Product ID or name is required for product uploads' });
 
       result = await insert('product_images', {
-        product_id:    productId,
-        image_url:     fileUrl,
+        product_id: productId,
+        image_url: fileUrl,
         thumbnail_url: fileUrl,
         filename,
-        file_size:     file.size,
-        mime_type:     mimeType,
-        is_primary:    isPrimary || false,
-        uploaded_at:   new Date().toISOString(),
+        file_size: file.size,
+        mime_type: mimeType,
+        is_primary: isPrimary || false,
+        uploaded_at: new Date().toISOString()
       });
       await publishRealtimeEvent('product_images', 'create', result).catch(() => {});
 
     } else if (uploadType === 'distributor') {
       const distributorCode = entityId || entityName;
       if (distributorCode) {
-        const distributor = await getOne(
-          'SELECT id FROM distributors WHERE distributor_code = $1',
-          [distributorCode]
-        ).catch(() => null);
+        const distributor = await __qd_executePlan(getOne, __qd_registeredPlan("api/upload.js:135:1"),
+
+        [distributorCode]).
+        catch(() => null);
         if (distributor) {
           await update('distributors', distributor.id, {
-            photo_url:        fileUrl,
-            photo_filename:   filename,
-            photo_updated_at: new Date().toISOString(),
+            photo_url: fileUrl,
+            photo_filename: filename,
+            photo_updated_at: new Date().toISOString()
           }, 'id').catch(() => {});
           result = { id: distributor.id, distributor_code: distributorCode, photo_url: fileUrl, filename };
         }
@@ -147,11 +147,11 @@ export default async function handler(req, res) {
       if (!result) {
         result = await safeInsertFileUpload({
           upload_type: 'distributor',
-          entity_id:   distributorCode || null,
+          entity_id: distributorCode || null,
           filename,
-          file_url:    fileUrl,
-          file_size:   file.size,
-          mime_type:   mimeType,
+          file_url: fileUrl,
+          file_size: file.size,
+          mime_type: mimeType
         });
       }
       await publishRealtimeEvent('distributors', 'update', result).catch(() => {});
@@ -161,35 +161,35 @@ export default async function handler(req, res) {
       let storedCategory = req.body?.category || null;
       if (!storedCategory && mediaType) storedCategory = mediaType;
       if (!storedCategory) {
-        if (mimeType.startsWith('video/'))       storedCategory = 'video';
-        else if (mimeType.startsWith('image/'))  storedCategory = 'photo';
-        else if (mimeType.startsWith('application/') || mimeType === 'text/plain') storedCategory = 'document';
+        if (mimeType.startsWith('video/')) storedCategory = 'video';else
+        if (mimeType.startsWith('image/')) storedCategory = 'photo';else
+        if (mimeType.startsWith('application/') || mimeType === 'text/plain') storedCategory = 'document';
       }
       result = await safeInsertFileUpload({
-        upload_type:  uploadType,
-        entity_id:    entityId || null,
-        entity_name:  entityName || null,
+        upload_type: uploadType,
+        entity_id: entityId || null,
+        entity_name: entityName || null,
         filename,
-        file_url:     fileUrl,
-        file_size:    file.size,
-        mime_type:    mimeType,
-        uploaded_by:  req.user?.fullName || req.user?.username || req.user?.id || null,
-        description:  req.body?.description || null,
-        category:     storedCategory,
-        media_type:   mediaType || storedCategory || null,
+        file_url: fileUrl,
+        file_size: file.size,
+        mime_type: mimeType,
+        uploaded_by: req.user?.fullName || req.user?.username || req.user?.id || null,
+        description: req.body?.description || null,
+        category: storedCategory,
+        media_type: mediaType || storedCategory || null
       });
     }
 
     return res.json({
       success: true,
       file: {
-        id:       result?.id || null,
+        id: result?.id || null,
         filename,
-        url:      fileUrl,
-        size:     file.size,
-        type:     mimeType,
+        url: fileUrl,
+        size: file.size,
+        type: mimeType
       },
-      message: 'File uploaded successfully',
+      message: 'File uploaded successfully'
     });
 
   } catch (error) {

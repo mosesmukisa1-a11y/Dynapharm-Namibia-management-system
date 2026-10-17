@@ -1,4 +1,4 @@
-import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../services/queryDescriptors.js";import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
 import { query, getMany, getOne } from '../db.js';
 
 async function parseJsonBody(req) {
@@ -49,11 +49,11 @@ function normalizePayment(row) {
     notes: row.notes || '',
     recordedBy: row.recorded_by || '',
     recordedAt: row.recorded_at instanceof Date ? row.recorded_at.toISOString() : row.recorded_at,
-    metadata: row.metadata && typeof row.metadata === 'object'
-      ? row.metadata
-      : typeof row.metadata === 'string'
-      ? JSON.parse(row.metadata)
-      : null,
+    metadata: row.metadata && typeof row.metadata === 'object' ?
+    row.metadata :
+    typeof row.metadata === 'string' ?
+    JSON.parse(row.metadata) :
+    null
   };
 }
 
@@ -77,7 +77,7 @@ export default async function handler(req, res) {
     if (req.method === 'GET') {
       const id = searchParams.get('id');
       if (id) {
-        const row = await getOne('SELECT * FROM branch_payments WHERE id = $1', [id]);
+        const row = await __qd_executePlan(getOne, __qd_registeredPlan("api/branch/payments.js:80:0"), [id]);
         if (!row) {
           return res.status(404).json({ success: false, error: 'Payment not found' });
         }
@@ -93,25 +93,25 @@ export default async function handler(req, res) {
 
       let rows;
       if (branchScope.enforced) {
-        rows = await getMany(
-          'SELECT * FROM branch_payments WHERE branch_id = ANY($1) ORDER BY date DESC, recorded_at DESC LIMIT $2',
-          [branchScope.branches, queryLimit]
-        );
+        rows = await __qd_executePlan(getMany, __qd_registeredPlan("api/branch/payments.js:97:1"),
+
+        [branchScope.branches, queryLimit]);
+
       } else if (requestedBranch) {
-        rows = await getMany(
-          'SELECT * FROM branch_payments WHERE branch_id = $1 ORDER BY date DESC, recorded_at DESC LIMIT $2',
-          [requestedBranch, queryLimit]
-        );
+        rows = await __qd_executePlan(getMany, __qd_registeredPlan("api/branch/payments.js:102:2"),
+
+        [requestedBranch, queryLimit]);
+
       } else {
-        rows = await getMany(
-          'SELECT * FROM branch_payments ORDER BY date DESC, recorded_at DESC LIMIT $1',
-          [queryLimit]
-        );
+        rows = await __qd_executePlan(getMany, __qd_registeredPlan("api/branch/payments.js:107:3"),
+
+        [queryLimit]);
+
       }
 
       return res.status(200).json({
         success: true,
-        payments: rows.map(normalizePayment).filter(Boolean),
+        payments: rows.map(normalizePayment).filter(Boolean)
       });
     }
 
@@ -132,32 +132,32 @@ export default async function handler(req, res) {
       const method = body.method || body.paymentMethod || 'cash';
 
       const paymentId = generateId('PAY');
-      const result = await query(
-        `
-          INSERT INTO branch_payments
-            (id, branch_id, date, client_name, invoice_number, amount, method, reference, notes, recorded_by, recorded_at, metadata)
-          VALUES
-            ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), $11)
-          RETURNING *
-        `,
-        [
-          paymentId,
-          branchId,
-          date,
-          body.clientName || body.client || '',
-          body.invoiceNumber || body.invoice || '',
-          amount,
-          method,
-          body.reference || '',
-          body.notes || '',
-          body.recordedBy || currentUser?.fullName || currentUser?.username || 'system',
-          body.metadata ? JSON.stringify(body.metadata) : null,
-        ]
-      );
+      const result = await __qd_executePlan(query, __qd_registeredPlan("api/branch/payments.js:136:4"),
+
+
+
+
+
+
+
+      [
+      paymentId,
+      branchId,
+      date,
+      body.clientName || body.client || '',
+      body.invoiceNumber || body.invoice || '',
+      amount,
+      method,
+      body.reference || '',
+      body.notes || '',
+      body.recordedBy || currentUser?.fullName || currentUser?.username || 'system',
+      body.metadata ? JSON.stringify(body.metadata) : null]);
+
+
 
       return res.status(201).json({
         success: true,
-        payment: normalizePayment(result.rows[0]),
+        payment: normalizePayment(result.rows[0])
       });
     }
 
@@ -167,7 +167,3 @@ export default async function handler(req, res) {
     return res.status(500).json({ success: false, error: 'Internal server error' });
   }
 }
-
-
-
-

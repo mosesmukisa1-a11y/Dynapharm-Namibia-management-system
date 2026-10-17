@@ -1,7 +1,7 @@
-import { applyAuthCors, getBranchScope } from './_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, joinPlans as __qd_joinPlans, executePlan as __qd_executePlan } from "./services/queryDescriptors.js";import { applyAuthCors, getBranchScope } from './_lib/auth.js';
 import { query, getMany, getOne, insert, update, remove, publishRealtimeEvent } from './db.js';
 import { branchSearchTerms, branchSearchTermsForMany, normalizeBranchSlug } from './_lib/branchUtils.js';
-import {atomicStockRequest} from './_lib/atomicStockRequest.js';
+import { atomicStockRequest } from './_lib/atomicStockRequest.js';
 
 function safeParseJson(value) {
   if (value === null || value === undefined) return null;
@@ -47,7 +47,7 @@ function normalizeItem(raw) {
     quantity: Number.isFinite(quantity) ? quantity : 0,
     unit: raw.unit || raw.uom || 'units',
     unitPrice: raw.unitPrice || raw.unit_price || raw.dp || null,
-    metadata: raw.metadata || null,
+    metadata: raw.metadata || null
   };
 }
 
@@ -77,68 +77,68 @@ function parseHistory(history) {
 }
 
 async function replaceRequestItems(requestId, items) {
-  await query('DELETE FROM stock_request_items WHERE request_id = $1', [requestId]);
+  await __qd_executePlan(query, __qd_registeredPlan("api/stock-requests.js:80:0"), [requestId]);
   if (!Array.isArray(items) || items.length === 0) return;
 
   const rows = [];
   items.forEach((item) => {
     rows.push([
-      requestId,
-      item.productId,
-      item.productName || null,
-      item.quantity,
-      item.unit || 'units',
-      item.metadata ? JSON.stringify(item.metadata) : null
-    ]);
+    requestId,
+    item.productId,
+    item.productName || null,
+    item.quantity,
+    item.unit || 'units',
+    item.metadata ? JSON.stringify(item.metadata) : null]
+    );
   });
 
-  await query(
-    `
-      INSERT INTO stock_request_items
-        (request_id, product_id, product_name, quantity, unit, metadata)
-      SELECT r->>0,r->>1,r->>2,(r->>3)::numeric,r->>4,(r->>5)::jsonb
-      FROM jsonb_array_elements($1::jsonb) r
-    `,
-    [JSON.stringify(rows)]
-  );
+  await __qd_executePlan(query, __qd_registeredPlan("api/stock-requests.js:96:1"),
+
+
+
+
+
+
+  [JSON.stringify(rows)]);
+
 }
 
 async function appendApproval(requestId, approval) {
   if (!approval) return;
-  await query(
-    `
-      INSERT INTO stock_request_approvals
-        (request_id, role, approved, actor, notes, metadata)
-      VALUES ($1, $2, $3, $4, $5, $6)
-    `,
-    [
-      requestId,
-      approval.role || 'manager',
-      approval.approved !== false,
-      approval.actor || null,
-      approval.notes || null,
-      approval.metadata ? JSON.stringify(approval.metadata) : null,
-    ]
-  );
+  await __qd_executePlan(query, __qd_registeredPlan("api/stock-requests.js:109:2"),
+
+
+
+
+
+  [
+  requestId,
+  approval.role || 'manager',
+  approval.approved !== false,
+  approval.actor || null,
+  approval.notes || null,
+  approval.metadata ? JSON.stringify(approval.metadata) : null]);
+
+
 }
 
 async function loadItemsForRequests(requestIds) {
   if (!Array.isArray(requestIds) || requestIds.length === 0) return new Map();
-  const rows = await getMany(
-    `
-      SELECT sri.*,
-             pp.dp AS dp_price,
-             pp.cp AS cp_price,
-             pp.description AS product_desc
-      FROM stock_request_items sri
-      LEFT JOIN live_product_prices pp
-        ON LOWER(TRIM(pp.description)) = LOWER(TRIM(sri.product_name))
-        OR LOWER(TRIM(pp.description)) = LOWER(TRIM(sri.product_id))
-      WHERE sri.request_id = ANY($1::text[])
-      ORDER BY sri.created_at ASC
-    `,
-    [requestIds]
-  );
+  const rows = await __qd_executePlan(getMany, __qd_registeredPlan("api/stock-requests.js:128:3"),
+
+
+
+
+
+
+
+
+
+
+
+
+  [requestIds]);
+
   const map = new Map();
   rows.forEach((row) => {
     const item = {
@@ -151,7 +151,7 @@ async function loadItemsForRequests(requestIds) {
       dp: row.dp_price != null ? Number(row.dp_price) : null,
       cp: row.cp_price != null ? Number(row.cp_price) : null,
       metadata: safeParseJson(row.metadata),
-      createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+      createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at
     };
     if (!map.has(row.request_id)) {
       map.set(row.request_id, []);
@@ -163,15 +163,15 @@ async function loadItemsForRequests(requestIds) {
 
 async function loadApprovalsForRequests(requestIds) {
   if (!Array.isArray(requestIds) || requestIds.length === 0) return new Map();
-  const rows = await getMany(
-    `
-      SELECT *
-      FROM stock_request_approvals
-      WHERE request_id = ANY($1::text[])
-      ORDER BY created_at DESC
-    `,
-    [requestIds]
-  );
+  const rows = await __qd_executePlan(getMany, __qd_registeredPlan("api/stock-requests.js:167:4"),
+
+
+
+
+
+
+  [requestIds]);
+
   const map = new Map();
   rows.forEach((row) => {
     const approval = {
@@ -181,7 +181,7 @@ async function loadApprovalsForRequests(requestIds) {
       actor: row.actor,
       notes: row.notes,
       createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
-    metadata: safeParseJson(row.metadata),
+      metadata: safeParseJson(row.metadata)
     };
     if (!map.has(row.request_id)) {
       map.set(row.request_id, []);
@@ -215,11 +215,11 @@ function normalizeRequestRow(row, itemsMap, approvalsMap) {
     reviewedAt: row.reviewed_at instanceof Date ? row.reviewed_at.toISOString() : row.reviewed_at,
     dispatchWarehouse: row.dispatch_warehouse || null,
     dispatchedBy: row.dispatched_by || null,
-    dispatchedAt: row.dispatched_at instanceof Date ? row.dispatched_at.toISOString() : (row.dispatched_at || null),
+    dispatchedAt: row.dispatched_at instanceof Date ? row.dispatched_at.toISOString() : row.dispatched_at || null,
     lastStatusChange: row.last_status_change instanceof Date ? row.last_status_change.toISOString() : row.last_status_change,
     history: parsedHistory,
     data: safeParseJson(row.data),
-    approvals,
+    approvals
   };
 }
 
@@ -243,60 +243,60 @@ async function handler(req, res) {
 
   try {
     if (method === 'GET') {
-      let queryText = 'SELECT * FROM stock_requests';
+      let queryText = __qd_registeredPlan("api/stock-requests.js:246:5");
       const params = [];
       const conditions = [];
-      
+
       if (id) {
-        conditions.push('id = $' + (params.length + 1));
+        conditions.push(__qd_registeredPlan("api/stock-requests.js:251:7", [params.length + 1]));
         params.push(id);
       }
       if (branchScope.enforced) {
         const terms = branchSearchTermsForMany(branchScope.branches);
         params.push(terms);
-        conditions.push(`LOWER(requesting_branch) = ANY($${params.length}::text[])`);
+        conditions.push(__qd_registeredPlan("api/stock-requests.js:257:8", [params.length]));
       } else if (requestedBranch) {
         const terms = branchSearchTerms(requestedBranch);
         params.push(terms.length > 0 ? terms : [requestedBranch.trim().toLowerCase()]);
-        conditions.push(`LOWER(requesting_branch) = ANY($${params.length}::text[])`);
+        conditions.push(__qd_registeredPlan("api/stock-requests.js:261:9", [params.length]));
       }
       if (status) {
-        conditions.push('status = $' + (params.length + 1));
+        conditions.push(__qd_registeredPlan("api/stock-requests.js:264:10", [params.length + 1]));
         params.push(status);
       }
-      
+
       if (conditions.length > 0) {
-        queryText += ' WHERE ' + conditions.join(' AND ');
+        queryText = __qd_joinPlans([queryText, __qd_joinPlans([__qd_registeredPlan("api/stock-requests.js:269:6"), __qd_joinPlans(conditions, "and")], "empty")], "empty");
       }
-      
-      queryText += ' ORDER BY created_at DESC';
-      
-      const requests = await getMany(queryText, params);
+
+      queryText = __qd_joinPlans([queryText, __qd_registeredPlan("api/stock-requests.js:272:11")], "empty");
+
+      const requests = await __qd_executePlan(getMany, queryText, params);
       const ids = requests.map((row) => row.id);
       const [itemsMap, approvalsMap] = await Promise.all([
-        loadItemsForRequests(ids),
-        loadApprovalsForRequests(ids),
-      ]);
+      loadItemsForRequests(ids),
+      loadApprovalsForRequests(ids)]
+      );
       const normalized = requests.map((row) => normalizeRequestRow(row, itemsMap, approvalsMap));
       return res.json({ success: true, requests: normalized });
     }
 
     if (method === 'POST') {
       const body = await parseBody(req);
-      const actor=req.user.id || req.user.sub || req.user.username;
-      if(!actor || !['admin','gm','director','stock','warehouse','branch_manager','dispenser','superadmin','super_admin'].includes(String(req.user.role).toLowerCase()))
-        return res.status(403).json({error:'Stock request creation access required'});
-      for(const entry of Array.isArray(body)?body:[body]){
-        if(!entry || (entry.status && entry.status!=='pending'))
-          return res.status(409).json({error:'New requests must be pending; use the authorized review workflow'});
-        const branch=normalizeBranchSlug(entry.requesting_branch || entry.requestingBranch || entry.branch || '') || entry.requesting_branch;
-        if(!branch)return res.status(400).json({error:'Requesting branch is required'});
-        if(branchScope.enforced && !branchSearchTerms(branch).some(t=>branchSearchTermsForMany(branchScope.branches).includes(t)))
-          return res.status(403).json({error:'Access denied: cannot create stock requests for this branch'});
-        for(const key of ['approved_by','approvedBy','approved_at','approvedAt','reviewed_by','reviewedBy','reviewed_at','reviewedAt','history','last_status_change'])delete entry[key];
-        entry.created_by=actor;entry.createdBy=actor;entry.status='pending';entry.requesting_branch=branch;
+      const actor = req.user.id || req.user.sub || req.user.username;
+      if (!actor || !['admin', 'gm', 'director', 'stock', 'warehouse', 'branch_manager', 'dispenser', 'superadmin', 'super_admin'].includes(String(req.user.role).toLowerCase()))
+      return res.status(403).json({ error: 'Stock request creation access required' });
+      for (const entry of Array.isArray(body) ? body : [body]) {
+        if (!entry || entry.status && entry.status !== 'pending')
+        return res.status(409).json({ error: 'New requests must be pending; use the authorized review workflow' });
+        const branch = normalizeBranchSlug(entry.requesting_branch || entry.requestingBranch || entry.branch || '') || entry.requesting_branch;
+        if (!branch) return res.status(400).json({ error: 'Requesting branch is required' });
+        if (branchScope.enforced && !branchSearchTerms(branch).some((t) => branchSearchTermsForMany(branchScope.branches).includes(t)))
+        return res.status(403).json({ error: 'Access denied: cannot create stock requests for this branch' });
+        for (const key of ['approved_by', 'approvedBy', 'approved_at', 'approvedAt', 'reviewed_by', 'reviewedBy', 'reviewed_at', 'reviewedAt', 'history', 'last_status_change']) delete entry[key];
+        entry.created_by = actor;entry.createdBy = actor;entry.status = 'pending';entry.requesting_branch = branch;
       }
-      
+
       if (Array.isArray(body)) {
         // Bulk insert — skip entries for branches outside user's scope
         const results = [];
@@ -304,19 +304,19 @@ async function handler(req, res) {
           try {
             if (branchScope.enforced) {
               const reqBranch = (req.requesting_branch || req.requestingBranch || '').replace(/_/g, ' ').toLowerCase();
-              const allowed = branchScope.branches.map(b => b.replace(/_/g, ' ').toLowerCase());
+              const allowed = branchScope.branches.map((b) => b.replace(/_/g, ' ').toLowerCase());
               if (!allowed.includes(reqBranch)) continue;
             }
             const items = parseItemsInput(req.items || req.itemsArray);
             const history = [
-              {
-                action: 'created',
-                actor: req.created_by || req.createdBy || null,
-                timestamp: new Date().toISOString(),
-                status: req.status || 'pending',
-                notes: req.notes || null,
-              },
-            ];
+            {
+              action: 'created',
+              actor: req.created_by || req.createdBy || null,
+              timestamp: new Date().toISOString(),
+              status: req.status || 'pending',
+              notes: req.notes || null
+            }];
+
 
             const requestData = {
               id: req.id || `REQ-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -334,13 +334,13 @@ async function handler(req, res) {
               reviewed_at: req.reviewed_at || req.reviewedAt || null,
               last_status_change: req.last_status_change || new Date().toISOString(),
               history: JSON.stringify(history),
-              data: req.data ? (typeof req.data === 'string' ? req.data : JSON.stringify(req.data)) : null
+              data: req.data ? typeof req.data === 'string' ? req.data : JSON.stringify(req.data) : null
             };
-            
-            Object.keys(requestData).forEach(key => {
+
+            Object.keys(requestData).forEach((key) => {
               if (requestData[key] === undefined) delete requestData[key];
             });
-            
+
             const result = await insert('stock_requests', requestData);
             await replaceRequestItems(result.id, items);
             results.push(result);
@@ -348,18 +348,18 @@ async function handler(req, res) {
             throw error; // The entire bulk request must roll back, not silently skip a failed row.
           }
         }
-        
+
         if (results.length > 0) {
           await publishRealtimeEvent('stock_requests', 'create', results);
         }
 
         const ids = results.map((row) => row.id);
         const [itemsMap, approvalsMap] = await Promise.all([
-          loadItemsForRequests(ids),
-          loadApprovalsForRequests(ids),
-        ]);
+        loadItemsForRequests(ids),
+        loadApprovalsForRequests(ids)]
+        );
         const normalized = results.map((row) => normalizeRequestRow(row, itemsMap, approvalsMap));
-        
+
         return res.json({ success: true, count: normalized.length, requests: normalized });
       } else {
         // Single insert
@@ -370,7 +370,7 @@ async function handler(req, res) {
         if (branchScope.enforced) {
           const allowedTerms = new Set(branchSearchTermsForMany(branchScope.branches));
           const requestTerms = branchSearchTerms(singleBranch);
-          const allowed = requestTerms.some(t => allowedTerms.has(t));
+          const allowed = requestTerms.some((t) => allowedTerms.has(t));
           if (!allowed) {
             return res.status(403).json({ success: false, error: 'Access denied: cannot create stock requests for this branch' });
           }
@@ -380,7 +380,7 @@ async function handler(req, res) {
           actor: req.user.id || req.user.sub || req.user.username,
           timestamp: new Date().toISOString(),
           status: body.status || 'pending',
-          notes: body.notes || null,
+          notes: body.notes || null
         };
 
         const requestData = {
@@ -399,13 +399,13 @@ async function handler(req, res) {
           reviewed_at: body.reviewed_at || body.reviewedAt || null,
           last_status_change: body.last_status_change || new Date().toISOString(),
           history: JSON.stringify([historyEntry]),
-          data: body.data ? (typeof body.data === 'string' ? body.data : JSON.stringify(body.data)) : null
+          data: body.data ? typeof body.data === 'string' ? body.data : JSON.stringify(body.data) : null
         };
-        
-        Object.keys(requestData).forEach(key => {
+
+        Object.keys(requestData).forEach((key) => {
           if (requestData[key] === undefined) delete requestData[key];
         });
-        
+
         const request = await insert('stock_requests', requestData);
         await replaceRequestItems(request.id, items);
         if (body.approval) {
@@ -420,35 +420,35 @@ async function handler(req, res) {
 
     if (method === 'PUT') {
       const body = await parseBody(req);
-      const role=String(req.user.role || '').toLowerCase();
-      if(!['admin','gm','director','stock','warehouse','branch_manager','dispenser','superadmin','super_admin'].includes(role))
-        return res.status(403).json({error:'Stock request update access required'});
-      const managers=['admin','gm','director','superadmin','super_admin'];
-      if(body.approval && (![...managers,'stock','warehouse'].includes(role) || !['approved','rejected','reviewed','dispatched'].includes(body.status)))
-        return res.status(403).json({error:'Approval evidence requires an authorized review transition'});
-      if(body.status && !['pending','approved','rejected','reviewed','dispatched','partially_dispatched','in_transit','received','cancelled'].includes(body.status))
-        return res.status(422).json({error:'Unsupported request status'});
-      if(['reviewed','dispatched','partially_dispatched','in_transit'].includes(body.status) && ![...managers,'stock','warehouse'].includes(role))
-        return res.status(403).json({error:'Stock dispatch access required'});
-      if((body.status==='approved' && !managers.includes(role)) ||
-         (body.status==='rejected' && ![...managers,'stock','warehouse'].includes(role)))
-        return res.status(403).json({error:'Management approval access required'});
+      const role = String(req.user.role || '').toLowerCase();
+      if (!['admin', 'gm', 'director', 'stock', 'warehouse', 'branch_manager', 'dispenser', 'superadmin', 'super_admin'].includes(role))
+      return res.status(403).json({ error: 'Stock request update access required' });
+      const managers = ['admin', 'gm', 'director', 'superadmin', 'super_admin'];
+      if (body.approval && (![...managers, 'stock', 'warehouse'].includes(role) || !['approved', 'rejected', 'reviewed', 'dispatched'].includes(body.status)))
+      return res.status(403).json({ error: 'Approval evidence requires an authorized review transition' });
+      if (body.status && !['pending', 'approved', 'rejected', 'reviewed', 'dispatched', 'partially_dispatched', 'in_transit', 'received', 'cancelled'].includes(body.status))
+      return res.status(422).json({ error: 'Unsupported request status' });
+      if (['reviewed', 'dispatched', 'partially_dispatched', 'in_transit'].includes(body.status) && ![...managers, 'stock', 'warehouse'].includes(role))
+      return res.status(403).json({ error: 'Stock dispatch access required' });
+      if (body.status === 'approved' && !managers.includes(role) ||
+      body.status === 'rejected' && ![...managers, 'stock', 'warehouse'].includes(role))
+      return res.status(403).json({ error: 'Management approval access required' });
       if (!body?.id) {
         return res.status(400).json({ error: 'id is required' });
       }
-      const locked=await getOne('SELECT * FROM stock_requests WHERE id=$1 FOR UPDATE',[body.id]);
-      if(!locked)return res.status(404).json({error:'Stock request not found'});
-      if(locked.status!=='pending' && (body.items!==undefined || body.itemsArray!==undefined))
-        return res.status(409).json({error:'Reviewed request items must be retained; create a new request'});
-      if(['received','cancelled'].includes(locked.status) && body.status && body.status!==locked.status)
-        return res.status(409).json({error:'Completed requests cannot be reopened through a status update'});
+      const locked = await __qd_executePlan(getOne, __qd_registeredPlan("api/stock-requests.js:439:12"), [body.id]);
+      if (!locked) return res.status(404).json({ error: 'Stock request not found' });
+      if (locked.status !== 'pending' && (body.items !== undefined || body.itemsArray !== undefined))
+      return res.status(409).json({ error: 'Reviewed request items must be retained; create a new request' });
+      if (['received', 'cancelled'].includes(locked.status) && body.status && body.status !== locked.status)
+      return res.status(409).json({ error: 'Completed requests cannot be reopened through a status update' });
 
       if (branchScope.enforced) {
-        const existing = await getOne('SELECT requesting_branch FROM stock_requests WHERE id = $1', [body.id]);
+        const existing = await __qd_executePlan(getOne, __qd_registeredPlan("api/stock-requests.js:447:13"), [body.id]);
         if (existing) {
           const existingTerms = new Set(branchSearchTerms(existing.requesting_branch || ''));
           const allowedTerms = new Set(branchSearchTermsForMany(branchScope.branches));
-          const isAllowed = [...existingTerms].some(t => allowedTerms.has(t));
+          const isAllowed = [...existingTerms].some((t) => allowedTerms.has(t));
           if (!isAllowed) {
             return res.status(403).json({ error: 'Access denied' });
           }
@@ -456,22 +456,22 @@ async function handler(req, res) {
       }
 
       // Idempotency guard: reject transition to 'received' if already received
-      if (['approved','rejected'].includes(body.status) && !['pending','reviewed'].includes(locked.status)) {
-        if (body.status!==locked.status)
-          return res.status(409).json({error:'Request is already reviewed; normal approval/rejection cannot replace the decision'});
-        const itemsMap=await loadItemsForRequests([body.id]);
-        const approvalsMap=await loadApprovalsForRequests([body.id]);
-        return res.json({success:true,unchanged:true,request:normalizeRequestRow(locked,itemsMap,approvalsMap)});
+      if (['approved', 'rejected'].includes(body.status) && !['pending', 'reviewed'].includes(locked.status)) {
+        if (body.status !== locked.status)
+        return res.status(409).json({ error: 'Request is already reviewed; normal approval/rejection cannot replace the decision' });
+        const itemsMap = await loadItemsForRequests([body.id]);
+        const approvalsMap = await loadApprovalsForRequests([body.id]);
+        return res.json({ success: true, unchanged: true, request: normalizeRequestRow(locked, itemsMap, approvalsMap) });
       }
       if (body.status === 'received') {
-        const current = await getOne('SELECT status FROM stock_requests WHERE id = $1', [body.id]);
+        const current = await __qd_executePlan(getOne, __qd_registeredPlan("api/stock-requests.js:467:14"), [body.id]);
         if (current?.status === 'received') {
           return res.status(409).json({ error: 'This stock request has already been received.' });
         }
       }
 
-      const editable=['status','notes','priority','rejection_reason','dispatch_warehouse','data'];
-      const updatePayload = Object.fromEntries(editable.filter(key=>body[key]!==undefined).map(key=>[key,body[key]]));
+      const editable = ['status', 'notes', 'priority', 'rejection_reason', 'dispatch_warehouse', 'data'];
+      const updatePayload = Object.fromEntries(editable.filter((key) => body[key] !== undefined).map((key) => [key, body[key]]));
       delete updatePayload.items;
       delete updatePayload.itemsArray;
       delete updatePayload.approval;
@@ -483,24 +483,24 @@ async function handler(req, res) {
       delete updatePayload.rejected_by;
       delete updatePayload.rejected_at;
 
-      if (body.status && body.status!==locked.status) {
+      if (body.status && body.status !== locked.status) {
         updatePayload.last_status_change = new Date().toISOString();
       }
 
       // Set rejected_at timestamp when status transitions to rejected
-      if (body.status === 'rejected' && locked.status!=='rejected') {
+      if (body.status === 'rejected' && locked.status !== 'rejected') {
         updatePayload.rejected_at = new Date().toISOString();
         updatePayload.rejected_by = actor;
       }
-      if(body.status==='approved' && locked.status!=='approved'){
-        updatePayload.approved_by=actor;
-        updatePayload.approved_at=new Date().toISOString();
+      if (body.status === 'approved' && locked.status !== 'approved') {
+        updatePayload.approved_by = actor;
+        updatePayload.approved_at = new Date().toISOString();
       }
-      if(body.status==='dispatched' && locked.status!=='dispatched'){
-        updatePayload.dispatched_by=actor;
-        updatePayload.dispatched_at=new Date().toISOString();
+      if (body.status === 'dispatched' && locked.status !== 'dispatched') {
+        updatePayload.dispatched_by = actor;
+        updatePayload.dispatched_at = new Date().toISOString();
       }
-      if(body.approval) body.approval={...body.approval,actor,role,approved:body.status!=='rejected'};
+      if (body.approval) body.approval = { ...body.approval, actor, role, approved: body.status !== 'rejected' };
 
       const request = await update('stock_requests', body.id, updatePayload, 'id');
 
@@ -509,7 +509,7 @@ async function handler(req, res) {
         await replaceRequestItems(body.id, normalizedItems);
       }
 
-      if (body.approval && (!body.status || body.status!==locked.status)) {
+      if (body.approval && (!body.status || body.status !== locked.status)) {
         await appendApproval(body.id, body.approval);
       }
 
@@ -520,31 +520,31 @@ async function handler(req, res) {
     }
 
     if (method === 'DELETE') {
-      const actor=req.user.id || req.user.sub || req.user.username;
-      if(!actor || !['admin','gm','director','stock','warehouse','branch_manager','dispenser','superadmin','super_admin'].includes(String(req.user.role).toLowerCase()))
-        return res.status(403).json({error:'Stock request cancellation access required'});
-      if(!id)return res.status(400).json({error:'id is required'});
-      const locked=await getOne('SELECT * FROM stock_requests WHERE id=$1 FOR UPDATE',[id]);
-      if(!locked)return res.status(404).json({error:'Stock request not found'});
+      const actor = req.user.id || req.user.sub || req.user.username;
+      if (!actor || !['admin', 'gm', 'director', 'stock', 'warehouse', 'branch_manager', 'dispenser', 'superadmin', 'super_admin'].includes(String(req.user.role).toLowerCase()))
+      return res.status(403).json({ error: 'Stock request cancellation access required' });
+      if (!id) return res.status(400).json({ error: 'id is required' });
+      const locked = await __qd_executePlan(getOne, __qd_registeredPlan("api/stock-requests.js:527:15"), [id]);
+      if (!locked) return res.status(404).json({ error: 'Stock request not found' });
       if (branchScope.enforced && id) {
-        const existing = await getOne('SELECT requesting_branch FROM stock_requests WHERE id = $1', [id]);
+        const existing = await __qd_executePlan(getOne, __qd_registeredPlan("api/stock-requests.js:530:16"), [id]);
         if (existing) {
           const existingTerms = new Set(branchSearchTerms(existing.requesting_branch || ''));
           const allowedTerms = new Set(branchSearchTermsForMany(branchScope.branches));
-          const isAllowed = [...existingTerms].some(t => allowedTerms.has(t));
+          const isAllowed = [...existingTerms].some((t) => allowedTerms.has(t));
           if (!isAllowed) {
             return res.status(403).json({ error: 'Access denied' });
           }
         }
       }
-      if(!['pending','cancelled'].includes(locked.status))
-        return res.status(409).json({error:'Reviewed requests must be retained with their audit history'});
-      if(locked.status!=='cancelled'){
-        await query("UPDATE stock_requests SET status='cancelled',updated_by=$2,last_status_change=NOW(),updated_at=NOW(),history=COALESCE(history,'[]'::jsonb) || $3::jsonb WHERE id=$1",
-          [id,actor,JSON.stringify([{action:'cancelled',actor,timestamp:new Date().toISOString(),status:'cancelled'}])]);
-        await publishRealtimeEvent('stock_requests','update',{id,status:'cancelled'});
+      if (!['pending', 'cancelled'].includes(locked.status))
+      return res.status(409).json({ error: 'Reviewed requests must be retained with their audit history' });
+      if (locked.status !== 'cancelled') {
+        await __qd_executePlan(query, __qd_registeredPlan("api/stock-requests.js:543:17"),
+        [id, actor, JSON.stringify([{ action: 'cancelled', actor, timestamp: new Date().toISOString(), status: 'cancelled' }])]);
+        await publishRealtimeEvent('stock_requests', 'update', { id, status: 'cancelled' });
       }
-      return res.json({ success: true, retained:true, status:'cancelled' });
+      return res.json({ success: true, retained: true, status: 'cancelled' });
     }
 
     return res.status(405).json({ error: 'Method not allowed' });
@@ -555,5 +555,3 @@ async function handler(req, res) {
 }
 
 export default atomicStockRequest(handler);
-
-

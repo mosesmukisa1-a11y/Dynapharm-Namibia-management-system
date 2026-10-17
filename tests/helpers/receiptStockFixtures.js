@@ -1,6 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {vi} from 'vitest';
-import {query,withTransaction} from '../../api/db.js';
+import {withTransaction} from '../../api/db.js';
+import {query} from './owned-raw-database.js';
 import * as stockEngine from '../../api/services/stockEngine.js';
 import {lifecycleSchema,allocateTransferTx,postAllocatedTransferMovementTx} from '../../api/services/stockCostLayers.js';
 export const expiry='2035-12-31';

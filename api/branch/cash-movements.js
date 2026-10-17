@@ -1,4 +1,4 @@
-import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../services/queryDescriptors.js";import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
 import { query, getMany, getOne, withTransaction } from '../db.js';
 
 function parseNumber(value, fallback = 0) {
@@ -49,7 +49,7 @@ function normalizeMovementRow(row) {
     reference: row.reference || '',
     notes: row.notes || '',
     metadata: typeof row.metadata === 'object' ? row.metadata : null,
-    status: row.metadata?.status || 'posted',
+    status: row.metadata?.status || 'posted'
   };
 }
 
@@ -66,19 +66,19 @@ function normalizeSessionRow(row) {
     openedAt: row.opened_at instanceof Date ? row.opened_at.toISOString() : row.opened_at,
     closedBy: row.closed_by,
     closedAt: row.closed_at instanceof Date ? row.closed_at.toISOString() : row.closed_at,
-    metadata: typeof row.metadata === 'object'
-      ? row.metadata
-      : typeof row.metadata === 'string'
-      ? JSON.parse(row.metadata)
-      : null,
+    metadata: typeof row.metadata === 'object' ?
+    row.metadata :
+    typeof row.metadata === 'string' ?
+    JSON.parse(row.metadata) :
+    null
   };
 }
 
 async function getActiveSession(client, branchId) {
-  const row = await client.query(
-    'SELECT * FROM branch_cash_sessions WHERE branch_id = $1 AND is_open = TRUE ORDER BY opened_at DESC LIMIT 1',
-    [branchId]
-  );
+  const row = await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/branch/cash-movements.js:79:0"),
+
+  [branchId]);
+
   return row.rows[0] || null;
 }
 
@@ -95,54 +95,54 @@ export default async function handler(req, res) {
 
   try {
     if (req.method === 'PUT' || req.method === 'PATCH') {
-      if (!currentUser) return res.status(401).json({error:'Authentication required'});
-      if (!['gm','admin','director'].includes(currentUser.role)) return res.status(403).json({error:'GM approval access required'});
-      const body=await parseJsonBody(req);
-      const id=body.id || searchParams.get('id') || url.pathname.split('/').filter(Boolean).at(-1);
-      if (!id || id==='cash-movements') return res.status(400).json({error:'id is required'});
-      if (!['approved','rejected'].includes(body.status)) return res.status(400).json({error:'Status must be approved or rejected'});
-      const movement=await withTransaction(async db=>{
-        const {rows}=await db.query('SELECT * FROM branch_cash_movements WHERE id=$1 FOR UPDATE',[id]);
-        const row=rows[0];
-        if (!row) throw Object.assign(new Error('Cash movement not found'),{statusCode:404});
-        const metadata=row.metadata || {};
-        if (metadata.status===body.status) return row;
-        if (metadata.status!=='pending') throw Object.assign(new Error('Cash movement is not pending review'),{statusCode:409});
-        const result=await db.query(`UPDATE branch_cash_movements SET metadata=$2::jsonb, notes=COALESCE($3,notes) WHERE id=$1 RETURNING *`,
-          [id,JSON.stringify({...metadata,status:body.status,reviewedBy:currentUser.sub||currentUser.id||currentUser.username,
-            reviewedByName:currentUser.fullName||currentUser.full_name||currentUser.username,reviewedAt:new Date().toISOString()}),body.notes || null]);
+      if (!currentUser) return res.status(401).json({ error: 'Authentication required' });
+      if (!['gm', 'admin', 'director'].includes(currentUser.role)) return res.status(403).json({ error: 'GM approval access required' });
+      const body = await parseJsonBody(req);
+      const id = body.id || searchParams.get('id') || url.pathname.split('/').filter(Boolean).at(-1);
+      if (!id || id === 'cash-movements') return res.status(400).json({ error: 'id is required' });
+      if (!['approved', 'rejected'].includes(body.status)) return res.status(400).json({ error: 'Status must be approved or rejected' });
+      const movement = await withTransaction(async (db) => {
+        const { rows } = await __qd_executePlan(db.query.bind(db), __qd_registeredPlan("api/branch/cash-movements.js:105:1"), [id]);
+        const row = rows[0];
+        if (!row) throw Object.assign(new Error('Cash movement not found'), { statusCode: 404 });
+        const metadata = row.metadata || {};
+        if (metadata.status === body.status) return row;
+        if (metadata.status !== 'pending') throw Object.assign(new Error('Cash movement is not pending review'), { statusCode: 409 });
+        const result = await __qd_executePlan(db.query.bind(db), __qd_registeredPlan("api/branch/cash-movements.js:111:2"),
+        [id, JSON.stringify({ ...metadata, status: body.status, reviewedBy: currentUser.sub || currentUser.id || currentUser.username,
+          reviewedByName: currentUser.fullName || currentUser.full_name || currentUser.username, reviewedAt: new Date().toISOString() }), body.notes || null]);
         return result.rows[0];
       });
       // Reviewing an already recorded movement must not post cash a second time.
-      return res.json({success:true,movement:normalizeMovementRow(movement)});
+      return res.json({ success: true, movement: normalizeMovementRow(movement) });
     }
     if (req.method === 'GET') {
       const sessionId = searchParams.get('sessionId') || searchParams.get('session');
       const branchScope = getBranchScope(currentUser);
       const requestedBranch = searchParams.get('branch');
-      const effectiveBranchId = branchScope.enforced ? (branchScope.primaryBranch || branchScope.branches?.[0] || null) : requestedBranch;
+      const effectiveBranchId = branchScope.enforced ? branchScope.primaryBranch || branchScope.branches?.[0] || null : requestedBranch;
       const limit = parseInt(searchParams.get('limit') || '100', 10);
 
       let rows;
       if (sessionId) {
-        rows = await getMany(
-          'SELECT * FROM branch_cash_movements WHERE session_id = $1 ORDER BY recorded_at DESC LIMIT $2',
-          [sessionId, Number.isNaN(limit) ? 100 : limit]
-        );
+        rows = await __qd_executePlan(getMany, __qd_registeredPlan("api/branch/cash-movements.js:129:3"),
+
+        [sessionId, Number.isNaN(limit) ? 100 : limit]);
+
       } else if (effectiveBranchId) {
-        rows = await getMany(
-          'SELECT * FROM branch_cash_movements WHERE branch_id = $1 ORDER BY recorded_at DESC LIMIT $2',
-          [effectiveBranchId, Number.isNaN(limit) ? 100 : limit]
-        );
+        rows = await __qd_executePlan(getMany, __qd_registeredPlan("api/branch/cash-movements.js:134:4"),
+
+        [effectiveBranchId, Number.isNaN(limit) ? 100 : limit]);
+
       } else {
-        rows = await getMany('SELECT * FROM branch_cash_movements ORDER BY recorded_at DESC LIMIT $1', [
-          Number.isNaN(limit) ? 100 : limit,
-        ]);
+        rows = await __qd_executePlan(getMany, __qd_registeredPlan("api/branch/cash-movements.js:138:5"), [
+        Number.isNaN(limit) ? 100 : limit]);
+
       }
 
       return res.status(200).json({
         success: true,
-        movements: rows.map(normalizeMovementRow).filter(Boolean),
+        movements: rows.map(normalizeMovementRow).filter(Boolean)
       });
     }
 
@@ -173,7 +173,7 @@ export default async function handler(req, res) {
         let sessionId = body.sessionId || body.session;
         let sessionRow = null;
         if (sessionId) {
-          const sessionRes = await client.query('SELECT * FROM branch_cash_sessions WHERE id = $1', [sessionId]);
+          const sessionRes = await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/branch/cash-movements.js:176:6"), [sessionId]);
           sessionRow = sessionRes.rows[0];
         } else {
           sessionRow = await getActiveSession(client, branchId);
@@ -188,33 +188,33 @@ export default async function handler(req, res) {
         }
 
         // Insert movement
-        const movementResult = await client.query(
-          `
-            INSERT INTO branch_cash_movements
-              (id, session_id, branch_id, type, description, amount, recorded_by, recorded_at, reference, notes, metadata)
-            VALUES
-              ($1, $2, $3, $4, $5, $6, $7, NOW(), $8, $9, $10)
-            RETURNING *
-          `,
-          [
-            movementId,
-            sessionId,
-            branchId,
-            type,
-            description,
-            amount,
-            body.recordedBy || currentUser?.fullName || currentUser?.username || 'system',
-            reference,
-            notes,
-            body.metadata ? JSON.stringify(body.metadata) : null,
-          ]
-        );
+        const movementResult = await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/branch/cash-movements.js:192:7"),
+
+
+
+
+
+
+
+        [
+        movementId,
+        sessionId,
+        branchId,
+        type,
+        description,
+        amount,
+        body.recordedBy || currentUser?.fullName || currentUser?.username || 'system',
+        reference,
+        notes,
+        body.metadata ? JSON.stringify(body.metadata) : null]);
+
+
 
         // Update session metadata currentBalance when available
         const metadata =
-          sessionRow.metadata && typeof sessionRow.metadata === 'object'
-            ? { ...sessionRow.metadata }
-            : { currentBalance: parseNumber(sessionRow.opening_balance, 0) };
+        sessionRow.metadata && typeof sessionRow.metadata === 'object' ?
+        { ...sessionRow.metadata } :
+        { currentBalance: parseNumber(sessionRow.opening_balance, 0) };
 
         const currentBalance = parseNumber(metadata.currentBalance, parseNumber(sessionRow.opening_balance, 0));
         let updatedBalance = currentBalance;
@@ -227,23 +227,23 @@ export default async function handler(req, res) {
         }
         metadata.currentBalance = updatedBalance;
 
-        await client.query('UPDATE branch_cash_sessions SET metadata = $1 WHERE id = $2', [
-          JSON.stringify(metadata),
-          sessionId,
-        ]);
+        await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/branch/cash-movements.js:230:8"), [
+        JSON.stringify(metadata),
+        sessionId]);
 
-        const updatedSession = await client.query('SELECT * FROM branch_cash_sessions WHERE id = $1', [sessionId]);
+
+        const updatedSession = await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/branch/cash-movements.js:235:9"), [sessionId]);
 
         return {
           movement: movementResult.rows[0],
-          session: updatedSession.rows[0],
+          session: updatedSession.rows[0]
         };
       });
 
       return res.status(201).json({
         success: true,
         movement: normalizeMovementRow(result.movement),
-        session: normalizeSessionRow(result.session),
+        session: normalizeSessionRow(result.session)
       });
     }
 
@@ -253,4 +253,3 @@ export default async function handler(req, res) {
     return res.status(error.statusCode || 500).json({ success: false, error: error.statusCode ? error.message : 'Internal server error' });
   }
 }
-

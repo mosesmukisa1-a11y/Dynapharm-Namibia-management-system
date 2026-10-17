@@ -3,7 +3,7 @@
 import {spawnSync} from 'node:child_process';
 import fs from 'node:fs/promises';
 import {randomUUID,createHash} from 'node:crypto';
-const out='generated-artifacts/sql-architecture-final',env={NODE_ENV:'test',CI:'1'};
+const out='generated-artifacts/sql-runtime-enforcement-final',env={NODE_ENV:'test',CI:'1'};
 for(const key of ['PATH','HOME','TMPDIR','NIX_LD','NIX_LD_LIBRARY_PATH'])if(process.env[key])env[key]=process.env[key];
 const runId=randomUUID(),args=['node_modules/vitest/vitest.mjs','run','--project','unit','--reporter=json'];
 if(process.argv.includes('--descriptor-only'))args.push('tests/query-descriptors.unit.test.js');
@@ -11,7 +11,10 @@ const child=spawnSync(process.execPath,args,{env,encoding:'utf8',timeout:180000,
 let parsed;
 try{parsed=JSON.parse(child.stdout);}catch{parsed=null;}
 const tests=(parsed?.testResults||[]).flatMap(s=>(s.assertionResults||[]).map(a=>({
+  suite:s.name.startsWith(process.cwd()+'/')?s.name.slice(process.cwd().length+1):'external-suite',
   nameSha256:createHash('sha256').update(a.fullName).digest('hex'),status:a.status,durationMs:a.duration,
+  failureLocations:a.status==='passed'?undefined:[...new Set((a.failureMessages||[]).flatMap(m=>m.match(/(?:tests|api)\/[A-Za-z0-9_./-]+\.(?:js|mjs):\d+(?::\d+)?/g)||[]))],
+  failureClass:a.status==='passed'?undefined:['Invalid SQL table','Query boundary rejected','is not a function','Cannot read properties','expected','Unexpected token'].filter(flag=>(a.failureMessages||[]).some(m=>m.includes(flag))),
 })));
 const sourceFiles=['api/services/queryDescriptors.js','scripts/lib/sql-descriptor-compiler.mjs',
   'scripts/security-query-architecture.mjs','scripts/security-descriptor-unit-check.mjs','tests/query-descriptors.unit.test.js'];
@@ -21,7 +24,8 @@ const result={runId,at:new Date().toISOString(),scope:'pure unit tests; no datab
   status:child.status===0&&parsed?.success?'PASS':'FAIL',exitCode:child.status,
   total:parsed?.numTotalTests??0,passed:parsed?.numPassedTests??0,failed:parsed?.numFailedTests??0,
   failedSuites:parsed?.numFailedTestSuites??0,timedOut:child.error?.code==='ETIMEDOUT',
-  command:['node',...args].join(' '),sourceHashes,tests};
+  command:['node',...args].join(' '),sourceHashes,tests,
+  boundaryDiagnostics:[...new Set((child.stderr||'').split('\n').filter(l=>l.startsWith('SQL_BOUNDARY_DIAGNOSTIC ')))].map(l=>JSON.parse(l.slice(24)))};
 await fs.mkdir(out+'/unit-runs',{recursive:true});
 await fs.writeFile(out+'/unit-runs/'+runId+'.json',JSON.stringify(result,null,2)+'\n');
 await fs.writeFile(out+'/unit-summary.json',JSON.stringify({...result,tests:undefined,evidence:'unit-runs/'+runId+'.json'},null,2)+'\n');

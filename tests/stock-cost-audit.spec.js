@@ -13,7 +13,7 @@ it('uses the same frozen-evidence scope and explicitly rejects oversized exports
     .rejects.toMatchObject({statusCode:413});
   expect(reader).toHaveBeenCalledTimes(1);
   expect(reader.mock.calls[0][1]).toEqual([['townshop'],'2026-01-01','2026-01-31','Product',10001]);
-  expect(reader.mock.calls[0][0]).not.toMatch(/JOIN\s+(stock_batches|supplier_imports|product_prices)/i);
+  expect(String(reader.mock.calls[0][0])).not.toMatch(/JOIN\s+(stock_batches|supplier_imports|product_prices)/i);
 });
 it('provides a stable complete CSV schema and explicit empty-scope totals',async()=>{
   const result=await getStockCostAudit({},async()=>[]);

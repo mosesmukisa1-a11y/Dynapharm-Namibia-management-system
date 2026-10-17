@@ -8,7 +8,7 @@ const definitions=()=>({
   choice:{chunks:['SELECT id FROM ',''],slots:[{kind:'choice',choices:['clients','employees']}],operation:'read',contexts:['service'],kind:'statement',group:'clients'},
   schema:{chunks:['CREATE TABLE example(id int)'],slots:[],operation:'schema',contexts:['startup'],kind:'statement',group:'startup'},
 });
-beforeEach(async()=>{vi.resetModules();q=await import('../api/services/queryDescriptors.js');q.installQueryCatalog(definitions());});
+beforeEach(async()=>{vi.resetModules();vi.doMock('../api/services/registeredSqlCatalog.js',()=>({default:definitions()}));q=await import('../api/services/queryDescriptors.js');});
 describe('registered SQL admission',()=>{
   it('rejects plain strings, forged objects, copies and inherited brands',()=>{
     const d=q.bindPlan(q.registeredPlan('select'),['synthetic']);

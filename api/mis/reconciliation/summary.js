@@ -1,4 +1,4 @@
-import { applyAuthCors } from '../../_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../../services/queryDescriptors.js";import { applyAuthCors } from '../../_lib/auth.js';
 import { getMany } from '../../db.js';
 import {
   getDateRange,
@@ -6,8 +6,8 @@ import {
   getLocationMovements,
   getLocationStockSummary,
   getBranchSalesRevenue,
-  normalizeBranchName,
-} from '../../services/gmFinanceMisEngine.js';
+  normalizeBranchName } from
+'../../services/gmFinanceMisEngine.js';
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
@@ -21,25 +21,25 @@ export default async function handler(req, res) {
 
     const results = await Promise.all(branches.map(async (b) => {
       const [movements, stock, sales] = await Promise.all([
-        getLocationMovements('branch', b.locationId, start, end),
-        getLocationStockSummary('branch', b.locationId),
-        getBranchSalesRevenue(b.locationId, start, end),
-      ]);
+      getLocationMovements('branch', b.locationId, start, end),
+      getLocationStockSummary('branch', b.locationId),
+      getBranchSalesRevenue(b.locationId, start, end)]
+      );
 
       // MIS formula: expected_closing = opening + received - sold - dispensed - writeoff
       // We derive opening from inventory_balances (opening_qty) if available
-      const ibRow = await getMany(
-        `SELECT SUM(opening_qty) as opening, SUM(inward_qty) as inward, SUM(outward_qty) as outward
-         FROM inventory_balances WHERE location_type = 'branch' AND location_id = $1`,
-        [b.locationId]
-      );
+      const ibRow = await __qd_executePlan(getMany, __qd_registeredPlan("api/mis/reconciliation/summary.js:32:0"),
+
+
+      [b.locationId]);
+
       const openingQty = Number(ibRow[0]?.opening || 0);
       const inwardQty = Number(ibRow[0]?.inward || 0);
       const outwardQty = Number(ibRow[0]?.outward || 0);
 
       const actualClosing = stock.closingStock;
-      const expectedClosing = openingQty + movements.receivedQty
-        - movements.salesUnits - movements.dispensedUnits - movements.writeOffQty;
+      const expectedClosing = openingQty + movements.receivedQty -
+      movements.salesUnits - movements.dispensedUnits - movements.writeOffQty;
       const mismatchQty = actualClosing - expectedClosing;
       const status = Math.abs(mismatchQty) < 0.01 ? 'ok' : mismatchQty > 0 ? 'surplus' : 'deficit';
 
@@ -54,7 +54,7 @@ export default async function handler(req, res) {
         salesRevenue: sales.totalSales,
         mismatchQty,
         mismatchValue: 0,
-        status,
+        status
       };
     }));
 

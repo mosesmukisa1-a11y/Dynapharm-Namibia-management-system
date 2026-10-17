@@ -13,3 +13,9 @@ Stopping a background shell is not proof that its asynchronous cleanup finished.
 **Why:** Stopping an owned test harness left its disposable database, private temporary auth file and child API behind after the parent had stopped.
 
 **How to apply:** Verify database removal through the catalog and temporary-file removal explicitly. Before stopping an orphan, verify that its recorded PID owns the isolated listener, not the development or production listener. Remove only resources whose ownership and disposable scope are established.
+
+Separate descriptor admission, actual driver success, authenticated HTTP behavior and browser behavior in SQL-boundary evidence.
+
+**Why:** A passing aggregate suite and brand-admission trace can coexist with missing native family witnesses. Driver observers that watch promises alone also miss legitimate callback-based pool operations.
+
+**How to apply:** Correlate admitted identities with successful native executions, covering callback and promise APIs without altering execution. Label representative family coverage separately from exhaustive business-branch coverage; retain original failures and affected reruns.

@@ -1,5 +1,5 @@
-import { applyAuthCors } from './_lib/auth.js';
-import { nameKey,resolveProduct } from '../shared/price-list-import.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "./services/queryDescriptors.js";import { applyAuthCors } from './_lib/auth.js';
+import { nameKey, resolveProduct } from '../shared/price-list-import.js';
 import { query, getMany, getOne, insert, update, remove, publishRealtimeEvent } from './db.js';
 
 export default async function handler(req, res) {
@@ -32,14 +32,14 @@ export default async function handler(req, res) {
     if (method === 'GET') {
       if (id) {
         // Get single product
-        const product = await getOne('SELECT * FROM products WHERE id = $1', [id]);
+        const product = await __qd_executePlan(getOne, __qd_registeredPlan("api/products.js:35:0"), [id]);
         if (!product) {
           return res.status(404).json({ error: 'Product not found' });
         }
 
         // Enrich with GM price-list values
-        const pl=resolveProduct({description:product.name,product_code:product.product_code},
-          await getMany('SELECT * FROM live_product_prices WHERE catalogue_entry')).existing;
+        const pl = resolveProduct({ description: product.name, product_code: product.product_code },
+        await __qd_executePlan(getMany, __qd_registeredPlan("api/products.js:42:1"), [])).existing;
         if (pl) {
           product.dp = pl.dp;
           product.cp = pl.cp;
@@ -47,10 +47,10 @@ export default async function handler(req, res) {
           product.bv = pl.bv;
           product.hasPricing = true;
         }
-        
+
         // Get product images
-        const images = await getMany('SELECT * FROM product_images WHERE product_id = $1 ORDER BY display_order, created_at', [id]);
-        product.images = images.map(img => ({
+        const images = await __qd_executePlan(getMany, __qd_registeredPlan("api/products.js:52:2"), [id]);
+        product.images = images.map((img) => ({
           id: img.id,
           image_data: img.image_data,
           image_url: img.image_url,
@@ -58,29 +58,29 @@ export default async function handler(req, res) {
           is_primary: img.is_primary,
           display_order: img.display_order
         }));
-        
+
         return res.json(product);
       } else if (productName) {
         // Get images for a specific product by name
-        const images = await getMany(
-          'SELECT * FROM product_images WHERE product_name = $1 ORDER BY display_order, created_at',
-          [productName]
-        );
+        const images = await __qd_executePlan(getMany, __qd_registeredPlan("api/products.js:66:3"),
+
+        [productName]);
+
         return res.json(images);
       } else {
         // Get all products from the products table and price list together
-        const [dbProducts, priceRows] = await Promise.all([
-          getMany('SELECT * FROM products WHERE is_active = true ORDER BY name'),
-          getMany('SELECT * FROM live_product_prices WHERE catalogue_entry ORDER BY description'),
-        ]);
+        const [dbProducts, priceRows] = await Promise.all([__qd_executePlan(
+          getMany, __qd_registeredPlan("api/products.js:73:4"), []), __qd_executePlan(
+          getMany, __qd_registeredPlan("api/products.js:74:5"), [])]
+        );
 
         // Attach images to each db product
         for (const product of dbProducts) {
-          const images = await getMany(
-            'SELECT * FROM product_images WHERE product_id = $1 ORDER BY display_order, created_at',
-            [product.id]
-          );
-          product.images = images.map(img => ({
+          const images = await __qd_executePlan(getMany, __qd_registeredPlan("api/products.js:80:6"),
+
+          [product.id]);
+
+          product.images = images.map((img) => ({
             id: img.id,
             image_data: img.image_data,
             image_url: img.image_url,
@@ -97,8 +97,8 @@ export default async function handler(req, res) {
         }
 
         // Override dp/cp/cif/bv on every dbProduct with GM price-list values when a match exists
-        const enrichedDbProducts = dbProducts.map(prod => {
-          const pl=resolveProduct({description:prod.name,product_code:prod.product_code},priceRows).existing;
+        const enrichedDbProducts = dbProducts.map((prod) => {
+          const pl = resolveProduct({ description: prod.name, product_code: prod.product_code }, priceRows).existing;
           if (pl) {
             return {
               ...prod,
@@ -106,38 +106,38 @@ export default async function handler(req, res) {
               cp: pl.cp,
               cif: pl.cif,
               bv: pl.bv,
-              hasPricing: true,
+              hasPricing: true
             };
           }
           return prod;
         });
 
         // Add price-list entries that have NO matching row in the products table
-        const dbNames = new Set(enrichedDbProducts.map(p => nameKey(p.name || '')));
-        const priceOnlyProducts = priceRows
-          .filter(p => !dbNames.has(nameKey(p.description || '')))
-          .map(p => ({
-            id: `pl-${p.id}`,
-            sku: null,
-            name: p.description,
-            description: p.description,
-            category: null,
-            unit: null,
-            dp: p.dp,
-            cp: p.cp,
-            bv: p.bv,
-            cif: p.cif,
-            tax_rate: 0,
-            is_active: true,
-            branch: null,
-            images: [],
-            from_price_list: true,
-            hasPricing: true,
-          }));
+        const dbNames = new Set(enrichedDbProducts.map((p) => nameKey(p.name || '')));
+        const priceOnlyProducts = priceRows.
+        filter((p) => !dbNames.has(nameKey(p.description || ''))).
+        map((p) => ({
+          id: `pl-${p.id}`,
+          sku: null,
+          name: p.description,
+          description: p.description,
+          category: null,
+          unit: null,
+          dp: p.dp,
+          cp: p.cp,
+          bv: p.bv,
+          cif: p.cif,
+          tax_rate: 0,
+          is_active: true,
+          branch: null,
+          images: [],
+          from_price_list: true,
+          hasPricing: true
+        }));
 
         // Only include DB products that are on the current GM price list.
         // Products removed from the price list are excluded from the shop.
-        const activeDbProducts = enrichedDbProducts.filter(p => p.hasPricing);
+        const activeDbProducts = enrichedDbProducts.filter((p) => p.hasPricing);
 
         return res.json([...activeDbProducts, ...priceOnlyProducts]);
       }
@@ -145,11 +145,11 @@ export default async function handler(req, res) {
 
     if (method === 'POST') {
       const body = req.body;
-      
+
       if (body.action === 'uploadImage') {
         // Upload product image
         const { productId, productName, imageData, imageUrl, imageType, width, height, fileSize, isPrimary, displayOrder } = body;
-        
+
         const imageId = `IMG-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         const image = await insert('product_images', {
           id: imageId,
@@ -164,7 +164,7 @@ export default async function handler(req, res) {
           is_primary: isPrimary || false,
           display_order: displayOrder || 0
         });
-        
+
         await publishRealtimeEvent('product_images', 'create', image);
         return res.json({ success: true, image });
       } else {
@@ -184,7 +184,7 @@ export default async function handler(req, res) {
           branch: body.branch || null,
           created_by: body.created_by || null
         });
-        
+
         await publishRealtimeEvent('products', 'create', product);
         return res.json(product);
       }
@@ -192,7 +192,7 @@ export default async function handler(req, res) {
 
     if (method === 'PUT') {
       const body = req.body;
-      
+
       if (body.action === 'updateImage') {
         const imagePayload = {
           ...(body.product_id !== undefined && { product_id: body.product_id }),
@@ -205,7 +205,7 @@ export default async function handler(req, res) {
           ...(body.file_size !== undefined && { file_size: body.file_size }),
           ...(body.is_primary !== undefined && { is_primary: body.is_primary }),
           ...(body.display_order !== undefined && { display_order: body.display_order }),
-          updated_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
         };
         const image = await update('product_images', body.id, imagePayload, 'id');
         await publishRealtimeEvent('product_images', 'update', image);
@@ -223,7 +223,7 @@ export default async function handler(req, res) {
           ...(body.tax_rate !== undefined && { tax_rate: body.tax_rate }),
           ...(body.is_active !== undefined && { is_active: body.is_active }),
           ...(body.branch !== undefined && { branch: body.branch }),
-          updated_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
         };
         const product = await update('products', body.id, productPayload, 'id');
         await publishRealtimeEvent('products', 'update', product);
@@ -253,4 +253,3 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Internal server error' });
   }
 }
-

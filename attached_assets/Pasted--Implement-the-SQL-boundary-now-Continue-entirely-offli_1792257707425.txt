@@ -1,0 +1,240 @@
+## Implement the SQL boundary now
+
+Continue entirely offline on the current security remediation branch.
+
+Do not connect to production, publish, migrate production, restart services, alter production configuration, rotate credentials, invalidate sessions, stop schedulers or activate workers.
+
+Status remains:
+
+`BLOCKED - DO NOT PUBLISH`
+
+This is an implementation task. Do not stop after analysis, inventory generation, library creation, translator output or a review checkpoint.
+
+## Required outcome
+
+Wire the existing `api/services/queryDescriptors.js` security boundary into the real application database executors and migrate every retained production-reachable SQL location.
+
+The implementation is incomplete unless actual application requests reject unapproved plain SQL.
+
+## 1. Integrate the real executor
+
+Modify `api/db.js` and all exported database execution APIs.
+
+Production-reachable execution must accept only an admitted immutable query descriptor.
+
+Plain SQL strings must be rejected at runtime before driver access.
+
+Ensure this applies to:
+
+- `query`
+- `getOne`
+- `getMany`
+- insert/update/delete helpers
+- pool/client wrappers
+- transaction callbacks
+- imported aliases
+- re-exported helpers
+
+Keep a separately named, explicitly isolated raw executor only if necessary for:
+
+- repository migrations;
+- owned disposable test provisioning;
+- non-production security tools.
+
+The raw executor must:
+
+- be inaccessible from production HTTP handlers;
+- fail closed in production runtime;
+- require an explicit isolated-tool context;
+- reject configured production targets;
+- never be exported from normal application database modules.
+
+## 2. Restrict transaction callbacks
+
+Change `withTransaction` and equivalent wrappers so callbacks receive only a frozen restricted facade.
+
+The facade may execute admitted descriptors but must not expose:
+
+- raw client;
+- unrestricted `client.query`;
+- connection or release methods;
+- raw COMMIT/ROLLBACK strings;
+- arbitrary SQL-file execution.
+
+Preserve automatic transaction begin, commit, rollback, retry and error semantics inside the wrapper.
+
+Add tests proving callback code cannot escape to a raw executor.
+
+## 3. Migrate actual application callers
+
+Migrate the retained 61 locations and every directly affected alias/wrapper.
+
+Do not rely on the review-only translator at runtime.
+
+For each location, manually or mechanically convert the real source to:
+
+- immutable static descriptor;
+- registered fixed query;
+- finite descriptor builder;
+- isolated non-production-only operation.
+
+Resolve the 44 rejected translator constructions explicitly, including:
+
+- business-date/report predicates;
+- placeholder counters;
+- SQL-array aliases and spreads;
+- controlled-stock expression maps;
+- SQL-file loading;
+- metadata-derived identifiers;
+- nested fragment producers.
+
+Preserve existing authorization and side effects. Do not constant-fold calls that perform validation or permissions.
+
+## 4. Finite runtime builders
+
+Use finite allowlists for:
+
+- table names;
+- column names;
+- update-field maps;
+- sort direction;
+- report/filter modes;
+- statuses and types;
+- pagination;
+- stock movement/source choices.
+
+All user-controlled data must remain bound values.
+
+Reject unknown, inherited, prototype, accessor, proxy, function, cyclic and mutated-alias inputs before driver access.
+
+## 5. Migrate transaction and business families
+
+Complete actual runtime migration for:
+
+- stock engine and stock clearance;
+- transfer/request multi-item writes;
+- cost and ledger pages;
+- controlled register;
+- MIS CSI, receipts, drafts and stock reports;
+- branch daily/monthly/summary and movements;
+- warehouse inventory and predicates;
+- Distributor and NB-number operations;
+- price import;
+- profile/contact and HR writes;
+- sale evidence and repair evidence;
+- startup schema arrays and SQL-file tooling.
+
+Do not leave an unrestricted fallback reachable from these paths.
+
+## 6. Native hostile-input and rollback testing
+
+Run actual handlers and services against positively owned disposable PostgreSQL databases.
+
+Cover every migrated family with:
+
+- comments;
+- semicolons;
+- quotes;
+- UNION payloads;
+- boolean expressions;
+- malicious table/column/order fragments;
+- prototype/accessor fields;
+- mutable arrays and aliases;
+- malformed pagination;
+- native database failures;
+- rollback;
+- retry;
+- unrelated-row sentinels.
+
+Verify:
+
+- driver receives only admitted immutable descriptors;
+- hostile values remain bound or are rejected;
+- SQL structure is unchanged;
+- no second statement executes;
+- unrelated rows remain unchanged;
+- rollback and retry remain correct.
+
+## 7. Remove or quarantine incomplete scaffolding
+
+The review-only translator may remain as audit tooling, but it must not be presented as runtime enforcement.
+
+Remove dead compatibility paths and unused admission shims.
+
+Do not retain a plain-string fallback “temporarily” in production modules.
+
+## 8. Acceptance gates
+
+Run:
+
+- complete unit suite;
+- full 425 database checks;
+- credential database checks;
+- migration/schema contracts;
+- startup contracts;
+- production build;
+- strict launcher;
+- authenticated browser security;
+- settled Consultant rendering;
+- stock concurrency/retry;
+- complete hostile endpoint/write-family matrix;
+- actual-server output/privacy canaries;
+- dependency, SAST and privacy scans;
+- exposure scan;
+- owned cleanup verification.
+
+Required results:
+
+- original unresolved SQL locations: 0;
+- production-reachable plain-string executor calls: 0;
+- unrestricted transaction callback executors: 0;
+- uncovered production SQL families: 0;
+- unit failures: 0;
+- database failures: 0;
+- browser-security failures: 0.
+
+## 9. Do not stop early
+
+Do not return another checkpoint merely stating that wiring remains.
+
+Continue implementation until either:
+
+- every required runtime path is migrated and verified; or
+- a concrete, irreducible code blocker is found after attempted implementation.
+
+A concrete blocker must include the exact file/function, attempted edit, failing test and why it cannot safely proceed. “Large scope,” “needs more review,” or translator rejection is not an irreducible blocker.
+
+## 10. Evidence and disposition
+
+Write evidence to:
+
+`generated-artifacts/sql-runtime-enforcement-final/`
+
+Return exactly one:
+
+- `READY FOR OWNER CLEAN-INSTALL GATE - DO NOT PUBLISH`
+- `BLOCKED - DO NOT PUBLISH`
+
+Only return readiness when every acceptance gate above passes.
+
+If ready, prepare the exact candidate and provide:
+
+```sh
+cd /home/runner/workspace
+node scripts/security-final-clean-gate.mjs --owner-manual
+```
+
+Do not execute publication.
+
+Finish with:
+
+Production database accessed: NO  
+Production database modified: NO  
+Production migration applied: NO  
+Production passwords rotated: NO  
+Production sessions invalidated: NO  
+Production environment modified: NO  
+Production restarted: NO  
+Production scheduler stopped: NO  
+Production worker activated: NO  
+Production published: NO

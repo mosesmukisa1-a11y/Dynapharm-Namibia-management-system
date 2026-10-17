@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import './lib/owned-tool-context.mjs';
 /**
  * Seed Dynapharm catalog data into the Railway PostgreSQL database.
  *

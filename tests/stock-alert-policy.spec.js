@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { beforeAll, afterAll, beforeEach, describe, it, expect } from 'vitest';
-import { randomUUID } from 'node:crypto';
-import { query } from '../api/db.js';
+import { randomUUID } from 'node:crypto';import {
+  query } from "./helpers/owned-raw-database.js";
 import { assertIsolatedTestDatabase } from '../api/testDatabaseGuard.js';
 import policyHandler from '../api/stock/alert-policy.js';
 import { getStockAlertPolicy } from '../api/services/stockAlertPolicy.js';
@@ -13,14 +13,14 @@ import branchHandler from '../api/branch/stock-summary.js';
 import gmAlertsHandler from '../api/gm/alerts/stock.js';
 
 const id = `ALERT-${randomUUID()}`;
-const products = [0, 5, 10, 15].map(q => `${id}-${q}`);
+const products = [0, 5, 10, 15].map((q) => `${id}-${q}`);
 const defaults = { lowStockThreshold: 10, expiryWarningDays: 90 };
 async function invoke(handler, method = 'GET', body, role = 'stock', suffix = '', params = {}) {
   const result = { status: 200 };
   await handler({ method, body, user: role === null ? null : { id, role }, query: params,
     headers: { host: 'internal' }, url: `/api/stock/test${suffix}` },
-  { setHeader() {}, end() {}, status(status) { result.status = status; return this; },
-    json(value) { result.body = value; return this; } });
+  { setHeader() {}, end() {}, status(status) {result.status = status;return this;},
+    json(value) {result.body = value;return this;} });
   return result;
 }
 beforeAll(async () => {
@@ -36,7 +36,7 @@ beforeAll(async () => {
       VALUES($1,'branch','townshop',$2,$1,CURRENT_DATE + 45,$3)`, [`I-${product}`, product, qty]);
   }
 });
-beforeEach(async () => { await query("DELETE FROM system_settings WHERE key='stock_alert_policy'"); });
+beforeEach(async () => {await query("DELETE FROM system_settings WHERE key='stock_alert_policy'");});
 afterAll(async () => {
   await query('DELETE FROM inventory_balances WHERE product_name=ANY($1)', [products]);
   await query('DELETE FROM stock_batches WHERE description=ANY($1)', [products]);
@@ -50,25 +50,25 @@ describe('saved stock warning policy in an isolated database', () => {
     expect((await invoke(policyHandler, 'PUT', policy)).body.policy).toEqual(policy);
     expect((await invoke(policyHandler)).body.policy).toEqual(policy);
   });
-  it.each(['stock', 'stock_manager', 'gm', 'general_manager', 'admin', 'superadmin', 'super_admin'])('allows %s to save', async role => {
+  it.each(['stock', 'stock_manager', 'gm', 'general_manager', 'admin', 'superadmin', 'super_admin'])('allows %s to save', async (role) => {
     const result = await invoke(policyHandler, 'PUT', defaults, role);
     expect(result.status).toBe(200);
     expect(result.body.canEdit).toBe(true);
   });
-  it.each(['finance', 'mis', 'director', 'branch', 'branch_manager', 'warehouse', 'distributor', 'patient', null])('prevents %s from changing the policy', async role => {
+  it.each(['finance', 'mis', 'director', 'branch', 'branch_manager', 'warehouse', 'distributor', 'patient', null])('prevents %s from changing the policy', async (role) => {
     const result = await invoke(policyHandler, 'PUT', { lowStockThreshold: 99, expiryWarningDays: 1 }, role);
     expect(result.status).toBe(role === null ? 401 : 403);
     expect(await getStockAlertPolicy()).toEqual(defaults);
   });
   it.each([
-    {}, { lowStockThreshold: 0, expiryWarningDays: 90 },
-    { lowStockThreshold: 1.5, expiryWarningDays: 90 },
-    { lowStockThreshold: '10', expiryWarningDays: 90 },
-    { lowStockThreshold: 10, expiryWarningDays: -1 },
-    { lowStockThreshold: 10, expiryWarningDays: 3651 },
-    { lowStockThreshold: 2147483648, expiryWarningDays: 90 },
-    { ...defaults, auto_receive_enabled: true },
-  ])('rejects invalid policy %j without persisting it', async body => {
+  {}, { lowStockThreshold: 0, expiryWarningDays: 90 },
+  { lowStockThreshold: 1.5, expiryWarningDays: 90 },
+  { lowStockThreshold: '10', expiryWarningDays: 90 },
+  { lowStockThreshold: 10, expiryWarningDays: -1 },
+  { lowStockThreshold: 10, expiryWarningDays: 3651 },
+  { lowStockThreshold: 2147483648, expiryWarningDays: 90 },
+  { ...defaults, auto_receive_enabled: true }]
+  )('rejects invalid policy %j without persisting it', async (body) => {
     expect((await invoke(policyHandler, 'PUT', body)).status).toBe(422);
     expect(await getStockAlertPolicy()).toEqual(defaults);
   });
@@ -81,7 +81,7 @@ describe('saved stock warning policy in an isolated database', () => {
     expect(initial.expiringCount).toBe(3);
     expect((await getCompanyStockSummary()).lowStockCount).toBe(1);
     const initialAlerts = await getStockAlerts();
-    expect(initialAlerts.lowStock.filter(r => products.includes(r.productName))).toHaveLength(1);
+    expect(initialAlerts.lowStock.filter((r) => products.includes(r.productName))).toHaveLength(1);
     await invoke(policyHandler, 'PUT', { lowStockThreshold: 15, expiryWarningDays: 30 });
     expect((await getLocationStockSummary('branch', 'townshop')).lowStockCount).toBe(2);
     expect((await getLocationStockSummary('branch', 'townshop')).expiringCount).toBe(0);
@@ -98,7 +98,7 @@ describe('saved stock warning policy in an isolated database', () => {
     expect(priority.body.warningDays).toBe(30);
     expect(priority.body.nearExpiry).toBe(0);
     const branches = await invoke(branchHandler);
-    const town = branches.body.branches.find(r => r.branch_id === 'townshop');
+    const town = branches.body.branches.find((r) => r.branch_id === 'townshop');
     expect(branches.status).toBe(200);
     expect(town.low_stock_count).toBe(2);
     expect(town.expiring_qty).toBe(0);
@@ -129,7 +129,7 @@ describe('saved stock warning policy in an isolated database', () => {
     expect((await getStockAlerts()).expiring).toHaveLength(1);
     await query('UPDATE inventory_balances SET expiry_date=CURRENT_DATE+45 WHERE product_name=$1', [products[1]]);
   });
-  it.each(['finance', 'finance_manager', 'mis', 'director', 'branch_manager', 'warehouse_manager'])('lets %s read but not edit warnings', async role => {
+  it.each(['finance', 'finance_manager', 'mis', 'director', 'branch_manager', 'warehouse_manager'])('lets %s read but not edit warnings', async (role) => {
     const result = await invoke(policyHandler, 'GET', undefined, role);
     expect(result.status).toBe(200);
     expect(result.body.policy).toEqual(defaults);

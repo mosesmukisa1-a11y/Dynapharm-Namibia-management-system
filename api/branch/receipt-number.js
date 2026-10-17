@@ -1,24 +1,24 @@
-import { applyAuthCors } from '../_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../services/queryDescriptors.js";import { applyAuthCors } from '../_lib/auth.js';
 import { query } from '../db.js';
 
 const BRANCH_ABBR = {
-  'townshop':        'TW',
-  'hochland-park':   'RN',
-  'khomasdal':       'KD',
-  'swakopmund':      'SW',
-  'walvisbay':       'WB',
-  'katima_mulilo':   'KM',
-  'rundu':           'RU',
-  'gobabis':         'GO',
-  'eenhana':         'EN',
-  'ondangwa':        'ON',
-  'outapi':          'OU',
-  'otjiwarongo':     'OT',
-  'okahao':          'OK',
+  'townshop': 'TW',
+  'hochland-park': 'RN',
+  'khomasdal': 'KD',
+  'swakopmund': 'SW',
+  'walvisbay': 'WB',
+  'katima_mulilo': 'KM',
+  'rundu': 'RU',
+  'gobabis': 'GO',
+  'eenhana': 'EN',
+  'ondangwa': 'ON',
+  'outapi': 'OU',
+  'otjiwarongo': 'OT',
+  'okahao': 'OK',
   'oshakati_branch': 'OS',
-  'tsumeb':          'TU',
-  'okongo':          'OKG',
-  'nkurenkuru':      'NK',
+  'tsumeb': 'TU',
+  'okongo': 'OKG',
+  'nkurenkuru': 'NK'
 };
 
 export default async function handler(req, res) {
@@ -33,14 +33,14 @@ export default async function handler(req, res) {
   const year = new Date().getFullYear();
 
   try {
-    const { rows } = await query(
-      `INSERT INTO receipt_counters (branch_id, year, last_seq)
-       VALUES ($1, $2, 1)
-       ON CONFLICT (branch_id, year)
-       DO UPDATE SET last_seq = receipt_counters.last_seq + 1
-       RETURNING last_seq`,
-      [branch_id, year]
-    );
+    const { rows } = await __qd_executePlan(query, __qd_registeredPlan("api/branch/receipt-number.js:37:0"),
+
+
+
+
+
+    [branch_id, year]);
+
 
     const seq = rows[0].last_seq;
     const receipt_number = `${abbr}-${year}-${String(seq).padStart(6, '0')}`;

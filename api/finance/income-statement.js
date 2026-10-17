@@ -1,4 +1,4 @@
-/**
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../services/queryDescriptors.js"; /**
  * GET /api/finance/income-statement?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
  *
  * Aggregates all operating-expense sources:
@@ -25,37 +25,37 @@ export default async function handler(req, res) {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
     const startDate = url.searchParams.get('startDate') || new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
-    const endDate   = url.searchParams.get('endDate')   || new Date().toISOString().slice(0, 10);
+    const endDate = url.searchParams.get('endDate') || new Date().toISOString().slice(0, 10);
 
     // ── 1. Salary — current active payroll schedule (not period-filtered; it's a monthly fixed cost) ──
-    const salaryRows = await getMany(
-      `SELECT name, designation, dpc_town, total_salary, basic_salary, status
-       FROM salary_ledger
-       WHERE status != 'removed'
-       ORDER BY name`
-    );
+    const salaryRows = await __qd_executePlan(getMany, __qd_registeredPlan("api/finance/income-statement.js:32:0"), []);
+
+
+
+
+
     const monthlySalaryTotal = salaryRows.reduce((s, e) => s + Number(e.total_salary || 0), 0);
     const salaryCount = salaryRows.length;
 
     // ── 2. Rent — current active lease schedule (monthly fixed cost) ──
-    const rentRows = await getMany(
-      `SELECT branch_name, total_payable, rent_amount
-       FROM branch_rent_payments
-       WHERE total_payable > 0 OR rent_amount > 0
-       ORDER BY branch_name`
-    );
+    const rentRows = await __qd_executePlan(getMany, __qd_registeredPlan("api/finance/income-statement.js:42:1"), []);
+
+
+
+
+
     const monthlyRentTotal = rentRows.reduce((s, r) => s + Number(r.total_payable || r.rent_amount || 0), 0);
     const rentCount = rentRows.length;
 
     // ── 3. Branch expenses in period ──
-    const branchExpRows = await getMany(
-      `SELECT date, amount, category, description, status
-       FROM branch_expenses
-       WHERE date >= $1::date AND date <= $2::date
-         AND COALESCE(status,'recorded') != 'rejected'
-       ORDER BY date`,
-      [startDate, endDate]
-    );
+    const branchExpRows = await __qd_executePlan(getMany, __qd_registeredPlan("api/finance/income-statement.js:52:2"),
+
+
+
+
+
+    [startDate, endDate]);
+
     const branchExpTotal = branchExpRows.reduce((s, e) => s + Number(e.amount || 0), 0);
     const branchExpByCategory = {};
     for (const e of branchExpRows) {
@@ -64,14 +64,14 @@ export default async function handler(req, res) {
     }
 
     // ── 4. Department / HQ expenses in period ──
-    const deptExpRows = await getMany(
-      `SELECT date, amount, category, department, status
-       FROM dept_expenses
-       WHERE date >= $1::date AND date <= $2::date
-         AND COALESCE(status,'pending') != 'rejected'
-       ORDER BY date`,
-      [startDate, endDate]
-    );
+    const deptExpRows = await __qd_executePlan(getMany, __qd_registeredPlan("api/finance/income-statement.js:68:3"),
+
+
+
+
+
+    [startDate, endDate]);
+
     const deptExpTotal = deptExpRows.reduce((s, e) => s + Number(e.amount || 0), 0);
     const deptExpByCategory = {};
     for (const e of deptExpRows) {
@@ -80,14 +80,14 @@ export default async function handler(req, res) {
     }
 
     // ── 5. Petty cash spend in period ──
-    const pettyRows = await getMany(
-      `SELECT created_at, amount, category, description, type
-       FROM petty_cash_transactions
-       WHERE type = 'expense'
-         AND created_at >= $1::date AND created_at <= ($2 || 'T23:59:59')::timestamp
-       ORDER BY created_at`,
-      [startDate, endDate]
-    );
+    const pettyRows = await __qd_executePlan(getMany, __qd_registeredPlan("api/finance/income-statement.js:84:4"),
+
+
+
+
+
+    [startDate, endDate]);
+
     const pettyTotal = pettyRows.reduce((s, e) => s + Number(e.amount || 0), 0);
     const pettyByCategory = {};
     for (const e of pettyRows) {
@@ -96,13 +96,13 @@ export default async function handler(req, res) {
     }
 
     // ── 6. Bonus payouts from branch_expenses in period ──
-    const bonusRow = await getOne(
-      `SELECT COALESCE(SUM(amount),0) AS total
-       FROM branch_expenses
-       WHERE LOWER(category) LIKE '%bonus%'
-         AND date >= $1::date AND date <= $2::date`,
-      [startDate, endDate]
-    );
+    const bonusRow = await __qd_executePlan(getOne, __qd_registeredPlan("api/finance/income-statement.js:100:5"),
+
+
+
+
+    [startDate, endDate]);
+
     const bonusPayout = Number(bonusRow?.total || 0);
 
     // ── 7. Payment Vouchers (Head Office expenses entered by Finance) ──
@@ -110,23 +110,23 @@ export default async function handler(req, res) {
     //   supplier_remittance — procurement/COGS, not an operating expense
     //   rent               — already captured in branch_rent_payments (would double-count)
     const VOUCHER_LABEL_MAP = {
-      cash_request:         'HQ Cash Request Payout',
-      salary:               'HQ Salary / Wage Payment',
-      bonus:                'HQ Bonus Payout',
-      expense_reimbursement:'HQ Expense Reimbursement',
-      ad_hoc:               'HQ Ad-Hoc Payment',
+      cash_request: 'HQ Cash Request Payout',
+      salary: 'HQ Salary / Wage Payment',
+      bonus: 'HQ Bonus Payout',
+      expense_reimbursement: 'HQ Expense Reimbursement',
+      ad_hoc: 'HQ Ad-Hoc Payment'
     };
-    const voucherRows = await getMany(
-      `SELECT payment_type, COALESCE(SUM(amount), 0) AS total
-       FROM payment_vouchers
-       WHERE status IN ('paid', 'authorised')
-         AND payment_date >= $1::date
-         AND payment_date <= $2::date
-         AND payment_type NOT IN ('supplier_remittance', 'rent')
-       GROUP BY payment_type
-       ORDER BY total DESC`,
-      [startDate, endDate]
-    );
+    const voucherRows = await __qd_executePlan(getMany, __qd_registeredPlan("api/finance/income-statement.js:120:6"),
+
+
+
+
+
+
+
+
+    [startDate, endDate]);
+
     const voucherByCategory = {};
     let voucherTotal = 0;
     for (const row of voucherRows) {
@@ -153,17 +153,17 @@ export default async function handler(req, res) {
       period: { start: startDate, end: endDate },
       salary: {
         monthly_total: monthlySalaryTotal,
-        count: salaryCount,
+        count: salaryCount
       },
       rent: {
         monthly_total: monthlyRentTotal,
-        count: rentCount,
+        count: rentCount
       },
       misc_expenses: {
         total: miscTotal,
-        by_category: expByCategory,
+        by_category: expByCategory
       },
-      bonus_payout: bonusPayout,
+      bonus_payout: bonusPayout
     });
   } catch (err) {
     console.error('[finance/income-statement]', err);

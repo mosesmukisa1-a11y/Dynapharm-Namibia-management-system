@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {schemaDigest} from './lib/consolidated-contract.mjs';
 import {assessOfflinePreflight} from './lib/offline-rollout-preflight.mjs';
-const base='generated-artifacts/sql-security-final-closure';
+const base='generated-artifacts/sql-runtime-enforcement-final';
 const read=async file=>JSON.parse(await fs.readFile(file,'utf8'));
 const files=[
   'migrations/036_canonical_branches.sql',

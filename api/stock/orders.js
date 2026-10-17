@@ -1,4 +1,4 @@
-import { applyAuthCors } from '../_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, joinPlans as __qd_joinPlans, executePlan as __qd_executePlan } from "../services/queryDescriptors.js";import { applyAuthCors } from '../_lib/auth.js';
 import { getMany, getOne, insert, update } from '../db.js';
 
 export default async function handler(req, res) {
@@ -12,30 +12,30 @@ export default async function handler(req, res) {
       const status = url.searchParams.get('status') || '';
       const branchId = url.searchParams.get('branchId') || '';
 
-      const conditions = ['1=1'];
+      const conditions = [__qd_registeredPlan("api/stock/orders.js:15:0")];
       const params = [];
-      if (status) { conditions.push(`status = $${params.length + 1}`); params.push(status); }
-      if (branchId && branchId !== 'all') { conditions.push(`requesting_branch = $${params.length + 1}`); params.push(branchId); }
+      if (status) {conditions.push(__qd_registeredPlan("api/stock/orders.js:17:1", [params.length + 1]));params.push(status);}
+      if (branchId && branchId !== 'all') {conditions.push(__qd_registeredPlan("api/stock/orders.js:18:2", [params.length + 1]));params.push(branchId);}
 
-      const orders = await getMany(
-        `SELECT * FROM stock_requests WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC LIMIT 200`,
-        params
-      );
+      const orders = await __qd_executePlan(getMany, __qd_registeredPlan("api/stock/orders.js:21:3", [__qd_joinPlans(
+        conditions, "and")]),
+      params);
 
-      const formatted = orders.map(o => {
+
+      const formatted = orders.map((o) => {
         let items = [];
-        try { items = typeof o.items === 'string' ? JSON.parse(o.items || '[]') : (o.items || []); } catch {}
+        try {items = typeof o.items === 'string' ? JSON.parse(o.items || '[]') : o.items || [];} catch {}
         return {
           orderId: o.id,
           branchId: o.requesting_branch || o.branch_id,
-          branchName: (o.requesting_branch || o.branch_id || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+          branchName: (o.requesting_branch || o.branch_id || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
           requestedBy: o.requested_by || o.created_by,
           status: o.status,
           priority: o.priority || 'normal',
           notes: o.notes,
           items,
           createdAt: o.created_at,
-          updatedAt: o.updated_at,
+          updatedAt: o.updated_at
         };
       });
 
@@ -56,7 +56,7 @@ export default async function handler(req, res) {
         items: JSON.stringify(items),
         status: 'pending',
         created_at: new Date(),
-        updated_at: new Date(),
+        updated_at: new Date()
       });
       return res.status(201).json({ success: true, order });
     }

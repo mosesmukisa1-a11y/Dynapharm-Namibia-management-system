@@ -1,4 +1,4 @@
-import { applyAuthCors } from '../_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../services/queryDescriptors.js";import { applyAuthCors } from '../_lib/auth.js';
 import { getMany, getOne } from '../db.js';
 
 /**
@@ -12,21 +12,21 @@ async function enrichWithPrices(batch) {
   let bv = 0;
 
   try {
-    const price = await getOne(
-      `SELECT dp, cp, bv FROM live_product_prices
-       WHERE LOWER(TRIM(description)) = LOWER(TRIM($1))
-       LIMIT 1`,
-      [batch.description || '']
-    );
+    const price = await __qd_executePlan(getOne, __qd_registeredPlan("api/stock/barcode.js:16:0"),
+
+
+
+    [batch.description || '']);
+
     if (price) {
       dp = Number(price.dp || dp);
       cp = Number(price.cp || 0);
       bv = Number(price.bv || 0);
     }
   } catch (_) {
+
     // price lookup is best-effort; fall back to batch values
   }
-
   return { qty, dp, cp, bv };
 }
 
@@ -37,32 +37,32 @@ export default async function handler(req, res) {
 
   try {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-    const barcode   = url.searchParams.get('barcode')   || '';
-    const search    = url.searchParams.get('search')    || '';
+    const barcode = url.searchParams.get('barcode') || '';
+    const search = url.searchParams.get('search') || '';
     const productId = url.searchParams.get('productId') || '';
 
     if (barcode) {
-      const configured=await getMany(`SELECT product_name,base_unit,packs FROM stock_product_packs
-        WHERE EXISTS (SELECT 1 FROM jsonb_array_elements(packs) p WHERE p->>'barcode'=$1)`,[barcode]);
+      const configured = await __qd_executePlan(getMany, __qd_registeredPlan("api/stock/barcode.js:45:1"),
+      [barcode]);
       if (configured.length) {
-        if (configured.length!==1) return res.status(409).json({success:false,error:'Ambiguous pack barcode'});
-        const config=configured[0],pack=config.packs.find(p=>p.barcode===barcode);
-        const price=await getOne('SELECT description,dp,cp,bv FROM live_product_prices WHERE LOWER(TRIM(description))=$1',[config.product_name]);
-        return res.json({success:true,productName:config.product_name,enteredUnit:pack.unit,
-          baseUnit:config.base_unit,conversionFactor:pack.factor,barcode,
-          dp:price?.dp==null ? null : Number(price.dp),cp:price?.cp==null ? null : Number(price.cp),
-          bv:price?.bv==null ? null : Number(price.bv),fefoEnforced:true});
+        if (configured.length !== 1) return res.status(409).json({ success: false, error: 'Ambiguous pack barcode' });
+        const config = configured[0],pack = config.packs.find((p) => p.barcode === barcode);
+        const price = await __qd_executePlan(getOne, __qd_registeredPlan("api/stock/barcode.js:50:2"), [config.product_name]);
+        return res.json({ success: true, productName: config.product_name, enteredUnit: pack.unit,
+          baseUnit: config.base_unit, conversionFactor: pack.factor, barcode,
+          dp: price?.dp == null ? null : Number(price.dp), cp: price?.cp == null ? null : Number(price.cp),
+          bv: price?.bv == null ? null : Number(price.bv), fefoEnforced: true });
       }
       // ── Priority 1: permanent product_code from the GM price list ──────────
       // Scanning a product code (e.g. NB9845) returns product identity only.
       // FEFO batch selection happens at sale/dispense time on the backend.
-      const productRow = await getOne(
-        `SELECT description, dp, cp, bv, cif, product_code
-         FROM live_product_prices
-         WHERE product_code = $1
-         LIMIT 1`,
-        [barcode.trim().toUpperCase()]
-      );
+      const productRow = await __qd_executePlan(getOne, __qd_registeredPlan("api/stock/barcode.js:60:3"),
+
+
+
+
+      [barcode.trim().toUpperCase()]);
+
       if (productRow) {
         return res.status(200).json({
           success: true,
@@ -75,15 +75,15 @@ export default async function handler(req, res) {
           cifUnitCost: Number(productRow.cif || 0),
           unitPrice: Number(productRow.dp || 0),
           // No batch/stock fields — FEFO is applied at sale time
-          fefoEnforced: true,
+          fefoEnforced: true
         });
       }
 
       // ── Priority 2: legacy batch-level barcode on stock_batches ─────────────
-      const batch = await getOne(
-        'SELECT * FROM stock_batches WHERE barcode = $1 OR qr_code = $1 LIMIT 1',
-        [barcode]
-      );
+      const batch = await __qd_executePlan(getOne, __qd_registeredPlan("api/stock/barcode.js:84:4"),
+
+      [barcode]);
+
       if (!batch) return res.status(404).json({ success: false, error: 'Barcode not found' });
 
       const { qty, dp, cp, bv } = await enrichWithPrices(batch);
@@ -96,7 +96,7 @@ export default async function handler(req, res) {
           productName: batch.description,
           barcode: batch.barcode,
           location: batch.location,
-          quantity: 0,
+          quantity: 0
         });
       }
 
@@ -114,12 +114,12 @@ export default async function handler(req, res) {
         cp,
         bv,
         cifUnitCost: Number(batch.cif_unit_cost || 0),
-        dpcUnitValue: Number(batch.dpc_unit_value || 0),
+        dpcUnitValue: Number(batch.dpc_unit_value || 0)
       });
     }
 
     if (productId) {
-      const batch = await getOne('SELECT * FROM stock_batches WHERE id = $1', [productId]);
+      const batch = await __qd_executePlan(getOne, __qd_registeredPlan("api/stock/barcode.js:122:5"), [productId]);
       if (!batch) return res.status(404).json({ success: false, error: 'Product not found' });
       const { dp, cp, bv } = await enrichWithPrices(batch);
       return res.status(200).json({
@@ -131,29 +131,29 @@ export default async function handler(req, res) {
         dp,
         cp,
         bv,
-        unitPrice: dp,
+        unitPrice: dp
       });
     }
 
     let batches;
     if (search) {
-      batches = await getMany(
-        `SELECT id, description, batch_no, barcode, location, remaining_quantity, quantity, expiry_date
-         FROM stock_batches
-         WHERE description ILIKE $1
-         ORDER BY description ASC LIMIT 100`,
-        [`%${search}%`]
-      );
+      batches = await __qd_executePlan(getMany, __qd_registeredPlan("api/stock/barcode.js:141:6"),
+
+
+
+
+      [`%${search}%`]);
+
     } else {
-      batches = await getMany(
-        `SELECT id, description, batch_no, barcode, location, remaining_quantity, quantity, expiry_date
-         FROM stock_batches
-         WHERE barcode IS NOT NULL
-         ORDER BY description ASC LIMIT 100`
-      );
+      batches = await __qd_executePlan(getMany, __qd_registeredPlan("api/stock/barcode.js:149:7"), []);
+
+
+
+
+
     }
 
-    const items = batches.map(b => ({
+    const items = batches.map((b) => ({
       productId: b.id,
       productName: b.description,
       barcode: b.barcode,
@@ -161,7 +161,7 @@ export default async function handler(req, res) {
       location: b.location,
       quantity: Number(b.remaining_quantity || b.quantity || 0),
       expiryDate: b.expiry_date,
-      hasBarcode: !!b.barcode,
+      hasBarcode: !!b.barcode
     }));
 
     res.status(200).json({ success: true, items });

@@ -1,4 +1,4 @@
-import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, joinPlans as __qd_joinPlans, executePlan as __qd_executePlan } from "../services/queryDescriptors.js";import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
 import { query, getMany, getOne } from '../db.js';
 
 const FULL_ACCESS_ROLES = new Set(['admin', 'gm', 'director', 'finance']);
@@ -43,50 +43,50 @@ export default async function handler(req, res) {
 
       let bonuses;
       if (isFullAccess && !effectiveBranch) {
-        bonuses = await getMany(
-          `SELECT b.*, COALESCE(b.amount_earned, 0) - COALESCE(b.amount_paid, 0) AS outstanding
-           FROM distributor_bonuses b
-           WHERE b.status IN ('pending', 'partial')
-           ORDER BY b.period DESC, b.distributor_name`,
-          []
-        );
+        bonuses = await __qd_executePlan(getMany, __qd_registeredPlan("api/branch/bonus-payments.js:47:0"),
+
+
+
+
+        []);
+
       } else {
-        bonuses = await getMany(
-          `SELECT b.*, COALESCE(b.amount_earned, 0) - COALESCE(b.amount_paid, 0) AS outstanding
-           FROM distributor_bonuses b
-           WHERE b.status IN ('pending', 'partial')
-           ORDER BY b.period DESC, b.distributor_name`,
-          []
-        );
+        bonuses = await __qd_executePlan(getMany, __qd_registeredPlan("api/branch/bonus-payments.js:55:1"),
+
+
+
+
+        []);
+
       }
 
       const paidParams = [];
       const paidWhere = [];
       if (effectiveBranch) {
         paidParams.push(effectiveBranch);
-        paidWhere.push(`p.branch_id = $${paidParams.length}`);
+        paidWhere.push(__qd_registeredPlan("api/branch/bonus-payments.js:67:3", [paidParams.length]));
       } else if (branchScope.enforced && branchScope.branches?.length) {
         paidParams.push(branchScope.branches);
-        paidWhere.push(`p.branch_id = ANY($${paidParams.length})`);
+        paidWhere.push(__qd_registeredPlan("api/branch/bonus-payments.js:70:4", [paidParams.length]));
       }
       if (from) {
         paidParams.push(from);
-        paidWhere.push(`p.paid_at >= $${paidParams.length}::date`);
+        paidWhere.push(__qd_registeredPlan("api/branch/bonus-payments.js:74:5", [paidParams.length]));
       }
       if (to) {
         paidParams.push(to);
-        paidWhere.push(`p.paid_at <= $${paidParams.length}::date`);
+        paidWhere.push(__qd_registeredPlan("api/branch/bonus-payments.js:78:6", [paidParams.length]));
       }
 
-      const paidHistory = await getMany(
-        `SELECT p.*, b.nb_number, b.distributor_name, b.period
-         FROM distributor_bonus_payments p
-         JOIN distributor_bonuses b ON b.id = p.bonus_id
-         ${paidWhere.length ? 'WHERE ' + paidWhere.join(' AND ') : ''}
-         ORDER BY p.paid_at DESC
-         LIMIT 500`,
-        paidParams
-      );
+      const paidHistory = await __qd_executePlan(getMany, __qd_registeredPlan("api/branch/bonus-payments.js:82:8", [
+
+
+
+      paidWhere.length ? __qd_joinPlans([__qd_registeredPlan("api/branch/bonus-payments.js:85:2"), __qd_joinPlans(paidWhere, "and")], "empty") : __qd_registeredPlan("api/branch/bonus-payments.js:85:7")]),
+
+
+      paidParams);
+
 
       return res.json({ success: true, bonuses, paidHistory, total: bonuses.length });
     }
@@ -114,7 +114,7 @@ export default async function handler(req, res) {
         }
       }
 
-      const bonus = await getOne(`SELECT * FROM distributor_bonuses WHERE id = $1`, [bonus_id]);
+      const bonus = await __qd_executePlan(getOne, __qd_registeredPlan("api/branch/bonus-payments.js:117:9"), [bonus_id]);
       if (!bonus) {
         return res.status(404).json({ success: false, error: 'Bonus record not found' });
       }
@@ -132,30 +132,30 @@ export default async function handler(req, res) {
       const paidDate = paid_at || new Date().toISOString().slice(0, 10);
       const recordedBy = req.user.full_name || req.user.username || 'branch';
 
-      await query(
-        `INSERT INTO distributor_bonus_payments (id, bonus_id, branch_id, amount, paid_at, recorded_by, notes, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
-        [payId, bonus_id, branchId, payAmount, paidDate, recordedBy, notes || null]
-      );
+      await __qd_executePlan(query, __qd_registeredPlan("api/branch/bonus-payments.js:136:10"),
 
-      await query(
-        `UPDATE distributor_bonuses
-         SET amount_paid = amount_earned, status = 'paid', paid_by_branch_id = $1, payment_date = $2, updated_at = NOW()
-         WHERE id = $3`,
-        [branchId, paidDate, bonus_id]
-      );
+
+      [payId, bonus_id, branchId, payAmount, paidDate, recordedBy, notes || null]);
+
+
+      await __qd_executePlan(query, __qd_registeredPlan("api/branch/bonus-payments.js:142:11"),
+
+
+
+      [branchId, paidDate, bonus_id]);
+
 
       const moveId = `BMOV-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
-      const activeSession = await getOne(
-        `SELECT id FROM branch_cash_sessions WHERE branch_id = $1 AND is_open = true ORDER BY opened_at DESC LIMIT 1`,
-        [branchId]
-      );
+      const activeSession = await __qd_executePlan(getOne, __qd_registeredPlan("api/branch/bonus-payments.js:150:12"),
+
+      [branchId]);
+
       if (activeSession) {
-        await query(
-          `INSERT INTO branch_cash_movements (id, session_id, branch_id, type, description, amount, recorded_by, recorded_at, reference, notes)
-           VALUES ($1, $2, $3, 'expense', $4, $5, $6, NOW(), $7, $8)`,
-          [moveId, activeSession.id, branchId, `Bonus payment to ${bonus.distributor_name} (${bonus.nb_number}) - ${bonus.period}`, payAmount, recordedBy, payId, notes || null]
-        );
+        await __qd_executePlan(query, __qd_registeredPlan("api/branch/bonus-payments.js:155:13"),
+
+
+        [moveId, activeSession.id, branchId, `Bonus payment to ${bonus.distributor_name} (${bonus.nb_number}) - ${bonus.period}`, payAmount, recordedBy, payId, notes || null]);
+
       }
 
       return res.json({
@@ -173,7 +173,7 @@ export default async function handler(req, res) {
           paid_at: paidDate,
           branch_id: branchId,
           recorded_by: recordedBy,
-          notes: notes || null,
+          notes: notes || null
         }
       });
     }

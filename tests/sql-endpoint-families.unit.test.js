@@ -4,8 +4,11 @@
 // or PostgreSQL execution. The real browser and DB gates are separate.
 import {it,expect,vi,beforeEach} from 'vitest';
 const recorder=vi.hoisted(()=>({calls:[]}));
-vi.mock('../api/db.js',()=>{
-  const query=vi.fn(async(text,params=[])=>{
+vi.mock('../api/db.js',async()=>{
+  const {executionArguments}=await import('../api/services/queryDescriptors.js');
+  const query=vi.fn(async(descriptor,params)=>{
+    expect(Object.isFrozen(descriptor)).toBe(true);
+    const admitted=executionArguments(descriptor,params),text=admitted.text;params=admitted.values;
     recorder.calls.push({text,params});
     const rows=text.includes(' AS stock,')?[{stock:[],branches:[],reservations:[],segregated:[]}]:
       /SELECT id FROM warehouse_locations/.test(text)?[{id:params[0]}]:[];
@@ -72,7 +75,8 @@ it('staff profile ignores unapproved field names and binds values for approved f
 });
 it('controlled register binds search/location and rejects hostile status/type before query',async()=>{
   const {readControlledStockRegister}=await import('../api/services/controlledStockRegister.js');
-  const client={query:async(text,params)=>{recorder.calls.push({text,params});
+   const {executionArguments}=await import('../api/services/queryDescriptors.js');
+   const client={query:async(descriptor,params)=>{const admitted=executionArguments(descriptor,params),text=admitted.text;params=admitted.values;recorder.calls.push({text,params});
     return {rows:/COUNT\(\*\)/i.test(text)?[{total:0}]:[]};}};
   const options={fail:(message)=>{throw Error(message);},physicalBatchSnapshot:vi.fn()};
   await readControlledStockRegister(client,user,{view:'all',location:hostile,batch_search:hostile,operation_search:hostile},options);

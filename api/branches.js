@@ -1,4 +1,4 @@
-import { applyAuthCors } from './_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, joinPlans as __qd_joinPlans, executePlan as __qd_executePlan } from "./services/queryDescriptors.js";import { applyAuthCors } from './_lib/auth.js';
 import { ensureDistributorsTable } from './distributors.js';
 import { query, getMany, getOne, insert, update, publishRealtimeEvent } from './db.js';
 
@@ -18,7 +18,7 @@ function normalizeBranchRow(row) {
     metadata: normalizeMetadata(row.metadata),
     agreement_data: normalizeMetadata(row.agreement_data),
     created_at: row.created_at,
-    updated_at: row.updated_at,
+    updated_at: row.updated_at
   };
 }
 
@@ -39,7 +39,7 @@ function prepareMetadata(branch) {
     location: branch.location || branch.branch || branch.address || null,
     phone: branch.phone || branch.mobile || null,
     updatedBy: branch.updatedBy || branch.actor || null,
-    ...(branch.metadata && typeof branch.metadata === 'object' ? branch.metadata : {}),
+    ...(branch.metadata && typeof branch.metadata === 'object' ? branch.metadata : {})
   };
   if (metadata.location === null && metadata.phone === null && Object.keys(metadata).length === 0) {
     return null;
@@ -51,11 +51,11 @@ function resolveId(branch) {
   if (branch.id) return branch.id;
   if (branch.code) return String(branch.code).trim().toLowerCase();
   if (branch.name) {
-    return String(branch.name)
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/(^-|-$)/g, '') || `branch-${Date.now().toString(36)}`;
+    return String(branch.name).
+    trim().
+    toLowerCase().
+    replace(/[^a-z0-9]+/g, '-').
+    replace(/(^-|-$)/g, '') || `branch-${Date.now().toString(36)}`;
   }
   return `branch-${Date.now().toString(36)}`;
 }
@@ -120,10 +120,10 @@ export default async function handler(req, res) {
 
     if (method === 'GET') {
       if (id) {
-        const branch = await getOne(
-          'SELECT * FROM distributors WHERE id = $1 AND entity_type = $2',
-          [id, BRANCH_ENTITY_TYPE]
-        );
+        const branch = await __qd_executePlan(getOne, __qd_registeredPlan("api/branches.js:124:0"),
+
+        [id, BRANCH_ENTITY_TYPE]);
+
         if (!branch) {
           return res.status(404).json({ error: 'Branch not found' });
         }
@@ -131,10 +131,10 @@ export default async function handler(req, res) {
       }
 
       if (code) {
-        const branch = await getOne(
-          'SELECT * FROM distributors WHERE distributor_code = $1 AND entity_type = $2',
-          [code, BRANCH_ENTITY_TYPE]
-        );
+        const branch = await __qd_executePlan(getOne, __qd_registeredPlan("api/branches.js:135:1"),
+
+        [code, BRANCH_ENTITY_TYPE]);
+
         if (!branch) {
           return res.status(404).json({ error: 'Branch not found' });
         }
@@ -142,27 +142,27 @@ export default async function handler(req, res) {
       }
 
       const params = [BRANCH_ENTITY_TYPE];
-      const whereParts = ['entity_type = $1'];
+      const whereParts = [__qd_registeredPlan("api/branches.js:145:2")];
 
       if (search) {
         params.push(`%${search}%`);
-        whereParts.push(
-          `(distributor_name ILIKE $${params.length} OR distributor_code ILIKE $${params.length})`
+        whereParts.push(__qd_registeredPlan("api/branches.js:150:3", [
+        params.length, params.length])
         );
       }
 
       if (status) {
         params.push(status);
-        whereParts.push(`status = $${params.length}`);
+        whereParts.push(__qd_registeredPlan("api/branches.js:156:4", [params.length]));
       }
 
-      const queryText = `
-        SELECT *
-        FROM distributors
-        WHERE ${whereParts.join(' AND ')}
-        ORDER BY distributor_name
-      `;
-      const rows = await getMany(queryText, params);
+      const queryText = __qd_registeredPlan("api/branches.js:159:5", [__qd_joinPlans(
+
+
+        whereParts, "and")]);
+
+
+      const rows = await __qd_executePlan(getMany, queryText, params);
       return res.json({ branches: rows.map(normalizeBranchRow) });
     }
 
@@ -182,7 +182,7 @@ export default async function handler(req, res) {
           location: payload.location || payload.branch || payload.address || null,
           entity_type: BRANCH_ENTITY_TYPE,
           agreement_data: null,
-          metadata: prepareMetadata(payload),
+          metadata: prepareMetadata(payload)
         };
         cleanupUndefined(record);
         const inserted = await insert('distributors', record);
@@ -224,7 +224,7 @@ export default async function handler(req, res) {
         branch: body.location || body.branch || body.address,
         location: body.location || body.branch || body.address,
         metadata: body.metadata ? JSON.stringify(body.metadata) : prepareMetadata(body),
-        updated_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       };
       cleanupUndefined(updatePayload);
 
@@ -240,10 +240,10 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'id query parameter is required' });
       }
 
-      const result = await query(
-        'DELETE FROM distributors WHERE id = $1 AND entity_type = $2 RETURNING *',
-        [id, BRANCH_ENTITY_TYPE]
-      );
+      const result = await __qd_executePlan(query, __qd_registeredPlan("api/branches.js:244:6"),
+
+      [id, BRANCH_ENTITY_TYPE]);
+
       const removed = result.rows[0];
       if (!removed) {
         return res.status(404).json({ error: 'Branch not found' });
@@ -259,4 +259,3 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Internal server error' });
   }
 }
-

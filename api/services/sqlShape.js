@@ -1,5 +1,6 @@
 // SQL structure is built here; runtime values always stay in pg bindings.
 import {fieldSnapshot} from './sqlFieldPolicy.js';
+import {crudDescriptor} from './queryDescriptors.js';
 export function identifier(name) {
   if(typeof name!=='string'||!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name))
     throw new Error('Invalid SQL identifier');
@@ -14,16 +15,10 @@ export function orderByClause(value='created_at DESC') {
   }).join(', ');
 }
 export function insertStatement(table,data) {
-  const columns=Object.keys(data).map(identifier);
-  if(!columns.length)throw new Error('No insert fields');
-  return {text:`INSERT INTO ${identifier(table)} (${columns.map(c=>`"${c}"`).join(', ')}) VALUES (${columns.map((_,i)=>`$${i+1}`).join(', ')}) RETURNING *`,
-    params:Object.values(data)};
+  return crudDescriptor('insert',table,data);
 }
 export function findAllStatement(table,conditions={},order='created_at DESC') {
-  const columns=Object.keys(conditions).map(identifier);
-  return {text:`SELECT * FROM ${identifier(table)}`+
-    (columns.length?' WHERE '+columns.map((c,i)=>`"${c}" = $${i+1}`).join(' AND '):'')+
-    ' ORDER BY '+orderByClause(order),params:Object.values(conditions)};
+  return crudDescriptor('findAll',table,conditions,undefined,'id',order);
 }
 // Values can be arbitrary data, but an identifier choice must be in a finite
 // source map. Prototype properties are never valid choices.
@@ -46,6 +41,5 @@ export function updateStatement(table,id,data,fields,idColumn='id'){
   if(!columns.length||columns.some(k=>!fields.includes(k)))throw Error('Invalid update fields');
   const descriptors=Object.getOwnPropertyDescriptors(data);
   if(columns.some(k=>!Object.hasOwn(descriptors[k],'value')))throw Error('Invalid update fields');
-  return Object.freeze({text:`UPDATE ${identifier(table)} SET ${columns.map((k,i)=>`"${identifier(k)}" = $${i+1}`).join(', ')} WHERE "${identifier(idColumn)}" = $${columns.length+1} RETURNING *`,
-    params:Object.freeze([...columns.map(k=>descriptors[k].value),id])});
+  return crudDescriptor('update',table,data,id,idColumn);
 }

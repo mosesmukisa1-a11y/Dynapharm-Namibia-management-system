@@ -1,4 +1,4 @@
-import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../services/queryDescriptors.js";import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
 import { query, getMany, getOne } from '../db.js';
 
 function parseNumber(value, fallback = 0) {
@@ -48,16 +48,16 @@ function normalizeSessionRow(row) {
     openedAt: row.opened_at instanceof Date ? row.opened_at.toISOString() : row.opened_at,
     closedBy: row.closed_by,
     closedAt: row.closed_at instanceof Date ? row.closed_at.toISOString() : row.closed_at,
-    metadata: typeof row.metadata === 'object' ? row.metadata : null,
+    metadata: typeof row.metadata === 'object' ? row.metadata : null
   };
 }
 
 async function getActiveSession(branchId) {
   if (!branchId) return null;
-  const row = await getOne(
-    'SELECT * FROM branch_cash_sessions WHERE branch_id = $1 AND is_open = TRUE ORDER BY opened_at DESC LIMIT 1',
-    [branchId]
-  );
+  const row = await __qd_executePlan(getOne, __qd_registeredPlan("api/branch/cash-sessions.js:58:0"),
+
+  [branchId]);
+
   return normalizeSessionRow(row);
 }
 
@@ -76,7 +76,7 @@ export default async function handler(req, res) {
     if (req.method === 'GET') {
       const id = searchParams.get('id');
       if (id) {
-        const row = await getOne('SELECT * FROM branch_cash_sessions WHERE id = $1', [id]);
+        const row = await __qd_executePlan(getOne, __qd_registeredPlan("api/branch/cash-sessions.js:79:1"), [id]);
         if (!row) {
           return res.status(404).json({ success: false, error: 'Session not found' });
         }
@@ -85,9 +85,9 @@ export default async function handler(req, res) {
 
       const branchScope = getBranchScope(currentUser);
       const requestedBranch = searchParams.get('branch');
-      const effectiveBranchId = branchScope.enforced
-        ? (branchScope.primaryBranch || branchScope.branches?.[0] || null)
-        : requestedBranch;
+      const effectiveBranchId = branchScope.enforced ?
+      branchScope.primaryBranch || branchScope.branches?.[0] || null :
+      requestedBranch;
       const activeOnly = searchParams.get('active') === '1';
       if (activeOnly && effectiveBranchId) {
         const session = await getActiveSession(effectiveBranchId);
@@ -96,21 +96,21 @@ export default async function handler(req, res) {
 
       if (effectiveBranchId) {
         const limit = parseInt(searchParams.get('limit') || '25', 10);
-        const rows = await getMany(
-          'SELECT * FROM branch_cash_sessions WHERE branch_id = $1 ORDER BY opened_at DESC LIMIT $2',
-          [effectiveBranchId, Number.isNaN(limit) ? 25 : limit]
-        );
+        const rows = await __qd_executePlan(getMany, __qd_registeredPlan("api/branch/cash-sessions.js:100:2"),
+
+        [effectiveBranchId, Number.isNaN(limit) ? 25 : limit]);
+
         return res.status(200).json({
           success: true,
-          sessions: rows.map(normalizeSessionRow).filter(Boolean),
+          sessions: rows.map(normalizeSessionRow).filter(Boolean)
         });
       }
 
       // fallback to most recent sessions overall (admin/finance only — branch scope already enforced above)
-      const rows = await getMany('SELECT * FROM branch_cash_sessions ORDER BY opened_at DESC LIMIT 50', []);
+      const rows = await __qd_executePlan(getMany, __qd_registeredPlan("api/branch/cash-sessions.js:110:3"), []);
       return res.status(200).json({
         success: true,
-        sessions: rows.map(normalizeSessionRow).filter(Boolean),
+        sessions: rows.map(normalizeSessionRow).filter(Boolean)
       });
     }
 
@@ -135,28 +135,28 @@ export default async function handler(req, res) {
         const openingBalance = parseNumber(body.openingBalance, 0);
         const metadata = {
           currentBalance: openingBalance,
-          notes: body.notes || '',
+          notes: body.notes || ''
         };
 
-        const result = await query(
-          `
-            INSERT INTO branch_cash_sessions
-              (id, branch_id, opening_balance, is_open, opened_by, opened_at, metadata)
-            VALUES ($1, $2, $3, TRUE, $4, NOW(), $5)
-            RETURNING *
-          `,
-          [
-            sessionId,
-            branchId,
-            openingBalance,
-            body.openedBy || currentUser?.fullName || currentUser?.username || 'system',
-            JSON.stringify(metadata),
-          ]
-        );
+        const result = await __qd_executePlan(query, __qd_registeredPlan("api/branch/cash-sessions.js:142:4"),
+
+
+
+
+
+
+        [
+        sessionId,
+        branchId,
+        openingBalance,
+        body.openedBy || currentUser?.fullName || currentUser?.username || 'system',
+        JSON.stringify(metadata)]);
+
+
 
         return res.status(201).json({
           success: true,
-          session: normalizeSessionRow(result.rows[0]),
+          session: normalizeSessionRow(result.rows[0])
         });
       }
 
@@ -165,7 +165,7 @@ export default async function handler(req, res) {
         if (!sessionId) {
           return res.status(400).json({ success: false, error: 'sessionId is required' });
         }
-        const sessionRow = await getOne('SELECT * FROM branch_cash_sessions WHERE id = $1', [sessionId]);
+        const sessionRow = await __qd_executePlan(getOne, __qd_registeredPlan("api/branch/cash-sessions.js:168:5"), [sessionId]);
         if (!sessionRow) {
           return res.status(404).json({ success: false, error: 'Session not found' });
         }
@@ -179,10 +179,10 @@ export default async function handler(req, res) {
         }
 
         // Compute expected cash from movements
-        const movements = await getMany(
-          'SELECT type, amount FROM branch_cash_movements WHERE session_id = $1',
-          [sessionId]
-        );
+        const movements = await __qd_executePlan(getMany, __qd_registeredPlan("api/branch/cash-sessions.js:183:6"),
+
+        [sessionId]);
+
         let expectedCash = parseNumber(sessionRow.opening_balance, 0);
         movements.forEach((movement) => {
           const amount = parseNumber(movement.amount, 0);
@@ -197,36 +197,36 @@ export default async function handler(req, res) {
         });
         const variance = countedCash - expectedCash;
 
-        const metadata = sessionRow.metadata && typeof sessionRow.metadata === 'object'
-          ? { ...sessionRow.metadata }
-          : {};
+        const metadata = sessionRow.metadata && typeof sessionRow.metadata === 'object' ?
+        { ...sessionRow.metadata } :
+        {};
         metadata.closingNotes = body.notes || '';
 
-        const result = await query(
-          `
-            UPDATE branch_cash_sessions
-            SET
-              closing_balance = $1,
-              variance = $2,
-              is_open = FALSE,
-              closed_by = $3,
-              closed_at = NOW(),
-              metadata = $4
-            WHERE id = $5
-            RETURNING *
-          `,
-          [
-            countedCash,
-            variance,
-            body.closedBy || currentUser?.fullName || currentUser?.username || 'system',
-            JSON.stringify(metadata),
-            sessionId,
-          ]
-        );
+        const result = await __qd_executePlan(query, __qd_registeredPlan("api/branch/cash-sessions.js:206:7"),
+
+
+
+
+
+
+
+
+
+
+
+
+        [
+        countedCash,
+        variance,
+        body.closedBy || currentUser?.fullName || currentUser?.username || 'system',
+        JSON.stringify(metadata),
+        sessionId]);
+
+
 
         return res.status(200).json({
           success: true,
-          session: normalizeSessionRow(result.rows[0]),
+          session: normalizeSessionRow(result.rows[0])
         });
       }
 
@@ -239,7 +239,3 @@ export default async function handler(req, res) {
     return res.status(500).json({ success: false, error: 'Internal server error' });
   }
 }
-
-
-
-

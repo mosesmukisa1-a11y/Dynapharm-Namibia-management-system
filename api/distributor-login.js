@@ -1,10 +1,10 @@
-import {comparePassword, sessionVersion, consumeTemporaryLogin} from './services/credentialSecurity.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "./services/queryDescriptors.js";import { comparePassword, sessionVersion, consumeTemporaryLogin } from './services/credentialSecurity.js';
 import {
   applyAuthCors,
   createAuthToken,
   setAuthCookie,
-  sanitizeUser
-} from './_lib/auth.js';
+  sanitizeUser } from
+'./_lib/auth.js';
 import { getOne, query } from './db.js';
 
 async function parseRequestBody(req) {
@@ -66,14 +66,14 @@ export default async function handler(req, res) {
     }
 
     const username = distributorCode.toLowerCase();
-    const user = await getOne(
-      `SELECT id, username, password_hash, role, full_name, email, phone, branch, branches, is_active, metadata, must_change_password
-       FROM users
-       WHERE username = $1`,
-      [username]
-    );
+    const user = await __qd_executePlan(getOne, __qd_registeredPlan("api/distributor-login.js:70:0"),
 
-    if (!user || user.is_active === false || (user.role && user.role !== 'distributor')) {
+
+
+    [username]);
+
+
+    if (!user || user.is_active === false || user.role && user.role !== 'distributor') {
       return res.status(401).json({ error: 'Invalid distributor credentials' });
     }
 
@@ -81,8 +81,8 @@ export default async function handler(req, res) {
     if (!passwordMatch) {
       return res.status(401).json({ error: 'Invalid distributor credentials' });
     }
-    if (user.must_change_password && !await consumeTemporaryLogin(user.id, user.password_hash))
-      return res.status(401).json({error:'Temporary sign-in already used. Request a new reset if your password-change session is unavailable.'});
+    if (user.must_change_password && !(await consumeTemporaryLogin(user.id, user.password_hash)))
+    return res.status(401).json({ error: 'Temporary sign-in already used. Request a new reset if your password-change session is unavailable.' });
 
     const payload = {
       sv: sessionVersion(user),
@@ -97,7 +97,7 @@ export default async function handler(req, res) {
     const token = createAuthToken(payload);
     setAuthCookie(res, token);
 
-    await query('UPDATE users SET last_login = NOW(), updated_at = NOW() WHERE id = $1', [user.id]);
+    await __qd_executePlan(query, __qd_registeredPlan("api/distributor-login.js:100:1"), [user.id]);
 
     return res.status(200).json({
       success: true,
@@ -110,5 +110,3 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Internal server error' });
   }
 }
-
-

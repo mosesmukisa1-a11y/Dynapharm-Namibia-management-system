@@ -1,4 +1,4 @@
-import { applyAuthCors, getBranchScope } from './_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, joinPlans as __qd_joinPlans, executePlan as __qd_executePlan } from "./services/queryDescriptors.js";import { applyAuthCors, getBranchScope } from './_lib/auth.js';
 import { getMany, getOne, insert, update, remove, publishRealtimeEvent } from './db.js';
 import { syncCheckupClients } from './services/checkupClients.js';
 import { branchSearchTermsForMany } from './_lib/branchUtils.js';
@@ -38,15 +38,15 @@ async function parseRequestBody(req) {
 function normalizeClient(row) {
   if (!row) return null;
   const payload =
-    typeof row.data === 'string'
-      ? (() => {
-          try {
-            return JSON.parse(row.data);
-          } catch {
-            return {};
-          }
-        })()
-      : row.data || {};
+  typeof row.data === 'string' ?
+  (() => {
+    try {
+      return JSON.parse(row.data);
+    } catch {
+      return {};
+    }
+  })() :
+  row.data || {};
 
   return {
     id: row.id || payload.id || row.reference_number || payload.referenceNumber || `CLT-${Date.now()}`,
@@ -118,9 +118,9 @@ export default async function handler(req, res) {
   const search = searchParams.get('search');
   const branchScope = getBranchScope(req.user);
   const scopeTerms = branchSearchTermsForMany(branchScope.branches || []);
-  const canReadBranch = branch => !branchScope.enforced || scopeTerms.includes((branch || '').trim().toLowerCase());
-  const actor=req.user.sub||req.user.id;
-  const presentClient=normalizeClient;
+  const canReadBranch = (branch) => !branchScope.enforced || scopeTerms.includes((branch || '').trim().toLowerCase());
+  const actor = req.user.sub || req.user.id;
+  const presentClient = normalizeClient;
 
   try {
     if (method === 'POST' && searchParams.get('action') === 'sync-checkups') {
@@ -128,7 +128,7 @@ export default async function handler(req, res) {
     }
     if (method === 'GET') {
       if (id) {
-        const client = await getOne('SELECT * FROM clients WHERE id = $1', [id]);
+        const client = await __qd_executePlan(getOne, __qd_registeredPlan("api/clients.js:131:0"), [id]);
         if (!client) {
           return res.status(404).json({ error: 'Client not found' });
         }
@@ -137,7 +137,7 @@ export default async function handler(req, res) {
         }
         return res.json(presentClient(client));
       } else if (reference) {
-        const client = await getOne('SELECT * FROM clients WHERE reference_number = $1', [reference]);
+        const client = await __qd_executePlan(getOne, __qd_registeredPlan("api/clients.js:140:1"), [reference]);
         if (!client) {
           return res.status(404).json({ error: 'Client not found' });
         }
@@ -148,39 +148,39 @@ export default async function handler(req, res) {
       } else if (phone) {
         let clients;
         if (branchScope.enforced) {
-          clients = await getMany('SELECT * FROM clients WHERE phone = $1 AND LOWER(TRIM(branch)) = ANY($2::text[]) ORDER BY created_at DESC', [phone, scopeTerms]);
+          clients = await __qd_executePlan(getMany, __qd_registeredPlan("api/clients.js:151:2"), [phone, scopeTerms]);
         } else {
-          clients = await getMany('SELECT * FROM clients WHERE phone = $1 ORDER BY created_at DESC', [phone]);
+          clients = await __qd_executePlan(getMany, __qd_registeredPlan("api/clients.js:153:3"), [phone]);
         }
         return res.json(clients.map(presentClient).filter(Boolean));
       } else {
-        let queryText = 'SELECT * FROM clients';
+        let queryText = __qd_registeredPlan("api/clients.js:157:4");
         const params = [];
-        
+
         if (branchScope.enforced) {
-          queryText += ' WHERE LOWER(TRIM(branch)) = ANY($1::text[])';
+          queryText = __qd_joinPlans([queryText, __qd_registeredPlan("api/clients.js:161:5")], "empty");
           params.push(scopeTerms);
         } else if (requestedBranch) {
-          queryText += ' WHERE branch = $1';
+          queryText = __qd_joinPlans([queryText, __qd_registeredPlan("api/clients.js:164:6")], "empty");
           params.push(requestedBranch);
         }
-        
+
         if (search) {
-          queryText += (params.length > 0) ? ' AND' : ' WHERE';
-          queryText += ' (full_name ILIKE $' + (params.length + 1) + ' OR phone ILIKE $' + (params.length + 1) + ' OR reference_number ILIKE $' + (params.length + 1) + ')';
+          queryText = __qd_joinPlans([queryText, params.length > 0 ? __qd_registeredPlan("api/clients.js:169:7") : __qd_registeredPlan("api/clients.js:169:8")], "empty");
+          queryText = __qd_joinPlans([queryText, __qd_joinPlans([__qd_joinPlans([__qd_joinPlans([__qd_joinPlans([__qd_joinPlans([__qd_registeredPlan("api/clients.js:170:9", [params.length + 1]), __qd_registeredPlan("api/clients.js:170:10")], "empty"), __qd_joinPlans([params.length, __qd_registeredPlan("api/clients.js:170:11", [1])], "empty")], "empty"), __qd_registeredPlan("api/clients.js:170:12")], "empty"), __qd_joinPlans([params.length, __qd_registeredPlan("api/clients.js:170:13", [1])], "empty")], "empty"), __qd_registeredPlan("api/clients.js:170:14")], "empty")], "empty");
           params.push(`%${search}%`);
         }
-        
-        queryText += ' ORDER BY created_at DESC';
-        
-        const clients = await getMany(queryText, params);
+
+        queryText = __qd_joinPlans([queryText, __qd_registeredPlan("api/clients.js:174:15")], "empty");
+
+        const clients = await __qd_executePlan(getMany, queryText, params);
         return res.json(clients.map(presentClient).filter(Boolean));
       }
     }
 
     if (method === 'POST') {
       const body = await parseRequestBody(req);
-      
+
       if (Array.isArray(body)) {
         // Bulk insert
         const results = [];
@@ -190,7 +190,7 @@ export default async function handler(req, res) {
             if (branchScope.enforced && !branchScope.branches.includes(clientBranch)) {
               continue;
             }
-            const effectiveBranch = branchScope.enforced ? (branchScope.branches[0] || clientBranch) : clientBranch;
+            const effectiveBranch = branchScope.enforced ? branchScope.branches[0] || clientBranch : clientBranch;
             const clientData = {
               id: client.id || client.reference_number || `CLT-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
               reference_number: client.reference_number || client.referenceNumber,
@@ -202,13 +202,13 @@ export default async function handler(req, res) {
               address: client.address || null,
               city: client.city || null,
               branch: branchScope.enforced ? effectiveBranch : clientBranch,
-              data: client.data ? (typeof client.data === 'string' ? client.data : JSON.stringify(client.data)) : null
+              data: client.data ? typeof client.data === 'string' ? client.data : JSON.stringify(client.data) : null
             };
-            
-            Object.keys(clientData).forEach(key => {
+
+            Object.keys(clientData).forEach((key) => {
               if (clientData[key] === undefined) delete clientData[key];
             });
-            
+
             const result = await insert('clients', clientData);
             results.push(normalizeClient(result));
           } catch (error) {
@@ -217,11 +217,11 @@ export default async function handler(req, res) {
             }
           }
         }
-        
+
         if (results.length > 0) {
           await publishRealtimeEvent('clients', 'create', results);
         }
-        
+
         return res.json({ success: true, count: results.length, clients: results });
       } else {
         // Single insert
@@ -229,18 +229,18 @@ export default async function handler(req, res) {
         if (branchScope.enforced && !branchScope.branches.includes(requestedBranch)) {
           return res.status(403).json({ success: false, error: 'Access denied: cannot create client for this branch' });
         }
-        const effectiveBranch = branchScope.enforced ? (requestedBranch || branchScope.branches[0] || null) : requestedBranch;
-        if(body.id){
-          const existing=await getOne('SELECT * FROM clients WHERE id=$1',[body.id]);
-          if(existing){
-            if(branchScope.enforced&&!branchScope.branches.includes(existing.branch))return res.status(403).json({error:'Access denied'});
-            if(existing.data?._registeredBy!==actor || existing.full_name!==(body.full_name||body.fullName) ||
-              (existing.phone||'')!==(body.phone||'') || (existing.email||'')!==(body.email||'') || existing.branch!==effectiveBranch)
-              return res.status(409).json({error:'This client ID already exists; open the existing profile'});
-            return res.json({success:true,client:presentClient(existing)});
+        const effectiveBranch = branchScope.enforced ? requestedBranch || branchScope.branches[0] || null : requestedBranch;
+        if (body.id) {
+          const existing = await __qd_executePlan(getOne, __qd_registeredPlan("api/clients.js:234:16"), [body.id]);
+          if (existing) {
+            if (branchScope.enforced && !branchScope.branches.includes(existing.branch)) return res.status(403).json({ error: 'Access denied' });
+            if (existing.data?._registeredBy !== actor || existing.full_name !== (body.full_name || body.fullName) ||
+            (existing.phone || '') !== (body.phone || '') || (existing.email || '') !== (body.email || '') || existing.branch !== effectiveBranch)
+            return res.status(409).json({ error: 'This client ID already exists; open the existing profile' });
+            return res.json({ success: true, client: presentClient(existing) });
           }
         }
-        const registrationData=typeof body.data==='string'?JSON.parse(body.data):body.data||{};
+        const registrationData = typeof body.data === 'string' ? JSON.parse(body.data) : body.data || {};
         const clientData = {
           id: body.id || body.reference_number || `CLT-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           reference_number: body.reference_number || body.referenceNumber,
@@ -252,13 +252,13 @@ export default async function handler(req, res) {
           address: body.address || null,
           city: body.city || null,
           branch: effectiveBranch,
-          data: JSON.stringify({...registrationData,_registeredBy:actor})
+          data: JSON.stringify({ ...registrationData, _registeredBy: actor })
         };
-        
-        Object.keys(clientData).forEach(key => {
+
+        Object.keys(clientData).forEach((key) => {
           if (clientData[key] === undefined) delete clientData[key];
         });
-        
+
         const client = await insert('clients', clientData);
         const normalized = normalizeClient(client);
         await publishRealtimeEvent('clients', 'create', normalized);
@@ -273,26 +273,26 @@ export default async function handler(req, res) {
       }
 
       // Fetch existing record to merge data JSON
-      const existing = await getOne('SELECT * FROM clients WHERE id = $1', [body.id]);
+      const existing = await __qd_executePlan(getOne, __qd_registeredPlan("api/clients.js:276:17"), [body.id]);
 
       if (branchScope.enforced && existing && !branchScope.branches.includes(existing.branch)) {
         return res.status(403).json({ success: false, error: 'Access denied' });
       }
-      const existingData = existing
-        ? (typeof existing.data === 'string' ? (() => { try { return JSON.parse(existing.data); } catch { return {}; } })() : existing.data || {})
-        : {};
+      const existingData = existing ?
+      typeof existing.data === 'string' ? (() => {try {return JSON.parse(existing.data);} catch {return {};}})() : existing.data || {} :
+      {};
 
       // Build merged data JSON including health assessment fields
       const healthFields = ['primaryReason', 'waterIntake', 'exerciseFreq', 'sleepHours', 'stressLevel',
-        'currentMedications', 'allergies', 'medicalHistory', 'primary_reason', 'water_intake',
-        'exercise_freq', 'sleep_hours', 'stress_level', 'medical_history', 'current_medications',
-        'membershipStatus', 'membership_status', 'referralName', 'referral_name',
-        'referralNbNumber', 'referral_nb', 'nbNumber', 'nb_number', 'symptoms', 'height', 'weight',
-        'dob', 'bmi', 'bmi_category', 'customer_type'];
+      'currentMedications', 'allergies', 'medicalHistory', 'primary_reason', 'water_intake',
+      'exercise_freq', 'sleep_hours', 'stress_level', 'medical_history', 'current_medications',
+      'membershipStatus', 'membership_status', 'referralName', 'referral_name',
+      'referralNbNumber', 'referral_nb', 'nbNumber', 'nb_number', 'symptoms', 'height', 'weight',
+      'dob', 'bmi', 'bmi_category', 'customer_type'];
       const mergedData = { ...existingData };
-      healthFields.forEach(f => { if (body[f] !== undefined) mergedData[f] = body[f]; });
+      healthFields.forEach((f) => {if (body[f] !== undefined) mergedData[f] = body[f];});
       if (body.data && typeof body.data === 'object') Object.assign(mergedData, body.data);
-      if(existingData._registeredBy)mergedData._registeredBy=existingData._registeredBy;
+      if (existingData._registeredBy) mergedData._registeredBy = existingData._registeredBy;
 
       const clientPayload = {
         ...(body.referenceNumber !== undefined && { reference_number: body.referenceNumber }),
@@ -309,7 +309,7 @@ export default async function handler(req, res) {
         ...(body.city !== undefined && { city: body.city }),
         ...(body.branch !== undefined && !branchScope.enforced && { branch: body.branch }),
         data: JSON.stringify(mergedData),
-        updated_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       };
       const client = await update('clients', body.id, clientPayload, 'id');
       const normalized = normalizeClient(client);
@@ -319,7 +319,7 @@ export default async function handler(req, res) {
 
     if (method === 'DELETE') {
       if (branchScope.enforced && id) {
-        const existing = await getOne('SELECT branch FROM clients WHERE id = $1', [id]);
+        const existing = await __qd_executePlan(getOne, __qd_registeredPlan("api/clients.js:322:18"), [id]);
         if (existing && !branchScope.branches.includes(existing.branch)) {
           return res.status(403).json({ success: false, error: 'Access denied' });
         }
@@ -338,5 +338,3 @@ export default async function handler(req, res) {
     });
   }
 }
-
-

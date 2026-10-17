@@ -1,10 +1,10 @@
+import {datePredicatePlan} from './queryDescriptors.js';
 export const BUSINESS_TIMEZONE='Africa/Windhoek';
 // Date-only columns (BAT.service_date, expiry) are already business dates.
 // Transaction columns use timestamptz. For legacy timestamp-without-zone
 // columns, pass their documented storage zone explicitly, never session casts.
 export function businessDatePredicate(column, placeholder, end=false, legacyZone=null) {
-  const instant=legacyZone ? `(${column} AT TIME ZONE '${legacyZone}')` : column;
-  return `${instant} ${end?'<':'>='} ((${placeholder}::date${end?'+1':''})::timestamp AT TIME ZONE '${BUSINESS_TIMEZONE}')`;
+  return datePredicatePlan(column,placeholder,end,legacyZone);
 }
 export function businessTime(value=new Date()) {
   return new Intl.DateTimeFormat('en-GB',{timeZone:BUSINESS_TIMEZONE,hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(value);

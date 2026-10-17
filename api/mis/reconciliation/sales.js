@@ -1,4 +1,4 @@
-import { applyAuthCors } from '../../_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../../services/queryDescriptors.js";import { applyAuthCors } from '../../_lib/auth.js';
 import { getMany } from '../../db.js';
 import { getDateRange, normalizeBranchName } from '../../services/gmFinanceMisEngine.js';
 
@@ -12,29 +12,29 @@ export default async function handler(req, res) {
     const { start, end } = getDateRange(req.query);
 
     // Live sales from branch_walkin_sales (completed)
-    const liveRows = await getMany(
-      `SELECT branch_id, customer_type, SUM(total) as total_value
-       FROM branch_walkin_sales
-       WHERE status = 'completed'
-         AND sale_date >= $1::date
-         AND sale_date <= ($2 || 'T23:59:59')::timestamp
-       GROUP BY branch_id, customer_type`,
-      [start, end]
-    );
+    const liveRows = await __qd_executePlan(getMany, __qd_registeredPlan("api/mis/reconciliation/sales.js:16:0"),
+
+
+
+
+
+
+    [start, end]);
+
 
     // Encoded sales from MIS drafts (submitted/posted status)
-    const encodedRows = await getMany(
-      `SELECT d.branch_id,
-              COALESCE(l.data->>'category', 'walkin') as category,
-              SUM((l.quantity * l.unit_price)::numeric) as encoded_value
-       FROM mis_sales_lines l
-       JOIN mis_sales_drafts d ON d.id = l.draft_id
-       WHERE d.status IN ('submitted', 'approved', 'posted')
-         AND l.sale_timestamp >= $1::date
-         AND l.sale_timestamp <= ($2 || 'T23:59:59')::timestamp
-       GROUP BY d.branch_id, category`,
-      [start, end]
-    );
+    const encodedRows = await __qd_executePlan(getMany, __qd_registeredPlan("api/mis/reconciliation/sales.js:27:1"),
+
+
+
+
+
+
+
+
+
+    [start, end]);
+
 
     // Build a map of encoded values
     const encodedMap = new Map();
@@ -46,7 +46,7 @@ export default async function handler(req, res) {
     // Normalize customer_type to category
     const catMap = {
       member: 'member_sale', 'non-member': 'non_member_sale',
-      customer: 'non_member_sale', online: 'online_order_sale',
+      customer: 'non_member_sale', online: 'online_order_sale'
     };
     const normalize = (ct) => {
       const lc = (ct || '').toLowerCase();
@@ -80,7 +80,7 @@ export default async function handler(req, res) {
         liveSalesValue,
         encodedSalesValue,
         difference,
-        status: Math.abs(difference) < 0.01 ? 'ok' : difference > 0 ? 'under_encoded' : 'over_encoded',
+        status: Math.abs(difference) < 0.01 ? 'ok' : difference > 0 ? 'under_encoded' : 'over_encoded'
       });
     }
 

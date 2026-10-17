@@ -1,4 +1,4 @@
-/**
+import { registeredPlan as __qd_registeredPlan, joinPlans as __qd_joinPlans, executePlan as __qd_executePlan } from "../services/queryDescriptors.js"; /**
  * GET /api/stock/discrepancies
  * Returns stock transfers where discrepancy_flag = true,
  * so Finance and GM staff can review short-receipt incidents.
@@ -19,65 +19,65 @@ export default async function handler(req, res) {
   }
 
   try {
-    const url    = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const branch = url.searchParams.get('branch') || null;
-    const limit  = Math.min(Number(url.searchParams.get('limit') || 100), 200);
+    const limit = Math.min(Number(url.searchParams.get('limit') || 100), 200);
     const offset = Number(url.searchParams.get('offset') || 0);
 
-    const conditions = ['t.discrepancy_flag = true'];
+    const conditions = [__qd_registeredPlan("api/stock/discrepancies.js:27:0")];
     const params = [];
 
     if (branch) {
       params.push(branch);
-      conditions.push(
-        `LOWER(REPLACE(t.to_branch, ' ', '_')) = LOWER(REPLACE($${params.length}, ' ', '_'))`
+      conditions.push(__qd_registeredPlan("api/stock/discrepancies.js:33:1", [
+      params.length])
       );
     }
 
-    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const where = conditions.length > 0 ? __qd_registeredPlan("api/stock/discrepancies.js:37:2", [__qd_joinPlans(conditions, "and")]) : __qd_registeredPlan("api/stock/discrepancies.js:37:3");
 
-    const rows = await getMany(
-      `SELECT
-         t.id,
-         t.request_number,
-         t.from_warehouse,
-         t.to_branch,
-         t.status,
-         t.discrepancy_flag,
-         t.discrepancy_note,
-         t.received_by,
-         t.dispatch_date,
-         t.created_at,
-         t.updated_at,
-         COALESCE(
-           json_agg(
-             jsonb_build_object(
-               'productName',        i.product_name,
-               'quantityDispatched', COALESCE(i.quantity_approved, i.quantity),
-               'quantityReceived',   i.quantity_received,
-               'discrepancyNote',    i.discrepancy_note,
-               'batchNo',            i.batch_no,
-               'expiryDate',         i.expiry_date
-             )
-             ORDER BY i.product_name
-           ) FILTER (WHERE i.id IS NOT NULL AND i.discrepancy_note IS NOT NULL),
-           '[]'::json
-         ) AS discrepancy_items,
-         COUNT(*) OVER () AS total_count
-       FROM stock_transfers t
-       LEFT JOIN stock_transfer_items i ON i.transfer_id = t.id
-       ${where}
-       GROUP BY t.id
-       ORDER BY t.updated_at DESC
-       LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-      [...params, limit, offset]
-    );
+    const rows = await __qd_executePlan(getMany, __qd_registeredPlan("api/stock/discrepancies.js:40:4", [
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    where,
+
+
+    params.length + 1, params.length + 2]),
+    [...params, limit, offset]);
+
 
     return res.json({
       success: true,
       discrepancies: rows,
       count: rows.length,
-      total: Number(rows[0]?.total_count ?? rows.length),
+      total: Number(rows[0]?.total_count ?? rows.length)
     });
   } catch (err) {
     console.error('[GET /api/stock/discrepancies]', err);

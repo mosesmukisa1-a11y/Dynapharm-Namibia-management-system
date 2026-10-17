@@ -8,7 +8,7 @@ import net from 'node:net';
 import pg from 'pg';
 import {querySpec} from './lib/production-schema-policy.mjs';
 if(process.env.NODE_ENV==='production'||['true','1'].includes(process.env.REPLIT_DEPLOYMENT))throw Error('Disposable tests only');
-const out='generated-artifacts/sql-security-final-closure/canonical-contract';
+const out='generated-artifacts/sql-runtime-enforcement-final/canonical-contract';
 await fs.mkdir(out,{recursive:true});
 const id=randomUUID(),directory='/tmp/canonical-schema-'+id;
 const port=await new Promise(r=>{const s=net.createServer();s.listen(0,'127.0.0.1',()=>{

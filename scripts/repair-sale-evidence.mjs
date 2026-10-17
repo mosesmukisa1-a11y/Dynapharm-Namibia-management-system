@@ -1,5 +1,6 @@
 import { mkdir, writeFile, stat } from 'node:fs/promises';
 import { withTransaction, closePool } from '../api/db.js';
+import {transactionIsolationDescriptor} from '../api/services/queryDescriptors.js';
 import { readSaleRepairPlan, applySaleRepairPlanTx } from '../api/services/saleEvidenceRepair.js';
 import { validateBusinessDates } from '../api/services/businessDates.js';
 
@@ -35,8 +36,8 @@ try{
     if(!backup.isFile() || backup.size===0)throw Error('Backup must be a nonempty existing file');
   }
   const result=await withTransaction(async client=>{
-    await client.query('SET TRANSACTION ISOLATION LEVEL SERIALIZABLE');
-    if(!apply)await client.query('SET TRANSACTION READ ONLY');
+    await client.query(transactionIsolationDescriptor('serializable'));
+    if(!apply)await client.query(transactionIsolationDescriptor('read-only'));
     const plan=await readSaleRepairPlan(client,options);
     if(apply){
       if(!plan.readiness.isPrimary)

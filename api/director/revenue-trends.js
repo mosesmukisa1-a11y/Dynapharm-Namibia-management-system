@@ -1,4 +1,4 @@
-/**
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../services/queryDescriptors.js"; /**
  * GET /api/director/revenue-trends?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
  * Revenue trend summary (orders, walk-ins, product range, avg order value).
  */
@@ -11,13 +11,13 @@ export default async function handler(req, res) {
   const { start, end } = getDateRange(req.query);
 
   const [salesRevenue, orderCount, productRange] = await Promise.all([
-    getAllBranchesSalesRevenue(start, end),
-    getOne(
-      `SELECT COUNT(*) as cnt FROM branch_walkin_sales WHERE status='completed' AND sale_date >= $1::date AND sale_date <= ($2 || 'T23:59:59')::timestamp`,
-      [start, end]
-    ),
-    getOne(`SELECT COUNT(DISTINCT description) as cnt FROM live_product_prices WHERE catalogue_entry`),
-  ]);
+  getAllBranchesSalesRevenue(start, end), __qd_executePlan(
+    getOne, __qd_registeredPlan("api/director/revenue-trends.js:16:0"),
+
+    [start, end]), __qd_executePlan(
+
+    getOne, __qd_registeredPlan("api/director/revenue-trends.js:19:1"), [])]
+  );
 
   const totalOrders = Number(orderCount?.cnt || 0);
   const totalSalesRevenue = salesRevenue.totalSales;
@@ -33,6 +33,6 @@ export default async function handler(req, res) {
     totalRevenue: totalSalesRevenue,
     memberSales: salesRevenue.memberSales,
     nonMemberSales: salesRevenue.nonMemberSales,
-    prescriptionSales: salesRevenue.prescriptionSales,
+    prescriptionSales: salesRevenue.prescriptionSales
   });
 }

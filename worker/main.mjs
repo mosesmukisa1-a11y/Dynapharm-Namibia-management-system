@@ -1,4 +1,4 @@
-import pg from 'pg';
+import {createWorkerDatabase} from './database.mjs';
 import {workerConfig} from './config.mjs';
 import {workerReadiness} from './readiness.mjs';
 import {runTask} from './runner.mjs';
@@ -12,7 +12,7 @@ if(args.includes('--check-config')||!config.enabled||!config.jobs.length){
   log(workerEvent({kind:'worker.disabled',enabled:config.enabled,tasks:config.jobs.map(t=>t.id),timersStarted:false}));
 }else{
   // No web DATABASE_URL fallback. This identity must be least-privileged.
-  const pool=new pg.Pool({connectionString:config.databaseUrl,max:3,connectionTimeoutMillis:5000,
+  const pool=createWorkerDatabase({connectionString:config.databaseUrl,max:3,connectionTimeoutMillis:5000,
     query_timeout:config.timeoutMs+1000});
   pool.on('error',()=>log(workerEvent({kind:'failure_alert',errorCode:'WORKER_CONNECTION_LOST'})));
   const abort=new AbortController();let timer,busy=null,lastSlot,closing;

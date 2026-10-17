@@ -1,4 +1,4 @@
-import { applyAuthCors } from '../_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../services/queryDescriptors.js";import { applyAuthCors } from '../_lib/auth.js';
 import { query, withTransaction } from '../db.js';
 
 function parseBody(req) {
@@ -47,7 +47,7 @@ function normalizeLine(row) {
     sale_timestamp: row.sale_timestamp || data.timestamp || new Date().toISOString(),
     status: row.status || data.status || 'draft',
     validation,
-    data,
+    data
   };
 }
 
@@ -60,27 +60,27 @@ function normalizeDraft(row, lines) {
     status: row.status || 'draft',
     total_amount: safeNumber(row.total_amount ?? payload.totalAmount ?? 0),
     total_quantity: safeNumber(row.total_quantity ?? payload.totalQuantity ?? 0),
-    line_count: row.line_count ?? payload.lineCount ?? (lines?.length ?? 0),
+    line_count: row.line_count ?? payload.lineCount ?? lines?.length ?? 0,
     updated_at: row.updated_at,
     lines: Array.isArray(lines) ? lines.map(normalizeLine).filter(Boolean) : [],
-    payload,
+    payload
   };
 }
 
 async function loadDraft(id, client) {
-  const runQuery = client ? (text, params) => client.query(text, params) : (text, params) => query(text, params);
-  const draftResult = await runQuery('SELECT * FROM mis_sales_drafts WHERE id = $1', [id]);
+  const runQuery = client ? (text, params) => __qd_executePlan(client.query.bind(client), text, params) : (text, params) => __qd_executePlan(query, text, params);
+  const draftResult = await __qd_executePlan(runQuery, __qd_registeredPlan("api/mis/drafts.js:72:0"), [id]);
   const draft = client ? draftResult.rows[0] : draftResult.rows?.[0] || draftResult;
   if (!draft) return null;
-  const linesResult = await runQuery(
-    `
-      SELECT *
-      FROM mis_sales_lines
-      WHERE draft_id = $1
-      ORDER BY created_at DESC
-    `,
-    [id]
-  );
+  const linesResult = await __qd_executePlan(runQuery, __qd_registeredPlan("api/mis/drafts.js:76:1"),
+
+
+
+
+
+
+  [id]);
+
   const lines = client ? linesResult.rows : linesResult;
   return normalizeDraft(draft, lines);
 }
@@ -101,37 +101,37 @@ async function persistDraft(client, draft, user) {
     { quantity: 0, amount: 0 }
   );
 
-  await client.query(
-    `
-      INSERT INTO mis_sales_drafts (id, branch_id, status, line_count, total_amount, total_quantity, payload, metadata, created_by, updated_by, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, $10), $11, NOW(), NOW())
-      ON CONFLICT (id) DO UPDATE SET
-        branch_id = EXCLUDED.branch_id,
-        status = EXCLUDED.status,
-        line_count = EXCLUDED.line_count,
-        total_amount = EXCLUDED.total_amount,
-        total_quantity = EXCLUDED.total_quantity,
-        payload = EXCLUDED.payload,
-        metadata = EXCLUDED.metadata,
-        updated_by = EXCLUDED.updated_by,
-        updated_at = NOW()
-    `,
-    [
-      draftId,
-      branchId,
-      draft.status || 'draft',
-      lines.length,
-      totals.amount,
-      totals.quantity,
-      JSON.stringify(draft),
-      draft.metadata ? JSON.stringify(draft.metadata) : null,
-      user?.fullName || user?.username || null,
-      user?.username || null,
-      user?.fullName || user?.username || null,
-    ]
-  );
+  await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/mis/drafts.js:105:2"),
 
-  await client.query('DELETE FROM mis_sales_lines WHERE draft_id = $1', [draftId]);
+
+
+
+
+
+
+
+
+
+
+
+
+
+  [
+  draftId,
+  branchId,
+  draft.status || 'draft',
+  lines.length,
+  totals.amount,
+  totals.quantity,
+  JSON.stringify(draft),
+  draft.metadata ? JSON.stringify(draft.metadata) : null,
+  user?.fullName || user?.username || null,
+  user?.username || null,
+  user?.fullName || user?.username || null]);
+
+
+
+  await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/mis/drafts.js:134:3"), [draftId]);
 
   for (const line of lines) {
     const validation = line.validation || {};
@@ -139,67 +139,67 @@ async function persistDraft(client, draft, user) {
     const productMatch = validation.product ?? null;
     const notes = Array.isArray(validation.notes) ? validation.notes : [];
 
-    await client.query(
-      `
-        INSERT INTO mis_sales_lines (
-          draft_id,
-          line_uid,
-          distributor_name,
-          distributor_code,
-          sku,
-          product_name,
-          quantity,
-          unit_price,
-          branch_id,
-          sale_timestamp,
-          status,
-          validation,
-          data,
-          created_at,
-          updated_at
-        ) VALUES (
-          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW()
-        )
-      `,
-      [
-        draftId,
-        line.tempId || line.line_uid || `LINE-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`,
-        line.distributorName || line.distributor_name || '',
-        line.distributorNb || line.distributor_code || '',
-        line.sku || '',
-        line.productName || line.product_name || '',
-        safeNumber(line.quantity, 0),
-        safeNumber(line.unitPrice || line.unit_price, 0),
-        line.branch || line.branch_id || branchId,
-        line.timestamp || line.sale_timestamp || new Date().toISOString(),
-        line.status || 'draft',
-        JSON.stringify({
-          distributor: distributorMatch,
-          product: productMatch,
-          notes,
-        }),
-        JSON.stringify(line),
-      ]
-    );
+    await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/mis/drafts.js:143:4"),
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    [
+    draftId,
+    line.tempId || line.line_uid || `LINE-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`,
+    line.distributorName || line.distributor_name || '',
+    line.distributorNb || line.distributor_code || '',
+    line.sku || '',
+    line.productName || line.product_name || '',
+    safeNumber(line.quantity, 0),
+    safeNumber(line.unitPrice || line.unit_price, 0),
+    line.branch || line.branch_id || branchId,
+    line.timestamp || line.sale_timestamp || new Date().toISOString(),
+    line.status || 'draft',
+    JSON.stringify({
+      distributor: distributorMatch,
+      product: productMatch,
+      notes
+    }),
+    JSON.stringify(line)]);
+
+
   }
 
-  await client.query(
-    `
-      INSERT INTO mis_sales_audit (event_type, record_id, user_name, details, created_at)
-      VALUES ($1, $2, $3, $4, NOW())
-    `,
-    [
-      'draft_saved',
-      draftId,
-      user?.fullName || user?.username || null,
-      JSON.stringify({
-        branch: branchId,
-        lineCount: lines.length,
-        totalAmount: totals.amount,
-        totalQuantity: totals.quantity,
-      }),
-    ]
-  );
+  await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/mis/drafts.js:187:5"),
+
+
+
+
+  [
+  'draft_saved',
+  draftId,
+  user?.fullName || user?.username || null,
+  JSON.stringify({
+    branch: branchId,
+    lineCount: lines.length,
+    totalAmount: totals.amount,
+    totalQuantity: totals.quantity
+  })]);
+
+
 
   return loadDraft(draftId, client);
 }
@@ -207,54 +207,54 @@ async function persistDraft(client, draft, user) {
 async function verifyLines(client, draftId, lineIds, user) {
   if (!Array.isArray(lineIds) || lineIds.length === 0) return loadDraft(draftId);
 
-  await client.query(
-    `
-      UPDATE mis_sales_lines
-      SET status = 'verified',
-          validation = COALESCE(validation, '{}'::jsonb) || jsonb_build_object('verifiedBy', $2, 'verifiedAt', NOW()),
-          updated_at = NOW()
-      WHERE draft_id = $1
-        AND (line_uid = ANY($3::text[]) OR id = ANY($4::bigint[]))
-    `,
-    [
-      draftId,
-      user?.fullName || user?.username || null,
-      lineIds,
-      lineIds.filter((value) => /^\d+$/.test(String(value))).map((value) => Number(value)),
-    ]
-  );
+  await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/mis/drafts.js:211:6"),
 
-  await client.query(
-    `
-      UPDATE mis_sales_drafts
-      SET status = CASE
-            WHEN NOT EXISTS (
-              SELECT 1 FROM mis_sales_lines WHERE draft_id = $1 AND status <> 'verified'
-            )
-            THEN 'verified'
-            ELSE status
-          END,
-          updated_by = COALESCE($2, updated_by),
-          updated_at = NOW()
-      WHERE id = $1
-    `,
-    [draftId, user?.fullName || user?.username || null]
-  );
 
-  await client.query(
-    `
-      INSERT INTO mis_sales_audit (event_type, record_id, user_name, details, created_at)
-      VALUES ($1, $2, $3, $4, NOW())
-    `,
-    [
-      'lines_verified',
-      draftId,
-      user?.fullName || user?.username || null,
-      JSON.stringify({
-        lineIds,
-      }),
-    ]
-  );
+
+
+
+
+
+
+  [
+  draftId,
+  user?.fullName || user?.username || null,
+  lineIds,
+  lineIds.filter((value) => /^\d+$/.test(String(value))).map((value) => Number(value))]);
+
+
+
+  await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/mis/drafts.js:228:7"),
+
+
+
+
+
+
+
+
+
+
+
+
+
+  [draftId, user?.fullName || user?.username || null]);
+
+
+  await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/mis/drafts.js:245:8"),
+
+
+
+
+  [
+  'lines_verified',
+  draftId,
+  user?.fullName || user?.username || null,
+  JSON.stringify({
+    lineIds
+  })]);
+
+
 
   return loadDraft(draftId, client);
 }
@@ -271,7 +271,7 @@ export default async function handler(req, res) {
     if (req.method === 'POST') {
       const body = await parseBody(req);
       const saved = await withTransaction(async (client) => {
-        return persistDraft(client, body.draft || body, body.user || {});
+        return persistDraft(client, body.draft || body, req.user);
       });
       return res.status(200).json({ success: true, draft: saved });
     }
@@ -284,10 +284,10 @@ export default async function handler(req, res) {
         if (!draftId) {
           return res.status(400).json({ success: false, error: 'id is required' });
         }
-        const { rowCount } = await query(
-          `UPDATE mis_sales_drafts SET status = 'published', updated_at = NOW() WHERE id = $1`,
-          [draftId]
-        );
+        const { rowCount } = await __qd_executePlan(query, __qd_registeredPlan("api/mis/drafts.js:288:9"),
+
+        [draftId]);
+
         if (rowCount === 0) {
           return res.status(404).json({ success: false, error: 'Draft not found' });
         }
@@ -300,7 +300,7 @@ export default async function handler(req, res) {
         return res.status(400).json({ success: false, error: 'draftId is required' });
       }
       const saved = await withTransaction(async (client) => {
-        return verifyLines(client, body.draftId, Array.isArray(body.lineIds) ? body.lineIds : [], body.user || {});
+        return verifyLines(client, body.draftId, Array.isArray(body.lineIds) ? body.lineIds : [], req.user);
       });
       return res.status(200).json({ success: true, draft: saved });
     }
@@ -315,12 +315,12 @@ export default async function handler(req, res) {
         }
         return res.status(200).json({ success: true, draft });
       }
-      const { rows } = await query(
-        `SELECT id, branch_id, status, total_amount, total_quantity, line_count, created_by, updated_at, created_at
-         FROM mis_sales_drafts
-         ORDER BY updated_at DESC NULLS LAST
-         LIMIT 200`
-      );
+      const { rows } = await __qd_executePlan(query, __qd_registeredPlan("api/mis/drafts.js:319:10"), []);
+
+
+
+
+
       return res.status(200).json({ success: true, drafts: rows });
     }
 
@@ -329,9 +329,7 @@ export default async function handler(req, res) {
     console.error('MIS drafts API error:', error);
     return res.status(500).json({
       success: false,
-      error: error?.message || 'Internal server error',
+      error: error?.message || 'Internal server error'
     });
   }
 }
-
-

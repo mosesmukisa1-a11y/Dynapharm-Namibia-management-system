@@ -6,7 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
 const file=process.env.OWNED_QUERY_DIAGNOSTICS;
 if(file){
-  const roots=['security-release-candidate-final','security-release-gate-final','final-security-release-gate','sql-security-final-closure']
+  const roots=['security-release-candidate-final','security-release-gate-final','final-security-release-gate','sql-security-final-closure','sql-runtime-enforcement-final']
     .map(name=>fileURLToPath(new URL('../../generated-artifacts/'+name+'/fixture-runs/',import.meta.url)));
   if(process.env.STOCK_AUDIT_ISOLATED!=='1'||process.env.NODE_ENV!=='test'||
     !roots.some(root=>path.resolve(file).startsWith(root))||process.env.REPLIT_DEPLOYMENT!=='0')

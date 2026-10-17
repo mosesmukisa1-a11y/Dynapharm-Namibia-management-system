@@ -1,4 +1,4 @@
-import { applyAuthCors } from '../_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, joinPlans as __qd_joinPlans, executePlan as __qd_executePlan } from "../services/queryDescriptors.js";import { applyAuthCors } from '../_lib/auth.js';
 import { getMany } from '../db.js';
 
 const FINANCE_ROLES = new Set(['admin', 'gm', 'director', 'finance']);
@@ -29,48 +29,48 @@ export default async function handler(req, res) {
 
     if (nb) {
       params.push(nb.toUpperCase());
-      where.push(`b.nb_number = $${params.length}`);
+      where.push(__qd_registeredPlan("api/finance/distributor-bonus-history.js:32:0", [params.length]));
     } else if (search) {
       params.push(`%${search}%`);
-      where.push(`(b.nb_number ILIKE $${params.length} OR b.distributor_name ILIKE $${params.length})`);
+      where.push(__qd_registeredPlan("api/finance/distributor-bonus-history.js:35:1", [params.length, params.length]));
     }
 
     if (period) {
       params.push(period);
-      where.push(`b.period = $${params.length}`);
+      where.push(__qd_registeredPlan("api/finance/distributor-bonus-history.js:40:2", [params.length]));
     }
 
     if (status) {
       params.push(status);
-      where.push(`b.status = $${params.length}`);
+      where.push(__qd_registeredPlan("api/finance/distributor-bonus-history.js:45:3", [params.length]));
     }
 
-    const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const whereClause = where.length ? __qd_registeredPlan("api/finance/distributor-bonus-history.js:48:4", [__qd_joinPlans(where, "and")]) : __qd_registeredPlan("api/finance/distributor-bonus-history.js:48:5");
 
-    const bonuses = await getMany(
-      `SELECT b.id, b.period, b.nb_number, b.distributor_name,
-              b.amount_earned, b.amount_paid, b.status,
-              b.paid_by_branch_id, b.payment_date, b.uploaded_by, b.created_at,
-              COALESCE(b.amount_earned, 0) - COALESCE(b.amount_paid, 0) AS outstanding
-       FROM distributor_bonuses b
-       ${whereClause}
-       ORDER BY b.period DESC, b.distributor_name`,
-      params
-    );
+    const bonuses = await __qd_executePlan(getMany, __qd_registeredPlan("api/finance/distributor-bonus-history.js:51:6", [
+
+
+
+
+
+    whereClause]),
+
+    params);
+
 
     if (bonuses.length === 0) {
       return res.json({ success: true, history: [], total: 0 });
     }
 
-    const bonusIds = bonuses.map(b => b.id);
-    const payments = await getMany(
-      `SELECT p.*, b.nb_number, b.distributor_name, b.period
-       FROM distributor_bonus_payments p
-       JOIN distributor_bonuses b ON b.id = p.bonus_id
-       WHERE p.bonus_id = ANY($1)
-       ORDER BY p.paid_at DESC`,
-      [bonusIds]
-    );
+    const bonusIds = bonuses.map((b) => b.id);
+    const payments = await __qd_executePlan(getMany, __qd_registeredPlan("api/finance/distributor-bonus-history.js:67:7"),
+
+
+
+
+
+    [bonusIds]);
+
 
     const payMap = {};
     for (const p of payments) {
@@ -78,10 +78,10 @@ export default async function handler(req, res) {
       payMap[p.bonus_id].push(p);
     }
 
-    const history = bonuses.map(b => ({
+    const history = bonuses.map((b) => ({
       ...b,
       outstanding: Number(b.amount_earned) - Number(b.amount_paid),
-      payments: payMap[b.id] || [],
+      payments: payMap[b.id] || []
     }));
 
     return res.json({ success: true, history, total: history.length });

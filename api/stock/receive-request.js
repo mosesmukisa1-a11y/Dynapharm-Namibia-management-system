@@ -1,4 +1,4 @@
-import { applyAuthCors } from '../_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../services/queryDescriptors.js";import { applyAuthCors } from '../_lib/auth.js';
 import { withTransaction, getOne } from '../db.js';
 import { atomicStockRequest } from '../_lib/atomicStockRequest.js';
 import { receiveTransferTx } from '../services/transferReceipt.js';
@@ -24,10 +24,10 @@ async function parseJsonBody(req) {
   if (req.body && typeof req.body === 'object') return req.body;
   return new Promise((resolve, reject) => {
     let raw = '';
-    req.on('data', (chunk) => { raw += chunk; });
+    req.on('data', (chunk) => {raw += chunk;});
     req.on('end', () => {
-      if (!raw) { resolve({}); return; }
-      try { resolve(JSON.parse(raw)); } catch (e) { reject(new Error('Invalid JSON payload')); }
+      if (!raw) {resolve({});return;}
+      try {resolve(JSON.parse(raw));} catch (e) {reject(new Error('Invalid JSON payload'));}
     });
     req.on('error', reject);
   });
@@ -50,14 +50,14 @@ async function handler(req, res) {
       items = [],
       warehouseSource = 'Warehouse',
       deliveryNote = null,
-      receivedBy = null,
+      receivedBy = null
     } = body;
 
     // Normalize to canonical slug (e.g. 'katima' → 'katima_mulilo', 'Katima Mulilo' → 'katima_mulilo')
     // so branch_inventory_batches and stock_movements always use the canonical branch key.
     const branchId = normalizeBranchSlug(rawBranchId) || rawBranchId;
     const scope = getBranchScope(req.user);
-    if (scope.enforced && !scope.branches.map(value => normalizeBranchSlug(value) || value).includes(branchId)) {
+    if (scope.enforced && !scope.branches.map((value) => normalizeBranchSlug(value) || value).includes(branchId)) {
       return res.status(403).json({ success: false, error: 'Cannot receive stock for another branch.' });
     }
 
@@ -66,28 +66,28 @@ async function handler(req, res) {
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ success: false, error: 'items array is required and must not be empty' });
     }
-    if (items.some(item => {
+    if (items.some((item) => {
       const quantity = Number(item.qtyReceived ?? item.quantity_received ?? item.quantityReceived ?? item.quantity ?? item.qty);
       return !Number.isFinite(quantity) || quantity <= 0 || !Number.isInteger(quantity);
     })) return res.status(400).json({ success: false, error: 'Received quantities must be finite positive whole base-unit quantities.' });
 
-    const linked = await getOne("SELECT id,to_branch FROM stock_transfers WHERE request_id=$1 AND status NOT IN ('cancelled','rejected') ORDER BY created_at DESC LIMIT 1", [requestId]);
+    const linked = await __qd_executePlan(getOne, __qd_registeredPlan("api/stock/receive-request.js:74:0"), [requestId]);
     if (linked) {
       if ((normalizeBranchSlug(linked.to_branch) || linked.to_branch) !== branchId) return res.status(403).json({ success: false, error: 'Dispatch destination does not match this branch.' });
-      const result = await withTransaction(client => receiveTransferTx(client, {
+      const result = await withTransaction((client) => receiveTransferTx(client, {
         transferId: linked.id, items, user: req.user, mode: 'increment',
-        receiptId: body.receiptId || req.headers['idempotency-key'],
+        receiptId: body.receiptId || req.headers['idempotency-key']
       }));
-      recomputeLocationBalances('branch', branchId).catch(error => console.error('[request-receipt]', error.message));
-      recomputeLocationBalances('in_transit', `in_transit:${linked.id}`).catch(error => console.error('[request-transit]', error.message));
+      recomputeLocationBalances('branch', branchId).catch((error) => console.error('[request-receipt]', error.message));
+      recomputeLocationBalances('in_transit', `in_transit:${linked.id}`).catch((error) => console.error('[request-transit]', error.message));
       return res.json({ success: true, ...result, itemsProcessed: items.length });
     }
     const result = await withTransaction(async (client) => {
       // ── 1. Lock the request row and check status atomically ──────────────────
-      const reqResult = await client.query(
-        `SELECT * FROM stock_requests WHERE id = $1 FOR UPDATE`,
-        [requestId]
-      );
+      const reqResult = await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/stock/receive-request.js:88:1"),
+
+      [requestId]);
+
       if (reqResult.rows.length === 0) {
         const err = new Error('Stock request not found');
         err.statusCode = 404;
@@ -106,44 +106,44 @@ async function handler(req, res) {
       }
 
       const requestRef = reqRow.request_number || requestId;
-      if (!['dispatched','in_transit','partially_received'].includes(reqRow.status))
-        throw Object.assign(new Error('Only dispatched requests can be physically received'),{statusCode:409});
-      const receiptHash=createHash('sha256').update(JSON.stringify([requestId,
-        body.receiptId || req.headers['idempotency-key'] || items.map(item=>[
-          item.productName || item.product_name,item.batchNo || item.batch_no,item.expiryDate || item.expiry_date,
-          Number(item.qtyReceived ?? item.quantity_received ?? item.quantityReceived ?? item.quantity ?? item.qty),
-        ]).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)))])).digest('hex').slice(0,32);
-      if ((await client.query("SELECT 1 FROM branch_inventory_movements WHERE id LIKE $1 LIMIT 1",[`LRCPT-${receiptHash}-%`])).rowCount)
-        throw Object.assign(new Error('This partial receipt has already been recorded'),{statusCode:409});
-      if ((await client.query(`SELECT 1 FROM stock_movements WHERE reference_id=ANY($1) AND status='posted'
-        AND movement_type IN ('transit_dispatch','transfer','transfer_out','dispatch') LIMIT 1`,[[requestId,requestRef]])).rowCount)
-        throw Object.assign(new Error('Unlinked dispatch evidence needs discrepancy review before another source deduction'),{statusCode:409});
+      if (!['dispatched', 'in_transit', 'partially_received'].includes(reqRow.status))
+      throw Object.assign(new Error('Only dispatched requests can be physically received'), { statusCode: 409 });
+      const receiptHash = createHash('sha256').update(JSON.stringify([requestId,
+      body.receiptId || req.headers['idempotency-key'] || items.map((item) => [
+      item.productName || item.product_name, item.batchNo || item.batch_no, item.expiryDate || item.expiry_date,
+      Number(item.qtyReceived ?? item.quantity_received ?? item.quantityReceived ?? item.quantity ?? item.qty)]
+      ).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))])).digest('hex').slice(0, 32);
+      if ((await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/stock/receive-request.js:116:2"), [`LRCPT-${receiptHash}-%`])).rowCount)
+      throw Object.assign(new Error('This partial receipt has already been recorded'), { statusCode: 409 });
+      if ((await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/stock/receive-request.js:118:3"),
+      [[requestId, requestRef]])).rowCount)
+      throw Object.assign(new Error('Unlinked dispatch evidence needs discrepancy review before another source deduction'), { statusCode: 409 });
       // Unlinked legacy requests still have an authoritative product-line cap.
       // Duplicate product/batch inputs must not each acquire the full request cap.
-      let requestLines=(await client.query('SELECT * FROM stock_request_items WHERE request_id=$1 ORDER BY id FOR UPDATE',[requestId])).rows;
+      let requestLines = (await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/stock/receive-request.js:123:4"), [requestId])).rows;
       if (!requestLines.length) {
-        requestLines=typeof reqRow.items==='string'?JSON.parse(reqRow.items):reqRow.items || [];
+        requestLines = typeof reqRow.items === 'string' ? JSON.parse(reqRow.items) : reqRow.items || [];
       }
-      const caps=new Map();
+      const caps = new Map();
       for (const line of requestLines) {
-        const name=String(line.product_name || line.productName || line.name || '').trim().toLowerCase();
-        const qty=Number(line.quantity || line.qty || 0);
-        if (name && Number.isSafeInteger(qty) && qty>0) caps.set(name,(caps.get(name)||0)+qty);
+        const name = String(line.product_name || line.productName || line.name || '').trim().toLowerCase();
+        const qty = Number(line.quantity || line.qty || 0);
+        if (name && Number.isSafeInteger(qty) && qty > 0) caps.set(name, (caps.get(name) || 0) + qty);
       }
-      const prior=(await client.query(`SELECT product_name,SUM(quantity) AS quantity FROM branch_inventory_movements
-        WHERE reference=ANY($1) AND type='receive' GROUP BY product_name`,[[requestId,requestRef]])).rows;
+      const prior = (await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/stock/receive-request.js:133:5"),
+      [[requestId, requestRef]])).rows;
       for (const row of prior) {
-        const name=row.product_name.trim().toLowerCase();
-        caps.set(name,(caps.get(name)||0)-Number(row.quantity));
+        const name = row.product_name.trim().toLowerCase();
+        caps.set(name, (caps.get(name) || 0) - Number(row.quantity));
       }
       for (const item of items) {
-        const name=String(item.productName || item.product_name || '').trim().toLowerCase();
-        const qty=Number(item.qtyReceived ?? item.quantity_received ?? item.quantityReceived ?? item.quantity ?? item.qty);
+        const name = String(item.productName || item.product_name || '').trim().toLowerCase();
+        const qty = Number(item.qtyReceived ?? item.quantity_received ?? item.quantityReceived ?? item.quantity ?? item.qty);
         if (!String(item.batchNo || item.batch_no || '').trim())
-          throw Object.assign(new Error('Each receipt line needs its actual batch number'),{statusCode:400});
-        if (!name || !caps.has(name) || qty>caps.get(name))
-          throw Object.assign(new Error('Legacy receipt exceeds the recorded request line quantity; discrepancy review is required'),{statusCode:409});
-        caps.set(name,caps.get(name)-qty);
+        throw Object.assign(new Error('Each receipt line needs its actual batch number'), { statusCode: 400 });
+        if (!name || !caps.has(name) || qty > caps.get(name))
+        throw Object.assign(new Error('Legacy receipt exceeds the recorded request line quantity; discrepancy review is required'), { statusCode: 409 });
+        caps.set(name, caps.get(name) - qty);
       }
 
       // ── 2. Process each item inside the same transaction ─────────────────────
@@ -158,38 +158,38 @@ async function handler(req, res) {
         if (!productName || !batchNo || qty <= 0) continue;
 
         const noteText = [
-          `Received from request ${requestRef}.`,
-          `Delivery note: ${deliveryNote || 'N/A'}.`,
-          `Batch: ${batchNo || 'N/A'},`,
-          `Expiry: ${expiryDate || 'N/A'}`,
-        ].join(' ');
+        `Received from request ${requestRef}.`,
+        `Delivery note: ${deliveryNote || 'N/A'}.`,
+        `Batch: ${batchNo || 'N/A'},`,
+        `Expiry: ${expiryDate || 'N/A'}`].
+        join(' ');
 
         // A legacy receipt must deduct the actually received lot, not another
         // product-only FEFO batch. A shortfall is not proof of earlier dispatch.
         if (warehouseSource) {
-          const whBatches = await client.query(
-            `SELECT id, remaining_quantity
-             FROM stock_batches
-             WHERE (LOWER(TRIM(location)) = LOWER(TRIM($1)) OR LOWER(TRIM(warehouse_id)) = LOWER(TRIM($1)))
-               AND LOWER(TRIM(description)) = LOWER(TRIM($2))
-                AND COALESCE(batch_no,'')=COALESCE($3,'')
-                AND expiry_date IS NOT DISTINCT FROM $4::date
-                AND COALESCE(status,'available') IN ('available','in_stock','active')
-               AND remaining_quantity > 0
-             ORDER BY expiry_date ASC NULLS LAST, import_date ASC
-             FOR UPDATE`,
-             [warehouseSource, productName,batchNo,expiryDate]
-          );
+          const whBatches = await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/stock/receive-request.js:171:6"),
+
+
+
+
+
+
+
+
+
+
+          [warehouseSource, productName, batchNo, expiryDate]);
+
           let toDeduct = qty;
           for (const row of whBatches.rows) {
             if (toDeduct <= 0) break;
             const take = Math.min(toDeduct, Number(row.remaining_quantity));
-            await client.query(
-              `UPDATE stock_batches
-               SET remaining_quantity = remaining_quantity - $1, updated_at = NOW()
-               WHERE id = $2`,
-              [take, row.id]
-            );
+            await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/stock/receive-request.js:188:7"),
+
+
+
+            [take, row.id]);
+
             toDeduct -= take;
           }
           if (toDeduct > 0) {
@@ -201,45 +201,45 @@ async function handler(req, res) {
         // (adds to branch) and OUTWARD_TYPES (subtracts from warehouse) in stockEngine,
         // so inventory_balances for both locations are correctly updated on recompute.
         const smId = generateId('MOV');
-        await client.query(
-          `INSERT INTO stock_movements
-             (id, product_name, batch_no, expiry_date, quantity, movement_type,
-              source_location, source_location_type,
-              destination_location, destination_location_type,
-              reference_id, notes, created_by, status,
-              movement_date, created_at, updated_at)
-           VALUES ($1,$2,$3,$4,$5,'branch_receipt',$6,'warehouse',$7,'branch',$8,$9,$10,'posted',NOW(),NOW(),NOW())`,
-          [smId, productName, batchNo, expiryDate, qty,
-           warehouseSource, branchId, requestId, noteText, receivedBy]
-        );
+        await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/stock/receive-request.js:205:8"),
+
+
+
+
+
+
+
+        [smId, productName, batchNo, expiryDate, qty,
+        warehouseSource, branchId, requestId, noteText, receivedBy]);
+
 
         // Upsert into branch_inventory_batches (add qty, preserve existing price + source)
         const bibId = generateId('BATCH');
-        await client.query(
-          `INSERT INTO branch_inventory_batches
-             (id, branch_id, product_name, batch_no, expiry_date,
-              quantity, unit_price, source_warehouse, status, created_at, updated_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'in_stock',NOW(),NOW())
-           ON CONFLICT (branch_id, product_name, batch_no, expiry_date)
-           DO UPDATE SET
-             quantity        = branch_inventory_batches.quantity + EXCLUDED.quantity,
-             unit_price      = COALESCE(EXCLUDED.unit_price, branch_inventory_batches.unit_price),
-             source_warehouse = COALESCE(EXCLUDED.source_warehouse, branch_inventory_batches.source_warehouse),
-             status          = 'in_stock',
-             updated_at      = NOW()`,
-          [bibId, branchId, productName, batchNo, expiryDate, qty, unitPrice, warehouseSource || null]
-        );
+        await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/stock/receive-request.js:219:9"),
+
+
+
+
+
+
+
+
+
+
+
+        [bibId, branchId, productName, batchNo, expiryDate, qty, unitPrice, warehouseSource || null]);
+
 
         // Insert into branch_inventory_movements
         const bimId = `LRCPT-${receiptHash}-${processed.length}`;
-        await client.query(
-          `INSERT INTO branch_inventory_movements
-             (id, branch_id, type, product_name, batch_no, quantity,
-              source_branch_id, reference, notes, created_by, created_at)
-           VALUES ($1,$2,'receive',$3,$4,$5,$6,$7,$8,$9,NOW())`,
-          [bimId, branchId, productName, batchNo, qty,
-           warehouseSource, requestId, noteText, receivedBy]
-        );
+        await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/stock/receive-request.js:236:10"),
+
+
+
+
+        [bimId, branchId, productName, batchNo, qty,
+        warehouseSource, requestId, noteText, receivedBy]);
+
 
         processed.push({ productName, batchNo, qty });
       }
@@ -251,21 +251,21 @@ async function handler(req, res) {
       }
 
       // Keep a legacy request open only for its recorded unreceived quantities.
-      await client.query(
-        `UPDATE stock_requests SET status = $2, updated_at = NOW() WHERE id = $1`,
-        [requestId,[...caps.values()].some(quantity=>quantity>0)?'partially_received':'received']
-      );
+      await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/stock/receive-request.js:255:11"),
+
+      [requestId, [...caps.values()].some((quantity) => quantity > 0) ? 'partially_received' : 'received']);
+
 
       return { requestRef, itemsProcessed: processed.length, processed };
     });
 
     // ── Post-transaction: recompute balances for both branch and warehouse ───────
     recomputeLocationBalances('branch', branchId).catch((e) =>
-      console.error('[stock/receive-request] branch recompute error:', e.message)
+    console.error('[stock/receive-request] branch recompute error:', e.message)
     );
     if (warehouseSource) {
       recomputeLocationBalances('warehouse', warehouseSource).catch((e) =>
-        console.error('[stock/receive-request] warehouse recompute error:', e.message)
+      console.error('[stock/receive-request] warehouse recompute error:', e.message)
       );
     }
 
@@ -273,7 +273,7 @@ async function handler(req, res) {
       success: true,
       requestRef: result.requestRef,
       branchId,
-      itemsProcessed: result.itemsProcessed,
+      itemsProcessed: result.itemsProcessed
     });
   } catch (err) {
     const status = err.statusCode || 500;

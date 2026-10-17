@@ -1,4 +1,4 @@
-import { applyAuthCors } from '../_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, joinPlans as __qd_joinPlans, executePlan as __qd_executePlan } from "../services/queryDescriptors.js";import { applyAuthCors } from '../_lib/auth.js';
 import { getMany } from '../db.js';
 
 export default async function handler(req, res) {
@@ -12,17 +12,17 @@ export default async function handler(req, res) {
     const status = url.searchParams.get('status') || '';
     const branchId = url.searchParams.get('branchId') || '';
 
-    const conditions = ['1=1'];
+    const conditions = [__qd_registeredPlan("api/stock/field-stock.js:15:0")];
     const params = [];
-    if (status) { conditions.push(`status = $${params.length + 1}`); params.push(status); }
-    if (branchId) { conditions.push(`branch_id = $${params.length + 1}`); params.push(branchId); }
+    if (status) {conditions.push(__qd_registeredPlan("api/stock/field-stock.js:17:1", [params.length + 1]));params.push(status);}
+    if (branchId) {conditions.push(__qd_registeredPlan("api/stock/field-stock.js:18:2", [params.length + 1]));params.push(branchId);}
 
-    let records = await getMany(
-      `SELECT * FROM field_stock WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC LIMIT 300`,
-      params
-    );
+    let records = await __qd_executePlan(getMany, __qd_registeredPlan("api/stock/field-stock.js:21:3", [__qd_joinPlans(
+      conditions, "and")]),
+    params);
 
-    if (search) records = records.filter(r => (r.description || r.product_name || '').toLowerCase().includes(search.toLowerCase()) || (r.recipient_name || '').toLowerCase().includes(search.toLowerCase()));
+
+    if (search) records = records.filter((r) => (r.description || r.product_name || '').toLowerCase().includes(search.toLowerCase()) || (r.recipient_name || '').toLowerCase().includes(search.toLowerCase()));
 
     res.status(200).json({ success: true, records, total: records.length });
   } catch (err) {

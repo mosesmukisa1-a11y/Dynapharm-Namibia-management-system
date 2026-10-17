@@ -1,4 +1,4 @@
-import { applyAuthCors } from './_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, joinPlans as __qd_joinPlans, executePlan as __qd_executePlan } from "./services/queryDescriptors.js";import { applyAuthCors } from './_lib/auth.js';
 import { query, getMany, getOne } from './db.js';
 import { canReadCentralBatches } from './services/stockReportFreshness.js';
 function normalizeInboundPayload(payload) {
@@ -86,15 +86,15 @@ function generateId(prefix) {
 
 function normalizeBatch(row) {
   if (!row) return null;
-  const expiryDate = row.expiry_date
-    ? (typeof row.expiry_date === 'string' ? row.expiry_date.slice(0, 10) : row.expiry_date.toISOString().slice(0, 10))
-    : null;
-  const importDate = row.import_date
-    ? (typeof row.import_date === 'string' ? row.import_date : row.import_date.toISOString())
-    : null;
-  const createdAt = row.created_at
-    ? (typeof row.created_at === 'string' ? row.created_at : row.created_at.toISOString())
-    : importDate;
+  const expiryDate = row.expiry_date ?
+  typeof row.expiry_date === 'string' ? row.expiry_date.slice(0, 10) : row.expiry_date.toISOString().slice(0, 10) :
+  null;
+  const importDate = row.import_date ?
+  typeof row.import_date === 'string' ? row.import_date : row.import_date.toISOString() :
+  null;
+  const createdAt = row.created_at ?
+  typeof row.created_at === 'string' ? row.created_at : row.created_at.toISOString() :
+  importDate;
   return {
     id: row.id,
     barcode: row.barcode,
@@ -124,7 +124,7 @@ function normalizeBatch(row) {
     warehouse_id: row.warehouse_id,
     unit_price: row.unit_price || 0,
     cif_unit_cost: row.original_unit_cif ?? row.cif_unit_cost ?? null,
-    dpc_unit_value:row.original_unit_dp ?? row.dpc_unit_value ?? null,
+    dpc_unit_value: row.original_unit_dp ?? row.dpc_unit_value ?? null,
     notes: row.notes || null
   };
 }
@@ -134,62 +134,62 @@ async function upsertBatch(batch) {
   const barcode = batch.barcode || generateId('BC');
   const quantity = Number.parseInt(batch.quantity, 10);
   const remaining =
-    batch.remainingQuantity !== undefined ? Number.parseInt(batch.remainingQuantity, 10) : quantity;
+  batch.remainingQuantity !== undefined ? Number.parseInt(batch.remainingQuantity, 10) : quantity;
 
   const unitPrice = batch.unitPrice ?? batch.unit_price ?? 0;
 
-  const result = await query(
-    `
-    INSERT INTO stock_batches (
-      id, barcode, carton_no, description, batch_no, expiry_date,
-      quantity, total_ctns, import_date, location, status,
-      dispatched_quantity, remaining_quantity, product_id, warehouse_id,
-      unit_price, notes
-    ) VALUES (
-      $1, $2, $3, $4, $5, $6,
-      $7, $8, COALESCE($9, NOW()), $10, COALESCE($11, 'available'),
-      COALESCE($12, 0), $13, $14, $15,
-      COALESCE($16, 0), $17
-    )
-    ON CONFLICT (barcode) DO UPDATE SET
-      carton_no = EXCLUDED.carton_no,
-      description = EXCLUDED.description,
-      batch_no = EXCLUDED.batch_no,
-      expiry_date = EXCLUDED.expiry_date,
-      quantity = EXCLUDED.quantity,
-      total_ctns = EXCLUDED.total_ctns,
-      import_date = EXCLUDED.import_date,
-      location = EXCLUDED.location,
-      status = EXCLUDED.status,
-      dispatched_quantity = EXCLUDED.dispatched_quantity,
-      remaining_quantity = EXCLUDED.remaining_quantity,
-      product_id = EXCLUDED.product_id,
-      warehouse_id = EXCLUDED.warehouse_id,
-      unit_price = EXCLUDED.unit_price,
-      notes = EXCLUDED.notes,
-      updated_at = NOW()
-    RETURNING *
-  `,
-    [
-      id,
-      barcode,
-      batch.cartonNo || batch.carton_no || null,
-      batch.description || null,
-      batch.batchNo || batch.batch_no || null,
-      toDate(batch.expiryDate || batch.expiry_date),
-      Number.isFinite(quantity) && quantity > 0 ? quantity : 0,
-      batch.totalCtns || batch.total_ctns || quantity || 0,
-      batch.importDate || batch.import_date || null,
-      batch.location || batch.sourceWarehouseId || batch.warehouseId || null,
-      batch.status || null,
-      batch.dispatchedQuantity || batch.dispatched_quantity || 0,
-      Number.isFinite(remaining) && remaining >= 0 ? remaining : quantity || 0,
-      batch.productId || batch.product_id || null,
-      batch.warehouseId || batch.warehouse_id || batch.sourceWarehouseId || null,
-      Number(unitPrice) || 0,
-      batch.notes || null
-    ]
-  );
+  const result = await __qd_executePlan(query, __qd_registeredPlan("api/stock-batches.js:142:0"),
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  [
+  id,
+  barcode,
+  batch.cartonNo || batch.carton_no || null,
+  batch.description || null,
+  batch.batchNo || batch.batch_no || null,
+  toDate(batch.expiryDate || batch.expiry_date),
+  Number.isFinite(quantity) && quantity > 0 ? quantity : 0,
+  batch.totalCtns || batch.total_ctns || quantity || 0,
+  batch.importDate || batch.import_date || null,
+  batch.location || batch.sourceWarehouseId || batch.warehouseId || null,
+  batch.status || null,
+  batch.dispatchedQuantity || batch.dispatched_quantity || 0,
+  Number.isFinite(remaining) && remaining >= 0 ? remaining : quantity || 0,
+  batch.productId || batch.product_id || null,
+  batch.warehouseId || batch.warehouse_id || batch.sourceWarehouseId || null,
+  Number(unitPrice) || 0,
+  batch.notes || null]);
+
+
 
   return normalizeBatch(result.rows[0]);
 }
@@ -200,8 +200,8 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
-  if(!req.user)return res.status(401).json({success:false,error:'Authentication required'});
-  if(!canReadCentralBatches(req.user))return res.status(403).json({success:false,error:'Central warehouse batch access denied; use permitted branch inventory'});
+  if (!req.user) return res.status(401).json({ success: false, error: 'Authentication required' });
+  if (!canReadCentralBatches(req.user)) return res.status(403).json({ success: false, error: 'Central warehouse batch access denied; use permitted branch inventory' });
 
   const { searchParams } = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const id = searchParams.get('id');
@@ -221,7 +221,7 @@ export default async function handler(req, res) {
 
     if (req.method === 'GET') {
       if (id) {
-        const batch = await getOne(`${expiryFallbackSelect} WHERE sb.id = $1`, [id]);
+        const batch = await __qd_executePlan(getOne, __qd_registeredPlan("api/stock-batches.js:224:1"), [id]);
         if (!batch) {
           return res.status(404).json({ success: false, error: 'Not found' });
         }
@@ -229,50 +229,49 @@ export default async function handler(req, res) {
       }
 
       if (barcode) {
-        const batch = await getOne(`${expiryFallbackSelect} WHERE sb.barcode = $1`, [barcode]);
+        const batch = await __qd_executePlan(getOne, __qd_registeredPlan("api/stock-batches.js:232:2"), [barcode]);
         if (!batch) {
           return res.status(404).json({ success: false, error: 'Not found' });
         }
         return res.status(200).json(normalizeBatch(batch));
       }
 
-      let queryText = expiryFallbackSelect;
+      let queryText = __qd_registeredPlan("api/stock-batches.js:239:3");
       const params = [];
 
       if (location) {
-        queryText += ' WHERE sb.location = $1';
+        queryText = __qd_joinPlans([queryText, __qd_registeredPlan("api/stock-batches.js:243:4")], "empty");
         params.push(location);
       }
 
-      queryText += ' ORDER BY sb.import_date DESC';
-      const rows = await getMany(queryText, params);
+      queryText = __qd_joinPlans([queryText, __qd_registeredPlan("api/stock-batches.js:247:5")], "empty");
+      const rows = await __qd_executePlan(getMany, queryText, params);
       return res.status(200).json(rows.map(normalizeBatch).filter(Boolean));
     }
 
     if (req.method === 'POST') {
-      return res.status(409).json({success:false,error:'Use import receiving with a stable receipt key and explicit units to create physical batches.'});
+      return res.status(409).json({ success: false, error: 'Use import receiving with a stable receipt key and explicit units to create physical batches.' });
     }
 
     if (req.method === 'PUT' || req.method === 'PATCH') {
-      const body=await parseRequestBody(req);
-      if (!body.id && !body.barcode) return res.status(400).json({success:false,error:'id or barcode required'});
-      const allowed=new Set(['id','barcode','qr_code','carton_no','cartonNo','notes']);
-      if (Object.keys(body).some(key=>!allowed.has(key))) return res.status(409).json({success:false,
-        error:'Received quantities, costs and lot identities are immutable. Use reviewed stock adjustments or a new receipt.'});
-      const row=await getOne(body.id ? 'SELECT * FROM stock_batches WHERE id=$1' : 'SELECT * FROM stock_batches WHERE barcode=$1',[body.id || body.barcode]);
-      if (!row) return res.status(404).json({success:false,error:'Not found'});
-      const updated=await getOne(`UPDATE stock_batches SET barcode=$2,qr_code=$3,carton_no=$4,notes=$5,updated_at=NOW() WHERE id=$1 RETURNING *`,
-        [row.id,body.barcode ?? row.barcode,body.qr_code===undefined ? row.qr_code : body.qr_code,
-          body.cartonNo ?? body.carton_no ?? row.carton_no,body.notes ?? row.notes]);
-      return res.json({success:true,batch:normalizeBatch(updated)});
+      const body = await parseRequestBody(req);
+      if (!body.id && !body.barcode) return res.status(400).json({ success: false, error: 'id or barcode required' });
+      const allowed = new Set(['id', 'barcode', 'qr_code', 'carton_no', 'cartonNo', 'notes']);
+      if (Object.keys(body).some((key) => !allowed.has(key))) return res.status(409).json({ success: false,
+        error: 'Received quantities, costs and lot identities are immutable. Use reviewed stock adjustments or a new receipt.' });
+      const row = await __qd_executePlan(getOne, body.id ? __qd_registeredPlan("api/stock-batches.js:262:6") : __qd_registeredPlan("api/stock-batches.js:262:7"), [body.id || body.barcode]);
+      if (!row) return res.status(404).json({ success: false, error: 'Not found' });
+      const updated = await __qd_executePlan(getOne, __qd_registeredPlan("api/stock-batches.js:264:8"),
+      [row.id, body.barcode ?? row.barcode, body.qr_code === undefined ? row.qr_code : body.qr_code,
+      body.cartonNo ?? body.carton_no ?? row.carton_no, body.notes ?? row.notes]);
+      return res.json({ success: true, batch: normalizeBatch(updated) });
     }
 
-    if (req.method === 'DELETE') return res.status(409).json({success:false,error:'Physical batches cannot be deleted. Use a reviewed stock correction.'});
+    if (req.method === 'DELETE') return res.status(409).json({ success: false, error: 'Physical batches cannot be deleted. Use a reviewed stock correction.' });
 
-    return res.status(405).json({success:false,error:'Method not allowed'});
+    return res.status(405).json({ success: false, error: 'Method not allowed' });
   } catch (error) {
     console.error('Stock batches API error:', error);
     return res.status(500).json({ success: false, error: 'Internal server error' });
   }
 }
-

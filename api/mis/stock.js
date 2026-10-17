@@ -1,4 +1,4 @@
-import { applyAuthCors } from '../_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, joinPlans as __qd_joinPlans, executePlan as __qd_executePlan } from "../services/queryDescriptors.js";import { applyAuthCors } from '../_lib/auth.js';
 import { getMany } from '../db.js';
 
 function parseDate(value) {
@@ -36,7 +36,7 @@ function normalizeRow(row) {
     branch: row.branch_id || row.branch || 'unknown',
     productName: row.product_name || 'Unknown Product',
     quantity: Number(row.quantity || 0),
-    amount: Number(row.amount || 0),
+    amount: Number(row.amount || 0)
   };
 }
 
@@ -60,68 +60,66 @@ export default async function handler(req, res) {
       startParam: searchParams.get('start'),
       endParam: searchParams.get('end'),
       yearParam: searchParams.get('year'),
-      monthParam: searchParams.get('month'),
+      monthParam: searchParams.get('month')
     });
 
     const params = [range.start, range.end];
-    let queryText = `
-      SELECT
-        s.branch_id,
-        COALESCE(
-          item.value->>'productName',
-          item.value->>'name',
-          item.value->>'product',
-          item.value->>'sku',
-          'Unknown Product'
-        ) AS product_name,
-        SUM(
-          COALESCE(
-            NULLIF(item.value->>'quantity', '')::numeric,
-            0
-          )
-        ) AS quantity,
-        SUM(
-          COALESCE(
-            NULLIF(item.value->>'amount', '')::numeric,
-            NULLIF(item.value->>'total', '')::numeric,
-            (
-              COALESCE(NULLIF(item.value->>'quantity', '')::numeric, 0) *
-              COALESCE(NULLIF(item.value->>'unitPrice', '')::numeric, NULLIF(item.value->>'price', '')::numeric, 0)
-            )
-          )
-        ) AS amount
-      FROM branch_walkin_sales s
-      CROSS JOIN LATERAL jsonb_array_elements(COALESCE(s.items, '[]'::jsonb)) AS item(value)
-      WHERE s.sale_date BETWEEN $1 AND $2
-    `;
+    let queryText = __qd_registeredPlan("api/mis/stock.js:67:0");
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     if (branchParam && branchParam !== 'all') {
       params.push(branchParam);
-      queryText += ` AND s.branch_id = $${params.length}`;
+      queryText = __qd_joinPlans([queryText, __qd_registeredPlan("api/mis/stock.js:100:1", [params.length])], "empty");
     }
 
-    queryText += `
-      GROUP BY s.branch_id, product_name
-      ORDER BY s.branch_id, product_name
-      LIMIT 2000
-    `;
+    queryText = __qd_joinPlans([queryText, __qd_registeredPlan("api/mis/stock.js:103:2")], "empty");
 
-    const rows = await getMany(queryText, params);
+
+
+
+
+    const rows = await __qd_executePlan(getMany, queryText, params);
     const normalized = rows.map(normalizeRow).filter(Boolean);
 
     return res.status(200).json({
       success: true,
       rows: normalized,
       range,
-      scope,
+      scope
     });
   } catch (error) {
     console.error('MIS stock API error:', error);
     return res.status(500).json({
       success: false,
-      error: error?.message || 'Internal server error',
+      error: error?.message || 'Internal server error'
     });
   }
 }
-
-

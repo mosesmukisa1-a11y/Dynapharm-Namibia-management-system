@@ -1,8 +1,8 @@
-import { applyAuthCors } from '../_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, joinPlans as __qd_joinPlans, executePlan as __qd_executePlan } from "../services/queryDescriptors.js";import { applyAuthCors } from '../_lib/auth.js';
 import { getMany, getOne } from '../db.js';
-import {reportInstantPredicate} from '../services/reportDateBounds.js';
-import {businessDay,validateBusinessDates} from '../services/businessDates.js';
-import {COMPANY_REPORT_ROLES} from '../services/dailySales.js';
+import { reportInstantPredicate } from '../services/reportDateBounds.js';
+import { businessDay, validateBusinessDates } from '../services/businessDates.js';
+import { COMPANY_REPORT_ROLES } from '../services/dailySales.js';
 
 function parseDate(value) {
   if (!value) return null;
@@ -26,20 +26,20 @@ function normalizeItems(items) {
 
 function normalizeReceipt(row) {
   if (!row) return null;
-  const savedTotal=row.total ?? row.total_amount;
-  const total=savedTotal==null ? null : Number(savedTotal);
+  const savedTotal = row.total ?? row.total_amount;
+  const total = savedTotal == null ? null : Number(savedTotal);
   const subtotal = Number(row.subtotal || 0);
   const discount = Number(row.discount || 0);
   const tax = Number(row.tax || 0);
   const items = normalizeItems(row.items);
   const saleDate =
-    row.sale_date instanceof Date
-      ? row.sale_date.toISOString()
-      : typeof row.sale_date === 'string'
-      ? row.sale_date
-      : row.created_at instanceof Date
-      ? row.created_at.toISOString()
-      : null;
+  row.sale_date instanceof Date ?
+  row.sale_date.toISOString() :
+  typeof row.sale_date === 'string' ?
+  row.sale_date :
+  row.created_at instanceof Date ?
+  row.created_at.toISOString() :
+  null;
   const saleDateObj = saleDate ? new Date(saleDate) : null;
   return {
     id: row.id,
@@ -59,33 +59,33 @@ function normalizeReceipt(row) {
     tax,
     total,
     totalAmount: total,
-    chargedAmount:row.source==='prescription'?null:total,
-    amountBasis:row.source==='prescription'?'prescription_dp_only':'original_customer_charge',
-    missingAmountEvidence:total===null,
+    chargedAmount: row.source === 'prescription' ? null : total,
+    amountBasis: row.source === 'prescription' ? 'prescription_dp_only' : 'original_customer_charge',
+    missingAmountEvidence: total === null,
     totalBV: Number(row.total_bv || 0),
     status: row.status || 'completed',
     saleDate,
-    businessDate:saleDateObj?businessDay(saleDateObj):null,
+    businessDate: saleDateObj ? businessDay(saleDateObj) : null,
     date: saleDateObj ? saleDateObj.toISOString().slice(0, 10) : '',
     timestamp: saleDateObj ? saleDateObj.toISOString() : new Date().toISOString(),
     createdAt: row.created_at,
     source: row.source || 'walkin',
     items: items.map((item) => ({
-       productName: item.productName || item.product_name || item.name || item.product || '',
+      productName: item.productName || item.product_name || item.name || item.product || '',
       productCode: item.productCode || item.sku || '',
       quantity: Number(item.quantity || 0),
-       unitPrice: Number(item.unitPrice ?? item.unit_price ?? item.price ?? 0),
-       amount: Number(item.amount ?? item.line_total ?? item.total ?? (item.quantity || 0) * (item.unitPrice ?? item.unit_price ?? item.price ?? 0)),
+      unitPrice: Number(item.unitPrice ?? item.unit_price ?? item.price ?? 0),
+      amount: Number(item.amount ?? item.line_total ?? item.total ?? (item.quantity || 0) * (item.unitPrice ?? item.unit_price ?? item.price ?? 0))
     })),
     products: items.map((item) => ({
-       name: item.productName || item.product_name || item.name || item.product || '',
+      name: item.productName || item.product_name || item.name || item.product || '',
       sku: item.productCode || item.sku || '',
       quantity: Number(item.quantity || 0),
-       amount: Number(item.amount ?? item.line_total ?? item.total ?? (item.quantity || 0) * (item.unitPrice ?? item.unit_price ?? item.price ?? 0)),
+      amount: Number(item.amount ?? item.line_total ?? item.total ?? (item.quantity || 0) * (item.unitPrice ?? item.unit_price ?? item.price ?? 0))
     })),
     data: typeof row.data === 'object' && row.data !== null ? row.data : row.data ? (() => {
-      try { return JSON.parse(row.data); } catch { return {}; }
-    })() : {},
+      try {return JSON.parse(row.data);} catch {return {};}
+    })() : {}
   };
 }
 
@@ -93,7 +93,7 @@ function summarizeReceipts(receipts) {
   const summary = {
     count: receipts.length,
     totalAmount: 0,
-    branches: new Map(),
+    branches: new Map()
   };
   receipts.forEach((receipt) => {
     summary.totalAmount += Number(receipt.total || 0);
@@ -102,7 +102,7 @@ function summarizeReceipts(receipts) {
       summary.branches.set(key, {
         branch: key,
         count: 0,
-        total: 0,
+        total: 0
       });
     }
     const branchSummary = summary.branches.get(key);
@@ -110,17 +110,17 @@ function summarizeReceipts(receipts) {
     branchSummary.total += Number(receipt.total || 0);
   });
   summary.branchBreakdown = Array.from(summary.branches.values()).sort((a, b) =>
-    a.branch.localeCompare(b.branch)
+  a.branch.localeCompare(b.branch)
   );
-  summary.customerChargedAmount=receipts.filter(r=>r.amountBasis==='original_customer_charge').reduce((s,r)=>s+Number(r.total??0),0);
-  summary.prescriptionDPAmount=receipts.filter(r=>r.amountBasis==='prescription_dp_only').reduce((s,r)=>s+Number(r.total??0),0);
-  summary.missingAmountEvidence=receipts.filter(r=>r.missingAmountEvidence).length;
-  summary.mixedBases=new Set(receipts.map(r=>r.amountBasis)).size>1;
-  if(summary.mixedBases||summary.missingAmountEvidence)summary.totalAmount=null;
+  summary.customerChargedAmount = receipts.filter((r) => r.amountBasis === 'original_customer_charge').reduce((s, r) => s + Number(r.total ?? 0), 0);
+  summary.prescriptionDPAmount = receipts.filter((r) => r.amountBasis === 'prescription_dp_only').reduce((s, r) => s + Number(r.total ?? 0), 0);
+  summary.missingAmountEvidence = receipts.filter((r) => r.missingAmountEvidence).length;
+  summary.mixedBases = new Set(receipts.map((r) => r.amountBasis)).size > 1;
+  if (summary.mixedBases || summary.missingAmountEvidence) summary.totalAmount = null;
   // Never present a combined branch figure as comparable charged revenue.
-  for(const branch of summary.branchBreakdown){
-    const rows=receipts.filter(r=>(r.branchId||'unknown')===branch.branch);
-    if(new Set(rows.map(r=>r.amountBasis)).size>1||rows.some(r=>r.missingAmountEvidence))branch.total=null;
+  for (const branch of summary.branchBreakdown) {
+    const rows = receipts.filter((r) => (r.branchId || 'unknown') === branch.branch);
+    if (new Set(rows.map((r) => r.amountBasis)).size > 1 || rows.some((r) => r.missingAmountEvidence)) branch.total = null;
   }
   return summary;
 }
@@ -132,7 +132,7 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
   if (!req.user) return res.status(401).json({ success: false, error: 'Authentication required' });
-  if (!COMPANY_REPORT_ROLES.has(req.user.role)) return res.status(403).json({success:false,error:'Company receipts reporting access required'});
+  if (!COMPANY_REPORT_ROLES.has(req.user.role)) return res.status(403).json({ success: false, error: 'Company receipts reporting access required' });
 
   if (req.method !== 'GET') {
     return res.status(405).json({ success: false, error: 'Method not allowed' });
@@ -155,129 +155,129 @@ export default async function handler(req, res) {
       if (!parsed) {
         return res.status(400).json({ success: false, error: 'Invalid date parameter' });
       }
-      const day=/^\d{4}-\d{2}-\d{2}$/.test(dateParam)?dateParam:businessDay(parsed);
-      const position=`$${walkinParams.length + 1}`;
-      walkinWhere.push(reportInstantPredicate('sale_date',position,day),reportInstantPredicate('sale_date',position,day,true));
+      const day = /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : businessDay(parsed);
+      const position = `$${walkinParams.length + 1}`;
+      walkinWhere.push(reportInstantPredicate('sale_date', position, day), reportInstantPredicate('sale_date', position, day, true));
       walkinParams.push(day);
     } else {
-      if(startParam&&endParam&&/^\d{4}-\d{2}-\d{2}$/.test(startParam)&&/^\d{4}-\d{2}-\d{2}$/.test(endParam))validateBusinessDates(startParam,endParam);
-      for(const [value,end] of [[startParam,false],[endParam,true]])if(value){
-        walkinWhere.push(reportInstantPredicate('sale_date',`$${walkinParams.length+1}`,value,end));
+      if (startParam && endParam && /^\d{4}-\d{2}-\d{2}$/.test(startParam) && /^\d{4}-\d{2}-\d{2}$/.test(endParam)) validateBusinessDates(startParam, endParam);
+      for (const [value, end] of [[startParam, false], [endParam, true]]) if (value) {
+        walkinWhere.push(reportInstantPredicate('sale_date', `$${walkinParams.length + 1}`, value, end));
         walkinParams.push(value);
       }
-      if(!startParam&&!endParam){
-        walkinWhere.push(`sale_date >= NOW() - INTERVAL '7 days'`);
+      if (!startParam && !endParam) {
+        walkinWhere.push(__qd_registeredPlan("api/mis/receipts.js:169:1"));
       }
     }
 
     if (branchParam && branchParam !== 'all') {
-      walkinWhere.push(`branch_id = $${walkinParams.length + 1}`);
+      walkinWhere.push(__qd_registeredPlan("api/mis/receipts.js:174:2", [walkinParams.length + 1]));
       walkinParams.push(branchParam);
     }
 
     if (qParam && qParam.trim()) {
       const like = `%${qParam.trim()}%`;
       walkinParams.push(like);
-      walkinWhere.push(`(sale_number ILIKE $${walkinParams.length} OR customer_name ILIKE $${walkinParams.length} OR customer_phone ILIKE $${walkinParams.length})`);
+      walkinWhere.push(__qd_registeredPlan("api/mis/receipts.js:181:3", [walkinParams.length, walkinParams.length, walkinParams.length]));
     }
 
     // Only completed sales, and exclude any receipt that has an approved refund —
     // a refunded receipt should not appear in the MIS entry list.
-    walkinWhere.unshift(`NOT EXISTS (
-      SELECT 1 FROM branch_refund_requests rr
-      WHERE rr.sale_reference = branch_walkin_sales.sale_number
-        AND rr.status = 'approved'
-    )`);
-    walkinWhere.unshift(`status = 'completed'`);
+    walkinWhere.unshift(__qd_registeredPlan("api/mis/receipts.js:186:4")
 
-    let walkinQuery = `
-      SELECT id, sale_number, branch_id, customer_name, customer_phone, customer_email,
-             customer_type, payment_method, total, subtotal, discount, tax, total_bv,
-             sale_date, created_at, status, items, data, 'walkin' AS source
-      FROM branch_walkin_sales
-    `;
+
+
+    );
+    walkinWhere.unshift(__qd_registeredPlan("api/mis/receipts.js:191:5"));
+
+    let walkinQuery = __qd_registeredPlan("api/mis/receipts.js:193:0");
+
+
+
+
+
     if (walkinWhere.length > 0) {
-      walkinQuery += ` WHERE ${walkinWhere.join(' AND ')}`;
+      walkinQuery = __qd_joinPlans([walkinQuery, __qd_registeredPlan("api/mis/receipts.js:200:6", [__qd_joinPlans(walkinWhere, "and")])], "empty");
     }
-    walkinQuery += ` ORDER BY sale_date DESC LIMIT 2000`;
+    walkinQuery = __qd_joinPlans([walkinQuery, __qd_registeredPlan("api/mis/receipts.js:202:7")], "empty");
 
     // ── Prescription dispensing query ─────────────────────────────────────────
     const rxParams = [];
-    const rxWhere = [
-      `bat.activity_type = 'prescription_dispensing'`,
-      // Include every confirmed dispense event — partial OR full.
-      // dispense.js writes workflow_source='branch_portal' with payment_status='paid' each time
-      // Confirm Dispense is clicked (staff always selects payment method first).
-      // capture-rx.js writes workflow_source='dispense_draft' as a summary; excluded here to avoid double-counting.
-      `bat.workflow_source = 'branch_portal'`,
-    ];
+    const rxWhere = [__qd_registeredPlan("api/mis/receipts.js:207:8"),
+
+    // Include every confirmed dispense event — partial OR full.
+    // dispense.js writes workflow_source='branch_portal' with payment_status='paid' each time
+    // Confirm Dispense is clicked (staff always selects payment method first).
+    // capture-rx.js writes workflow_source='dispense_draft' as a summary; excluded here to avoid double-counting.
+    __qd_registeredPlan("api/mis/receipts.js:212:9")];
+
 
     if (dateParam) {
       const parsed = parseDate(dateParam);
       if (parsed) {
-        rxParams.push(/^\d{4}-\d{2}-\d{2}$/.test(dateParam)?dateParam:businessDay(parsed));
-        rxWhere.push(`bat.service_date::date = $${rxParams.length}`);
+        rxParams.push(/^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : businessDay(parsed));
+        rxWhere.push(__qd_registeredPlan("api/mis/receipts.js:219:10", [rxParams.length]));
       }
     } else {
       const start = parseDate(startParam);
       const end = parseDate(endParam);
       if (start && end) {
-        rxParams.push(/^\d{4}-\d{2}-\d{2}$/.test(startParam)?startParam:businessDay(start),/^\d{4}-\d{2}-\d{2}$/.test(endParam)?endParam:businessDay(end));
-        rxWhere.push(`bat.service_date BETWEEN $${rxParams.length - 1} AND $${rxParams.length}`);
+        rxParams.push(/^\d{4}-\d{2}-\d{2}$/.test(startParam) ? startParam : businessDay(start), /^\d{4}-\d{2}-\d{2}$/.test(endParam) ? endParam : businessDay(end));
+        rxWhere.push(__qd_registeredPlan("api/mis/receipts.js:226:11", [rxParams.length - 1, rxParams.length]));
       } else if (start) {
-        rxParams.push(/^\d{4}-\d{2}-\d{2}$/.test(startParam)?startParam:businessDay(start));
-        rxWhere.push(`bat.service_date >= $${rxParams.length}`);
+        rxParams.push(/^\d{4}-\d{2}-\d{2}$/.test(startParam) ? startParam : businessDay(start));
+        rxWhere.push(__qd_registeredPlan("api/mis/receipts.js:229:12", [rxParams.length]));
       } else if (end) {
-        rxParams.push(/^\d{4}-\d{2}-\d{2}$/.test(endParam)?endParam:businessDay(end));
-        rxWhere.push(`bat.service_date <= $${rxParams.length}`);
+        rxParams.push(/^\d{4}-\d{2}-\d{2}$/.test(endParam) ? endParam : businessDay(end));
+        rxWhere.push(__qd_registeredPlan("api/mis/receipts.js:232:13", [rxParams.length]));
       } else {
-        rxWhere.push(`bat.service_date >= NOW() - INTERVAL '7 days'`);
+        rxWhere.push(__qd_registeredPlan("api/mis/receipts.js:234:14"));
       }
     }
 
     if (branchParam && branchParam !== 'all') {
       rxParams.push(branchParam);
-      rxWhere.push(`bat.branch_id = $${rxParams.length}`);
+      rxWhere.push(__qd_registeredPlan("api/mis/receipts.js:240:15", [rxParams.length]));
     }
 
     if (qParam && qParam.trim()) {
       const like = `%${qParam.trim()}%`;
       rxParams.push(like);
-      rxWhere.push(`(bat.form_reference_id ILIKE $${rxParams.length} OR bat.client_name ILIKE $${rxParams.length})`);
+      rxWhere.push(__qd_registeredPlan("api/mis/receipts.js:246:16", [rxParams.length, rxParams.length]));
     }
 
     // One row per prescription (deduplicate by form_reference_id — one activity record per dispense event)
-    const rxQuery = `
-      SELECT
-        bat.id                                                   AS id,
-        'RX-' || bat.form_reference_id                          AS sale_number,
-        bat.branch_id                                            AS branch_id,
-        bat.client_name                                          AS customer_name,
-        bat.client_phone                                         AS customer_phone,
-        NULL::text                                               AS customer_email,
-        'prescription'                                           AS customer_type,
-        bat.payment_method                                       AS payment_method,
-        bat.product_total_dp                                     AS total,
-        bat.product_total_dp                                     AS subtotal,
-        0                                                        AS discount,
-        0                                                        AS tax,
-        0                                                        AS total_bv,
-        bat.service_date                                         AS sale_date,
-        bat.created_at                                           AS created_at,
-        'completed'                                              AS status,
-        '[]'::text                                               AS items,
-        NULL                                                     AS data,
-        'prescription'                                           AS source
-      FROM branch_activity_transactions bat
-      WHERE ${rxWhere.join(' AND ')}
-      ORDER BY bat.service_date DESC
-      LIMIT 1000
-    `;
+    const rxQuery = __qd_registeredPlan("api/mis/receipts.js:250:17", [__qd_joinPlans(
 
-    const [walkinRows, rxRows] = await Promise.all([
-      getMany(walkinQuery, walkinParams),
-      getMany(rxQuery, rxParams),
-    ]);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+      rxWhere, "and")]);
+
+
+
+
+    const [walkinRows, rxRows] = await Promise.all([__qd_executePlan(
+      getMany, walkinQuery, walkinParams), __qd_executePlan(
+      getMany, rxQuery, rxParams)]
+    );
     // Receipt amount is the original saved customer charge, not today's DP,
     // received DPC, or a recomputation from catalogue prices. Prescription DP
     // records remain separately labelled; no historical row is rewritten.
@@ -297,13 +297,13 @@ export default async function handler(req, res) {
     return res.status(200).json({
       success: true,
       receipts,
-      totals,
+      totals
     });
   } catch (error) {
     console.error('MIS receipts API error:', error);
     return res.status(error.statusCode || 500).json({
       success: false,
-      error: error?.message || 'Internal server error',
+      error: error?.message || 'Internal server error'
     });
   }
 }

@@ -1,13 +1,13 @@
-import { applyAuthCors } from '../_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../services/queryDescriptors.js";import { applyAuthCors } from '../_lib/auth.js';
 import { query, getOne } from '../db.js';
 
 const SAFE_FIELDS = [
-  'phone', 'email', 'address', 'emergency_contact_name', 'emergency_contact_phone',
-  'date_of_birth', 'gender', 'marital_status', 'nationality', 'home_language',
-  'next_of_kin_name', 'next_of_kin_relationship', 'next_of_kin_phone',
-  'highest_qualification', 'institution_name', 'graduation_year', 'field_of_study',
-  'professional_certifications',
-];
+'phone', 'email', 'address', 'emergency_contact_name', 'emergency_contact_phone',
+'date_of_birth', 'gender', 'marital_status', 'nationality', 'home_language',
+'next_of_kin_name', 'next_of_kin_relationship', 'next_of_kin_phone',
+'highest_qualification', 'institution_name', 'graduation_year', 'field_of_study',
+'professional_certifications'];
+
 const SENSITIVE_FIELDS = ['national_id', 'bank_name', 'bank_account_no'];
 
 const SELECT_COLS = `
@@ -30,21 +30,21 @@ export default async function handler(req, res) {
 
   if (req.method === 'GET') {
     try {
-      const user = await getOne(
-        `SELECT ${SELECT_COLS} FROM users WHERE id = $1 OR LOWER(username) = LOWER($1)`,
-        [userId]
-      );
+      const user = await __qd_executePlan(getOne, __qd_registeredPlan("api/staff/profile.js:34:0"),
+
+      [userId]);
+
       if (!user) return res.status(404).json({ success: false, error: 'User not found' });
 
-      const pending = await query(
-        `SELECT id, profile_changes, requested_at, status
-         FROM hr_staff_change_requests
-         WHERE request_type = 'profile_update'
-           AND (user_id = $1 OR LOWER(full_name) = LOWER($2))
-           AND status = 'pending'
-         ORDER BY requested_at DESC`,
-        [userId, user.full_name || userId]
-      );
+      const pending = await __qd_executePlan(query, __qd_registeredPlan("api/staff/profile.js:40:1"),
+
+
+
+
+
+
+      [userId, user.full_name || userId]);
+
 
       return res.json({ success: true, profile: user, pendingSensitive: pending.rows });
     } catch (err) {
@@ -63,24 +63,24 @@ export default async function handler(req, res) {
         if (body[field] !== undefined) updates[field] = body[field] || null;
       }
       if (Object.keys(updates).length === 0)
-        return res.status(400).json({ success: false, error: 'No fields to update' });
+      return res.status(400).json({ success: false, error: 'No fields to update' });
       try {
         const vals = [userId, JSON.stringify(updates)];
-        const updated = await getOne(
-          `UPDATE users u SET
-             (phone,email,address,emergency_contact_name,emergency_contact_phone,
-              date_of_birth,gender,marital_status,nationality,home_language,next_of_kin_name,
-              next_of_kin_relationship,next_of_kin_phone,highest_qualification,institution_name,
-              graduation_year,field_of_study,professional_certifications)=
-             (SELECT phone,email,address,emergency_contact_name,emergency_contact_phone,
-              date_of_birth,gender,marital_status,nationality,home_language,next_of_kin_name,
-              next_of_kin_relationship,next_of_kin_phone,highest_qualification,institution_name,
-              graduation_year,field_of_study,professional_certifications
-              FROM jsonb_populate_record(u,$2::jsonb)), updated_at = NOW()
-           WHERE id = $1 OR LOWER(username) = LOWER($1)
-           RETURNING ${SELECT_COLS}`,
-          vals
-        );
+        const updated = await __qd_executePlan(getOne, __qd_registeredPlan("api/staff/profile.js:70:2"),
+
+
+
+
+
+
+
+
+
+
+
+
+        vals);
+
         return res.json({ success: true, profile: updated });
       } catch (err) {
         console.error('[staff/profile PUT contact]', err);
@@ -94,28 +94,28 @@ export default async function handler(req, res) {
         if (body[field] !== undefined && body[field] !== '') changes[field] = body[field];
       }
       if (Object.keys(changes).length === 0)
-        return res.status(400).json({ success: false, error: 'No sensitive fields provided' });
+      return res.status(400).json({ success: false, error: 'No sensitive fields provided' });
       try {
-        const user = await getOne(
-          `SELECT full_name FROM users WHERE id = $1 OR LOWER(username) = LOWER($1)`, [userId]
-        );
-        const fullName = user?.full_name || userId;
-        const existing = await getOne(
-          `SELECT id FROM hr_staff_change_requests
-           WHERE request_type = 'profile_update' AND user_id = $1 AND status = 'pending'`,
-          [userId]
-        );
-        if (existing)
-          return res.status(409).json({ success: false, error: 'You already have a pending sensitive update request. Please wait for HR to process it.' });
+        const user = await __qd_executePlan(getOne, __qd_registeredPlan("api/staff/profile.js:100:3"),
+        [userId]);
 
-        const changeLabels = Object.keys(changes).map(f => f.replace(/_/g, ' ')).join(', ');
-        const result = await query(
-          `INSERT INTO hr_staff_change_requests
-             (request_type, full_name, user_id, profile_changes, reason, status, requested_by, requested_at)
-           VALUES ('profile_update', $1, $2, $3, $4, 'pending', $1, NOW())
-           RETURNING id`,
-          [fullName, userId, JSON.stringify(changes), `Staff self-update request for: ${changeLabels}`]
-        );
+        const fullName = user?.full_name || userId;
+        const existing = await __qd_executePlan(getOne, __qd_registeredPlan("api/staff/profile.js:104:4"),
+
+
+        [userId]);
+
+        if (existing)
+        return res.status(409).json({ success: false, error: 'You already have a pending sensitive update request. Please wait for HR to process it.' });
+
+        const changeLabels = Object.keys(changes).map((f) => f.replace(/_/g, ' ')).join(', ');
+        const result = await __qd_executePlan(query, __qd_registeredPlan("api/staff/profile.js:113:5"),
+
+
+
+
+        [fullName, userId, JSON.stringify(changes), `Staff self-update request for: ${changeLabels}`]);
+
         return res.status(201).json({ success: true, requestId: result.rows[0]?.id });
       } catch (err) {
         console.error('[staff/profile PUT sensitive]', err);

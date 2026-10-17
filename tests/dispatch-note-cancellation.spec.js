@@ -13,9 +13,9 @@
  * without needing a live HTTP server or session cookies.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { query } from '../api/db.js';
-import handler      from '../api/stock/transfers.js';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';import {
+  query } from "./helpers/owned-raw-database.js";
+import handler from '../api/stock/transfers.js';
 import inTransitHandler from '../api/stock/in-transit.js';
 
 // ── Mock req/res factory ──────────────────────────────────────────────────────
@@ -27,8 +27,8 @@ function mockReq({ method = 'GET', url = '/', body = {}, user = null } = {}) {
     url,
     headers: { host: 'localhost', origin: 'http://localhost' },
     user,
-    body,        // parseBody() short-circuits when req.body is an object
-    socket: {},
+    body, // parseBody() short-circuits when req.body is an object
+    socket: {}
   };
 }
 
@@ -39,20 +39,20 @@ function mockReq({ method = 'GET', url = '/', body = {}, user = null } = {}) {
 function mockRes() {
   let resolve;
   let reject;
-  const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
+  const promise = new Promise((res, rej) => {resolve = res;reject = rej;});
 
   const obj = {
     statusCode: 200,
     headersSent: false,
     _headers: {},
-    setHeader(k, v) { this._headers[k] = v; },
-    getHeader(k)    { return this._headers[k]; },
-    status(code)    { this.statusCode = code; return this; },
-    json(body)      { this.headersSent = true; resolve({ statusCode: this.statusCode, body }); return this; },
-    end()           { this.headersSent = true; resolve({ statusCode: this.statusCode, body: null }); return this; },
+    setHeader(k, v) {this._headers[k] = v;},
+    getHeader(k) {return this._headers[k];},
+    status(code) {this.statusCode = code;return this;},
+    json(body) {this.headersSent = true;resolve({ statusCode: this.statusCode, body });return this;},
+    end() {this.headersSent = true;resolve({ statusCode: this.statusCode, body: null });return this;},
     promise,
     resolve,
-    reject,
+    reject
   };
   return obj;
 }
@@ -63,7 +63,7 @@ async function patchTransfer(id, payload, user) {
     method: 'PATCH',
     url: `http://localhost/api/stock/transfers?id=${id}`,
     body: { id, ...payload },
-    user,
+    user
   });
   const res = mockRes();
   await handler(req, res);
@@ -75,7 +75,7 @@ async function getInTransit(user) {
   const req = mockReq({
     method: 'GET',
     url: 'http://localhost/api/stock/in-transit',
-    user,
+    user
   });
   const res = mockRes();
   await inTransitHandler(req, res);
@@ -92,7 +92,7 @@ const WAREHOUSE = 'windhoek_warehouse';
 const BRANCH = 'test_branch_170';
 const BATCH = 'TEST-DN170-BATCH';
 const EXPIRY = '2030-12-31';
-const productFor = id => `TEST_DN170_PRODUCT_${id}`;
+const productFor = (id) => `TEST_DN170_PRODUCT_${id}`;
 
 const ALL_IDS = [TRF_TARGET, TRF_ACTIVE];
 const ALL_PRODUCTS = ALL_IDS.map(productFor);
@@ -136,7 +136,7 @@ async function seedTransfer(id, status) {
        VALUES ($1, $2, $3, $4, 8, $5, $6, 'warehouse', $7,
                'in_transit', $8, 'posted', NOW(), NOW())`,
       [`SM-${id}`, product, BATCH, EXPIRY, status === 'approved' ? 'reserved' : 'transit_dispatch',
-        WAREHOUSE, `in_transit:${id}`, id]
+      WAREHOUSE, `in_transit:${id}`, id]
     );
   }
   // Before dispatch this deliberately represents a stale note to be cleaned up.
@@ -153,16 +153,16 @@ async function seedTransfer(id, status) {
 async function snapshot(id) {
   const product = productFor(id);
   const [transfers, items, notes, batches, inventory, movements] = await Promise.all([
-    query('SELECT * FROM stock_transfers WHERE id=$1', [id]),
-    query('SELECT * FROM stock_transfer_items WHERE transfer_id=$1 ORDER BY id', [id]),
-    query('SELECT * FROM dispatch_notes WHERE transfer_id=$1 ORDER BY id', [id]),
-    query('SELECT * FROM stock_batches WHERE description=$1 ORDER BY id', [product]),
-    query('SELECT * FROM warehouse_inventory WHERE product_name=$1 ORDER BY id', [product]),
-    query('SELECT * FROM stock_movements WHERE reference_id=$1 ORDER BY id', [id]),
-  ]);
+  query('SELECT * FROM stock_transfers WHERE id=$1', [id]),
+  query('SELECT * FROM stock_transfer_items WHERE transfer_id=$1 ORDER BY id', [id]),
+  query('SELECT * FROM dispatch_notes WHERE transfer_id=$1 ORDER BY id', [id]),
+  query('SELECT * FROM stock_batches WHERE description=$1 ORDER BY id', [product]),
+  query('SELECT * FROM warehouse_inventory WHERE product_name=$1 ORDER BY id', [product]),
+  query('SELECT * FROM stock_movements WHERE reference_id=$1 ORDER BY id', [id])]
+  );
   return {
     transfers: transfers.rows, items: items.rows, notes: notes.rows,
-    batches: batches.rows, inventory: inventory.rows, movements: movements.rows,
+    batches: batches.rows, inventory: inventory.rows, movements: movements.rows
   };
 }
 
@@ -170,7 +170,7 @@ async function inTransitIds() {
   const { statusCode, body } = await getInTransit(ADMIN_USER);
   expect(statusCode).toBe(200);
   expect(body.success).toBe(true);
-  return body.transfers.map(t => t.transferId);
+  return body.transfers.map((t) => t.transferId);
 }
 
 async function cleanup() {
@@ -194,8 +194,8 @@ describe.sequential('Dispatch cancellation — pre-dispatch cleanup and post-dis
   afterEach(cleanup);
 
   const actions = ['cancelled', 'rejected'];
-  const preDispatchCases = ['pending', 'prepared', 'approved']
-    .flatMap(status => actions.map(action => [status, action]));
+  const preDispatchCases = ['pending', 'prepared', 'approved'].
+  flatMap((status) => actions.map((action) => [status, action]));
 
   it.each(preDispatchCases)('allows %s → %s, cleans up the note, and releases reservations only once', async (status, action) => {
     await seedTransfer(TRF_TARGET, status);
@@ -242,8 +242,8 @@ describe.sequential('Dispatch cancellation — pre-dispatch cleanup and post-dis
     expect(await snapshot(TRF_ACTIVE)).toEqual(control);
   });
 
-  const postDispatchCases = ['dispatched', 'in_transit', 'partially_received', 'received', 'delivered', 'completed']
-    .flatMap(status => actions.map(action => [status, action]));
+  const postDispatchCases = ['dispatched', 'in_transit', 'partially_received', 'received', 'delivered', 'completed'].
+  flatMap((status) => actions.map((action) => [status, action]));
 
   it.each(postDispatchCases)('blocks %s → %s without mutating stock or dispatch evidence', async (status, action) => {
     await seedTransfer(TRF_TARGET, status);

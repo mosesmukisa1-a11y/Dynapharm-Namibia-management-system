@@ -1,9 +1,9 @@
-import bcrypt from 'bcryptjs';
+import { registeredPlan as __qd_registeredPlan, joinPlans as __qd_joinPlans, executePlan as __qd_executePlan } from "./services/queryDescriptors.js";import bcrypt from 'bcryptjs';
 import { query, getMany, getOne, withRequestTransaction } from './db.js';
 import { applyAuthCors, sanitizeUser } from './_lib/auth.js';
 import { normalizeBranchSlug, normalizeBranchArray } from './_lib/branchUtils.js';
 import { ensureDistributorsTable } from './distributors.js';
-import {hashPassword, metadataOf} from './services/credentialSecurity.js';
+import { hashPassword, metadataOf } from './services/credentialSecurity.js';
 
 function parseBranches(value) {
   if (!value) return [];
@@ -63,7 +63,7 @@ function buildUserResponse(user) {
     hasPassword: Boolean(user.password_hash),
     // Security metadata is never part of the staff directory response.
     distributor_id: user.distributor_id || null,
-    distributor_branch: user.distributor_branch || null,
+    distributor_branch: user.distributor_branch || null
   };
 }
 
@@ -77,7 +77,7 @@ async function handleGet(req, res) {
   const username = url.searchParams.get('username');
 
   if (id) {
-    const user = await getOne('SELECT * FROM users WHERE id = $1', [id]);
+    const user = await __qd_executePlan(getOne, __qd_registeredPlan("api/users.js:80:0"), [id]);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -85,7 +85,7 @@ async function handleGet(req, res) {
   }
 
   if (username) {
-    const user = await getOne('SELECT * FROM users WHERE username = $1', [username]);
+    const user = await __qd_executePlan(getOne, __qd_registeredPlan("api/users.js:88:1"), [username]);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -95,18 +95,18 @@ async function handleGet(req, res) {
   let rows;
   try {
     await ensureDistributorsTable();
-    rows = await getMany(
-      `SELECT u.*,
-              COALESCE(u.full_name, d.distributor_name) AS full_name,
-              d.id AS distributor_id,
-              d.branch AS distributor_branch
-       FROM users u
-       LEFT JOIN distributors d ON LOWER(d.distributor_code) = LOWER(u.username) AND u.role = 'distributor'
-       ORDER BY u.created_at DESC`,
-      []
-    );
+    rows = await __qd_executePlan(getMany, __qd_registeredPlan("api/users.js:99:2"),
+
+
+
+
+
+
+
+    []);
+
   } catch (_) {
-    rows = await getMany('SELECT * FROM users ORDER BY created_at DESC', []);
+    rows = await __qd_executePlan(getMany, __qd_registeredPlan("api/users.js:109:3"), []);
   }
   return res.status(200).json(rows.map(buildUserResponse).filter(Boolean));
 }
@@ -121,7 +121,7 @@ async function handlePost(req, res) {
     return res.status(400).json({ error: 'username, password, and role are required' });
   }
 
-  const existing = await getOne('SELECT id FROM users WHERE username = $1', [username]);
+  const existing = await __qd_executePlan(getOne, __qd_registeredPlan("api/users.js:124:4"), [username]);
   if (existing) {
     return res.status(409).json({ error: 'Username already exists' });
   }
@@ -131,32 +131,32 @@ async function handlePost(req, res) {
   const id = body.id || generateUserId();
   const normalizedBranch = normalizeBranchSlug(body.branch);
 
-  const result = await query(
-    `INSERT INTO users (
-       id, username, password_hash, role, full_name, email, phone,
-       branch, branches, is_active, must_change_password, metadata, created_at, updated_at
-     )
-     VALUES (
-       $1, $2, $3, $4, $5, $6, $7,
-       $8, $9::jsonb, COALESCE($10::boolean, TRUE), COALESCE($11::boolean, FALSE),
-       $12::jsonb, NOW(), NOW()
-     )
-     RETURNING *`,
-    [
-      id,
-      username.toLowerCase(),
-      passwordHash,
-      role.toLowerCase(),
-      body.fullName || body.full_name || null,
-      body.email || null,
-      body.phone || null,
-      normalizedBranch,
-      JSON.stringify(branches),
-      body.isActive,
-      body.mustChangePassword,
-      JSON.stringify(body.metadata || {})
-    ]
-  );
+  const result = await __qd_executePlan(query, __qd_registeredPlan("api/users.js:135:5"),
+
+
+
+
+
+
+
+
+
+
+  [
+  id,
+  username.toLowerCase(),
+  passwordHash,
+  role.toLowerCase(),
+  body.fullName || body.full_name || null,
+  body.email || null,
+  body.phone || null,
+  normalizedBranch,
+  JSON.stringify(branches),
+  body.isActive,
+  body.mustChangePassword,
+  JSON.stringify(body.metadata || {})]);
+
+
 
   return res.status(201).json(buildUserResponse(result.rows[0]));
 }
@@ -169,7 +169,7 @@ async function handlePut(req, res) {
     return res.status(400).json({ error: 'User id is required' });
   }
 
-  const existing = await getOne('SELECT * FROM users WHERE id = $1 FOR UPDATE', [id]);
+  const existing = await __qd_executePlan(getOne, __qd_registeredPlan("api/users.js:172:6"), [id]);
   if (!existing) {
     return res.status(404).json({ error: 'User not found' });
   }
@@ -178,41 +178,41 @@ async function handlePut(req, res) {
   const params = [];
 
   if (body.username) {
-    updates.push(`username = $${updates.length + 1}`);
+    updates.push(__qd_registeredPlan("api/users.js:181:7", [updates.length + 1]));
     params.push(body.username.toLowerCase());
   }
 
   if (body.password) {
-    return res.status(400).json({error:'Use the audited one-time credential reset procedure'});
+    return res.status(400).json({ error: 'Use the audited one-time credential reset procedure' });
   }
 
   if (body.role) {
-    updates.push(`role = $${updates.length + 1}`);
+    updates.push(__qd_registeredPlan("api/users.js:190:8", [updates.length + 1]));
     params.push(body.role.toLowerCase());
   }
 
   if (body.fullName || body.full_name) {
-    updates.push(`full_name = $${updates.length + 1}`);
+    updates.push(__qd_registeredPlan("api/users.js:195:9", [updates.length + 1]));
     params.push(body.fullName || body.full_name);
   }
 
   if (body.email !== undefined) {
-    updates.push(`email = $${updates.length + 1}`);
+    updates.push(__qd_registeredPlan("api/users.js:200:10", [updates.length + 1]));
     params.push(body.email);
   }
 
   if (body.phone !== undefined) {
-    updates.push(`phone = $${updates.length + 1}`);
+    updates.push(__qd_registeredPlan("api/users.js:205:11", [updates.length + 1]));
     params.push(body.phone);
   }
 
   if (body.branch !== undefined) {
     const normalizedBranch = normalizeBranchSlug(body.branch);
     if (normalizedBranch) {
-      updates.push(`branch = $${updates.length + 1}`);
+      updates.push(__qd_registeredPlan("api/users.js:212:12", [updates.length + 1]));
       params.push(normalizedBranch);
     } else if (body.branch === '' || body.branch === null) {
-      updates.push(`branch = $${updates.length + 1}`);
+      updates.push(__qd_registeredPlan("api/users.js:215:13", [updates.length + 1]));
       params.push(null);
     }
   }
@@ -220,23 +220,23 @@ async function handlePut(req, res) {
   if (body.branches !== undefined) {
     const normalizedBranches = normalizeBranchArray(parseBranches(body.branches));
     if (normalizedBranches.length > 0) {
-      updates.push(`branches = $${updates.length + 1}::jsonb`);
+      updates.push(__qd_registeredPlan("api/users.js:223:14", [updates.length + 1]));
       params.push(JSON.stringify(normalizedBranches));
     } else if (body.branches !== undefined && Array.isArray(body.branches) && body.branches.length === 0) {
-      updates.push(`branches = $${updates.length + 1}::jsonb`);
+      updates.push(__qd_registeredPlan("api/users.js:226:15", [updates.length + 1]));
       params.push(JSON.stringify([]));
     }
   }
 
   if (body.isActive !== undefined) {
-    updates.push(`is_active = $${updates.length + 1}`);
+    updates.push(__qd_registeredPlan("api/users.js:232:16", [updates.length + 1]));
     params.push(Boolean(body.isActive));
   }
 
   if (body.mustChangePassword !== undefined) {
     if (existing.must_change_password && body.mustChangePassword !== true)
-      return res.status(400).json({error:'The account owner must complete the password change'});
-    updates.push(`must_change_password = $${updates.length + 1}`);
+    return res.status(400).json({ error: 'The account owner must complete the password change' });
+    updates.push(__qd_registeredPlan("api/users.js:239:17", [updates.length + 1]));
     params.push(Boolean(body.mustChangePassword));
   }
 
@@ -244,19 +244,19 @@ async function handlePut(req, res) {
     const protectedMetadata = metadataOf(existing);
     const proposed = body.metadata;
     if (!proposed || typeof proposed !== 'object' || Array.isArray(proposed))
-      return res.status(400).json({error:'Invalid metadata'});
-    const merged = {...proposed};
-    for (const key of ['sessionVersion','passwordReset','credentialAudit','temporaryLoginConsumed']) {
+    return res.status(400).json({ error: 'Invalid metadata' });
+    const merged = { ...proposed };
+    for (const key of ['sessionVersion', 'passwordReset', 'credentialAudit', 'temporaryLoginConsumed']) {
       delete merged[key];
       if (protectedMetadata[key] !== undefined) merged[key] = protectedMetadata[key];
     }
-    updates.push(`metadata = $${updates.length + 1}::jsonb`);
+    updates.push(__qd_registeredPlan("api/users.js:253:18", [updates.length + 1]));
     params.push(JSON.stringify(merged));
   }
 
   if (body.additional_roles !== undefined) {
     const roles = Array.isArray(body.additional_roles) ? body.additional_roles : [];
-    updates.push(`additional_roles = $${updates.length + 1}::jsonb`);
+    updates.push(__qd_registeredPlan("api/users.js:259:19", [updates.length + 1]));
     params.push(JSON.stringify(roles));
   }
 
@@ -266,13 +266,13 @@ async function handlePut(req, res) {
 
   params.push(id);
 
-  const result = await query(
-    `UPDATE users
-     SET ${updates.join(', ')}, updated_at = NOW()
-     WHERE id = $${params.length}
-     RETURNING *`,
-    params
-  );
+  const result = await __qd_executePlan(query, __qd_registeredPlan("api/users.js:270:20", [__qd_joinPlans(
+
+    updates, "comma"),
+  params.length]),
+
+  params);
+
 
   const updatedUser = result.rows[0];
 
@@ -282,11 +282,11 @@ async function handlePut(req, res) {
     const branchValue = normalizedBranch || (body.branch === '' || body.branch === null ? null : undefined);
     if (branchValue !== undefined) {
       try {
-        await query(
-          `UPDATE distributors SET branch = $1, updated_at = NOW()
-           WHERE LOWER(distributor_code) = LOWER($2)`,
-          [branchValue, updatedUser.username || existing.username]
-        );
+        await __qd_executePlan(query, __qd_registeredPlan("api/users.js:286:21"),
+
+
+        [branchValue, updatedUser.username || existing.username]);
+
       } catch (syncErr) {
         console.warn('[users] Failed to sync branch to distributors table:', syncErr?.message);
       }
@@ -304,7 +304,7 @@ async function handleDelete(req, res) {
     return res.status(400).json({ error: 'User id is required' });
   }
 
-  const result = await query('DELETE FROM users WHERE id = $1 RETURNING id', [id]);
+  const result = await __qd_executePlan(query, __qd_registeredPlan("api/users.js:307:22"), [id]);
   if (result.rowCount === 0) {
     return res.status(404).json({ error: 'User not found' });
   }
@@ -354,4 +354,3 @@ export default async function handler(req, res) {
     return res.status(error.status || 500).json({ error: error.status ? error.message : 'Internal server error' });
   }
 }
-

@@ -1,4 +1,4 @@
-import { applyAuthCors } from '../_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan, trimPlan as __qd_trimPlan } from "../services/queryDescriptors.js";import { applyAuthCors } from '../_lib/auth.js';
 import { getMany } from '../db.js';
 import { normalizeBranchSlug } from '../_lib/branchUtils.js';
 
@@ -12,28 +12,28 @@ export default async function handler(req, res) {
     const month = url.searchParams.get('month') || null;
     const branchId = url.searchParams.get('branchId') || 'all';
 
-    let dateFilter = '';
+    let dateFilter = __qd_registeredPlan("api/stock/monthly-sales.js:15:0");
     const params = [];
     if (month) {
       const [yr, mo] = month.split('-');
       const start = `${yr}-${mo}-01`;
       const end = new Date(Number(yr), Number(mo), 0).toISOString().slice(0, 10);
-      dateFilter = `WHERE created_at >= $1 AND created_at <= $2`;
+      dateFilter = __qd_registeredPlan("api/stock/monthly-sales.js:21:1");
       params.push(start, end + 'T23:59:59');
     }
 
-    const [walkinSales, movements] = await Promise.all([
-      getMany(`SELECT branch_id, customer_type, total, items, created_at FROM branch_walkin_sales ${dateFilter} ORDER BY created_at DESC`.trim(), params),
-      getMany(`SELECT product_name, movement_type, quantity, source_location, created_at FROM stock_movements WHERE movement_type IN ('dispense','prescription_dispense') ${month ? 'AND created_at >= $1 AND created_at <= $2' : ''} ORDER BY created_at DESC`.trim(), month ? params : []),
-    ]);
+    const [walkinSales, movements] = await Promise.all([__qd_executePlan(
+      getMany, __qd_trimPlan(__qd_registeredPlan("api/stock/monthly-sales.js:26:2", [dateFilter])), params), __qd_executePlan(
+      getMany, __qd_trimPlan(__qd_registeredPlan("api/stock/monthly-sales.js:27:3", [month ? 'AND created_at >= $1 AND created_at <= $2' : ''])), month ? params : [])]
+    );
 
-    const canonicalFilter = branchId !== 'all' ? (normalizeBranchSlug(branchId) || branchId) : null;
-    const filtered = canonicalFilter
-      ? walkinSales.filter(s => (normalizeBranchSlug(s.branch_id) || s.branch_id) === canonicalFilter)
-      : walkinSales;
+    const canonicalFilter = branchId !== 'all' ? normalizeBranchSlug(branchId) || branchId : null;
+    const filtered = canonicalFilter ?
+    walkinSales.filter((s) => (normalizeBranchSlug(s.branch_id) || s.branch_id) === canonicalFilter) :
+    walkinSales;
 
-    const memberSales = filtered.filter(s => ['member', 'walk_in_member_sale', 'walkin_member_sale'].includes(s.customer_type));
-    const nonMemberSales = filtered.filter(s => !['member', 'walk_in_member_sale', 'walkin_member_sale'].includes(s.customer_type));
+    const memberSales = filtered.filter((s) => ['member', 'walk_in_member_sale', 'walkin_member_sale'].includes(s.customer_type));
+    const nonMemberSales = filtered.filter((s) => !['member', 'walk_in_member_sale', 'walkin_member_sale'].includes(s.customer_type));
 
     const sumTotal = (arr) => arr.reduce((s, r) => s + Number(r.total || 0), 0);
 
@@ -50,10 +50,10 @@ export default async function handler(req, res) {
         nonMemberSales: parseFloat(nonMemberTotal.toFixed(2)),
         prescriptionSales: prescriptionUnits,
         totalSales: parseFloat(walkinTotal.toFixed(2)),
-        transactionCount: filtered.length,
+        transactionCount: filtered.length
       },
       period: month || 'all',
-      branchId,
+      branchId
     });
   } catch (err) {
     console.error('Monthly sales error:', err);

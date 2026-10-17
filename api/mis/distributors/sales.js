@@ -1,4 +1,4 @@
-import { applyAuthCors } from '../../_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../../services/queryDescriptors.js";import { applyAuthCors } from '../../_lib/auth.js';
 import { getMany } from '../../db.js';
 import { getDateRange, normalizeBranchName } from '../../services/gmFinanceMisEngine.js';
 
@@ -12,38 +12,38 @@ export default async function handler(req, res) {
     const { start, end } = getDateRange(req.query);
 
     // MIS sales lines with distributor info (from encoded/MIS drafts)
-    const misRows = await getMany(
-      `SELECT l.distributor_code, l.distributor_name, d.branch_id,
-              SUM(l.quantity) as sales_qty,
-              SUM(l.quantity * l.unit_price) as encoded_value
-       FROM mis_sales_lines l
-       JOIN mis_sales_drafts d ON d.id = l.draft_id
-       WHERE l.distributor_code IS NOT NULL
-         AND l.sale_timestamp >= $1::date
-         AND l.sale_timestamp <= ($2 || 'T23:59:59')::timestamp
-       GROUP BY l.distributor_code, l.distributor_name, d.branch_id
-       ORDER BY l.distributor_code, d.branch_id`,
-      [start, end]
-    );
+    const misRows = await __qd_executePlan(getMany, __qd_registeredPlan("api/mis/distributors/sales.js:16:0"),
+
+
+
+
+
+
+
+
+
+
+    [start, end]);
+
 
     // Live distributor-linked sales from branch_walkin_sales
     // customer_type = 'member' indicates member/distributor sales
-    const liveRows = await getMany(
-      `SELECT
-         COALESCE(metadata->>'distributor_code', data->>'distributorCode') as distributor_nb,
-         COALESCE(customer_name, metadata->>'distributorName') as distributor_name,
-         branch_id,
-         SUM(total) as live_value,
-         COUNT(*) as sale_count
-       FROM branch_walkin_sales
-       WHERE status = 'completed'
-         AND customer_type ILIKE '%member%'
-         AND NOT customer_type ILIKE '%non%'
-         AND sale_date >= $1::date
-         AND sale_date <= ($2 || 'T23:59:59')::timestamp
-       GROUP BY distributor_nb, distributor_name, branch_id`,
-      [start, end]
-    );
+    const liveRows = await __qd_executePlan(getMany, __qd_registeredPlan("api/mis/distributors/sales.js:32:1"),
+
+
+
+
+
+
+
+
+
+
+
+
+
+    [start, end]);
+
 
     // Build encoded map keyed by distributor_code + branch_id
     const encodedMap = new Map();
@@ -55,7 +55,7 @@ export default async function handler(req, res) {
         branchId: r.branch_id,
         branchName: normalizeBranchName(r.branch_id),
         salesQty: Number(r.sales_qty || 0),
-        encodedValue: Number(r.encoded_value || 0),
+        encodedValue: Number(r.encoded_value || 0)
       });
     }
 
@@ -81,7 +81,7 @@ export default async function handler(req, res) {
         salesQty: encoded.salesQty || 0,
         salesValue: live.salesValue || 0,
         encodedValue: encoded.encodedValue || 0,
-        difference: (live.salesValue || 0) - (encoded.encodedValue || 0),
+        difference: (live.salesValue || 0) - (encoded.encodedValue || 0)
       });
     }
 

@@ -1,11 +1,11 @@
-import { applyAuthCors } from '../../_lib/auth.js';
+import { registeredPlan as __qd_registeredPlan, executePlan as __qd_executePlan } from "../../services/queryDescriptors.js";import { applyAuthCors } from '../../_lib/auth.js';
 import { getMany } from '../../db.js';
 
 function classifyMovement(type = '') {
   const t = type.toLowerCase().trim();
   if (t === 'transfer_in' || t === 'receive' || t === 'received' || t === 'stock_receipt') return 'received';
-  if (t === 'sale' || t === 'walk_in_member_sale' || t === 'walk_in_non_member_sale' || t === 'online_order_sale'
-      || t === 'walkin_sale' || t === 'member_sale' || t === 'non_member_sale') return 'sold';
+  if (t === 'sale' || t === 'walk_in_member_sale' || t === 'walk_in_non_member_sale' || t === 'online_order_sale' ||
+  t === 'walkin_sale' || t === 'member_sale' || t === 'non_member_sale') return 'sold';
   if (t === 'dispense' || t === 'prescription_dispense' || t === 'field_use' || t === 'prescription_dispensing') return 'dispensed';
   if (t === 'transfer_out' || t === 'transfer') return 'transferred';
   if (t === 'write_off' || t === 'writeoff' || t === 'write_off_expired' || t === 'expiry') return 'written_off';
@@ -49,72 +49,72 @@ export default async function handler(req, res) {
 
     // All stock_movements involving this branch (case-insensitive match)
     // Split into pre-period (for opening) and in-period (for flows)
-    const [smPre, smIn, bimPre, bimIn] = await Promise.all([
-      getMany(
-        `SELECT product_name, movement_type, quantity,
-                source_location, source_location_type,
-                destination_location, destination_location_type,
-                COALESCE(unit_dp, 0) as unit_dp,
-                reference_id
-         FROM stock_movements
-         WHERE ((LOWER(REPLACE(destination_location, ' ', '_')) = $1 AND destination_location_type = 'branch')
-            OR (LOWER(REPLACE(source_location, ' ', '_')) = $1 AND source_location_type = 'branch'))
-           AND created_at < $2`,
-        [normBranch, periodStart]
-      ),
-      getMany(
-        `SELECT product_name, movement_type, quantity,
-                source_location, source_location_type,
-                destination_location, destination_location_type,
-                COALESCE(unit_dp, 0) as unit_dp,
-                reference_id
-         FROM stock_movements
-         WHERE ((LOWER(REPLACE(destination_location, ' ', '_')) = $1 AND destination_location_type = 'branch')
-            OR (LOWER(REPLACE(source_location, ' ', '_')) = $1 AND source_location_type = 'branch'))
-           AND created_at >= $2 AND created_at < $3`,
-        [normBranch, periodStart, periodEnd]
-      ),
-      // branch_inventory_movements as supplementary source (catches POS sales not in stock_movements)
-      getMany(
-        `SELECT product_name, type as movement_type, ABS(quantity) as quantity,
-                LOWER(REPLACE(branch_id, ' ', '_')) as source_location,
-                'branch' as source_location_type,
-                '' as destination_location,
-                '' as destination_location_type,
-                0 as unit_dp,
-                reference as reference_id
-         FROM branch_inventory_movements
-         WHERE LOWER(REPLACE(branch_id, ' ', '_')) = $1
-           AND created_at < $2`,
-        [normBranch, periodStart]
-      ),
-      getMany(
-        `SELECT product_name, type as movement_type, ABS(quantity) as quantity,
-                LOWER(REPLACE(branch_id, ' ', '_')) as source_location,
-                'branch' as source_location_type,
-                '' as destination_location,
-                '' as destination_location_type,
-                0 as unit_dp,
-                reference as reference_id
-         FROM branch_inventory_movements
-         WHERE LOWER(REPLACE(branch_id, ' ', '_')) = $1
-           AND created_at >= $2 AND created_at < $3`,
-        [normBranch, periodStart, periodEnd]
-      ),
-    ]);
+    const [smPre, smIn, bimPre, bimIn] = await Promise.all([__qd_executePlan(
+      getMany, __qd_registeredPlan("api/reports/branch-sales/stock-formula.js:54:0"),
+
+
+
+
+
+
+
+
+
+      [normBranch, periodStart]), __qd_executePlan(
+
+      getMany, __qd_registeredPlan("api/reports/branch-sales/stock-formula.js:66:1"),
+
+
+
+
+
+
+
+
+
+      [normBranch, periodStart, periodEnd]),
+
+    // branch_inventory_movements as supplementary source (catches POS sales not in stock_movements)
+    __qd_executePlan(getMany, __qd_registeredPlan("api/reports/branch-sales/stock-formula.js:79:2"),
+
+
+
+
+
+
+
+
+
+
+    [normBranch, periodStart]), __qd_executePlan(
+
+      getMany, __qd_registeredPlan("api/reports/branch-sales/stock-formula.js:92:3"),
+
+
+
+
+
+
+
+
+
+
+      [normBranch, periodStart, periodEnd])]
+
+    );
 
     // Deduplicate: stock_movements wins over branch_inventory_movements for same reference
-    const smPreRefs = new Set(smPre.map(r => r.reference_id).filter(Boolean));
-    const smInRefs  = new Set(smIn.map(r => r.reference_id).filter(Boolean));
+    const smPreRefs = new Set(smPre.map((r) => r.reference_id).filter(Boolean));
+    const smInRefs = new Set(smIn.map((r) => r.reference_id).filter(Boolean));
 
     const prePeriod = [
-      ...smPre,
-      ...bimPre.filter(r => !r.reference_id || !smPreRefs.has(r.reference_id)),
-    ];
+    ...smPre,
+    ...bimPre.filter((r) => !r.reference_id || !smPreRefs.has(r.reference_id))];
+
     const inPeriod = [
-      ...smIn,
-      ...bimIn.filter(r => !r.reference_id || !smInRefs.has(r.reference_id)),
-    ];
+    ...smIn,
+    ...bimIn.filter((r) => !r.reference_id || !smInRefs.has(r.reference_id))];
+
 
     const normKey = (s) => (s || '').trim().toLowerCase();
     const nameMap = {};
@@ -124,9 +124,9 @@ export default async function handler(req, res) {
     function branchSign(row) {
       const destIsBranch = row.destination_location === branchId && row.destination_location_type === 'branch';
       const srcIsBranch = row.source_location === branchId && row.source_location_type === 'branch';
-      if (destIsBranch && !srcIsBranch) return 1;  // inbound
+      if (destIsBranch && !srcIsBranch) return 1; // inbound
       if (srcIsBranch && !destIsBranch) return -1; // outbound
-      if (srcIsBranch && destIsBranch) return 0;   // self-transfer
+      if (srcIsBranch && destIsBranch) return 0; // self-transfer
       return 0;
     }
 
@@ -158,18 +158,18 @@ export default async function handler(req, res) {
         f.received += qty;
       } else if (sign < 0) {
         // Outbound movement — categorize by type
-        if (cat === 'sold') { f.sold += qty; f.dp_sold += dp; }
-        else if (cat === 'dispensed') { f.dispensed += qty; f.dp_dispensed += dp; }
-        else if (cat === 'transferred') f.transferred += qty;
-        else if (cat === 'written_off') f.written_off += qty;
-        else f.sold += qty; // default outflow as sold
+        if (cat === 'sold') {f.sold += qty;f.dp_sold += dp;} else
+        if (cat === 'dispensed') {f.dispensed += qty;f.dp_dispensed += dp;} else
+        if (cat === 'transferred') f.transferred += qty;else
+        if (cat === 'written_off') f.written_off += qty;else
+        f.sold += qty; // default outflow as sold
       }
     }
 
     // Build product rows — closing computed purely from formula
     const allKeys = new Set([...Object.keys(openingMap), ...Object.keys(flowMap)]);
 
-    const productRows = Array.from(allKeys).sort().map(k => {
+    const productRows = Array.from(allKeys).sort().map((k) => {
       const opening = openingMap[k] || 0;
       const f = flowMap[k] || EMPTY();
       const closing = opening + f.received - f.sold - f.dispensed - f.transferred - f.written_off;
@@ -185,7 +185,7 @@ export default async function handler(req, res) {
         closing_qty: Math.round(closing),
         dp_sold_value: parseFloat(f.dp_sold.toFixed(2)),
         dp_dispensed_value: parseFloat(f.dp_dispensed.toFixed(2)),
-        dp_total_value: parseFloat((f.dp_sold + f.dp_dispensed).toFixed(2)),
+        dp_total_value: parseFloat((f.dp_sold + f.dp_dispensed).toFixed(2))
       };
     });
 
@@ -215,8 +215,8 @@ export default async function handler(req, res) {
         transferred_qty: Math.round(totals.transferred),
         written_off_qty: Math.round(totals.written_off),
         closing_qty: Math.round(totals.closing),
-        dp_total_value: parseFloat(totals.dp_total.toFixed(2)),
-      },
+        dp_total_value: parseFloat(totals.dp_total.toFixed(2))
+      }
     });
   } catch (err) {
     console.error('stock formula report error:', err);
