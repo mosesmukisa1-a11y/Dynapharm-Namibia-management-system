@@ -1,0 +1,260 @@
+## Authorized read-only production schema inspection
+
+The owner, Moses Mukisa, authorizes a read-only production schema metadata inspection for exactly:
+
+- table `branches`
+- table `branch_activity_transactions`
+- table `branch_distributor_profit`
+- column `users.additional_roles`
+
+Authorization expires two hours after the owner’s authorization message.
+
+This authorization permits PostgreSQL `pg_catalog` and `information_schema` metadata queries only.
+
+It does not permit:
+
+- reading application/business table rows;
+- `SELECT *` from any application table;
+- inserts, updates or deletes;
+- DDL or migrations;
+- temporary objects in production;
+- locks beyond normal catalog reads;
+- functions that mutate state;
+- publication or deployment;
+- restart or configuration changes;
+- credential rotation or session invalidation;
+- scheduler or worker changes;
+- production tests or synthetic transactions.
+
+Status remains:
+
+`BLOCKED - DO NOT PUBLISH`
+
+## 1. Preflight and fail-closed controls
+
+Before connecting:
+
+1. Record the authorization reference, start time, timezone and calculated expiration.
+2. Confirm current time is inside the authorization window.
+3. Confirm the intended database target using sanitized identity metadata only.
+4. Do not print or save the production connection string.
+5. Do not print usernames, passwords, tokens, hostnames or certificates.
+6. Configure the inspection session as read-only.
+7. Set short statement and lock timeouts.
+8. Refuse to continue if target identity or read-only enforcement cannot be established.
+9. Do not use notebook helpers, default/shared query tools or application API endpoints.
+
+Use a dedicated inspection script with a fixed SQL allowlist. It must reject arbitrary SQL and any object outside the exact authorized scope.
+
+## 2. Permitted metadata
+
+For the three authorized tables, retrieve only:
+
+- schema name;
+- table name;
+- column names;
+- data types;
+- maximum lengths;
+- numeric precision and scale;
+- nullability;
+- generated/identity status;
+- sanitized/default expressions;
+- primary keys;
+- unique constraints;
+- foreign keys and referenced table/column names;
+- check constraints;
+- indexes, indexed columns, uniqueness and predicates;
+- sequence ownership;
+- table partition metadata if applicable.
+
+For `users`, inspect only the `additional_roles` column and constraints/indexes directly involving that column.
+
+Do not retrieve metadata for unrelated `users` columns.
+
+Use only fixed, parameterized catalog queries against:
+
+- `information_schema.tables`
+- `information_schema.columns`
+- `information_schema.table_constraints`
+- `information_schema.key_column_usage`
+- `information_schema.constraint_column_usage`
+- `information_schema.referential_constraints`
+- `information_schema.check_constraints`
+- necessary read-only `pg_catalog` relations for indexes, identities, sequences and partitions
+
+Do not query application tables directly, even with `LIMIT 0`.
+
+## 3. Evidence boundaries
+
+Save sanitized evidence to:
+
+`generated-artifacts/production-schema-metadata/`
+
+Create:
+
+- `authorization.json`
+- `target-identity.json`
+- `query-allowlist.json`
+- `branches.schema.json`
+- `branch-activity-transactions.schema.json`
+- `branch-distributor-profit.schema.json`
+- `users-additional-roles.schema.json`
+- `inspection-summary.md`
+- `production-read-verification.json`
+
+Evidence must contain schema metadata only.
+
+Do not include:
+
+- connection strings;
+- database hostnames;
+- credentials;
+- certificates;
+- application rows;
+- account details;
+- unrelated schema;
+- query results from business tables.
+
+Record:
+
+- session read-only status;
+- transaction read-only status;
+- exact catalog relations queried;
+- authorized objects inspected;
+- query count;
+- start and finish timestamps;
+- whether any prohibited statement was attempted;
+- whether production was modified.
+
+## 4. End production access before implementation
+
+After metadata capture:
+
+1. End the read-only transaction.
+2. Close the production connection.
+3. Remove any temporary local connection material.
+4. Confirm no production write, migration, lock-holding session or configuration change occurred.
+5. Perform all remaining work exclusively offline.
+
+Do not reconnect to production during implementation or testing.
+
+## 5. Create reviewed repository migrations offline
+
+Using only the captured metadata and existing repository conventions:
+
+1. Add canonical, idempotent migration definitions for:
+   - `branches`
+   - `branch_activity_transactions`
+   - `branch_distributor_profit`
+   - `users.additional_roles`
+2. Preserve exact types, defaults, nullability, keys, constraints, foreign keys and indexes.
+3. Do not copy production rows.
+4. Do not add guessed constraints.
+5. Do not apply these migrations to production.
+6. Document the migration dependency order.
+7. Reconcile:
+   - `online_orders`
+   - `stock_linked_reversals`
+   with their newly restored canonical dependencies.
+8. Add schema contract tests proving the repository migrations reproduce the captured metadata.
+
+If captured metadata conflicts with existing repository behavior, stop and report the conflict instead of guessing.
+
+## 6. Disposable database verification
+
+Create a new independently owned disposable PostgreSQL cluster.
+
+Record ownership before provisioning.
+
+Build its schema using repository migrations only. Do not use handcrafted fixture DDL for canonical business objects.
+
+Run:
+
+- complete isolated database suite;
+- credential-specific database suite;
+- schema contract tests;
+- migration idempotency test;
+- startup-contract checks;
+- strict code-only launcher rehearsal.
+
+Required database result:
+
+- 378/378 passed;
+- 0 failed;
+- 0 unexplained pending or skipped.
+
+Verify and record complete cleanup of the owned cluster.
+
+Do not inspect or delete the 14 ambiguous historical database candidates.
+
+## 7. Complete SQL safety review
+
+Continue the generated inventory of the 182 unresolved dynamic SQL locations.
+
+For every location, classify and prove one of:
+
+- static SQL with bound values;
+- validated allowlisted identifier;
+- fixed internal constant;
+- unreachable non-production tool;
+- confirmed defect and repaired;
+- unresolved blocker.
+
+Add hostile-input tests for every shared SQL-shape builder and reachable dynamic query family.
+
+Do not globally suppress scanner rules.
+
+The generic executor is resolved only when every reachable dynamic caller is accounted for and no request-controlled SQL structure remains.
+
+## 8. Final verification and clean-install preparation
+
+After all fixes:
+
+- run unit tests;
+- run 378 isolated database checks;
+- run credential-security checks;
+- run schema contracts;
+- run 23 startup contracts;
+- run production build;
+- run credential exposure scan;
+- run managed security scans;
+- run browser security workflow against the disposable database;
+- run synthetic output-safety verification.
+
+Prepare, but do not falsely mark complete, the exact-candidate clean-install gate.
+
+If Agent cannot execute `npm ci`, return this one owner command:
+
+```sh
+cd /home/runner/workspace
+node scripts/security-final-clean-gate.mjs --owner-manual
+```
+
+Do not publish after the command. Capture and review its sanitized result first.
+
+## 9. Final evidence
+
+Write final sanitized evidence to:
+
+`generated-artifacts/security-schema-closure/`
+
+Return exactly one status:
+
+- `READY FOR OWNER CLEAN-INSTALL GATE - DO NOT PUBLISH`
+- `PARTIALLY VERIFIED - DO NOT PUBLISH`
+- `BLOCKED - DO NOT PUBLISH`
+
+Even a ready status does not authorize production migration, publication, restart, credential rotation, session invalidation, scheduler retirement or worker activation.
+
+Finish with:
+
+Production business rows read: NO  
+Production database modified: NO  
+Production migration applied: NO  
+Production passwords rotated: NO  
+Production sessions invalidated: NO  
+Production environment modified: NO  
+Production restarted: NO  
+Production scheduler stopped: NO  
+Production worker activated: NO  
+Production published: NO
