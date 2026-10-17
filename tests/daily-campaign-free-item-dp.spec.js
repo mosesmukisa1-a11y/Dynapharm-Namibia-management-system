@@ -173,7 +173,7 @@ describe('daily branch-sales report — campaign free-item DP guard (DB-backed)'
 
   it('handler returns HTTP 200 with success=true', async () => {
     const res = await runHandler();
-    expect(res._status).toBe(200);
+    expect(res._status,res._body?.error).toBe(200);
     expect(res._body.success).toBe(true);
   });
 

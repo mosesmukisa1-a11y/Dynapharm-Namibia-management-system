@@ -21,6 +21,25 @@ function check(body,hasValueArguments=true){
   const index=source.lastIndexOf('db.query');
   return reviewSqlLocations(source,[{line:1,column:index+1,hasValueArguments}])[0].classification;
 }
+it('proves unescaped fixed for-of fragments but rejects mutation and aliases',()=>{
+  expect(check("for(const sql of ['SELECT 1','SELECT 2']){db.query(sql);}",false)).toBe('fixed internal constant');
+  expect(check("const a=['SELECT 1'];for(const sql of a){db.query(sql);}",false)).toBe('fixed internal constant');
+  expect(check("const a=['SELECT 1'];a.push(req.body.sql);for(const sql of a){db.query(sql);}",false)).toBe('unresolved blocker');
+  expect(check("const a=['SELECT 1'];const b=a;b.push(req.body.sql);for(const sql of a){db.query(sql);}",false)).toBe('unresolved blocker');
+});
+it('rejects mutable for-of bindings and request iterables',()=>{
+  expect(check("for(let sql of ['SELECT 1']){sql=req.body.sql;db.query(sql);}",false)).toBe('unresolved blocker');
+  expect(check("for(const sql of req.body.sql){db.query(sql);}",false)).toBe('unresolved blocker');
+});
+it('proves only a fixed repository migration file read',()=>{
+  const review=body=>{
+    const source="import fs from 'node:fs/promises';async function handler(req,db){"+body+"}";
+    return reviewSqlLocations(source,[{line:1,column:source.lastIndexOf('db.query')+1,hasValueArguments:false}])[0].classification;
+  };
+  expect(review("const sql=await fs.readFile(new URL('../../migrations/027_price_import_identity.sql',import.meta.url),'utf8');db.query(sql);")).toBe('fixed internal constant');
+  expect(review("const sql=await fs.readFile(new URL(req.body.path,import.meta.url),'utf8');db.query(sql);")).toBe('unresolved blocker');
+  expect(review("fs.readFile=req.body.fn;const sql=await fs.readFile(new URL('../../migrations/027_price_import_identity.sql',import.meta.url),'utf8');db.query(sql);")).toBe('unresolved blocker');
+});
 it('labels a fixed internal query with no value arguments accurately',()=>{
   expect(check("const sql='SELECT 1';db.query(sql);",false)).toBe('fixed internal constant');
 });

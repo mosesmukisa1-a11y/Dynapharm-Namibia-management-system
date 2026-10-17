@@ -67,6 +67,8 @@ process.once('message',async({baseUrl,material,out,markers,adminOnly=false})=>{
       await record('auth/me after reload',r.status(),200,
         {role:u.role,branch:u.branch,mustChangePassword:u.mustChangePassword});
       if(u.role!=='consultant'||u.branch!=='townshop'||u.mustChangePassword)throw Error('Scope mismatch');
+      await page.getByRole('heading',{name:'Consultant Portal',exact:true}).waitFor({state:'visible',timeout:20000});
+      await record('consultant settled rendering (separate page check)',200,200,{pageRenderingOnly:true});
       await page.screenshot({path:out+'/consultant-reloaded.png'});
     });
     const anon=await browser.newContext(),admin=await browser.newContext(),other=await browser.newContext();

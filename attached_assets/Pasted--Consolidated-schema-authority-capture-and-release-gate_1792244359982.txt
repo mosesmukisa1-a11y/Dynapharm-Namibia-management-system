@@ -1,0 +1,272 @@
+## Consolidated schema-authority capture and release-gate repair
+
+The owner authorizes exactly one managed read-only production catalog operation for complete schema metadata concerning:
+
+- `public.products`
+- `public.product_images`
+- `public.file_uploads`
+- `public.field_program_requests`
+- `public.hr_staff_change_requests`
+- `public.hr_leave_requests`
+- `public.stock_batches`
+- the authorized `notify_change` function or trigger function used by these objects
+
+Authorization expires two hours after the owner’s authorization message.
+
+Status remains:
+
+`BLOCKED - DO NOT PUBLISH`
+
+No application rows, writes, migrations, temporary objects, arbitrary SQL, configuration changes, credentials, sessions, restarts, publication, scheduler actions or worker activation are authorized.
+
+## 1. Prepare one immutable operation
+
+Before any managed database call, persist:
+
+- authorization fingerprint;
+- start and expiration;
+- exact authorized objects;
+- immutable query ID;
+- SQL checksum;
+- invocation count zero;
+- replay prohibited after invocation.
+
+Execute exactly one fixed, parameterized managed SQL operation.
+
+Do not perform a separate database preflight or retry.
+
+## 2. Mandatory in-query guard
+
+The fixed query must return schema metadata only when:
+
+- `current_setting('transaction_read_only') = 'on'`
+- `pg_is_in_recovery() = true`
+
+Every metadata section must depend on the same materialized guard.
+
+If the guard fails, return sanitized guard status only and no metadata.
+
+Do not issue:
+
+- `SET` or `SET LOCAL`
+- transaction-control commands
+- DDL or DML
+- temporary objects
+- advisory locks
+- configuration functions
+- application-table queries
+
+## 3. Authorized metadata
+
+For the seven authorized tables, capture:
+
+- schema and table name;
+- relation type and partition status;
+- columns and ordinal positions;
+- exact native types and lengths;
+- numeric precision and scale;
+- nullability;
+- exact default expressions;
+- generated and identity attributes;
+- primary keys;
+- unique constraints;
+- foreign keys and referenced columns;
+- check and exclusion constraints;
+- indexes, indexed expressions, included columns and predicates;
+- index uniqueness and validity;
+- owned sequences;
+- triggers attached to these objects;
+- trigger definitions;
+- only directly required relation/function dependencies.
+
+For the authorized `notify_change` function or trigger function, capture:
+
+- exact schema-qualified identity;
+- argument types;
+- return type;
+- language;
+- volatility;
+- security-definer status;
+- complete function definition;
+- directly required dependencies;
+- triggers on authorized objects that invoke it.
+
+Do not enumerate unrelated functions, tables, columns, roles, privileges or schemas.
+
+Exact schema and function expressions are authorized metadata and may be preserved. They must not be executed against production.
+
+## 4. Evidence and terminal closure
+
+Write sanitized evidence to:
+
+`generated-artifacts/production-schema-consolidated-final/`
+
+Include:
+
+- `authorization.json`
+- `query-definition.json`
+- `operation-receipt.json`
+- `production-read-verification.json`
+- one schema JSON per authorized table;
+- `notify-change.schema.json`
+- `dependency-graph.json`
+- `inspection-summary.md`
+
+Do not save raw database names, hostnames, usernames, connection strings, credentials, certificates or provider secrets.
+
+After the managed operation:
+
+- record invocation count one;
+- record provider completion;
+- mark access ended;
+- prohibit replay;
+- prohibit additional managed calls;
+- continue offline only.
+
+## 5. Offline schema reconstruction
+
+Using only captured catalog metadata and existing repository conventions:
+
+1. Add authoritative, idempotent migrations for missing repository definitions.
+2. Preserve exact types, defaults, keys, constraints, indexes, sequences, triggers and function behavior.
+3. Reconcile dependency order with existing migrations 036-039.
+4. Preserve existing data semantics and identifiers.
+5. Do not copy production rows.
+6. Do not apply migrations to production.
+7. Do not introduce guessed columns or constraints.
+8. Do not use handler field names as schema authority.
+9. Add exact schema-contract tests.
+10. Add migration idempotency tests.
+
+If a captured dependency falls outside the authorization and is required to reconstruct the schema safely, stop and report it. Do not broaden the query or reconnect.
+
+## 6. Repository-only disposable database gate
+
+Create a fresh positively owned disposable PostgreSQL cluster.
+
+Build the schema exclusively from repository migrations and authoritative static schema definitions.
+
+Do not clone development or production schema.
+
+Do not use handcrafted canonical business-table fixtures.
+
+Run all 378 isolated database checks.
+
+For each failure, retain:
+
+- test name;
+- PostgreSQL error code;
+- authorized schema target;
+- sanitized query checksum;
+- root-cause classification.
+
+Required outcome:
+
+- 378/378 passed;
+- zero failed;
+- zero unexplained pending or skipped.
+
+Also run:
+
+- credential DB suite;
+- migration contract suite;
+- migration idempotency;
+- strict code-only launcher;
+- authenticated browser security workflow;
+- stock dispatch concurrency/retry suite.
+
+Record ownership before resource creation and prove full cleanup afterward.
+
+Do not inspect or delete the 14 ambiguous historical databases.
+
+## 7. Complete the remaining SQL audit
+
+Resolve all 74 unresolved dynamic SQL locations.
+
+For every location record:
+
+- file and current line;
+- function and call family;
+- production reachability;
+- SQL-shape source;
+- identifier source;
+- parameter binding;
+- classification;
+- supporting test.
+
+Allowed classifications:
+
+- static SQL with bound values;
+- validated allowlisted identifier;
+- fixed internal constant;
+- unreachable non-production tool;
+- confirmed defect and repaired;
+- unresolved release blocker.
+
+Trace wrappers, aliases, callbacks, dynamic imports and endpoint families where relevant.
+
+Add hostile-input tests for every production-reachable dynamic query family.
+
+Do not globally suppress scanner findings.
+
+Do not mark the generic executor resolved while any production-reachable location remains unproven.
+
+## 8. Final verification
+
+Run:
+
+- full unit suite;
+- all 378 isolated database checks;
+- credential DB suite;
+- schema contracts;
+- migration idempotency;
+- 23 startup contracts;
+- production build;
+- strict launcher;
+- authenticated browser security workflow;
+- stock dispatch concurrency/retry;
+- credential exposure scan;
+- dependency scan;
+- SAST scan;
+- privacy scan;
+- synthetic secret-output verification;
+- owned-resource cleanup verification.
+
+Prepare an exact source archive and manifest for the final candidate.
+
+If Agent cannot perform the clean installation, return:
+
+```sh
+cd /home/runner/workspace
+node scripts/security-final-clean-gate.mjs --owner-manual
+```
+
+Do not mark the clean-install gate passed until the sanitized result exists.
+
+## 9. Final disposition
+
+Write evidence to:
+
+`generated-artifacts/security-release-gate-final/`
+
+Return exactly one:
+
+- `READY FOR OWNER CLEAN-INSTALL GATE - DO NOT PUBLISH`
+- `PARTIALLY VERIFIED - DO NOT PUBLISH`
+- `BLOCKED - DO NOT PUBLISH`
+
+No result authorizes production migration, publication, restart, password rotation, session invalidation, scheduler retirement or worker activation.
+
+Finish with:
+
+Managed production SQL operations in this phase: 1  
+Production business rows read: NO  
+Production database modified: NO  
+Production migration applied: NO  
+Production passwords rotated: NO  
+Production sessions invalidated: NO  
+Production environment modified: NO  
+Production restarted: NO  
+Production scheduler stopped: NO  
+Production worker activated: NO  
+Production published: NO

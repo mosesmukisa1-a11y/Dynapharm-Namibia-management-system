@@ -104,7 +104,8 @@ try{
       try{
         await child(process.execPath,['node_modules/vitest/vitest.mjs','run',suites[index],'--project=database','--fileParallelism=false',
           '--reporter=default','--reporter=json','--outputFile='+output],{
-          env:{...testEnv,DATABASE_URL:suiteUrl.toString(),STOCK_AUDIT_DATABASE:owned}});
+          env:{...testEnv,DATABASE_URL:suiteUrl.toString(),STOCK_AUDIT_DATABASE:owned,
+            OWNED_QUERY_SUITE:suites[index]}});
       }catch(error){failed++;console.error(error.message);}
       finally{
         try{results.push(JSON.parse(await readFile(output,'utf8')));}

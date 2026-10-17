@@ -14,6 +14,26 @@ function nativeLocalArray(path){
 }
 function prove(path,seen=new Set()){
   if(!path?.node)return no('Missing expression');
+  if(path.isAwaitExpression())return prove(path.get('argument'),seen);
+  if(path.isCallExpression()&&path.get('callee').isMemberExpression()
+    &&!path.node.callee.computed&&path.node.callee.property.name==='readFile'){
+    const receiver=path.get('callee.object'),binding=receiver.isIdentifier()&&receiver.scope.getBinding(receiver.node.name);
+    const args=path.get('arguments'),url=args[0];
+    const imported=binding?.path.isImportDefaultSpecifier()
+      &&binding.path.parentPath.node.source.value==='node:fs/promises';
+    const intact=imported&&binding.referencePaths.every(ref=>ref.parentPath.isMemberExpression()
+      &&!ref.parentPath.node.computed&&ref.parentPath.parentPath.isCallExpression()
+      &&ref.parentPath.parentPath.get('callee')===ref.parentPath);
+    if(intact&&args.length===2&&args[1].isStringLiteral({value:'utf8'})
+      &&url.isNewExpression()&&url.get('callee').isIdentifier({name:'URL'})&&!url.scope.getBinding('URL')
+      &&url.node.arguments.length===2&&url.get('arguments.0').isStringLiteral()
+      &&/^(?:\.\.\/)+migrations\/[\w-]+\.sql$/.test(url.node.arguments[0].value)
+      &&url.get('arguments.1').isMemberExpression()
+      &&url.node.arguments[1].property.name==='url'
+      &&url.node.arguments[1].object.type==='MetaProperty'
+      &&url.node.arguments[1].object.meta.name==='import')
+      return yes('Fixed repository migration bytes; bound fs/promises import and immutable literal URL');
+  }
   if(path.isStringLiteral()||path.isNumericLiteral())return yes('Fixed source literal');
   if(path.isTemplateLiteral()){
     const parts=path.get('expressions').map(p=>prove(p,new Set(seen)));
@@ -102,6 +122,20 @@ function prove(path,seen=new Set()){
   }
   if(path.isIdentifier()){
     const binding=path.scope.getBinding(path.node.name);
+    if(binding?.constant&&binding.path.isVariableDeclarator()){
+      const loop=binding.path.parentPath.parentPath;
+      if(loop.isForOfStatement()&&loop.node.left===binding.path.parentPath.node){
+        let source=loop.get('right');
+        if(source.isIdentifier()){
+          const array=source.scope.getBinding(source.node.name);
+          source=array?.constant&&array.path.isVariableDeclarator()
+            &&array.referencePaths.every(ref=>ref===loop.get('right'))?array.path.get('init'):null;
+        }
+        if(source?.isArrayExpression()&&source.get('elements').length
+          &&source.get('elements').every(p=>prove(p,new Set(seen)).safe))
+          return yes('Unmutated for-of binding over fixed unescaped source fragments');
+      }
+    }
     // Built-in array iterator index, never the request-controlled element.
     if(binding?.kind==='param'&&binding.path.isIdentifier()){
       const callback=binding.path.parentPath;

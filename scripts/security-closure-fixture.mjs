@@ -13,14 +13,19 @@ import {TASKS} from '../worker/tasks.mjs';
 import {REQUIRED_STARTUP_SCHEMA} from '../api/services/startupSchema.js';
 import {assertRepositoryFoundation} from './security-final-schema-guard.mjs';
 import {repositoryDdlStatements} from './lib/repository-ddl.mjs';
+import {consolidatedSql,consolidatedParams} from './lib/consolidated-schema-query.mjs';
+import {schemaDigest} from './lib/consolidated-contract.mjs';
 if(process.env.NODE_ENV==='production'||['1','true'].includes(process.env.REPLIT_DEPLOYMENT))
   throw Error('Production fixture refused');
 // Never re-use the earlier guessed legacy scaffolding. A missing canonical
 // definition blocks before any directory, socket, cluster or database exists.
 await assertRepositoryFoundation();
-const root=process.cwd(),runId=randomUUID(),base=path.join(root,'generated-artifacts/security-release-candidate-final');
+const root=process.cwd(),runId=randomUUID(),base=path.join(root,'generated-artifacts/security-release-gate-final');
 const out=path.join(base,'fixture-runs',runId);
 await fs.mkdir(out,{recursive:true});
+const runKind=process.argv.includes('--database-suites')?'database':
+  process.argv.includes('--diagnose')?'diagnostic':process.argv.includes('--schema-only')?'schema':'browser';
+await fs.writeFile(base+'/last-'+runKind+'-fixture-run.json',JSON.stringify({runId,out},null,2));
 const temp=path.join(os.tmpdir(),'security-closure-'+runId);
 const port=await new Promise(r=>{const s=net.createServer();s.listen(0,'127.0.0.1',()=>{
   const p=s.address().port;s.close(()=>r(p));});});
@@ -70,13 +75,23 @@ try{
   admin=new pg.Pool({...cfg,database:'postgres'});
   await admin.query(`CREATE DATABASE ${name}`);
   db=new pg.Pool({...cfg,database:name});
-  const statements=[];
+  // New canonical foundation precedes older IF NOT EXISTS schema variants.
+  const statements=[{file:'migrations/040_canonical_consolidated_schema.sql',
+    sql:await fs.readFile(root+'/migrations/040_canonical_consolidated_schema.sql','utf8')}];
   const migrations=(await fs.readdir(root+'/migrations')).filter(n=>/^\d.*\.sql$/.test(n)).sort();
   for(const file of migrations)statements.push({file:'migrations/'+file,sql:await fs.readFile(root+'/migrations/'+file,'utf8')});
   // Preserve repository delivery-table constraints rather than synthesizing them.
   for(const file of ['backend/create_tables.sql','backend/create_delivery_tables.sql']){
     const sql=await fs.readFile(root+'/'+file,'utf8');
-    for(const ddl of repositoryDdlStatements(sql))statements.push({file,sql:ddl});
+    for(const ddl of repositoryDdlStatements(sql)){
+      // Captured product triggers supersede these older variants. The captured
+      // catalog has no notify_change definition: never invent one for this
+      // legacy notification bootstrap. Runtime application files stay intact.
+      const superseded=file==='backend/create_tables.sql'
+        &&(/(?:CREATE|DROP)\s+TRIGGER(?:\s+IF\s+EXISTS)?\s+product_images_(?:updated_at|notify)\b/i.test(ddl)
+          ||/(?:CREATE|DROP)\s+TRIGGER(?:\s+IF\s+EXISTS)?\s+distributors_notify\b/i.test(ddl));
+      if(!superseded)statements.push({file,sql:ddl});
+    }
   }
   function walk(n,fn){if(!n||typeof n!=='object')return;fn(n);
     for(const [k,v]of Object.entries(n)){if(['loc','extra','start','end'].includes(k))continue;
@@ -101,6 +116,19 @@ try{
         ?e.message?.match(/^(?:relation|column) "([a-z_][a-z0-9_.]*)" does not exist$/i)?.[1]||null:null});}}
     if(next.length===pending.length&&pass>1){pending=next;break;}pending=next;
   }
+  const fullMetadata=(await db.query(consolidatedSql.replace(
+    "(pg_catalog.current_setting('transaction_read_only')='on'\n     AND pg_catalog.pg_is_in_recovery()=true) AS allowed",
+    'true AS allowed'),consolidatedParams)).rows[0].evidence;
+  const capturedContract=JSON.parse(await fs.readFile(root+'/tests/fixtures/consolidated-schema-contract.json','utf8'));
+  const fullContractChecks=[
+    ...fullMetadata.tables.map(t=>({name:t.table,pass:schemaDigest(t)===capturedContract.tables[t.table]})),
+    ...fullMetadata.functions.map(f=>({name:f.schema+'.'+f.name,pass:schemaDigest(f)===capturedContract.functions[f.schema+'.'+f.name]})),
+  ];
+  const fullContractPass=fullContractChecks.every(c=>c.pass)&&fullMetadata.functions.length===1;
+  await fs.writeFile(out+'/post-convergence-contract.json',JSON.stringify({
+    status:fullContractPass?'PASS':'FAIL',checks:fullContractChecks,
+    policy:'Full repository schema must not drift from seven-object captured authority'},null,2));
+  if(!fullContractPass)process.exitCode=1;
   await fs.writeFile(out+'/schema-fixture.json',JSON.stringify({source:'candidate migrations and static DDL',
     schemaClone:false,sourceDatabaseAccess:false,attempted:statements.length,
     syntheticFoundations:[],
@@ -147,7 +175,8 @@ try{
       OWNED_QUERY_DIAGNOSTICS:out+'/query-diagnostics.jsonl'});
     const runs=[['full',['scripts/run-isolated-stock-audit.mjs','--all',
       ...(process.argv.includes('--diagnose')?['tests/sale-evidence.spec.js',
-        'tests/transfer-dispatch-cancel-concurrency.spec.js','tests/gm-decisions.spec.js']:[])]],
+        'tests/transfer-dispatch-cancel-concurrency.spec.js','tests/gm-decisions.spec.js',
+        'tests/daily-campaign-free-item-dp.spec.js']:[])]],
       ['credential',['scripts/run-isolated-stock-audit.mjs','tests/credential-security.spec.js']]];
     for(const [label,args]of (process.argv.includes('--credential-only')?runs.slice(1):
       process.argv.includes('--diagnose')?runs.slice(0,1):runs)){

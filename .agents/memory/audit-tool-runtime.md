@@ -45,3 +45,12 @@ A successful login/security browser path did not exercise those stock paths.
 **How to apply:** Keep scoped contract, schema convergence, full database suite,
 and authenticated workflow results separate. Do not invent unrelated legacy
 tables or promote a passing narrow browser journey to a full release gate.
+
+Schema comparison may normalize installation-generated internal RI trigger OID
+digits, but must retain all constraint, function, column and sequence semantics.
+
+**Why:** Fresh disposable clusters assign different catalog OIDs to identical
+foreign-key triggers. Literal generated names differ without schema drift.
+
+**How to apply:** Normalize only the documented generated-name component;
+preserve exact captured definitions and compare every other attribute.

@@ -686,3 +686,17 @@ mtime_ms = 1792244131945
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/ba71e0e3-aeea-4a68-9e79-d1c7951b0988/92bbbe26-b514-4d4e-9e03-0a1f473a0052"
 storage_version_token = "1792244139680464"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "0CE0VPpV26HgPaQ-OCx7W"
+uri = "file://generated-artifacts/security-release-gate-final/consolidated-release-gate-review.zip"
+type = "unspecified"
+title = "Consolidated release gate — blocked"
+description = "Report, exact seven-table capture, migration/contract evidence, all 378 test outcomes with six traced failures, authenticated browser screenshots, SQL dispositions, scans, cleanup and candidate manifest. No production changes."
+logical_id = "36269d69-99c9-4c16-991c-40d15a20efae"
+content_hash = "sha256:1c2e3524dc0d6912c4444d80d86ad9e284269eeb0cc3998490b4e08a4f665540"
+size = 494090
+mtime_ms = 1792246309769
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/36269d69-99c9-4c16-991c-40d15a20efae/fb62c890-a6fc-49c3-8317-07a54e632ed7"
+storage_version_token = "1792246315650442"
+content_type = "application/octet-stream"

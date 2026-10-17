@@ -1,0 +1,23 @@
+{
+  "source": "consolidated-seven-object-authority-v1",
+  "capturedAt": "2026-10-17T13:43:28.307608+00:00",
+  "normalization": "Sort JSON keys; remove guard; replace installation-generated RI trigger OID digits only. Every other captured schema attribute is compared.",
+  "tables": {
+    "products": "b0dc3954c1c572739a8dfa7615992b1472dcd8f81f9a94d99a87cf2e0a54a1a5",
+    "product_images": "fd4dc287b7c260b70829b38692ef2ff422ad0c0e236c4a87b86888ada9e756ee",
+    "file_uploads": "981f5a85d1494c77b0fec670c57a16dfb0a05a221328dc0f0dfc4a805954e581",
+    "field_program_requests": "72af27fb92d7dae18790f51d2333a599998e661a0b875ffd2174259bd6ae92c5",
+    "hr_staff_change_requests": "33cb54127cfebd69477d67d7000fd8c4ae3c60a0f4b84015a451869b5e9fae22",
+    "hr_leave_requests": "6e18c95b07a08efd8c51f2fa8848098849d929353fae24402cab23f0a50deed3",
+    "stock_batches": "93db541d01a170ceb4ff504b4c59d9c41e53c3cfea353f3cbfbd65186d308c4c"
+  },
+  "functions": {
+    "public.update_updated_at": "49b6a776b65bc901fc541968174690de96cc3077e0733d38fe69e431dc52ee98"
+  },
+  "notifyChangeExists": false,
+  "outsideRelationDependency": {
+    "identity": "barcode_batch_events_batch_id_fkey on public.barcode_batch_events",
+    "repositoryDefinition": "migrations/010_create_stock_management_tables.sql",
+    "reason": "Incoming FK owns the two internal stock_batches RI triggers. Definition already exists in repository; no additional capture or guessed columns."
+  }
+}

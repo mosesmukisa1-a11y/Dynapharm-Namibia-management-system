@@ -101,7 +101,16 @@ def scan():
                   "scripts/lib/owned-query-diagnostics.mjs",
                   "scripts/trace-final-sql-families.mjs",
                   "tests/final-default-expression-query.unit.test.js",
-                  "tests/repository-ddl.unit.test.js"]:
+                  "tests/repository-ddl.unit.test.js",
+                  "migrations/040_canonical_consolidated_schema.sql",
+                  "scripts/lib/consolidated-schema-query.mjs",
+                  "scripts/lib/consolidated-contract.mjs",
+                  "scripts/prepare-consolidated-schema-operation.mjs",
+                  "scripts/close-consolidated-schema-evidence.mjs",
+                  "scripts/test-consolidated-query-owned.mjs",
+                  "scripts/test-consolidated-contract-owned.mjs",
+                  "tests/fixtures/consolidated-schema-contract.json",
+                  "tests/consolidated-schema-query.unit.test.js"]:
         if extra not in tracked and Path(extra).exists():
             tracked.append(extra)
     current = []
