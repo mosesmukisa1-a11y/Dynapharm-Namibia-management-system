@@ -86,12 +86,11 @@ export async function completeSaleEvidenceTx(client, { sourceKey, reference, rec
   for(const a of rows) {
     if(!reconstructed)await client.query('UPDATE stock_movements SET created_by=$1 WHERE id=$2',[details.staff,a.movement_id]);
     await saveMovementSaleEvidenceTx(client,a);
-    for(const [table,id] of [['stock_movements',a.movement_id],['branch_inventory_movements',a.snapshot.branch_movement_id]]) {
-      if(!id)continue;
-      await client.query(`UPDATE ${table} SET metadata=jsonb_set(metadata,'{sale_evidence}',
-        (metadata->'sale_evidence') || $1::jsonb),created_at=$3 WHERE id=$2`,
-      [JSON.stringify({receipt_no:receipt || reference,business_date:details.businessDate,timezone:BUSINESS_TIMEZONE}),id,instant]);
-    }
+    const patch=JSON.stringify({receipt_no:receipt || reference,business_date:details.businessDate,timezone:BUSINESS_TIMEZONE});
+    if(a.movement_id)await client.query(`UPDATE stock_movements SET metadata=jsonb_set(metadata,'{sale_evidence}',
+      (metadata->'sale_evidence') || $1::jsonb),created_at=$3 WHERE id=$2`,[patch,a.movement_id,instant]);
+    if(a.snapshot.branch_movement_id)await client.query(`UPDATE branch_inventory_movements SET metadata=jsonb_set(metadata,'{sale_evidence}',
+      (metadata->'sale_evidence') || $1::jsonb),created_at=$3 WHERE id=$2`,[patch,a.snapshot.branch_movement_id,instant]);
   }
   return details;
 }

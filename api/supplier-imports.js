@@ -1,3 +1,4 @@
+import {numericPage} from './services/sqlShape.js';
 import { applyAuthCors } from './_lib/auth.js';
 import { getMany, getOne } from './db.js';
 import { atomicStockRequest } from './_lib/atomicStockRequest.js';
@@ -13,14 +14,13 @@ async function handler(req,res) {
       const row=await getOne('SELECT * FROM supplier_imports WHERE id=$1',[params.get('id')]);
       return row ? res.json(row) : res.status(404).json({success:false,error:'Import not found'});
     }
-    const conditions=[],values=[];
-    for (const [key,column] of [['warehouse','destination_warehouse'],['supplier','supplier_name'],['product','product_name']]) {
-      if (params.get(key)) { values.push(key==='warehouse' ? params.get(key) : `%${params.get(key)}%`);
-        conditions.push(`${column} ${key==='warehouse' ? '=' : 'ILIKE'} $${values.length}`); }
-    }
-    values.push(Math.min(1000,Math.max(1,Number(params.get('limit')) || 500)));
-    return res.json(await getMany(`SELECT * FROM supplier_imports ${conditions.length ? 'WHERE '+conditions.join(' AND ') : ''}
-      ORDER BY created_at DESC LIMIT $${values.length}`,values));
+    const values=[params.get('warehouse')||null,params.get('supplier')?`%${params.get('supplier')}%`:null,
+      params.get('product')?`%${params.get('product')}%`:null,numericPage(params.get('limit'),{fallback:500,max:1000})];
+    return res.json(await getMany(`SELECT * FROM supplier_imports
+      WHERE ($1::text IS NULL OR destination_warehouse=$1)
+        AND ($2::text IS NULL OR supplier_name ILIKE $2)
+        AND ($3::text IS NULL OR product_name ILIKE $3)
+      ORDER BY created_at DESC LIMIT $4`,values));
   }
   if (req.method==='POST') {
     const body=typeof req.body==='string' ? JSON.parse(req.body) : req.body || {};

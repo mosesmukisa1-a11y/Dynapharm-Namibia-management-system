@@ -1,0 +1,233 @@
+## Final offline SQL-security closure
+
+Continue on the current security remediation branch.
+
+No production access or mutation is authorized or required.
+
+Do not connect to production, publish, migrate, restart services, change configuration, rotate credentials, invalidate sessions, stop schedulers or activate workers.
+
+Status remains:
+
+`BLOCKED - DO NOT PUBLISH`
+
+## Objective
+
+Resolve all 61 remaining dynamic SQL locations and complete production-reachable endpoint-family security coverage without changing legitimate business behavior.
+
+Preserve:
+
+- 378/378 database result;
+- 460/460 unit result;
+- credential/session protections;
+- migrations 036-041;
+- stock, finance, MIS and branch behavior;
+- existing navigation and red/white interface.
+
+## 1. Review every unresolved SQL location
+
+Use the existing `remaining-66-review.json`, `sql-caller-review.json`, `sql-family-reachability.json`, and current source as inputs.
+
+For each of the 61 unresolved locations, trace:
+
+- direct caller;
+- wrapper callers;
+- aliases and re-exports;
+- callbacks;
+- dynamic imports;
+- endpoint or scheduled-task reachability;
+- SQL structure source;
+- identifier source;
+- parameter binding;
+- branch-dependent fragments;
+- pagination, ordering and filtering inputs;
+- write/read transaction context.
+
+Do not classify a location as safe solely because values are passed separately. Prove that request-controlled input cannot alter SQL structure.
+
+## 2. Repair unsafe or unprovable query construction
+
+Prefer:
+
+- static SQL with bound values;
+- finite allowlists for table, column, direction and clause choices;
+- strict identifier validators;
+- typed numeric pagination;
+- fixed query-builder functions;
+- narrow repository methods instead of generic raw-query access.
+
+Reject:
+
+- arbitrary SQL fragments;
+- request-provided table or column names;
+- unvalidated ordering or grouping;
+- object-key-driven update clauses without a finite field map;
+- user-controlled file paths supplying SQL;
+- mutable arrays or callback-produced SQL fragments;
+- aliases that bypass validation.
+
+Keep error responses generic. Do not echo hostile input, SQL text or database details.
+
+Do not globally suppress scanner findings.
+
+## 3. Endpoint-family hostile-input verification
+
+For every production-reachable dynamic query family, add tests using actual handlers/services.
+
+Cover both reads and writes, including:
+
+- malformed identifiers;
+- SQL comments;
+- semicolons;
+- quotes;
+- UNION payloads;
+- boolean expressions;
+- stacked-statement attempts;
+- ordering/grouping fragments;
+- numeric pagination edge cases;
+- object prototype and spread-key attacks;
+- mutable alias/callback inputs;
+- path traversal for SQL-file readers.
+
+Tests must prove:
+
+- hostile values remain bound data or are rejected before querying;
+- SQL structure stays unchanged;
+- no second statement executes;
+- no unrelated row is read or modified;
+- transaction rollback remains correct;
+- legitimate requests still work.
+
+Use positively owned disposable databases only.
+
+## 4. Generic executor disposition
+
+Generate a final machine-readable inventory containing every original location and final classification.
+
+The generic executor may be marked resolved only when:
+
+- zero production-reachable unresolved locations remain;
+- every reachable dynamic query family has hostile-input coverage;
+- all identifiers are static or finite-allowlisted;
+- every value remains bound;
+- alias/callback/import paths are traced;
+- no arbitrary SQL entry point is available to application routes.
+
+Non-production tools may remain only if they:
+
+- fail closed against production;
+- require owned disposable targets;
+- accept no arbitrary request input;
+- are clearly excluded from deployed runtime.
+
+Any unresolved production-reachable location keeps the release blocked.
+
+## 5. Application-wide output and privacy checks
+
+Using synthetic canary values only, test:
+
+- authentication failures;
+- authorization failures;
+- validation failures;
+- database errors;
+- transaction rollbacks;
+- report-generation errors;
+- import/export failures;
+- stock, finance, MIS, branch and GM error paths;
+- startup failures;
+- browser/API responses;
+- logs and generated artifacts.
+
+Verify no password, token, cookie, connection string, SQL text, database error detail, private path or synthetic secret appears.
+
+Do not retrieve real configured secrets.
+
+## 6. Regression verification
+
+After repairs, run:
+
+- full unit suite;
+- all 378 isolated database checks;
+- credential DB suite;
+- all schema contracts and migration idempotency;
+- startup contracts;
+- production build;
+- strict launcher;
+- browser security workflow;
+- settled Consultant rendering;
+- stock dispatch concurrency/retry;
+- campaign DP/free-item checks;
+- managed dependency, SAST and privacy scans;
+- exposure scan;
+- synthetic output/privacy suite;
+- owned-resource cleanup verification.
+
+Required minimums:
+
+- database: 378/378;
+- unit: no failures;
+- credential DB: 9/9;
+- browser security: 29/29;
+- startup contracts: 23/23;
+- unresolved production SQL locations: 0.
+
+## 7. Existing-schema rollout review
+
+Without connecting to production:
+
+- compare migrations 036-041 with captured schema contracts;
+- identify additive versus compatibility-sensitive operations;
+- create a guarded, non-executing migration preflight plan;
+- require exact schema fingerprints before any future migration;
+- fail closed on mismatches;
+- prohibit destructive alteration, backfill or row repair.
+
+Do not apply migrations.
+
+## 8. Clean-install eligibility
+
+Only when all preceding gates pass, prepare the exact candidate and return:
+
+```sh
+cd /home/runner/workspace
+node scripts/security-final-clean-gate.mjs --owner-manual
+```
+
+Do not execute publication after the command. The sanitized clean-install result must be reviewed separately.
+
+## 9. Evidence and disposition
+
+Write evidence to:
+
+`generated-artifacts/sql-security-final-closure/`
+
+Include:
+
+- final SQL location inventory;
+- endpoint-family coverage matrix;
+- hostile-input results;
+- output/privacy results;
+- test summaries;
+- scanner reconciliation;
+- rollout preflight;
+- exact candidate manifest;
+- cleanup evidence;
+- remaining blockers.
+
+Return exactly one:
+
+- `READY FOR OWNER CLEAN-INSTALL GATE - DO NOT PUBLISH`
+- `PARTIALLY VERIFIED - DO NOT PUBLISH`
+- `BLOCKED - DO NOT PUBLISH`
+
+Finish with:
+
+Production database accessed: NO  
+Production database modified: NO  
+Production migration applied: NO  
+Production passwords rotated: NO  
+Production sessions invalidated: NO  
+Production environment modified: NO  
+Production restarted: NO  
+Production scheduler stopped: NO  
+Production worker activated: NO  
+Production published: NO

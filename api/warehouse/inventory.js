@@ -1,3 +1,4 @@
+import {numericPage} from '../services/sqlShape.js';
 import { applyAuthCors } from '../_lib/auth.js';
 import { getMany, getOne, withTransaction } from '../db.js';
 
@@ -467,7 +468,7 @@ async function listMovements(searchParams) {
     throw new Error('warehouse parameter is required for movements');
   }
   const productId = searchParams.get('product');
-  const limit = parseInt(searchParams.get('limit') || '200', 10);
+  const limit = numericPage(searchParams.get('limit'),{fallback:200,max:1000});
 
   const params = [warehouseId];
   const conditions = ['warehouse_id = $1'];
@@ -485,7 +486,8 @@ async function listMovements(searchParams) {
   `;
 
   if (!Number.isNaN(limit) && limit > 0) {
-    queryText += ` LIMIT ${Math.min(limit, 1000)}`;
+    params.push(Math.min(limit,1000));
+    queryText += ` LIMIT $${params.length}`;
   }
 
   const rows = await getMany(queryText, params);

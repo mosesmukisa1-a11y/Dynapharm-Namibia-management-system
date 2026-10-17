@@ -281,12 +281,9 @@ async function replaceTransferItems(transferId, items, sourceLocation) {
 
   const enrichedItems = await enrichItemsWithBatchExpiry(items, sourceLocation || null);
 
-  const values = [];
-  const params = [];
-  enrichedItems.forEach((item, index) => {
-    const position = index * 11;
-    values.push(`($${position + 1}, $${position + 2}, $${position + 3}, $${position + 4}, $${position + 5}, $${position + 6}, $${position + 7}, $${position + 8}, $${position + 9}, $${position + 10}, $${position + 11})`);
-    params.push(
+  const rows = [];
+  enrichedItems.forEach((item) => {
+    rows.push([
       transferId,
       item.productId,
       item.productName || null,
@@ -298,16 +295,18 @@ async function replaceTransferItems(transferId, items, sourceLocation) {
       item.discrepancyNote || null,
       item.unit || 'units',
       item.metadata ? JSON.stringify(item.metadata) : null
-    );
+    ]);
   });
 
   await query(
     `
       INSERT INTO stock_transfer_items
         (transfer_id, product_id, product_name, batch_no, expiry_date, quantity, quantity_approved, quantity_received, discrepancy_note, unit, metadata)
-      VALUES ${values.join(', ')}
+      SELECT r->>0,r->>1,r->>2,r->>3,(r->>4)::date,(r->>5)::numeric,
+        (r->>6)::numeric,(r->>7)::numeric,r->>8,r->>9,(r->>10)::jsonb
+      FROM jsonb_array_elements($1::jsonb) r
     `,
-    params
+    [JSON.stringify(rows)]
   );
 }
 

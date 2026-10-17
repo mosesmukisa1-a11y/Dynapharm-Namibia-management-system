@@ -115,10 +115,13 @@ async function handler(req, res) {
           }
 
           if (Object.keys(toApply).length > 0) {
-            const setClauses = Object.keys(toApply).map((f, i) => `${f} = $${i + 2}`).join(', ');
-            const vals = [existing.user_id || existing.full_name, ...Object.values(toApply)];
+            const vals = [existing.user_id || existing.full_name,JSON.stringify(toApply)];
             await query(
-              `UPDATE users SET ${setClauses}, updated_at = NOW()
+              `UPDATE users SET
+                 national_id=CASE WHEN $2::jsonb ? 'national_id' THEN $2::jsonb->>'national_id' ELSE national_id END,
+                 bank_name=CASE WHEN $2::jsonb ? 'bank_name' THEN $2::jsonb->>'bank_name' ELSE bank_name END,
+                 bank_account_no=CASE WHEN $2::jsonb ? 'bank_account_no' THEN $2::jsonb->>'bank_account_no' ELSE bank_account_no END,
+                 updated_at = NOW()
                WHERE id = $1 OR LOWER(username) = LOWER($1) OR LOWER(full_name) = LOWER($1)`,
               vals
             );

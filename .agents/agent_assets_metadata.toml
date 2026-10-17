@@ -714,3 +714,17 @@ mtime_ms = 1792248595981
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/75fd6115-f5a5-4ab0-b71f-42b0004eb65c/3d99dc96-bdde-4751-b360-1ac59d3add17"
 storage_version_token = "1792248602206929"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "aABBvYQ_--Hod-5ryhY_v"
+uri = "file://generated-artifacts/sql-security-final-closure/report.md"
+type = "text"
+title = "SQL security review — BLOCKED"
+description = "Implemented fixes, isolated regression evidence, source inventories and remaining release blockers. DO NOT PUBLISH."
+logical_id = "bacb0574-4603-4102-a454-e7c35190c166"
+content_hash = "sha256:2abf7391a563643ad0e8afaa437285c7239d53a038adc718103cd1ceb7760763"
+size = 14031
+mtime_ms = 1792254982989
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/bacb0574-4603-4102-a454-e7c35190c166/2fa5d4c4-a22c-4aae-b04a-21be34043b01"
+storage_version_token = "1792255002107921"
+content_type = "text/markdown"

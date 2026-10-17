@@ -81,27 +81,25 @@ async function replaceRequestItems(requestId, items) {
   if (!Array.isArray(items) || items.length === 0) return;
 
   const rows = [];
-  const params = [];
-  items.forEach((item, index) => {
-    const position = index * 6;
-    rows.push(`($${position + 1}, $${position + 2}, $${position + 3}, $${position + 4}, $${position + 5}, $${position + 6})`);
-    params.push(
+  items.forEach((item) => {
+    rows.push([
       requestId,
       item.productId,
       item.productName || null,
       item.quantity,
       item.unit || 'units',
       item.metadata ? JSON.stringify(item.metadata) : null
-    );
+    ]);
   });
 
   await query(
     `
       INSERT INTO stock_request_items
         (request_id, product_id, product_name, quantity, unit, metadata)
-      VALUES ${rows.join(', ')}
+      SELECT r->>0,r->>1,r->>2,(r->>3)::numeric,r->>4,(r->>5)::jsonb
+      FROM jsonb_array_elements($1::jsonb) r
     `,
-    params
+    [JSON.stringify(rows)]
   );
 }
 

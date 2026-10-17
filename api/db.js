@@ -1,6 +1,7 @@
 import { Pool } from 'pg';
 import { AsyncLocalStorage } from 'node:async_hooks';
-import {identifier as sqlIdentifier, insertStatement, findAllStatement} from './services/sqlShape.js';
+import {identifier as sqlIdentifier, insertStatement, findAllStatement,updateStatement} from './services/sqlShape.js';
+import {applicationTable,applicationRecord,applicationFields} from './services/sqlFieldPolicy.js';
 import {isTestProcess, assertIsolatedTestDatabase, verifyIsolatedTestConnection} from './testDatabaseGuard.js';
 
 const requestTransactions = new AsyncLocalStorage();
@@ -155,33 +156,41 @@ export async function getMany(queryText, params) {
 function sanitizeIdentifier(name) { return sqlIdentifier(name); }
 
 export async function insert(tableName, data) {
+  data=applicationRecord(tableName,data);
   const statement=insertStatement(tableName,data);
   const result = await query(statement.text, statement.params);
   return result.rows[0];
 }
 
 export async function update(tableName, id, data, idColumn = 'id') {
-  const safeIdColumn = sanitizeIdentifier(idColumn);
-  const columns = Object.keys(data).filter(key => key !== idColumn).map(sanitizeIdentifier);
-  const values = columns.map(col => data[col]);
-  const setClause = columns.map((col, i) => `"${col}" = $${i + 1}`).join(', ');
-  const queryText = `UPDATE ${sanitizeIdentifier(tableName)} SET ${setClause} WHERE "${safeIdColumn}" = $${columns.length + 1} RETURNING *`;
-  const result = await query(queryText, [...values, id]);
+  data=applicationRecord(tableName,data);
+  if(idColumn!=='id')throw Error('Invalid SQL identifier');
+  const statement=updateStatement(tableName,id,data,applicationFields[tableName],idColumn);
+  const result = await query(statement.text,statement.params);
   return result.rows[0];
 }
 
 export async function remove(tableName, id, idColumn = 'id') {
+  applicationTable(tableName);if(idColumn!=='id')throw Error('Invalid SQL identifier');
   const queryText = `DELETE FROM ${sanitizeIdentifier(tableName)} WHERE "${sanitizeIdentifier(idColumn)}" = $1 RETURNING *`;
   const result = await query(queryText, [id]);
   return result.rows[0];
 }
 
 export async function findById(tableName, id, idColumn = 'id') {
+  applicationTable(tableName);if(idColumn!=='id')throw Error('Invalid SQL identifier');
   const queryText = `SELECT * FROM ${sanitizeIdentifier(tableName)} WHERE "${sanitizeIdentifier(idColumn)}" = $1`;
   return await getOne(queryText, [id]);
 }
 
 export async function findAll(tableName, conditions = {}, orderBy = 'created_at DESC') {
+  const allowed=applicationFields[applicationTable(tableName)];
+  conditions=applicationRecord(tableName,conditions);
+  if(typeof orderBy!=='string')throw Error('Invalid SQL ordering');
+  for(const term of orderBy.split(',')){
+    const [column]=term.trim().split(/\s+/);
+    if(!allowed.includes(column))throw Error('Invalid SQL ordering');
+  }
   const statement=findAllStatement(tableName,conditions,orderBy);
   return await getMany(statement.text,statement.params);
 }

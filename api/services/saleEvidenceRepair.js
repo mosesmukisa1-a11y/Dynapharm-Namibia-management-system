@@ -196,15 +196,16 @@ export async function applySaleRepairPlanTx(client,plan) {
       if(line.mirrorId && !mirrorBefore)throw Error(`Repair source mirror ${line.mirrorId} disappeared`);
       if(line.allocationPatch)await client.query(`UPDATE stock_sale_allocations SET snapshot=$1::jsonb || jsonb_strip_nulls(snapshot)
         WHERE movement_id=$2`,[JSON.stringify(line.allocationPatch),line.movementId]);
-      for(const [table,id,patch] of [['stock_movements',line.movementId,line.patch],
-        ['branch_inventory_movements',line.mirrorId,line.mirrorPatch]]){
-        if(!id || !patch || !Object.keys(patch).length)continue;
-        // Each original field wins, including a valid zero. Never replace any
-        // original nonblank evidence, even if the planner proposed a patch.
-        await client.query(`UPDATE ${table} SET metadata=COALESCE(metadata,'{}'::jsonb) ||
+      // Each original field wins, including a valid zero. Never replace any
+      // original nonblank evidence, even if the planner proposed a patch.
+      if(line.movementId&&line.patch&&Object.keys(line.patch).length)
+        await client.query(`UPDATE stock_movements SET metadata=COALESCE(metadata,'{}'::jsonb) ||
           jsonb_build_object('sale_evidence',$1::jsonb || jsonb_strip_nulls(COALESCE(metadata->'sale_evidence','{}'::jsonb)))
-          WHERE id=$2`,[JSON.stringify(patch),id]);
-      }
+          WHERE id=$2`,[JSON.stringify(line.patch),line.movementId]);
+      if(line.mirrorId&&line.mirrorPatch&&Object.keys(line.mirrorPatch).length)
+        await client.query(`UPDATE branch_inventory_movements SET metadata=COALESCE(metadata,'{}'::jsonb) ||
+          jsonb_build_object('sale_evidence',$1::jsonb || jsonb_strip_nulls(COALESCE(metadata->'sale_evidence','{}'::jsonb)))
+          WHERE id=$2`,[JSON.stringify(line.mirrorPatch),line.mirrorId]);
       const movementAfter=(await client.query(
         "SELECT metadata->'sale_evidence' AS evidence FROM stock_movements WHERE id=$1",
         [line.movementId])).rows[0];

@@ -21,17 +21,17 @@ if(process.env.NODE_ENV==='production'||['1','true'].includes(process.env.REPLIT
 // Never re-use the earlier guessed legacy scaffolding. A missing canonical
 // definition blocks before any directory, socket, cluster or database exists.
 await assertRepositoryFoundation();
-const root=process.cwd(),runId=randomUUID(),base=path.join(root,'generated-artifacts/final-security-release-gate');
+const root=process.cwd(),runId=randomUUID(),base=path.join(root,'generated-artifacts/sql-security-final-closure');
 const out=path.join(base,'fixture-runs',runId);
 await fs.mkdir(out,{recursive:true});
-const runKind=process.argv.includes('--database-suites')?'database':
+const runKind=(process.argv.includes('--database-suites')||process.argv.includes('--sql-families-only'))?'database':
   process.argv.includes('--diagnose')?'diagnostic':process.argv.includes('--schema-only')?'schema':'browser';
 await fs.writeFile(base+'/last-'+runKind+'-fixture-run.json',JSON.stringify({runId,out},null,2));
 const temp=path.join(os.tmpdir(),'security-closure-'+runId);
 const port=await new Promise(r=>{const s=net.createServer();s.listen(0,'127.0.0.1',()=>{
   const p=s.address().port;s.close(()=>r(p));});});
 const name='stock_audit_'+randomUUID().replaceAll('-','');
-const owner={database:name,maintenanceDatabase:'postgres',clusterDirectory:temp,
+const owner={runId,database:name,maintenanceDatabase:'postgres',clusterDirectory:temp,
   hostFingerprint:createHash('sha256').update('127.0.0.1:'+port).digest('hex'),
   processId:process.pid,createdAt:new Date().toISOString(),cleanupOwner:'security-closure-fixture',
   disposable:true,production:false,identitySource:'new initdb cluster, no inherited configuration'};
@@ -70,7 +70,7 @@ try{
   await fs.mkdir(temp,{mode:0o700});
   await command('initdb',['-D',temp+'/data','-U','fixture_owner','--auth=trust','--no-locale']);
   await command('pg_ctl',['-D',temp+'/data','-l',temp+'/postgres.log','-o',
-    `-p ${port} -h 127.0.0.1 -k ${temp}`,'-w','start']);cluster=true;
+    `-p ${port} -h 127.0.0.1 -k ${temp} -c log_min_messages=fatal -c log_min_error_statement=panic`,'-w','start']);cluster=true;
   // Every connection is explicit and limited to the newly created loopback cluster.
   const cfg={host:'127.0.0.1',port,user:'fixture_owner',password:'',ssl:false,max:1};
   admin=new pg.Pool({...cfg,database:'postgres'});
@@ -145,6 +145,15 @@ try{
       statementSha256:createHash('sha256').update(s.sql).digest('hex')}))},null,2));
   // Missing foundational tables are a visible fixture blocker, never invented from data.
   const ready=await db.query(`SELECT table_name,column_name FROM information_schema.columns WHERE table_schema='public'`);
+  if(process.argv.includes('--export-sql-policy')){
+    const tables=['products','product_images','employees','clients','reports','appointments','online_orders',
+      'client_history_events','client_encounters','client_history_operations','client_history_attachments',
+      'notifications','stock_requests','distributors','file_uploads','stock_transfers','towns','warehouse_locations',
+      'users','client_dispense_evidence','field_stock','stock_adjustments'];
+    const columns=Object.fromEntries(tables.map(table=>[table,ready.rows.filter(r=>r.table_name===table).map(r=>r.column_name).sort()]));
+    if(Object.values(columns).some(c=>!c.length))throw Error('Repository SQL policy table missing');
+    await fs.writeFile(out+'/repository-column-map.json',JSON.stringify(columns,null,2));
+  }
   const missing=Object.entries(REQUIRED_STARTUP_SCHEMA).flatMap(([t,cols])=>cols.filter(c=>
     !ready.rows.some(r=>r.table_name===t&&r.column_name===c)).map(c=>t+'.'+c));
   await fs.writeFile(out+'/schema-missing.json',JSON.stringify(missing,null,2));
@@ -177,24 +186,33 @@ try{
   const testEnv={...env,DATABASE_URL:dbUrl,DATABASE_SSL:'0',STOCK_AUDIT_ISOLATED:'1',
     STOCK_AUDIT_DATABASE:name,REPLIT_DEPLOYMENT:'0',NODE_ENV:'test',AUTH_SECRET:markers[0],
     JWT_SECRET:markers[0],SESSION_SECRET:markers[0],SYNTHETIC_SERVER_ONLY_MARKER:markers[1],...profile};
-  if(process.argv.includes('--database-suites')||process.argv.includes('--credential-only')||process.argv.includes('--diagnose')){
+  if(process.argv.includes('--database-suites')||process.argv.includes('--credential-only')||process.argv.includes('--diagnose')||process.argv.includes('--sql-families-only')){
     if(process.argv.includes('--diagnose')||process.argv.includes('--query-diagnostics'))Object.assign(testEnv,{
       NODE_OPTIONS:'--import '+root+'/scripts/lib/owned-query-diagnostics.mjs',
       OWNED_QUERY_DIAGNOSTICS:out+'/query-diagnostics.jsonl'});
     const runs=[['full',['scripts/run-isolated-stock-audit.mjs','--all',
+      ...(process.argv.includes('--sql-families-only')?['tests/sql-security-families.spec.js']:[]),
       ...(process.argv.includes('--diagnose')?['tests/sale-evidence.spec.js',
         'tests/transfer-dispatch-cancel-concurrency.spec.js','tests/gm-decisions.spec.js',
         'tests/daily-campaign-free-item-dp.spec.js']:[])]],
       ['credential',['scripts/run-isolated-stock-audit.mjs','tests/credential-security.spec.js']]];
     for(const [label,args]of (process.argv.includes('--credential-only')?runs.slice(1):
-      process.argv.includes('--diagnose')?runs.slice(0,1):runs)){
+      (process.argv.includes('--diagnose')||process.argv.includes('--sql-families-only'))?runs.slice(0,1):runs)){
+      const resultDirectory=out+'/'+label+'-results';
+      await fs.writeFile(out+'/'+label+'-results-ownership.json',JSON.stringify({
+        runId,label,directory:resultDirectory,production:false,purpose:'Unique current-invocation test output',
+      },null,2));
       let succeeded=true;
       try{
         await command(process.execPath,args,{childEnv:{...testEnv,
+          OWNED_AUDIT_OUTPUT:resultDirectory,
           SECURITY_FIXTURE_OWNERSHIP_DIR:out+'/database-ownership'}});
       }catch{succeeded=false;process.exitCode=1;await fs.writeFile(out+'/'+label+'-database-failure.json',JSON.stringify({status:'FAIL',
         reason:'Owned suite subprocess failed; no private stderr exported'}));}
-      try{await fs.copyFile(root+'/generated-artifacts/stock-audit/test-results.json',out+'/'+label+'-database-results.json');}catch{}
+      try{await fs.copyFile(resultDirectory+'/test-results.json',out+'/'+label+'-database-results.json');}
+      catch{await fs.writeFile(out+'/'+label+'-database-no-result.json',JSON.stringify({
+        status:'NOT VERIFIED',reason:'This invocation produced no result; never copy an earlier artifact',runId,label,
+      },null,2));}
       if(succeeded)await fs.rm(out+'/'+label+'-database-failure.json',{force:true});
     }
     await cleanup();
@@ -203,7 +221,7 @@ try{
     await fs.writeFile(entry,`await import(${JSON.stringify(root+'/scripts/start-code-only-web.mjs')});
       const {server}=await import(${JSON.stringify(root+'/server.js')});
       if(!server.listening)await new Promise(r=>server.once('listening',r));
-      console.log('CLOSURE_PORT:'+server.address().port);
+      process.stdout.write('CLOSURE_PORT:'+server.address().port+'\\n');
       process.on('SIGTERM',async()=>{server.closeAllConnections?.();server.close();
         await (await import(${JSON.stringify(root+'/api/db.js')})).closePool();process.exit(0);});`);
     app=spawn(process.execPath,[entry],{cwd:root,env:{...testEnv,HOST:'127.0.0.1',PORT:'0'},

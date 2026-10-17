@@ -1,6 +1,7 @@
 import {randomUUID, randomBytes, createHash} from 'node:crypto';
 import {spawn} from 'node:child_process';
-import {mkdir,readFile,writeFile} from 'node:fs/promises';
+import {mkdir,readFile,writeFile,realpath} from 'node:fs/promises';
+import path from 'node:path';
 import pg from 'pg';
 import {assertIsolatedTestDatabase} from '../api/testDatabaseGuard.js';
 import {stockAuditSuites,databaseSuites} from '../tests/helpers/database-suites.js';
@@ -29,6 +30,20 @@ const args=process.argv.slice(2);
 const all=args.includes('--all');
 const filters=args.filter(arg=>arg!=='--all');
 const suites=filters.length?filters:all?databaseSuites:stockAuditSuites;
+const outputRoot=process.env.OWNED_AUDIT_OUTPUT||'generated-artifacts/stock-audit';
+if(process.env.OWNED_AUDIT_OUTPUT){
+  const expected=path.resolve('generated-artifacts/sql-security-final-closure/fixture-runs')+path.sep;
+  const resolved=path.resolve(outputRoot);
+  if(!resolved.startsWith(expected)||!/^[a-f0-9-]{36}\/(?:full|credential)-results$/.test(resolved.slice(expected.length)))
+    throw Error('Owned audit output refused');
+  const parent=path.dirname(resolved),owner=JSON.parse(await readFile(parent+'/fixture-ownership.json','utf8'));
+  if(await realpath(parent)!==parent||owner.production!==false||owner.disposable!==true||
+    owner.runId!==path.basename(parent)||sourceUrl.hostname!=='127.0.0.1'||
+    sourceUrl.pathname!=='/'+owner.database||
+    createHash('sha256').update(sourceUrl.hostname+':'+sourceUrl.port).digest('hex')!==owner.hostFingerprint)
+    throw Error('Owned audit output identity mismatch');
+}
+const resultFile=path.join(outputRoot,'test-results.json');
 const admin=new pg.Pool({connectionString:sourceUrl.toString(),max:1});
 async function recordOwnership(database, purpose) {
   if (!process.env.SECURITY_FIXTURE_OWNERSHIP_DIR) return;
@@ -78,11 +93,11 @@ try{
   await target.query(`INSERT INTO warehouse_locations(id,name,type)
     VALUES('windhoek_warehouse','Isolated warehouse','warehouse'),
       ('ondangwa_warehouse','Isolated second warehouse','warehouse')`);
-  await mkdir('generated-artifacts/stock-audit',{recursive:true});
+  await mkdir(outputRoot,{recursive:true});
   if(!all){
     await child(process.execPath,['node_modules/vitest/vitest.mjs','run',...suites, '--project=database',
       '--fileParallelism=false','--reporter=default','--reporter=json',
-      '--outputFile=generated-artifacts/stock-audit/test-results.json'],{env:testEnv});
+      '--outputFile='+resultFile],{env:testEnv});
   }else{
     // Each suite gets an independent empty-schema template clone. Serial execution
     // alone does not isolate a whole-company baseline from another suite's rows.
@@ -98,7 +113,7 @@ try{
     for(let index=0;index<suites.length;index++){
       const owned=`stock_audit_${randomUUID().replaceAll('-','')}`;
       const suiteUrl=new URL(isolatedUrl);suiteUrl.pathname='/'+owned;
-      const output=`generated-artifacts/stock-audit/${owned}.json`;
+      const output=path.join(outputRoot,owned+'.json');
       await recordOwnership(owned,'owned suite '+suites[index]);
       await admin.query(`CREATE DATABASE ${owned} TEMPLATE ${name}`);
       try{
@@ -121,7 +136,7 @@ try{
       numTotalTests:sum('numTotalTests'),numPassedTests:sum('numPassedTests'),
       numFailedTests:sum('numFailedTests'),numPendingTests:sum('numPendingTests'),success:failed===0,
       testResults:results.flatMap(r=>r.testResults),suiteFailures:results.filter(r=>r.suiteFailure).map(r=>r.suiteFailure)};
-    await writeFile('generated-artifacts/stock-audit/test-results.json',JSON.stringify(combined,null,2));
+    await writeFile(resultFile,JSON.stringify({...combined,ownershipScopedOutput:!!process.env.OWNED_AUDIT_OUTPUT},null,2));
     combinedWritten=true;
     console.log(`Isolated full suite: ${combined.numPassedTests}/${combined.numTotalTests} passed; ${combined.numFailedTests} failed; ${combined.numPendingTests} pending`);
     if(failed)process.exitCode=1;
@@ -130,8 +145,8 @@ try{
   const message=error.message.replace(/postgres(?:ql)?:\/\/\S+/g,'[database URI]');
   console.error(message);process.exitCode=1;
   if(all&&!combinedWritten){
-    await mkdir('generated-artifacts/stock-audit',{recursive:true});
-    await writeFile('generated-artifacts/stock-audit/test-results.json',JSON.stringify({
+    await mkdir(outputRoot,{recursive:true});
+    await writeFile(resultFile,JSON.stringify({
       success:false,harnessFailure:message,numTotalTests:0,numPassedTests:0,numFailedTests:0,
       numPendingTests:0,testResults:[],note:'No complete suite result; never reuse a previous JSON artifact'},null,2));
   }

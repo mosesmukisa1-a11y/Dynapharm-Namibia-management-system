@@ -87,9 +87,13 @@ export function countDifference(counted, expected, current) {
 }
 
 async function loadBatch(client, type, id, user, lock = true) {
-  const tables = { branch: 'branch_inventory_batches', warehouse: 'stock_batches', segregated: 'stock_segregated_batches' };
-  if (!tables[type]) fail('Unknown batch type');
-  const row = (await client.query(`SELECT * FROM ${tables[type]} WHERE id=$1 ${lock ? 'FOR UPDATE' : ''}`, [id])).rows[0];
+  const statements = Object.freeze({
+    branch:Object.freeze(['SELECT * FROM branch_inventory_batches WHERE id=$1','SELECT * FROM branch_inventory_batches WHERE id=$1 FOR UPDATE']),
+    warehouse:Object.freeze(['SELECT * FROM stock_batches WHERE id=$1','SELECT * FROM stock_batches WHERE id=$1 FOR UPDATE']),
+    segregated:Object.freeze(['SELECT * FROM stock_segregated_batches WHERE id=$1','SELECT * FROM stock_segregated_batches WHERE id=$1 FOR UPDATE']),
+  });
+  if (!Object.hasOwn(statements,type)||typeof lock!=='boolean') fail('Unknown batch type');
+  const row = (await client.query(statements[type][lock?1:0], [id])).rows[0];
   if (!row) fail('Batch not found', 404);
   if (type === 'segregated') {
     scoped(user, row.location, row.source_type);

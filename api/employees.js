@@ -1,3 +1,5 @@
+import {insertStatement,updateStatement} from './services/sqlShape.js';
+import {applicationColumns,applicationFields} from './services/sqlFieldPolicy.js';
 import { applyAuthCors } from './_lib/auth.js';
 import { query, getMany, getOne } from './db.js';
 
@@ -190,26 +192,17 @@ export function buildEmployeeRecord(body, existing = {}) {
 
 async function insertEmployee(body) {
   const record = buildEmployeeRecord(body);
-  const columns = Object.keys(record);
-  const values = Object.values(record);
-  const placeholders = columns.map((_, idx) => `$${idx + 1}`).join(', ');
-  const columnNames = columns.map((col) => `"${col}"`).join(', ');
-  const result = await query(
-    `INSERT INTO employees (${columnNames}) VALUES (${placeholders}) RETURNING *`,
-    values
-  );
+  applicationColumns('employees',record);
+  const statement=insertStatement('employees',record);
+  const result = await query(statement.text,statement.params);
   return normalizeEmployeeRow(result.rows[0]);
 }
 
 async function updateEmployee(id, body, existing) {
   const record = buildEmployeeRecord(body, existing);
-  const columns = Object.keys(record);
-  const values = Object.values(record);
-  const setClause = columns.map((col, idx) => `"${col}" = $${idx + 1}`).join(', ');
-  const result = await query(
-    `UPDATE employees SET ${setClause} WHERE id = $${columns.length + 1} RETURNING *`,
-    [...values, id]
-  );
+  applicationColumns('employees',record);
+  const statement=updateStatement('employees',id,record,applicationFields.employees);
+  const result = await query(statement.text,statement.params);
   return normalizeEmployeeRow(result.rows[0]);
 }
 

@@ -1,4 +1,6 @@
+import './api/services/runtimeDiagnostics.js';
 import express from 'express';
+import {errorOutputBoundary} from './api/services/errorOutputBoundary.js';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
@@ -32,6 +34,7 @@ runStartupOperation(startupPolicy, 'uploads-directory', () => {
 });
 
 const app = express();
+app.use(errorOutputBoundary);
 app.use(startupReadinessGate);
 
 app.disable('x-powered-by');
@@ -778,7 +781,7 @@ const approveStockAdjustment = atomicStockRequest(async (req, res) => {
 
     if (target_id && field_to_adjust) {
       if (['import', 'country_stock', 'warehouse', 'branch'].includes(target_type)) {
-        const dbCol = batchColumnMap[field_to_adjust];
+        const dbCol = Object.hasOwn(batchColumnMap,field_to_adjust) ? batchColumnMap[field_to_adjust] : null;
         if (!dbCol) return res.status(400).json({ error: `Field '${field_to_adjust}' is not adjustable` });
 
         // Fetch current batch for audit trail (batch_no, expiry_date, location)

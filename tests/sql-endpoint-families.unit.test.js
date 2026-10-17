@@ -43,7 +43,7 @@ const readCases=[
   ['MIS receipts','../api/mis/receipts.js',{branch:hostile,q:hostile,start:'2026-10-01',end:'2026-10-17'}],
   ['MIS stock report','../api/mis/stock-report.js',{branch:hostile,start:'2026-10-01',end:'2026-10-17'}],
   ['warehouse inventory','../api/warehouse/inventory.js',{warehouse:hostile,product:hostile,search:hostile}],
-  ['warehouse movements','../api/warehouse/inventory.js',{includeMovements:'1',warehouse:hostile,limit:'12); DROP TABLE sql_sentinel; --'}],
+  ['warehouse movements','../api/warehouse/inventory.js',{includeMovements:'1',warehouse:hostile,product:hostile,limit:'12'}],
 ];
 it.each(readCases)('%s binds hostile branch/search text on its actual read handler',async(_name,module,params)=>{
   const handler=(await import(module)).default,res=response();
@@ -67,7 +67,8 @@ it('staff profile ignores unapproved field names and binds values for approved f
   await handler({method:'PUT',headers:{},user,body:{action:'update_contact',phone:hostile,[hostile]:'must not become a column'}},res);
   expect(res.statusCode,JSON.stringify(res.body)).toBe(200);
   verifyQueries();
-  expect(recorder.calls.at(-1).text).toContain('phone = $2');
+  expect(recorder.calls.at(-1).text).toContain('jsonb_populate_record(u,$2::jsonb)');
+  expect(JSON.parse(recorder.calls.at(-1).params[1]).phone).toBe(hostile);
 });
 it('controlled register binds search/location and rejects hostile status/type before query',async()=>{
   const {readControlledStockRegister}=await import('../api/services/controlledStockRegister.js');

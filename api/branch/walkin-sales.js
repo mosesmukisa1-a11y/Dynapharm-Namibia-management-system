@@ -1,3 +1,5 @@
+import {insertStatement,numericPage} from '../services/sqlShape.js';
+import {applicationRecord} from '../services/sqlFieldPolicy.js';
 import { recordBranchSaleAllocationTx, reconcileSaleFinancialsTx } from '../services/stockSaleAllocations.js';
 import { applyAuthCors, getBranchScope } from '../_lib/auth.js';
 import { query, getMany, getOne, withTransaction } from '../db.js';
@@ -243,57 +245,26 @@ function buildSaleRecord(payload, existing = {}) {
 }
 
 function buildSelectQuery(searchParams, scopedBranches, enforced) {
-  const conditions = [];
-  const params = [];
-
-  if (enforced) {
-    params.push(scopedBranches);
-    conditions.push(`branch_id = ANY($${params.length})`);
-  } else {
-    const branch = searchParams.get('branch') || searchParams.get('branch_id');
-    if (branch) {
-      params.push(branch);
-      conditions.push(`LOWER(REPLACE(branch_id,' ','_')) = LOWER(REPLACE($${params.length},' ','_'))`);
-    }
-  }
-
-  const from = searchParams.get('from');
-  if (from) {
-    params.push(from);
-    conditions.push(businessDatePredicate('sale_date',`$${params.length}`));
-  }
-
-  const to = searchParams.get('to');
-  if (to) {
-    params.push(to);
-    conditions.push(businessDatePredicate('sale_date',`$${params.length}`,true));
-  }
-
-  const search = searchParams.get('search');
-  if (search) {
-    params.push(`%${search.toLowerCase()}%`);
-    conditions.push(`LOWER(customer_name) LIKE $${params.length}`);
-  }
-
-  const distributorNb = searchParams.get('distributor_nb') || searchParams.get('referral_nb');
-  if (distributorNb) {
-    const nbUpper = distributorNb.toUpperCase();
-    params.push(nbUpper);
-    conditions.push(`(UPPER(referral_nb) = $${params.length} OR UPPER(distributor_nb) = $${params.length})`);
-  }
-
-  const hasDateFilter = searchParams.get('from') || searchParams.get('to');
-  const limitParam = parseInt(searchParams.get('limit') || '0', 10);
-  const effectiveLimit = limitParam > 0 ? limitParam : hasDateFilter ? 5000 : 250;
-
-  let queryText = 'SELECT * FROM branch_walkin_sales';
-  if (conditions.length > 0) {
-    queryText += ` WHERE ${conditions.join(' AND ')}`;
-  }
-  params.push(effectiveLimit);
-  queryText += ` ORDER BY sale_date DESC, created_at DESC LIMIT $${params.length}`;
-
+  const params=saleReadParameters(searchParams,scopedBranches,enforced);
+  const queryText=`SELECT * FROM branch_walkin_sales WHERE
+    ($1::text[] IS NULL OR branch_id=ANY($1))
+    AND ($2::text IS NULL OR LOWER(REPLACE(branch_id,' ','_'))=LOWER(REPLACE($2,' ','_')))
+    AND ($3::date IS NULL OR sale_date>=($3::date::timestamp AT TIME ZONE 'Africa/Windhoek'))
+    AND ($4::date IS NULL OR sale_date<(($4::date+1)::timestamp AT TIME ZONE 'Africa/Windhoek'))
+    AND ($5::text IS NULL OR LOWER(customer_name) LIKE $5)
+    AND ($6::text IS NULL OR UPPER(referral_nb)=$6 OR UPPER(distributor_nb)=$6)
+    ORDER BY sale_date DESC,created_at DESC LIMIT $7`;
   return { queryText, params };
+}
+function saleReadParameters(searchParams,branches,enforced){
+  const from=searchParams.get('from')||null,to=searchParams.get('to')||null;
+  const search=searchParams.get('search'),nb=searchParams.get('distributor_nb')||searchParams.get('referral_nb');
+  const requested=searchParams.get('limit'),fallback=from||to?5000:250;
+  const limit=requested==null||requested===''||requested==='0'?fallback:
+    numericPage(requested,{fallback,max:Number.MAX_SAFE_INTEGER});
+  return [enforced?(Array.isArray(branches)?branches:[]):null,
+    enforced?null:searchParams.get('branch')||searchParams.get('branch_id')||null,
+    from,to,search?`%${search.toLowerCase()}%`:null,nb?nb.toUpperCase():null,limit];
 }
 
 /**
@@ -302,52 +273,15 @@ function buildSelectQuery(searchParams, scopedBranches, enforced) {
  * filters as the regular walkin-sales query.
  */
 function buildRxQuery(searchParams, scopedBranches, enforced) {
-  const conditions = ["activity_type = 'prescription_dispensing'"];
-  const params = [];
-
-  if (enforced) {
-    params.push(scopedBranches);
-    conditions.push(`branch_id = ANY($${params.length})`);
-  } else {
-    const branch = searchParams.get('branch') || searchParams.get('branch_id');
-    if (branch) {
-      params.push(branch);
-      conditions.push(`LOWER(REPLACE(branch_id,' ','_')) = LOWER(REPLACE($${params.length},' ','_'))`);
-    }
-  }
-
-  const from = searchParams.get('from');
-  if (from) {
-    params.push(from);
-    conditions.push(`service_date::date >= $${params.length}::date`);
-  }
-
-  const to = searchParams.get('to');
-  if (to) {
-    params.push(to);
-    conditions.push(`service_date::date <= $${params.length}::date`);
-  }
-
-  const search = searchParams.get('search');
-  if (search) {
-    params.push(`%${search.toLowerCase()}%`);
-    conditions.push(`(LOWER(client_name) LIKE $${params.length} OR LOWER(id) LIKE $${params.length} OR LOWER(COALESCE(form_reference_id,'')) LIKE $${params.length})`);
-  }
-
-  const distributorNb = searchParams.get('distributor_nb') || searchParams.get('referral_nb');
-  if (distributorNb) {
-    const nbUpper = distributorNb.toUpperCase();
-    params.push(nbUpper);
-    conditions.push(`(UPPER(referral_nb) = $${params.length} OR UPPER(nb_number) = $${params.length})`);
-  }
-
-  const hasDateFilter = searchParams.get('from') || searchParams.get('to');
-  const limitParam = parseInt(searchParams.get('limit') || '0', 10);
-  const effectiveLimit = limitParam > 0 ? limitParam : hasDateFilter ? 5000 : 250;
-
-  params.push(effectiveLimit);
-  const queryText = `SELECT * FROM branch_activity_transactions WHERE ${conditions.join(' AND ')} ORDER BY service_date DESC, created_at DESC LIMIT $${params.length}`;
-
+  const params=saleReadParameters(searchParams,scopedBranches,enforced);
+  const queryText=`SELECT * FROM branch_activity_transactions WHERE activity_type='prescription_dispensing'
+    AND ($1::text[] IS NULL OR branch_id=ANY($1))
+    AND ($2::text IS NULL OR LOWER(REPLACE(branch_id,' ','_'))=LOWER(REPLACE($2,' ','_')))
+    AND ($3::date IS NULL OR service_date::date>=$3)
+    AND ($4::date IS NULL OR service_date::date<=$4)
+    AND ($5::text IS NULL OR LOWER(client_name) LIKE $5 OR LOWER(id) LIKE $5 OR LOWER(COALESCE(form_reference_id,'')) LIKE $5)
+    AND ($6::text IS NULL OR UPPER(referral_nb)=$6 OR UPPER(nb_number)=$6)
+    ORDER BY service_date DESC,created_at DESC LIMIT $7`;
   return { queryText, params };
 }
 
@@ -592,15 +526,8 @@ async function handler(req, res) {
       let insertedRow,completedEvidence;
       try {
         insertedRow = await withTransaction(async (client) => {
-          const columns = Object.keys(record);
-          const values = Object.values(record);
-          const placeholders = columns.map((_, idx) => `$${idx + 1}`).join(', ');
-          const columnNames = columns.map((col) => `"${col}"`).join(', ');
-
-          const result = await client.query(
-            `INSERT INTO branch_walkin_sales (${columnNames}) VALUES (${placeholders}) RETURNING *`,
-            values,
-          );
+          const statement=insertStatement('branch_walkin_sales',applicationRecord('branch_walkin_sales',record));
+          const result = await client.query(statement.text,statement.params);
           const saleId = result.rows[0].id;
 
           const insufficientItems = [];
@@ -806,13 +733,9 @@ async function handler(req, res) {
         record.branch_id = existing.branch_id;
       }
       // An ordinary edit cannot rewrite price, BV, referral, or payment evidence.
-      const columns = ['customer_name','updated_at'].filter(col=>record[col]!==undefined);
-      const values = columns.map(col=>record[col]);
-      const setClause = columns.map((col, idx) => `"${col}" = $${idx + 1}`).join(', ');
-
       const result = await query(
-        `UPDATE branch_walkin_sales SET ${setClause} WHERE id = $${columns.length + 1} RETURNING *`,
-        [...values, targetId],
+        `UPDATE branch_walkin_sales SET customer_name=$1,updated_at=$2 WHERE id=$3 RETURNING *`,
+        [record.customer_name,record.updated_at,targetId],
       );
 
       return res.status(200).json({

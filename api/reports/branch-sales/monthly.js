@@ -28,18 +28,7 @@ export default async function handler(req, res) {
       ? branchId.toLowerCase().replace(/ /g, '_')
       : null;
 
-    const movConds = [`created_at >= ($1::date::timestamp AT TIME ZONE 'Africa/Windhoek') AND created_at < ($2::date::timestamp AT TIME ZONE 'Africa/Windhoek')`];
-    const movParams = [monthStart, nextMonth];
-    if (normBranchId) {
-      movConds.push(`LOWER(REPLACE(branch_id, ' ', '_')) = $${movParams.length + 1}`);
-      movParams.push(normBranchId);
-    }
-    // Qualified version for the campaign query which joins branch_walkin_sales bws
-    // (bws also has created_at and branch_id, making bare refs ambiguous).
-    const camMovConds = movConds.map(c =>
-      c.replace(/\bcreated_at\b/g, 'bim.created_at')
-       .replace(/\bLOWER\(REPLACE\(branch_id/g, 'LOWER(REPLACE(bim.branch_id')
-    );
+    const movParams = [monthStart,nextMonth,normBranchId];
 
     // Supplement params: reports table uses branch name (may be plain or prefixed)
     const rpParams = [monthStart, nextMonth];
@@ -73,7 +62,10 @@ export default async function handler(req, res) {
                 SUM(ABS(quantity) * COALESCE(NULLIF(pp.dp, 0), NULLIF(unit_price, 0), 0)) as dp_value
          FROM branch_inventory_movements
          LEFT JOIN live_product_prices pp ON LOWER(TRIM(pp.description)) = LOWER(TRIM(product_name))
-         WHERE ${movConds.join(' AND ')} AND type IN ('prescription_dispense','dispense','field_use')
+         WHERE created_at >= ($1::date::timestamp AT TIME ZONE 'Africa/Windhoek')
+           AND created_at < ($2::date::timestamp AT TIME ZONE 'Africa/Windhoek')
+           AND ($3::text IS NULL OR LOWER(REPLACE(branch_id,' ','_'))=$3)
+           AND type IN ('prescription_dispense','dispense','field_use')
          GROUP BY reference, product_name, batch_no`,
         movParams
       ),
@@ -166,7 +158,9 @@ export default async function handler(req, res) {
          FROM branch_inventory_movements bim
          LEFT JOIN live_product_prices pp ON LOWER(TRIM(pp.description)) = LOWER(TRIM(product_name))
          LEFT JOIN branch_walkin_sales bws ON bws.id = reference
-         WHERE ${camMovConds.join(' AND ')}
+         WHERE bim.created_at >= ($1::date::timestamp AT TIME ZONE 'Africa/Windhoek')
+           AND bim.created_at < ($2::date::timestamp AT TIME ZONE 'Africa/Windhoek')
+           AND ($3::text IS NULL OR LOWER(REPLACE(bim.branch_id,' ','_'))=$3)
            AND (
              type IN ('campaign_sale', 'campaign_free_item')
              OR (
@@ -190,7 +184,10 @@ export default async function handler(req, res) {
                 COALESCE(SUM(ABS(quantity) * COALESCE(charge_unit, NULLIF(unit_price, 0), NULLIF(pp.dp, 0), 0)), 0)::numeric AS refund_total
          FROM branch_inventory_movements
          LEFT JOIN live_product_prices pp ON LOWER(TRIM(pp.description)) = LOWER(TRIM(product_name))
-         WHERE ${movConds.join(' AND ')} AND type = 'refund_return'`,
+         WHERE created_at >= ($1::date::timestamp AT TIME ZONE 'Africa/Windhoek')
+           AND created_at < ($2::date::timestamp AT TIME ZONE 'Africa/Windhoek')
+           AND ($3::text IS NULL OR LOWER(REPLACE(branch_id,' ','_'))=$3)
+           AND type = 'refund_return'`,
         movParams
       ),
       // GM price list — authoritative DP source for JS-level walk-in processing

@@ -13,7 +13,7 @@ if(process.env.NODE_ENV==='production'||['true','1'].includes(process.env.REPLIT
 const id=randomUUID(),directory='/tmp/consolidated-schema-contract-'+id;
 const branchVisits=process.argv.includes('--branch-visits');
 const consolidatedSql=branchVisits?branchVisitsSql:priorSql,consolidatedParams=branchVisits?branchVisitsParams:priorParams;
-const base='generated-artifacts/final-security-release-gate',out=base+'/schema-contract-runs/'+id;
+const base='generated-artifacts/sql-security-final-closure',out=base+'/schema-contract-runs/'+id;
 await fs.mkdir(out,{recursive:true});
 const port=await new Promise(r=>{const s=net.createServer();s.listen(0,'127.0.0.1',()=>{const p=s.address().port;s.close(()=>r(p));});});
 await fs.writeFile(out+'/ownership.json',JSON.stringify({id,directory,port,createdAt:new Date().toISOString(),

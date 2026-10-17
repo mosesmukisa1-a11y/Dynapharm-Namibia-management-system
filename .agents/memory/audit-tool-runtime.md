@@ -1,6 +1,6 @@
 ---
 name: Audit tool runtime boundaries
-description: Actual clock and CSV-envelope handling for exactly-once managed metadata inspections.
+description: Actual clock, offline result decoding and invocation-owned evidence for security audits.
 ---
 
 Use an impure helper for the actual clock when checking time-limited authority
@@ -83,3 +83,14 @@ Pin source-audit coverage by file and exact source span, not raw AST visitor cou
 **How to apply:** Collect paths before binding recursion, deduplicate exact spans,
 record repeated visits, and assert that every original distinct location remains
 present. Never use deduplication to discard unresolved locations.
+
+Verification outputs must be owned by one invocation, not copied from a shared
+latest-result filename.
+
+**Why:** A failed child left a previous successful result at the shared path.
+Copying it made an unsuccessful invocation appear to contain passing evidence.
+
+**How to apply:** Use a fresh nonce directory and matching owner identity/source
+fingerprint for every child output. Missing output is NOT VERIFIED even if an
+older file exists elsewhere. Preserve invalidated evidence explicitly rather
+than silently replacing it or counting it as a current pass.

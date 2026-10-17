@@ -65,10 +65,18 @@ export default async function handler(req, res) {
       if (Object.keys(updates).length === 0)
         return res.status(400).json({ success: false, error: 'No fields to update' });
       try {
-        const setClauses = Object.keys(updates).map((f, i) => `${f} = $${i + 2}`).join(', ');
-        const vals = [userId, ...Object.values(updates)];
+        const vals = [userId, JSON.stringify(updates)];
         const updated = await getOne(
-          `UPDATE users SET ${setClauses}, updated_at = NOW()
+          `UPDATE users u SET
+             (phone,email,address,emergency_contact_name,emergency_contact_phone,
+              date_of_birth,gender,marital_status,nationality,home_language,next_of_kin_name,
+              next_of_kin_relationship,next_of_kin_phone,highest_qualification,institution_name,
+              graduation_year,field_of_study,professional_certifications)=
+             (SELECT phone,email,address,emergency_contact_name,emergency_contact_phone,
+              date_of_birth,gender,marital_status,nationality,home_language,next_of_kin_name,
+              next_of_kin_relationship,next_of_kin_phone,highest_qualification,institution_name,
+              graduation_year,field_of_study,professional_certifications
+              FROM jsonb_populate_record(u,$2::jsonb)), updated_at = NOW()
            WHERE id = $1 OR LOWER(username) = LOWER($1)
            RETURNING ${SELECT_COLS}`,
           vals

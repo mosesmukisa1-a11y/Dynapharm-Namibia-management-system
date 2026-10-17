@@ -5,7 +5,16 @@ const operationStatuses = ['draft','submitted','partially_reviewed','approved','
 const batchStatuses = ['saleable','expired','damaged','quarantine','out_of_stock'];
 const branchTerms = location => [...new Set([normalizeBranchSlug(location),
   ...branchSearchTerms(location)].filter(term => term && normalizeBranchSlug(term) === normalizeBranchSlug(location)))];
-const sqlLocation = expression => `LOWER(BTRIM(${expression}))`;
+const locationExpressions=Object.freeze({
+  'b.branch_id':'LOWER(BTRIM(b.branch_id))',
+  's.location':'LOWER(BTRIM(s.location))',
+  location:'LOWER(BTRIM(location))',
+  "l->'snapshot'->>'location'":"LOWER(BTRIM(l->'snapshot'->>'location'))",
+});
+const sqlLocation = expression => {
+  if(!Object.hasOwn(locationExpressions,expression))throw Error('Invalid SQL location expression');
+  return locationExpressions[expression];
+};
 const escapedSearch = value => `%${value.replace(/[\\%_]/g, '\\$&')}%`;
 
 function paging(input, prefix, defaultSize, fail) {
@@ -33,6 +42,17 @@ export async function readControlledStockRegister(client, user, input, { fail, p
   const allowed = restricted ? [...new Set((scope.branches || []).flatMap(branchTerms))] : [];
   const view = input.view || 'all';
   if (!['all','batches','operations'].includes(view)) fail('Unknown register view');
+  // Validate the entire requested view before any counts, hydration or reads.
+  // Previously an invalid operations filter on view=all performed batch reads.
+  if(view!=='operations'){
+    paging(input,'batch',50,fail);
+    if(input.batch_status&&!batchStatuses.includes(String(input.batch_status)))fail('Unknown batch status');
+    if(input.batch_type&&!['branch','warehouse','segregated'].includes(String(input.batch_type)))fail('Unknown batch type');
+  }
+  if(view!=='batches'){
+    paging(input,'operation',20,fail);
+    if(input.operation_status&&!operationStatuses.includes(String(input.operation_status)))fail('Unknown operation status');
+  }
   const location = String(input.location || '').trim();
   const locationTerms = location ? [...new Set([location.toLowerCase(), ...branchTerms(location)])] : [];
   const values = [restricted, allowed, locationTerms];
