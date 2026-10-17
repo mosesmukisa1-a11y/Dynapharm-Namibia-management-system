@@ -5,9 +5,11 @@ import {spawnSync} from 'node:child_process';
 import {assertCodeOnlyWebProfile, createStartupPolicy, runStartupOperation,
   STARTUP_OPERATIONS} from '../api/services/startupPolicy.js';
 import {assertProductionRotationAuthority} from '../api/services/credentialSecurity.js';
+import {TASKS} from '../worker/tasks.mjs';
 const flags={STARTUP_MODE:'code-only',ALLOW_SCHEMA_SYNC:'false',ALLOW_REFERENCE_SEEDS:'false',
   ALLOW_INVENTORY_SEED:'false',ALLOW_STOCK_SUMMARY_DDL:'false',ENABLE_STOCK_SCHEDULER:'false',
-  ENABLE_STOCK_HEALTH_DIGEST:'false',WORKER_ENABLED:'false'};
+  ENABLE_STOCK_HEALTH_DIGEST:'false',WORKER_ENABLED:'false',
+  ...Object.fromEntries(TASKS.map(t=>[t.flag,'false']))};
 it('fails closed for every missing/invalid strict flag and every worker task override',()=>{
   for(const marker of [{NODE_ENV:'production'},{REPLIT_DEPLOYMENT:'1'},{REPLIT_DEPLOYMENT:'true'}]){
     expect(createStartupPolicy({...flags,...marker}).writesAllowed).toBe(false);

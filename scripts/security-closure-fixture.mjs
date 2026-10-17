@@ -1,0 +1,207 @@
+// Entirely new PostgreSQL cluster, schema from candidate SQL/DDL only.
+// No configured connection, business schema, business row or credential is read.
+import {spawn} from 'node:child_process';
+import {randomUUID,randomBytes,createHash} from 'node:crypto';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
+import net from 'node:net';
+import pg from 'pg';
+import bcrypt from 'bcryptjs';
+import {parse} from '@babel/parser';
+import {TASKS} from '../worker/tasks.mjs';
+import {REQUIRED_STARTUP_SCHEMA} from '../api/services/startupSchema.js';
+if(process.env.NODE_ENV==='production'||['1','true'].includes(process.env.REPLIT_DEPLOYMENT))
+  throw Error('Production fixture refused');
+const root=process.cwd(),out=path.join(root,'generated-artifacts/security-remediation-closure');
+await fs.mkdir(out,{recursive:true});
+const temp=await fs.mkdtemp(path.join(os.tmpdir(),'security-closure-'));
+const port=await new Promise(r=>{const s=net.createServer();s.listen(0,'127.0.0.1',()=>{
+  const p=s.address().port;s.close(()=>r(p));});});
+const name='stock_audit_'+randomUUID().replaceAll('-','');
+const owner={database:name,maintenanceDatabase:'postgres',clusterDirectory:temp,
+  hostFingerprint:createHash('sha256').update('127.0.0.1:'+port).digest('hex'),
+  processId:process.pid,createdAt:new Date().toISOString(),cleanupOwner:'security-closure-fixture',
+  disposable:true,production:false,identitySource:'new initdb cluster, no inherited configuration'};
+await fs.writeFile(out+'/fixture-ownership.json',JSON.stringify(owner,null,2));
+await fs.mkdir(out+'/fixture-runs',{recursive:true});
+await fs.writeFile(out+'/fixture-runs/'+name+'.json',JSON.stringify(owner,null,2));
+const env={PATH:process.env.PATH,HOME:process.env.HOME,LANG:'C.UTF-8'};
+function command(cmd,args,{input,childEnv=env}={}){
+  return new Promise((resolve,reject)=>{
+    const p=spawn(cmd,args,{env:childEnv,stdio:['pipe','pipe','pipe']});
+    let text='';p.stdout.on('data',x=>text+=x);p.stderr.on('data',()=>{});
+    p.on('error',()=>reject(Error('Owned subprocess unavailable')));
+    p.on('exit',c=>c===0?resolve(text):reject(Error('Owned subprocess failed: '+cmd)));
+    p.stdin.end(input);
+  });
+}
+let cluster=false,db,admin,app,cleaning=false,logs='';
+const markers=[randomBytes(40).toString('hex'),randomBytes(40).toString('hex')];
+async function cleanup(){
+  if(cleaning)return;cleaning=true;
+  if(app&&app.exitCode===null){app.kill('SIGTERM');await new Promise(r=>app.once('exit',r));}
+  await db?.end();
+  if(admin){await admin.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);await admin.end();}
+  if(cluster)await command('pg_ctl',['-D',temp+'/data','-m','fast','-w','stop']);
+  await fs.rm(temp,{recursive:true,force:true});
+  await fs.writeFile(out+'/browser-cleanup.json',JSON.stringify({database:name,
+    isolatedDatabaseDropped:true,ownedClusterStopped:true,temporaryDirectoryRemoved:true,
+    privateCredentialFileCreated:false,childStopped:true,productionModified:false},null,2));
+  await fs.writeFile(out+'/fixture-runs/'+name+'-cleanup.json',JSON.stringify({
+    database:name,cleanupVerified:true,cleanedAt:new Date().toISOString(),productionModified:false},null,2));
+}
+process.once('SIGTERM',()=>cleanup().then(()=>process.exit(0)));
+process.once('SIGINT',()=>cleanup().then(()=>process.exit(0)));
+try{
+  await command('initdb',['-D',temp+'/data','-U','fixture_owner','--auth=trust','--no-locale']);
+  await command('pg_ctl',['-D',temp+'/data','-l',temp+'/postgres.log','-o',
+    `-p ${port} -h 127.0.0.1 -k ${temp}`,'-w','start']);cluster=true;
+  // Every connection is explicit and limited to the newly created loopback cluster.
+  const cfg={host:'127.0.0.1',port,user:'fixture_owner',ssl:false,max:1};
+  admin=new pg.Pool({...cfg,database:'postgres'});
+  await admin.query(`CREATE DATABASE ${name}`);
+  db=new pg.Pool({...cfg,database:name});
+  // Explicit synthetic foundations: these legacy tables have no CREATE migration.
+  // This is fixture scaffolding, NOT evidence that a fresh production install works.
+  await db.query(`CREATE TABLE branches(id text PRIMARY KEY,name text,status text,code text,
+    created_at timestamptz DEFAULT now(),updated_at timestamptz DEFAULT now());
+    CREATE TABLE branch_activity_transactions(id text PRIMARY KEY,branch_id text,branch_name text,
+    client_id text,client_name text,client_phone text,client_type text,nb_number text,referral_nb text,
+    service_date date,service_time text,activity_type text,workflow_source text,form_reference_id text,
+    consultation_fee numeric DEFAULT 0,product_total_dp numeric DEFAULT 0,product_total_cp numeric DEFAULT 0,
+    total_qty numeric DEFAULT 0,grand_total numeric DEFAULT 0,payment_status text,payment_method text,
+    stock_impact boolean DEFAULT false,stock_status text,prescription_status text,consultation_status text,
+    reporting_status text,captured_by text,created_at timestamptz DEFAULT now(),updated_at timestamptz DEFAULT now());`);
+  const statements=[];
+  const migrations=(await fs.readdir(root+'/migrations')).filter(n=>/^\d.*\.sql$/.test(n)).sort();
+  for(const file of migrations)statements.push({file:'migrations/'+file,sql:await fs.readFile(root+'/migrations/'+file,'utf8')});
+  function walk(n,fn){if(!n||typeof n!=='object')return;fn(n);
+    for(const [k,v]of Object.entries(n)){if(['loc','extra','start','end'].includes(k))continue;
+      if(Array.isArray(v))v.forEach(x=>walk(x,fn));else if(v&&typeof v==='object')walk(v,fn);}}
+  async function sources(dir){let result=[];for(const d of await fs.readdir(dir,{withFileTypes:true})){
+    if(d.isDirectory())result.push(...await sources(dir+'/'+d.name));
+    else if(d.name.endsWith('.js'))result.push(dir+'/'+d.name);}return result;}
+  for(const file of [root+'/server.js',...await sources(root+'/api')]){
+    const ast=parse(await fs.readFile(file,'utf8'),{sourceType:'module',plugins:['jsx']});
+    walk(ast,n=>{
+      const sql=n.type==='StringLiteral'?n.value:
+        n.type==='TemplateLiteral'&&n.expressions.length===0?n.quasis[0].value.cooked:null;
+      if(sql&&/^\s*(?:CREATE (?:TABLE|INDEX|UNIQUE INDEX|OR REPLACE VIEW)|ALTER TABLE)\b/i.test(sql))
+        statements.push({file:path.relative(root,file)+':'+n.loc.start.line,sql});
+    });
+  }
+  // Converge dependency ordering without executing application bootstrap or data copies.
+  let pending=statements;
+  for(let pass=0;pass<8&&pending.length;pass++){
+    const next=[];for(const s of pending){try{await db.query(s.sql);}catch(e){next.push({...s,code:e.code});}}
+    if(next.length===pending.length&&pass>1){pending=next;break;}pending=next;
+  }
+  await fs.writeFile(out+'/schema-fixture.json',JSON.stringify({source:'candidate migrations and static DDL',
+    schemaClone:false,sourceDatabaseAccess:false,attempted:statements.length,
+    syntheticFoundations:['branches','branch_activity_transactions'],
+    freshInstallSchemaCertification:false,
+    unresolved:pending.map(s=>({file:s.file,code:s.code}))},null,2));
+  // Missing foundational tables are a visible fixture blocker, never invented from data.
+  const ready=await db.query(`SELECT table_name,column_name FROM information_schema.columns WHERE table_schema='public'`);
+  const missing=Object.entries(REQUIRED_STARTUP_SCHEMA).flatMap(([t,cols])=>cols.filter(c=>
+    !ready.rows.some(r=>r.table_name===t&&r.column_name===c)).map(c=>t+'.'+c));
+  await fs.writeFile(out+'/schema-missing.json',JSON.stringify(missing,null,2));
+  if(missing.length)throw Error('Candidate-only schema fixture incomplete; see schema-missing.json');
+  // Existing auth contract selects this legacy field; no corresponding additive
+  // migration was found. Fixture-only addition, retained as a fresh-setup gap.
+  await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS additional_roles jsonb DEFAULT '[]'`);
+  await db.query(`INSERT INTO branches(id,name,status) VALUES('townshop','Windhoek CBD','active'),
+    ('tsumeb','Tsumeb','active') ON CONFLICT DO NOTHING`);
+  const material={password:randomBytes(24).toString('base64url'),
+    permanent:randomBytes(24).toString('base64url'),
+    accounts:[['CLOSURE-USER','consultant',true],['CLOSURE-ADMIN','admin',false],
+      ['CLOSURE-OTHER','consultant',false],['CLOSURE-GM','gm',false]]};
+  for(const [id,role,forced]of material.accounts)
+    await db.query(`INSERT INTO users(id,username,password_hash,role,full_name,branch,is_active,
+      must_change_password,metadata) VALUES($1,$2,$3,$4,'Synthetic closure account','townshop',true,$5,'{}')`,
+      [id,id.toLowerCase(),await bcrypt.hash(material.password,12),role,forced]);
+  await db.query(`INSERT INTO clients(id,full_name,branch) VALUES
+    ('CLOSURE-OWN-CLIENT','Synthetic closure client','townshop'),
+    ('CLOSURE-OTHER-CLIENT','Synthetic closure client','tsumeb')`);
+  const profile={STARTUP_MODE:'code-only',ALLOW_SCHEMA_SYNC:'false',ALLOW_REFERENCE_SEEDS:'false',
+    ALLOW_INVENTORY_SEED:'false',ALLOW_STOCK_SUMMARY_DDL:'false',ENABLE_STOCK_SCHEDULER:'false',
+    ENABLE_STOCK_HEALTH_DIGEST:'false',WORKER_ENABLED:'false',
+    ...Object.fromEntries(TASKS.map(t=>[t.flag,'false']))};
+  const dbUrl=`postgresql://fixture_owner@127.0.0.1:${port}/${name}`;
+  const testEnv={...env,DATABASE_URL:dbUrl,DATABASE_SSL:'0',STOCK_AUDIT_ISOLATED:'1',
+    STOCK_AUDIT_DATABASE:name,REPLIT_DEPLOYMENT:'0',NODE_ENV:'test',AUTH_SECRET:markers[0],
+    JWT_SECRET:markers[0],SESSION_SECRET:markers[0],SYNTHETIC_SERVER_ONLY_MARKER:markers[1],...profile};
+  if(process.argv.includes('--database-suites')||process.argv.includes('--credential-only')){
+    const runs=[['full',['scripts/run-isolated-stock-audit.mjs','--all']],
+      ['credential',['scripts/run-isolated-stock-audit.mjs','tests/credential-security.spec.js']]];
+    for(const [label,args]of (process.argv.includes('--credential-only')?runs.slice(1):runs)){
+      let succeeded=true;
+      try{
+        await command(process.execPath,args,{childEnv:{...testEnv,
+          SECURITY_FIXTURE_OWNERSHIP_DIR:out+'/database-ownership'}});
+      }catch{succeeded=false;await fs.writeFile(out+'/'+label+'-database-failure.json',JSON.stringify({status:'FAIL',
+        reason:'Owned suite subprocess failed; no private stderr exported'}));}
+      try{await fs.copyFile(root+'/generated-artifacts/stock-audit/test-results.json',out+'/'+label+'-database-results.json');}catch{}
+      if(succeeded)await fs.rm(out+'/'+label+'-database-failure.json',{force:true});
+    }
+    await cleanup();
+  }else{
+    const entry=temp+'/entry.mjs';
+    await fs.writeFile(entry,`await import(${JSON.stringify(root+'/scripts/start-code-only-web.mjs')});
+      const {server}=await import(${JSON.stringify(root+'/server.js')});
+      if(!server.listening)await new Promise(r=>server.once('listening',r));
+      console.log('CLOSURE_PORT:'+server.address().port);
+      process.on('SIGTERM',async()=>{server.closeAllConnections?.();server.close();
+        await (await import(${JSON.stringify(root+'/api/db.js')})).closePool();process.exit(0);});`);
+    app=spawn(process.execPath,[entry],{cwd:root,env:{...testEnv,HOST:'127.0.0.1',PORT:'0'},
+      stdio:['ignore','pipe','pipe']});
+    app.stdout.on('data',b=>logs+=b);app.stderr.on('data',b=>logs+=b);
+    const start=Date.now();
+    while(!logs.includes('CLOSURE_PORT:')&&Date.now()-start<30000)await new Promise(r=>setTimeout(r,100));
+    const match=logs.match(/CLOSURE_PORT:(\d+)/);if(!match)throw Error('Strict launcher did not become ready');
+    const baseUrl='http://127.0.0.1:'+match[1];
+    await fs.writeFile(out+'/startup-rehearsal.json',JSON.stringify({ready:true,strictLauncher:true,
+      fixtureDatabase:name,profile,port:Number(match[1]),productionModified:false,
+      compatibilityStatus:(await fetch(baseUrl+'/api/health')).status,
+      markerInLogs:markers.some(m=>logs.includes(m)),credentialInLogs:logs.includes(material.password)},null,2));
+    const probes=[];
+    for(const route of ['/server.js','/scripts/seed-users.js','/generated-artifacts/security-remediation/report.md',
+      '/.git/config','/.env','/assets/test.js.map','/node_modules/pg/package.json']){
+      const response=await fetch(baseUrl+route);
+      probes.push({route,status:response.status,expected:404,result:response.status===404?'PASS':'FAIL'});
+    }
+    const responses=[];
+    for(const route of ['/api/auth/me','/api/nonexistent']){
+      const response=await fetch(baseUrl+route);responses.push(await response.text());
+    }
+    const files=[];async function bundles(dir){for(const f of await fs.readdir(dir,{withFileTypes:true})){
+      if(f.isDirectory())await bundles(dir+'/'+f.name);else files.push(dir+'/'+f.name);}}
+    await bundles(root+'/dist');
+    let leaked=false;for(const file of files){const text=await fs.readFile(file,'utf8');
+      if(markers.some(m=>text.includes(m)))leaked=true;}
+    await fs.writeFile(out+'/secret-output-verification.json',JSON.stringify({
+      syntheticMarkersOnly:true,configuredSecretsRetrieved:false,publicDownloadProbes:probes,
+      startupLogs:markers.some(m=>logs.includes(m))?'FAIL':'PASS',
+      sampledBrowserResponses:responses.some(t=>markers.some(m=>t.includes(m)))?'FAIL':'PASS',
+      generatedBundles:leaked?'FAIL':'PASS',bundleFiles:files.length,
+      sourceMapsPresent:files.filter(f=>f.endsWith('.map')).length,status:'PARTIAL',
+      limitations:['Finite sampled routes only; not proof of every application error path.',
+        'Production deployment artifacts and clean-install archive gate not verified.']},null,2));
+    // One owned automation process receives synthetic material via IPC only.
+    // No file, CLI argument, console, trace or screenshot contains credential values.
+    const child=spawn(process.execPath,[root+'/scripts/security-closure-browser.mjs'],{
+      env:{...env},stdio:['ignore','ignore','ignore','ipc']});
+    child.send({baseUrl,material,out,markers,adminOnly:process.argv.includes('--admin-only')});
+    const result=await new Promise(r=>child.once('exit',code=>r(code)));
+    await fs.writeFile(out+'/secret-log-check.json',JSON.stringify({status:markers.some(m=>logs.includes(m))||
+      logs.includes(material.password)||logs.includes(material.permanent)?'FAIL':'PASS',
+      scope:'full captured strict-launcher stdout and stderr',syntheticOnly:true}));
+    if(result!==0)throw Error('Browser rehearsal incomplete; see browser-results.json');
+    await cleanup();
+  }
+}catch(error){
+  await fs.writeFile(out+'/fixture-failure.json',JSON.stringify({status:'FAIL',
+    reason:/Candidate-only|Strict launcher|Browser rehearsal/.test(error.message)?error.message:'Fixture operation failed; details withheld'}));
+  await cleanup();process.exitCode=1;
+}

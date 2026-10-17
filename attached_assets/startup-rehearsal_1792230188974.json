@@ -1,0 +1,250 @@
+{
+  "strictLauncher": true,
+  "isolated": true,
+  "accountsCreatedByFixture": 2,
+  "productionModified": false,
+  "startupSkips": [
+    {
+      "event": "startup.operation.skipped",
+      "operation": "runtime-version-file",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    },
+    {
+      "event": "startup.operation.skipped",
+      "operation": "uploads-directory",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    },
+    {
+      "event": "startup.operation.skipped",
+      "operation": "video-cache-cleanup-timer",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    },
+    {
+      "event": "startup.operation.skipped",
+      "operation": "price-catalogue-bootstrap",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    },
+    {
+      "event": "startup.operation.skipped",
+      "operation": "price-schema",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    },
+    {
+      "event": "startup.operation.skipped",
+      "operation": "price-import-schema",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    },
+    {
+      "event": "startup.operation.skipped",
+      "operation": "product-package-seeds",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    },
+    {
+      "event": "startup.operation.skipped",
+      "operation": "product-code-cif-seed",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    },
+    {
+      "event": "startup.operation.skipped",
+      "operation": "price-activation-timer",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    },
+    {
+      "event": "startup.operation.skipped",
+      "operation": "request-due-price-activation",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    },
+    {
+      "event": "startup.operation.skipped",
+      "operation": "legacy-database-bootstrap",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    },
+    {
+      "event": "startup.operation.skipped",
+      "operation": "database-connectivity-read",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    },
+    {
+      "event": "startup.operation.skipped",
+      "operation": "warehouse-location-seed",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    },
+    {
+      "event": "startup.operation.skipped",
+      "operation": "initial-admin-seed",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    },
+    {
+      "event": "startup.operation.skipped",
+      "operation": "branch-alias-normalization",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    },
+    {
+      "event": "startup.operation.skipped",
+      "operation": "canonical-branch-seed",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    },
+    {
+      "event": "startup.operation.skipped",
+      "operation": "completed-status-normalization",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    },
+    {
+      "event": "startup.operation.skipped",
+      "operation": "schema-sync",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    },
+    {
+      "event": "startup.operation.skipped",
+      "operation": "client-history-migration-production-guard",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    },
+    {
+      "event": "startup.operation.skipped",
+      "operation": "controlled-stock-schema",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    },
+    {
+      "event": "startup.operation.skipped",
+      "operation": "automation-config-seed",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    },
+    {
+      "event": "startup.operation.skipped",
+      "operation": "campaign-schema",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    },
+    {
+      "event": "startup.operation.skipped",
+      "operation": "petty-cash-schema",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    },
+    {
+      "event": "startup.operation.skipped",
+      "operation": "distributor-bonus-schema",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    },
+    {
+      "event": "startup.operation.skipped",
+      "operation": "supplier-order-schema",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    },
+    {
+      "event": "startup.operation.skipped",
+      "operation": "payment-voucher-schema",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    },
+    {
+      "event": "startup.operation.skipped",
+      "operation": "distributor-statement-schema",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    },
+    {
+      "event": "startup.operation.skipped",
+      "operation": "system-settings-schema",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    },
+    {
+      "event": "startup.operation.skipped",
+      "operation": "receipt-counter-schema",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    },
+    {
+      "event": "startup.operation.skipped",
+      "operation": "appointment-branch-normalization",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    },
+    {
+      "event": "startup.operation.skipped",
+      "operation": "report-branch-backfill",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    },
+    {
+      "event": "startup.operation.skipped",
+      "operation": "report-branch-normalization",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    },
+    {
+      "event": "startup.operation.skipped",
+      "operation": "inventory-balance-seed",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    },
+    {
+      "event": "startup.operation.skipped",
+      "operation": "disabled-historical-stock-repairs",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    },
+    {
+      "event": "startup.operation.skipped",
+      "operation": "stock-summary-ddl",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    },
+    {
+      "event": "startup.operation.skipped",
+      "operation": "stock-scheduler",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    },
+    {
+      "event": "startup.operation.skipped",
+      "operation": "scheduler-missed-run-backfill",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    },
+    {
+      "event": "startup.operation.skipped",
+      "operation": "scheduler-periodic-jobs",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    },
+    {
+      "event": "startup.operation.skipped",
+      "operation": "staff-reference-seed",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    },
+    {
+      "event": "startup.operation.skipped",
+      "operation": "due-price-activation-at-startup",
+      "startupMode": "code-only",
+      "reason": "code-only policy"
+    }
+  ],
+  "applicationLogContainsCredentialValues": false,
+  "ready": true
+}

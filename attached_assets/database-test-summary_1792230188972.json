@@ -1,0 +1,8 @@
+{
+  "isolation": "one owned database per suite",
+  "numTotalTests": 378,
+  "numPassedTests": 378,
+  "numFailedTests": 0,
+  "numPendingTests": 0,
+  "success": true
+}

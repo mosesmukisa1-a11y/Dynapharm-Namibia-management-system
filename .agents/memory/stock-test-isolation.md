@@ -157,3 +157,14 @@ Serial test files can still contaminate whole-company baselines through retained
 **Why:** The combined suite included other fixtures' legitimate clients, and a template clone intermittently failed immediately after the pool had closed.
 
 **How to apply:** Use independent owned databases for whole-scope suites. Drain only the exact owned template from a separate control connection; never sweep development/production sessions or reuse stale test-result JSON after a harness failure.
+
+Concurrent fixture processes must not share mutable ownership/cleanup result
+filenames as their sole evidence.
+
+**Why:** Another run's successful cleanup marker masked an interrupted browser
+fixture whose recorded local PostgreSQL cluster was still running.
+
+**How to apply:** Journal ownership before provisioning under unique run IDs,
+retain per-run cleanup, and verify the exact owned directory/PID is absent.
+Aggregate reports only after matching ownership, rather than trusting the latest
+shared cleanup file. Do not sweep ambiguous older disposable names.

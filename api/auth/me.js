@@ -45,7 +45,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({ success: true, user: sanitizeUser(user) });
   } catch (error) {
-    console.error('Session lookup error:', error);
+    console.error('Session lookup failed');
     return res.status(500).json({ error: 'Internal server error' });
   }
 }

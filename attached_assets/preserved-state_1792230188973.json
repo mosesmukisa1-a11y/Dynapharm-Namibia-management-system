@@ -1,0 +1,14 @@
+{
+  "recordedAtUtc": "2026-10-17T09:25:26.165557+00:00",
+  "initialCommit": "c8ed35e929559447963442627906090ebd55ecd2",
+  "initialBranch": "stock-worker-release-2026-10-15",
+  "applicationSourceCommit": "0be5f34cd1119b1f218000ec611568e88c78ecff",
+  "initialStatus": "One untracked user instruction attachment; no tracked modifications",
+  "remediationBranch": "security/emergency-startup-remediation-20261017",
+  "initialLockfileSha256": "4593e85c2b492642f2e899e2fede13ac5c06c6327968260b4047482745f38c9c",
+  "initialUntrackedFiles": [
+    "attached_assets/Pasted--Emergency-credential-and-startup-security-remediation-_1792228282913.txt"
+  ],
+  "productionSourceIdentity": "owner-provided only; no production inspection authorized or performed",
+  "productionModified": false
+}

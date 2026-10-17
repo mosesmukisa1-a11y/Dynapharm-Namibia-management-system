@@ -24,3 +24,13 @@ scan does not sanitize retained history.
 **How to apply:** Share only sanitized inventories. Keep historical cleanup,
 production credential rotation and signing-secret rotation under separate
 explicit authority; do not restore exposed credentials as a rollback.
+
+Allow fresh password authentication on only the exact credential-login POST
+routes even when an old session cookie has been revoked.
+
+**Why:** A successful reset invalidated the owner's old session, but rejecting
+that stale cookie before the password handler prevented using the new password.
+
+**How to apply:** Keep current-session validation on business APIs and reset
+authority. Test login from the invalidated browser context, not only an empty
+context, alongside unaffected-account continuity and one-use temporary login.

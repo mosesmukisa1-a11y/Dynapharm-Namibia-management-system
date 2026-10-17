@@ -7,9 +7,11 @@ const root=process.env.PREDEPLOY_TARGET_ROOT;
 if(!root)throw Error('Owned exported target required');
 const policy=await import(pathToFileURL(path.join(root,'api/services/startupPolicy.js')));
 const schema=await import(pathToFileURL(path.join(root,'api/services/startupSchema.js')));
+const {TASKS}=await import(pathToFileURL(path.join(root,'worker/tasks.mjs')));
 const config={STARTUP_MODE:'code-only',ALLOW_SCHEMA_SYNC:'false',ALLOW_REFERENCE_SEEDS:'false',
   ALLOW_INVENTORY_SEED:'false',ALLOW_STOCK_SUMMARY_DDL:'false',ENABLE_STOCK_SCHEDULER:'false',
-  ENABLE_STOCK_HEALTH_DIGEST:'false',WORKER_ENABLED:'false'};
+  ENABLE_STOCK_HEALTH_DIGEST:'false',WORKER_ENABLED:'false',
+  ...Object.fromEntries(TASKS.map(t=>[t.flag,'false']))};
 test('proposed explicit configuration is nonmutating',()=>{
   const p=policy.createStartupPolicy(config);
   assert.equal(p.startupMode,'code-only');assert.equal(p.writesAllowed,false);assert.equal(p.enableStockScheduler,false);

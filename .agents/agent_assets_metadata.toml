@@ -602,3 +602,17 @@ mtime_ms = 1792230132501
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/6a1c3a04-81b3-4bca-b113-85334b2b18fc/e94c1c29-d3ec-439a-9eb6-9b74cf24b83f"
 storage_version_token = "1792230155746009"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "fchwsYetbb7H9F7saRIG7"
+uri = "file://generated-artifacts/security-remediation-closure/security-remediation-closure-review.zip"
+type = "unspecified"
+title = "Security remediation closure — review bundle"
+description = "Sanitized report, candidate manifest, staged browser evidence, screenshots, scanner triage, test summaries and remaining blockers. No credentials, raw source, deletion diffs or connection strings included."
+logical_id = "c5dc71a3-0c3c-47f8-ac8c-bf5f294c664b"
+content_hash = "sha256:9e6420a5e14b0ef3152dda50cbb7286d94e302ecdb3e43844ccb29bc184df178"
+size = 143599
+mtime_ms = 1792232648873
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/c5dc71a3-0c3c-47f8-ac8c-bf5f294c664b/2f7cf6a5-35a2-4b35-9e01-cc73bfd30094"
+storage_version_token = "1792232682410668"
+content_type = "application/octet-stream"

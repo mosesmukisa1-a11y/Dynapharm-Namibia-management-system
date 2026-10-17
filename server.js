@@ -234,6 +234,8 @@ app.use('/api', async (req, res, next) => {
 
   const routePath = req.baseUrl + req.path.replace(/\/$/, '');
   const isPublic = isPublicRoute(routePath);
+  const {isFreshCredentialLogin}=await import('./api/services/sessionPolicy.js');
+  if(isFreshCredentialLogin(req.method,routePath))return next();
 
   try {
     const { getTokenFromRequest, verifyAuthToken } = await import('./api/_lib/auth.js');
@@ -253,7 +255,7 @@ app.use('/api', async (req, res, next) => {
     }
   } catch (err) {
     if (!isPublic) {
-      console.error('Auth middleware error:', err);
+      console.error('Auth middleware validation failed');
       return res.status(401).json({ success: false, error: 'Authentication required' });
     }
   }
@@ -2489,7 +2491,9 @@ app.all('/api/*', async (req, res) => {
 });
 
 app.use((req, res, next) => {
-  if (req.path.includes('..') || req.path.startsWith('/node_modules')) {
+  if (req.path.includes('..') || req.path.startsWith('/node_modules') ||
+      req.path.split('/').some(p=>p.startsWith('.')) ||
+      /\.(?:map|env)$/i.test(req.path)) {
     res.status(404).send('Not found');
     return;
   }

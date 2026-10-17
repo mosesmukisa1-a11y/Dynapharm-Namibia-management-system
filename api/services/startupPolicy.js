@@ -5,6 +5,7 @@
  * allowInventorySeed: boolean, allowStockSummaryDDL: boolean,
  * enableStockScheduler: boolean}>} StartupPolicy
  */
+import {TASKS} from '../../worker/tasks.mjs';
 const permissionFlags = ['ALLOW_SCHEMA_SYNC', 'ALLOW_REFERENCE_SEEDS',
   'ALLOW_INVENTORY_SEED', 'ALLOW_STOCK_SUMMARY_DDL', 'ENABLE_STOCK_SCHEDULER'];
 
@@ -23,6 +24,9 @@ export function createStartupPolicy(env = {}) {
     if (env.STARTUP_MODE !== 'code-only')
       throw new Error('Production requires explicit STARTUP_MODE=code-only');
     for (const flag of [...permissionFlags, 'ENABLE_STOCK_HEALTH_DIGEST', 'WORKER_ENABLED'])
+      if (env[flag] !== 'false')
+        throw new Error(`Production requires explicit ${flag}=false`);
+    for (const {flag} of TASKS)
       if (env[flag] !== 'false')
         throw new Error(`Production requires explicit ${flag}=false`);
     for (const [flag, value] of Object.entries(env))

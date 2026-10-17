@@ -1,0 +1,71 @@
+{
+  "verdict": "partial",
+  "actions": [
+    {
+      "action": "GET /consultant",
+      "status": 200
+    },
+    {
+      "action": "GET /api/prices (credentialed)",
+      "status": 403
+    },
+    {
+      "action": "temporary-password mismatch validation",
+      "result": "expected mismatch feedback appeared"
+    },
+    {
+      "action": "POST /api/auth/credential-security (password rotation)",
+      "status": null,
+      "result": "form disappeared and sign-out observed; status capture timed out"
+    },
+    {
+      "action": "old temporary password login",
+      "endpoint": "/api/auth/login",
+      "status": 401
+    },
+    {
+      "action": "new permanent password login",
+      "endpoint": "/api/auth/login",
+      "status": 200
+    },
+    {
+      "action": "GET /api/auth/me after reload",
+      "status": 200,
+      "role": "consultant",
+      "branch": "townshop",
+      "mustChangePassword": false
+    },
+    {
+      "action": "GET /server.js",
+      "status": 404,
+      "sourceContent": false
+    },
+    {
+      "action": "GET /scripts/seed-users.js",
+      "status": 404,
+      "sourceContent": false
+    },
+    {
+      "action": "GET /generated-artifacts/security-remediation/preserved-state.json",
+      "status": 404,
+      "sourceContent": false
+    },
+    {
+      "action": "consultant POST issue-reset",
+      "status": 403
+    },
+    {
+      "action": "anonymous POST issue-reset",
+      "status": 401
+    }
+  ],
+  "adminNonMutationIndependentlyVerified": false,
+  "screenshots": [
+    "generated-artifacts/security-remediation/password-change-empty.png",
+    "generated-artifacts/security-remediation/post-change-portal.png"
+  ],
+  "notes": [
+    "No credentials, cookies, hashes, tokens, or request bodies recorded.",
+    "A read-only notebook database lookup did not find the synthetic admin fixture; database-helper provenance was not established, so no further database access was performed."
+  ]
+}

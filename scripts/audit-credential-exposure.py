@@ -72,6 +72,11 @@ def scan():
     for extra in ["api/services/credentialSecurity.js", "api/auth/credential-security.js",
                   "client/src/components/RequiredPasswordChange.jsx",
                   "scripts/audit-credential-exposure.py", "scripts/security-browser-rehearsal.mjs",
+                  "scripts/security-closure-fixture.mjs", "scripts/security-closure-browser.mjs",
+                  "scripts/security-closure-triage.mjs", "scripts/security-closure-source-copy.py",
+                  "scripts/security-closure-owned-cleanup.py",
+                  "scripts/security-closure-evidence.py",
+                  "api/services/sessionPolicy.js", "tests/session-policy.unit.test.js",
                   "tests/credential-security.spec.js", "tests/credential-security.unit.test.js"]:
         if extra not in tracked and Path(extra).exists():
             tracked.append(extra)

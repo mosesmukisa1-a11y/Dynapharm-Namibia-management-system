@@ -1,0 +1,18 @@
+{
+  "status": "PASS",
+  "scope": "offline restored sanitized candidate source; strict policy/schema contract only; NOT production recovery/PITR or deployed fallback verification",
+  "exitCode": 0,
+  "sourceManifest": {
+    "api/services/startupPolicy.js": "434e5e4b9ce15c0b10311ed99ff1267a9603ef7dc8d3e25051fada3986613fa4",
+    "api/services/startupSchema.js": "9897c989e0320116d9045a6b3fac0905ea1b05b0e62fdb3a964ac47747d5925c",
+    "scripts/start-code-only-web.mjs": "d7ecb243254b0bd56b5fd7c31fdf13eea3967a00a4534a296bde512cbf04d45c",
+    "server.js": "d63295d1040dc43421232aaad556c3aec0187ed4f0497615dd0ef873d3b74b06",
+    "api/services/credentialSecurity.js": "7ed9693f4a27fed18b71e00c3f56637d84035aa23d47bf5e5cdb656ec0bad224",
+    "api/auth/credential-security.js": "1d68592052fe9d11568ff54efab14a52faee249025f681c8821ba9a56d20625a",
+    ".replit": "866ec2f3c4eb4d2f575a6dcefd9679cc03f8fa01e7e9aa06d016a308bc82cb49",
+    "package.json": "1d13e4d59b1c4f16bca26196125b236f93f56d4fe5a3b2feb2f7253375b2be5c",
+    "package-lock.json": "4593e85c2b492642f2e899e2fede13ac5c06c6327968260b4047482745f38c9c"
+  },
+  "productionModified": false,
+  "sourceCopyCleaned": true
+}

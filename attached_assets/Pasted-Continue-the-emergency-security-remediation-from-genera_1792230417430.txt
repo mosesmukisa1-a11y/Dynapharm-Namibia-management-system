@@ -1,0 +1,230 @@
+Continue the emergency security remediation from:
+
+`generated-artifacts/security-remediation/report.md`
+
+Status must remain:
+
+`PARTIALLY VERIFIED - DO NOT PUBLISH`
+
+Do not publish, republish, deploy, migrate, restart, stop services, activate workers, rotate production credentials, invalidate production sessions, alter production settings, or write to the production database.
+
+Work only on the current remediation candidate:
+
+- Branch: `security/emergency-startup-remediation-20261017`
+- Starting HEAD: `c8ed35e929559447963442627906090ebd55ecd2`
+- Preserve all existing user and unrelated changes.
+- Never print, copy, export or log passwords, tokens, cookies, signing secrets, reset tokens, provider keys or database connection strings.
+
+## Objective
+
+Close the remaining local and isolated release blockers without touching production.
+
+## 1. Establish test isolation before every database action
+
+Create a fresh disposable PostgreSQL database with a unique recorded name.
+
+Record, before provisioning:
+
+- database name
+- sanitized host fingerprint
+- process ID
+- creation timestamp
+- cleanup owner
+
+Fail closed if the target cannot be proved disposable and non-production.
+
+Do not use notebook database helpers, inherited default connections or an unverified `DATABASE_URL`.
+
+Do not query any database whose target identity is not recorded.
+
+## 2. Resolve the interrupted fixture safely
+
+Investigate the previously interrupted fixture using only local process records and disposable-database ownership evidence.
+
+Do not delete any of the 14 ambiguous database candidates merely because their names look temporary.
+
+Delete a candidate only if ownership by this remediation run can be positively established.
+
+If ownership cannot be established, preserve it and report:
+
+`INTERRUPTED FIXTURE CLEANUP: NOT VERIFIED`
+
+This gap must not be hidden or converted into a pass.
+
+## 3. Repeat the browser security workflow
+
+Run the browser rehearsal exclusively against the newly recorded disposable database and loopback application.
+
+Capture exact HTTP response status and safe response metadata for:
+
+- temporary-password login
+- restricted-session access denial
+- password-change submission
+- automatic sign-out
+- old temporary password rejection
+- new permanent password acceptance
+- `/api/auth/me` after reload
+- current role and branch enforcement
+- source-file download denial
+- anonymous reset denial
+- consultant reset denial
+- exact-ID unauthorized reset denial
+- authorized admin/GM reset workflow
+- unrelated account session continuity
+- affected account session invalidation
+
+Do not record credentials, cookies, request bodies, hashes or reset tokens.
+
+The password-change POST must have an explicitly captured successful response. Inferring success from navigation or sign-out is insufficient.
+
+Verify the Admin reset interface renders and performs the isolated workflow. Do not use labels or usernames where the API requires exact account IDs.
+
+## 4. Run a fresh clean-install gate for this exact candidate
+
+Create a disposable source archive from the current candidate.
+
+Exclude:
+
+- `.git`
+- `node_modules`
+- generated artifacts
+- private credentials
+- test databases
+- runtime files
+
+In the disposable copy:
+
+1. Verify the lockfile hash matches the candidate manifest.
+2. Perform a lockfile-only clean dependency installation.
+3. Run the production build.
+4. Run all 23 startup-contract checks.
+5. Run the unit suite.
+6. Run the complete isolated database suite.
+7. Start the strict code-only launcher against a fresh disposable database.
+8. Confirm every scheduler and worker task remains disabled.
+9. Remove the disposable source copy and database.
+
+Do not use existing `node_modules` as clean-install evidence.
+
+If the environment cannot perform a genuine lockfile-only clean installation, report the gate as NOT VERIFIED. Do not substitute an existing-dependency build.
+
+## 5. Triage the security scanner results
+
+Review all reported scanner findings without blanket suppression.
+
+For each finding classify it as:
+
+- confirmed exploitable
+- confirmed defect
+- false positive with code-level justification
+- unreachable retired tool
+- accepted dependency risk requiring owner approval
+- unresolved
+
+Pay particular attention to:
+
+- SQL injection and unparameterized query findings
+- object assignment findings
+- filesystem access findings
+- credential-string findings
+- weak cryptography findings
+- the two `xlsx` high-severity dependency advisories
+
+Run a fresh candidate scan after any repairs.
+
+A scanner count alone is not a security verdict. Provide sanitized file, line, rule and reasoning, but never include secret values or database results.
+
+Any confirmed exploitable or unresolved critical/high finding in a reachable production path remains a release blocker.
+
+Do not update dependencies or the lockfile unless strictly necessary. If a dependency update is required, stop and present a separate impact plan before changing it.
+
+## 6. Verify secret-output safety
+
+Using synthetic markers only, verify that secrets cannot appear in:
+
+- application logs
+- startup logs
+- browser responses
+- generated bundles
+- source maps
+- error responses
+- generated reports
+- deployment artifacts
+
+Do not retrieve real configured secrets for comparison.
+
+Confirm repository source, scripts, generated reports, `.git`, environment files and source maps cannot be downloaded through public HTTP routes.
+
+## 7. Re-run all candidate verification
+
+Run:
+
+- credential exposure scan
+- full unit suite
+- complete isolated database suite
+- credential-specific database suite
+- 23 startup-contract checks
+- strict-launcher rehearsal
+- browser security rehearsal
+- production-mode build
+- clean-install gate
+- managed security scanners
+- disposable-fixture cleanup verification
+
+Confirm `.replit` uses the strict web launcher and that production mode requires:
+
+- `STARTUP_MODE=code-only`
+- `ALLOW_SCHEMA_SYNC=false`
+- `ALLOW_REFERENCE_SEEDS=false`
+- `ALLOW_INVENTORY_SEED=false`
+- `ALLOW_STOCK_SUMMARY_DDL=false`
+- `ENABLE_STOCK_SCHEDULER=false`
+- `ENABLE_STOCK_HEALTH_DIGEST=false`
+- `WORKER_ENABLED=false`
+
+All worker task flags must remain false. Missing, malformed or enabled values must fail closed.
+
+## 8. Produce a new evidence bundle
+
+Write sanitized evidence to:
+
+`generated-artifacts/security-remediation-closure/`
+
+Include:
+
+- `report.md`
+- `candidate-manifest.json`
+- `clean-install.json`
+- `browser-results.json`
+- `browser-cleanup.json`
+- `fixture-ownership.json`
+- `scanner-triage.md`
+- `scanner-summary.json`
+- `secret-output-verification.json`
+- `startup-rehearsal.json`
+- `database-test-summary.json`
+- `changed-files.md`
+- `remaining-blockers.md`
+
+Do not include credentials, tokens, cookies, connection strings, environment values or raw deletion diffs.
+
+## Final disposition
+
+Return exactly one status:
+
+- `SECURITY CANDIDATE READY FOR CONTROLLED REMEDIATION`
+- `PARTIALLY VERIFIED - DO NOT PUBLISH`
+- `BLOCKED - DO NOT PUBLISH`
+
+`SECURITY CANDIDATE READY FOR CONTROLLED REMEDIATION` means only that the candidate may proceed to a separately authorized production preflight. It does not authorize publication, credential rotation, session invalidation, scheduler retirement, restart, migration or production writes.
+
+Finish with:
+
+Production database modified: NO  
+Production passwords rotated: NO  
+Production sessions invalidated: NO  
+Production environment modified: NO  
+Production restarted: NO  
+Production scheduler stopped: NO  
+Production worker activated: NO  
+Production published: NO

@@ -1,4 +1,4 @@
-import {randomUUID, randomBytes} from 'node:crypto';
+import {randomUUID, randomBytes, createHash} from 'node:crypto';
 import {spawn} from 'node:child_process';
 import {mkdir,readFile,writeFile} from 'node:fs/promises';
 import pg from 'pg';
@@ -30,6 +30,21 @@ const all=args.includes('--all');
 const filters=args.filter(arg=>arg!=='--all');
 const suites=filters.length?filters:all?databaseSuites:stockAuditSuites;
 const admin=new pg.Pool({connectionString:sourceUrl.toString(),max:1});
+async function recordOwnership(database, purpose) {
+  if (!process.env.SECURITY_FIXTURE_OWNERSHIP_DIR) return;
+  const dir=process.env.SECURITY_FIXTURE_OWNERSHIP_DIR;
+  await mkdir(dir,{recursive:true});
+  await writeFile(`${dir}/${database}.json`,JSON.stringify({
+    database,purpose,hostFingerprint:createHash('sha256').update(sourceUrl.hostname+':'+sourceUrl.port).digest('hex'),
+    processId:process.pid,createdAt:new Date().toISOString(),cleanupOwner:'run-isolated-stock-audit',
+    disposable:true,production:false,cleanupVerified:false},null,2));
+}
+async function recordCleanup(database) {
+  if (!process.env.SECURITY_FIXTURE_OWNERSHIP_DIR) return;
+  const file=`${process.env.SECURITY_FIXTURE_OWNERSHIP_DIR}/${database}.json`;
+  const record=JSON.parse(await readFile(file,'utf8'));
+  await writeFile(file,JSON.stringify({...record,cleanupVerified:true,cleanedAt:new Date().toISOString()},null,2));
+}
 let created=false,target,combinedWritten=false;
 async function child(command,args,{env=process.env,input,capture=false}={}){
   return new Promise((resolve,reject)=>{
@@ -49,6 +64,7 @@ async function child(command,args,{env=process.env,input,capture=false}={}){
   });
 }
 try{
+  await recordOwnership(name,'owned template');
   await admin.query(`CREATE DATABASE ${name}`);created=true;
   console.log('Created separate empty stock audit database; business data is not copied.');
   const schema=await child('pg_dump',['--dbname',sourceUrl.toString(),'--schema-only','--no-owner','--no-privileges'],{
@@ -64,7 +80,7 @@ try{
       ('ondangwa_warehouse','Isolated second warehouse','warehouse')`);
   await mkdir('generated-artifacts/stock-audit',{recursive:true});
   if(!all){
-    await child('npx',['vitest','run',...suites, '--project=database',
+    await child(process.execPath,['node_modules/vitest/vitest.mjs','run',...suites, '--project=database',
       '--fileParallelism=false','--reporter=default','--reporter=json',
       '--outputFile=generated-artifacts/stock-audit/test-results.json'],{env:testEnv});
   }else{
@@ -83,9 +99,10 @@ try{
       const owned=`stock_audit_${randomUUID().replaceAll('-','')}`;
       const suiteUrl=new URL(isolatedUrl);suiteUrl.pathname='/'+owned;
       const output=`generated-artifacts/stock-audit/${owned}.json`;
+      await recordOwnership(owned,'owned suite '+suites[index]);
       await admin.query(`CREATE DATABASE ${owned} TEMPLATE ${name}`);
       try{
-        await child('npx',['vitest','run',suites[index],'--project=database','--fileParallelism=false',
+        await child(process.execPath,['node_modules/vitest/vitest.mjs','run',suites[index],'--project=database','--fileParallelism=false',
           '--reporter=default','--reporter=json','--outputFile='+output],{
           env:{...testEnv,DATABASE_URL:suiteUrl.toString(),STOCK_AUDIT_DATABASE:owned}});
       }catch(error){failed++;console.error(error.message);}
@@ -95,6 +112,7 @@ try{
           suiteFailure:{suite:suites[index],reason:'Runner did not produce a result'}});failed++;}
         await admin.query(`DROP DATABASE ${owned} WITH (FORCE)`);
         await admin.query(`DROP ROLE IF EXISTS ${owned.replace(/^stock_audit_/,'worker_audit_')}`);
+        await recordCleanup(owned);
       }
     }
     const sum=key=>results.reduce((n,r)=>n+(r[key]||0),0);
@@ -124,6 +142,7 @@ try{
     const workerRole=name.replace(/^stock_audit_/,'worker_audit_');
     if(!/^worker_audit_[a-f0-9]{32}$/.test(workerRole))throw Error('Unsafe worker test role');
     await admin.query(`DROP ROLE IF EXISTS ${workerRole}`);
+    await recordCleanup(name);
     console.log('Removed isolated audit database; original business database was not changed.');
   }
   await admin.end();
