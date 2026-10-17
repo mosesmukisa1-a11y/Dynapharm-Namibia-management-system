@@ -770,3 +770,17 @@ mtime_ms = 1792271837251
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/4aea60b1-b1d2-45b0-a8ad-b0b016c9e0b8/780d8694-66b4-4175-94c5-0922e3be129a"
 storage_version_token = "1792271849552025"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "DPFj1_CcySiY_bx_hT1ao"
+uri = "file://generated-artifacts/consolidated-security-release-review/report.md"
+type = "text"
+title = "Final consolidated security release review"
+description = "Exact-candidate review, current scan dispositions and test evidence, operational blockers with precise closure requirements, and reviewed recovery/credential procedures. No production actions performed."
+logical_id = "63dd0897-3f06-46bb-9025-0501f2b972f0"
+content_hash = "sha256:5fb7dd40b792c72de1486ce1956353c8300bf153817d230ba7add0b2fe20f5c0"
+size = 25026
+mtime_ms = 1792272982664
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/63dd0897-3f06-46bb-9025-0501f2b972f0/8d23029f-6e29-4a08-ae71-3b43a188c4d8"
+storage_version_token = "1792273017289144"
+content_type = "text/markdown"

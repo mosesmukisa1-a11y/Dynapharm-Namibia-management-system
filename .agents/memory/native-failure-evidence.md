@@ -25,3 +25,9 @@ Clean-install evidence writers must create their own output directories; passing
 **Why:** A source-only clean copy passed all database assertions but failed suite teardown with missing evidence directories that happened to exist in the workspace. Removing the disposable copy without extracting sanitized results hid the cause.
 
 **How to apply:** Keep generated evidence out of candidates, create evidence directories at the writer, retain per-suite/hook failures and process exit metadata before cleanup, and verify owned database cleanup separately from assertion counts.
+
+Release evidence must identify the exact candidate digest and distinguish current execution from historical support.
+
+**Why:** Rebuilding a candidate can leave older scanner reviews and fixture reports apparently passing even though their harness or source changed. A passed clean install also does not establish current production schema, recovery or credential containment.
+
+**How to apply:** Reuse finding rationale only with matching current file hashes and scanner fingerprints; require fresh evidence for changed execution paths. Preserve raw severity counts alongside applicability review, and keep production attestations separate from isolated test results.
