@@ -34,3 +34,15 @@ that stale cookie before the password handler prevented using the new password.
 **How to apply:** Keep current-session validation on business APIs and reset
 authority. Test login from the invalidated browser context, not only an empty
 context, alongside unaffected-account continuity and one-use temporary login.
+
+Permission to use a managed read-only SQL route does not attest every mandatory
+transport or session control.
+
+**Why:** A narrowly authorized inspection retained explicit TLS and pre-query
+timeout requirements, but the documented query interface exposed neither
+per-session TLS attestation nor connection-startup timeout options.
+
+**How to apply:** Recheck current interface capabilities before connecting.
+When such proof is explicitly required, unknown means unverified, not disabled
+or implicitly approved. Do not add a new probe or relax the controls without
+authority; record zero access if capability preflight stops before invocation.
