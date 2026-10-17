@@ -798,3 +798,17 @@ mtime_ms = 1792273778814
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/32f0b08a-0cef-4392-9d0f-3885d3a2474b/e664ca46-5051-4b08-a45b-82ae263a93f0"
 storage_version_token = "1792273791458641"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "p4lgUG6nA-061UBrZy7XD"
+uri = "file://generated-artifacts/b2-storage-routing/report.md"
+type = "text"
+title = "B2 storage-routing review"
+description = "Exact-candidate App Storage and filesystem routes, owner-observed bucket areas, missing live-use evidence and recovery/versioning limitations. No storage objects accessed."
+logical_id = "10d640a5-2c7a-4e35-b6db-a09ccb1b89b4"
+content_hash = "sha256:62b84fd94d890bc97a15113c6c0e5888a06acd9dee79b67d8ae3fc8562278145"
+size = 9148
+mtime_ms = 1792274845874
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/10d640a5-2c7a-4e35-b6db-a09ccb1b89b4/7ae7a5e1-edf6-44ad-8258-3123e40fa403"
+storage_version_token = "1792274875687434"
+content_type = "text/markdown"
