@@ -826,3 +826,17 @@ mtime_ms = 1792275336711
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/f2969b32-fe73-476b-8fee-a8cf0fd2c50f/36539042-16e9-4727-90e0-1e8c07225f5b"
 storage_version_token = "1792275371791487"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "6ZJS7x8ovFLstvuKZRaWH"
+uri = "file://generated-artifacts/b2-storage-route-two-operation/report.md"
+type = "text"
+title = "B2 two-operation inspection — capability blocked"
+description = "Sanitized preflight evidence: the available managed callback cannot guarantee volatile-only identity/parameter handling. Neither production operation was invoked."
+logical_id = "5af92893-079e-4d3e-8902-3493df8af7f9"
+content_hash = "sha256:aafb22a3e0277d02028b3903687d2d9c612cab823a4007ca675eaf00768dc237"
+size = 3409
+mtime_ms = 1792275682915
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/5af92893-079e-4d3e-8902-3493df8af7f9/1bfb4f32-1977-47fd-b43c-14be9092e6a9"
+storage_version_token = "1792275706321411"
+content_type = "text/markdown"

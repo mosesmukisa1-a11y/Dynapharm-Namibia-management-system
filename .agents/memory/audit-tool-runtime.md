@@ -35,6 +35,17 @@ Never discover a new identity and silently accept it as its own expectation.
 If the prerequisite is missing, record zero invocations and no counts; do not
 infer NOT_REFERENCED from a blocked or empty-result attempt.
 
+Check tool persistence before accepting a volatile-memory-only identity protocol.
+
+**Why:** The exposed managed SQL callback uses the durable tool runtime, which
+records callback inputs/results. Omitting console/report output does not keep
+a returned raw identity or its later bound parameter exclusively in memory.
+
+**How to apply:** When the owner explicitly forbids retention of raw identity
+or parameters, require an attested non-retaining managed execution path before
+the first call. Do not treat an impure helper as a way to invoke durable callbacks
+privately, substitute direct credentials, or silently weaken the protocol.
+
 Schema-expression sanitization must not silently destroy the evidence required
 for exact offline reconstruction.
 
