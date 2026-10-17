@@ -784,3 +784,17 @@ mtime_ms = 1792272982664
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/63dd0897-3f06-46bb-9025-0501f2b972f0/8d23029f-6e29-4a08-ae71-3b43a188c4d8"
 storage_version_token = "1792273017289144"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "_dNO5F-QKsjgedR9ovoeG"
+uri = "file://generated-artifacts/b2-recovery-preflight/report.md"
+type = "text"
+title = "B2 recovery preflight — blocked"
+description = "Read-only provider observations, all ten recovery findings, missing metadata, storage/configuration checklist and proposed isolated rehearsal measurements. No restore or production change performed."
+logical_id = "32f0b08a-0cef-4392-9d0f-3885d3a2474b"
+content_hash = "sha256:11f266bd251c38d92144b5b5066f71fbb599da7da775482b0ee0ce18a4de89a2"
+size = 14919
+mtime_ms = 1792273778814
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/32f0b08a-0cef-4392-9d0f-3885d3a2474b/e664ca46-5051-4b08-a45b-82ae263a93f0"
+storage_version_token = "1792273791458641"
+content_type = "text/markdown"
