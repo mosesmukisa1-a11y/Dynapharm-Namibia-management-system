@@ -168,3 +168,14 @@ fixture whose recorded local PostgreSQL cluster was still running.
 retain per-run cleanup, and verify the exact owned directory/PID is absent.
 Aggregate reports only after matching ownership, rather than trusting the latest
 shared cleanup file. Do not sweep ambiguous older disposable names.
+
+Canonical-schema release verification must not invent legacy table definitions
+from runtime SELECT/INSERT field lists.
+
+**Why:** Inferred fixture foundations exercised authentication but could not
+establish fresh-install compatibility; the user requires repository-authoritative
+schema provenance, including constraints, rather than test-only replacements.
+
+**How to apply:** Preserve and cite the original migration/static definition.
+Block missing canonical sources without inspecting production. Purpose-specific
+SQL attack sentinel tables are legitimate probes, never lifecycle-schema proof.

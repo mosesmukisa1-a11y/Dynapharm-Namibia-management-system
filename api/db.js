@@ -1,5 +1,6 @@
 import { Pool } from 'pg';
 import { AsyncLocalStorage } from 'node:async_hooks';
+import {identifier as sqlIdentifier, insertStatement, findAllStatement} from './services/sqlShape.js';
 import {isTestProcess, assertIsolatedTestDatabase, verifyIsolatedTestConnection} from './testDatabaseGuard.js';
 
 const requestTransactions = new AsyncLocalStorage();
@@ -151,20 +152,11 @@ export async function getMany(queryText, params) {
   return result.rows;
 }
 
-function sanitizeIdentifier(name) {
-  if (typeof name !== 'string' || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
-    throw new Error(`Invalid SQL identifier: "${name}"`);
-  }
-  return name;
-}
+function sanitizeIdentifier(name) { return sqlIdentifier(name); }
 
 export async function insert(tableName, data) {
-  const columns = Object.keys(data).map(sanitizeIdentifier);
-  const values = Object.values(data);
-  const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
-  const columnNames = columns.map(c => `"${c}"`).join(', ');
-  const queryText = `INSERT INTO ${sanitizeIdentifier(tableName)} (${columnNames}) VALUES (${placeholders}) RETURNING *`;
-  const result = await query(queryText, values);
+  const statement=insertStatement(tableName,data);
+  const result = await query(statement.text, statement.params);
   return result.rows[0];
 }
 
@@ -190,22 +182,8 @@ export async function findById(tableName, id, idColumn = 'id') {
 }
 
 export async function findAll(tableName, conditions = {}, orderBy = 'created_at DESC') {
-  let queryText = `SELECT * FROM ${sanitizeIdentifier(tableName)}`;
-  const params = [];
-  const conditionsList = [];
-
-  Object.keys(conditions).forEach((key, index) => {
-    conditionsList.push(`"${sanitizeIdentifier(key)}" = $${index + 1}`);
-    params.push(conditions[key]);
-  });
-
-  if (conditionsList.length > 0) {
-    queryText += ` WHERE ${conditionsList.join(' AND ')}`;
-  }
-
-  queryText += ` ORDER BY ${orderBy}`;
-
-  return await getMany(queryText, params);
+  const statement=findAllStatement(tableName,conditions,orderBy);
+  return await getMany(statement.text,statement.params);
 }
 
 // Publish realtime events

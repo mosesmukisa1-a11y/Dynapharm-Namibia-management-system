@@ -2490,15 +2490,7 @@ app.all('/api/*', async (req, res) => {
   }
 });
 
-app.use((req, res, next) => {
-  if (req.path.includes('..') || req.path.startsWith('/node_modules') ||
-      req.path.split('/').some(p=>p.startsWith('.')) ||
-      /\.(?:map|env)$/i.test(req.path)) {
-    res.status(404).send('Not found');
-    return;
-  }
-  next();
-});
+app.use((await import('./api/services/publicAssetPolicy.js')).publicAssetBoundary);
 
 const distPath = path.join(__dirname, 'dist');
 const hasReactBuild = fs.existsSync(path.join(distPath, 'index.html'));

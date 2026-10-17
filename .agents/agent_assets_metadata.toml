@@ -616,3 +616,17 @@ mtime_ms = 1792232648873
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/c5dc71a3-0c3c-47f8-ac8c-bf5f294c664b/2f7cf6a5-35a2-4b35-9e01-cc73bfd30094"
 storage_version_token = "1792232682410668"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "ZcaY1lDB6lhAfTtK7WjvL"
+uri = "file://generated-artifacts/security-remediation-final/security-remediation-final-review.zip"
+type = "unspecified"
+title = "Final security remediation review — blocked"
+description = "Sanitized report, source manifest, SQL caller inventory, schema provenance, test results, scanner triage, manual clean-install instructions and owned-fixture cleanup evidence. No raw logs, source archives or credentials."
+logical_id = "1859bcd4-d270-4983-a5f7-7e3405743bdb"
+content_hash = "sha256:0fde0b3d27a934ff505de3cb007c5809ccadbb0ed986319bd2bc78d676c5bf03"
+size = 95433
+mtime_ms = 1792234548534
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/1859bcd4-d270-4983-a5f7-7e3405743bdb/90e96feb-f770-4dab-ba25-48d815bb20f6"
+storage_version_token = "1792234554100688"
+content_type = "application/octet-stream"

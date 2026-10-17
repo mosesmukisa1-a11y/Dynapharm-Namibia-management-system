@@ -1,0 +1,192 @@
+Continue on branch:
+
+`security/emergency-startup-remediation-20261017`
+
+Status remains:
+
+`BLOCKED - DO NOT PUBLISH`
+
+Do not publish, deploy, migrate, restart, stop services, change production settings, rotate production credentials, invalidate production sessions, activate workers or write to production.
+
+Preserve all existing changes and evidence. Never print credentials, secrets, connection strings, tokens, cookies or password values.
+
+## Objective
+
+Close only these release blockers:
+
+1. failing complete isolated database suite;
+2. unresolved generic SQL executor;
+3. exact-candidate clean-install proof;
+4. remaining browser and secret-output evidence.
+
+## A. Repair the isolated database foundation
+
+The complete isolated suite currently reports:
+
+- total: 378
+- passed: 185
+- failed: 43
+- pending/skipped: 150
+
+Determine the canonical schema source expected by the test suites.
+
+Do not copy or inspect production schema.
+
+Create a deterministic disposable schema exclusively from repository migrations and reviewed static schema definitions.
+
+Identify and restore missing repository-managed definitions, including all required tables, columns, indexes, foreign keys, constraints and enum/check rules. Reported missing objects include:
+
+- `online_orders`
+- `branch_distributor_profit`
+- `stock_linked_reversals`
+- `branches`
+- `branch_activity_transactions`
+- `users.additional_roles`
+
+Do not create arbitrary test-only structures merely to make assertions pass. Each restored definition must have a traceable repository or migration source and must match runtime expectations.
+
+If the repository lacks an authoritative definition, mark it as a schema-governance blocker instead of guessing.
+
+Run every suite in a uniquely named, positively owned disposable PostgreSQL cluster. Record ownership before creation and verify cleanup afterward.
+
+Required result:
+
+- 378/378 passed
+- 0 failed
+- 0 pending/skipped unless each skip is explicitly expected and justified
+
+## B. Resolve the generic SQL executor finding
+
+Audit every reachable caller of:
+
+`api/db.js query(text, params)`
+
+Build a machine-generated caller inventory.
+
+For every caller, establish that SQL is one of:
+
+- a static query with bound parameters;
+- a query assembled only from allowlisted constants;
+- an identifier operation using strict identifier validation;
+- an internal migration/tool path unreachable from production HTTP execution.
+
+Reject or refactor any flow where request-controlled text can influence:
+
+- SQL structure
+- table names
+- column names
+- operators
+- ordering
+- grouping
+- limits
+- fragments or clauses
+
+Prefer narrow repository query functions over unrestricted generic execution where practical.
+
+Add tests proving hostile SQL fragments remain data and cannot alter query structure.
+
+Re-run the managed scanner. The generic executor may be classified as resolved only with a complete caller inventory and evidence. Do not suppress the rule globally.
+
+## C. Exact-candidate clean installation
+
+Create a fresh source archive from the final candidate after all fixes.
+
+Exclude `.git`, `node_modules`, generated evidence, runtime files and private data.
+
+In the Replit shell, perform a genuine lockfile-only clean installation using the project’s package manager. Do not reuse the workspace `node_modules`.
+
+Then run inside that clean copy:
+
+1. production build;
+2. full unit suite;
+3. complete isolated database suite;
+4. credential-specific suite;
+5. 23 startup-contract checks;
+6. strict code-only launcher rehearsal.
+
+Record the exact candidate manifest and lockfile hash before and after.
+
+Remove the clean-copy directory and all owned disposable databases afterward.
+
+If Replit Agent cannot perform the package installation itself, generate one exact shell command block for Moses to run manually. Do not report PASS until its output has been captured.
+
+## D. Complete browser evidence
+
+Using only a positively owned disposable database:
+
+- verify the authorized GM reset workflow;
+- verify Admin reset private clipboard behavior without recording clipboard contents;
+- confirm affected-session invalidation;
+- confirm unrelated-session continuity;
+- confirm reset-token replay rejection;
+- confirm source-map and source-file HTTP denial.
+
+No credentials, clipboard values, cookies or request bodies may enter evidence.
+
+## E. Complete synthetic secret-output verification
+
+Use synthetic canary markers only.
+
+Verify absence from:
+
+- startup logs;
+- application logs;
+- browser and API error responses;
+- generated bundles;
+- generated source maps;
+- reports;
+- build artifacts;
+- downloadable public routes.
+
+Create a harmless synthetic source-map canary during the isolated check if necessary, confirm it cannot be downloaded, then remove it.
+
+Do not retrieve real configured secrets.
+
+## F. Preserve historical fixture uncertainty
+
+Do not inspect or delete the 14 ambiguous historical database candidates without positive ownership evidence.
+
+Record:
+
+`Historical fixture cleanup remains NOT VERIFIED; zero ambiguous databases deleted.`
+
+This uncertainty must not be hidden, but it does not justify risky cleanup.
+
+## Final verification
+
+Run and report:
+
+- unit tests
+- complete isolated database suite
+- credential-specific database suite
+- startup contracts
+- production build
+- clean-install gate
+- browser security workflow
+- credential exposure scan
+- managed security scan
+- synthetic secret-output verification
+- owned-fixture cleanup verification
+
+Write the sanitized closure evidence to:
+
+`generated-artifacts/security-remediation-final/`
+
+Return exactly one status:
+
+- `SECURITY CANDIDATE READY FOR CONTROLLED PRODUCTION PREFLIGHT`
+- `PARTIALLY VERIFIED - DO NOT PUBLISH`
+- `BLOCKED - DO NOT PUBLISH`
+
+“Ready for controlled production preflight” does not authorize publication or any production mutation.
+
+Finish with:
+
+Production database modified: NO  
+Production passwords rotated: NO  
+Production sessions invalidated: NO  
+Production environment modified: NO  
+Production restarted: NO  
+Production scheduler stopped: NO  
+Production worker activated: NO  
+Production published: NO

@@ -11,8 +11,12 @@ import bcrypt from 'bcryptjs';
 import {parse} from '@babel/parser';
 import {TASKS} from '../worker/tasks.mjs';
 import {REQUIRED_STARTUP_SCHEMA} from '../api/services/startupSchema.js';
+import {assertRepositoryFoundation} from './security-final-schema-guard.mjs';
 if(process.env.NODE_ENV==='production'||['1','true'].includes(process.env.REPLIT_DEPLOYMENT))
   throw Error('Production fixture refused');
+// Never re-use the earlier guessed legacy scaffolding. A missing canonical
+// definition blocks before any directory, socket, cluster or database exists.
+await assertRepositoryFoundation();
 const root=process.cwd(),out=path.join(root,'generated-artifacts/security-remediation-closure');
 await fs.mkdir(out,{recursive:true});
 const temp=await fs.mkdtemp(path.join(os.tmpdir(),'security-closure-'));
@@ -62,20 +66,12 @@ try{
   admin=new pg.Pool({...cfg,database:'postgres'});
   await admin.query(`CREATE DATABASE ${name}`);
   db=new pg.Pool({...cfg,database:name});
-  // Explicit synthetic foundations: these legacy tables have no CREATE migration.
-  // This is fixture scaffolding, NOT evidence that a fresh production install works.
-  await db.query(`CREATE TABLE branches(id text PRIMARY KEY,name text,status text,code text,
-    created_at timestamptz DEFAULT now(),updated_at timestamptz DEFAULT now());
-    CREATE TABLE branch_activity_transactions(id text PRIMARY KEY,branch_id text,branch_name text,
-    client_id text,client_name text,client_phone text,client_type text,nb_number text,referral_nb text,
-    service_date date,service_time text,activity_type text,workflow_source text,form_reference_id text,
-    consultation_fee numeric DEFAULT 0,product_total_dp numeric DEFAULT 0,product_total_cp numeric DEFAULT 0,
-    total_qty numeric DEFAULT 0,grand_total numeric DEFAULT 0,payment_status text,payment_method text,
-    stock_impact boolean DEFAULT false,stock_status text,prescription_status text,consultation_status text,
-    reporting_status text,captured_by text,created_at timestamptz DEFAULT now(),updated_at timestamptz DEFAULT now());`);
   const statements=[];
   const migrations=(await fs.readdir(root+'/migrations')).filter(n=>/^\d.*\.sql$/.test(n)).sort();
   for(const file of migrations)statements.push({file:'migrations/'+file,sql:await fs.readFile(root+'/migrations/'+file,'utf8')});
+  // Preserve repository delivery-table constraints rather than synthesizing them.
+  statements.push({file:'backend/create_delivery_tables.sql',
+    sql:await fs.readFile(root+'/backend/create_delivery_tables.sql','utf8')});
   function walk(n,fn){if(!n||typeof n!=='object')return;fn(n);
     for(const [k,v]of Object.entries(n)){if(['loc','extra','start','end'].includes(k))continue;
       if(Array.isArray(v))v.forEach(x=>walk(x,fn));else if(v&&typeof v==='object')walk(v,fn);}}
@@ -99,7 +95,7 @@ try{
   }
   await fs.writeFile(out+'/schema-fixture.json',JSON.stringify({source:'candidate migrations and static DDL',
     schemaClone:false,sourceDatabaseAccess:false,attempted:statements.length,
-    syntheticFoundations:['branches','branch_activity_transactions'],
+    syntheticFoundations:[],
     freshInstallSchemaCertification:false,
     unresolved:pending.map(s=>({file:s.file,code:s.code}))},null,2));
   // Missing foundational tables are a visible fixture blocker, never invented from data.
@@ -108,9 +104,6 @@ try{
     !ready.rows.some(r=>r.table_name===t&&r.column_name===c)).map(c=>t+'.'+c));
   await fs.writeFile(out+'/schema-missing.json',JSON.stringify(missing,null,2));
   if(missing.length)throw Error('Candidate-only schema fixture incomplete; see schema-missing.json');
-  // Existing auth contract selects this legacy field; no corresponding additive
-  // migration was found. Fixture-only addition, retained as a fresh-setup gap.
-  await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS additional_roles jsonb DEFAULT '[]'`);
   await db.query(`INSERT INTO branches(id,name,status) VALUES('townshop','Windhoek CBD','active'),
     ('tsumeb','Tsumeb','active') ON CONFLICT DO NOTHING`);
   const material={password:randomBytes(24).toString('base64url'),

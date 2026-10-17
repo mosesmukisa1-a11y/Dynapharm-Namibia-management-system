@@ -76,6 +76,12 @@ def scan():
                   "scripts/security-closure-triage.mjs", "scripts/security-closure-source-copy.py",
                   "scripts/security-closure-owned-cleanup.py",
                   "scripts/security-closure-evidence.py",
+                  "api/services/sqlShape.js", "api/services/publicAssetPolicy.js",
+                  "tests/sql-shape.unit.test.js", "tests/public-asset-policy.unit.test.js",
+                  "tests/security-final-governance.unit.test.js",
+                  "scripts/security-final-inventory.mjs", "scripts/security-final-schema-guard.mjs",
+                  "scripts/security-final-sql-rehearsal.mjs", "scripts/security-final-output-rehearsal.mjs",
+                  "scripts/security-final-clean-gate.mjs", "scripts/security-final-evidence.mjs",
                   "api/services/sessionPolicy.js", "tests/session-policy.unit.test.js",
                   "tests/credential-security.spec.js", "tests/credential-security.unit.test.js"]:
         if extra not in tracked and Path(extra).exists():
