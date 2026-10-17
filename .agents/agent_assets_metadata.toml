@@ -672,3 +672,17 @@ mtime_ms = 1792241353293
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/f772adb6-01b5-4714-ba3b-190b32b4b1f9/1f248c4c-5240-442c-a505-90141e7b539e"
 storage_version_token = "1792241409612283"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "3eKrI3jI0KhPDpxfMRmh6"
+uri = "file://generated-artifacts/security-release-candidate-final/security-release-candidate-review.zip"
+type = "unspecified"
+title = "Release verification report — blocked"
+description = "Exact default capture, canonical migration evidence, dispatch concurrency fix, full test matrix, authenticated security checks, screenshots, SQL review, scans, cleanup evidence and release checklist. Production unchanged; publication blocked."
+logical_id = "ba71e0e3-aeea-4a68-9e79-d1c7951b0988"
+content_hash = "sha256:49524ad6206584e7ee9570262478357e630779c9903fefdc4873f50c7e901e7a"
+size = 294348
+mtime_ms = 1792244131945
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/ba71e0e3-aeea-4a68-9e79-d1c7951b0988/92bbbe26-b514-4d4e-9e03-0a1f473a0052"
+storage_version_token = "1792244139680464"
+content_type = "application/octet-stream"

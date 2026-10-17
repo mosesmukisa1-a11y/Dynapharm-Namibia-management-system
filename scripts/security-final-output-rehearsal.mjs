@@ -48,9 +48,9 @@ try{
     httpChecks:checks,build,buildFiles:scanned,reportsChecked:reports,
     generatedSourceMaps:scanned.filter(f=>f.file.endsWith('.map')).length,
     realSourceMapCanaryDenied:checks.find(c=>c.route.endsWith('.map'))?.pass,
-    fullApplicationStartupLogs:'BLOCKED: canonical application schema unavailable',
+    fullApplicationStartupLogs:'NOT EVALUATED by this component runner; see separate owned strict-launcher evidence',
     fullApplicationLogs:'NOT VERIFIED across every handler',
-    authenticatedBrowserErrors:'BLOCKED: canonical application schema unavailable',
+    authenticatedBrowserErrors:'NOT EVALUATED by this component runner; see separate owned browser evidence',
     componentOnly:true,canaryContentsRecorded:false},null,2));
   if(build.exitCode!==0||build.markerSeen||scanned.some(f=>f.markerPresent)||checks.some(c=>!c.pass))
     process.exitCode=1;

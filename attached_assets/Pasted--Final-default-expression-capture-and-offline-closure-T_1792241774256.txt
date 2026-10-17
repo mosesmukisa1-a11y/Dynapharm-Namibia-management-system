@@ -1,0 +1,211 @@
+## Final default-expression capture and offline closure
+
+The owner authorizes exactly one final managed read-only production catalog operation to retrieve only the PostgreSQL default expressions for:
+
+- `public.branch_activity_transactions.stock_status`
+- `public.branch_activity_transactions.prescription_status`
+- `public.branch_activity_transactions.consultation_status`
+- `public.branch_activity_transactions.reporting_status`
+
+Authorization expires two hours after the owner’s authorization message.
+
+Status remains:
+
+`BLOCKED - DO NOT PUBLISH`
+
+## 1. Immutable single-operation query
+
+Before invocation, persist:
+
+- authorization fingerprint;
+- start and expiration time;
+- immutable query ID;
+- SQL checksum;
+- invocation count zero;
+- exact table and four-column allowlist;
+- replay prohibited after invocation.
+
+Execute exactly one fixed, parameterized managed SQL operation.
+
+The query must:
+
+1. verify `current_setting('transaction_read_only') = 'on'`;
+2. verify `pg_is_in_recovery() = true`;
+3. retrieve default expressions only when both guards pass;
+4. restrict the table to `public.branch_activity_transactions`;
+5. restrict columns to the four authorized names;
+6. use only required `pg_catalog` relations;
+7. return no application rows.
+
+Use PostgreSQL catalog expression functions only for these four column defaults. Exact schema default expressions may be saved without literal redaction.
+
+Do not query:
+
+- unrelated columns;
+- table rows;
+- usernames or roles;
+- privileges;
+- unrelated schema objects.
+
+Do not issue DDL, DML, `SET`, transaction-control commands, temporary objects, configuration functions or advisory locks.
+
+Do not retry if the operation fails.
+
+## 2. Evidence and access closure
+
+Save sanitized evidence to:
+
+`generated-artifacts/production-schema-defaults-final/`
+
+Include:
+
+- `authorization.json`
+- `query-definition.json`
+- `operation-receipt.json`
+- `default-expressions.json`
+- `production-read-verification.json`
+- `inspection-summary.md`
+
+After the operation:
+
+- record invocation count one;
+- record provider completion;
+- mark access ended;
+- prohibit replay and further managed calls;
+- continue offline only.
+
+Do not save credentials, connection strings, raw database names, hostnames, usernames, certificates or provider secrets.
+
+## 3. Complete canonical migration offline
+
+Merge the four captured default expressions into the previously captured `branch_activity_transactions` schema contract.
+
+Create an idempotent repository migration preserving the complete authoritative definition:
+
+- all 30 columns;
+- exact types and lengths;
+- nullability;
+- exact defaults;
+- primary and foreign keys;
+- unique and check constraints;
+- indexes and predicates;
+- identity/generated behavior;
+- partition status.
+
+Do not copy production rows.
+
+Do not apply the migration to production.
+
+Do not modify existing production objects.
+
+Update schema provenance and dependency ordering for:
+
+- `branches`
+- `branch_activity_transactions`
+- `branch_distributor_profit`
+- `users.additional_roles`
+- `online_orders`
+- `stock_linked_reversals`
+
+## 4. Repository-only disposable schema gate
+
+Create a newly owned disposable PostgreSQL cluster.
+
+Build the complete schema exclusively from repository migrations and authoritative repository schema sources.
+
+Do not use handcrafted canonical business-table fixtures.
+
+Run:
+
+- schema contract comparison;
+- migration idempotency;
+- all 378 isolated database checks;
+- credential-specific database checks;
+- strict code-only launcher;
+- isolated authenticated browser security workflow.
+
+Required database result:
+
+- 378/378 passed;
+- zero failures;
+- zero unexplained pending/skipped checks.
+
+Record ownership before provisioning and prove complete cleanup afterward.
+
+Do not inspect or delete the 14 ambiguous historical database candidates.
+
+## 5. Complete remaining SQL review
+
+Resolve all 100 remaining dynamic SQL locations.
+
+For every location, provide file, line, call family, reachability and classification:
+
+- static SQL with bound values;
+- strictly validated allowlisted identifier;
+- fixed internal constant;
+- unreachable non-production tool;
+- confirmed defect and repaired;
+- unresolved blocker.
+
+Trace production-reachable wrappers and endpoint call families. Add hostile-input tests for every reachable dynamic query family.
+
+Do not globally suppress scanner rules.
+
+The generic executor may be cleared only when no request-controlled value can alter SQL structure.
+
+## 6. Complete verification
+
+Run:
+
+- full unit suite;
+- 378 database checks;
+- credential DB suite;
+- schema contracts;
+- migration idempotency;
+- 23 startup contracts;
+- production build;
+- strict launcher;
+- authenticated browser security workflow;
+- credential exposure scan;
+- managed dependency, SAST and privacy scans;
+- synthetic secret-output verification;
+- owned-fixture cleanup verification.
+
+Prepare the exact final candidate for clean installation.
+
+If Agent cannot perform `npm ci`, return:
+
+```sh
+cd /home/runner/workspace
+node scripts/security-final-clean-gate.mjs --owner-manual
+```
+
+Do not mark clean installation passed until the sanitized result exists.
+
+## 7. Final evidence and status
+
+Write evidence to:
+
+`generated-artifacts/security-release-candidate-final/`
+
+Return exactly one:
+
+- `READY FOR OWNER CLEAN-INSTALL GATE - DO NOT PUBLISH`
+- `PARTIALLY VERIFIED - DO NOT PUBLISH`
+- `BLOCKED - DO NOT PUBLISH`
+
+No status authorizes production migration, publication, restart, password rotation, session invalidation, scheduler retirement or worker activation.
+
+Finish with:
+
+Managed production SQL operations in this phase: 1  
+Production business rows read: NO  
+Production database modified: NO  
+Production migration applied: NO  
+Production passwords rotated: NO  
+Production sessions invalidated: NO  
+Production environment modified: NO  
+Production restarted: NO  
+Production scheduler stopped: NO  
+Production worker activated: NO  
+Production published: NO

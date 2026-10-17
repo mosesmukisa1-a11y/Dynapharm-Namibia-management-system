@@ -421,10 +421,23 @@ function generateDispatchBarcode(transfer) {
 }
 
 async function createDispatchNote(transfer, actor, metadata = {}) {
+  return withTransaction(async client => {
+  // The canonical registry does not require transfer_id to be unique.
+  // Serialize on the parent instead of assuming an unrecorded unique index.
+  await client.query('SELECT id FROM stock_transfers WHERE id=$1 FOR UPDATE',[transfer.id]);
+  const existing=(await client.query(`SELECT id FROM dispatch_notes WHERE transfer_id=$1
+    ORDER BY created_at DESC,id DESC LIMIT 1 FOR UPDATE`,[transfer.id])).rows[0];
   const id = generateId('NOTE');
   const barcode = generateDispatchBarcode(transfer);
   const now = new Date().toISOString();
-  const row = await query(
+  if(existing){
+    const saved=await client.query(`UPDATE dispatch_notes SET barcode=$2,from_warehouse=$3,to_branch=$4,
+      dispatched_by=$5,dispatched_at=$6,expected_arrival=$7,metadata=$8,updated_at=$6
+      WHERE id=$1 RETURNING *`,[existing.id,barcode,transfer.from_warehouse||null,transfer.to_branch||null,
+      actor||null,now,metadata?.expectedArrival||null,JSON.stringify(metadata)]);
+    return saved.rows[0];
+  }
+  const row = await client.query(
     `
       INSERT INTO dispatch_notes (
         id, transfer_id, request_id, barcode, from_warehouse, to_branch,
@@ -433,15 +446,6 @@ async function createDispatchNote(transfer, actor, metadata = {}) {
         $1, $2, $3, $4, $5, $6,
         'in_transit', $7, $8, $9, $10, $11, $11
       )
-      ON CONFLICT (transfer_id) DO UPDATE SET
-        barcode = EXCLUDED.barcode,
-        from_warehouse = EXCLUDED.from_warehouse,
-        to_branch = EXCLUDED.to_branch,
-        dispatched_by = EXCLUDED.dispatched_by,
-        dispatched_at = EXCLUDED.dispatched_at,
-        expected_arrival = EXCLUDED.expected_arrival,
-        metadata = EXCLUDED.metadata,
-        updated_at = NOW()
       RETURNING *;
     `,
     [
@@ -459,6 +463,7 @@ async function createDispatchNote(transfer, actor, metadata = {}) {
     ]
   );
   return row.rows[0];
+  });
 }
 
 function normalizeTransfer(row, itemsMap, notesMap) {

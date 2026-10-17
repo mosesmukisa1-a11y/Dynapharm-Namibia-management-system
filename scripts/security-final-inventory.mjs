@@ -110,6 +110,6 @@ await fs.writeFile(out+'/sql-caller-inventory.json',JSON.stringify({repositoryOn
     'Internal tool/worker paths are not claimed unreachable solely from a directory name.']},null,2));
 await fs.writeFile(out+'/schema-provenance.md','# Repository schema provenance\n\n'+schemaStatus.map(s=>
   `## ${s.object}\n\n${s.status}\n\n`+s.definitions.map(d=>`- ${d.file}:${d.line} — ${d.provenance}; authoritative candidate: ${d.eligible}\n`).join('')).join('\n')+
-  '\nNo runtime field list was converted into invented DDL. backend/create_delivery_tables.sql defines online_orders including foreign keys to missing branches; api/services/linkedReversals.js defines stock_linked_reversals but its schema batch depends on missing branch_distributor_profit. No production schema inspected.\n');
+  '\nNo runtime field list was converted into invented DDL. Load canonical branches before backend/create_delivery_tables.sql (towns, delivery_distances, online_orders). Load canonical branch_distributor_profit before api/services/linkedReversals.js (stock_linked_reversals). Load users before users.additional_roles. Canonical activity uses migrations/039_canonical_branch_activity_transactions.sql. This scanner reads repository sources only; source presence is not full application schema convergence or database contract certification.\n');
 console.log(JSON.stringify({schemaBlockers:blocked.map(s=>s.object),sqlCallSites:inventory.length,
   unresolvedSql:inventory.filter(s=>s.classification==='UNRESOLVED').length,parseFailures:parseFailures.length}));

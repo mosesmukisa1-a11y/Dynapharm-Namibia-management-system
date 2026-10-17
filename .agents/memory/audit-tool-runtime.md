@@ -35,3 +35,13 @@ recover them after access has closed.
 owner-approved safe expression policy and, where permitted, comparable
 fingerprints for expressions that may be redacted. Never infer a redacted
 default from a writer's fallback or weaken the terminal no-replay journal.
+
+Narrow catalog completeness is not full disposable-application schema completeness.
+
+**Why:** Exact contracts for the approved schema objects passed while a real
+repository-only application run exposed other legacy schema dependencies.
+A successful login/security browser path did not exercise those stock paths.
+
+**How to apply:** Keep scoped contract, schema convergence, full database suite,
+and authenticated workflow results separate. Do not invent unrelated legacy
+tables or promote a passing narrow browser journey to a full release gate.

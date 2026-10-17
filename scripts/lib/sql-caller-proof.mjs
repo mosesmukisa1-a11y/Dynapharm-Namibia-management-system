@@ -3,6 +3,15 @@ import {parse} from '@babel/parser';
 import traverseModule from '@babel/traverse';
 const traverse=traverseModule.default||traverseModule;
 const yes=reason=>({safe:true,reason}),no=reason=>({safe:false,reason});
+function nativeLocalArray(path){
+  if(!path?.isIdentifier())return false;
+  const binding=path.scope.getBinding(path.node.name);
+  if(!binding?.constant||!binding.path.isVariableDeclarator())return false;
+  const init=binding.path.get('init');
+  return init.isArrayExpression()||(init.isCallExpression()&&init.get('callee').isMemberExpression()
+    &&init.node.callee.object?.name==='Object'&&init.node.callee.property?.name==='keys'
+    &&!init.scope.getBinding('Object'));
+}
 function prove(path,seen=new Set()){
   if(!path?.node)return no('Missing expression');
   if(path.isStringLiteral()||path.isNumericLiteral())return yes('Fixed source literal');
@@ -11,10 +20,46 @@ function prove(path,seen=new Set()){
     return parts.every(p=>p.safe)?yes('Fixed template fragments and proven interpolations'):
       no('Template interpolation: '+parts.find(p=>!p.safe).reason);
   }
-  if(path.isConditionalExpression()){
+  if(path.isConditionalExpression()||path.isLogicalExpression()){
+    if(path.isLogicalExpression()){
+      const a=prove(path.get('left'),new Set(seen)),b=prove(path.get('right'),new Set(seen));
+      return a.safe&&b.safe?yes('Both logical alternatives are fixed fragments'):no('Logical alternative not proven');
+    }
     const a=prove(path.get('consequent'),new Set(seen)),b=prove(path.get('alternate'),new Set(seen));
     return a.safe&&b.safe?yes('Both conditional outcomes are proven fixed fragments'):
       no('Conditional outcome not proven');
+  }
+  if(path.isUpdateExpression()&&['++','--'].includes(path.node.operator)){
+    return prove(path.get('argument'),seen);
+  }
+  if(path.isCallExpression()&&path.get('callee').isMemberExpression()
+    &&!path.node.callee.computed&&path.node.callee.property.name==='trim'
+    &&path.node.arguments.length===0)return prove(path.get('callee.object'),seen);
+  if(path.isCallExpression()&&path.get('callee').isMemberExpression()
+    &&!path.node.callee.computed&&path.node.callee.property.name==='push'
+    &&nativeLocalArray(path.get('callee.object'))){
+    const binding=path.scope.getBinding(path.node.callee.object.name);
+    const intact=binding.referencePaths.every(ref=>{
+      const member=ref.parentPath,call=member.parentPath;
+      // The values argument of an inventoried DB sink is data, not SQL source.
+      if(member.isCallExpression()&&member.node.arguments[1]===ref.node){
+        const c=member.node.callee;
+        return c.type==='Identifier'&&['query','getMany','getOne'].includes(c.name)
+          ||c.type==='MemberExpression'&&!c.computed&&c.property.name==='query';
+      }
+      return member.isMemberExpression()&&!member.node.computed&&member.get('object')===ref
+        &&(member.node.property.name==='length'
+          ?!call.isAssignmentExpression()&&!call.isUpdateExpression()
+          :['push','join'].includes(member.node.property.name)&&call.isCallExpression()&&call.get('callee')===member);
+    });
+    if(intact)return yes('Unescaped native array.push returns numeric binding position');
+  }
+  if(path.isCallExpression()&&path.get('callee').isIdentifier({name:'businessDatePredicate'})){
+    const binding=path.scope.getBinding('businessDatePredicate');
+    if(binding?.path.isImportSpecifier()&&binding.path.node.imported.name==='businessDatePredicate'
+      &&/\/services\/businessDates\.js$/.test(binding.path.parentPath.node.source.value)
+      &&path.get('arguments').every(arg=>arg.isBooleanLiteral()||arg.isNullLiteral()||prove(arg,new Set(seen)).safe))
+      return yes('Reviewed businessDates helper; column, zone and placeholders fixed/numeric; dates remain bindings');
   }
   if(path.isBinaryExpression()&&['+','-','*','%'].includes(path.node.operator)){
     const a=prove(path.get('left'),new Set(seen)),b=prove(path.get('right'),new Set(seen));
@@ -57,12 +102,25 @@ function prove(path,seen=new Set()){
   }
   if(path.isIdentifier()){
     const binding=path.scope.getBinding(path.node.name);
+    // Built-in array iterator index, never the request-controlled element.
+    if(binding?.kind==='param'&&binding.path.isIdentifier()){
+      const callback=binding.path.parentPath;
+      const call=callback.parentPath;
+      if((callback.isArrowFunctionExpression()||callback.isFunctionExpression())
+        &&callback.node.params[1]===binding.path.node&&call.isCallExpression()
+        &&call.node.arguments[0]===callback.node&&call.get('callee').isMemberExpression()
+        &&!call.node.callee.computed&&['map','forEach'].includes(call.node.callee.property.name)
+        &&nativeLocalArray(call.get('callee.object'))&&binding.constant)
+        return yes('Native local-array iterator numeric index');
+    }
     if(!binding?.path.isVariableDeclarator())return no('Identifier has no local declarator proof');
     if(seen.has(binding))return no('Recursive binding dependence');
     const next=new Set(seen).add(binding),initial=prove(binding.path.get('init'),next);
     if(!initial.safe)return no('Initializer: '+initial.reason);
     for(const violation of binding.constantViolations){
-      if(!violation.isAssignmentExpression()||violation.node.operator!=='+='
+      if(violation.isUpdateExpression()&&violation.get('argument').isIdentifier({name:path.node.name})
+        &&['++','--'].includes(violation.node.operator)&&binding.path.get('init').isNumericLiteral())continue;
+      if(!violation.isAssignmentExpression()||!['+=','='].includes(violation.node.operator)
         ||!violation.get('left').isIdentifier({name:path.node.name})
         ||!prove(violation.get('right'),new Set(next)).safe)return no('Reassignment not proven');
     }

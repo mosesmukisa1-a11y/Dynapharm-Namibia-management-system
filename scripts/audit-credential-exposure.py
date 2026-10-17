@@ -91,7 +91,17 @@ def scan():
                   "tests/final-managed-schema-query.unit.test.js", "tests/sql-caller-proof.unit.test.js",
                   "tests/fixtures/canonical-schema-contract.json", "migrations/036_canonical_branches.sql",
                   "migrations/037_canonical_branch_distributor_profit.sql",
-                  "migrations/038_canonical_users_additional_roles.sql"]:
+                  "migrations/038_canonical_users_additional_roles.sql",
+                  "migrations/039_canonical_branch_activity_transactions.sql",
+                  "scripts/lib/final-default-expression-query.mjs",
+                  "scripts/prepare-final-default-operation.mjs",
+                  "scripts/close-final-default-evidence.mjs",
+                  "scripts/verify-captured-canonical-contract.mjs",
+                  "scripts/lib/repository-ddl.mjs",
+                  "scripts/lib/owned-query-diagnostics.mjs",
+                  "scripts/trace-final-sql-families.mjs",
+                  "tests/final-default-expression-query.unit.test.js",
+                  "tests/repository-ddl.unit.test.js"]:
         if extra not in tracked and Path(extra).exists():
             tracked.append(extra)
     current = []

@@ -3,12 +3,58 @@
     "source": "Single owner-authorized managed schema snapshot, 2026-10-17",
     "evidence": "generated-artifacts/production-schema-metadata-final/",
     "productionRowsCopied": false,
-    "completeFoundation": false,
-    "blockedObject": "public.branch_activity_transactions",
-    "blockedDefaults": ["stock_status", "prescription_status", "consultation_status", "reporting_status"],
+    "completeFoundation": true,
+    "defaultEvidence": "generated-artifacts/production-schema-defaults-final/default-expressions.json",
+    "blockedObject": null,
+    "blockedDefaults": [],
     "usersOrdinalExcluded": "Only additional_roles was authorized; other users column positions are not reconstructed."
   },
   "objects": [
+    {
+      "table": "branch_activity_transactions",
+      "columnScope": null,
+      "columns": [
+        ["id","character varying(100)",false,null],
+        ["branch_id","character varying(100)",false,null],
+        ["branch_name","character varying(200)",true,null],
+        ["client_id","character varying(100)",true,null],
+        ["client_name","character varying(200)",true,null],
+        ["client_phone","character varying(50)",true,null],
+        ["client_type","character varying(50)",true,"'walk_in'::character varying"],
+        ["nb_number","character varying(100)",true,null],
+        ["referral_nb","character varying(100)",true,null],
+        ["service_date","date",false,null],
+        ["service_time","time without time zone",true,null],
+        ["activity_type","character varying(80)",false,null],
+        ["workflow_source","character varying(80)",true,null],
+        ["form_reference_id","character varying(150)",true,null],
+        ["consultation_fee","numeric(12,2)",true,"'0'::numeric"],
+        ["product_total_dp","numeric(12,2)",true,"'0'::numeric"],
+        ["product_total_cp","numeric(12,2)",true,"'0'::numeric"],
+        ["total_qty","numeric",true,"0"],
+        ["grand_total","numeric(12,2)",true,"'0'::numeric"],
+        ["payment_status","character varying(30)",true,"'paid'::character varying"],
+        ["payment_method","character varying(30)",true,"'cash'::character varying"],
+        ["stock_impact","boolean",true,"false"],
+        ["stock_status","character varying(30)",true,"'not_required'::character varying"],
+        ["prescription_status","character varying(30)",true,"'none'::character varying"],
+        ["consultation_status","character varying(30)",true,"'none'::character varying"],
+        ["reporting_status","character varying(30)",true,"'posted'::character varying"],
+        ["captured_by","character varying(100)",true,null],
+        ["created_at","timestamp with time zone",true,"now()"],
+        ["updated_at","timestamp with time zone",true,"now()"],
+        ["total_bv","numeric",false,"'0'::numeric"]
+      ],
+      "constraints": [
+        ["branch_activity_transactions_pkey","PRIMARY KEY (id)"]
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX branch_activity_transactions_pkey ON public.branch_activity_transactions USING btree (id)",
+        "CREATE INDEX idx_bat_activity_type ON public.branch_activity_transactions USING btree (activity_type)",
+        "CREATE INDEX idx_bat_branch_date ON public.branch_activity_transactions USING btree (branch_id, service_date)",
+        "CREATE INDEX idx_bat_reporting_status ON public.branch_activity_transactions USING btree (reporting_status)"
+      ]
+    },
     {
       "table": "branches",
       "columnScope": null,

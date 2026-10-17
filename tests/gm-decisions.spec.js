@@ -20,6 +20,7 @@ async function call(h,url,body,method='PUT',user=gm) {
 }
 async function seed(table,values) {
  const columns=(await query(`SELECT column_name,is_nullable,column_default FROM information_schema.columns WHERE table_schema='public' AND table_name=$1`,[table])).rows;
+ if(!columns.length)throw Error('Repository schema missing authoritative table: '+table);
  const keys=Object.keys(values).filter(k=>columns.some(c=>c.column_name===k));
  const required=columns.filter(c=>c.is_nullable==='NO' && !c.column_default && !keys.includes(c.column_name));
  if(required.length)throw Error('Fixture needs '+table+': '+required.map(c=>c.column_name).join(','));
