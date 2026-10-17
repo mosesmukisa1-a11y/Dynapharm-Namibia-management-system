@@ -16,6 +16,7 @@ import {repositoryDdlStatements} from './lib/repository-ddl.mjs';
 import {consolidatedSql,consolidatedParams} from './lib/consolidated-schema-query.mjs';
 import {schemaDigest} from './lib/consolidated-contract.mjs';
 import {branchVisitsSql,branchVisitsParams} from './lib/branch-visits-schema-query.mjs';
+import {safeFailure} from './lib/clean-gate-diagnostics.mjs';
 if(process.env.NODE_ENV==='production'||['1','true'].includes(process.env.REPLIT_DEPLOYMENT))
   throw Error('Production fixture refused');
 // Never re-use the earlier guessed legacy scaffolding. A missing canonical
@@ -43,9 +44,15 @@ const env={PATH:process.env.PATH,HOME:process.env.HOME,LANG:'C.UTF-8'};
 function command(cmd,args,{input,childEnv=env}={}){
   return new Promise((resolve,reject)=>{
     const p=spawn(cmd,args,{env:childEnv,stdio:['pipe','pipe','pipe']});
-    let text='';p.stdout.on('data',x=>text+=x);p.stderr.on('data',()=>{});
-    p.on('error',()=>reject(Error('Owned subprocess unavailable')));
-    p.on('exit',c=>c===0?resolve(text):reject(Error('Owned subprocess failed: '+cmd)));
+    let text='',errors='';p.stdout.on('data',x=>text+=x);
+    p.stderr.on('data',x=>{errors=(errors+x).slice(-200000);});
+    p.on('error',e=>{const error=Error('Owned subprocess unavailable');
+      error.safe={exitCode:null,signal:null,...safeFailure(e.stack||e.message)};reject(error);});
+    p.on('close',(exitCode,signal)=>{
+      if(exitCode===0)resolve(text);
+      else{const error=Error('Owned subprocess failed');
+        error.safe={exitCode,signal,...safeFailure(errors)};reject(error);}
+    });
     p.stdin.end(input);
   });
 }
@@ -225,8 +232,8 @@ try{
         await command(process.execPath,args,{childEnv:{...testEnv,
           OWNED_AUDIT_OUTPUT:resultDirectory,
           SECURITY_FIXTURE_OWNERSHIP_DIR:out+'/database-ownership'}});
-      }catch{succeeded=false;process.exitCode=1;await fs.writeFile(out+'/'+label+'-database-failure.json',JSON.stringify({status:'FAIL',
-        reason:'Owned suite subprocess failed; no private stderr exported'}));}
+      }catch(error){succeeded=false;process.exitCode=1;await fs.writeFile(out+'/'+label+'-database-failure.json',JSON.stringify({status:'FAIL',
+        reason:'Owned suite subprocess failed; no private stderr exported',process:error.safe||null}));}
       try{await fs.copyFile(resultDirectory+'/test-results.json',out+'/'+label+'-database-results.json');}
       catch{await fs.writeFile(out+'/'+label+'-database-no-result.json',JSON.stringify({
         status:'NOT VERIFIED',reason:'This invocation produced no result; never copy an earlier artifact',runId,label,
@@ -294,6 +301,7 @@ try{
   }
 }catch(error){
   await fs.writeFile(out+'/fixture-failure.json',JSON.stringify({status:'FAIL',
+    failure:error.safe||safeFailure(error.stack||error.message),
     reason:/Candidate-only|Strict launcher|Browser rehearsal/.test(error.message)?error.message:'Fixture operation failed; details withheld'}));
   await cleanup();process.exitCode=1;
 }

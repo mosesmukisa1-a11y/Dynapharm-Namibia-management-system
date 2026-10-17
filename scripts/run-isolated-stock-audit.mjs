@@ -5,6 +5,7 @@ import path from 'node:path';
 import pg from 'pg';
 import {assertIsolatedTestDatabase} from '../api/testDatabaseGuard.js';
 import {stockAuditSuites,databaseSuites} from '../tests/helpers/database-suites.js';
+import {safeFailure} from './lib/clean-gate-diagnostics.mjs';
 
 // Never copy data, run on production, persist credentials, or display URLs.
 if(process.env.REPLIT_DEPLOYMENT==='1')throw Error('Stock audit cannot run in production');
@@ -61,19 +62,22 @@ async function recordCleanup(database) {
   await writeFile(file,JSON.stringify({...record,cleanupVerified:true,cleanedAt:new Date().toISOString()},null,2));
 }
 let created=false,target,combinedWritten=false;
+const stages=[];
 async function child(command,args,{env=process.env,input,capture=false}={}){
   return new Promise((resolve,reject)=>{
     const process=spawn(command,args,{env,stdio:['pipe',capture?'pipe':'inherit','pipe']});
     let output='',errors='';
     process.stdout?.on('data',data=>{output+=data;});
     process.stderr.on('data',data=>{errors+=data;});
-    process.on('error',reject);
-    process.on('close',code=>{
-      // Do not leak connection strings in tool errors.
-      errors=errors.split(sourceUrl.toString()).join('[database]').split(isolatedUrl.toString()).join('[isolated database]')
-        .replace(/postgres(?:ql)?:\/\/\S+/g,'[database URI]');
-      if(code!==0)reject(Error(`${command} exited ${code}: ${errors.slice(-16000)}`));
-      else{if(errors)console.error(errors);resolve(output);}
+    process.on('error',e=>{const error=Error('Owned subprocess unavailable');
+      error.safe={exitCode:null,signal:null,...safeFailure(e.stack||e.message)};reject(error);});
+    process.on('close',(code,signal)=>{
+      const stage={operation:path.basename(command),suite:args.find(a=>/^tests\/.*\.spec\.js$/.test(a))||null,
+        exitCode:code,signal,status:code===0?'PASS':'FAIL',
+        ...(code!==0?{failure:safeFailure(errors)}:{})};
+      stages.push(stage);
+      if(code!==0){const error=Error('Owned subprocess failed');error.safe=stage;reject(error);}
+      else resolve(output);
     });
     process.stdin.end(input);
   });
@@ -121,7 +125,7 @@ try{
           '--reporter=default','--reporter=json','--outputFile='+output],{
           env:{...testEnv,DATABASE_URL:suiteUrl.toString(),STOCK_AUDIT_DATABASE:owned,
             OWNED_QUERY_SUITE:suites[index]}});
-      }catch(error){failed++;console.error(error.message);}
+      }catch(error){failed++;console.error('Owned suite subprocess failed; sanitized metadata retained.');}
       finally{
         try{results.push(JSON.parse(await readFile(output,'utf8')));}
         catch{results.push({numTotalTests:0,numPassedTests:0,numFailedTests:1,numPendingTests:0,testResults:[],
@@ -135,19 +139,20 @@ try{
     const combined={isolation:'one owned database per suite',startTime:startedAt,
       numTotalTests:sum('numTotalTests'),numPassedTests:sum('numPassedTests'),
       numFailedTests:sum('numFailedTests'),numPendingTests:sum('numPendingTests'),success:failed===0,
-      testResults:results.flatMap(r=>r.testResults),suiteFailures:results.filter(r=>r.suiteFailure).map(r=>r.suiteFailure)};
+      testResults:results.flatMap(r=>r.testResults),suiteFailures:results.filter(r=>r.suiteFailure).map(r=>r.suiteFailure),
+      subprocessStages:stages};
     await writeFile(resultFile,JSON.stringify({...combined,ownershipScopedOutput:!!process.env.OWNED_AUDIT_OUTPUT},null,2));
     combinedWritten=true;
     console.log(`Isolated full suite: ${combined.numPassedTests}/${combined.numTotalTests} passed; ${combined.numFailedTests} failed; ${combined.numPendingTests} pending`);
     if(failed)process.exitCode=1;
   }
 }catch(error){
-  const message=error.message.replace(/postgres(?:ql)?:\/\/\S+/g,'[database URI]');
-  console.error(message);process.exitCode=1;
+  console.error('Owned audit setup failed; sanitized metadata retained.');process.exitCode=1;
   if(all&&!combinedWritten){
     await mkdir(outputRoot,{recursive:true});
     await writeFile(resultFile,JSON.stringify({
-      success:false,harnessFailure:message,numTotalTests:0,numPassedTests:0,numFailedTests:0,
+      success:false,harnessFailure:'Owned audit setup failed',safeFailure:error.safe||safeFailure(error.stack||error.message),
+      subprocessStages:stages,numTotalTests:0,numPassedTests:0,numFailedTests:0,
       numPendingTests:0,testResults:[],note:'No complete suite result; never reuse a previous JSON artifact'},null,2));
   }
 }finally{

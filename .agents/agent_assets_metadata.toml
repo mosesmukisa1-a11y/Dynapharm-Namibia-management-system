@@ -756,3 +756,17 @@ mtime_ms = 1792269585407
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/d8e06aec-1b0f-41c7-a244-e683681ceece/eb77be3e-6984-4ba6-970e-cb8dbaae0111"
 storage_version_token = "1792269607585661"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "89-q0OdFy9iV67q7m2Kn3"
+uri = "file://generated-artifacts/sql-runtime-enforcement-final/clean-repair/report.md"
+type = "text"
+title = "Clean-install gate repair — PASS"
+description = "Original failure reproduction, scoped fixes, exact candidate hashes, complete clean-install stage results and verified disposable cleanup. Do not publish."
+logical_id = "4aea60b1-b1d2-45b0-a8ad-b0b016c9e0b8"
+content_hash = "sha256:8d4fa097849712ddf1f81dab4a755cb2a0120c9f7c598bb664cade5911cbbfc9"
+size = 9231
+mtime_ms = 1792271837251
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/4aea60b1-b1d2-45b0-a8ad-b0b016c9e0b8/780d8694-66b4-4175-94c5-0922e3be129a"
+storage_version_token = "1792271849552025"
+content_type = "text/markdown"

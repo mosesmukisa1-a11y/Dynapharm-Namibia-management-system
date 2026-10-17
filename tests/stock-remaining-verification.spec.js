@@ -1,6 +1,6 @@
 import { ownedStatement as __ownedStatement } from "./helpers/owned-statement.js"; // @vitest-environment node
 import { beforeAll, afterAll, it, expect } from 'vitest';
-import { writeFile } from 'node:fs/promises';
+import { writeFile, mkdir } from 'node:fs/promises';
 import { withTransaction } from '../api/db.js';import { query } from "./helpers/owned-raw-database.js";
 import orders from '../api/stock/supplier-orders.js';
 import sales from '../api/branch/walkin-sales.js';
@@ -39,6 +39,7 @@ beforeAll(async () => {
   [prefix + 'BATCH', branch, p, JSON.stringify({ cost_layers: [{ quantity: 10, source }] })]);
 });
 afterAll(async () => {
+  await mkdir('generated-artifacts/stock-audit', { recursive: true });
   await writeFile('generated-artifacts/stock-audit/additional-verification.json', JSON.stringify({ checks }, null, 2));
   await query('DELETE FROM stock_linked_reversals WHERE original_reference LIKE $1', [prefix + '%']);
   await query('DELETE FROM branch_refund_requests WHERE sale_reference LIKE $1', [prefix + '%']);

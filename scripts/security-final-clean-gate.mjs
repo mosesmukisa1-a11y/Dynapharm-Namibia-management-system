@@ -1,5 +1,6 @@
 // --prepare only packages current source. --owner-manual installs in a disposable
-// copy and must be executed by the owner, never by the remediation agent.
+// copy. --owner-manual requires explicit owner authorization (including a
+// request to investigate and rerun this gate); it is not publication authority.
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
@@ -7,6 +8,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import {execFile,execFileSync,spawn} from 'node:child_process';
 import {promisify} from 'node:util';
 import {eligibleUntrackedSchemaSource} from './lib/schema-candidate-files.mjs';
+import {collectFixtureDiagnostics,safeFailure} from './lib/clean-gate-diagnostics.mjs';
 const root=process.cwd(),out=root+'/generated-artifacts/sql-runtime-enforcement-final';
 const hash=b=>createHash('sha256').update(b).digest('hex');
 const archive=out+'/exact-candidate-source.tar';
@@ -59,10 +61,17 @@ if(process.argv.includes('--prepare')){
   if(hash(await fs.readFile(archive))!==manifest.archiveSha256)throw Error('Candidate archive changed');
   for(const[file,digest]of Object.entries(manifest.files))
     if(hash(await fs.readFile(root+'/'+file))!==digest)throw Error('Candidate source changed; prepare/review a new candidate');
-  const temp=await fs.mkdtemp(path.join(os.tmpdir(),'security-clean-install-'));
+  const temp=path.join(os.tmpdir(),'security-clean-install-'+randomUUID());
+  await fs.writeFile(out+'/clean-install-ownership.json',JSON.stringify({directory:temp,
+    purpose:'Authorized candidate-only clean install',production:false,createdAt:new Date().toISOString()},null,2));
+  await fs.mkdir(temp,{mode:0o700});
   const source=temp+'/source',home=temp+'/home';await fs.mkdir(source);await fs.mkdir(home);
   const result={status:'NOT VERIFIED',startedAt:new Date().toISOString(),
-    archiveSha256:manifest.archiveSha256,lockfileBefore:manifest.lockfileSha256,stages:[]};
+    archiveSha256:manifest.archiveSha256,lockfileBefore:manifest.lockfileSha256,stages:[],
+    node:process.version,npm:execFileSync('npm',['--version'],{encoding:'utf8'}).trim(),
+    existingDependenciesCopied:false,generatedStateCopied:false,
+    executables:Object.fromEntries(['node','npm','initdb','pg_ctl','pg_dump','psql'].map(x=>
+      [x,execFileSync('which',[x],{encoding:'utf8'}).trim()]))};
   try{
     await promisify(execFile)('tar',['-xf',archive,'-C',source]);
     if(await fs.stat(source+'/node_modules').then(()=>true,()=>false))throw Error('Source unexpectedly has dependencies');
@@ -71,15 +80,20 @@ if(process.argv.includes('--prepare')){
     await fs.writeFile(source+'/.verified-candidate-source.json',JSON.stringify({files:manifest.files}));
     const env={PATH:process.env.PATH,HOME:home,XDG_CONFIG_HOME:temp+'/config',CI:'true',NODE_ENV:'test'};
     async function stage(name,command,args,extra={}){
-      const code=await new Promise(resolve=>{
+      let text='';
+      const outcome=await new Promise(resolve=>{
         const child=spawn(command,args,{cwd:source,env:{...env,...extra},stdio:['ignore','pipe','pipe']});
-        // No request/private/provider/npm environment output is emitted or retained.
-        child.stdout.resume();child.stderr.resume();
-        child.once('error',()=>resolve(null));child.once('exit',resolve);
+        // Raw output lives only in bounded memory, never in a log or report.
+        child.stdout.on('data',b=>{text=(text+b).slice(-200000);});
+        child.stderr.on('data',b=>{text=(text+b).slice(-200000);});
+        child.once('error',e=>resolve({exitCode:null,signal:null,spawnCode:e.code}));
+        child.once('close',(exitCode,signal)=>resolve({exitCode,signal}));
       });
-      result.stages.push({name,exitCode:code,status:code===0?'PASS':'FAIL',at:new Date().toISOString()});
+      result.stages.push({name,...outcome,status:outcome.exitCode===0?'PASS':'FAIL',at:new Date().toISOString(),
+        ...(outcome.exitCode!==0?{failure:safeFailure(text)}:{})});
+      result.fixtures=await collectFixtureDiagnostics(source);
       await fs.writeFile(out+'/clean-install.json',JSON.stringify(result,null,2));
-      return code===0;
+      return outcome.exitCode===0;
     }
     const installed=await stage('genuine lockfile-only clean install','npm',['ci']);
     if(installed){
@@ -95,9 +109,14 @@ if(process.argv.includes('--prepare')){
     result.candidateAfterMatches=true;
     for(const[file,digest]of Object.entries(manifest.files))
       if(hash(await fs.readFile(source+'/'+file))!==digest)result.candidateAfterMatches=false;
-    result.status=installed&&result.stages.every(s=>s.status==='PASS')&&result.candidateAfterMatches&&
+    result.fixtureCleanupVerified=result.fixtures?.length>0&&result.fixtures.every(f=>
+      f.cleanup?.isolatedDatabaseDropped===true&&f.cleanup?.ownedClusterStopped===true&&
+      f.cleanup?.temporaryDirectoryRemoved===true&&f.cleanup?.childStopped===true&&
+      f.innerCleanup.records===f.innerCleanup.verified);
+    result.status=installed&&result.stages.every(s=>s.status==='PASS')&&result.candidateAfterMatches&&result.fixtureCleanupVerified&&
       result.lockfileAfter===result.lockfileBefore?'PASS':'BLOCKED';
-  }catch{result.status='BLOCKED';result.reason='Clean-copy operation failed; private details withheld';}
+  }catch(error){result.status='BLOCKED';result.reason='Clean-copy operation failed; private details withheld';
+    result.failure=safeFailure(error.stack||error.message);}
   finally{
     await fs.rm(temp,{recursive:true,force:true});
     result.disposableCopyRemoved=true;result.finishedAt=new Date().toISOString();

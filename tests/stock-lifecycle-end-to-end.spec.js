@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { beforeAll, afterAll, it, expect } from 'vitest';
-import { writeFile } from 'node:fs/promises';import {
+import { writeFile, mkdir } from 'node:fs/promises';import {
   query } from "./helpers/owned-raw-database.js";
 import { detectDrift } from '../worker/drift.mjs';
 import packs from '../api/stock/product-packs.js';
@@ -87,6 +87,7 @@ beforeAll(async () => {
     VALUES('ISOLATED-TEST-ITEM','TEST-ITEM',$1,'unit',7,9,true) ON CONFLICT(id) DO NOTHING`, [product]);
 });
 afterAll(async () => {
+  await mkdir('generated-artifacts/stock-audit', { recursive: true });
   await writeFile('generated-artifacts/stock-audit/lifecycle-results.json', JSON.stringify({ product, barcode: '0001234567895', conversion: '1 carton = 10 units', steps }, null, 2));
 });
 
@@ -173,6 +174,7 @@ it('runs the requested 100-unit import-to-two-branches, sale, refund, damage and
   expect((await invoke(currentOverview, 'GET', {}, staff)).status).toBe(403);
   const summary = success(await invoke(branchSummary, 'GET', {}, staff, `/api/branch/stock-summary?branch=${a}`));
   const branchReport = summary.branches.find((row) => row.branch_id === a);
+  await mkdir('generated-artifacts/stock-worker/test-evidence', { recursive: true });
   await writeFile('generated-artifacts/stock-worker/test-evidence/branch-receipt-mirrors.json', JSON.stringify({
     isolated: true, action: `GET /api/branch/stock-summary?branch=${a}`, status: 200, branchReport,
     movements: (await query(`SELECT id,movement_type,quantity,source_location,destination_location,
