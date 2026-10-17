@@ -700,3 +700,17 @@ mtime_ms = 1792246309769
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/36269d69-99c9-4c16-991c-40d15a20efae/fb62c890-a6fc-49c3-8317-07a54e632ed7"
 storage_version_token = "1792246315650442"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "DnffI3ax028uwzyZvyOy_"
+uri = "file://generated-artifacts/final-security-release-gate/final-security-release-gate-review.zip"
+type = "unspecified"
+title = "Final release-gate evidence — blocked"
+description = "378/378 database and 460/460 unit checks passed. Includes captured schema, migration contract/idempotency evidence, authenticated screenshots, all original 66 SQL dispositions with 61 unresolved blockers, scans, cleanup and source manifest. No production changes."
+logical_id = "75fd6115-f5a5-4ab0-b71f-42b0004eb65c"
+content_hash = "sha256:25b78d14de78f26b1a5fd2daea9fd226c85d1899b076e2b343171ac8911e3dd6"
+size = 522300
+mtime_ms = 1792248595981
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/75fd6115-f5a5-4ab0-b71f-42b0004eb65c/3d99dc96-bdde-4751-b360-1ac59d3add17"
+storage_version_token = "1792248602206929"
+content_type = "application/octet-stream"

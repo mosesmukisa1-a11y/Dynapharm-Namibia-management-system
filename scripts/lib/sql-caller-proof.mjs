@@ -3,17 +3,73 @@ import {parse} from '@babel/parser';
 import traverseModule from '@babel/traverse';
 const traverse=traverseModule.default||traverseModule;
 const yes=reason=>({safe:true,reason}),no=reason=>({safe:false,reason});
-function nativeLocalArray(path){
+function nativeArrayUses(binding,methods){
+  return binding.referencePaths.every(ref=>{
+    const member=ref.parentPath,call=member.parentPath;
+    if(!member.isMemberExpression()||member.node.computed||member.get('object')!==ref)return false;
+    if(member.node.property.name==='length')return !call.isAssignmentExpression()&&!call.isUpdateExpression();
+    return methods.includes(member.node.property.name)&&call.isCallExpression()&&call.get('callee')===member;
+  });
+}
+// A numeric conversion cannot carry caller text into SQL structure. Invalid
+// numbers may still be a query correctness defect; this is not that proof.
+function numericBuiltin(path){
+  if(!path?.isCallExpression())return false;
+  const callee=path.get('callee');
+  return callee.isIdentifier()&&['Number','parseInt','parseFloat'].includes(callee.node.name)
+      &&!callee.scope.getBinding(callee.node.name)
+    ||callee.isMemberExpression()&&!callee.node.computed
+      &&callee.get('object').isIdentifier({name:'Math'})&&!callee.scope.getBinding('Math')
+      &&['min','max','floor','ceil','round','trunc','abs'].includes(callee.node.property.name);
+}
+function fixedKeys(path,seen=new Set()){
+  if(!path?.node)return false;
+  if(path.isObjectExpression())return path.get('properties').every(p=>p.isObjectProperty()
+    &&!p.node.computed&&/^[A-Za-z_][A-Za-z0-9_]*$/.test(p.node.key.name||p.node.key.value||''));
+  if(!path.isIdentifier())return false;
+  const b=path.scope.getBinding(path.node.name);
+  if(!b?.constant||!b.path.isVariableDeclarator()||seen.has(b))return false;
+  const next=new Set(seen).add(b);
+  // Object.keys/values reads and fixed property assignment are the only allowed
+  // uses: no request-indexed key writes, aliases, helper escapes or deletion.
+  if(!b.referencePaths.every(ref=>{
+    const member=ref.parentPath;
+    if(member.isMemberExpression()&&!member.node.computed&&member.get('object')===ref)
+      return /^[A-Za-z_][A-Za-z0-9_]*$/.test(member.node.property.name);
+    const call=ref.parentPath;
+    return call.isCallExpression()&&call.node.arguments[0]===ref.node
+      &&call.get('callee').isMemberExpression()&&!call.node.callee.computed
+      &&call.node.callee.object.name==='Object'&&!call.scope.getBinding('Object')
+      &&['keys','values','entries'].includes(call.node.callee.property.name);
+  }))return false;
+  return fixedKeys(b.path.get('init'),next);
+}
+function fixedKeyArray(path,seen=new Set()){
+  if(path?.isIdentifier()){
+    const b=path.scope.getBinding(path.node.name);
+    return b?.constant&&b.path.isVariableDeclarator()&&!seen.has(b)&&nativeArrayUses(b,['map'])
+      &&fixedKeyArray(b.path.get('init'),new Set(seen).add(b));
+  }
+  return path?.isCallExpression()&&path.get('callee').isMemberExpression()
+    &&!path.node.callee.computed&&path.node.callee.object.name==='Object'
+    &&!path.scope.getBinding('Object')&&path.node.callee.property.name==='keys'
+    &&path.node.arguments.length===1&&fixedKeys(path.get('arguments.0'));
+}
+function nativeLocalArray(path,forPush=false){
+  if(path?.isCallExpression()&&path.get('callee').isMemberExpression()
+    &&!path.node.callee.computed&&path.node.callee.object.name==='Object'
+    &&path.node.callee.property.name==='keys'&&!path.scope.getBinding('Object'))return true;
   if(!path?.isIdentifier())return false;
   const binding=path.scope.getBinding(path.node.name);
   if(!binding?.constant||!binding.path.isVariableDeclarator())return false;
   const init=binding.path.get('init');
-  return init.isArrayExpression()||(init.isCallExpression()&&init.get('callee').isMemberExpression()
+  return (forPush||nativeArrayUses(binding,['map','forEach','push','join']))&&(init.isArrayExpression()||(init.isCallExpression()&&init.get('callee').isMemberExpression()
     &&init.node.callee.object?.name==='Object'&&init.node.callee.property?.name==='keys'
-    &&!init.scope.getBinding('Object'));
+    &&!init.scope.getBinding('Object')));
 }
 function prove(path,seen=new Set()){
   if(!path?.node)return no('Missing expression');
+  if(numericBuiltin(path))return yes('Unshadowed numeric builtin; output is numeric, never request SQL text');
   if(path.isAwaitExpression())return prove(path.get('argument'),seen);
   if(path.isCallExpression()&&path.get('callee').isMemberExpression()
     &&!path.node.callee.computed&&path.node.callee.property.name==='readFile'){
@@ -57,7 +113,7 @@ function prove(path,seen=new Set()){
     &&path.node.arguments.length===0)return prove(path.get('callee.object'),seen);
   if(path.isCallExpression()&&path.get('callee').isMemberExpression()
     &&!path.node.callee.computed&&path.node.callee.property.name==='push'
-    &&nativeLocalArray(path.get('callee.object'))){
+    &&nativeLocalArray(path.get('callee.object'),true)){
     const binding=path.scope.getBinding(path.node.callee.object.name);
     const intact=binding.referencePaths.every(ref=>{
       const member=ref.parentPath,call=member.parentPath;
@@ -96,6 +152,17 @@ function prove(path,seen=new Set()){
     &&path.get('callee.object').isIdentifier()){
     if(path.node.arguments.length!==1||!path.get('arguments.0').isStringLiteral())return no('Join separator not fixed');
     const binding=path.scope.getBinding(path.node.callee.object.name);
+    if(binding?.constant&&binding.path.isVariableDeclarator()
+      &&binding.path.get('init').isCallExpression()){
+      const mapped=binding.path.get('init'),callee=mapped.get('callee'),callback=mapped.get('arguments.0');
+      if(callee.isMemberExpression()&&!callee.node.computed&&callee.node.property.name==='map'
+        &&fixedKeyArray(callee.get('object'))&&callback.isArrowFunctionExpression()
+        &&!callback.get('body').isBlockStatement()
+        &&binding.referencePaths.every(ref=>ref.parentPath.isMemberExpression()
+          &&!ref.parentPath.node.computed&&ref.parentPath.node.property.name==='join'
+          &&ref.parentPath.parentPath.isCallExpression()))
+        return prove(callback.get('body'),new Set(seen));
+    }
     if(!binding?.constant||!binding.path.isVariableDeclarator()||!binding.path.get('init').isArrayExpression())
       return no('Joined array origin not proven');
     if(seen.has(binding))return no('Recursive array dependence');
@@ -146,6 +213,12 @@ function prove(path,seen=new Set()){
         &&!call.node.callee.computed&&['map','forEach'].includes(call.node.callee.property.name)
         &&nativeLocalArray(call.get('callee.object'))&&binding.constant)
         return yes('Native local-array iterator numeric index');
+      if(callback.isArrowFunctionExpression()&&callback.node.params[0]===binding.path.node
+        &&call.isCallExpression()&&call.node.arguments[0]===callback.node
+        &&call.get('callee').isMemberExpression()&&!call.node.callee.computed
+        &&call.node.callee.property.name==='map'&&binding.constant
+        &&fixedKeyArray(call.get('callee.object')))
+        return yes('Key from unescaped fixed-shape local object, never caller-provided field name');
     }
     if(!binding?.path.isVariableDeclarator())return no('Identifier has no local declarator proof');
     if(seen.has(binding))return no('Recursive binding dependence');

@@ -54,3 +54,32 @@ foreign-key triggers. Literal generated names differ without schema drift.
 
 **How to apply:** Normalize only the documented generated-name component;
 preserve exact captured definitions and compare every other attribute.
+
+Passing the complete disposable database suite does not clear a generic SQL
+executor or prove all production-reachable query families safe.
+
+**Why:** The release protocol separately requires caller, alias, callback and
+import propagation review, plus hostile-input coverage for each reachable
+endpoint family. A bounded syntax proof or a passing read path is not that proof.
+
+**How to apply:** Preserve unresolved locations as release blockers. Distinguish
+actual endpoint/service tests with inert query recording from PostgreSQL sentinel
+tests and real-session browser checks; none substitutes for the others.
+
+Treat constant arrays and objects as mutable when proving SQL structure.
+
+**Why:** A fixed initial key list can be changed through an alias, computed key
+write, or replaced map method; a callback index is not then demonstrably native.
+
+**How to apply:** Check all references/escapes and method writes before using
+fixed-key or numeric-iterator proofs. Keep hostile mutation regressions alongside
+positive proofs and do not infer whole-program safety from these local checks.
+
+Pin source-audit coverage by file and exact source span, not raw AST visitor count.
+
+**Why:** Binding-aware Babel traversal can revisit a call path; a retained
+66-location audit produced 67 visitor records without any missing source location.
+
+**How to apply:** Collect paths before binding recursion, deduplicate exact spans,
+record repeated visits, and assert that every original distinct location remains
+present. Never use deduplication to discard unresolved locations.

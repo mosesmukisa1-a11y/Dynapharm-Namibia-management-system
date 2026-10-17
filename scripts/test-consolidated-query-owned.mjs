@@ -5,10 +5,13 @@ import {promisify} from 'node:util';
 import net from 'node:net';
 import assert from 'node:assert/strict';
 import pg from 'pg';
-import {consolidatedSql,consolidatedParams} from './lib/consolidated-schema-query.mjs';
+import {consolidatedSql as priorSql,consolidatedParams as priorParams} from './lib/consolidated-schema-query.mjs';
+import {branchVisitsSql,branchVisitsParams} from './lib/branch-visits-schema-query.mjs';
+const branchVisits=process.argv.includes('--branch-visits');
+const consolidatedSql=branchVisits?branchVisitsSql:priorSql,consolidatedParams=branchVisits?branchVisitsParams:priorParams;
 if(process.env.NODE_ENV==='production'||['true','1'].includes(process.env.REPLIT_DEPLOYMENT))throw Error('Owned test only');
 const id=randomUUID(),directory='/tmp/consolidated-schema-syntax-'+id;
-const out='generated-artifacts/production-schema-consolidated-final/local-syntax/'+id;
+const out=(branchVisits?'generated-artifacts/branch-client-visits-authority':'generated-artifacts/production-schema-consolidated-final')+'/local-syntax/'+id;
 await fs.mkdir(out,{recursive:true});
 const port=await new Promise(r=>{const s=net.createServer();s.listen(0,'127.0.0.1',()=>{const p=s.address().port;s.close(()=>r(p));});});
 await fs.writeFile(out+'/ownership.json',JSON.stringify({id,directory,port,createdAt:new Date().toISOString(),

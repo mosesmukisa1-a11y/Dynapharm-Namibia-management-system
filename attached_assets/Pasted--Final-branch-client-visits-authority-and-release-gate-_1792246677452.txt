@@ -1,0 +1,242 @@
+## Final branch-client-visits authority and release-gate closure
+
+The owner authorizes exactly one managed read-only production catalog operation for complete schema metadata concerning:
+
+`public.branch_client_visits`
+
+Authorization expires two hours after the owner’s authorization message.
+
+The operation may capture:
+
+- columns and exact default expressions;
+- native types, lengths, precision and nullability;
+- primary, unique, foreign, check and exclusion constraints;
+- indexes, expressions, included columns and predicates;
+- sequences and ownership;
+- triggers and directly invoked function definitions;
+- partition metadata;
+- only directly required schema dependencies.
+
+No application rows, unrelated objects, writes, migrations, temporary objects, arbitrary SQL, configuration changes, credentials, sessions, restarts, publication, scheduler actions or worker activation are authorized.
+
+Status remains:
+
+`BLOCKED - DO NOT PUBLISH`
+
+## 1. Single immutable managed operation
+
+Before invocation, persist:
+
+- authorization fingerprint;
+- start and expiration;
+- exact object allowlist;
+- immutable query ID;
+- SQL checksum;
+- invocation count zero;
+- replay prohibition.
+
+Execute exactly one fixed, parameterized managed SQL operation.
+
+Do not run a separate database preflight or retry.
+
+Every metadata section must depend on one materialized guard requiring:
+
+- `current_setting('transaction_read_only') = 'on'`
+- `pg_is_in_recovery() = true`
+
+If either condition fails, return sanitized guard status only and no metadata.
+
+Do not issue DDL, DML, `SET`, transaction-control commands, temporary objects, advisory locks or configuration functions.
+
+## 2. Catalog scope
+
+Retrieve complete schema authority for `public.branch_client_visits` only.
+
+Direct dependencies may be captured only when required to reproduce:
+
+- an authorized foreign key;
+- a sequence owned by an authorized column;
+- an attached trigger;
+- a function directly invoked by that trigger;
+- partition inheritance.
+
+Do not enumerate unrelated schemas, tables, columns, functions, users, roles, privileges or ownership identities.
+
+Exact schema expressions and authorized function definitions may be preserved. Do not execute captured definitions against production.
+
+## 3. Evidence and terminal access closure
+
+Write sanitized evidence to:
+
+`generated-artifacts/branch-client-visits-authority/`
+
+Include:
+
+- `authorization.json`
+- `query-definition.json`
+- `operation-receipt.json`
+- `branch-client-visits.schema.json`
+- `dependency-graph.json`
+- `production-read-verification.json`
+- `inspection-summary.md`
+
+Do not save raw database names, hostnames, usernames, connection strings, credentials, certificates or provider secrets.
+
+After the operation:
+
+- record invocation count one;
+- record provider completion;
+- mark access ended;
+- prohibit replay;
+- prohibit additional managed calls;
+- continue offline only.
+
+## 4. Offline canonical migration
+
+Using only captured metadata:
+
+1. Add an idempotent repository migration for `branch_client_visits`.
+2. Preserve exact columns, defaults, types, constraints, indexes, sequences, triggers and dependencies.
+3. Do not copy production rows.
+4. Do not apply the migration to production.
+5. Do not guess missing definitions.
+6. Add a readable source-controlled schema contract.
+7. Add migration idempotency tests.
+8. Add post-full-bootstrap drift checks.
+
+Integrate this migration into the established canonical dependency order without weakening migrations 036-040.
+
+## 5. Complete database gate
+
+Create a newly owned disposable PostgreSQL cluster.
+
+Build the complete schema from repository migrations and authoritative static schema sources only.
+
+Do not use development/production clones or handcrafted canonical tables.
+
+Run all 378 isolated database checks.
+
+Required result:
+
+- 378/378 passed;
+- zero failures;
+- zero pending/skipped checks.
+
+Also run:
+
+- credential DB suite;
+- campaign free-item/DP suite;
+- dispatch concurrency/retry suite;
+- canonical schema contracts;
+- migration idempotency;
+- full-bootstrap drift checks;
+- strict code-only launcher;
+- authenticated browser security workflow;
+- settled Consultant rendering.
+
+Retain safe diagnostics for any failure. Do not rewrite tests merely to produce a pass.
+
+Record resource ownership before creation and prove cleanup afterward.
+
+Do not inspect or delete the 14 ambiguous historical databases.
+
+## 6. Resolve all 66 SQL blockers
+
+Complete the dynamic SQL review before declaring readiness.
+
+For each of the 66 locations, record:
+
+- current file and line;
+- function and call family;
+- production reachability;
+- SQL structure source;
+- identifier source;
+- bound-value behavior;
+- alias/callback/import propagation;
+- hostile-input test;
+- final classification.
+
+Allowed classifications:
+
+- static SQL with bound values;
+- strictly validated allowlisted identifier;
+- fixed internal constant;
+- unreachable non-production tool;
+- confirmed defect and repaired;
+- unresolved blocker.
+
+Add hostile-input tests for every production-reachable endpoint family.
+
+Do not globally suppress scanner findings.
+
+Do not clear the generic executor while any production-reachable caller remains unproven.
+
+## 7. Complete final verification
+
+Run:
+
+- full unit suite;
+- 378 database checks;
+- credential DB suite;
+- campaign DP/free-item checks;
+- dispatch concurrency checks;
+- schema contracts and idempotency;
+- 23 startup contracts;
+- production build;
+- strict launcher;
+- authenticated browser security workflow;
+- settled page rendering;
+- credential exposure scan;
+- dependency scan;
+- SAST scan;
+- privacy scan;
+- synthetic output-safety verification;
+- owned-resource cleanup verification.
+
+Prepare an exact final source archive and manifest.
+
+## 8. Clean-install disposition
+
+Only if:
+
+- database result is 378/378;
+- all SQL locations are resolved;
+- browser and launcher checks pass;
+- no new unresolved critical/high production-reachable finding remains;
+
+then return the owner command:
+
+```sh
+cd /home/runner/workspace
+node scripts/security-final-clean-gate.mjs --owner-manual
+```
+
+Do not mark the clean-install gate passed until its sanitized result exists.
+
+## 9. Final evidence and status
+
+Write evidence to:
+
+`generated-artifacts/final-security-release-gate/`
+
+Return exactly one:
+
+- `READY FOR OWNER CLEAN-INSTALL GATE - DO NOT PUBLISH`
+- `PARTIALLY VERIFIED - DO NOT PUBLISH`
+- `BLOCKED - DO NOT PUBLISH`
+
+No result authorizes production migration, publication, restart, password rotation, session invalidation, scheduler retirement or worker activation.
+
+Finish with:
+
+Managed production SQL operations in this phase: 1  
+Production business rows read: NO  
+Production database modified: NO  
+Production migration applied: NO  
+Production passwords rotated: NO  
+Production sessions invalidated: NO  
+Production environment modified: NO  
+Production restarted: NO  
+Production scheduler stopped: NO  
+Production worker activated: NO  
+Production published: NO

@@ -8,6 +8,8 @@ import {publicAssetBoundary} from '../api/services/publicAssetPolicy.js';
 const out='generated-artifacts/security-remediation-final';
 await fs.mkdir(out,{recursive:true});
 const temp='/tmp/security-output-'+randomUUID(),marker=randomBytes(40).toString('hex');
+await fs.writeFile(out+'/output-ownership.json',JSON.stringify({directory:temp,production:false,
+  createdAt:new Date().toISOString(),purpose:'Private synthetic component canary; ownership before creation'},null,2));
 await fs.mkdir(temp,{mode:0o700});
 const routes=['/server.js','/scripts/tool.js','/generated-artifacts/report.md','/.git/config',
   '/.env','/assets/canary.js.map'];

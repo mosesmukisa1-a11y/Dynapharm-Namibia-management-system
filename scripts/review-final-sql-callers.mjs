@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {reviewSqlLocations} from './lib/sql-caller-proof.mjs';
-const out='generated-artifacts/security-release-gate-final';
+const out='generated-artifacts/final-security-release-gate';
 const base=JSON.parse(await fs.readFile('generated-artifacts/security-remediation-final/sql-caller-inventory.json','utf8'));
 const unresolved=base.inventory.filter(x=>x.classification==='UNRESOLVED');
 if(unresolved.length!==182)throw Error('Expected retained 182-location review baseline; do not silently change scope');

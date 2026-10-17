@@ -15,12 +15,13 @@ import {assertRepositoryFoundation} from './security-final-schema-guard.mjs';
 import {repositoryDdlStatements} from './lib/repository-ddl.mjs';
 import {consolidatedSql,consolidatedParams} from './lib/consolidated-schema-query.mjs';
 import {schemaDigest} from './lib/consolidated-contract.mjs';
+import {branchVisitsSql,branchVisitsParams} from './lib/branch-visits-schema-query.mjs';
 if(process.env.NODE_ENV==='production'||['1','true'].includes(process.env.REPLIT_DEPLOYMENT))
   throw Error('Production fixture refused');
 // Never re-use the earlier guessed legacy scaffolding. A missing canonical
 // definition blocks before any directory, socket, cluster or database exists.
 await assertRepositoryFoundation();
-const root=process.cwd(),runId=randomUUID(),base=path.join(root,'generated-artifacts/security-release-gate-final');
+const root=process.cwd(),runId=randomUUID(),base=path.join(root,'generated-artifacts/final-security-release-gate');
 const out=path.join(base,'fixture-runs',runId);
 await fs.mkdir(out,{recursive:true});
 const runKind=process.argv.includes('--database-suites')?'database':
@@ -125,10 +126,17 @@ try{
     ...fullMetadata.functions.map(f=>({name:f.schema+'.'+f.name,pass:schemaDigest(f)===capturedContract.functions[f.schema+'.'+f.name]})),
   ];
   const fullContractPass=fullContractChecks.every(c=>c.pass)&&fullMetadata.functions.length===1;
+  const visitsMetadata=(await db.query(branchVisitsSql.replace(
+    "(pg_catalog.current_setting('transaction_read_only')='on'\n     AND pg_catalog.pg_is_in_recovery()=true) AS allowed",
+    'true AS allowed'),branchVisitsParams)).rows[0].evidence;
+  const visitsContract=JSON.parse(await fs.readFile(root+'/tests/fixtures/branch-client-visits-schema-contract.json','utf8'));
+  const visitsPass=visitsMetadata.tables.length===1&&visitsMetadata.functions.length===0
+    &&schemaDigest(visitsMetadata.tables[0])===schemaDigest(visitsContract.table);
+  fullContractChecks.push({name:'branch_client_visits',pass:visitsPass});
   await fs.writeFile(out+'/post-convergence-contract.json',JSON.stringify({
-    status:fullContractPass?'PASS':'FAIL',checks:fullContractChecks,
-    policy:'Full repository schema must not drift from seven-object captured authority'},null,2));
-  if(!fullContractPass)process.exitCode=1;
+    status:fullContractPass&&visitsPass?'PASS':'FAIL',checks:fullContractChecks,
+    policy:'Full repository schema must match both retained seven-object and newly captured visits authority'},null,2));
+  if(!fullContractPass||!visitsPass)process.exitCode=1;
   await fs.writeFile(out+'/schema-fixture.json',JSON.stringify({source:'candidate migrations and static DDL',
     schemaClone:false,sourceDatabaseAccess:false,attempted:statements.length,
     syntheticFoundations:[],

@@ -2,7 +2,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {parse} from '@babel/parser';
-const out='generated-artifacts/security-release-gate-final';
+const out='generated-artifacts/final-security-release-gate';
 const inventory=JSON.parse(await fs.readFile('generated-artifacts/security-remediation-final/sql-caller-inventory.json','utf8'));
 const review=JSON.parse(await fs.readFile(out+'/sql-caller-review.json','utf8'));
 const files=new Set(inventory.inventory.map(x=>x.file));

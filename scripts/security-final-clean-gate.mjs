@@ -3,7 +3,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import {createHash} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {execFile,execFileSync,spawn} from 'node:child_process';
 import {promisify} from 'node:util';
 import {eligibleUntrackedSchemaSource} from './lib/schema-candidate-files.mjs';
@@ -16,7 +16,11 @@ if(process.argv.includes('--prepare')){
     ...execFileSync('git',['ls-files','-z'],{encoding:'utf8'}).split('\0'),
     ...execFileSync('git',['ls-files','--others','--exclude-standard','-z'],{encoding:'utf8'}).split('\0')
       .filter(eligibleUntrackedSchemaSource)])].filter(Boolean).sort();
-  const temp=await fs.mkdtemp(path.join(os.tmpdir(),'security-source-'));
+  const temp=path.join(os.tmpdir(),'security-source-'+randomUUID());
+  await fs.writeFile(out+'/candidate-preparation-ownership.json',JSON.stringify({
+    directory:temp,createdAt:new Date().toISOString(),production:false,
+    purpose:'Source-only archive staging; ownership before creation'},null,2));
+  await fs.mkdir(temp,{mode:0o700});
   const manifest={recordedAt:new Date().toISOString(),
     head:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),
     branch:execFileSync('git',['branch','--show-current'],{encoding:'utf8'}).trim(),
