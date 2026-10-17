@@ -30,3 +30,4 @@
 - [Credential exposure safety](credential-exposure-safety.md) — startup guards do not sanitize shipped source or Git history; use safe fingerprints and separately authorized rotation.
 - [Native failure evidence](native-failure-evidence.md) — adapter fault tests cannot establish real HTTP-server survival or authenticated offline replay safety.
 - [Price-basis regression fixtures](price-basis-regression-fixtures.md) — use unequal received DPC, sale DP, customer charge and later price; inspect downloaded receipts after price changes.
+- [Audit tool runtime](audit-tool-runtime.md) — use an actual clock for expiring authority; decode CSV-wrapped JSON offline, never replay a database call to fix parsing.

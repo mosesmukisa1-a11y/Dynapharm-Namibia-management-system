@@ -644,3 +644,17 @@ mtime_ms = 1792236875881
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/2bdf69f7-3608-4439-a0b5-725a0a2017de/cd03795e-2392-4a69-b0d1-22216b3d6548"
 storage_version_token = "1792236881573670"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "EyNJLMMdhlAEUEoujev5x"
+uri = "file://generated-artifacts/security-schema-managed-closure/security-schema-managed-closure-review.zip"
+type = "unspecified"
+title = "Managed schema inspection — gate failed"
+description = "Sanitized evidence of one completed identity query, the off session-default flag, zero schema queries, terminal no-replay state, 409 passing unit checks and 23 startup contracts. No credentials or business rows."
+logical_id = "c9733e35-1341-4a4e-9d21-edb0b18c7ff3"
+content_hash = "sha256:69441f7173f1429ab0c8770ba3a9bcca7c2309725259897480c7653e963be8c0"
+size = 49355
+mtime_ms = 1792238162969
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/c9733e35-1341-4a4e-9d21-edb0b18c7ff3/bcdeefee-ef57-43c3-8aa1-73c66e07cbb0"
+storage_version_token = "1792238187540639"
+content_type = "application/octet-stream"
