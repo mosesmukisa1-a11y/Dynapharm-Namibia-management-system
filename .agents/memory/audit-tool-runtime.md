@@ -23,6 +23,18 @@ single authorized query had already succeeded.
 Never repeat the database operation to fix a local parsing problem. Journal
 before invocation and preserve terminal/no-replay state after a failed gate.
 
+Nonce-scoped identity observations are not reusable expected-target attestations.
+
+**Why:** Retained database fingerprints were computed with an ephemeral nonce;
+both that nonce and the raw identity were deliberately discarded. A later
+counts-only operation could not independently compare its target against them.
+
+**How to apply:** Require a protected, independently approved expected identity
+or reproducible fingerprint protocol before a guarded production operation.
+Never discover a new identity and silently accept it as its own expectation.
+If the prerequisite is missing, record zero invocations and no counts; do not
+infer NOT_REFERENCED from a blocked or empty-result attempt.
+
 Schema-expression sanitization must not silently destroy the evidence required
 for exact offline reconstruction.
 

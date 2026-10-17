@@ -812,3 +812,17 @@ mtime_ms = 1792274845874
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/10d640a5-2c7a-4e35-b6db-a09ccb1b89b4/7ae7a5e1-edf6-44ad-8258-3123e40fa403"
 storage_version_token = "1792274875687434"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "7dNi_ElLuhI5bm1U-eZ22"
+uri = "file://generated-artifacts/b2-storage-route-counts/report.md"
+type = "text"
+title = "B2 counts-only inspection — preflight blocked"
+description = "Fixed six-column operation prepared; no production invocation or counts returned because an independently verifiable expected target identity is unavailable."
+logical_id = "f2969b32-fe73-476b-8fee-a8cf0fd2c50f"
+content_hash = "sha256:bda0320d3612806f6f7c6a5c8cc5a58ec8418ebab20b14fb895bd536572b12dc"
+size = 4070
+mtime_ms = 1792275336711
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/f2969b32-fe73-476b-8fee-a8cf0fd2c50f/36539042-16e9-4727-90e0-1e8c07225f5b"
+storage_version_token = "1792275371791487"
+content_type = "text/markdown"
