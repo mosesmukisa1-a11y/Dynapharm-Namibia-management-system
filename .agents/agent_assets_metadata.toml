@@ -588,3 +588,17 @@ mtime_ms = 1792088309105
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/67151ccf-55d7-4c68-b1e3-380a661f0d7c/824f577a-74f0-459a-851f-b168c1f6a20b"
 storage_version_token = "1792088321475232"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "a3zucgRD31c-0Sp64IrgB"
+uri = "file://generated-artifacts/security-remediation/security-remediation-review.zip"
+type = "unspecified"
+title = "Security remediation review — do not publish"
+description = "Sanitized report, classified exposure inventory, rotation/release runbooks, test summaries and isolated screenshots. Excludes private fixture credentials, raw diffs and source archives."
+logical_id = "6a1c3a04-81b3-4bca-b113-85334b2b18fc"
+content_hash = "sha256:f897b4e7b34fe10d92f1b863402c430718b9958b5bf0b536c0b432cb1712d353"
+size = 200837
+mtime_ms = 1792230132501
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/6a1c3a04-81b3-4bca-b113-85334b2b18fc/e94c1c29-d3ec-439a-9eb6-9b74cf24b83f"
+storage_version_token = "1792230155746009"
+content_type = "application/octet-stream"

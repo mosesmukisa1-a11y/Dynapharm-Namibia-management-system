@@ -1,8 +1,9 @@
 import bcrypt from 'bcryptjs';
-import { query, getMany, getOne } from './db.js';
+import { query, getMany, getOne, withRequestTransaction } from './db.js';
 import { applyAuthCors, sanitizeUser } from './_lib/auth.js';
 import { normalizeBranchSlug, normalizeBranchArray } from './_lib/branchUtils.js';
 import { ensureDistributorsTable } from './distributors.js';
+import {hashPassword, metadataOf} from './services/credentialSecurity.js';
 
 function parseBranches(value) {
   if (!value) return [];
@@ -60,7 +61,7 @@ function buildUserResponse(user) {
     isActive,
     mustChangePassword: user.must_change_password ?? false,
     hasPassword: Boolean(user.password_hash),
-    metadata: user.metadata || null,
+    // Security metadata is never part of the staff directory response.
     distributor_id: user.distributor_id || null,
     distributor_branch: user.distributor_branch || null,
   };
@@ -126,7 +127,7 @@ async function handlePost(req, res) {
   }
 
   const branches = normalizeBranchArray(parseBranches(body.branches));
-  const passwordHash = await bcrypt.hash(password, 10);
+  const passwordHash = await hashPassword(password);
   const id = body.id || generateUserId();
   const normalizedBranch = normalizeBranchSlug(body.branch);
 
@@ -168,7 +169,7 @@ async function handlePut(req, res) {
     return res.status(400).json({ error: 'User id is required' });
   }
 
-  const existing = await getOne('SELECT * FROM users WHERE id = $1', [id]);
+  const existing = await getOne('SELECT * FROM users WHERE id = $1 FOR UPDATE', [id]);
   if (!existing) {
     return res.status(404).json({ error: 'User not found' });
   }
@@ -182,9 +183,7 @@ async function handlePut(req, res) {
   }
 
   if (body.password) {
-    const hashed = await bcrypt.hash(body.password, 10);
-    updates.push(`password_hash = $${updates.length + 1}`);
-    params.push(hashed);
+    return res.status(400).json({error:'Use the audited one-time credential reset procedure'});
   }
 
   if (body.role) {
@@ -235,13 +234,24 @@ async function handlePut(req, res) {
   }
 
   if (body.mustChangePassword !== undefined) {
+    if (existing.must_change_password && body.mustChangePassword !== true)
+      return res.status(400).json({error:'The account owner must complete the password change'});
     updates.push(`must_change_password = $${updates.length + 1}`);
     params.push(Boolean(body.mustChangePassword));
   }
 
   if (body.metadata !== undefined) {
+    const protectedMetadata = metadataOf(existing);
+    const proposed = body.metadata;
+    if (!proposed || typeof proposed !== 'object' || Array.isArray(proposed))
+      return res.status(400).json({error:'Invalid metadata'});
+    const merged = {...proposed};
+    for (const key of ['sessionVersion','passwordReset','credentialAudit','temporaryLoginConsumed']) {
+      delete merged[key];
+      if (protectedMetadata[key] !== undefined) merged[key] = protectedMetadata[key];
+    }
     updates.push(`metadata = $${updates.length + 1}::jsonb`);
-    params.push(JSON.stringify(body.metadata));
+    params.push(JSON.stringify(merged));
   }
 
   if (body.additional_roles !== undefined) {
@@ -331,7 +341,7 @@ export default async function handler(req, res) {
 
     if (req.method === 'PUT' || req.method === 'PATCH') {
       if (!requireAdmin(req, res)) return;
-      return await handlePut(req, res);
+      return await withRequestTransaction(() => handlePut(req, res));
     }
 
     if (req.method === 'DELETE') {
@@ -341,8 +351,7 @@ export default async function handler(req, res) {
 
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (error) {
-    console.error('Users API error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    return res.status(error.status || 500).json({ error: error.status ? error.message : 'Internal server error' });
   }
 }
 

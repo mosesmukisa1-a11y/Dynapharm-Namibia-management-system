@@ -9,6 +9,8 @@ const AUTH_REFRESH_TTL = parseInt(process.env.AUTH_REFRESH_TTL || '604800', 10);
 function getAuthSecret() {
   const secret = process.env.AUTH_SECRET || process.env.JWT_SECRET || process.env.SESSION_SECRET;
   if (!secret) {
+    if (process.env.NODE_ENV === 'production' || ['1','true'].includes(process.env.REPLIT_DEPLOYMENT))
+      throw new Error('Production authentication requires a configured signing secret');
     console.error('FATAL: No AUTH_SECRET, JWT_SECRET, or SESSION_SECRET environment variable set. Generating a temporary secret — sessions will not survive restarts.');
     const tempSecret = crypto.randomBytes(48).toString('hex');
     process.env.AUTH_SECRET = tempSecret;
@@ -108,7 +110,8 @@ function sanitizeUser(user) {
     branches: parseJsonField(user.branches),
     additional_roles: parseJsonField(user.additional_roles),
     lastLogin: user.last_login || user.lastLogin || null,
-    metadata: user.metadata || null,
+    // Metadata can contain hashed reset tokens and private security audit entries.
+    mustChangePassword: !!user.must_change_password,
   };
 }
 

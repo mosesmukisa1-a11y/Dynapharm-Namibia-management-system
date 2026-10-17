@@ -9,7 +9,7 @@ const policy=await import(pathToFileURL(path.join(root,'api/services/startupPoli
 const schema=await import(pathToFileURL(path.join(root,'api/services/startupSchema.js')));
 const config={STARTUP_MODE:'code-only',ALLOW_SCHEMA_SYNC:'false',ALLOW_REFERENCE_SEEDS:'false',
   ALLOW_INVENTORY_SEED:'false',ALLOW_STOCK_SUMMARY_DDL:'false',ENABLE_STOCK_SCHEDULER:'false',
-  ENABLE_STOCK_HEALTH_DIGEST:'false'};
+  ENABLE_STOCK_HEALTH_DIGEST:'false',WORKER_ENABLED:'false'};
 test('proposed explicit configuration is nonmutating',()=>{
   const p=policy.createStartupPolicy(config);
   assert.equal(p.startupMode,'code-only');assert.equal(p.writesAllowed,false);assert.equal(p.enableStockScheduler,false);

@@ -8,6 +8,12 @@ Directly seeded physical balances do not establish movement-derived opening evid
 
 **How to apply:** Create explicitly labelled synthetic pre-period opening evidence with a fresh fixture when needed. It is setup, not staff receiving verification. Preserve the incomplete phase; never backfill a result just to obtain a pass.
 
+An isolated browser URL does not isolate a tester's default database helper.
+
+**Why:** A delegated authentication check used an unbound notebook query helper while investigating synthetic account IDs. Its connection/environment was not recorded, so the surrounding browser evidence could not establish database-read isolation.
+
+**How to apply:** Supply exact synthetic account IDs in advance and enforce explicit, guarded fixture connections for any database verification. Forbid default helpers; if one is used, stop database investigation, record the exact read/write boundary and mark isolation NOT VERIFIED. Do not infer production access or its absence from empty results.
+
 Keep observed-request counts separate from interception counts in browser fault tests.
 
 **Why:** Incrementing one shared guard in both a request observer and its route handler falsely classified a single attempt as a duplicate and prevented any server request.

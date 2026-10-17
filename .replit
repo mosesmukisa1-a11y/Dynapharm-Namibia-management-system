@@ -52,7 +52,7 @@ waitForPort = 3001
 
 [deployment]
 deploymentTarget = "autoscale"
-run = ["node", "server.js"]
+run = ["node", "scripts/start-code-only-web.mjs"]
 build = ["npx", "vite", "build"]
 
 [postMerge]

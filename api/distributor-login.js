@@ -1,4 +1,4 @@
-import bcrypt from 'bcryptjs';
+import {comparePassword, sessionVersion, consumeTemporaryLogin} from './services/credentialSecurity.js';
 import {
   applyAuthCors,
   createAuthToken,
@@ -67,7 +67,7 @@ export default async function handler(req, res) {
 
     const username = distributorCode.toLowerCase();
     const user = await getOne(
-      `SELECT id, username, password_hash, role, full_name, email, phone, branch, branches, is_active, metadata
+      `SELECT id, username, password_hash, role, full_name, email, phone, branch, branches, is_active, metadata, must_change_password
        FROM users
        WHERE username = $1`,
       [username]
@@ -77,12 +77,15 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: 'Invalid distributor credentials' });
     }
 
-    const passwordMatch = await bcrypt.compare(password, user.password_hash);
+    const passwordMatch = await comparePassword(password, user.password_hash);
     if (!passwordMatch) {
       return res.status(401).json({ error: 'Invalid distributor credentials' });
     }
+    if (user.must_change_password && !await consumeTemporaryLogin(user.id, user.password_hash))
+      return res.status(401).json({error:'Temporary sign-in already used. Request a new reset if your password-change session is unavailable.'});
 
     const payload = {
+      sv: sessionVersion(user),
       sub: user.id,
       username: user.username,
       fullName: user.full_name || user.username,

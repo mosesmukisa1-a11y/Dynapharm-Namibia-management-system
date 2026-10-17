@@ -22,9 +22,14 @@ export function createStartupPolicy(env = {}) {
   if (production) {
     if (env.STARTUP_MODE !== 'code-only')
       throw new Error('Production requires explicit STARTUP_MODE=code-only');
-    for (const flag of [...permissionFlags, 'ENABLE_STOCK_HEALTH_DIGEST'])
+    for (const flag of [...permissionFlags, 'ENABLE_STOCK_HEALTH_DIGEST', 'WORKER_ENABLED'])
       if (env[flag] !== 'false')
         throw new Error(`Production requires explicit ${flag}=false`);
+    for (const [flag, value] of Object.entries(env))
+      if (flag.startsWith('WORKER_') && !['WORKER_TIMEZONE', 'WORKER_DATABASE_URL',
+        'WORKER_SCOPE', 'WORKER_MAX_ATTEMPTS', 'WORKER_TIMEOUT_MS',
+        'WORKER_BACKOFF_MS', 'WORKER_POLL_MS'].includes(flag) && value !== 'false')
+        throw new Error(`Web startup forbids enabled or invalid worker flag: ${flag}`);
   }
   const startupMode = env.STARTUP_MODE ?? 'legacy';
   if (!['legacy', 'code-only'].includes(startupMode))

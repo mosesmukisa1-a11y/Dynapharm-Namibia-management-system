@@ -240,7 +240,14 @@ app.use('/api', async (req, res, next) => {
     const token = getTokenFromRequest(req);
     const decoded = verifyAuthToken(token);
     if (decoded && decoded.sub) {
-      req.user = decoded;
+      const {resolveSession} = await import('./api/services/credentialSecurity.js');
+      req.user = await resolveSession(decoded);
+      if (!req.user) return res.status(401).json({error:'Session expired. Sign in again.'});
+      if (req.user.mustChangePassword && ![
+        '/api/auth/credential-security', '/api/auth/me', '/api/auth/logout'
+      ].includes(routePath))
+        return res.status(403).json({error:'Change your temporary password before continuing.',
+          code:'PASSWORD_CHANGE_REQUIRED'});
     } else if (!isPublic) {
       return res.status(401).json({ success: false, error: 'Authentication required' });
     }
@@ -253,7 +260,10 @@ app.use('/api', async (req, res, next) => {
   next();
 });
 
-app.get('/dynapharm-complete-system', (req, res) => res.redirect('/dynapharm-complete-system.html'));
+// Retired legacy client contained local credential handling. Keep bookmarked URLs
+// usable, but serve the supported server-authenticated React application instead.
+app.get(['/dynapharm-complete-system','/dynapharm-complete-system.html'],
+  (req, res) => res.redirect('/'));
 // Apply due prices before any API handler can use the current catalogue.
 let priceActivationDay = null, priceActivationFlight = null;
 app.use('/api', async (req,res,next) => {
@@ -2507,16 +2517,23 @@ if (hasReactBuild) {
   }));
 }
 
-app.use(
-  express.static(__dirname, {
+app.use((req, res, next) => {
+  // Repository source, scripts, migrations and reports are not public assets.
+  const safeRootFiles = new Set(['/favicon.ico', '/robots.txt', '/manifest.json']);
+  const allowed = safeRootFiles.has(req.path) ||
+    /^\/[a-zA-Z0-9_-]+\.html$/.test(req.path) ||
+    /^\/(?:assets|images|fonts|css)\/[a-zA-Z0-9_./-]+$/.test(req.path);
+  if (!allowed || req.path.split('/').some(p => p === '..' || p.startsWith('.')))
+    return next();
+  return express.static(__dirname, {
     extensions: ['html', 'htm'],
     setHeaders(res, filePath) {
       if (filePath.endsWith('.html')) {
         res.setHeader('Cache-Control', 'no-store');
       }
     },
-  })
-);
+  })(req, res, next);
+});
 
 app.use((req, res) => {
   if (hasReactBuild && !req.path.startsWith('/api') && !req.path.includes('.')) {
@@ -2537,7 +2554,7 @@ const server = app.listen(PORT, HOST, () => {
   console.log('Dynapharm API & static server running');
   console.log(`Listening on http://${HOST}:${PORT}`);
   if (process.env.DATABASE_URL && startupPolicy.startupMode === 'legacy') {
-    console.log(`DATABASE_URL detected: ${process.env.DATABASE_URL.replace(/:[^:@]+@/, ':****@')}`);
+    console.log('Database configuration present');
   } else if (!process.env.DATABASE_URL) {
     console.warn('DATABASE_URL not set. Database-backed APIs may fail.');
   }
@@ -2560,19 +2577,7 @@ runStartupOperation(startupPolicy, 'legacy-database-bootstrap', async () => {
              ('ondangwa', 'Ondangwa', 'ONDG', 'warehouse', 'active', NOW(), NOW())
       ON CONFLICT (id) DO NOTHING`);
 
-    const existingAdmin = await getOne("SELECT id FROM users WHERE role = 'admin' AND is_active = TRUE LIMIT 1");
-    if (!existingAdmin) {
-      const bcrypt = await import('bcryptjs');
-      const hash = await bcrypt.default.hash('Admin@2024', 10);
-      const adminId = 'USR-ADMIN-' + Date.now();
-      await query(
-        `INSERT INTO users (id, username, password_hash, role, full_name, email, is_active, must_change_password, metadata, created_at, updated_at)
-         VALUES ($1, $2, $3, 'admin', 'Super Admin', 'admin@dynapharm.na', TRUE, FALSE, '{"seeded":true}'::jsonb, NOW(), NOW())
-         ON CONFLICT (username) DO NOTHING`,
-        [adminId, 'admin', hash]
-      );
-      console.log('Super Admin account seeded (username: admin)');
-    }
+    // Authentication accounts are never created or reset by web bootstrap.
 
     // ── Branch ID normalization ─────────────────────────────────────────────
     // Canonical slug for every known display-name / alias variant.
@@ -3830,40 +3835,7 @@ runStartupOperation(startupPolicy, 'legacy-database-bootstrap', async () => {
     }
     // ───────────────────────────────────────────────────────────────────────
 
-    const staffUsers = [
-      { id: 'USR1759829667953', username: 'moses', password: 'walker33', fullName: 'MOSES MUKISA', email: 'mosesmukisa1@gmail.com', phone: '0817317160', role: 'consultant', branch: 'townshop' },
-      { id: 'USR1759829814781', username: 'Geneva', password: 'Pearl_11', fullName: 'Jennifer Joseph', email: 'shange1124@gmail.com', phone: '0852803618', role: 'consultant', branch: 'townshop' },
-      { id: 'USR1759830625722', username: 'NAEM', password: 'PASSWORD', fullName: 'NAEM HANGULA', email: 'naemhangula4@gmail.com', phone: '0817499757', role: 'dispenser', branch: 'townshop' },
-      { id: 'USR1759928153488', username: 'GEINGOS', password: 'ALBERTO99', fullName: 'HILMA C', email: 'geingoshilma@gmail', phone: '0814137106', role: 'consultant', branch: 'townshop' },
-      // Finance, GM & Stock portal access accounts — admin must change these passwords immediately after first login
-      { id: 'USR_FINANCE_001', username: 'finance', password: 'Finance@2025', fullName: 'Finance Officer', email: 'finance@dynapharm.com.na', phone: '', role: 'finance', branch: 'townshop', mustChangePassword: true },
-      { id: 'USR_GM_001', username: 'gm', password: 'GM@2025', fullName: 'General Manager', email: 'gm@dynapharm.com.na', phone: '', role: 'gm', branch: 'townshop', mustChangePassword: true },
-      { id: 'USR_STOCK_001', username: 'stock', password: 'Stock@2025', fullName: 'Stock Manager', email: 'stock@dynapharm.com.na', phone: '', role: 'stock', branch: 'all', mustChangePassword: false },
-    ];
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('Staff portal access is managed through Admin. Credentials are never printed in startup logs.');
-    console.log('  [must_change_password=true — staff will be prompted to reset]');
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-
-    const bcryptMod = await import('bcryptjs');
-    for (const u of staffUsers) {
-      const exists = await getOne("SELECT id FROM users WHERE LOWER(username) = LOWER($1)", [u.username]);
-      if (!exists) {
-        const pwHash = await bcryptMod.default.hash(u.password, 10);
-        const mustChange = u.mustChangePassword === true;
-        await query(
-          `INSERT INTO users (id, username, password_hash, role, full_name, email, phone, branch, is_active, must_change_password, metadata, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, $9, '{"seeded":true}'::jsonb, NOW(), NOW())
-           ON CONFLICT (username) DO NOTHING`,
-          [u.id, u.username, pwHash, u.role, u.fullName, u.email, u.phone, u.branch, mustChange]
-        );
-        if (mustChange) {
-          console.log(`Seeded privileged user: ${u.username} (${u.role}) — default password must be changed on first login`);
-        } else {
-          console.log('Seeded staff user:', u.username, '(' + u.role + ')');
-        }
-      }
-    }
+    // Staff provisioning is an explicitly authorized administrative operation.
     // Apply any pending price changes now that schema is fully up to date
     await applyPendingPriceChanges();
   } catch (error) {

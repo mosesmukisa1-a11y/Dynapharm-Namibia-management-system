@@ -6,6 +6,7 @@ import {
   sanitizeUser,
 } from '../_lib/auth.js';
 import { normalizeBranchSlug } from '../_lib/branchUtils.js';
+import {validSession} from '../services/credentialSecurity.js';
 
 export default async function handler(req, res) {
   applyAuthCors(req, res);
@@ -27,12 +28,12 @@ export default async function handler(req, res) {
     }
 
     const user = await getOne(
-      `SELECT id, username, role, full_name, email, phone, branch, branches, additional_roles, is_active, metadata, last_login
+      `SELECT id, username, role, full_name, email, phone, branch, branches, additional_roles, is_active, metadata, last_login, must_change_password
          FROM users WHERE id = $1`,
       [decoded.sub]
     );
 
-    if (!user || user.is_active === false) {
+    if (!validSession(user, decoded)) {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 

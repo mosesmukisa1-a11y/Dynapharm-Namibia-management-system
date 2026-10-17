@@ -262,13 +262,16 @@ function UsersTab() {
   };
 
   const handleResetPassword = async () => {
-    if (!newPassword || newPassword.length < 6) {
-      setMessage('Error: Password must be at least 6 characters');
+    if (!newPassword || newPassword.length < 12) {
+      setMessage('Error: Generate a unique temporary password first');
       return;
     }
     try {
-      await api.users.update(resetPwUser.id, { password: newPassword });
-      setMessage(`Password reset successfully for ${resetPwUser.full_name || resetPwUser.fullName || resetPwUser.username}`);
+      const reset = await api.post('/auth/credential-security',
+        {action:'issue-reset',accountId:resetPwUser.id});
+      await api.post('/auth/credential-security',
+        {action:'complete-reset',accountId:resetPwUser.id,token:reset.token,password:newPassword});
+      setMessage(`Temporary password set for ${resetPwUser.username}. Old sessions are invalid. The owner must replace it at the first sign-in.`);
       setResetPwUser(null);
       setNewPassword('');
     } catch (err) {
@@ -475,12 +478,21 @@ function UsersTab() {
         </div>
       </Modal>
 
-      <Modal open={!!resetPwUser} onClose={() => setResetPwUser(null)} title="Reset Password">
+      <Modal open={!!resetPwUser} onClose={() => {setResetPwUser(null);setNewPassword('');}} title="Reset Password">
         <div className="p-6 space-y-4">
           <p className="text-sm text-gray-600">Resetting password for: <strong>{resetPwUser ? displayName(resetPwUser) : ''}</strong> ({resetPwUser?.username})</p>
-          <Input label="New Password *" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="Enter new password (min 6 chars)" />
+          <p className="text-sm text-gray-600">Verify the account owner and deliver this temporary password privately before confirming. Never put it in a shared report. Production resets require separately approved account-specific authorization.</p>
+          <Button variant="secondary" onClick={() => {
+            const bytes=crypto.getRandomValues(new Uint8Array(24));
+            setNewPassword(Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join(''));
+          }}>Generate unique temporary password</Button>
+          <Input label="Private temporary password" type="password" value={newPassword} readOnly />
+          <Button variant="secondary" disabled={!newPassword} onClick={async () => {
+            try {await navigator.clipboard.writeText(newPassword);}
+            catch {setMessage('Error: Private clipboard unavailable. Do not proceed until secure delivery is available.');}
+          }}>Copy for private delivery</Button>
           <div className="flex gap-3 justify-end">
-            <Button variant="secondary" onClick={() => setResetPwUser(null)}>Cancel</Button>
+            <Button variant="secondary" onClick={() => {setResetPwUser(null);setNewPassword('');}}>Cancel</Button>
             <Button onClick={handleResetPassword}><Key size={14} /> Reset Password</Button>
           </div>
         </div>

@@ -135,7 +135,8 @@ export async function query(text, params) {
     try { res = await pending; } finally { context?.pending.delete(pending); }
     return res;
   } catch (error) {
-    console.error('Database query error', { text, error: error.message });
+    // PostgreSQL detail/message can contain parameter values (including credentials).
+    console.error('Database query failed', {code:/^[A-Z0-9]{5}$/.test(error.code || '') ? error.code : 'QUERY_FAILED'});
     throw error;
   }
 }

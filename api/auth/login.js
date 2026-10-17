@@ -7,6 +7,7 @@ import {
   sanitizeUser
 } from '../_lib/auth.js';
 import { normalizeBranchSlug } from '../_lib/branchUtils.js';
+import {comparePassword, sessionVersion, consumeTemporaryLogin} from '../services/credentialSecurity.js';
 
 async function autoClockIn(user) {
   const role = (user.role || '').toLowerCase();
@@ -91,7 +92,7 @@ export default async function handler(req, res) {
     }
 
     const user = await getOne(
-      `SELECT id, username, password_hash, role, full_name, email, phone, branch, branches, additional_roles, is_active, metadata, last_login
+      `SELECT id, username, password_hash, role, full_name, email, phone, branch, branches, additional_roles, is_active, metadata, last_login, must_change_password
          FROM users WHERE username = $1`,
       [username]
     );
@@ -104,10 +105,12 @@ export default async function handler(req, res) {
       return res.status(403).json({ error: 'Your account is pending admin approval. Please wait for the administrator to activate your account.' });
     }
 
-    const passwordMatch = await bcrypt.compare(password, user.password_hash);
+    const passwordMatch = await comparePassword(password, user.password_hash);
     if (!passwordMatch) {
       return res.status(401).json({ error: 'Invalid username or password' });
     }
+    if (user.must_change_password && !await consumeTemporaryLogin(user.id, user.password_hash))
+      return res.status(401).json({error:'Temporary sign-in already used. Complete the password change in your existing session or request a new reset.'});
 
     const BRANCH_REQUIRED_ROLES = new Set(['consultant', 'frontdesk', 'dispenser', 'branch_manager']);
     const normalizedBranch = normalizeBranchSlug(user.branch);
@@ -124,6 +127,7 @@ export default async function handler(req, res) {
     }
 
     const payload = {
+      sv: sessionVersion(user),
       sub: user.id,
       username: user.username,
       fullName: user.full_name || user.username,
@@ -145,7 +149,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({ success: true, user: sanitized });
   } catch (error) {
-    console.error('Login error:', error);
+    console.error('Login failed internally');
     return res.status(500).json({ error: 'Internal server error' });
   }
 }

@@ -9,7 +9,7 @@ import {readFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 const profile={STARTUP_MODE:'code-only',ALLOW_SCHEMA_SYNC:'false',ALLOW_REFERENCE_SEEDS:'false',
   ALLOW_INVENTORY_SEED:'false',ALLOW_STOCK_SUMMARY_DDL:'false',ENABLE_STOCK_SCHEDULER:'false',
-  ENABLE_STOCK_HEALTH_DIGEST:'false'};
+  ENABLE_STOCK_HEALTH_DIGEST:'false',WORKER_ENABLED:'false'};
 describe('production web fail closed',()=>{
   it('retains development legacy but never production fallback',()=>{
     expect(createStartupPolicy({}).startupMode).toBe('legacy');

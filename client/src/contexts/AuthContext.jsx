@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { api } from '../lib/api';
+import {RequiredPasswordChange} from '../components/RequiredPasswordChange';
 
 const AuthContext = createContext(null);
 
@@ -128,7 +129,7 @@ export function AuthProvider({ children }) {
       dismissPostLoginNotifications,
       showLoginAfterRefresh,
     }}>
-      {children}
+      {user?.mustChangePassword ? <RequiredPasswordChange onComplete={logout} /> : children}
     </AuthContext.Provider>
   );
 }
