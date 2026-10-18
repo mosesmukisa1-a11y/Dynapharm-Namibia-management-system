@@ -1,5 +1,24 @@
 # B2 candidate-only manual backup job
 
+## Current fail-closed SQL timeout gate
+
+The 600-second PostgreSQL override has been removed. Fixed settings are now connect/preflight
+10 seconds, statement 120 seconds, lock 5 seconds and idle transaction 30 seconds. Ambient
+PGOPTIONS/connection URL options cannot widen them.
+
+**Operational backup is BLOCKED with `DUMP_QUERY_TIMEOUT_UNSUPPORTED`.** An isolated native
+PostgreSQL 16.10 rehearsal observed pg_dump itself setting statement_timeout and lock_timeout
+to zero despite PGOPTIONS. There is no reviewed server-query enforcement mechanism in this
+candidate; a process watchdog alone is insufficient. Both operational tool preflight and dump
+entry refuse execution, without a flag/environment escape hatch. The tool-stage gate runs
+before tools, source/provider checks, staging, KMS or uploads. Default validation does not load
+the adapter and returns `queryTimeoutEnforcement=BLOCKED_NATIVE_PG_DUMP_RESETS_SERVER_TIMEOUTS`;
+valid configuration is not readiness.
+
+See `generated-artifacts/b2-backup-login-rehearsal/report.md` for local-only test evidence.
+The synthetic archive test bypasses neither the operational guard nor its owner flags: it uses
+a separate fixed-target, Unix-only, disposable-cluster harness and never runs the real job.
+
 ## Current authority and scope
 
 This job is **not activated**. Current authority covers candidate code, local/offline tests and
@@ -96,7 +115,7 @@ future execution still requires owner confirmation of the actual injected deploy
 - A fresh 96-bit nonce per file and AES-256-GCM protect source bytes incrementally before
   filesystem writes. Header and artifact basename are authenticated as AAD; the 128-bit tag is last.
   Dump stdout and exact-object source streams go directly into encryption, with bounded sizes.
-- `pg_dump` uses custom format, no interactive password, a read-only transaction default, bounded timeouts
+- `pg_dump` is specified to use custom format, no interactive password, a read-only transaction default, bounded timeouts
   and no include/exclude filters. A nonzero exit never proceeds to artifact upload.
 - Require a custom-archive header; `pg_restore --list` and a **full archive decode to `/dev/null` without
   database credentials or a database destination** must both pass. Table-of-contents validation alone is insufficient.

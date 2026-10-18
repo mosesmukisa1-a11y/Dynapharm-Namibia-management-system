@@ -67,6 +67,10 @@ These are proposed future checks, not calls authorized or performed by this prep
    role membership/SET ROLE, unsafe executable routines, object ownership, other database access
    or provider-extension administrative powers. PostgreSQL has no per-role DENY overriding PUBLIC.
    Revoking a direct role grant does not remove a PUBLIC grant.
+   Include PUBLIC UPDATE on pg_catalog.pg_settings and PUBLIC EXECUTE on built-in
+   lo_create/lo_from_bytea/lo_import: table SELECT-only grants alone do not prevent
+   these paths. The synthetic fixture revoked these only in its new disposable
+   cluster; that is not permission to change production PUBLIC privileges.
 5. If meeting that policy would require changing PUBLIC, application grants, owners, routines,
    schema defaults, RLS policies or other databases, **STOP**. Those are not this minimum change.
    A verified recovery replica still prevents persistent writes, but must not be reported as
@@ -194,13 +198,18 @@ After successful identity/default/privilege verification:
 - No table/schema exclusion, `--enable-row-security`, large-object exclusion, privilege/bypass
   escalation, disabling SSL, or silent retry is allowed. Require zero exit, complete scoped
   catalog coverage, valid archive header and full pg_restore decode through memory streams.
-- The current candidate's `postgresEnvironment` sets a 600-second statement timeout through
-  PGOPTIONS. Before using this planned 120-second role limit, review a necessary candidate-only
-  change to prevent that override; do not claim the effective short timeout is already satisfied.
-  Timeouts remain mutable settings; a credential restricted to the approved runner and replica
-  cannot be treated as a general-purpose immutable settings policy.
+- The previous 600-second PGOPTIONS override is removed. Fixed ceilings are now 10-second
+  connect/preflight, 120-second statement, 5-second lock and 30-second idle transaction.
+  However, native PostgreSQL 16.10 pg_dump was observed clearing statement_timeout and
+  lock_timeout to zero after login. Neither PGOPTIONS nor role defaults enforce a native dump.
+  The operational adapter now unconditionally stops with DUMP_QUERY_TIMEOUT_UNSUPPORTED
+  before tool/source/provider/run stages and independently before dump spawn. There is no
+  flag/environment bypass. Validation-only reports this limitation and makes no provider calls.
+  A reviewed server-side query enforcement mechanism is required before lifting that block.
+  The synthetic native dump proves role/format compatibility only, not production query bounds.
 - A timeout/replica recovery conflict can abort a large dump; stop and report it, never relax
-  limits automatically. Keep a 15-minute external watchdog and no parallel connections.
+  limits automatically. The candidate dump-process watchdog is capped at 120 seconds, but is
+  not represented as a guarantee of server-side cancellation. No parallel connections.
 - A full backup contains confidential data even though no rows are displayed. Existing guarded
   manifest, KMS, ciphertext checksums, immutable retention and isolated restore gates still apply.
   A database login supplies no missing App Storage/legacy completeness or native restore evidence.

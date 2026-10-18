@@ -3,6 +3,7 @@ import {createHash, randomUUID} from 'node:crypto';
 import path from 'node:path';
 import {SYSTEM_CA} from './backup-local-validation.mjs';
 import {BackupJobError, safeBackupCode} from './backup-job-errors.mjs';
+import {NATIVE_DUMP_QUERY_BOUNDS_STATUS} from './backup-postgres-bounds.mjs';
 import {
   WITH_OBJECTS, ACK_OBJECTS, assertObjectAcknowledgement, validateObjectManifest,
   assertManifestFresh, objectArtifactName,
@@ -147,6 +148,7 @@ export async function runBackup({
         providerCalls: 0, databaseCalls: 0, storageCalls: 0,
         localChecks: local || {status: 'NOT_PROBED'},
         productionIdentity: 'NOT_CONTACTED_EXECUTION_PREFLIGHT_REQUIRED',
+        queryTimeoutEnforcement: NATIVE_DUMP_QUERY_BOUNDS_STATUS,
         ...(approved ? {objectManifest: {status: 'VALIDATED', objectCount: approved.objectCount, totalBytes: approved.totalBytes}} : {}),
       };
     }

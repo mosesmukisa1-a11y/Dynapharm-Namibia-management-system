@@ -86,6 +86,12 @@ Destination SSE-KMS and a private local directory do not establish encrypted loc
 
 Backup-only PostgreSQL role defaults must not be presented as immutable read-only enforcement.
 
-**Why:** An ordinary login can change read-only/time-out defaults; PostgreSQL has no per-role DENY overriding PUBLIC grants, and a no-bypass role can be unable to dump RLS-protected rows completely. A custom login alone does not provide a recovery-replica binding.
+**Why:** An ordinary login can change read-only/time-out defaults, and native dump clients can clear server timeouts after startup. PostgreSQL has no per-role DENY overriding PUBLIC grants; PUBLIC system-view updates and built-in large-object creation can exceed SELECT-only intent. A no-bypass role can be unable to dump RLS-protected rows completely. A custom login alone does not provide a recovery-replica binding.
 
-**How to apply:** Require independent provider capability/target evidence, least-privilege effective ACL checks and the existing recovery guard. Treat TLS/connect timeout as client controls, block unrelated PUBLIC/RLS changes, and do not infer custom-role support or prohibition from the managed Agent interface being read-only.
+**How to apply:** Require independent provider capability/target evidence, least-privilege effective ACL checks and the existing recovery guard. Treat TLS/connect timeout as client controls; fail closed if server-query bounds cannot survive the native tool's own settings. A client watchdog is not server cancellation proof. Block unrelated PUBLIC/RLS changes, and do not infer custom-role support or prohibition from the managed Agent interface being read-only.
+
+Read-only catalog guard SQL needs native isolated execution, not only static SELECT checks.
+
+**Why:** PostgreSQL can reorder WHERE predicates and evaluate relation-type-specific privilege functions on incompatible objects. Prepared SQL can also name privilege helpers absent from the actual server version.
+
+**How to apply:** Use evaluation-safe type guards and supported catalog ACL semantics; include negative controls for PUBLIC, inherited and column-level grants. Keep synthetic primary/no-TLS evidence distinct from production recovery/TLS gates; never weaken those gates to make a local rehearsal pass.

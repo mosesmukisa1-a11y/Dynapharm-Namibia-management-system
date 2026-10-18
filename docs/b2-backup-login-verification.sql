@@ -1,4 +1,4 @@
--- PREPARED ONLY. Never executed during preparation.
+-- Production: PREPARED ONLY. Rehearsed on a disposable synthetic local cluster.
 -- Fixed SELECT; private executor binds $1 expected database name, $2 frozen schemas text[].
 -- Connect FRESH as the new login with verified TLS; no PGOPTIONS/read-only startup override.
 -- Require exactly one row, every boolean true, expected server major and frozen scope counts.
@@ -43,24 +43,39 @@ SELECT
     AND (SELECT count(*) FROM scope) = cardinality($2::text[]) AS exact_schema_scope_exists,
   NOT EXISTS (SELECT 1 FROM scope WHERE NOT has_schema_privilege(oid, 'USAGE')) AS schema_usage_complete,
   NOT EXISTS (SELECT 1 FROM pg_catalog.pg_namespace WHERE has_schema_privilege(oid, 'CREATE')) AS no_schema_create,
-  NOT EXISTS (SELECT 1 FROM relations WHERE relkind <> 'S'
-    AND NOT has_table_privilege(oid, 'SELECT')) AS table_select_complete,
-  NOT EXISTS (SELECT 1 FROM relations WHERE relkind = 'S'
-    AND NOT has_sequence_privilege(oid, 'SELECT')) AS sequence_select_complete,
-  NOT EXISTS (SELECT 1 FROM pg_catalog.pg_class c WHERE c.relkind IN ('r','p','v','m','f')
-    AND (has_table_privilege(c.oid, 'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
-      OR has_any_column_privilege(c.oid, 'INSERT,UPDATE,REFERENCES'))) AS no_table_or_column_write_privileges,
-  NOT EXISTS (SELECT 1 FROM pg_catalog.pg_class c WHERE c.relkind = 'S'
-    AND has_sequence_privilege(c.oid, 'USAGE,UPDATE')) AS no_sequence_mutation_privileges,
+  -- CASE is intentional: PostgreSQL can reorder WHERE conjunctions. A sequence-
+  -- only function must never be evaluated on a table/index/catalog relation.
+  NOT EXISTS (SELECT 1 FROM relations WHERE CASE WHEN relkind <> 'S'
+    THEN NOT has_table_privilege(oid, 'SELECT') ELSE false END) AS table_select_complete,
+  NOT EXISTS (SELECT 1 FROM relations WHERE CASE WHEN relkind = 'S'
+    THEN NOT has_sequence_privilege(oid, 'SELECT') ELSE false END) AS sequence_select_complete,
+  NOT EXISTS (SELECT 1 FROM pg_catalog.pg_class c WHERE CASE WHEN c.relkind IN ('r','p','v','m','f')
+    THEN (has_table_privilege(c.oid, 'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+      OR has_any_column_privilege(c.oid, 'INSERT,UPDATE,REFERENCES')) ELSE false END) AS no_table_or_column_write_privileges,
+  NOT EXISTS (SELECT 1 FROM pg_catalog.pg_class c WHERE CASE WHEN c.relkind = 'S'
+    THEN has_sequence_privilege(c.oid, 'USAGE,UPDATE') ELSE false END) AS no_sequence_mutation_privileges,
   NOT EXISTS (SELECT 1 FROM relations WHERE relrowsecurity) AS no_rls_backup_gap,
   NOT EXISTS (SELECT 1 FROM relations WHERE relkind = 'f') AS no_unhandled_foreign_data,
+  -- PostgreSQL 16 has no has_largeobject_privilege(). Evaluate the actual large-
+  -- object ACL, including PUBLIC, inherited effective roles and NULL owner ACLs.
   NOT EXISTS (SELECT 1 FROM pg_catalog.pg_largeobject_metadata l
-    WHERE NOT has_largeobject_privilege(l.oid, 'SELECT')) AS large_object_select_complete,
+    WHERE NOT (pg_has_role(l.lomowner, 'USAGE') OR EXISTS (
+      SELECT 1 FROM aclexplode(COALESCE(l.lomacl, acldefault('L', l.lomowner))) a
+      WHERE a.privilege_type = 'SELECT'
+        AND CASE WHEN a.grantee = 0 THEN true ELSE pg_has_role(a.grantee, 'USAGE') END
+    ))) AS large_object_select_complete,
   NOT EXISTS (SELECT 1 FROM pg_catalog.pg_largeobject_metadata l
-    WHERE has_largeobject_privilege(l.oid, 'UPDATE')) AS no_large_object_update_privilege,
+    WHERE pg_has_role(l.lomowner, 'USAGE') OR EXISTS (
+      SELECT 1 FROM aclexplode(COALESCE(l.lomacl, acldefault('L', l.lomowner))) a
+      WHERE a.privilege_type = 'UPDATE'
+        AND CASE WHEN a.grantee = 0 THEN true ELSE pg_has_role(a.grantee, 'USAGE') END
+    )) AS no_large_object_update_privilege,
   NOT EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname NOT IN ('pg_catalog','information_schema')
       AND has_function_privilege(p.oid, 'EXECUTE')) AS no_unreviewed_application_routine_execution,
+  NOT EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'pg_catalog' AND p.proname IN ('lo_create','lo_from_bytea','lo_import')
+      AND has_function_privilege(p.oid, 'EXECUTE')) AS no_large_object_creation_routines,
   EXISTS (SELECT 1 FROM pg_catalog.pg_stat_ssl s
     WHERE s.pid = pg_backend_pid() AND s.ssl AND s.bits >= 128
       AND s.version IN ('TLSv1.2','TLSv1.3')) AS transport_tls_active,

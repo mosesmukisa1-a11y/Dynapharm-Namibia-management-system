@@ -11,6 +11,7 @@ import {
   WITH_OBJECTS, assertObjectAcknowledgement, validateObjectManifest, assertManifestFresh, objectArtifactName,
 } from './backup-object-manifest.mjs';
 import {SYSTEM_CA, validateSystemCA, validateLocalConfiguration} from './backup-local-validation.mjs';
+import {POSTGRES_BOUNDS, postgresOptions, assertNativeDumpQueryBounds} from './backup-postgres-bounds.mjs';
 import {
   ENCRYPTION, createCiphertextRun, attachRunKey, encryptToOwnedFile,
   decryptOwnedFile, verifyCiphertext, cleanupCiphertextRun,
@@ -55,8 +56,8 @@ export function postgresEnvironment(env, source) {
     PGSSLMODE: env.B2_BACKUP_SOURCE_CLASS === 'production' ? 'verify-full' : source.searchParams.get('sslmode'),
     ...(env.B2_BACKUP_SOURCE_CLASS === 'production' ?
       {PGSSLROOTCERT: env.B2_BACKUP_PG_ROOT_CERT || SYSTEM_CA} : {}),
-    PGCONNECT_TIMEOUT: '10', PGAPPNAME: 'b2-owner-backup',
-    PGOPTIONS: '-c default_transaction_read_only=on -c lock_timeout=5000 -c statement_timeout=600000',
+    PGCONNECT_TIMEOUT: String(POSTGRES_BOUNDS.connectMs / 1000), PGAPPNAME: 'b2-owner-backup',
+    PGOPTIONS: postgresOptions(),
   };
 }
 function awsEnvironment(env) {
@@ -127,14 +128,15 @@ async function wrapKey(config, key) {
   } catch { fail('KEY_WRAP_FAILED'); }
 }
 async function streamDump(config, run) {
-  const child = spawn('pg_dump', ['--format=custom', '--no-password'],
+  assertNativeDumpQueryBounds(); // Before spawn, file creation or any source query.
+  const child = spawn('pg_dump', ['--format=custom', '--no-password', '--lock-wait-timeout=5000'],
     {env: postgresEnvironment(config.env, config.source), shell: false, stdio: ['ignore', 'pipe', 'pipe']});
   child.stderr.resume();
   const exited = new Promise(resolve => {
     child.once('error', () => resolve(false));
     child.once('close', (code, signal) => resolve(code === 0 && !signal));
   });
-  const timer = setTimeout(() => child.kill('SIGKILL'), 900_000);
+  const timer = setTimeout(() => child.kill('SIGKILL'), POSTGRES_BOUNDS.dumpProcessMs);
   try {
     const meta = await encryptToOwnedFile(run, 'database.dump', child.stdout);
     if (!await exited) fail('DUMP_FAILED');
@@ -157,6 +159,9 @@ export function createBackupIO({args = [], env = {}, objectManifestJson} = {}) {
     encryption: ENCRYPTION,
     async validateTools(config) {
       try {
+        // Stop before source/provider preflights, tools or key wrapping. Validation-
+        // only mode does not load this adapter and remains zero-provider-I/O.
+        assertNativeDumpQueryBounds();
         await validateLocalConfiguration(config.env);
         const env = toolEnvironment(config.env);
         const dump = await command('pg_dump', ['--version'], env, 'TOOL_UNAVAILABLE', true);
@@ -185,8 +190,8 @@ export function createBackupIO({args = [], env = {}, objectManifestJson} = {}) {
           user: decodeURIComponent(config.source.username), password: decodeURIComponent(config.source.password),
           database: decodeURIComponent(config.source.pathname.slice(1)),
           ssl: {rejectUnauthorized: true, ca: await fs.readFile(SYSTEM_CA, 'utf8')},
-          connectionTimeoutMillis: 10_000, query_timeout: 10_000,
-          options: '-c default_transaction_read_only=on -c statement_timeout=10000',
+          connectionTimeoutMillis: POSTGRES_BOUNDS.connectMs, query_timeout: POSTGRES_BOUNDS.preflightMs,
+          options: postgresOptions({preflight: true}),
         });
         await client.connect();
         await client.query('BEGIN READ ONLY');
