@@ -65,3 +65,9 @@ An authorized backup object manifest does not grant discovery/listing or busines
 **Why:** The owner separates reference export/read authorization from backup execution; database and object captures may also occur at different times.
 
 **How to apply:** Consume only the separately supplied bounded manifest. Do not infer live coverage, provider snapshots or cross-resource atomicity from matching content hashes, source fingerprints or a shared backup-set ID.
+
+Treat authorized synthetic restore rehearsals as preparation, not operational recovery evidence.
+
+**Why:** The owner permits generated synthetic artifacts and memory/local disposable fakes in this stage, explicitly excluding native backup/database tools and live provider access.
+
+**How to apply:** Label measured timings NON-PRODUCTION, keep B2 open and production RPO/RTO unproven, and require separate authority before a native archive or provider restore.
