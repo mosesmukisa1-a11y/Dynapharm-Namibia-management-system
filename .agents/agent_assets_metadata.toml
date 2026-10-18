@@ -840,3 +840,17 @@ mtime_ms = 1792275682915
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/5af92893-079e-4d3e-8902-3493df8af7f9/1bfb4f32-1977-47fd-b43c-14be9092e6a9"
 storage_version_token = "1792275706321411"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "zu1lEIk_SbrOi4QHiz2Am"
+uri = "file://generated-artifacts/b2-storage-route-fingerprint-protocol/report.md"
+type = "text"
+title = "B2 storage-route inspection — REFERENCED"
+description = "Both authorized managed read-only operations passed. Report contains salted fingerprint, guard outcomes, timestamps and the six-column aggregate counts only; no storage objects were accessed."
+logical_id = "3b258bd6-a9b7-4615-abb5-e9a93e20bb1c"
+content_hash = "sha256:4f6cfcf93144e6d0c13ce8006829b0b60dee79066fe24b6dfa31bdd12e3efeff"
+size = 3209
+mtime_ms = 1792303639398
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/3b258bd6-a9b7-4615-abb5-e9a93e20bb1c/e9191ea9-a896-4141-a3dd-8680d92c8498"
+storage_version_token = "1792303664229087"
+content_type = "text/markdown"

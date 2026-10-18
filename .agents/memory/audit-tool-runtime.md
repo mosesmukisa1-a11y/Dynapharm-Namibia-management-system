@@ -29,8 +29,8 @@ Nonce-scoped identity observations are not reusable expected-target attestations
 both that nonce and the raw identity were deliberately discarded. A later
 counts-only operation could not independently compare its target against them.
 
-**How to apply:** Require a protected, independently approved expected identity
-or reproducible fingerprint protocol before a guarded production operation.
+**How to apply:** When authorization requires an independent expected identity,
+require a protected approved identity or reproducible fingerprint protocol.
 Never discover a new identity and silently accept it as its own expectation.
 If the prerequisite is missing, record zero invocations and no counts; do not
 infer NOT_REFERENCED from a blocked or empty-result attempt.
@@ -45,6 +45,19 @@ a returned raw identity or its later bound parameter exclusively in memory.
 or parameters, require an attested non-retaining managed execution path before
 the first call. Do not treat an impure helper as a way to invoke durable callbacks
 privately, substitute direct credentials, or silently weaken the protocol.
+
+An explicitly owner-authorized two-operation server-side fingerprint protocol
+can avoid raw-identity retention by the managed callback.
+
+**Why:** The owner authorized the first guarded operation to return only a
+salted one-way fingerprint, followed immediately by a same-target comparison.
+Public salt and fingerprint may be retained; the raw identity must remain
+inside PostgreSQL, never returned or bound as a parameter.
+
+**How to apply:** Use this alternative only under explicit scope, keep both
+read-only/recovery guards and the exact catalog/type/privilege gate, preserve
+counts classification, and journal terminal no-retry results. Keep the public
+salt with the fingerprint; neither is authority for another production query.
 
 Schema-expression sanitization must not silently destroy the evidence required
 for exact offline reconstruction.
