@@ -33,6 +33,12 @@ Owner approval packages do not themselves authorize production inspection. Human
 
 **How to apply:** Prepare the allowlist first; require explicit scoped read-only approval. Inspect only approved metadata/health, never unrestricted business rows or credentials. This approval still excludes migration, service retirement/restart, configuration changes, worker activation, repairs and publication. Record genuine supplied acceptance without treating it as evidence of alert delivery or actual target worker state.
 
+Upload fail-closed hardening does not authorize retiring legacy file serving or rewriting historical references.
+
+**Why:** The owner requires existing upload references and files to remain intact while legacy and unclassified storage recovery dependencies are unresolved.
+
+**How to apply:** Keep historical serving separate from the new-upload write policy. Require a separately authorized recovery/reference review before route retirement, file deletion, migration or historical URL replacement.
+
 The owner accepts temporary manual operation while automated jobs remain off, limits
 manual scheduled prices to global existing-product schedules, and requires a
 maximum 15-minute RPO and one-hour RTO before controlled release planning.

@@ -18,7 +18,7 @@ Separate descriptor admission, actual driver success, authenticated HTTP behavio
 
 **Why:** A passing aggregate suite and brand-admission trace can coexist with missing native family witnesses. Driver observers that watch promises alone also miss legitimate callback-based pool operations.
 
-**How to apply:** Correlate admitted identities with successful native executions, covering callback and promise APIs without altering execution. Label representative family coverage separately from exhaustive business-branch coverage; retain original failures and affected reruns.
+**How to apply:** Correlate admitted identities with successful native executions, covering callback and promise APIs without altering execution. Preserve invocation-owned, value-free witness files before removing disposable copies: aggregate clean-gate summaries alone can lose the proof needed by the later source audit. Label representative family coverage separately from exhaustive business-branch coverage; retain original failures and affected reruns.
 
 Clean-install evidence writers must create their own output directories; passing assertions do not imply a passing suite.
 

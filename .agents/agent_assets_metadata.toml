@@ -854,3 +854,17 @@ mtime_ms = 1792303639398
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/3b258bd6-a9b7-4615-abb5-e9a93e20bb1c/e9191ea9-a896-4141-a3dd-8680d92c8498"
 storage_version_token = "1792303664229087"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "M-ONgR50qtbZtmght3u1S"
+uri = "file://generated-artifacts/upload-storage-hardening/report.md"
+type = "text"
+title = "Upload hardening — candidate verification report"
+description = "New candidate, three changed source files, 81 upload tests, complete clean-install and consolidated source/security gates. Seven legacy and four unclassified references remain unresolved recovery items. Nothing published."
+logical_id = "8e756464-370b-4ee9-a3ee-a8b0e4cc9ffc"
+content_hash = "sha256:975febd8ee7bb559cde3b793e1606f049b4f1646a45370323d71d82fe44a0a36"
+size = 8593
+mtime_ms = 1792305313492
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/8e756464-370b-4ee9-a3ee-a8b0e4cc9ffc/5aea325b-4763-44fc-accb-11f55266d632"
+storage_version_token = "1792305375957671"
+content_type = "text/markdown"
