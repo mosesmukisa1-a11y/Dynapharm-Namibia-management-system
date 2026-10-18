@@ -24,7 +24,7 @@ const env = {
   B2_BACKUP_OUTPUT_DIR: '/synthetic-private-backups', AWS_ACCESS_KEY_ID: fakeSecret,
   AWS_SECRET_ACCESS_KEY: fakeSecret, AWS_BACKUP_BUCKET: 'synthetic-never-contact',
   AWS_REGION: 'eu-west-1', B2_BACKUP_KMS_KEY_ARN: kms,
-  B2_BACKUP_ENCRYPTED_OUTPUT_CONFIRMED: 'true', B2_BACKUP_GOVERNANCE_NO_BYPASS_CONFIRMED: 'true',
+  B2_BACKUP_CIPHERTEXT_ONLY_CONFIRMED: 'true', B2_BACKUP_GOVERNANCE_NO_BYPASS_CONFIRMED: 'true',
 };
 function fixture(options = {}) {
   const calls = [], logs = [], files = new Map();

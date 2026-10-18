@@ -1,6 +1,7 @@
-// No provider, database, filesystem, subprocess or application imports.
+// No provider, database, subprocess or application calls; dry-run never loads the operational adapter.
 import {createHash, randomUUID} from 'node:crypto';
 import path from 'node:path';
+import {SYSTEM_CA} from './backup-local-validation.mjs';
 import {BackupJobError, safeBackupCode} from './backup-job-errors.mjs';
 import {
   WITH_OBJECTS, ACK_OBJECTS, assertObjectAcknowledgement, validateObjectManifest,
@@ -46,15 +47,17 @@ export function assertArtifact(meta) {
 }
 export function validateConfig(env) {
   const fields = [
-    'B2_BACKUP_DATABASE_URL', 'B2_BACKUP_SOURCE_CLASS', 'B2_BACKUP_OUTPUT_DIR',
+    'B2_BACKUP_SOURCE_CLASS', 'B2_BACKUP_OUTPUT_DIR',
     'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_BACKUP_BUCKET', 'AWS_REGION',
-    'B2_BACKUP_KMS_KEY_ARN', 'B2_BACKUP_ENCRYPTED_OUTPUT_CONFIRMED',
+    'B2_BACKUP_KMS_KEY_ARN', 'B2_BACKUP_CIPHERTEXT_ONLY_CONFIRMED',
     'B2_BACKUP_GOVERNANCE_NO_BYPASS_CONFIRMED',
   ];
   const invalid = new Set(fields.filter(f => typeof env[f] !== 'string' || !env[f].trim()));
   let source;
   try {
-    source = new URL(env.B2_BACKUP_DATABASE_URL);
+    // An explicitly present override is never silently replaced if empty/malformed.
+    // Do not return, log, hash or persist either protected input.
+    source = new URL(env.B2_BACKUP_DATABASE_URL === undefined ? env.DATABASE_URL : env.B2_BACKUP_DATABASE_URL);
     if (!['postgres:', 'postgresql:'].includes(source.protocol) || !source.hostname ||
         !source.username || !source.pathname.slice(1) || source.hash ||
         [...source.searchParams.keys()].some(k => k !== 'sslmode') ||
@@ -79,12 +82,18 @@ export function validateConfig(env) {
   if (!/^[a-z]{2}(?:-gov)?-[a-z]+-\d+$/.test(env.AWS_REGION || '')) invalid.add('AWS_REGION');
   const arn = (env.B2_BACKUP_KMS_KEY_ARN || '').match(/^arn:aws(?:-us-gov|-cn)?:kms:([^:]+):\d{12}:key\/[a-f0-9-]{36}$/);
   if (!arn || arn[1] !== env.AWS_REGION) invalid.add('B2_BACKUP_KMS_KEY_ARN');
-  for (const field of ['B2_BACKUP_ENCRYPTED_OUTPUT_CONFIRMED', 'B2_BACKUP_GOVERNANCE_NO_BYPASS_CONFIRMED']) {
+  for (const field of ['B2_BACKUP_CIPHERTEXT_ONLY_CONFIRMED', 'B2_BACKUP_GOVERNANCE_NO_BYPASS_CONFIRMED']) {
     if (env[field] !== 'true') invalid.add(field);
   }
-  if (env.B2_BACKUP_SOURCE_CLASS === 'production' &&
-      (!source?.password || source.searchParams.get('sslmode') !== 'verify-full' ||
-       !path.isAbsolute(env.B2_BACKUP_PG_ROOT_CERT || ''))) invalid.add('B2_BACKUP_PG_ROOT_CERT');
+  if (env.B2_BACKUP_SOURCE_CLASS === 'production') {
+    // URL modes never control production transport: both clients unconditionally force
+    // verify-full. Accept known libpq modes only; upgrade even an injected disabled mode.
+    if (!source?.password ||
+        ![null, 'disable', 'allow', 'prefer', 'require', 'verify-ca', 'verify-full'].includes(source.searchParams.get('sslmode'))) {
+      invalid.add('B2_BACKUP_DATABASE_URL');
+    }
+    if ((env.B2_BACKUP_PG_ROOT_CERT || SYSTEM_CA) !== SYSTEM_CA) invalid.add('B2_BACKUP_PG_ROOT_CERT');
+  }
   if (env.B2_BACKUP_SOURCE_CLASS === 'isolated' && !ownedIsolatedSource(source, env)) {
     invalid.add('B2_BACKUP_DATABASE_URL');
   }
@@ -107,9 +116,10 @@ function assertTestSource(env, source) {
 export async function runBackup({
   args = [], env = {}, emit = () => {}, now = () => new Date(), uuid = randomUUID,
   objectManifestJson,
+  validateLocal,
   loadIO = async () => { throw new BackupJobError('INTERNAL_FAILURE'); },
 } = {}) {
-  let stage = 'authorization', mode = 'dry-run';
+  let stage = 'authorization', mode = 'dry-run', io, run, outcome;
   const log = (status, code) => emit({
     event: 'b2.backup', atUtc: new Date().toISOString(), mode, stage, status,
     ...(code ? {code: safeBackupCode(code)} : {}),
@@ -127,12 +137,16 @@ export async function runBackup({
     stage = 'configuration';
     const {source, invalidFields} = validateConfig(env);
     if (mode === 'dry-run') {
-      // No adapter is loaded, no executable checked, no filesystem touched.
+      // No operational adapter, executable, database or provider is touched.
+      // The CLI supplies a separate LOCAL-ONLY trust/staging validator.
+      const local = !invalidFields.length && validateLocal ? await validateLocal(env) : undefined;
       log('VALIDATION_ONLY');
       return {
         status: 'VALIDATION_ONLY', mode, configurationValid: invalidFields.length === 0,
         invalidFields, tools: {required: ['pg_dump', 'pg_restore', 'awscli2'], status: 'NOT_PROBED'},
         providerCalls: 0, databaseCalls: 0, storageCalls: 0,
+        localChecks: local || {status: 'NOT_PROBED'},
+        productionIdentity: 'NOT_CONTACTED_EXECUTION_PREFLIGHT_REQUIRED',
         ...(approved ? {objectManifest: {status: 'VALIDATED', objectCount: approved.objectCount, totalBytes: approved.totalBytes}} : {}),
       };
     }
@@ -142,12 +156,14 @@ export async function runBackup({
     const plan = {...backupPaths(started, uuid()), startedAtUtc: started.toISOString()};
     const config = {env, source, ...plan};
     stage = 'tools';
-    const io = await loadIO({args: [...args], env: {...env}, objectManifestJson: suppliedManifest});
+    io = await loadIO({args: [...args], env: {...env}, objectManifestJson: suppliedManifest});
     await io.validateTools(config);
+    stage = 'source-preflight';
+    if (io.validateSource) await io.validateSource(config);
     stage = 'destination-preflight';
     await io.validateDestination(config);
     stage = 'local-staging';
-    const run = await io.createRun(config);
+    run = await io.createRun(config);
     stage = 'dump';
     const dumpStartedAtUtc = now().toISOString();
     await io.dump(config, run);
@@ -171,24 +187,27 @@ export async function runBackup({
         const expected = approved.manifest.objects[index];
         const meta = await io.captureObject(config, run, index);
         assertArtifact(meta);
-        if (meta.bytes !== expected.bytes || meta.sha256 !== expected.sourceIdentity.sha256) {
+        if ((meta.encrypted ? meta.plaintextBytes : meta.bytes) !== expected.bytes ||
+            (meta.encrypted ? meta.plaintextSha256 : meta.sha256) !== expected.sourceIdentity.sha256) {
           throw new BackupJobError('SOURCE_OBJECT_MISMATCH');
         }
         assertManifestFresh(approved.manifest, now());
         stage = 'object-upload';
         const name = objectArtifactName(index);
         const protectedObject = await io.upload(config, run, name, meta);
-        objects.push({name, ...meta, ...protectedObject});
+        objects.push({name, bytes: meta.bytes, sha256: meta.sha256, ...protectedObject});
         sumsEntries.push({name, ...meta});
       }
       objectCaptureCompletedAtUtc = now().toISOString();
       stage = 'object-manifest';
       assertManifestFresh(approved.manifest, now());
-      objectManifestMeta = await io.write(run, 'object-manifest.json', approved.text);
-      assertArtifact(objectManifestMeta);
-      if (objectManifestMeta.sha256 !== approved.sha256 || objectManifestMeta.bytes !== Buffer.byteLength(approved.text)) {
+      const writtenManifest = await io.write(run, 'object-manifest.json', approved.text);
+      assertArtifact(writtenManifest);
+      if ((writtenManifest.encrypted ? writtenManifest.plaintextSha256 : writtenManifest.sha256) !== approved.sha256 ||
+          (writtenManifest.encrypted ? writtenManifest.plaintextBytes : writtenManifest.bytes) !== Buffer.byteLength(approved.text)) {
         throw new BackupJobError('SOURCE_OBJECT_MISMATCH');
       }
+      objectManifestMeta = {bytes: writtenManifest.bytes, sha256: writtenManifest.sha256};
       protectedObjectManifest = await io.upload(config, run, 'object-manifest.json', objectManifestMeta);
       sumsEntries.push({name: 'object-manifest.json', ...objectManifestMeta});
     }
@@ -202,12 +221,13 @@ export async function runBackup({
         noBypassPolicyAssurance: 'OWNER_ATTESTED_NOT_PROVIDER_VERIFIED'},
       artifacts: [{name: 'database.dump', ...dump, ...protectedDump}],
       recoveryObjectives: {rpoProven: false, rtoProven: false, fullB2Recovery: false},
+      ...(io.encryption ? {encryption: io.encryption} : {}),
       ...(approved ? {
         objectManifest: {name: 'object-manifest.json', ...objectManifestMeta, ...protectedObjectManifest},
         objects,
         backupSet: {
           id: approved.manifest.backupSetId, databaseArtifactSha256: dump.sha256,
-          objectManifestSha256: approved.sha256,
+          objectManifestSha256: objectManifestMeta.sha256,
           databaseIdentityFingerprint: approved.manifest.source.databaseIdentityFingerprint,
           sourceBucketIdentitySha256: approved.manifest.source.bucketIdentitySha256,
           referenceSnapshotSha256: approved.manifest.source.referenceSnapshotSha256,
@@ -235,18 +255,30 @@ export async function runBackup({
     const complete = await io.write(run, 'COMPLETED.json', JSON.stringify({
       schemaVersion: approved ? 2 : 1, runId: plan.runId, manifestSha256: manifestMeta.sha256,
       checksumsSha256: sumsMeta.sha256, completedAtUtc: now().toISOString(),
-      ...(approved ? {backupSetId: approved.manifest.backupSetId, objectManifestSha256: approved.sha256} : {}),
+      ...(approved ? {backupSetId: approved.manifest.backupSetId, objectManifestSha256: objectManifestMeta.sha256} : {}),
     }) + '\n');
     assertArtifact(complete);
     if (approved) assertManifestFresh(approved.manifest, now());
     await io.upload(config, run, 'COMPLETED.json', complete);
     const status = approved ? 'COMPLETE_MANIFEST_BACKUP_SET' : 'COMPLETE_DATABASE_BACKUP';
-    log(status);
-    return {status, mode, fullB2Recovery: false};
+    outcome = {status, mode, fullB2Recovery: false};
+    return outcome;
   } catch (error) {
     const code = error instanceof BackupJobError ? safeBackupCode(error.code) : 'INTERNAL_FAILURE';
     log('FAILED', code);
-    return {status: 'FAILED', mode, stage, code};
+    outcome = {status: 'FAILED', mode, stage, code};
+    return outcome;
+  } finally {
+    if (run && io?.cleanup) {
+      try { await io.cleanup(run); if (outcome) outcome.cleanup = 'PASS'; }
+      catch {
+        stage = 'cleanup';
+        log('FAILED', 'CLEANUP_FAILED');
+        if (outcome) Object.assign(outcome, {status: 'FAILED', code: 'CLEANUP_FAILED',
+          stage: 'cleanup', cleanup: 'FAIL'});
+      }
+    }
+    if (outcome && outcome.status !== 'FAILED') log(outcome.status);
   }
 }
 

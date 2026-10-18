@@ -5,6 +5,16 @@
   "additionalProperties": false,
   "required": ["schemaVersion", "runId", "startedAtUtc", "completedDumpAtUtc", "scope", "sourceIdentityRecorded", "validation", "retention", "artifacts", "recoveryObjectives"],
   "properties": {
+    "encryption": {
+      "type": "object", "additionalProperties": false,
+      "required": ["format", "algorithm", "keyWrapping", "plaintextStaged"],
+      "properties": {
+        "format": {"const": "B2GCM001"},
+        "algorithm": {"const": "AES-256-GCM"},
+        "keyWrapping": {"const": "AWS-KMS"},
+        "plaintextStaged": {"const": false}
+      }
+    },
     "schemaVersion": {"const": 1},
     "runId": {"type": "string", "pattern": "^[0-9]{8}T[0-9]{9}Z_[a-f0-9-]{36}$"},
     "startedAtUtc": {"type": "string", "format": "date-time"},

@@ -1,31 +1,44 @@
 // Real adapter: loaded only after both CLI flags and configuration/source gates.
 import fs from 'node:fs/promises';
 import {constants} from 'node:fs';
-import {createHash} from 'node:crypto';
+import {createHash, randomBytes} from 'node:crypto';
 import {spawn} from 'node:child_process';
+import {Readable} from 'node:stream';
+import {pipeline} from 'node:stream/promises';
 import path from 'node:path';
 import {BackupJobError, assertArtifact, executionMode, inTestRuntime, retainedUntil, validateConfig} from './backup-job.mjs';
 import {
   WITH_OBJECTS, assertObjectAcknowledgement, validateObjectManifest, assertManifestFresh, objectArtifactName,
 } from './backup-object-manifest.mjs';
+import {SYSTEM_CA, validateSystemCA, validateLocalConfiguration} from './backup-local-validation.mjs';
+import {
+  ENCRYPTION, createCiphertextRun, attachRunKey, encryptToOwnedFile,
+  decryptOwnedFile, verifyCiphertext, cleanupCiphertextRun,
+} from './backup-ciphertext.mjs';
 
 function fail(code) { throw new BackupJobError(code); }
-function command(executable, args, env, code, capture = false) {
+function command(executable, args, env, code, capture = false, input, allowEarlyClose = false) {
   return new Promise((resolve, reject) => {
     let child;
-    try { child = spawn(executable, args, {env, shell: false, stdio: ['ignore', capture ? 'pipe' : 'ignore', 'pipe']}); }
+    try { child = spawn(executable, args, {env, shell: false, stdio: [input ? 'pipe' : 'ignore', capture ? 'pipe' : 'ignore', 'pipe']}); }
     catch { reject(new BackupJobError(code)); return; }
     let text = '', exceeded = false, timedOut = false;
     const timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL'); }, 900_000);
     child.stderr.resume(); // Drain; never print, buffer, persist or attach raw stderr.
+    let inputFailure = false;
+    const supplied = input ? pipeline(Readable.from(input), child.stdin).catch(error => {
+      if (allowEarlyClose && error.code === 'EPIPE') return;
+      inputFailure = true; child.kill('SIGKILL');
+    }) : Promise.resolve();
     child.stdout?.on('data', bytes => {
       if (Buffer.byteLength(text) + bytes.length > 65_536) { exceeded = true; child.kill('SIGKILL'); }
       else text += bytes.toString('utf8');
     });
     child.on('error', () => { clearTimeout(timer); reject(new BackupJobError(code)); });
-    child.on('close', (status, signal) => {
+    child.on('close', async (status, signal) => {
       clearTimeout(timer);
-      if (status !== 0 || signal || exceeded || timedOut) reject(new BackupJobError(code));
+      await supplied;
+      if (status !== 0 || signal || exceeded || timedOut || inputFailure) reject(new BackupJobError(code));
       else resolve(text);
     });
   });
@@ -39,8 +52,9 @@ export function postgresEnvironment(env, source) {
     ...toolEnvironment(env), PGHOST: source.hostname.replace(/^\[|\]$/g, ''),
     PGPORT: source.port || '5432', PGDATABASE: decodeURIComponent(source.pathname.slice(1)),
     PGUSER: decodeURIComponent(source.username), PGPASSWORD: decodeURIComponent(source.password),
-    PGSSLMODE: source.searchParams.get('sslmode'),
-    ...(env.B2_BACKUP_PG_ROOT_CERT ? {PGSSLROOTCERT: env.B2_BACKUP_PG_ROOT_CERT} : {}),
+    PGSSLMODE: env.B2_BACKUP_SOURCE_CLASS === 'production' ? 'verify-full' : source.searchParams.get('sslmode'),
+    ...(env.B2_BACKUP_SOURCE_CLASS === 'production' ?
+      {PGSSLROOTCERT: env.B2_BACKUP_PG_ROOT_CERT || SYSTEM_CA} : {}),
     PGCONNECT_TIMEOUT: '10', PGAPPNAME: 'b2-owner-backup',
     PGOPTIONS: '-c default_transaction_read_only=on -c lock_timeout=5000 -c statement_timeout=600000',
   };
@@ -96,6 +110,38 @@ export function assertRemoteArtifact(head, put, expected, kmsArn) {
       head.ObjectLockMode !== 'GOVERNANCE' || !Number.isFinite(expiry) ||
       !Number.isFinite(created) || expiry - created < 30 * 86_400_000) fail('PROVIDER_VERIFY_FAILED');
 }
+export function assertSourcePreflight(row) {
+  if (!row || row.readOnly !== true || row.inRecovery !== true || row.identityMatches !== true) {
+    fail('SOURCE_PREFLIGHT_FAILED');
+  }
+}
+async function wrapKey(config, key) {
+  try {
+    // Binary plaintext key travels through stdin only, never CLI arguments or a file.
+    const text = await command('aws', ['kms', 'encrypt',
+      '--key-id', config.env.B2_BACKUP_KMS_KEY_ARN, '--plaintext', 'fileb:///dev/stdin',
+      '--output', 'json', '--no-cli-pager'], awsEnvironment(config.env), 'KEY_WRAP_FAILED', true, [key]);
+    const result = JSON.parse(text);
+    if (result.KeyId !== config.env.B2_BACKUP_KMS_KEY_ARN || typeof result.CiphertextBlob !== 'string') fail('KEY_WRAP_FAILED');
+    return result.CiphertextBlob;
+  } catch { fail('KEY_WRAP_FAILED'); }
+}
+async function streamDump(config, run) {
+  const child = spawn('pg_dump', ['--format=custom', '--no-password'],
+    {env: postgresEnvironment(config.env, config.source), shell: false, stdio: ['ignore', 'pipe', 'pipe']});
+  child.stderr.resume();
+  const exited = new Promise(resolve => {
+    child.once('error', () => resolve(false));
+    child.once('close', (code, signal) => resolve(code === 0 && !signal));
+  });
+  const timer = setTimeout(() => child.kill('SIGKILL'), 900_000);
+  try {
+    const meta = await encryptToOwnedFile(run, 'database.dump', child.stdout);
+    if (!await exited) fail('DUMP_FAILED');
+    return meta;
+  } catch { fail('DUMP_FAILED'); }
+  finally { clearTimeout(timer); child.stdout.destroy(); child.kill('SIGKILL'); await exited; }
+}
 export function createBackupIO({args = [], env = {}, objectManifestJson} = {}) {
   const mode = executionMode(args);
   if (mode !== 'execute') fail('MISSING_OWNER_FLAG');
@@ -108,8 +154,10 @@ export function createBackupIO({args = [], env = {}, objectManifestJson} = {}) {
   if (validateConfig(env).invalidFields.length) fail('CONFIG_INVALID');
   let storageClient;
   return {
+    encryption: ENCRYPTION,
     async validateTools(config) {
       try {
+        await validateLocalConfiguration(config.env);
         const env = toolEnvironment(config.env);
         const dump = await command('pg_dump', ['--version'], env, 'TOOL_UNAVAILABLE', true);
         const restore = await command('pg_restore', ['--version'], env, 'TOOL_UNAVAILABLE', true);
@@ -123,8 +171,33 @@ export function createBackupIO({args = [], env = {}, objectManifestJson} = {}) {
         for (const field of ['IfNoneMatch', 'ObjectLockMode', 'ObjectLockRetainUntilDate', 'ChecksumSHA256', 'SSEKMSKeyId']) {
           if (!(field in skeleton)) fail('TOOL_INCOMPATIBLE');
         }
-        if (config.env.B2_BACKUP_PG_ROOT_CERT) await fs.access(config.env.B2_BACKUP_PG_ROOT_CERT, constants.R_OK);
       } catch (error) { fail(error instanceof BackupJobError ? error.code : 'TOOL_UNAVAILABLE'); }
+    },
+    async validateSource(config) {
+      // No application rows. Fail closed on a non-replica/writable/mismatched source.
+      // The source name is compared inside PostgreSQL; only booleans return to this code.
+      let client;
+      try {
+        await validateSystemCA(config.env.B2_BACKUP_PG_ROOT_CERT || SYSTEM_CA);
+        const {Client} = await import('pg');
+        client = new Client({
+          host: config.source.hostname.replace(/^\[|\]$/g, ''), port: Number(config.source.port || 5432),
+          user: decodeURIComponent(config.source.username), password: decodeURIComponent(config.source.password),
+          database: decodeURIComponent(config.source.pathname.slice(1)),
+          ssl: {rejectUnauthorized: true, ca: await fs.readFile(SYSTEM_CA, 'utf8')},
+          connectionTimeoutMillis: 10_000, query_timeout: 10_000,
+          options: '-c default_transaction_read_only=on -c statement_timeout=10000',
+        });
+        await client.connect();
+        await client.query('BEGIN READ ONLY');
+        const result = await client.query(
+          `SELECT current_setting('transaction_read_only') = 'on' AS "readOnly",
+           pg_is_in_recovery() AS "inRecovery", current_database() = $1 AS "identityMatches"`,
+          [decodeURIComponent(config.source.pathname.slice(1))]);
+        assertSourcePreflight(result.rows[0]);
+        await client.query('ROLLBACK');
+      } catch { fail('SOURCE_PREFLIGHT_FAILED'); }
+      finally { try { await client?.end(); } catch { /* No raw errors. */ } }
     },
     async validateDestination(config) {
       const args = ['--bucket', config.env.AWS_BACKUP_BUCKET];
@@ -133,34 +206,34 @@ export function createBackupIO({args = [], env = {}, objectManifestJson} = {}) {
       assertDestination(version, lock);
     },
     async createRun(config) {
+      let run, key;
       try {
-        const root = config.env.B2_BACKUP_OUTPUT_DIR;
-        const stat = await fs.lstat(root);
-        if (!stat.isDirectory() || stat.isSymbolicLink() || (stat.mode & 0o077) ||
-            stat.uid !== process.getuid() || await fs.realpath(root) !== root) fail('OUTPUT_UNSAFE');
-        const directory = path.join(root, config.runId);
-        await fs.mkdir(directory, {mode: 0o700});
-        await fs.writeFile(path.join(directory, 'database.partial'), '', {flag: 'wx', mode: 0o600});
-        return {directory};
-      } catch { fail('OUTPUT_UNSAFE'); }
+        run = await createCiphertextRun(config.env.B2_BACKUP_OUTPUT_DIR, config.runId);
+        key = randomBytes(32);
+        const wrapped = await wrapKey(config, key);
+        attachRunKey(run, key, wrapped);
+        return run;
+      } catch (error) {
+        key?.fill(0);
+        if (run) await cleanupCiphertextRun(run);
+        fail(error instanceof BackupJobError ? error.code : 'OUTPUT_UNSAFE');
+      }
     },
     async dump(config, run) {
-      await command('pg_dump', ['--format=custom', '--no-password', '--file', path.join(run.directory, 'database.partial')],
-        postgresEnvironment(config.env, config.source), 'DUMP_FAILED');
+      await streamDump(config, run);
     },
     async validateArchive(config, run) {
-      const file = path.join(run.directory, 'database.partial');
       try {
-        const handle = await fs.open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
-        try {
-          const header = Buffer.alloc(5);
-          if ((await handle.read(header, 0, 5, 0)).bytesRead !== 5 || header.toString() !== 'PGDMP') fail('ARCHIVE_INVALID');
-        } finally { await handle.close(); }
+        await verifyCiphertext(run, 'database.dump'); // authenticate entire envelope before consuming
+        let header = Buffer.alloc(0);
+        for await (const body of decryptOwnedFile(run, 'database.dump')) {
+          if (header.length < 5) header = Buffer.concat([header, body.subarray(0, 5 - header.length)]);
+        }
+        if (header.toString() !== 'PGDMP') fail('ARCHIVE_INVALID');
         const env = toolEnvironment(config.env); // No DB credentials; restore commands have no --dbname.
-        await command('pg_restore', ['--list', file], env, 'ARCHIVE_INVALID');
-        // Decode all data blocks, not merely the table of contents; output is discarded locally.
-        await command('pg_restore', ['--exit-on-error', '--no-owner', '--no-privileges', '--file=/dev/null', file], env, 'ARCHIVE_INVALID');
-        await fs.rename(file, path.join(run.directory, 'database.dump'));
+        await command('pg_restore', ['--list'], env, 'ARCHIVE_INVALID', false, decryptOwnedFile(run, 'database.dump'), true);
+        await command('pg_restore', ['--exit-on-error', '--no-owner', '--no-privileges', '--file=/dev/null'],
+          env, 'ARCHIVE_INVALID', false, decryptOwnedFile(run, 'database.dump'));
       } catch { fail('ARCHIVE_INVALID'); }
     },
     inspect: inspectFile,
@@ -170,7 +243,7 @@ export function createBackupIO({args = [], env = {}, objectManifestJson} = {}) {
       if (!Number.isInteger(index) || index < 0 || index >= approved.objectCount) fail('MANIFEST_INVALID');
       const expected = approved.manifest.objects[index];
       const name = objectArtifactName(index);
-      let file, stream, timer;
+      let stream, timer;
       try {
         if (!storageClient) {
           const {Client} = await import('@replit/object-storage');
@@ -178,45 +251,37 @@ export function createBackupIO({args = [], env = {}, objectManifestJson} = {}) {
           storageClient = new Client({bucketId: approved.manifest.source.bucketId});
         }
         assertManifestFresh(approved.manifest);
-        file = await fs.open(path.join(run.directory, `${name}.partial`), 'wx', 0o600);
         assertManifestFresh(approved.manifest);
         const remaining = Date.parse(approved.manifest.authorization.expiresAtUtc) - Date.now();
         if (remaining <= 0) fail('MANIFEST_EXPIRED');
         stream = storageClient.downloadAsStream(expected.key, {decompress: false});
-        const hash = createHash('sha256');
-        let bytes = 0;
         const timeoutCode = remaining <= 600_000 ? 'MANIFEST_EXPIRED' : 'SOURCE_OBJECT_READ_FAILED';
         timer = setTimeout(() => stream.destroy(new BackupJobError(timeoutCode)), Math.min(600_000, remaining));
         timer.unref();
-        for await (const chunk of stream) {
-          assertManifestFresh(approved.manifest);
-          const body = Buffer.from(chunk);
-          bytes += body.length;
-          if (bytes > expected.bytes) fail('SOURCE_OBJECT_MISMATCH');
-          hash.update(body);
-          await file.writeFile(body);
+        async function* guarded() {
+          for await (const chunk of stream) { assertManifestFresh(approved.manifest); yield chunk; }
         }
-        const checksum = hash.digest('hex');
-        if (bytes !== expected.bytes || checksum !== expected.sourceIdentity.sha256) fail('SOURCE_OBJECT_MISMATCH');
-        await file.sync();
-        await file.close(); file = null;
-        await fs.rename(path.join(run.directory, `${name}.partial`), path.join(run.directory, name));
-        return {bytes, sha256: checksum};
+        const meta = await encryptToOwnedFile(run, name, guarded(), {
+          expected: {bytes: expected.bytes, sha256: expected.sourceIdentity.sha256}, maximum: expected.bytes,
+        });
+        assertManifestFresh(approved.manifest);
+        await verifyCiphertext(run, name, {bytes: expected.bytes, sha256: expected.sourceIdentity.sha256});
+        return meta;
       } catch (error) {
         fail(error instanceof BackupJobError ? error.code : 'SOURCE_OBJECT_READ_FAILED');
       } finally {
         clearTimeout(timer);
         stream?.destroy();
-        await file?.close();
       }
     },
     async write(run, name, contents) {
-      try { await fs.writeFile(path.join(run.directory, name), contents, {flag: 'wx', mode: 0o600}); }
-      catch { fail('LOCAL_WRITE_FAILED'); }
-      return inspectFile(run, name);
+      const meta = await encryptToOwnedFile(run, name, [Buffer.from(contents)]);
+      await verifyCiphertext(run, name);
+      return meta;
     },
     async upload(config, run, name, expected) {
       assertArtifact(expected);
+      await verifyCiphertext(run, name);
       const current = await inspectFile(run, name);
       if (current.bytes !== expected.bytes || current.sha256 !== expected.sha256) fail('ARTIFACT_INVALID');
       const checksum = Buffer.from(expected.sha256, 'hex').toString('base64');
@@ -233,5 +298,6 @@ export function createBackupIO({args = [], env = {}, objectManifestJson} = {}) {
       assertRemoteArtifact(head, put, expected, config.env.B2_BACKUP_KMS_KEY_ARN);
       return {versionId: put.VersionId, retainUntilUtc: new Date(head.ObjectLockRetainUntilDate).toISOString()};
     },
+    cleanup: cleanupCiphertextRun,
   };
 }

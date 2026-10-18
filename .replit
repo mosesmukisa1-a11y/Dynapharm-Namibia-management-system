@@ -51,6 +51,11 @@ waitForPort = 3001
 
 [userenv.shared]
 
+[userenv.development]
+B2_BACKUP_OUTPUT_DIR = "/tmp/b2-ciphertext-d65f6582-fb6d-401b-86e7-3829f0b3e013"
+B2_BACKUP_PG_ROOT_CERT = "/etc/ssl/certs/ca-certificates.crt"
+B2_BACKUP_SOURCE_CLASS = "production"
+
 [deployment]
 deploymentTarget = "autoscale"
 run = ["node", "scripts/start-code-only-web.mjs"]

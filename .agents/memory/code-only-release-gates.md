@@ -82,4 +82,4 @@ Destination SSE-KMS and a private local directory do not establish encrypted loc
 
 **Why:** The owner conditions the staging assurance on verification; cloud object encryption does not protect a plaintext local dump, and a protected production-source copy must not silently use a development URL.
 
-**How to apply:** Require evidence for the actual staging volume and a supported protected source-copy flow. Keep explicit TLS/CA guards intact; authorization for a fixed set of settings does not implicitly authorize additional settings or invented assurance flags.
+**How to apply:** Never invent a volume-encryption attestation. The owner subsequently approved ciphertext-only application staging as the alternative: source plaintext must never be staged, and that assurance must not be described as filesystem encryption. The owner also permits direct use of the already injected protected database URL instead of a duplicate secret. Keep verified TLS and execution-time identity/read-only checks; a candidate validation does not establish the production target or native restore compatibility.

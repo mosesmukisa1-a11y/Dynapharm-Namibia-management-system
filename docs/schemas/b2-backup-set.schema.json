@@ -4,6 +4,7 @@
   "type": "object", "additionalProperties": false,
   "required": ["schemaVersion", "runId", "startedAtUtc", "completedDumpAtUtc", "scope", "sourceIdentityRecorded", "validation", "retention", "artifacts", "recoveryObjectives", "objectManifest", "objects", "backupSet"],
   "properties": {
+    "encryption": {"$ref": "b2-backup-manifest.schema.json#/properties/encryption"},
     "schemaVersion": {"const": 2},
     "runId": {"type": "string", "pattern": "^[0-9]{8}T[0-9]{9}Z_[a-f0-9-]{36}$"},
     "startedAtUtc": {"type": "string", "format": "date-time"},
@@ -22,7 +23,7 @@
       "items": {
         "allOf": [{"$ref": "#/$defs/artifact"}, {"properties": {
           "name": {"type": "string", "pattern": "^object-[0-9]{6}\\.bin$"},
-          "bytes": {"type": "integer", "minimum": 1, "maximum": 268435456}
+          "bytes": {"type": "integer", "minimum": 1, "maximum": 268455456}
         }}]
       }
     },
