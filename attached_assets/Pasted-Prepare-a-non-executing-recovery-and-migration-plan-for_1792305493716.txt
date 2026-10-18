@@ -1,0 +1,40 @@
+Prepare a non-executing recovery and migration plan for the existing production upload references.
+
+Current sanitized counts:
+- `distributors.photo_url`: 3 legacy filesystem references
+- `file_uploads.file_url`: 4 legacy filesystem references
+- `file_uploads.file_url`: 4 other/unclassified references
+
+Use release candidate SHA-256:
+`efd2ea29c43c8ef4b73aba24f7663de259e6a0b0b3693e5d276703f342c0dd74`
+
+The plan must:
+
+1. Preserve the existing `/uploads` serving route until all seven legacy references are resolved.
+2. Define a privacy-preserving existence check that does not export filenames, URLs, object keys, business rows, or customer information into durable evidence.
+3. Distinguish:
+   - recoverable legacy file;
+   - missing legacy file;
+   - already stored in App Storage;
+   - external or malformed unclassified reference.
+4. Define a separately authorized migration into App Storage with:
+   - pre-migration checks;
+   - per-item integrity verification;
+   - transactional database-reference update;
+   - idempotency and duplicate protection;
+   - rollback procedure;
+   - safe aggregate evidence only.
+5. Define handling for missing files without fabricating replacements or silently deleting references.
+6. Include all 19 `staff_documents` and 49 currently classified App Storage references in the future backup/restore scope, without accessing them now.
+7. Propose an independent protected backup method for the single App Storage bucket because native object versioning/automatic restore is not established.
+8. Define an isolated restore rehearsal capable of measuring RPO <=15 minutes and RTO <=60 minutes.
+9. State every separate authorization needed before execution.
+
+Do not query production, retrieve paths, access objects, create buckets, copy files, change database rows, publish, restart, or alter the candidate.
+
+Return:
+- `B2_STORAGE_RECOVERY_PLAN=READY_FOR_AUTHORIZATION`; or
+- `B2_STORAGE_RECOVERY_PLAN=BLOCKED`, with precise missing design information.
+
+Production modified: NO
+Storage objects accessed: NO

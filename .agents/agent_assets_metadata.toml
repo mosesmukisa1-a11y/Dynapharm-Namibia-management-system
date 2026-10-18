@@ -868,3 +868,17 @@ mtime_ms = 1792305313492
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/8e756464-370b-4ee9-a3ee-a8b0e4cc9ffc/5aea325b-4763-44fc-accb-11f55266d632"
 storage_version_token = "1792305375957671"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "UsPU1ET93Qzn_dp4aS_KY"
+uri = "file://generated-artifacts/b2-storage-recovery-plan/report.md"
+type = "text"
+title = "B2 storage recovery and migration plan"
+description = "Non-executing plan covering privacy-preserving checks, migration integrity/idempotency/rollback, missing files, complete backup scope, isolated RPO/RTO rehearsal and separate authorization gates. Candidate unchanged."
+logical_id = "49a9c936-dd0c-4738-b5ff-926f5c753733"
+content_hash = "sha256:4ec038b9d3862dc0645887a2004adc76d16b47e45b277e82ee3999c3bd225a7d"
+size = 28814
+mtime_ms = 1792305912451
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/49a9c936-dd0c-4738-b5ff-926f5c753733/2ce7ca24-b65b-48d1-83e9-9cc32077532c"
+storage_version_token = "1792306001454524"
+content_type = "text/markdown"
