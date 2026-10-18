@@ -76,4 +76,4 @@ Owner-approved backup hardening uses one aliased customer-managed KMS key with r
 
 **Why:** The owner separates persistent configuration authority from backup execution and requires no duplicate key creation, no deletion/Governance bypass, and no invented encryption or effective-policy attestations.
 
-**How to apply:** Verify the exact target and operator first, reuse the approved alias rather than creating another key, keep key ARNs protected, and set assurance flags only after verification. Stop on a failed phase; configuration approval alone does not authorize backup, restore, restart or publication.
+**How to apply:** Verify the exact target and operator first, reuse the approved alias rather than creating another key, keep key ARNs protected, and set assurance flags only after verification. Use the owner's approved exact in-memory STS identity comparison rather than requiring IAM GetUser; retain no raw identity response. Stop on a failed phase; configuration approval alone does not authorize backup, restore, restart or publication.
