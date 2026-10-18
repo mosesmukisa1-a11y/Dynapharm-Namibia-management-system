@@ -71,3 +71,9 @@ Treat authorized synthetic restore rehearsals as preparation, not operational re
 **Why:** The owner permits generated synthetic artifacts and memory/local disposable fakes in this stage, explicitly excluding native backup/database tools and live provider access.
 
 **How to apply:** Label measured timings NON-PRODUCTION, keep B2 open and production RPO/RTO unproven, and require separate authority before a native archive or provider restore.
+
+Owner-approved backup hardening uses one aliased customer-managed KMS key with rotation, vault-only SSE-KMS, and narrowly scoped operator permissions.
+
+**Why:** The owner separates persistent configuration authority from backup execution and requires no duplicate key creation, no deletion/Governance bypass, and no invented encryption or effective-policy attestations.
+
+**How to apply:** Verify the exact target and operator first, reuse the approved alias rather than creating another key, keep key ARNs protected, and set assurance flags only after verification. Stop on a failed phase; configuration approval alone does not authorize backup, restore, restart or publication.
