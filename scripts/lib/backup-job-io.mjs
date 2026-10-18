@@ -5,6 +5,9 @@ import {createHash} from 'node:crypto';
 import {spawn} from 'node:child_process';
 import path from 'node:path';
 import {BackupJobError, assertArtifact, executionMode, inTestRuntime, retainedUntil, validateConfig} from './backup-job.mjs';
+import {
+  WITH_OBJECTS, assertObjectAcknowledgement, validateObjectManifest, assertManifestFresh, objectArtifactName,
+} from './backup-object-manifest.mjs';
 
 function fail(code) { throw new BackupJobError(code); }
 function command(executable, args, env, code, capture = false) {
@@ -93,11 +96,17 @@ export function assertRemoteArtifact(head, put, expected, kmsArn) {
       head.ObjectLockMode !== 'GOVERNANCE' || !Number.isFinite(expiry) ||
       !Number.isFinite(created) || expiry - created < 30 * 86_400_000) fail('PROVIDER_VERIFY_FAILED');
 }
-export function createBackupIO({args = [], env = {}} = {}) {
-  if (executionMode(args) !== 'execute') fail('MISSING_OWNER_FLAG');
+export function createBackupIO({args = [], env = {}, objectManifestJson} = {}) {
+  const mode = executionMode(args);
+  if (mode !== 'execute') fail('MISSING_OWNER_FLAG');
+  assertObjectAcknowledgement(args, mode);
+  const supplied = objectManifestJson ?? env.B2_BACKUP_OBJECT_MANIFEST_JSON;
+  if (!args.includes(WITH_OBJECTS) && supplied !== undefined) fail('MANIFEST_MODE_REQUIRED');
+  const approved = args.includes(WITH_OBJECTS) ? validateObjectManifest(supplied, env) : null;
   // Real adapter is never usable in node:test/Vitest/test mode, even for loopback.
   if (inTestRuntime(env)) fail('TEST_IO_DENIED');
   if (validateConfig(env).invalidFields.length) fail('CONFIG_INVALID');
+  let storageClient;
   return {
     async validateTools(config) {
       try {
@@ -155,6 +164,52 @@ export function createBackupIO({args = [], env = {}} = {}) {
       } catch { fail('ARCHIVE_INVALID'); }
     },
     inspect: inspectFile,
+    async captureObject(_config, run, index) {
+      if (!approved) fail('MANIFEST_MODE_REQUIRED');
+      assertManifestFresh(approved.manifest);
+      if (!Number.isInteger(index) || index < 0 || index >= approved.objectCount) fail('MANIFEST_INVALID');
+      const expected = approved.manifest.objects[index];
+      const name = objectArtifactName(index);
+      let file, stream, timer;
+      try {
+        if (!storageClient) {
+          const {Client} = await import('@replit/object-storage');
+          // Explicit authorized bucket only: no default bucket and no discovery/list operation.
+          storageClient = new Client({bucketId: approved.manifest.source.bucketId});
+        }
+        assertManifestFresh(approved.manifest);
+        file = await fs.open(path.join(run.directory, `${name}.partial`), 'wx', 0o600);
+        assertManifestFresh(approved.manifest);
+        const remaining = Date.parse(approved.manifest.authorization.expiresAtUtc) - Date.now();
+        if (remaining <= 0) fail('MANIFEST_EXPIRED');
+        stream = storageClient.downloadAsStream(expected.key, {decompress: false});
+        const hash = createHash('sha256');
+        let bytes = 0;
+        const timeoutCode = remaining <= 600_000 ? 'MANIFEST_EXPIRED' : 'SOURCE_OBJECT_READ_FAILED';
+        timer = setTimeout(() => stream.destroy(new BackupJobError(timeoutCode)), Math.min(600_000, remaining));
+        timer.unref();
+        for await (const chunk of stream) {
+          assertManifestFresh(approved.manifest);
+          const body = Buffer.from(chunk);
+          bytes += body.length;
+          if (bytes > expected.bytes) fail('SOURCE_OBJECT_MISMATCH');
+          hash.update(body);
+          await file.writeFile(body);
+        }
+        const checksum = hash.digest('hex');
+        if (bytes !== expected.bytes || checksum !== expected.sourceIdentity.sha256) fail('SOURCE_OBJECT_MISMATCH');
+        await file.sync();
+        await file.close(); file = null;
+        await fs.rename(path.join(run.directory, `${name}.partial`), path.join(run.directory, name));
+        return {bytes, sha256: checksum};
+      } catch (error) {
+        fail(error instanceof BackupJobError ? error.code : 'SOURCE_OBJECT_READ_FAILED');
+      } finally {
+        clearTimeout(timer);
+        stream?.destroy();
+        await file?.close();
+      }
+    },
     async write(run, name, contents) {
       try { await fs.writeFile(path.join(run.directory, name), contents, {flag: 'wx', mode: 0o600}); }
       catch { fail('LOCAL_WRITE_FAILED'); }

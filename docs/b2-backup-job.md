@@ -6,9 +6,11 @@ This job is **not activated**. This change authorizes only code and local/offlin
 No scheduler, application import, deployment hook, configuration mutation or new dependency is added.
 Existing `.replit` changes, including any persisted awscli2 setting, are unrelated and must be left untouched.
 
-The implemented future execution path is a **single PostgreSQL database logical backup to an existing protected S3 bucket**.
-It does not capture Replit App Storage, seven legacy or four unclassified references, cluster-global roles,
-configuration/keys or a cross-resource recovery watermark. It cannot close B2 or establish RPO/RTO.
+The default future execution path is a **single PostgreSQL database logical backup to an existing protected S3 bucket**.
+An optional, separately gated candidate extension captures only App Storage objects in a supplied authorized manifest;
+it never discovers objects or queries business rows for references. Neither mode captures filesystem uploads,
+seven legacy or four unclassified references, cluster-global roles, configuration/keys or a verified cross-resource
+recovery watermark. Neither mode closes B2 or establishes RPO/RTO.
 All 49 general App Storage references and 19 staff-document references still require the separately authorized
 whole-bucket/reference recovery work in `generated-artifacts/b2-storage-recovery-plan/report.md`.
 The existing `/uploads` route and historical references are unchanged.
@@ -121,7 +123,109 @@ This Governance choice supersedes the earlier non-executing plan's proposed Comp
 
 ## Local/offline test command
 
-`node --test scripts/backup-job.test.mjs`
+`node --test scripts/backup-job.test.mjs scripts/backup-object-manifest.test.mjs`
 
 This follows the repository's standalone `scripts/*.test.mjs` convention; those files are deliberately outside
 the application's Vitest unit project. No package/lockfile or workflow change is necessary.
+
+## Optional authorized-manifest App Storage candidate stage
+
+**No operational execution or live object inspection/upload is authorized by this implementation.**
+RPO/RTO remain unproven and B2 remains open. The old database-only gates and version-1 manifest contract remain valid.
+
+### Supplied input, never discovery
+
+Use `--with-app-storage` to request this scope. Its default remains validation-only; it also works with `--dry-run`.
+Supply an already privately authorized manifest as an immutable JSON string through the programmatic
+`runBackup({objectManifestJson, ...})` boundary or `B2_BACKUP_OBJECT_MANIFEST_JSON`.
+There is deliberately **no file-path, URL, stdin-fetch, database-query or object-list discovery option**.
+Do not paste a real manifest into a command line, chat, logs or review evidence.
+
+Input schema: `docs/schemas/b2-authorized-object-manifest.schema.json`, enforced with additional semantic checks
+by `scripts/lib/backup-object-manifest.mjs` before loading an I/O adapter.
+The separately authorized issuer supplies:
+- Version 1; a UUID-v4 backup-set ID; an authorization ID, explicit exact-object-only scope, issued and expiry times.
+- Provider, explicit bucket identity, bound database-identity fingerprint, reference-snapshot digest and capture time.
+- Per object: exact key, nonzero expected stored-byte length, `content-sha256` identity and approved source columns.
+  No primary keys, business rows, customer/staff names, arbitrary URLs or discovery instructions are permitted.
+
+Wire representation must be the exact compact output of `JSON.stringify`, without surrounding whitespace.
+This rejects duplicate JSON properties and ambiguous escaping. Pin the exact UTF-8 bytes independently using:
+- `B2_BACKUP_OBJECT_MANIFEST_SHA256`.
+- `B2_BACKUP_APP_STORAGE_BUCKET_SHA256`: SHA-256 of `replit_app_storage:` followed by the exact supplied bucket ID.
+- `B2_BACKUP_DATABASE_IDENTITY_FINGERPRINT`: expected fingerprint attested by the separate issuer.
+
+The job verifies pins, structure and times in memory; freezes parsed metadata; and never invents/refreshes an
+authorization or expected checksum. These pins bind inputs, **not a live provider attestation or signature**.
+The operator must approve the independent issuer/target linkage. No database identity query is added.
+The issuer must retain the original authorized manifest in an approved protected recovery location before any
+future execution, so partial runs remain privately mappable. This job does not retrieve that retained copy.
+Date strings must use exact UTC millisecond `Date.toISOString()` representation.
+
+Only these source column/prefix associations are accepted:
+
+| Source column | Exact prefix |
+|---|---|
+| `file_uploads.file_url` | `public/uploads/` |
+| `product_images.image_url` | `public/uploads/` |
+| `product_images.thumbnail_url` | `public/uploads/` |
+| `distributors.photo_url` | `public/uploads/` |
+| `staff_documents.file_url` | `staff-documents/` |
+| `client_history_attachments.object_name` | `client-history-private/` |
+
+Private prefixes remain private recovery material, not a request to make their contents public.
+Keys must be relative, ASCII, <=512 characters and composed of approved nonempty segments. Reject dot/hidden
+segments, traversal, encoding (`%`), URLs, queries/fragments, backslashes, whitespace and duplicate keys.
+Shared references to the same object belong in one unique-key entry with unique allowed columns.
+Reject unknown columns, wrong-prefix associations and extra fields; do not broaden policy to make an export pass.
+
+Limits: 65,536 manifest bytes, 1–256 objects, 1–268,435,456 bytes per object, <=2,147,483,648 bytes total.
+Issued <= captured <= current time < expiry; authority may span no more than 24 hours.
+Expiry is rechecked during capture and before completion. Oversized scopes need a separately reviewed design,
+not disabled limits or an implicit partial-success manifest.
+
+### Third acknowledgement and independent operational enforcement
+
+Object execution additionally requires `--acknowledge-authorized-object-manifest`, alongside both existing
+owner/30-day-retention flags and the object scope flag. No environment value substitutes for these flags.
+The real adapter independently rechecks all flags, exact manifest/pins, bounds, scope and freshness before
+it can load the SDK. Its unconditional real-I/O refusal in test runtimes still applies.
+
+Only the supplied explicit bucket is constructed. The sole source-data operation is an exact
+`downloadAsStream(expected.key, {decompress: false})` for a validated entry index; there is no list or row-query
+method. Capture has a size bound and a timeout capped by authority expiry, writes only a private opaque
+partial staging file, hashes raw stored bytes, and renames only after exact size/hash match.
+No source file in the legacy `/uploads` filesystem is read.
+
+The installed SDK exposes no historical-generation selector here. Source identity is therefore pinned content,
+not a claim to fetch a historical native generation. Changed/missing content fails closed; never accept a new
+hash on retry. Original content headers/ACL metadata and full-bucket/orphan coverage are not established by
+this limited column-reference manifest stage and still require separately approved recovery work.
+
+### Backup-set links, protection and partial failure
+
+Each captured object uses an opaque ordinal basename (`object-000001.bin`, etc.) under the existing run prefix.
+Every destination uses the same conditional create, SHA-256, exact returned S3 version, KMS verification and
+30-day Governance minimum as the database artifact. No deletion, bypass or retention reduction is added.
+
+Upload order: database artifact; all verified object artifacts; protected original `object-manifest.json`;
+version-2 `manifest.json`; `SHA256SUMS`; `COMPLETED.json` **last**.
+The latter two link every payload and the input/backup-manifest digests.
+The encrypted input manifest is the private mapping from ordinal payloads to source keys.
+Keys, bucket identifiers, hashes, manifest contents, URLs and provider errors are never returned in public logs.
+
+Version-2 schema: `docs/schemas/b2-backup-set.schema.json`. It binds the database artifact SHA-256, exact supplied
+manifest SHA-256, backup-set ID, bucket/database/reference-snapshot fingerprints, counts/bytes and capture intervals.
+It explicitly records `crossResourceAtomicity=false`, `providerSnapshotVerified=false`, an owner-attested
+identity basis and unproven RPO/RTO/full-B2 status. Time intervals/digests do not create a consistent SQL/object snapshot.
+
+On a missing, truncated, mutated, oversized or failed object, stop the set without a completion marker or cleanup.
+Already protected versions/partial runs remain immutable until actual retention expiry; no early cleanup promise.
+Never label the surviving subset a complete recovery point or retry by overwriting an existing key.
+
+For a future separately authorized isolated restore, additionally verify completion/input-manifest/set links,
+all object checksums, declared counts/bytes and exact version metadata before restoring any references.
+Restore only to positively isolated target storage using a reviewed restore adapter: map ordinal files back to
+validated original keys without treating keys as local filesystem paths. Re-establish approved access and content
+metadata; never promote private prefixes to public access. Reconcile SQL/reference snapshot timing separately.
+The restore action and any provider access are **not implemented or authorized as a test by this stage**.

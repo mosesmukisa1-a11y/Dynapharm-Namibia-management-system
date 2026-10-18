@@ -1,34 +1,29 @@
 // No provider, database, filesystem, subprocess or application imports.
 import {createHash, randomUUID} from 'node:crypto';
 import path from 'node:path';
+import {BackupJobError, safeBackupCode} from './backup-job-errors.mjs';
+import {
+  WITH_OBJECTS, ACK_OBJECTS, assertObjectAcknowledgement, validateObjectManifest,
+  assertManifestFresh, objectArtifactName,
+} from './backup-object-manifest.mjs';
+export {BackupJobError} from './backup-job-errors.mjs';
 
 export const EXECUTE = '--execute-owner-approved';
 export const ACKNOWLEDGE = '--acknowledge-backup-writes-and-30-day-retention';
 export const RETENTION_DAYS = 30;
 const DAY = 86_400_000;
-const CODES = new Set([
-  'INVALID_FLAGS', 'MISSING_OWNER_FLAG', 'MISSING_ACKNOWLEDGEMENT', 'CONFIG_INVALID',
-  'TEST_SOURCE_DENIED', 'TEST_IO_DENIED', 'TOOL_UNAVAILABLE', 'TOOL_INCOMPATIBLE',
-  'OUTPUT_UNSAFE', 'DUMP_FAILED', 'ARCHIVE_INVALID', 'ARTIFACT_INVALID',
-  'PROVIDER_PREFLIGHT_FAILED', 'PROVIDER_UPLOAD_FAILED', 'PROVIDER_VERIFY_FAILED',
-  'LOCAL_WRITE_FAILED', 'INTERNAL_FAILURE',
-]);
-export class BackupJobError extends Error {
-  constructor(code) {
-    super(CODES.has(code) ? code : 'INTERNAL_FAILURE');
-    this.code = this.message;
-  }
-}
 export function inTestRuntime(env = {}) {
   return env.NODE_ENV === 'test' || Boolean(env.VITEST || env.NODE_TEST_CONTEXT) ||
     process.env.NODE_ENV === 'test' || Boolean(process.env.VITEST || process.env.NODE_TEST_CONTEXT);
 }
 export function executionMode(args) {
   if (!Array.isArray(args) || new Set(args).size !== args.length ||
-      args.some(a => !['--dry-run', EXECUTE, ACKNOWLEDGE].includes(a)) ||
-      (args.includes('--dry-run') && args.length !== 1)) throw new BackupJobError('INVALID_FLAGS');
+      args.some(a => !['--dry-run', EXECUTE, ACKNOWLEDGE, WITH_OBJECTS, ACK_OBJECTS].includes(a)) ||
+      (args.includes('--dry-run') && args.some(a => !['--dry-run', WITH_OBJECTS].includes(a))) ||
+      (args.includes(ACK_OBJECTS) && !args.includes(WITH_OBJECTS))) throw new BackupJobError('INVALID_FLAGS');
   if (args.includes(EXECUTE) && !args.includes(ACKNOWLEDGE)) throw new BackupJobError('MISSING_ACKNOWLEDGEMENT');
   if (args.includes(ACKNOWLEDGE) && !args.includes(EXECUTE)) throw new BackupJobError('MISSING_OWNER_FLAG');
+  if (args.includes(ACK_OBJECTS) && !args.includes(EXECUTE)) throw new BackupJobError('MISSING_OWNER_FLAG');
   return args.includes(EXECUTE) && args.includes(ACKNOWLEDGE) ? 'execute' : 'dry-run';
 }
 export function backupPaths(date, id) {
@@ -109,21 +104,26 @@ function assertTestSource(env, source) {
     throw new BackupJobError('TEST_SOURCE_DENIED');
   }
 }
-function safeResult(code) {
-  return CODES.has(code) ? code : 'INTERNAL_FAILURE';
-}
-
 export async function runBackup({
   args = [], env = {}, emit = () => {}, now = () => new Date(), uuid = randomUUID,
+  objectManifestJson,
   loadIO = async () => { throw new BackupJobError('INTERNAL_FAILURE'); },
 } = {}) {
   let stage = 'authorization', mode = 'dry-run';
   const log = (status, code) => emit({
     event: 'b2.backup', atUtc: new Date().toISOString(), mode, stage, status,
-    ...(code ? {code: safeResult(code)} : {}),
+    ...(code ? {code: safeBackupCode(code)} : {}),
   });
   try {
+    if (Array.isArray(args)) args = Object.freeze([...args]);
+    env = Object.freeze({...env});
     mode = executionMode(args);
+    assertObjectAcknowledgement(args, mode);
+    const objectMode = args.includes(WITH_OBJECTS);
+    const suppliedManifest = objectManifestJson ?? env.B2_BACKUP_OBJECT_MANIFEST_JSON;
+    stage = 'object-manifest-validation';
+    if (!objectMode && suppliedManifest !== undefined) throw new BackupJobError('MANIFEST_MODE_REQUIRED');
+    const approved = objectMode ? validateObjectManifest(suppliedManifest, env, now()) : null;
     stage = 'configuration';
     const {source, invalidFields} = validateConfig(env);
     if (mode === 'dry-run') {
@@ -133,6 +133,7 @@ export async function runBackup({
         status: 'VALIDATION_ONLY', mode, configurationValid: invalidFields.length === 0,
         invalidFields, tools: {required: ['pg_dump', 'pg_restore', 'awscli2'], status: 'NOT_PROBED'},
         providerCalls: 0, databaseCalls: 0, storageCalls: 0,
+        ...(approved ? {objectManifest: {status: 'VALIDATED', objectCount: approved.objectCount, totalBytes: approved.totalBytes}} : {}),
       };
     }
     assertTestSource(env, source);
@@ -141,14 +142,16 @@ export async function runBackup({
     const plan = {...backupPaths(started, uuid()), startedAtUtc: started.toISOString()};
     const config = {env, source, ...plan};
     stage = 'tools';
-    const io = await loadIO({args: [...args], env: {...env}});
+    const io = await loadIO({args: [...args], env: {...env}, objectManifestJson: suppliedManifest});
     await io.validateTools(config);
     stage = 'destination-preflight';
     await io.validateDestination(config);
     stage = 'local-staging';
     const run = await io.createRun(config);
     stage = 'dump';
+    const dumpStartedAtUtc = now().toISOString();
     await io.dump(config, run);
+    const completedDumpAtUtc = now().toISOString();
     stage = 'archive-validation';
     await io.validateArchive(config, run);
     stage = 'artifact-validation';
@@ -156,37 +159,92 @@ export async function runBackup({
     assertArtifact(dump);
     stage = 'upload-dump';
     const protectedDump = await io.upload(config, run, 'database.dump', dump);
+    const sumsEntries = [{name: 'database.dump', ...dump}];
+    const objects = [];
+    let objectCaptureStartedAtUtc, objectCaptureCompletedAtUtc;
+    let objectManifestMeta, protectedObjectManifest;
+    if (approved) {
+      objectCaptureStartedAtUtc = now().toISOString();
+      for (let index = 0; index < approved.objectCount; index++) {
+        stage = 'object-capture';
+        assertManifestFresh(approved.manifest, now());
+        const expected = approved.manifest.objects[index];
+        const meta = await io.captureObject(config, run, index);
+        assertArtifact(meta);
+        if (meta.bytes !== expected.bytes || meta.sha256 !== expected.sourceIdentity.sha256) {
+          throw new BackupJobError('SOURCE_OBJECT_MISMATCH');
+        }
+        assertManifestFresh(approved.manifest, now());
+        stage = 'object-upload';
+        const name = objectArtifactName(index);
+        const protectedObject = await io.upload(config, run, name, meta);
+        objects.push({name, ...meta, ...protectedObject});
+        sumsEntries.push({name, ...meta});
+      }
+      objectCaptureCompletedAtUtc = now().toISOString();
+      stage = 'object-manifest';
+      assertManifestFresh(approved.manifest, now());
+      objectManifestMeta = await io.write(run, 'object-manifest.json', approved.text);
+      assertArtifact(objectManifestMeta);
+      if (objectManifestMeta.sha256 !== approved.sha256 || objectManifestMeta.bytes !== Buffer.byteLength(approved.text)) {
+        throw new BackupJobError('SOURCE_OBJECT_MISMATCH');
+      }
+      protectedObjectManifest = await io.upload(config, run, 'object-manifest.json', objectManifestMeta);
+      sumsEntries.push({name: 'object-manifest.json', ...objectManifestMeta});
+    }
     const manifest = {
-      schemaVersion: 1, runId: plan.runId, startedAtUtc: plan.startedAtUtc,
-      completedDumpAtUtc: now().toISOString(),
-      scope: 'DATABASE_ONLY_OBJECTS_AND_CLUSTER_GLOBALS_NOT_INCLUDED',
+      schemaVersion: approved ? 2 : 1, runId: plan.runId, startedAtUtc: plan.startedAtUtc,
+      completedDumpAtUtc,
+      scope: approved ? 'DATABASE_AND_MANIFEST_REFERENCED_OBJECTS_NO_ATOMICITY_PROOF' : 'DATABASE_ONLY_OBJECTS_AND_CLUSTER_GLOBALS_NOT_INCLUDED',
       sourceIdentityRecorded: false,
       validation: {dumpExitZero: true, archiveListPassed: true, fullArchiveDecodePassed: true},
       retention: {mode: 'GOVERNANCE', minimumDays: RETENTION_DAYS, bypassAllowedByJob: false,
         noBypassPolicyAssurance: 'OWNER_ATTESTED_NOT_PROVIDER_VERIFIED'},
       artifacts: [{name: 'database.dump', ...dump, ...protectedDump}],
       recoveryObjectives: {rpoProven: false, rtoProven: false, fullB2Recovery: false},
+      ...(approved ? {
+        objectManifest: {name: 'object-manifest.json', ...objectManifestMeta, ...protectedObjectManifest},
+        objects,
+        backupSet: {
+          id: approved.manifest.backupSetId, databaseArtifactSha256: dump.sha256,
+          objectManifestSha256: approved.sha256,
+          databaseIdentityFingerprint: approved.manifest.source.databaseIdentityFingerprint,
+          sourceBucketIdentitySha256: approved.manifest.source.bucketIdentitySha256,
+          referenceSnapshotSha256: approved.manifest.source.referenceSnapshotSha256,
+          objectCount: approved.objectCount, totalBytes: approved.totalBytes,
+          databaseDumpStartedAtUtc: dumpStartedAtUtc, databaseDumpCompletedAtUtc: completedDumpAtUtc,
+          objectCaptureStartedAtUtc, objectCaptureCompletedAtUtc,
+          manifestSourceCapturedAtUtc: approved.manifest.source.capturedAtUtc,
+          crossResourceAtomicity: false, providerSnapshotVerified: false,
+          sourceIdentityAssurance: 'OWNER_ATTESTED_CONTENT_VERIFIED',
+        },
+      } : {}),
     };
     stage = 'manifest';
     const manifestMeta = await io.write(run, 'manifest.json', JSON.stringify(manifest, null, 2) + '\n');
     assertArtifact(manifestMeta);
     await io.upload(config, run, 'manifest.json', manifestMeta);
     stage = 'checksums';
-    const sums = `${dump.sha256}  database.dump\n${manifestMeta.sha256}  manifest.json\n`;
+    sumsEntries.push({name: 'manifest.json', ...manifestMeta});
+    const sums = sumsEntries.map(item => `${item.sha256}  ${item.name}\n`).join('');
     const sumsMeta = await io.write(run, 'SHA256SUMS', sums);
     assertArtifact(sumsMeta);
     await io.upload(config, run, 'SHA256SUMS', sumsMeta);
     stage = 'completion';
+    if (approved) assertManifestFresh(approved.manifest, now());
     const complete = await io.write(run, 'COMPLETED.json', JSON.stringify({
-      schemaVersion: 1, runId: plan.runId, manifestSha256: manifestMeta.sha256,
+      schemaVersion: approved ? 2 : 1, runId: plan.runId, manifestSha256: manifestMeta.sha256,
       checksumsSha256: sumsMeta.sha256, completedAtUtc: now().toISOString(),
+      ...(approved ? {backupSetId: approved.manifest.backupSetId, objectManifestSha256: approved.sha256} : {}),
     }) + '\n');
     assertArtifact(complete);
+    if (approved) assertManifestFresh(approved.manifest, now());
     await io.upload(config, run, 'COMPLETED.json', complete);
-    log('COMPLETE_DATABASE_BACKUP');
-    return {status: 'COMPLETE_DATABASE_BACKUP', mode, fullB2Recovery: false};
+    const status = approved ? 'COMPLETE_MANIFEST_BACKUP_SET' : 'COMPLETE_DATABASE_BACKUP';
+    log(status);
+    return {status, mode, fullB2Recovery: false};
   } catch (error) {
-    const code = error instanceof BackupJobError ? safeResult(error.code) : 'INTERNAL_FAILURE';
+    const code = error instanceof BackupJobError ? safeBackupCode(error.code) : 'INTERNAL_FAILURE';
     log('FAILED', code);
     return {status: 'FAILED', mode, stage, code};
   }

@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Separately authorized App Storage reference manifest",
+  "description": "Schema plus semantic validation in backup-object-manifest.mjs. Wire format is exact compact JSON.stringify output, <=65536 UTF-8 bytes, with independent SHA-256 pins. No row IDs or discovery instructions.",
+  "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "backupSetId", "authorization", "source", "objects"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "backupSetId": {"$ref": "#/$defs/uuid"},
+    "authorization": {
+      "type": "object", "additionalProperties": false,
+      "required": ["authorizationId", "issuedAtUtc", "expiresAtUtc", "scope"],
+      "properties": {
+        "authorizationId": {"$ref": "#/$defs/uuid"},
+        "issuedAtUtc": {"type": "string", "format": "date-time"},
+        "expiresAtUtc": {"type": "string", "format": "date-time"},
+        "scope": {"const": "EXACT_OBJECT_READS_NO_LIST_NO_BUSINESS_ROWS"}
+      }
+    },
+    "source": {
+      "type": "object", "additionalProperties": false,
+      "required": ["provider", "bucketId", "bucketIdentitySha256", "databaseIdentityFingerprint", "referenceSnapshotSha256", "capturedAtUtc", "representation"],
+      "properties": {
+        "provider": {"const": "replit_app_storage"},
+        "bucketId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{2,127}$"},
+        "bucketIdentitySha256": {"$ref": "#/$defs/sha"},
+        "databaseIdentityFingerprint": {"$ref": "#/$defs/sha"},
+        "referenceSnapshotSha256": {"$ref": "#/$defs/sha"},
+        "capturedAtUtc": {"type": "string", "format": "date-time"},
+        "representation": {"const": "stored-bytes-no-decompression"}
+      }
+    },
+    "objects": {
+      "type": "array", "minItems": 1, "maxItems": 256,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["key", "bytes", "sourceIdentity", "references"],
+        "properties": {
+          "key": {"type": "string", "maxLength": 512, "pattern": "^(public/uploads|staff-documents|client-history-private)/[A-Za-z0-9_-][A-Za-z0-9_./-]*$"},
+          "bytes": {"type": "integer", "minimum": 1, "maximum": 268435456},
+          "sourceIdentity": {
+            "type": "object", "additionalProperties": false, "required": ["scheme", "sha256"],
+            "properties": {"scheme": {"const": "content-sha256"}, "sha256": {"$ref": "#/$defs/sha"}}
+          },
+          "references": {
+            "type": "array", "minItems": 1, "maxItems": 6, "uniqueItems": true,
+            "items": {"enum": ["file_uploads.file_url", "product_images.image_url", "product_images.thumbnail_url", "distributors.photo_url", "staff_documents.file_url", "client_history_attachments.object_name"]}
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "uuid": {"type": "string", "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$"}
+  }
+}

@@ -59,3 +59,9 @@ Treat the owner-selected 30-day S3 Object Lock Governance retention as operation
 **Why:** Governance mode can technically be bypassed by sufficiently privileged principals, but the owner explicitly forbids treating that capability as test cleanup permission.
 
 **How to apply:** Never promise deletion before actual retention expiry, including partial backup runs or future authorized test objects. Distinguish Governance from Compliance and separately verify no-bypass operating permissions; backup code approval is not provider execution authority.
+
+An authorized backup object manifest does not grant discovery/listing or business-row query authority.
+
+**Why:** The owner separates reference export/read authorization from backup execution; database and object captures may also occur at different times.
+
+**How to apply:** Consume only the separately supplied bounded manifest. Do not infer live coverage, provider snapshots or cross-resource atomicity from matching content hashes, source fingerprints or a shared backup-set ID.

@@ -1,0 +1,19 @@
+// Shared allowlist: never accept provider messages, private paths or arbitrary codes.
+const CODES = new Set([
+  'INVALID_FLAGS', 'MISSING_OWNER_FLAG', 'MISSING_ACKNOWLEDGEMENT', 'CONFIG_INVALID',
+  'TEST_SOURCE_DENIED', 'TEST_IO_DENIED', 'TOOL_UNAVAILABLE', 'TOOL_INCOMPATIBLE',
+  'OUTPUT_UNSAFE', 'DUMP_FAILED', 'ARCHIVE_INVALID', 'ARTIFACT_INVALID',
+  'PROVIDER_PREFLIGHT_FAILED', 'PROVIDER_UPLOAD_FAILED', 'PROVIDER_VERIFY_FAILED',
+  'LOCAL_WRITE_FAILED', 'INTERNAL_FAILURE', 'MANIFEST_MODE_REQUIRED',
+  'MISSING_MANIFEST_ACKNOWLEDGEMENT', 'MANIFEST_INVALID', 'MANIFEST_EXPIRED',
+  'SOURCE_OBJECT_MISMATCH', 'SOURCE_OBJECT_READ_FAILED',
+]);
+export function safeBackupCode(code) {
+  return CODES.has(code) ? code : 'INTERNAL_FAILURE';
+}
+export class BackupJobError extends Error {
+  constructor(code) {
+    super(safeBackupCode(code));
+    this.code = this.message;
+  }
+}

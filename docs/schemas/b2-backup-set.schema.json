@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Database and manifest-referenced App Storage backup set",
+  "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "runId", "startedAtUtc", "completedDumpAtUtc", "scope", "sourceIdentityRecorded", "validation", "retention", "artifacts", "recoveryObjectives", "objectManifest", "objects", "backupSet"],
+  "properties": {
+    "schemaVersion": {"const": 2},
+    "runId": {"type": "string", "pattern": "^[0-9]{8}T[0-9]{9}Z_[a-f0-9-]{36}$"},
+    "startedAtUtc": {"type": "string", "format": "date-time"},
+    "completedDumpAtUtc": {"type": "string", "format": "date-time"},
+    "scope": {"const": "DATABASE_AND_MANIFEST_REFERENCED_OBJECTS_NO_ATOMICITY_PROOF"},
+    "sourceIdentityRecorded": {"const": false},
+    "validation": {"$ref": "b2-backup-manifest.schema.json#/properties/validation"},
+    "retention": {"$ref": "b2-backup-manifest.schema.json#/properties/retention"},
+    "artifacts": {"$ref": "b2-backup-manifest.schema.json#/properties/artifacts"},
+    "recoveryObjectives": {"$ref": "b2-backup-manifest.schema.json#/properties/recoveryObjectives"},
+    "objectManifest": {
+      "allOf": [{"$ref": "#/$defs/artifact"}, {"properties": {"name": {"const": "object-manifest.json"}}}]
+    },
+    "objects": {
+      "type": "array", "minItems": 1, "maxItems": 256,
+      "items": {
+        "allOf": [{"$ref": "#/$defs/artifact"}, {"properties": {
+          "name": {"type": "string", "pattern": "^object-[0-9]{6}\\.bin$"},
+          "bytes": {"type": "integer", "minimum": 1, "maximum": 268435456}
+        }}]
+      }
+    },
+    "backupSet": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "databaseArtifactSha256", "objectManifestSha256", "databaseIdentityFingerprint", "sourceBucketIdentitySha256", "referenceSnapshotSha256", "objectCount", "totalBytes", "databaseDumpStartedAtUtc", "databaseDumpCompletedAtUtc", "objectCaptureStartedAtUtc", "objectCaptureCompletedAtUtc", "manifestSourceCapturedAtUtc", "crossResourceAtomicity", "providerSnapshotVerified", "sourceIdentityAssurance"],
+      "properties": {
+        "id": {"$ref": "b2-authorized-object-manifest.schema.json#/$defs/uuid"},
+        "databaseArtifactSha256": {"$ref": "#/$defs/sha"},
+        "objectManifestSha256": {"$ref": "#/$defs/sha"},
+        "databaseIdentityFingerprint": {"$ref": "#/$defs/sha"},
+        "sourceBucketIdentitySha256": {"$ref": "#/$defs/sha"},
+        "referenceSnapshotSha256": {"$ref": "#/$defs/sha"},
+        "objectCount": {"type": "integer", "minimum": 1, "maximum": 256},
+        "totalBytes": {"type": "integer", "minimum": 1, "maximum": 2147483648},
+        "databaseDumpStartedAtUtc": {"type": "string", "format": "date-time"},
+        "databaseDumpCompletedAtUtc": {"type": "string", "format": "date-time"},
+        "objectCaptureStartedAtUtc": {"type": "string", "format": "date-time"},
+        "objectCaptureCompletedAtUtc": {"type": "string", "format": "date-time"},
+        "manifestSourceCapturedAtUtc": {"type": "string", "format": "date-time"},
+        "crossResourceAtomicity": {"const": false},
+        "providerSnapshotVerified": {"const": false},
+        "sourceIdentityAssurance": {"const": "OWNER_ATTESTED_CONTENT_VERIFIED"}
+      }
+    }
+  },
+  "$defs": {
+    "sha": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "artifact": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "bytes", "sha256", "versionId", "retainUntilUtc"],
+      "properties": {
+        "name": {"type": "string"},
+        "bytes": {"type": "integer", "minimum": 1, "maximum": 5000000000},
+        "sha256": {"$ref": "#/$defs/sha"},
+        "versionId": {"type": "string", "minLength": 1, "not": {"const": "null"}},
+        "retainUntilUtc": {"type": "string", "format": "date-time"}
+      }
+    }
+  }
+}
