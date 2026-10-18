@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "B2 manual database backup manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "runId", "startedAtUtc", "completedDumpAtUtc", "scope", "sourceIdentityRecorded", "validation", "retention", "artifacts", "recoveryObjectives"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "runId": {"type": "string", "pattern": "^[0-9]{8}T[0-9]{9}Z_[a-f0-9-]{36}$"},
+    "startedAtUtc": {"type": "string", "format": "date-time"},
+    "completedDumpAtUtc": {"type": "string", "format": "date-time"},
+    "scope": {"const": "DATABASE_ONLY_OBJECTS_AND_CLUSTER_GLOBALS_NOT_INCLUDED"},
+    "sourceIdentityRecorded": {"const": false},
+    "validation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["dumpExitZero", "archiveListPassed", "fullArchiveDecodePassed"],
+      "properties": {
+        "dumpExitZero": {"const": true},
+        "archiveListPassed": {"const": true},
+        "fullArchiveDecodePassed": {"const": true}
+      }
+    },
+    "retention": {
+      "type": "object", "additionalProperties": false,
+      "required": ["mode", "minimumDays", "bypassAllowedByJob", "noBypassPolicyAssurance"],
+      "properties": {
+        "mode": {"const": "GOVERNANCE"},
+        "minimumDays": {"const": 30},
+        "bypassAllowedByJob": {"const": false},
+        "noBypassPolicyAssurance": {"const": "OWNER_ATTESTED_NOT_PROVIDER_VERIFIED"}
+      }
+    },
+    "artifacts": {
+      "type": "array", "minItems": 1, "maxItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["name", "bytes", "sha256", "versionId", "retainUntilUtc"],
+        "properties": {
+          "name": {"const": "database.dump"},
+          "bytes": {"type": "integer", "minimum": 1, "maximum": 5000000000},
+          "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "versionId": {"type": "string", "minLength": 1, "not": {"const": "null"}},
+          "retainUntilUtc": {"type": "string", "format": "date-time"}
+        }
+      }
+    },
+    "recoveryObjectives": {
+      "type": "object", "additionalProperties": false,
+      "required": ["rpoProven", "rtoProven", "fullB2Recovery"],
+      "properties": {
+        "rpoProven": {"const": false},
+        "rtoProven": {"const": false},
+        "fullB2Recovery": {"const": false}
+      }
+    }
+  }
+}

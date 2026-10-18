@@ -882,3 +882,17 @@ mtime_ms = 1792305912451
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/49a9c936-dd0c-4738-b5ff-926f5c753733/2ce7ca24-b65b-48d1-83e9-9cc32077532c"
 storage_version_token = "1792306001454524"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "KP_cdgMT3MkPphkRtoQiE"
+uri = "file://generated-artifacts/b2-backup-job-candidate/report.md"
+type = "text"
+title = "B2 backup job — candidate-only evidence"
+description = "32 passing offline tests, exact changes, execution safeguards, Governance retention rules and explicitly unverified operational/recovery conditions. No production or storage operations."
+logical_id = "55598c08-d2e2-4ad9-9de7-8a73f8a4511e"
+content_hash = "sha256:bbeb92febd36d25c4f92eaea360a427a7578b4d766e27dc8fd675e5910b18101"
+size = 6261
+mtime_ms = 1792311703314
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/55598c08-d2e2-4ad9-9de7-8a73f8a4511e/09b805ed-c2d0-4318-99f3-56e16060a06f"
+storage_version_token = "1792311717605893"
+content_type = "text/markdown"

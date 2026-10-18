@@ -53,3 +53,9 @@ Hold unsupported branch/staged schedules. Require existing independent recovery
 evidence; label its absence as a failed recovery evidence gate, not proof that
 backups do not exist. Keep names, email addresses and other personal approval
 details out of agent memory.
+
+Treat the owner-selected 30-day S3 Object Lock Governance retention as operationally immutable.
+
+**Why:** Governance mode can technically be bypassed by sufficiently privileged principals, but the owner explicitly forbids treating that capability as test cleanup permission.
+
+**How to apply:** Never promise deletion before actual retention expiry, including partial backup runs or future authorized test objects. Distinguish Governance from Compliance and separately verify no-bypass operating permissions; backup code approval is not provider execution authority.
