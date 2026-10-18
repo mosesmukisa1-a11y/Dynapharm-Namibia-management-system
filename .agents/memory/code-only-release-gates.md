@@ -83,3 +83,9 @@ Destination SSE-KMS and a private local directory do not establish encrypted loc
 **Why:** The owner conditions the staging assurance on verification; cloud object encryption does not protect a plaintext local dump, and a protected production-source copy must not silently use a development URL.
 
 **How to apply:** Never invent a volume-encryption attestation. The owner subsequently approved ciphertext-only application staging as the alternative: source plaintext must never be staged, and that assurance must not be described as filesystem encryption. The owner also permits direct use of the already injected protected database URL instead of a duplicate secret. Keep verified TLS and execution-time identity/read-only checks; a candidate validation does not establish the production target or native restore compatibility.
+
+Backup-only PostgreSQL role defaults must not be presented as immutable read-only enforcement.
+
+**Why:** An ordinary login can change read-only/time-out defaults; PostgreSQL has no per-role DENY overriding PUBLIC grants, and a no-bypass role can be unable to dump RLS-protected rows completely. A custom login alone does not provide a recovery-replica binding.
+
+**How to apply:** Require independent provider capability/target evidence, least-privilege effective ACL checks and the existing recovery guard. Treat TLS/connect timeout as client controls, block unrelated PUBLIC/RLS changes, and do not infer custom-role support or prohibition from the managed Agent interface being read-only.
