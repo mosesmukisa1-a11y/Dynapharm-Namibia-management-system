@@ -26,16 +26,34 @@ credential containment and all B1/B3/B4/C1 gates. No silent risk waiver.
 Documented daily scheduled backups alone cannot meet a 15-minute RPO.
 App Storage is not covered by database PITR or a development checkpoint.
 
+## Owner-observed settings baseline
+
+On **2026-10-19 Africa/Windhoek** (time not provided), the owner observed **Active
+production database**, PITR **On**, recovery window **7 Days**, and only the
+**“Restore database…”** action. Latest recoverable time and isolated destination
+were not displayed without entering that flow; it was not entered.
+Scheduled backups were **Off**, with **“Automatic daily backups are off”** and
+**“No backups yet.”** No settings/actions were changed.
+Evidence: `generated-artifacts/replit-native-recovery-review/owner-ui-observation.json`.
+This is owner testimony, not an independent Agent UI or provider verification.
+
+PITR configuration is now evidenced; its actual recovery point and safe isolated
+rehearsal remain unknown. No scheduled backup is evidenced as available. Do not
+interpret that as PITR Off, and do not turn backups on under this runbook.
+
 ## Shortest safe sequence, with explicit pause points
 
-1. **Read-only first action:** owner opens Database > Production > Settings >
-   Point-in-Time Recovery, and Advanced > Scheduled backups. Capture sanitized
-   target association, observation UTC/timezone, enabled/available state, actual
-   plan/window/retention, earliest/latest selectable recoverable time, backup
-   frequency, last completed backup/status and available restore destinations.
-   Do not select Restore, enable/disable backups or change retention.
-   No connection strings, credentials, table rows or unredacted screenshots.
-   Documentation's 7-to-28-day plan-dependent window is not project evidence.
+1. **Settings inspection completed to the displayed limit.** Preserve the baseline
+   above; do not repeatedly request facts already supplied. Next prepare a
+   **separately authorized non-committing restore-flow inspection**, with explicit
+   target, no confirmation/submission, no settings change and stop conditions.
+   First establish that opening the flow is non-mutating; if that cannot be
+   established, stop for information-only clarification of the self-service UI.
+   Do not open the flow under the current offline-only instruction.
+   Obtain actual latest recoverable timestamp/timezone, earliest available point,
+   isolated destination support and final commit boundary without performing
+   Restore. Record exact observation time only when supplied, never infer it.
+   No enabling backups/retention changes; those require a separate decision.
 2. **Read-only target/fallback inventory:** privately associate the selected
    production database and deployment; record provider-supported release/build
    identifiers with exact candidate/source artifact SHA-256 associations. A
@@ -44,7 +62,7 @@ App Storage is not covered by database PITR or a development checkpoint.
    credential protection, schema compatibility and non-mutating smoke allowlist.
    If the UI cannot expose an artifact hash, require a trustworthy build-to-artifact
    attestation; do not fabricate it. Keep the gate open if neither is available.
-3. **Prepare the native rehearsal plan:** verify whether the visible recovery UI
+3. **Prepare the native rehearsal plan after permitted inspection:** verify whether the recovery UI
    offers an isolated destination/export suitable for rehearsal. Current public
    documentation describes destructive replacement of the selected database,
    not a proven clone workflow. Never test Restore on the live target.
