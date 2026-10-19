@@ -21,6 +21,31 @@ one serial dump connection, one backup session, credential validity at most two 
 No ownership, role membership, administrative/bypass privilege, object creation or application writes.
 
 This plan does **not** claim that PostgreSQL can make a user-changeable read-only default immutable.
+
+### Isolated restriction/revocation evidence
+
+`scripts/backup-login-rehearsal.test.mjs` executes the fixed verification SQL on a
+fresh, owned Unix-socket-only PostgreSQL cluster. It uses generated synthetic
+records, local trust scoped by a private directory, and no production password
+or existing application connection. Results and input hashes are retained under
+`generated-artifacts/b2-backup-login-rehearsal/`.
+
+The rehearsal independently exercises effective PUBLIC CREATE/TEMP/schema
+CREATE, executable routines, membership/SET ROLE, sequence mutation, large-object
+creation/read/write ACLs, RLS dump failure, and persistent self-alteration of role
+defaults. Unsafe catalog checks must return false, not become a partial PASS.
+After fixture-only PUBLIC hardening, explicit ACL denials survive disabling the
+mutable read-only default. A native memory-only synthetic dump is decoded without
+restoring a database. Role cleanup uses exact grants/revocations and DROP ROLE,
+never DROP OWNED or CASCADE; unrelated role identity and permitted writes survive.
+
+This is not a production capability attestation. Effective PUBLIC privileges
+cannot be overridden by a per-role DENY. Any unsafe PUBLIC/routine/extension
+path on a real target is a stop, not authority to change shared policies.
+Provider custom-login permission, independently verified recovery/replica support,
+TLS verify-full and complete backup visibility must be established separately
+before any production confirmation. Catalog absence assertions remain scoped
+observations, not a proof against every possible provider-specific side effect.
 The enforceable boundary is object privileges plus a verified physical recovery replica.
 The existing `pg_is_in_recovery()=true` gate remains mandatory. A new login on a primary alone
 does not resolve the blocked backup-source binding.

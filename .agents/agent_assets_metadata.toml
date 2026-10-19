@@ -966,3 +966,17 @@ mtime_ms = 1792409251603
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/792c7dad-1f5b-415d-830d-06284e91ae35/63e109a7-4e86-4678-b32b-74556207e005"
 storage_version_token = "1792409268302269"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "dmeMgAwJLo56TWqrXKBjY"
+uri = "file://generated-artifacts/b2-backup-login-rehearsal/current-restrictions-report.md"
+type = "text"
+title = "Backup login restrictions — fresh isolated validation"
+description = "18 native scenario checks passed, exact role-only revocation and cleanup verified; no production/provider capability claim."
+logical_id = "1c988ae8-ce05-4062-b306-5d9bbdfc68ef"
+content_hash = "sha256:86f39d4226096a100d5dc5bdce00075a219c57d3314d65f33408952627c031b4"
+size = 4851
+mtime_ms = 1792421914221
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/1c988ae8-ce05-4062-b306-5d9bbdfc68ef/1da42b7c-e92d-4ffa-ae13-ab095684b0e3"
+storage_version_token = "1792421938288553"
+content_type = "text/markdown"

@@ -194,6 +194,79 @@ test('synthetic backup login: grants, denial, dump, negative controls and exact 
       } finally { await q(admin, 'REVOKE UPDATE(label) ON synthetic.items FROM dynapharm_backup_ro'); }
     });
 
+    await check('effective PUBLIC database CREATE TEMP and schema CREATE cannot be denied per login', async () => {
+      try {
+        await q(admin, 'GRANT CREATE,TEMP ON DATABASE b2_role_rehearsal TO PUBLIC; GRANT CREATE ON SCHEMA synthetic TO PUBLIC');
+        await asBackup(async c => {
+          const row=await verify(c);
+          assert.equal(row.no_database_ddl_privileges,false);
+          assert.equal(row.no_schema_create,false);
+          await q(c,'SET default_transaction_read_only = off');
+          await q(c,'CREATE TEMP TABLE public_temp_probe(id integer)');
+          await q(c,'CREATE TABLE synthetic.public_create_probe(id integer)');
+        });
+      } finally {
+        await q(admin,'DROP TABLE IF EXISTS synthetic.public_create_probe');
+        await q(admin,'REVOKE CREATE,TEMP ON DATABASE b2_role_rehearsal FROM PUBLIC; REVOKE CREATE ON SCHEMA synthetic FROM PUBLIC');
+      }
+    });
+
+    await check('effective PUBLIC sequence USAGE is detected and nextval really mutates after default override', async () => {
+      const before=(await q(admin,'SELECT last_value FROM synthetic.items_id_seq')).rows[0].last_value;
+      try {
+        await q(admin,'GRANT USAGE ON SEQUENCE synthetic.items_id_seq TO PUBLIC');
+        await asBackup(async c=>{
+          assert.equal((await verify(c)).no_sequence_mutation_privileges,false);
+          await q(c,'SET default_transaction_read_only = off');
+          await q(c,"SELECT nextval('synthetic.items_id_seq')");
+        });
+        assert.notEqual((await q(admin,'SELECT last_value FROM synthetic.items_id_seq')).rows[0].last_value,before);
+      } finally { await q(admin,'REVOKE USAGE ON SEQUENCE synthetic.items_id_seq FROM PUBLIC'); }
+      await asBackup(async c=>assert.equal((await verify(c)).no_sequence_mutation_privileges,true));
+    });
+
+    await check('large-object PUBLIC UPDATE and missing SELECT fail the fixed query', async () => {
+      try {
+        await q(admin,'GRANT UPDATE ON LARGE OBJECT 90001 TO PUBLIC');
+        await asBackup(async c=>{
+          assert.equal((await verify(c)).no_large_object_update_privilege,false);
+          await q(c,'SET default_transaction_read_only = off');
+          await q(c,"SELECT lo_put(90001,0,decode('00','hex'))");
+        });
+      } finally { await q(admin,'REVOKE UPDATE ON LARGE OBJECT 90001 FROM PUBLIC'); }
+      try {
+        await q(admin,'REVOKE SELECT ON LARGE OBJECT 90001 FROM dynapharm_backup_ro');
+        await asBackup(async c=>{
+          assert.equal((await verify(c)).large_object_select_complete,false);
+          await denies(c,'SELECT lo_get(90001)','42501');
+        });
+      } finally { await q(admin,'GRANT SELECT ON LARGE OBJECT 90001 TO dynapharm_backup_ro'); }
+    });
+
+    await check('own role defaults are persistently mutable and fresh sessions expose the unsafe state', async () => {
+      try {
+        await asBackup(async c=>{
+          await q(c,'SET default_transaction_read_only = off');
+          await q(c,"ALTER ROLE dynapharm_backup_ro SET default_transaction_read_only = 'off'");
+          await q(c,"ALTER ROLE dynapharm_backup_ro SET statement_timeout = '0'");
+        });
+        await asBackup(async c=>{
+          const row=await verify(c);
+          assert.equal(row.transaction_read_only,false);
+          assert.equal(row.role_read_only_default,false);
+          assert.equal(row.statement_timeout_bounded,false);
+          await denies(c,"INSERT INTO synthetic.items(label) VALUES ('DENIED')",'42501');
+        });
+      } finally {
+        await q(admin,"ALTER ROLE dynapharm_backup_ro SET default_transaction_read_only = 'on'; ALTER ROLE dynapharm_backup_ro SET statement_timeout = '120s'");
+      }
+      await asBackup(async c=>{
+        const row=await verify(c);
+        assert.equal(row.transaction_read_only,true);
+        assert.equal(row.statement_timeout_bounded,true);
+      });
+    });
+
     await check('membership that permits SET ROLE is detected even with NOINHERIT', async () => {
       try {
         await q(admin, 'GRANT rehearsal_unrelated TO dynapharm_backup_ro');
@@ -275,6 +348,10 @@ test('synthetic backup login: grants, denial, dump, negative controls and exact 
         productionRecoveryReplica: 'NOT_CONTACTED', rpoRto: 'UNPROVEN',
         operationalDump: 'SOURCE_BINDING_UNVERIFIED',
         note: 'PUBLIC hardening was fixture-only; production changes remain prohibited. No actual database restore performed.'};
+      report.verificationSqlSha256=createHash('sha256').update(verifySQL).digest('hex');
+      report.planSha256=createHash('sha256').update(await fs.readFile(
+        new URL('../docs/b2-backup-login-plan.md',import.meta.url))).digest('hex');
+      report.readOnlyEnforcement='SCOPED_EFFECTIVE_ACLS_AND_MUTABLE_DEFAULTS_NOT_UNIVERSAL_IMMUTABLE_ENFORCEMENT';
       await fs.mkdir(evidenceDir, {recursive: true});
       await fs.writeFile(new URL('results.json', evidenceDir), JSON.stringify(report, null, 2) + '\n');
     }

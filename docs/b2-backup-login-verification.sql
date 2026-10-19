@@ -2,6 +2,10 @@
 -- Fixed SELECT; private executor binds $1 expected database name, $2 frozen schemas text[].
 -- Connect FRESH as the new login with verified TLS; no PGOPTIONS/read-only startup override.
 -- Require exactly one row, every boolean true, expected server major and frozen scope counts.
+-- Snapshot catalog/default assertions, NOT immutable read-only enforcement.
+-- PUBLIC grants remain effective and the login can change its own defaults.
+-- TLS/recovery are intentionally false in the Unix-only synthetic rehearsal;
+-- this exception is test evidence only and must NEVER relax production gates.
 WITH me AS (
   SELECT oid, rolname, rolcanlogin, rolsuper, rolcreatedb, rolcreaterole,
          rolreplication, rolbypassrls, rolinherit, rolconnlimit, rolvaliduntil
