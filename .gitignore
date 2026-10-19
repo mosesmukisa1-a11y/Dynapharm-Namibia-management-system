@@ -9,3 +9,5 @@ version.json
 dist/
 client/dist/
 /generated-artifacts/
+/.release-identity.json
+/.release-binding.json

@@ -1,8 +1,10 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import {fileURLToPath} from 'node:url';
+import {releaseIdentityBuildPlugin} from './scripts/lib/release-package.mjs';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [releaseIdentityBuildPlugin(fileURLToPath(new URL('.',import.meta.url))), react()],
   root: './client',
   build: {
     outDir: '../dist',

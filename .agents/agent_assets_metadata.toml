@@ -952,3 +952,17 @@ mtime_ms = 1792406090984
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/80711126-bbc6-4b17-bf2e-0c600a8514f6/61db3980-0f4c-4fb6-bf51-5a199535ec75"
 storage_version_token = "1792406102553513"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "ray5KzaD2s99BIFxwTxvU"
+uri = "file://generated-artifacts/release-observability/report.md"
+type = "text"
+title = "Release observability — candidate gate passed"
+description = "Exact archive identity, endpoint and verifier tests, historical publication mapping, and remaining live-proof blockers."
+logical_id = "792c7dad-1f5b-415d-830d-06284e91ae35"
+content_hash = "sha256:9e81bc2fcce027dc8da724ac3a3f92e091f41b00dcb8d35b6358439e68f74bb2"
+size = 8559
+mtime_ms = 1792409251603
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/792c7dad-1f5b-415d-830d-06284e91ae35/63e109a7-4e86-4678-b32b-74556207e005"
+storage_version_token = "1792409268302269"
+content_type = "text/markdown"

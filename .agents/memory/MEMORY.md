@@ -33,3 +33,4 @@
 - [Audit tool runtime](audit-tool-runtime.md) — actual clock for authority; decode managed results offline; keep each invocation’s evidence owned and separate.
 - [Security boundary compatibility](security-boundary-compatibility.md) — validate complete enriched records; preserve finite public failure protocols without clearing authorization or global privacy.
 - [Backup supervisor runtime](backup-supervisor-runtime.md) — resolve the actual interpreter; managed Linux can omit task/children, requiring safe parent-metadata ownership checks.
+- [Release identity binding](release-identity-binding.md) — exact archive identity needs a detached reviewed build binding; web status cannot attest all worker ownership.

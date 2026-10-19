@@ -8,10 +8,14 @@ import { fileURLToPath } from 'url';
 import multer from 'multer';
 import { atomicStockRequest } from './api/_lib/atomicStockRequest.js';
 import { createStartupPolicy, runStartupOperation } from './api/services/startupPolicy.js';
+import {loadReleaseIdentity, releaseStatusHandler} from './api/services/releaseStatus.js';
 import { checkStartupCompatibility, readinessFor, setStartupReadiness,
-startupReadinessGate } from './api/services/startupSchema.js';
+getStartupReadiness, startupReadinessGate } from './api/services/startupSchema.js';
 
 const startupPolicy = createStartupPolicy(process.env);
+const releaseIdentity = loadReleaseIdentity({required:
+  startupPolicy.startupMode === 'code-only' || process.env.NODE_ENV === 'production' ||
+  ['1','true'].includes(process.env.REPLIT_DEPLOYMENT)});
 setStartupReadiness(readinessFor(startupPolicy));
 console.info(JSON.stringify({ event: 'startup.policy', ...startupPolicy }));
 
@@ -34,6 +38,15 @@ runStartupOperation(startupPolicy, 'uploads-directory', () => {
 });
 
 const app = express();
+app.disable('x-powered-by');
+// This finite protocol owns its empty/allowlisted 503 response; never passes
+// diagnostic objects into the general application error serializer.
+app.get('/api/release-status', releaseStatusHandler(releaseIdentity, () => ({
+  startupMode:startupPolicy.startupMode,
+  schedulerEnabled:startupPolicy.enableStockScheduler,
+  workerEnabled:false, // Web entrypoint never starts the separately owned worker.
+  ready:getStartupReadiness()?.compatible === true,
+})));
 app.use(errorOutputBoundary);
 app.use(startupReadinessGate);
 

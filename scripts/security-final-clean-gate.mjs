@@ -10,6 +10,7 @@ import {promisify} from 'node:util';
 import {eligibleUntrackedSchemaSource} from './lib/schema-candidate-files.mjs';
 import {collectFixtureDiagnostics,safeFailure} from './lib/clean-gate-diagnostics.mjs';
 import {assertFreshPrerequisites,sourceDigest,assertStagePassed} from './lib/clean-gate-contract.mjs';
+import {releaseBinding} from './lib/release-package.mjs';
 const root=process.cwd(),out=root+'/generated-artifacts/sql-runtime-enforcement-final';
 const hash=b=>createHash('sha256').update(b).digest('hex');
 const archive=out+'/exact-candidate-source.tar';
@@ -31,7 +32,7 @@ if(process.argv.includes('--prepare')){
     exclusions:['Git','dependencies','generated evidence','runtime/private data','attachments','environment files']};
   try{
     for(const file of files){
-      if(/^(?:\.git\/|node_modules\/|generated-artifacts\/|attached_assets\/|\.agents\/|\.local\/|\.cache\/|dist\/|uploads\/|backend\/dynapharm_data\/)/.test(file)||
+      if(/^(?:\.release-(?:identity|binding)\.json$|\.git\/|node_modules\/|generated-artifacts\/|attached_assets\/|\.agents\/|\.local\/|\.cache\/|dist\/|uploads\/|backend\/dynapharm_data\/)/.test(file)||
         file.split('/').some(p=>p.startsWith('.env'))||
         /(?:\.log|\.db|\.sqlite|\.dump|\.zip|\.tar|\.tgz|\.gz|\.pem|\.key|\.csv|\.xlsx?)$/.test(file)||
         /^(?:reports_data\.json|portal-errors-report\.json)$/.test(file)||
@@ -60,6 +61,7 @@ if(process.argv.includes('--prepare')){
     await promisify(execFile)('tar',['-cf',archive,'-C',temp,'.']);
     manifest.archiveSha256=hash(await fs.readFile(archive));
     await fs.writeFile(out+'/candidate-manifest.json',JSON.stringify(manifest,null,2));
+    await fs.writeFile(out+'/release-binding.json',JSON.stringify(await releaseBinding(archive,manifest)));
   }finally{await fs.rm(temp,{recursive:true,force:true});}
   await fs.writeFile(out+'/clean-install.json',JSON.stringify({status:'NOT VERIFIED',
     preparedOnly:true,installationAttempted:false,exactSourceArchivePrepared:true,
@@ -93,6 +95,7 @@ if(process.argv.includes('--prepare')){
     for(const[file,digest]of Object.entries(manifest.files))
       if(hash(await fs.readFile(source+'/'+file))!==digest)throw Error('Extracted candidate mismatch');
     await fs.writeFile(source+'/.verified-candidate-source.json',JSON.stringify({files:manifest.files}));
+    await fs.writeFile(source+'/.release-binding.json',JSON.stringify(await releaseBinding(archive,manifest)));
     const env={PATH:process.env.PATH,HOME:home,XDG_CONFIG_HOME:temp+'/config',CI:'true',NODE_ENV:'test'};
     async function stage(name,command,args,extra={}){
       let text='';
@@ -114,6 +117,7 @@ if(process.argv.includes('--prepare')){
     const installed=await stage('genuine lockfile-only clean install','npm',['ci']);
     if(installed){
       await stage('production build',process.execPath,['node_modules/vite/bin/vite.js','build'],{NODE_ENV:'production'});
+      await stage('release observability security contracts',process.execPath,['--test','scripts/release-observability.test.mjs']);
       await stage('unit suite',process.execPath,['node_modules/vitest/vitest.mjs','run','--project','unit']);
       await stage('complete isolated database suite',process.execPath,['scripts/security-closure-fixture.mjs','--database-suites']);
       await stage('credential-specific suite',process.execPath,['scripts/security-closure-fixture.mjs','--credential-only']);

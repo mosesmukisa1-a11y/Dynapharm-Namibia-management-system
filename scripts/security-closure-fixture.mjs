@@ -259,12 +259,21 @@ try{
     while(!logs.includes('CLOSURE_PORT:')&&Date.now()-start<30000)await new Promise(r=>setTimeout(r,100));
     const match=logs.match(/CLOSURE_PORT:(\d+)/);if(!match)throw Error('Strict launcher did not become ready');
     const baseUrl='http://127.0.0.1:'+match[1];
+    const releaseResponse=await fetch(baseUrl+'/api/release-status');
+    const release=await releaseResponse.json();
+    const identity=JSON.parse(await fs.readFile(root+'/.release-identity.json','utf8'));
+    if(releaseResponse.status!==200||release.buildDigest!==identity.buildDigest||
+      release.schemaContractDigest!==identity.schemaContractDigest||release.startupMode!=='code-only'||
+      release.schedulerState!=='disabled'||release.workerState!=='disabled'||release.readiness!=='ready'||
+      Object.keys(release).length!==6)throw Error('Release observability failed');
+    await fs.writeFile(out+'/release-status-rehearsal.json',JSON.stringify({
+      status:'PASS',exactIdentityMatched:true,allowlistedFields:6,providerCalls:0}));
     await fs.writeFile(out+'/startup-rehearsal.json',JSON.stringify({ready:true,strictLauncher:true,
       fixtureDatabase:name,profile,port:Number(match[1]),productionModified:false,
       compatibilityStatus:(await fetch(baseUrl+'/api/health')).status,
       markerInLogs:markers.some(m=>logs.includes(m)),credentialInLogs:logs.includes(material.password)},null,2));
     const probes=[];
-    for(const route of ['/server.js','/scripts/seed-users.js','/generated-artifacts/security-remediation/report.md',
+    for(const route of ['/.release-identity.json','/.release-binding.json','/server.js','/scripts/seed-users.js','/generated-artifacts/security-remediation/report.md',
       '/.git/config','/.env','/assets/test.js.map','/node_modules/pg/package.json']){
       const response=await fetch(baseUrl+route);
       probes.push({route,status:response.status,expected:404,result:response.status===404?'PASS':'FAIL'});
