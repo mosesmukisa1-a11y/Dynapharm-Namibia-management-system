@@ -28,6 +28,14 @@ App Storage is not covered by database PITR or a development checkpoint.
 
 ## Owner-observed settings baseline
 
+**Latest observation supersedes the earlier Off state:** on 2026-10-19
+Africa/Windhoek (time not supplied), scheduled backups are now **ON**, maximum
+exposed retention **7 days**, with **“Saved automatically once a day and kept for
+7 days”** and **“No backups yet”**. The owner reports the first daily backup has
+not run. PITR remains **On, last 7 days**. No restore/data access/change occurred.
+Evidence: `generated-artifacts/replit-native-recovery-review/owner-ui-backups-enabled.json`.
+The agent did not change settings. Preserve the earlier observation below as history.
+
 On **2026-10-19 Africa/Windhoek** (time not provided), the owner observed **Active
 production database**, PITR **On**, recovery window **7 Days**, and only the
 **“Restore database…”** action. Latest recoverable time and isolated destination
@@ -42,6 +50,15 @@ rehearsal remain unknown. No scheduled backup is evidenced as available. Do not
 interpret that as PITR Off, and do not turn backups on under this runbook.
 
 ## Shortest safe sequence, with explicit pause points
+
+**Current release attempt stops at B2 preflight.** Do not present a new archive
+as publish-ready or reuse historical suite results as fresh passes. Wait for
+owner-observed first completed scheduled-backup status/time without triggering a
+backup. Completion alone is insufficient: PITR freshness, isolated recovery,
+required storage, fallback and timing evidence must also pass. Current owner
+instructions prohibit restore, restart and production changes; obtain separate
+authority before any such action. Stage statuses are recorded in
+`generated-artifacts/replit-native-recovery-review/release-preflight.json`.
 
 1. **Settings inspection completed to the displayed limit.** Preserve the baseline
    above; do not repeatedly request facts already supplied. Next prepare a
