@@ -108,3 +108,14 @@ restore support in workspace controls. Do not infer these from generic docs or
 replace replica guards with a primary connection. Keep custom backup execution
 disabled. Native database recovery does not establish App Storage/legacy-file
 recovery, safe whole-code rollback, or measured 15-minute RPO/60-minute RTO.
+
+Run independent offline release gates while recovery evidence remains blocked.
+
+**Why:** The owner explicitly requires candidate installation/tests/security work
+to proceed without waiting for the first scheduled backup or B2 closure. Earlier
+attempts unnecessarily stopped all candidate work at the recovery prerequisite.
+
+**How to apply:** Keep packaging-prerequisite validation separate from whole-release
+approval. Bind each to exact current inputs, retain B2 independently, stop on a
+new concrete test failure/source drift, and never promote offline success into
+production recovery, credential-containment or live-worker ownership proof.

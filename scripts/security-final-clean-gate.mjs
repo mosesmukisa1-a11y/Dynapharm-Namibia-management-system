@@ -9,14 +9,12 @@ import {execFile,execFileSync,spawn} from 'node:child_process';
 import {promisify} from 'node:util';
 import {eligibleUntrackedSchemaSource} from './lib/schema-candidate-files.mjs';
 import {collectFixtureDiagnostics,safeFailure} from './lib/clean-gate-diagnostics.mjs';
+import {assertFreshPrerequisites,sourceDigest,assertStagePassed} from './lib/clean-gate-contract.mjs';
 const root=process.cwd(),out=root+'/generated-artifacts/sql-runtime-enforcement-final';
 const hash=b=>createHash('sha256').update(b).digest('hex');
 const archive=out+'/exact-candidate-source.tar';
 await fs.mkdir(out,{recursive:true});
 if(process.argv.includes('--prepare')){
-  const readiness=JSON.parse(await fs.readFile(out+'/release-gate.json','utf8'));
-  if(readiness.status!=='PASS'||readiness.unresolvedLocations!==0||readiness.uncoveredFamilies!==0)
-    throw Error('All offline release gates must pass before candidate preparation');
   const files=[...new Set([
     ...execFileSync('git',['ls-files','-z'],{encoding:'utf8'}).split('\0'),
     ...execFileSync('git',['ls-files','--others','--exclude-standard','-z'],{encoding:'utf8'}).split('\0')
@@ -45,6 +43,20 @@ if(process.argv.includes('--prepare')){
       await fs.mkdir(path.dirname(temp+'/'+file),{recursive:true});
       await fs.writeFile(temp+'/'+file,body);
     }
+    // Fresh static prerequisites, never a historical whole-release PASS.
+    const env={PATH:process.env.PATH,HOME:os.tmpdir(),NODE_ENV:'test'};
+    await promisify(execFile)(process.execPath,['--test','scripts/clean-gate-contract.test.mjs'],{cwd:root,env});
+    await promisify(execFile)(process.execPath,['scripts/security-runtime-boundary-audit.mjs',
+      '--output-dir=generated-artifacts/clean-gate-current/sql-boundary'],{cwd:root,env});
+    const audit=JSON.parse(await fs.readFile(root+'/generated-artifacts/clean-gate-current/sql-boundary/runtime-boundary-audit.json','utf8'));
+    if(!Object.values(audit.checks).every(v=>v===true))throw Error('CURRENT_SQL_PREREQUISITE_FAILED');
+    const readiness={status:'PASS',scope:'CURRENT_PACKAGING_PREREQUISITES',
+      recordedAt:new Date().toISOString(),sourceDigest:sourceDigest(manifest.files),
+      sourceFiles:manifest.files,fullReleasePassed:false};
+    await fs.writeFile(out+'/packaging-prerequisites.json',JSON.stringify(readiness,null,2));
+    const current={};
+    for(const file of Object.keys(manifest.files))current[file]=hash(await fs.readFile(root+'/'+file));
+    assertFreshPrerequisites(readiness,current);
     await promisify(execFile)('tar',['-cf',archive,'-C',temp,'.']);
     manifest.archiveSha256=hash(await fs.readFile(archive));
     await fs.writeFile(out+'/candidate-manifest.json',JSON.stringify(manifest,null,2));
@@ -58,6 +70,7 @@ if(process.argv.includes('--prepare')){
   if(process.env.NODE_ENV==='production'||['1','true'].includes(process.env.REPLIT_DEPLOYMENT))
     throw Error('Production execution refused');
   const manifest=JSON.parse(await fs.readFile(out+'/candidate-manifest.json','utf8'));
+  assertFreshPrerequisites(JSON.parse(await fs.readFile(out+'/packaging-prerequisites.json','utf8')),manifest.files);
   if(hash(await fs.readFile(archive))!==manifest.archiveSha256)throw Error('Candidate archive changed');
   for(const[file,digest]of Object.entries(manifest.files))
     if(hash(await fs.readFile(root+'/'+file))!==digest)throw Error('Candidate source changed; prepare/review a new candidate');
@@ -65,14 +78,16 @@ if(process.argv.includes('--prepare')){
   await fs.writeFile(out+'/clean-install-ownership.json',JSON.stringify({directory:temp,
     purpose:'Authorized candidate-only clean install',production:false,createdAt:new Date().toISOString()},null,2));
   await fs.mkdir(temp,{mode:0o700});
-  const source=temp+'/source',home=temp+'/home';await fs.mkdir(source);await fs.mkdir(home);
+  const source=temp+'/source',home=temp+'/home';
   const result={status:'NOT VERIFIED',startedAt:new Date().toISOString(),
     archiveSha256:manifest.archiveSha256,lockfileBefore:manifest.lockfileSha256,stages:[],
     node:process.version,npm:execFileSync('npm',['--version'],{encoding:'utf8'}).trim(),
     existingDependenciesCopied:false,generatedStateCopied:false,
-    executables:Object.fromEntries(['node','npm','initdb','pg_ctl','pg_dump','psql'].map(x=>
-      [x,execFileSync('which',[x],{encoding:'utf8'}).trim()]))};
+    executables:{}};
   try{
+    await fs.mkdir(source);await fs.mkdir(home);
+    result.executables=Object.fromEntries(['node','npm','initdb','pg_ctl','pg_dump','psql'].map(x=>
+      [x,execFileSync('which',[x],{encoding:'utf8'}).trim()]));
     await promisify(execFile)('tar',['-xf',archive,'-C',source]);
     if(await fs.stat(source+'/node_modules').then(()=>true,()=>false))throw Error('Source unexpectedly has dependencies');
     for(const[file,digest]of Object.entries(manifest.files))
@@ -93,6 +108,7 @@ if(process.argv.includes('--prepare')){
         ...(outcome.exitCode!==0?{failure:safeFailure(text)}:{})});
       result.fixtures=await collectFixtureDiagnostics(source);
       await fs.writeFile(out+'/clean-install.json',JSON.stringify(result,null,2));
+      assertStagePassed(outcome);
       return outcome.exitCode===0;
     }
     const installed=await stage('genuine lockfile-only clean install','npm',['ci']);
@@ -124,4 +140,5 @@ if(process.argv.includes('--prepare')){
     await fs.writeFile(out+'/clean-install.json',JSON.stringify(result,null,2));
   }
   console.log('Sanitized clean-install result saved; no raw package or test output displayed.');
+  if(result.status!=='PASS')process.exitCode=1;
 }else throw Error('Use --prepare, or owner-only --owner-manual');

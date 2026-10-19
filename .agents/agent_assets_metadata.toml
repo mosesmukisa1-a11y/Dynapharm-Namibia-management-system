@@ -910,3 +910,17 @@ mtime_ms = 1792401158351
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/35db2c5f-bd2e-4e05-a5a6-d4355ef5daed/efd9fb78-0bb8-4808-b3bd-2a4428b27a44"
 storage_version_token = "1792401164091748"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "rwgoYLLBEjRCkVCptFzCS"
+uri = "file://generated-artifacts/release-harness-repair/report.md"
+type = "text"
+title = "Candidate release-harness repair and gate results"
+description = "Clean install and runtime suites passed; exact candidate hash and the source-exposure review blocker are recorded."
+logical_id = "c1d91b71-ea03-4cc3-9370-2592e83e89e5"
+content_hash = "sha256:dd3bdbf0e97f40f49661eec458dcd41629357d24860da5e6296045ccff01d549"
+size = 4499
+mtime_ms = 1792403891899
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/c1d91b71-ea03-4cc3-9370-2592e83e89e5/783287cf-22a4-4b23-aa2d-cab4b24484bc"
+storage_version_token = "1792403912738529"
+content_type = "text/markdown"
