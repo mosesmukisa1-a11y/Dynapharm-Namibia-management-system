@@ -51,7 +51,10 @@ export function toolEnvironment(env) {
   return {PATH: env.PATH || '/usr/bin:/bin', LC_ALL: 'C'};
 }
 export function postgresEnvironment(env, source) {
-  return {
+  // Fixed launch settings, never ambient/URL PGOPTIONS. Freeze to prevent a
+  // caller accidentally widening them after validation. pg_dump itself resets
+  // server timeouts; the external process deadline remains mandatory.
+  return Object.freeze({
     ...toolEnvironment(env), PGHOST: source.hostname.replace(/^\[|\]$/g, ''),
     PGPORT: source.port || '5432', PGDATABASE: decodeURIComponent(source.pathname.slice(1)),
     PGUSER: decodeURIComponent(source.username), PGPASSWORD: decodeURIComponent(source.password),
@@ -60,7 +63,7 @@ export function postgresEnvironment(env, source) {
       {PGSSLROOTCERT: env.B2_BACKUP_PG_ROOT_CERT || SYSTEM_CA} : {}),
     PGCONNECT_TIMEOUT: String(POSTGRES_BOUNDS.connectMs / 1000), PGAPPNAME: 'b2-owner-backup',
     PGOPTIONS: postgresOptions(),
-  };
+  });
 }
 function awsEnvironment(env) {
   return {

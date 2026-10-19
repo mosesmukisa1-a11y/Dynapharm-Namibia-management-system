@@ -980,3 +980,17 @@ mtime_ms = 1792421914221
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/1c988ae8-ce05-4062-b306-5d9bbdfc68ef/1da42b7c-e92d-4ffa-ae13-ab095684b0e3"
 storage_version_token = "1792421938288553"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "_GksRPB-4MQXFcQKz27FJ"
+uri = "file://generated-artifacts/b2-backup-query-bounds/current-report.md"
+type = "text"
+title = "Backup timeout bounds — offline verification passed"
+description = "149 offline tests; fixed options and immutable launch configuration verified, with pg_dump timeout limitations retained."
+logical_id = "20800385-727b-4f30-b5b5-813547a6db25"
+content_hash = "sha256:c04b53c42c9a01ea5d8e79cf554d70daf5ba8a723ae3672934f5d1d96d76505a"
+size = 2709
+mtime_ms = 1792422102211
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/20800385-727b-4f30-b5b5-813547a6db25/414de055-e1d4-4133-bb3e-c9aafa05e0f9"
+storage_version_token = "1792422132967359"
+content_type = "text/markdown"

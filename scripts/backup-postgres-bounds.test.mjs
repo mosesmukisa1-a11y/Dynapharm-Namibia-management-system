@@ -47,6 +47,34 @@ test('external process contract does not claim server SQL timeout and cannot wid
   }
 });
 
+test('ambient and URL timeout overrides cannot widen fixed options or bypass production TLS', () => {
+  for(const override of ['0','600000','999999999']) {
+    const source=new URL(syntheticCredentialUrl({local:false}));
+    source.searchParams.set('options',`-c statement_timeout=${override} -c default_transaction_read_only=off`);
+    source.searchParams.set('connect_timeout',override);
+    source.searchParams.set('sslmode','disable');
+    const configured=postgresEnvironment({
+      B2_BACKUP_SOURCE_CLASS:'production',
+      PGOPTIONS:`-c statement_timeout=${override}`,PGCONNECT_TIMEOUT:override,
+      PGSSLMODE:'disable',PGSERVICE:'SYNTHETIC_UNUSED',PGSERVICEFILE:'SYNTHETIC_UNUSED',
+      PGHOST:'SYNTHETIC_UNUSED',NODE_OPTIONS:'SYNTHETIC_UNUSED',
+    },source);
+    assert.equal(configured.PGOPTIONS,postgresOptions());
+    assert.equal(configured.PGCONNECT_TIMEOUT,'10');
+    assert.equal(configured.PGSSLMODE,'verify-full');
+    assert.equal(configured.PGHOST,'source.invalid');
+    for(const key of ['PGSERVICE','PGSERVICEFILE','NODE_OPTIONS'])assert(!Object.hasOwn(configured,key));
+    const tokens=configured.PGOPTIONS.split(' ');
+    assert.equal(tokens.filter(t=>t.startsWith('statement_timeout=')).length,1);
+    assert(tokens.includes('statement_timeout=120000'));
+    assert(tokens.includes('lock_timeout=5000'));
+    assert(tokens.includes('idle_in_transaction_session_timeout=30000'));
+    assert(tokens.includes('default_transaction_read_only=on'));
+    assert(Object.isFrozen(configured));
+    assert.throws(()=>{configured.PGOPTIONS='-c statement_timeout=0';},TypeError);
+  }
+});
+
 test('adapter gates both tool preflight and dump before their first operation', async () => {
   const text = await fs.readFile(new URL('./lib/backup-job-io.mjs', import.meta.url), 'utf8');
   assert.match(text, /async function streamDump\(config, run\) \{[\s\S]*?SOURCE_BINDING_UNVERIFIED[\s\S]*?runBoundedLogicalDump/);
