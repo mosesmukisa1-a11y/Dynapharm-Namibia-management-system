@@ -78,8 +78,11 @@ export default function SavedSaleProfitReport() {
 
   const totalCIF    = profitRows.reduce((s, r) => s + r.received_cost, 0);
   const totalRevenue = profitRows.reduce((s, r) => s + r.charged_total, 0);
-  const grandProfit  = profitRows.reduce((s, r) => s + (r.total_profit ?? 0), 0);
-  const avgMargin    = totalRevenue > 0 ? ((grandProfit / totalRevenue) * 100).toFixed(1) : '0';
+  const knownProfitRows = profitRows.filter(r => r.total_profit != null);
+  const profitIncomplete = knownProfitRows.length !== profitRows.length;
+  const knownProfit = knownProfitRows.reduce((s, r) => s + r.total_profit, 0);
+  const avgMargin = profitIncomplete ? null : totalRevenue > 0 ? ((knownProfit / totalRevenue) * 100).toFixed(1) : '0';
+  const costIncomplete = profitRows.some(r => r.cif == null);
 
   const saveCampaign = () => {
     if (editingCampaign && campaignPrice) setCampaignPrices(prev => ({ ...prev, [editingCampaign]: Number(campaignPrice) }));
@@ -119,10 +122,14 @@ export default function SavedSaleProfitReport() {
       {loading ? <LoadingSpinner /> : (
         <>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <StatCard title="Total CIF Cost" value={formatCurrency(totalCIF)} color="red" icon={<Ship size={24} />} />
+            <StatCard title={costIncomplete ? 'Total CIF Cost (known only)' : 'Total CIF Cost'} value={formatCurrency(totalCIF)} color="red" icon={<Ship size={24} />} />
             <StatCard title="Customer charged receipts (known)" value={formatCurrency(totalRevenue)} color="blue" icon={<DollarSign size={24} />} />
-            <StatCard title="Gross Profit" value={formatCurrency(grandProfit)} color="green" icon={<TrendingUp size={24} />} />
-            <StatCard title="Avg Margin" value={`${avgMargin}%`} color="purple" icon={<BarChart3 size={24} />} />
+            <StatCard title="Gross Profit" value={profitIncomplete ? 'Unavailable' : formatCurrency(knownProfit)}
+              subtitle={profitIncomplete ? (knownProfitRows.length ? `Known-product profit subtotal: ${formatCurrency(knownProfit)} (excludes incomplete products)` : 'No products have complete original profit evidence') : undefined}
+              color="green" icon={<TrendingUp size={24} />} />
+            <StatCard title="Avg Margin" value={avgMargin == null ? 'Unavailable' : `${avgMargin}%`}
+              subtitle={profitIncomplete ? 'Complete profit evidence required for all products' : undefined}
+              color="purple" icon={<BarChart3 size={24} />} />
           </div>
           <Card>
             <CardHeader>

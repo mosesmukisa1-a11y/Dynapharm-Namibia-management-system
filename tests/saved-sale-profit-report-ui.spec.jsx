@@ -51,6 +51,8 @@ const finishRead = async (pending, index, name) => {
     pending.prices[index].resolve([{ description: name, dp: 999 }]);
   });
 };
+const stat = title => [...host.querySelectorAll('p')]
+  .find(p => p.textContent === title)?.parentElement;
 async function change(input, value) {
   await act(async () => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, value);
@@ -96,6 +98,8 @@ it('keeps 341 DP, 443 charged, 102 commercial margin and original CIF70/profit37
   expect(rowCells()).toEqual(expected);
   expect(host.textContent).toContain(`Saved DP (known): ${money(341)}`);
   expect(host.textContent).toContain(`Customer receipts (known): ${money(443)}`);
+  expect(stat('Gross Profit').textContent).toBe(`Gross Profit${money(373)}`);
+  expect(stat('Avg Margin').textContent).toBe('Avg Margin84.2%');
   expect(setLivePrices).toHaveBeenCalled();
 
   await act(async () => button('Set Campaign').click());
@@ -143,6 +147,58 @@ it('retains captured zero values instead of filling them from the catalogue', as
   await act(async () => root.render(<SavedSaleProfitReport />));
   expect(rowCells().slice(1, 7)).toEqual([money(0), money(0), money(0), money(0), '-', money(0)]);
   expect(host.textContent).not.toContain('Incomplete original evidence');
+  expect(stat('Gross Profit').textContent).toBe(`Gross Profit${money(0)}`);
+  expect(stat('Avg Margin').textContent).toBe('Avg Margin0%');
+});
+
+it('separates known-product profit from unavailable complete totals when product costs are mixed', async () => {
+  api.director.profitAnalysis.mockResolvedValue({ products: [
+    { ...product },
+    { ...product, productName: 'Missing original cost', cifCost: 0, actualProfit: null, missingCostQuantity: 1 },
+  ] });
+  await act(async () => root.render(<SavedSaleProfitReport />));
+  expect(stat('Gross Profit').textContent).toBe(`Gross ProfitUnavailableKnown-product profit subtotal: ${money(373)} (excludes incomplete products)`);
+  expect(stat('Avg Margin').textContent).toBe('Avg MarginUnavailableComplete profit evidence required for all products');
+  expect(stat('Avg Margin').textContent).not.toContain('42.1%');
+  expect(stat('Total CIF Cost (known only)').textContent).toContain(money(70));
+  expect(stat('Customer charged receipts (known)').textContent).toContain(money(886));
+  expect(host.textContent).toContain(`Saved DP (known): ${money(682)}`);
+  const cells = [...host.querySelectorAll('tbody tr:last-child td')].map(c => c.textContent);
+  expect(cells.slice(1, 5)).toEqual(['Incomplete', money(341), money(443), money(102)]);
+  expect(cells[9]).toBe('Incomplete');
+});
+
+it('shows unavailable profit and margin, not zero, when all original evidence is missing', async () => {
+  api.director.profitAnalysis.mockResolvedValue({ products: [{
+    ...product, revenueDp: 0, chargedTotal: 0, cifCost: 0, commercialMargin: null, actualProfit: null,
+    missingDpQuantity: 1, missingChargedQuantity: 1, missingCostQuantity: 1,
+  }] });
+  await act(async () => root.render(<SavedSaleProfitReport />));
+  expect(stat('Gross Profit').textContent).toBe('Gross ProfitUnavailableNo products have complete original profit evidence');
+  expect(stat('Avg Margin').textContent).toBe('Avg MarginUnavailableComplete profit evidence required for all products');
+  expect(host.textContent).not.toContain('Known-product profit subtotal:');
+  expect(rowCells().slice(1, 5)).toEqual(['Incomplete', 'Incomplete', 'Incomplete', 'Incomplete']);
+  expect(host.textContent).toContain('Incomplete original evidence');
+});
+
+it('preserves a known zero-profit subtotal alongside an unknown profit', async () => {
+  api.director.profitAnalysis.mockResolvedValue({ products: [
+    { ...product, cifCost: 443, actualProfit: 0 },
+    { ...product, productName: 'Unknown profit', cifCost: 0, actualProfit: null, missingCostQuantity: 1 },
+  ] });
+  await act(async () => root.render(<SavedSaleProfitReport />));
+  expect(stat('Gross Profit').textContent).toBe(`Gross ProfitUnavailableKnown-product profit subtotal: ${money(0)} (excludes incomplete products)`);
+  expect(stat('Avg Margin').textContent).toContain('Unavailable');
+});
+
+it('keeps actual profit complete when only saved commercial DP is missing', async () => {
+  api.director.profitAnalysis.mockResolvedValue({ products: [{
+    ...product, revenueDp: 0, commercialMargin: null, missingDpQuantity: 1,
+  }] });
+  await act(async () => root.render(<SavedSaleProfitReport />));
+  expect(stat('Gross Profit').textContent).toBe(`Gross Profit${money(373)}`);
+  expect(stat('Avg Margin').textContent).toBe('Avg Margin84.2%');
+  expect(rowCells()[2]).toBe('Incomplete');
 });
 
 it('shows a loading state and an explicit report failure', async () => {
