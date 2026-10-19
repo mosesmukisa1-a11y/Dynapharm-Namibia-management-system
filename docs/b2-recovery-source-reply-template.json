@@ -1,0 +1,23 @@
+{
+  "productionResourceRef": null,
+  "recoveryResourceRef": null,
+  "providerAttestationRef": null,
+  "observedAtUtc": null,
+  "validUntilUtc": null,
+  "engineMajor": null,
+  "directPostgres": null,
+  "physicalRecovery": null,
+  "transactionReadOnly": null,
+  "samePhysicalServer": null,
+  "noPoolingOrReaderLoadBalancing": null,
+  "targetChangeAborts": null,
+  "tlsVerifyFull": null,
+  "systemCaTrust": null,
+  "protectedBindingAvailable": null,
+  "twoSamePrincipalConnections": null,
+  "ownSessionCatalogVisibility": null,
+  "exactOwnBackendCancellation": null,
+  "noElevatedGrants": null,
+  "completeLogicalBackupVisibility": null,
+  "changesPerformed": null
+}

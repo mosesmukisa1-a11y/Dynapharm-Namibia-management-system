@@ -4,8 +4,11 @@ import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {parse} from '@babel/parser';
 import traverseModule from '@babel/traverse';
+import {offlineAuditOutput} from './lib/release-evidence-review.mjs';
+import {writeReviewJson} from './lib/offline-review-files.mjs';
 const traverse=traverseModule.default||traverseModule;
 const base='generated-artifacts/sql-runtime-enforcement-final';
+const outputBase=offlineAuditOutput(process.argv.slice(2));
 const digest=x=>createHash('sha256').update(x).digest('hex');
 const json=async p=>JSON.parse(await fs.readFile(p,'utf8'));
 const inventory=await json('generated-artifacts/sql-security-final-closure/sql-location-inventory.json');
@@ -122,6 +125,8 @@ const result={status:Object.values(checks).every(Boolean)&&families.every(f=>f.s
   registeredExecutions:executions.length,plainCalls,driverImports,forwarders,families,closure,
   methodology:'Native driver success correlated with brand-admission identity and SQL hash in a test/request scope. No SQL text, values or credentials recorded. Private BEGIN/COMMIT and owned provisioning are not untrusted runtime SQL.',
   productionAccess:false,sourceFiles:hashes};
-await fs.writeFile(base+'/runtime-boundary-audit.json',JSON.stringify(result,null,2));
+await writeReviewJson(outputBase,'runtime-boundary-audit.json',{...result,
+  evidenceClassification:{staticChecks:'CURRENT_SOURCE_ONLY',nativeFamilyWitnesses:'HISTORICAL_SUPPORT_ONLY',
+    currentDatabaseAccess:false}});
 console.log(JSON.stringify({status:result.status,checks,plainCalls,uncovered:families.filter(f=>f.status!=='PASS').map(f=>f.file),
   unexpectedDrivers:driverImports.filter(r=>!r.allowed),registeredExecutions:executions.length}));

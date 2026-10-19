@@ -8,6 +8,10 @@ existing application/Production Database privately. Do not paste connection stri
 passwords, database identities, certificates, business data or secret screenshots into the request.
 Provide only the non-secret project/deployment/database resource references through the support UI.
 
+**Submission status: PREPARED, NOT SENT.** This review does not access the account or submit
+a ticket. The owner must select the existing project and Production Database in the support
+UI; no current resource ID or production host is guessed from workspace metadata.
+
 ## Exact request
 
 Subject: Confirm a supported direct production recovery-replica source for guarded logical backup
@@ -58,6 +62,17 @@ non-secret architecture evidence only; please make no changes.
 Please return capability/evidence references and the exact supported owner UI steps only.
 No passwords, connection strings, hostnames, private keys, business rows or object listings.
 
+Please distinguish a supported capability from a feature already configured for our resource.
+Include observation time, the validity/revalidation limit of the resource attestation, engine
+major version, and opaque non-secret production/replica/support reference IDs. Describe
+secure credential linking and TLS hostname verification privately without returning the
+credential, hostname or connection string in this response.
+
+You may use `b2-recovery-source-reply-template.json` as the non-secret response checklist.
+Its nulls mean **not established**, never false/true defaults or authority to provision.
+Do not populate the repository template with operational credentials or account exports.
+The offline validator deliberately cannot return execution approval or an established binding.
+
 ## Evidence required before unblocking candidate production execution
 
 - Provider confirmation of the exact supported source type and stable resource relationship.
@@ -69,6 +84,25 @@ No passwords, connection strings, hostnames, private keys, business rows or obje
 
 The candidate intentionally retains SOURCE_BINDING_UNVERIFIED at all production entry points
 until a supported mechanism is reviewed and implemented. There is no enabling environment flag.
+
+## Exact first action after a response
+
+Offline only: compare the provider's production/replica relationship and opaque references
+against separately supplied owner-selected Production Database resource evidence. Then
+check every assertion in the response template, including **two same-principal simultaneous
+connections to the same physical server**, current attestation times, verified TLS,
+own-session cancellation and no elevated grants.
+
+`reviewRecoverySourceReply` in `scripts/lib/release-evidence-review.mjs` checks completeness
+only. Its output never repeats supplied references or private material and cannot verify that
+a provider assertion is true. A complete reply yields INFORMATION_COMPLETE_FOR_OFFLINE_PLAN_REVIEW,
+not permission to connect or a claim that the source binding exists.
+
+If any item is missing/contradictory/expired, request only that clarification; no fallback
+to the primary, workspace database, pooled reader or guessed replica is allowed.
+If complete and corroborated, prepare the target-bound binding/monitor/restore implementation
+and reviewed two-connection role plan. Obtain fresh narrowly scoped owner authorization
+before any protected binding, provisioning, database connection or operational execution.
 
 ## Public documentation reviewed (2026-10-19; no account/production inspection)
 
