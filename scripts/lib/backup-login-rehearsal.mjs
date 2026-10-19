@@ -136,6 +136,12 @@ export async function syntheticDump(cluster) {
     '--format=custom', '--no-password', '--lock-wait-timeout=5000'],
   {capture: true, timeout: 120_000});
 }
+export async function localDumpEnvironment(cluster) {
+  await assertOwned(cluster);
+  return {...localToolEnvironment(), PGHOST: cluster.socket, PGPORT: '5432',
+    PGDATABASE: cluster.database, PGUSER: 'rehearsal_admin', PGPASSWORD: 'SYNTHETIC_LOCAL_TRUST_UNUSED',
+    PGSSLMODE: 'disable', PGCONNECT_TIMEOUT: '10', PGOPTIONS: postgresOptions()};
+}
 export async function inspectSyntheticArchive(cluster, bytes) {
   await assertOwned(cluster);
   if (!Buffer.isBuffer(bytes) || bytes.length > 8 * 1024 * 1024 ||

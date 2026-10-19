@@ -11,7 +11,9 @@ import {
   WITH_OBJECTS, assertObjectAcknowledgement, validateObjectManifest, assertManifestFresh, objectArtifactName,
 } from './backup-object-manifest.mjs';
 import {SYSTEM_CA, validateSystemCA, validateLocalConfiguration} from './backup-local-validation.mjs';
-import {POSTGRES_BOUNDS, postgresOptions, assertNativeDumpQueryBounds} from './backup-postgres-bounds.mjs';
+import {POSTGRES_BOUNDS, postgresOptions} from './backup-postgres-bounds.mjs';
+import {runBoundedLogicalDump, probeDumpSupervisor} from './backup-bounded-dump.mjs';
+import {createDumpMonitor} from './backup-dump-monitor.mjs';
 import {
   ENCRYPTION, createCiphertextRun, attachRunKey, encryptToOwnedFile,
   decryptOwnedFile, verifyCiphertext, cleanupCiphertextRun,
@@ -128,21 +130,31 @@ async function wrapKey(config, key) {
   } catch { fail('KEY_WRAP_FAILED'); }
 }
 async function streamDump(config, run) {
-  assertNativeDumpQueryBounds(); // Before spawn, file creation or any source query.
-  const child = spawn('pg_dump', ['--format=custom', '--no-password', '--lock-wait-timeout=5000'],
-    {env: postgresEnvironment(config.env, config.source), shell: false, stdio: ['ignore', 'pipe', 'pipe']});
-  child.stderr.resume();
-  const exited = new Promise(resolve => {
-    child.once('error', () => resolve(false));
-    child.once('close', (code, signal) => resolve(code === 0 && !signal));
-  });
-  const timer = setTimeout(() => child.kill('SIGKILL'), POSTGRES_BOUNDS.dumpProcessMs);
+  // No provider-supported direct recovery binding has yet been established.
+  // Labels, database-name equality and a workspace URL cannot enable production.
+  if (config.env.B2_BACKUP_SOURCE_CLASS === 'production') fail('SOURCE_BINDING_UNVERIFIED');
+  let client;
   try {
-    const meta = await encryptToOwnedFile(run, 'database.dump', child.stdout);
-    if (!await exited) fail('DUMP_FAILED');
-    return meta;
-  } catch { fail('DUMP_FAILED'); }
-  finally { clearTimeout(timer); child.stdout.destroy(); child.kill('SIGKILL'); await exited; }
+    await validateSystemCA(config.env.B2_BACKUP_PG_ROOT_CERT || SYSTEM_CA);
+    const {Client} = await import('pg');
+    client = new Client({
+      host: config.source.hostname.replace(/^\[|\]$/g, ''), port: Number(config.source.port || 5432),
+      user: decodeURIComponent(config.source.username), password: decodeURIComponent(config.source.password),
+      database: decodeURIComponent(config.source.pathname.slice(1)),
+      ssl: {rejectUnauthorized: true, ca: await fs.readFile(SYSTEM_CA, 'utf8')},
+      connectionTimeoutMillis: 10_000, query_timeout: 1_000,
+      options: '-c default_transaction_read_only=on -c statement_timeout=750 -c lock_timeout=500',
+    });
+    await client.connect();
+    const row = (await client.query(`SELECT current_setting('transaction_read_only') = 'on' AS "readOnly",
+      pg_is_in_recovery() AS "inRecovery", current_database() = $1 AS "identityMatches"`,
+    [decodeURIComponent(config.source.pathname.slice(1))])).rows[0];
+    assertSourcePreflight(row);
+    const monitor = createDumpMonitor(client);
+    client = null; // Bounded runner owns the reserved monitor from this point.
+    return await runBoundedLogicalDump({run, env: postgresEnvironment(config.env, config.source), monitor});
+  } catch (error) { fail(error instanceof BackupJobError ? error.code : 'SOURCE_PREFLIGHT_FAILED'); }
+  finally { if (client) { client.connection?.stream?.destroy(); await client.end().catch(() => {}); } }
 }
 export function createBackupIO({args = [], env = {}, objectManifestJson} = {}) {
   const mode = executionMode(args);
@@ -159,9 +171,9 @@ export function createBackupIO({args = [], env = {}, objectManifestJson} = {}) {
     encryption: ENCRYPTION,
     async validateTools(config) {
       try {
-        // Stop before source/provider preflights, tools or key wrapping. Validation-
-        // only mode does not load this adapter and remains zero-provider-I/O.
-        assertNativeDumpQueryBounds();
+        // A private binding must be reviewed before tools/provider/source calls.
+        if (config.env.B2_BACKUP_SOURCE_CLASS === 'production') fail('SOURCE_BINDING_UNVERIFIED');
+        await probeDumpSupervisor(toolEnvironment(config.env));
         await validateLocalConfiguration(config.env);
         const env = toolEnvironment(config.env);
         const dump = await command('pg_dump', ['--version'], env, 'TOOL_UNAVAILABLE', true);
@@ -183,6 +195,7 @@ export function createBackupIO({args = [], env = {}, objectManifestJson} = {}) {
       // The source name is compared inside PostgreSQL; only booleans return to this code.
       let client;
       try {
+        if (config.env.B2_BACKUP_SOURCE_CLASS === 'production') fail('SOURCE_BINDING_UNVERIFIED');
         await validateSystemCA(config.env.B2_BACKUP_PG_ROOT_CERT || SYSTEM_CA);
         const {Client} = await import('pg');
         client = new Client({
@@ -201,7 +214,7 @@ export function createBackupIO({args = [], env = {}, objectManifestJson} = {}) {
           [decodeURIComponent(config.source.pathname.slice(1))]);
         assertSourcePreflight(result.rows[0]);
         await client.query('ROLLBACK');
-      } catch { fail('SOURCE_PREFLIGHT_FAILED'); }
+      } catch (error) { fail(error instanceof BackupJobError ? error.code : 'SOURCE_PREFLIGHT_FAILED'); }
       finally { try { await client?.end(); } catch { /* No raw errors. */ } }
     },
     async validateDestination(config) {

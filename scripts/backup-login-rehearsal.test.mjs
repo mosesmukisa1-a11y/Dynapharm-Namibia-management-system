@@ -8,7 +8,7 @@ import {
   createLocalCluster, localClient, localQuery, closeLocalClient, cleanupLocalCluster,
   syntheticDump, inspectSyntheticArchive, localToolEnvironment,
 } from './lib/backup-login-rehearsal.mjs';
-import {assertNativeDumpQueryBounds} from './lib/backup-postgres-bounds.mjs';
+import {assertExternalDumpPlatform} from './lib/backup-bounded-dump.mjs';
 
 const evidenceDir = new URL('../generated-artifacts/b2-backup-login-rehearsal/', import.meta.url);
 const verifySQL = await fs.readFile(new URL('../docs/b2-backup-login-verification.sql', import.meta.url), 'utf8');
@@ -212,11 +212,11 @@ test('synthetic backup login: grants, denial, dump, negative controls and exact 
       dump.bytes.fill(0); // Native archive was memory-only, never staged.
     });
 
-    await check('observed native pg_dump clears PGOPTIONS server timeouts; operational adapter refuses it', async () => {
+    await check('observed native pg_dump clears PGOPTIONS; bounded adapter makes no server-timeout claim', async () => {
       const log = await fs.readFile(cluster.log, 'utf8'); // Owned synthetic log only; not exported.
       assert.match(log, /^b2_b2-synthetic-native-dump_.*statement: SET statement_timeout = 0/m);
       assert.match(log, /^b2_b2-synthetic-native-dump_.*statement: SET lock_timeout = 0/m);
-      assert.throws(() => assertNativeDumpQueryBounds(), {code: 'DUMP_QUERY_TIMEOUT_UNSUPPORTED'});
+      assert.equal(assertExternalDumpPlatform().serverQueryTimeoutEnforced, false);
     });
 
     await check('RLS incompleteness fails fixed verifier and native dump, never a partial PASS', async () => {
@@ -273,7 +273,7 @@ test('synthetic backup login: grants, denial, dump, negative controls and exact 
         productionPasswordsGenerated: 0, productionModified: false, productionPublished: false,
         productionRoleCapability: 'UNVERIFIED', productionTLS: 'NOT_TESTED',
         productionRecoveryReplica: 'NOT_CONTACTED', rpoRto: 'UNPROVEN',
-        operationalDump: 'BLOCKED_DUMP_QUERY_TIMEOUT_UNSUPPORTED',
+        operationalDump: 'SOURCE_BINDING_UNVERIFIED',
         note: 'PUBLIC hardening was fixture-only; production changes remain prohibited. No actual database restore performed.'};
       await fs.mkdir(evidenceDir, {recursive: true});
       await fs.writeFile(new URL('results.json', evidenceDir), JSON.stringify(report, null, 2) + '\n');

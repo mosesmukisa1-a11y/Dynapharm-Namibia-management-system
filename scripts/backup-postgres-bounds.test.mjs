@@ -2,9 +2,10 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import {POSTGRES_BOUNDS, postgresOptions, assertNativeDumpQueryBounds} from './lib/backup-postgres-bounds.mjs';
+import {POSTGRES_BOUNDS, postgresOptions} from './lib/backup-postgres-bounds.mjs';
+import {assertExternalDumpPlatform, supervisorArguments} from './lib/backup-bounded-dump.mjs';
 import {postgresEnvironment} from './lib/backup-job-io.mjs';
-import {runBackup, EXECUTE, ACKNOWLEDGE} from './lib/backup-job.mjs';
+import {runBackup, EXECUTE, ACKNOWLEDGE, BackupJobError} from './lib/backup-job.mjs';
 
 const owner = '0123456789abcdef0123456789abcdef';
 const env = {NODE_ENV: 'test', B2_BACKUP_SOURCE_CLASS: 'isolated', B2_BACKUP_TEST_OWNER: owner,
@@ -37,33 +38,34 @@ test('ambient and source URL options cannot widen backup query limits', () => {
   assert(!result.PGOPTIONS.includes('600000'));
 });
 
-test('native dump without proven server-query enforcement is unconditionally fail closed', () => {
-  assert.throws(() => assertNativeDumpQueryBounds(), {code: 'DUMP_QUERY_TIMEOUT_UNSUPPORTED'});
-  // Extra caller input, including fabricated capabilities, cannot enable execution.
-  assert.throws(() => assertNativeDumpQueryBounds({approved: true, timeout: 120000}),
-    {code: 'DUMP_QUERY_TIMEOUT_UNSUPPORTED'});
+test('external process contract does not claim server SQL timeout and cannot widen its deadline', () => {
+  assert.equal(assertExternalDumpPlatform().serverQueryTimeoutEnforced, false);
+  for (const limit of [0, -1, 120001, Infinity, NaN, '120000']) {
+    assert.throws(() => supervisorArguments(limit, '01234567-89ab-4cde-8f01-23456789abcd'),
+      {code: 'DUMP_SUPERVISOR_UNAVAILABLE'});
+  }
 });
 
 test('adapter gates both tool preflight and dump before their first operation', async () => {
   const text = await fs.readFile(new URL('./lib/backup-job-io.mjs', import.meta.url), 'utf8');
-  assert.match(text, /async function streamDump\(config, run\) \{\s*assertNativeDumpQueryBounds\(\)/);
-  assert.match(text, /async validateTools\(config\) \{[\s\S]*?try \{[\s\S]*?assertNativeDumpQueryBounds\(\);[\s\S]*?await validateLocalConfiguration/);
+  assert.match(text, /async function streamDump\(config, run\) \{[\s\S]*?SOURCE_BINDING_UNVERIFIED[\s\S]*?runBoundedLogicalDump/);
+  assert.match(text, /async validateTools\(config\) \{[\s\S]*?SOURCE_BINDING_UNVERIFIED[\s\S]*?await probeDumpSupervisor/);
   assert(text.includes('options: postgresOptions({preflight: true})'));
   assert(!text.includes('statement_timeout=600000'));
 });
 
-test('timeout-enforcement refusal is sanitized and stops before source/provider/dump calls', async () => {
+test('unverified production binding refusal is sanitized and stops before source/provider/dump calls', async () => {
   const calls = [], logs = [];
   const result = await runBackup({args: [EXECUTE, ACKNOWLEDGE], env, emit: r => logs.push(r),
     loadIO: async () => ({
-      validateTools() { calls.push('tools'); assertNativeDumpQueryBounds(); },
+      validateTools() { calls.push('tools'); throw new BackupJobError('SOURCE_BINDING_UNVERIFIED'); },
       validateSource() { assert.fail('source contacted'); },
       validateDestination() { assert.fail('provider contacted'); },
       createRun() { assert.fail('staging created'); },
       dump() { assert.fail('dump invoked'); },
     })});
   assert.deepEqual(calls, ['tools']);
-  assert.equal(result.code, 'DUMP_QUERY_TIMEOUT_UNSUPPORTED');
+  assert.equal(result.code, 'SOURCE_BINDING_UNVERIFIED');
   assert.equal(result.status, 'FAILED');
   assert(!JSON.stringify([result, logs]).includes('SYNTHETIC_PROTECTED'));
 });
@@ -71,7 +73,7 @@ test('timeout-enforcement refusal is sanitized and stops before source/provider/
 test('dry-run reports timeout limitation without adapter, tool or provider calls', async () => {
   const result = await runBackup({env, loadIO: () => assert.fail('adapter loaded')});
   assert.equal(result.configurationValid, true);
-  assert.equal(result.queryTimeoutEnforcement, 'BLOCKED_NATIVE_PG_DUMP_RESETS_SERVER_TIMEOUTS');
+  assert.equal(result.queryTimeoutEnforcement, 'EXTERNAL_DEADLINE_CANCELLATION_VERIFICATION_SOURCE_BINDING_REQUIRED');
   assert.equal(result.databaseCalls, 0);
   assert.equal(result.storageCalls, 0);
   assert.equal(result.providerCalls, 0);

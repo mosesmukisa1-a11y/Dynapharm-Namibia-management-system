@@ -32,3 +32,4 @@
 - [Price-basis regression fixtures](price-basis-regression-fixtures.md) — use unequal received DPC, sale DP, customer charge and later price; inspect downloaded receipts after price changes.
 - [Audit tool runtime](audit-tool-runtime.md) — actual clock for authority; decode managed results offline; keep each invocation’s evidence owned and separate.
 - [Security boundary compatibility](security-boundary-compatibility.md) — validate complete enriched records; preserve finite public failure protocols without clearing authorization or global privacy.
+- [Backup supervisor runtime](backup-supervisor-runtime.md) — resolve the actual interpreter; managed Linux can omit task/children, requiring safe parent-metadata ownership checks.

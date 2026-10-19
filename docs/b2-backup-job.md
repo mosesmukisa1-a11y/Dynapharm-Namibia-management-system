@@ -1,23 +1,42 @@
 # B2 candidate-only manual backup job
 
-## Current fail-closed SQL timeout gate
+## Current external-deadline adapter and source gate
 
 The 600-second PostgreSQL override has been removed. Fixed settings are now connect/preflight
 10 seconds, statement 120 seconds, lock 5 seconds and idle transaction 30 seconds. Ambient
 PGOPTIONS/connection URL options cannot widen them.
 
-**Operational backup is BLOCKED with `DUMP_QUERY_TIMEOUT_UNSUPPORTED`.** An isolated native
-PostgreSQL 16.10 rehearsal observed pg_dump itself setting statement_timeout and lock_timeout
-to zero despite PGOPTIONS. There is no reviewed server-query enforcement mechanism in this
-candidate; a process watchdog alone is insufficient. Both operational tool preflight and dump
-entry refuse execution, without a flag/environment escape hatch. The tool-stage gate runs
-before tools, source/provider checks, staging, KMS or uploads. Default validation does not load
-the adapter and returns `queryTimeoutEnforcement=BLOCKED_NATIVE_PG_DUMP_RESETS_SERVER_TIMEOUTS`;
-valid configuration is not readiness.
+Native pg_dump clears statement_timeout and lock_timeout after login. The candidate now uses
+an **external Linux supervisor**, not a claimed server-query timeout: 120s native-process
+deadline, immediate root pidfd SIGKILL at expiry, at most 2s owned-descendant termination/reaping,
+and a separate <=10s backend cancellation/absence check plus <=1s monitor closure. Connection
+setup is capped at 10s; native lock acquisition uses --lock-wait-timeout=5000. OS scheduling
+and cleanup overhead are not represented as instantaneous termination or a remote SQL deadline.
 
-See `generated-artifacts/b2-backup-login-rehearsal/report.md` for local-only test evidence.
-The synthetic archive test bypasses neither the operational guard nor its owner flags: it uses
-a separate fixed-target, Unix-only, disposable-cluster harness and never runs the real job.
+The supervisor is independent of Node's event loop and uses a subreaper, stable pidfds and
+owned-parent metadata. It detects/reaps helpers escaping the process group. A Python runtime
+probe must pass; unsupported/missing capabilities fail closed. Dump stdout streams directly
+to the existing authenticated ciphertext writer; native stderr is discarded. No plaintext dump,
+key or business rows are written to a temporary file or diagnostic.
+
+A reserved same-principal read-only monitor checks only the exact random application nonce,
+actor/database, PID and backend_start. Cancellation SQL rechecks these at signal time.
+Cancellation acknowledgement alone is insufficient: backend absence must be observed before
+success or confirmed failure cleanup. Ambiguous/unavailable verification fails closed.
+No unrelated sessions are signalled. The ciphertext artifact is discarded on failure; the
+outer job still performs ownership-checked run cleanup and key zeroing. No upload/completion
+marker follows a failed dump. Unknown files are never adopted or deleted.
+
+**Production execution remains BLOCKED with `SOURCE_BINDING_UNVERIFIED`**, before tools,
+source/provider access or key wrapping. There is no environment flag bypass. A provider-supported,
+independently bound direct same-server recovery source is not established. The bounded adapter
+needs a reserved monitor plus one serial dump connection; the earlier one-connection login
+proposal needs separate review, not an automatic privilege/connection-limit change.
+
+Default validation remains zero-provider/database-I/O and reports
+`EXTERNAL_DEADLINE_CANCELLATION_VERIFICATION_SOURCE_BINDING_REQUIRED`. Valid configuration is
+not source readiness. Current evidence: `generated-artifacts/b2-bounded-logical-backup/report.md`.
+Provider information request: `docs/b2-production-recovery-source-support-request.md` (not sent).
 
 ## Current authority and scope
 

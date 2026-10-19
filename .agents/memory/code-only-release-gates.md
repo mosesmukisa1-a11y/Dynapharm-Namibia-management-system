@@ -88,7 +88,7 @@ Backup-only PostgreSQL role defaults must not be presented as immutable read-onl
 
 **Why:** An ordinary login can change read-only/time-out defaults, and native dump clients can clear server timeouts after startup. PostgreSQL has no per-role DENY overriding PUBLIC grants; PUBLIC system-view updates and built-in large-object creation can exceed SELECT-only intent. A no-bypass role can be unable to dump RLS-protected rows completely. A custom login alone does not provide a recovery-replica binding.
 
-**How to apply:** Require independent provider capability/target evidence, least-privilege effective ACL checks and the existing recovery guard. Treat TLS/connect timeout as client controls; fail closed if server-query bounds cannot survive the native tool's own settings. A client watchdog is not server cancellation proof. Block unrelated PUBLIC/RLS changes, and do not infer custom-role support or prohibition from the managed Agent interface being read-only.
+**How to apply:** Require independent provider capability/target evidence, least-privilege effective ACL checks and the existing recovery guard. The owner permits an external hard process deadline with deterministic tree termination and independently verified backend cancellation/absence instead of an unenforceable native server-query timeout. Do not label that as SQL timeout enforcement, and fail closed on unverified termination/cancellation/cleanup. Block unrelated PUBLIC/RLS changes; a reserved monitor requires separately reviewed connection capacity. Do not infer custom-role support or prohibition from the managed Agent interface being read-only.
 
 Read-only catalog guard SQL needs native isolated execution, not only static SELECT checks.
 

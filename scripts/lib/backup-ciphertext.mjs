@@ -148,3 +148,17 @@ export async function cleanupCiphertextRun(run) {
   finally { owned.crypto?.key.fill(0); ownership.delete(run); }
   return {status: 'PASS', ciphertextOnly: true};
 }
+export async function discardCiphertextArtifact(run, name) {
+  validName(name);
+  const owned = await ownedDirectory(run);
+  for (const filename of [name, `${name}.partial`]) {
+    const recorded = owned.files.get(filename);
+    if (!recorded) continue; // Never adopt/unlink unrecorded files.
+    const full = path.join(run.directory, filename);
+    const stat = await fs.lstat(full);
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.ino !== recorded.ino ||
+        stat.dev !== recorded.dev || stat.nlink !== 1) throw new BackupJobError('CLEANUP_FAILED');
+    await fs.unlink(full);
+    owned.files.delete(filename);
+  }
+}

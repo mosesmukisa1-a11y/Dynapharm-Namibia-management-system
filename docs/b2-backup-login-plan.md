@@ -3,6 +3,14 @@
 ## Status and scope
 
 **PREPARED ONLY / EXECUTION BLOCKED pending provider capabilities and owner confirmation.**
+
+**Bounded-adapter update:** the external-deadline adapter requires one reserved monitoring
+connection plus one serial pg_dump connection to the same direct recovery server. The
+one-connection login/verification specification retained below is historical preparation,
+not a currently executable plan for that adapter. A revised reviewed two-connection plan
+and fresh owner approval would be required; no role, credential, PUBLIC or connection-limit
+change is authorized or performed. See `b2-production-recovery-source-support-request.md`
+and `../generated-artifacts/b2-bounded-logical-backup/report.md`.
 No production call, role creation, password generation, secret write or credential rotation has
 occurred. This is not a migration or deployment hook. Do not run it through Publish, application
 startup, the managed read-only SQL interface, or an unverified workspace connection.
@@ -202,14 +210,15 @@ After successful identity/default/privilege verification:
   connect/preflight, 120-second statement, 5-second lock and 30-second idle transaction.
   However, native PostgreSQL 16.10 pg_dump was observed clearing statement_timeout and
   lock_timeout to zero after login. Neither PGOPTIONS nor role defaults enforce a native dump.
-  The operational adapter now unconditionally stops with DUMP_QUERY_TIMEOUT_UNSUPPORTED
-  before tool/source/provider/run stages and independently before dump spawn. There is no
-  flag/environment bypass. Validation-only reports this limitation and makes no provider calls.
-  A reviewed server-side query enforcement mechanism is required before lifting that block.
-  The synthetic native dump proves role/format compatibility only, not production query bounds.
+  The candidate now implements an external process deadline plus deterministic owned-tree
+  termination and backend cancellation/absence verification. It does NOT claim server-query
+  timeout enforcement. Unconfirmed termination/cancellation/cleanup prevents success/upload.
+  Production remains blocked with SOURCE_BINDING_UNVERIFIED at tool/source/dump entry,
+  without a flag/environment bypass. Default validation still makes no provider calls.
 - A timeout/replica recovery conflict can abort a large dump; stop and report it, never relax
   limits automatically. The candidate dump-process watchdog is capped at 120 seconds, but is
-  not represented as a guarantee of server-side cancellation. No parallel connections.
+  not itself represented as server-side cancellation. Cancellation is independently verified
+  using the reserved monitor; no parallel dump workers are allowed.
 - A full backup contains confidential data even though no rows are displayed. Existing guarded
   manifest, KMS, ciphertext checksums, immutable retention and isolated restore gates still apply.
   A database login supplies no missing App Storage/legacy completeness or native restore evidence.
