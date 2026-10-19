@@ -1,105 +1,122 @@
-# Controlled security release — non-executing owner runbook
+# Controlled security release — Replit-native recovery runbook
 
-**Current state: BLOCKED - DO NOT PUBLISH.** This is preparation, not an execution
-authorization, deployment command, scheduler hook or request to change production.
-Current gate: `generated-artifacts/release-offline-readiness/report.md`.
+**BLOCKED - DO NOT PUBLISH.** Preparation only; no execution authority.
+Current review: `generated-artifacts/replit-native-recovery-review/report.md`.
 
-## Evidence and source discipline
+## Selected recovery path and unchanged safety requirements
 
-- Pin an installable archive and complete manifest only after candidate work is stable.
-  Source-text inventories do not prove packaging, build outputs, clean installation or
-  a deployed artifact. Never substitute a Git commit or workspace URL for a provider artifact hash.
-- Revalidate changed-source evidence. Unchanged API/worker source, dependency hashes or
-  scanner locations justify limited historical support, not a fresh whole-candidate PASS.
-- Preserve B5's existing owner-attested acknowledgement closure. Do not resend, poll
-  Resend, start escalation timers or claim the synthetic escalation was delivered.
-- Preserve additive schema/audits and historical stock/accounting/client identities.
-  No startup schema sync, unrelated migrations, repairs or compensation writes.
-- No credentials, connection strings, private hostnames, session cookies, raw errors,
-  object names or business rows in artifacts. Use private owner evidence references.
+The owner reports Replit Support confirmed on 2026-10-19 that direct provider
+recovery access is unavailable through support. Use the existing workspace's
+Production Database Settings > Point-in-Time Recovery and scheduled backups.
+The old provider request and null reply template are historical, not prerequisites.
+Do not create a backup login, copy a development URL or obtain a primary connection
+to work around this limitation.
 
-## Conditional future sequence and mandatory pause points
+This is a different recovery mechanism, not a relaxation of the custom pg_dump
+adapter. Its literal SOURCE_BINDING_UNVERIFIED refusal, physical-recovery,
+read-only, TLS, two-connection cancellation, ciphertext and retention requirements
+remain unchanged. Do not enable it. An operational custom encrypted restore adapter
+and two same-principal replica connections are no longer prerequisites for the
+native path. They remain necessary if that custom path is ever reconsidered.
 
-1. **Information only:** owner submits the prepared support request for the selected
-   Production Database. Receive non-secret source/replica, routing, version, trust and
-   two-connection capability evidence. No provisioning or reset is requested.
-2. **Exact first response action — offline:** compare that attestation with independent
-   owner-selected production resource evidence. Review template completeness/expiry.
-   Do not connect, copy secrets or run a backup. A complete response only permits
-   preparing the next reviewed plan, not performing it.
-3. **Candidate-only implementation review:** prepare independent target binding and
-   same-server cancellation verification using the actual supported provider mechanism.
-   Keep the current literal production refusal until a fully reviewed implementation
-   exists. Review two-same-principal-connection capacity; the old one-connection
-   role plan is not executable for this adapter. Never change PUBLIC or bypass RLS
-   to make backup succeed.
-4. **Prepare native encrypted restore compatibility:** the current synthetic JSON
-   rehearsal is not an encrypted native PostgreSQL restore adapter. The eventual
-   target-bound implementation must stream authenticated decryption without plaintext
-   staging, reject incomplete/tampered/version-mismatched sets, bound native tools,
-   verify full archive decode/completeness and restore only into positively owned
-   disposable resources. It must isolate outbound network, production secrets,
-   side effects, extensions/functions and role/ACL mappings. Define cleanup/retention
-   ownership and failure handling first. Native database verification requires a
-   new explicit isolated-database authorization; none is authorized by this runbook.
-5. **PAUSE — owner approval before protected binding/configuration/role creation.**
-   Confirm exact target, operator, expiry, approved configuration delta and rollback.
-   No raw credential transport through chat, files, shell arguments or reports.
-   Do not copy the development DATABASE_URL. Validate tools/source/version/TLS,
-   independently bound identity, physical recovery/read-only guards, effective
-   privileges and cancellation capability only within a new bounded read-only scope.
-6. **Close B1/B4 metadata:** obtain fresh exact-target schema/auth/runtime/ACL evidence
-   and actual deployed/fallback artifact hashes, service/replica/timezone/job ownership,
-   effective safety booleans and manual operator acceptance. A portal render or
-   successful provider build does not establish these. Read-only inspection still
-   requires separately scoped authority; no business rows or broad catalog discovery.
-7. **PAUSE — separate approval before storage-manifest reads or backup execution.**
-   Cover database, both observed App Storage areas and all actually referenced
-   private prefixes without unrestricted listing. Seven legacy and four unclassified
-   references remain unresolved historical counts, not verified files or unique objects.
-   Freeze an independently authorized manifest and source identities; no rewrite,
-   deletion or migration of historical references. Preserve encryption, exact versions,
-   checksums, KMS and immutable >=30-day Governance retention. No delete/bypass or
-   retention reduction. A shared set ID does not prove cross-resource atomicity.
-8. **PAUSE — separate approval before isolated restore/resource creation/cleanup.**
-   Validate backup completion markers last, native restore compatibility and required
-   object coverage. Measure real source recoverable age/data loss <=15 minutes and
-   end-to-end restoration plus validation <=60 minutes. A fast synthetic run or a
-   new dump alone does not establish recoverability of the last 15 minutes.
-   Delete only explicitly owned disposable resources in the approved cleanup plan;
-   retained vault backups cannot be promised deleted before Object Lock expiry.
-9. **Close B2 fallback readiness:** select the exact independently known healthy whole
-   artifact and SHA-256; prove strict startup, SQL boundary and credential protection
-   parity, source/schema/runtime compatibility and endpoint-specific non-mutating
-   smoke allowlist. Do not combine an older bridge with newer descriptor callers.
-   Database restore is not the default code rollback.
-10. **PAUSE — separately authorized incident containment for B3.** Confirm exact
-    affected IDs, owner/role/branch, credential reuse disposition and private delivery.
-    Review the existing password/session runbook. Each configuration gate change,
-    reset issuance/completion, permanent replacement and session invalidation has an
-    explicit owner pause point; database/provider/signing secrets need separate plans.
-    Prove affected old credentials/sessions fail, fresh private login works and
-    unrelated sessions survive; close execution gates afterward. Do not restore
-    exposed credentials, old signing keys or invalidated sessions during recovery.
-    If containment depends on code not yet deployed, stop for a separately reviewed
-    restricted-maintenance plan; do not invent evidence or resume normal access.
-11. **Final exact-candidate gate:** rebuild/hash archive and manifest after all source
-    changes; run fresh clean installation, build, full isolated database, credential,
-    startup and authenticated rehearsal under explicit test authority. Complete fresh
-    security/source/log reviews, adjudicate all applicable critical/high findings,
-    verify all fixture cleanup and independently approve the whole fallback. Existing
-    old candidate evidence does not satisfy this gate.
-12. **PAUSE — explicit owner approval before any migration, deployment or restart.**
-    All B1–B4/C1 checks must be closed by actual evidence. Apply only separately
-    reviewed necessary additive setup using the approved principal/time window.
-    No broad migrations/startup sync and no task activation. Publish only through
-    the owner-operated supported publishing flow after approval; this runbook
-    performs none of those actions.
-13. Post-change checks require their own approved non-mutating endpoint/session
-    allowlist. Record release version/time, provider artifact evidence and bounded
-    results. **PAUSE before rollback/restore/restart** on a failure, using only the
-    verified whole fallback and approved target. Do not replay transactions or
-    reverse historical stock/accounting as an application rollback.
+Native PITR availability is not proof of this production target's recoverability.
+Retain the <=15-minute RPO and <=60-minute restoration-and-validation RTO objectives,
+complete database AND required uploaded-file recovery, safe fallback artifact,
+credential containment and all B1/B3/B4/C1 gates. No silent risk waiver.
+Documented daily scheduled backups alone cannot meet a 15-minute RPO.
+App Storage is not covered by database PITR or a development checkpoint.
 
-No workers/schedulers are to be enabled by this release. Retiring/altering an existing
-owner or job is also a production change requiring separate authority and a pause point.
+## Shortest safe sequence, with explicit pause points
+
+1. **Read-only first action:** owner opens Database > Production > Settings >
+   Point-in-Time Recovery, and Advanced > Scheduled backups. Capture sanitized
+   target association, observation UTC/timezone, enabled/available state, actual
+   plan/window/retention, earliest/latest selectable recoverable time, backup
+   frequency, last completed backup/status and available restore destinations.
+   Do not select Restore, enable/disable backups or change retention.
+   No connection strings, credentials, table rows or unredacted screenshots.
+   Documentation's 7-to-28-day plan-dependent window is not project evidence.
+2. **Read-only target/fallback inventory:** privately associate the selected
+   production database and deployment; record provider-supported release/build
+   identifiers with exact candidate/source artifact SHA-256 associations. A
+   successful build, Git hash or workspace checkpoint alone is insufficient.
+   Identify the healthy whole fallback and verify strict startup, SQL-boundary,
+   credential protection, schema compatibility and non-mutating smoke allowlist.
+   If the UI cannot expose an artifact hash, require a trustworthy build-to-artifact
+   attestation; do not fabricate it. Keep the gate open if neither is available.
+3. **Prepare the native rehearsal plan:** verify whether the visible recovery UI
+   offers an isolated destination/export suitable for rehearsal. Current public
+   documentation describes destructive replacement of the selected database,
+   not a proven clone workflow. Never test Restore on the live target.
+   If only in-place production restore is available, STOP: B2 remains blocked
+   until a supported isolated path is established or the owner explicitly revisits
+   the recovery requirement in a separate decision. A synthetic development
+   checkpoint cannot substitute for production restore evidence.
+4. **Prepare complete recovery coverage:** retain the observed single App Storage
+   bucket and `public`/`staff-documents` areas as historical evidence. Include
+   source-defined private prefixes, seven legacy filesystem and four unclassified
+   reference counts; these are not proven unique objects. Preserve `/uploads`.
+   Native SQL backups do not recover object bytes, upload directories, secrets,
+   application code, custom domains or deployment/job settings. Establish their
+   independent recoverability and mappings at the intended recovery point,
+   including dependencies of historical database restore points.
+   **PAUSE before any reference query, object/file inspection, export, storage
+   snapshot/backup or settings change:** obtain bounded owner authority, exact
+   target/manifest and data-handling plan. No AWS access in this review.
+   Previously approved S3 Governance >=30 days remains immutable if used later;
+   native backup retention is a separate mechanism, not a replacement claim.
+5. **PAUSE before creating a disposable destination or executing any restore.**
+   Approve exact isolated resources, no production bindings/credentials, outbound
+   isolation, role/extension/job containment, operator, expiry, validation and
+   cleanup ownership. If native controls cannot meet these conditions, stop.
+   Measure latest recoverable age and actual recovered-point loss <=15 minutes,
+   ongoing protection/cadence, and total restoration plus database/storage/app
+   validation <=60 minutes. Include object consistency and credential/session
+   reappearance handling; DB restore is not automatically cross-resource atomic.
+   **PAUSE before cleanup:** remove only approved disposable resources; retain
+   evidence. Never delete production data or retained locked backups.
+6. **Close B1/B4 with fresh metadata evidence:** exact schema/auth/ACL compatibility,
+   active build/command/flags, service instances, timezone, scheduled deployments,
+   in-process timers and worker ownership, manual operating acceptance.
+   Read-only UI metadata can be reviewed now; new catalog/session/application
+   checks require a fixed separately authorized scope. Missing env metadata
+   does not prove runtime flags unset. Do not activate or retire anything.
+7. **Close B3 separately:** inspect retained containment runbooks and privately
+   approved affected-account inventory. **PAUSE before each password/key/reset,
+   session invalidation or configuration action.** Prove old access fails and
+   new authorized access works without harming unrelated sessions. Neither a
+   secret's presence nor a candidate test proves production containment.
+   A recovered database must not reactivate exposed credentials or invalidated
+   sessions. If mitigation requires new code first, approve a restricted
+   maintenance plan; do not silently waive B3 to publish.
+8. **Final exact-candidate gate:** package and hash a complete archive/manifest
+   after all candidate work. Under separate isolated-test authority run clean
+   install, build, full database, credential, startup, browser, fixture cleanup
+   and current security/source/log checks. Zero unresolved critical/high findings
+   must be established against that archive, not historical changed-source reports.
+   Preserve B5's existing human/policy acceptance without resend or timers.
+9. **PAUSE before any necessary migration or configuration change:** explicit owner
+   approval of reviewed additive delta, target, principal, window and rollback.
+   No broad schema sync, data repair or historical changes.
+   **PAUSE before publication/restart:** all B1–B4/C1 evidence complete, exact whole
+   fallback reviewed, operator acceptance and bounded post-release checks agreed.
+   Owner uses the existing Publishing controls; this document executes nothing.
+10. Record actual release ID/hash/time and approved non-mutating health/portal checks.
+    **PAUSE before code rollback, database restore or service restart on failure.**
+    Prefer the reviewed whole code fallback for code failure; database PITR is a
+    separate destructive data-loss decision, not automatic code rollback.
+    Agent checkpoint rollback changes development, not the running production app;
+    republishing is another separately approved action. Do not restore unsafe
+    startup code, old keys/sessions, or replay historical stock transactions.
+
+## Monitoring and settings boundaries
+
+Publishing monitoring/logs can support uptime/build observations, not backup
+completeness. Prefer sanitized aggregate/status metadata; raw runtime logs may
+contain sensitive data. No new alert, scheduler, backup schedule, worker or
+deployment hook is authorized. Scheduled database backups, Scheduled Deployments,
+application timers and Agent checkpoints are distinct controls.
+
+Recovery operator acceptance is still needed; alert-response ownership is not
+recovery-operation ownership. Record timestamps in UTC with the original UI
+timezone. Do not change timezone or timestamps to make recovery lag appear smaller.

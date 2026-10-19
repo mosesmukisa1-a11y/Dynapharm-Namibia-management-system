@@ -95,3 +95,16 @@ Read-only catalog guard SQL needs native isolated execution, not only static SEL
 **Why:** PostgreSQL can reorder WHERE predicates and evaluate relation-type-specific privilege functions on incompatible objects. Prepared SQL can also name privilege helpers absent from the actual server version.
 
 **How to apply:** Use evaluation-safe type guards and supported catalog ACL semantics; include negative controls for PUBLIC, inherited and column-level grants. Keep synthetic primary/no-TLS evidence distinct from production recovery/TLS gates; never weaken those gates to make a local rehearsal pass.
+
+Use Replit-native workspace recovery as the active release recovery plan, not a
+support-provisioned direct replica.
+
+**Why:** On 2026-10-19 the owner reported Replit Support confirmed direct provider
+recovery access is unavailable through support and directed recovery to Production
+Database Settings PITR/scheduled backups; Agent checkpoints cover development.
+
+**How to apply:** Verify actual target/window/latest recovery point and isolated
+restore support in workspace controls. Do not infer these from generic docs or
+replace replica guards with a primary connection. Keep custom backup execution
+disabled. Native database recovery does not establish App Storage/legacy-file
+recovery, safe whole-code rollback, or measured 15-minute RPO/60-minute RTO.

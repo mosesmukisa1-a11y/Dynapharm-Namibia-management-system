@@ -1,5 +1,15 @@
 # Prepared provider-support request — not sent
 
+> **Superseded for the active release plan.** On 2026-10-19 the owner reported
+> Replit Support confirmed that direct provider recovery access is unavailable
+> through support and recovery must use workspace self-service controls.
+> This earlier request is retained as historical design evidence, not a pending
+> submission or release prerequisite. Do not resend it. See
+> `docs/security-controlled-release-runbook.md` and
+> `generated-artifacts/replit-native-recovery-review/report.md`.
+> The custom adapter and its two-same-principal monitor guards remain unchanged
+> and disabled; they do not apply to the separately reviewed native PITR path.
+
 **Information-only request. No provisioning, credential reset, role/grant changes,
 production query, restart, failover, migration, export, backup or deployment is authorized.**
 

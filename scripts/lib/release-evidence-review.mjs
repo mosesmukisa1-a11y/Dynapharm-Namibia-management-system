@@ -84,6 +84,16 @@ export function reviewRecoverySourceReply(reply, nowMs = Date.now()) {
 
 export function offlineReleaseVerdict({b5Closed = false} = {}) {
   return {verdict: 'BLOCKED - DO NOT PUBLISH',
+    recoveryPlan: {
+      selectedPath: 'REPLIT_NATIVE_PITR_AND_SCHEDULED_BACKUPS',
+      supportDisposition: 'OWNER_REPORTED_DIRECT_RECOVERY_ACCESS_UNAVAILABLE',
+      directReplicaRequiredForNativePath: false,
+      customAdapterDisposition: 'DISABLED_SOURCE_BINDING_UNVERIFIED_GUARDS_UNCHANGED',
+      nativeTargetRecoveryEvidence: 'REQUIRED_NOT_ESTABLISHED_BY_CAPABILITY',
+      databaseRecoveryIncludesAppStorage: false,
+      developmentCheckpointProvesProductionRecovery: false,
+      firstAction: 'READ_ONLY_PRODUCTION_DATABASE_SETTINGS_RECOVERY_METADATA_REVIEW'
+    },
     blockers: {
       B1: 'CURRENT_PRODUCTION_IDENTITY_SCHEMA_AND_AUTH_EVIDENCE_REQUIRED',
       B2: 'RECOVERY_STORAGE_FALLBACK_AND_TIMING_UNPROVEN',

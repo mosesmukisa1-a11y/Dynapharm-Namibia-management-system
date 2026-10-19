@@ -69,6 +69,23 @@ test('offline success cannot close B1-B4; B5 acceptance does not reopen or imply
   assert.equal(r.blockers.B5, 'CLOSED_OWNER_ATTESTED_EXISTING_EVIDENCE');
   for (const key of ['B1','B2','B3','B4','C1']) assert(!r.blockers[key].startsWith('CLOSED'));
 });
+test('native recovery replaces unavailable direct replica without enabling custom adapter', () => {
+  const r = offlineReleaseVerdict({b5Closed: true});
+  assert.equal(r.recoveryPlan.selectedPath, 'REPLIT_NATIVE_PITR_AND_SCHEDULED_BACKUPS');
+  assert.equal(r.recoveryPlan.directReplicaRequiredForNativePath, false);
+  assert.equal(r.recoveryPlan.customAdapterDisposition,
+    'DISABLED_SOURCE_BINDING_UNVERIFIED_GUARDS_UNCHANGED');
+  assert.equal(r.productionExecutionAllowed, false);
+});
+test('native capability and development checkpoints cannot prove production or object recovery', () => {
+  const r = offlineReleaseVerdict({nativePitrEnabled: true, scheduledBackups: true,
+    developmentCheckpoint: true, allOfflineTestsPassed: true});
+  assert.equal(r.recoveryPlan.nativeTargetRecoveryEvidence, 'REQUIRED_NOT_ESTABLISHED_BY_CAPABILITY');
+  assert.equal(r.recoveryPlan.databaseRecoveryIncludesAppStorage, false);
+  assert.equal(r.recoveryPlan.developmentCheckpointProvesProductionRecovery, false);
+  assert.equal(r.verdict, 'BLOCKED - DO NOT PUBLISH');
+  assert.equal(r.productionExecutionAllowed, false);
+});
 test('audit output is narrow and cannot overwrite arbitrary evidence/files', () => {
   assert.equal(offlineAuditOutput(['--output-dir=generated-artifacts/release-offline-readiness/sql-boundary']),
     'generated-artifacts/release-offline-readiness/sql-boundary');

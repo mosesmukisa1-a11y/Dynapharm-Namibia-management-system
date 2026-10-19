@@ -896,3 +896,17 @@ mtime_ms = 1792311703314
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/55598c08-d2e2-4ad9-9de7-8a73f8a4511e/09b805ed-c2d0-4318-99f3-56e16060a06f"
 storage_version_token = "1792311717605893"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "cGoEOJDYReAavjt2OgvBH"
+uri = "file://generated-artifacts/replit-native-recovery-review/report.md"
+type = "text"
+title = "Replit-native recovery release review"
+description = "Read-only inventory, remaining blockers, offline test results and shortest safe release path. No production changes."
+logical_id = "35db2c5f-bd2e-4e05-a5a6-d4355ef5daed"
+content_hash = "sha256:8fe36a3327069df5291e596de4adc1065b69d2893af6920c8f16958e9b266da2"
+size = 14827
+mtime_ms = 1792398023331
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/35db2c5f-bd2e-4e05-a5a6-d4355ef5daed/12413f39-376a-4589-9827-d6abd294d621"
+storage_version_token = "1792398046634960"
+content_type = "text/markdown"

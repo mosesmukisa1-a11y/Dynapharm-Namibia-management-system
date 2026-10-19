@@ -83,7 +83,9 @@ async function main() {
       coverage: 'PRIOR_LOCATIONS_ONLY_NEW_SOURCE_NOT_FRESHLY_SCANNED'},
     b5: {status: 'CLOSED', evidence: b5Path, inboxDelivery: 'OWNER_ATTESTED', liveEscalationProven: false},
     evidenceReferences, currentFullCleanInstallGate: 'NOT_RUN_DATABASE_CONTACT_FORBIDDEN',
-    currentManagedScans: 'NOT_RUN_OFFLINE_SCOPE', currentNativeRestore: 'NOT_IMPLEMENTED_OR_VERIFIED',
+    currentManagedScans: 'NOT_RUN_OFFLINE_SCOPE',
+    currentNativeRestore: 'REPLIT_NATIVE_RECOVERY_NOT_REHEARSED',
+    customEncryptedRestore: 'PARKED_NOT_IMPLEMENTED_OR_VERIFIED_NOT_NATIVE_PATH_PREREQUISITE',
     productionCalls: 0, awsCalls: 0, databaseCalls: 0, storageCalls: 0,
     credentialsOrSessionsAccessed: false, productionPublished: false,
     operationsAuthorized: false};
