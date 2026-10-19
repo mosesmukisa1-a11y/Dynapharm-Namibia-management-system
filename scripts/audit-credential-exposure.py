@@ -49,18 +49,8 @@ def findings(data):
 
 def classify(path, row, data, production=False):
     line = data.decode("utf-8", "replace").splitlines()[row["line"] - 1]
-    # Reviewed UI error strings / property names, not authentication material.
-    if row["category"] == "credential_literal" and (
-        "alert(" in line or "showToast(" in line or "placeholder=" in line
-        or "prompt(" in line or "error:" in line or "toThrow(" in line
-    ):
-        return "FALSE_POSITIVE"
-    if path == "setup-local-database.sh" and re.search(r"localhost|YOUR_|your_|password.*host|user.*password", line, re.I):
-        return "TEST_PLACEHOLDER"
-    if path in {"tests/helpers/price-ui-fixtures.mjs", "tests/safe-stock-smoke.unit.test.js",
-                "scripts/capture-distribution-ui.mjs", "scripts/check-stock-cleanup-readonly.mjs",
-                "scripts/seed-sale-evidence-ui.mjs", "scripts/verify-isolated-gm-stock-bulk.mjs"}:
-        return "TEST_PLACEHOLDER"
+    # A filename, hostname, marker or nearby UI call does not establish provenance.
+    # Keep detection intact; explicit source-bound review must adjudicate matches.
     return "ACTIVE_PRODUCTION_EXPOSURE" if production else None
 
 
