@@ -1,3 +1,4 @@
+import {syntheticCredential, syntheticCredentialUrl} from './lib/synthetic-credential-fixture.mjs';
 // A deliberately fixed disposable target. No configurable production URL, business writes or database access.
 import { mkdir, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
@@ -5,7 +6,7 @@ const base='http://127.0.0.1:3003/api', checks=[];
 const digest=data=>createHash('sha256').update(JSON.stringify(data)).digest('hex');
 async function login(username){
   const response=await fetch(`${base}/auth/login`,{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({username,password:'DisposableStockUi-2026!'})});
+    body:JSON.stringify({username,password:syntheticCredential('legacy-ui')})});
   if(!response.ok)throw Error(`Synthetic login failed (${response.status})`);
   const cookie=response.headers.getSetCookie().map(value=>value.split(';')[0]).join('; ');
   const me=await fetch(`${base}/auth/me`,{headers:{cookie}}), actor=await me.json();

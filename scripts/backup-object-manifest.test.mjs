@@ -1,3 +1,4 @@
+import {syntheticCredential, syntheticCredentialUrl} from './lib/synthetic-credential-fixture.mjs';
 // All operational stages are memory fakes. No SDK, DB, external tool or upload.
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
@@ -39,7 +40,7 @@ function manifest() {
 function config(text) {
   return {
     NODE_ENV: 'test', B2_BACKUP_SOURCE_CLASS: 'isolated', B2_BACKUP_TEST_OWNER: owner,
-    B2_BACKUP_DATABASE_URL: `postgresql://synthetic:SYNTHETIC_PRIVATE@127.0.0.1:65432/b2_backup_test_${owner}?sslmode=disable`,
+    B2_BACKUP_DATABASE_URL: syntheticCredentialUrl({local: true}),
     B2_BACKUP_OUTPUT_DIR: '/synthetic-private', AWS_ACCESS_KEY_ID: 'SYNTHETIC_PRIVATE',
     AWS_SECRET_ACCESS_KEY: 'SYNTHETIC_PRIVATE', AWS_BACKUP_BUCKET: 'synthetic-never-contact',
     AWS_REGION: 'eu-west-1', B2_BACKUP_KMS_KEY_ARN: kms, B2_BACKUP_CIPHERTEXT_ONLY_CONFIRMED: 'true',

@@ -1,3 +1,4 @@
+import {syntheticCredential, syntheticCredentialUrl} from './lib/synthetic-credential-fixture.mjs';
 // Offline: no clients, tools, adapters, credentials or providers.
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
@@ -9,7 +10,7 @@ import {runBackup, EXECUTE, ACKNOWLEDGE, BackupJobError} from './lib/backup-job.
 
 const owner = '0123456789abcdef0123456789abcdef';
 const env = {NODE_ENV: 'test', B2_BACKUP_SOURCE_CLASS: 'isolated', B2_BACKUP_TEST_OWNER: owner,
-  DATABASE_URL: `postgresql://synthetic:SYNTHETIC_PROTECTED@127.0.0.1:65432/b2_backup_test_${owner}?sslmode=disable`,
+  DATABASE_URL: syntheticCredentialUrl({local: true}),
   B2_BACKUP_OUTPUT_DIR: '/synthetic-private', AWS_ACCESS_KEY_ID: 'SYNTHETIC_PROTECTED',
   AWS_SECRET_ACCESS_KEY: 'SYNTHETIC_PROTECTED', AWS_BACKUP_BUCKET: 'synthetic-never-contact',
   AWS_REGION: 'eu-west-1', B2_BACKUP_KMS_KEY_ARN: 'arn:aws:kms:eu-west-1:000000000000:key/01234567-89ab-4cde-8f01-23456789abcd',
@@ -29,7 +30,7 @@ test('fixed dump and preflight options include every reviewed short ceiling', ()
 });
 
 test('ambient and source URL options cannot widen backup query limits', () => {
-  const source = new URL('postgresql://synthetic:synthetic@synthetic.invalid/fixture?options=-c%20statement_timeout%3D0&connect_timeout=999');
+  const source = new URL(syntheticCredentialUrl({local: false}));
   const result = postgresEnvironment({PGOPTIONS: '-c statement_timeout=0',
     PGCONNECT_TIMEOUT: '999', B2_BACKUP_SOURCE_CLASS: 'production'}, source);
   assert.equal(result.PGOPTIONS, postgresOptions());

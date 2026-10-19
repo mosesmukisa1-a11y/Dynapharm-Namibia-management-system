@@ -1,3 +1,4 @@
+import {syntheticCredential, syntheticCredentialUrl} from '../scripts/lib/synthetic-credential-fixture.mjs';
 // @vitest-environment node
 import {describe,it,expect} from 'vitest';
 import express from 'express';
@@ -42,7 +43,7 @@ describe('finite application SQL structure',()=>{
 });
 describe('application diagnostic boundary',()=>{
   it('contains JSON/text/stream/header and parser failures without changing successful data',async()=>{
-    const secret='SYNTHETIC_PRIVATE_'+randomUUID(),app=express();
+    const secret=syntheticCredential("canary")+randomUUID(),app=express();
     app.use(errorOutputBoundary);app.use(express.json());
     app.get('/error/:kind',(req,res)=>{
       res.setHeader('X-Database-Debug',secret);res.setHeader('X-Frame-Options','DENY');
@@ -67,7 +68,7 @@ describe('application diagnostic boundary',()=>{
     }finally{await new Promise(r=>server.close(r));}
   });
   it.each(['console','exception','rejection'])('does not serialize nested secrets or fatal stacks: %s',kind=>{
-    const secret='SYNTHETIC_PRIVATE_'+randomUUID();
+    const secret=syntheticCredential("canary")+randomUUID();
     const source=`await import('./api/services/runtimeDiagnostics.js');
       const secret=${JSON.stringify(secret)};
       ${kind==='console'?"console.log(secret);console.error(new Error(secret),{password:secret});":

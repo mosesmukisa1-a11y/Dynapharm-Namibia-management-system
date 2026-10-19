@@ -1,3 +1,4 @@
+import {syntheticCredential, syntheticCredentialUrl} from './lib/synthetic-credential-fixture.mjs';
 // Run only against the disposable UI harness. Never mutates the business DB.
 import fs from 'node:fs/promises';
 import assert from 'node:assert/strict';
@@ -15,7 +16,7 @@ const evidence = [];
 async function login(username) {
   const response = await fetch(`${base}/auth/login`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password: 'DisposableStockUi-2026!' }),
+    body: JSON.stringify({ username, password: syntheticCredential('legacy-ui') }),
   });
   assert.equal(response.status, 200, 'Synthetic staff login');
   return response.headers.getSetCookie().map(c => c.split(';')[0]).join('; ');

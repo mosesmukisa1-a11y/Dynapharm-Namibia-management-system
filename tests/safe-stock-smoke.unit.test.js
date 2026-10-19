@@ -1,3 +1,4 @@
+import {syntheticCredentialUrl} from '../scripts/lib/synthetic-credential-fixture.mjs';
 // @vitest-environment node
 import {it,expect,vi} from 'vitest';
 import {createHash} from 'node:crypto';
@@ -22,5 +23,5 @@ it('rejects redirects, non-200, unknown routes and credential-bearing URLs',asyn
  await expect(safeGet({origin:'http://localhost',path:'/api/auth/me',fetcher:vi.fn()})).rejects.toThrow(/allowlist/);
  await expect(safeGet({origin:'http://localhost',path:'/api/health',fetcher:async()=>new Response('',{status:302,headers:{Location:'/api/auth/me'}})})).rejects.toThrow(/redirect/);
  await expect(safeGet({origin:'http://localhost',path:'/api/health',fetcher:async()=>new Response('',{status:503})})).rejects.toThrow(/503/);
- await expect(safeGet({origin:'http://unused:unused@localhost',path:'/api/health'})).rejects.toThrow(/origin/);
+ await expect(safeGet({origin:syntheticCredentialUrl().replace('postgresql:', 'https:'),path:'/api/health'})).rejects.toThrow(/origin/);
 });

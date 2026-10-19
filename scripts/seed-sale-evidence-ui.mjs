@@ -1,3 +1,4 @@
+import {syntheticCredential, syntheticCredentialUrl} from './lib/synthetic-credential-fixture.mjs';
 // Synthetic fixtures ONLY in an already running disposable stock UI harness.
 import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import pg from 'pg';
@@ -12,7 +13,7 @@ const db=new pg.Pool({connectionString:url.toString(),max:1});
 try{
   if(Number((await db.query('SELECT COUNT(*) n FROM stock_movements')).rows[0].n))throw Error('Fresh empty UI database required');
   await db.query('BEGIN');
-  const hash=await bcrypt.hash('DisposableStockUi-2026!',10);
+  const hash=await bcrypt.hash(syntheticCredential('legacy-ui'),10);
   for(const role of ['mis','finance','director'])await db.query(`INSERT INTO users(id,username,password_hash,role,full_name,is_active,must_change_password)
     VALUES($1,$2,$3,$4,$2,true,false)`,['UI-'+role,'ui_'+role,hash,role]);
   await db.query(`UPDATE product_prices SET dp=341,cp=443,cif=70 WHERE description='TEST-ITEM'`);
@@ -28,7 +29,7 @@ try{
   await db.query('COMMIT');
   const api=`http://127.0.0.1:${fixture.backendPort}/api`;
   const response=await fetch(api+'/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({username:'ui_branch_a',password:'DisposableStockUi-2026!'})});
+    body:JSON.stringify({username:'ui_branch_a',password:syntheticCredential('legacy-ui')})});
   if(!response.ok)throw Error('Fixture login failed');
   const cookie=response.headers.get('set-cookie').split(';')[0];
   const sale=await fetch(api+'/branch/walkin-sales',{method:'POST',headers:{'Content-Type':'application/json',Cookie:cookie},

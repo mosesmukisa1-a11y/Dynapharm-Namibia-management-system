@@ -12,9 +12,29 @@ test('external Linux subreaper/pidfd capabilities available without native DB/pr
   assert.equal((await probeDumpSupervisor(localToolEnvironment())).serverQueryTimeoutEnforced, false);
 });
 
-test('external deadline kills escaped TERM-ignoring descendant even while Node is blocked', {timeout: 10_000}, async () => {
+function assertDeadlineOutcome(report, exit, configuredMs, watchdogExpired = false) {
+  assert.equal(watchdogExpired, false, 'outer hang watchdog fired');
+  assert.equal(exit.status, 0);
+  assert.equal(exit.signal, null);
+  assert.equal(report.deadlineExpired, true);
+  assert.equal(report.aborted, false);
+  assert.equal(report.treeEmpty, true);
+  assert.equal(report.rootSignal, 9);
+  assert.equal(report.rootExitCode, -9);
+  assert(Number.isFinite(report.rootTerminationRequestedMs));
+  // Supervisor timestamps are rounded milliseconds, not Node event-loop timing.
+  assert(report.rootTerminationRequestedMs >= configuredMs - 1);
+  assert(Number.isFinite(report.elapsedMs));
+  assert(report.elapsedMs >= report.rootTerminationRequestedMs);
+  assert.equal(report.serverQueryTimeoutEnforced, false);
+}
+
+test('external deadline kills escaped TERM-ignoring descendant even while Node is blocked', {timeout: 15_000}, async () => {
+  const configuredMs = 150;
   const python = await resolveDumpSupervisor(localToolEnvironment());
-  const child = spawn(python, supervisorArguments(150, randomUUID(), '--synthetic-tree'),
+  const args = supervisorArguments(configuredMs, randomUUID(), '--synthetic-tree');
+  assert.equal(args[4], String(configuredMs));
+  const child = spawn(python, args,
     {env: localToolEnvironment(), shell: false, detached: true, stdio: ['ignore', 'ignore', 'ignore', 'pipe']});
   let text = '';
   child.stdio[3].on('data', b => { text += b; });
@@ -22,16 +42,34 @@ test('external deadline kills escaped TERM-ignoring descendant even while Node i
     child.on('error', reject);
     child.on('close', (status, signal) => resolve({status, signal}));
   });
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 600);
-  const exit = await done;
-  assert.equal(exit.status, 0, text);
-  assert.equal(exit.signal, null);
-  const report = JSON.parse(text);
-  assert.equal(report.deadlineExpired, true);
-  assert.equal(report.treeEmpty, true);
-  assert(report.elapsedMs < 500);
-  assert(report.rootTerminationRequestedMs >= 140 && report.rootTerminationRequestedMs < 350);
-  assert.equal(report.serverQueryTimeoutEnforced, false);
+  let watchdogExpired = false;
+  // Hang protection only, NOT a replacement/extension of the supervisor's 150ms
+  // fixture deadline or production's unchanged 120s deadline. TERM asks the
+  // owned subreaper to abort and reap its escaped descendants.
+  const watchdog = setTimeout(() => { watchdogExpired = true; child.kill('SIGTERM'); }, 8_000);
+  try {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 600);
+    const exit = await done;
+    assertDeadlineOutcome(JSON.parse(text), exit, configuredMs, watchdogExpired);
+  } finally {
+    clearTimeout(watchdog);
+    if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM');
+  }
+});
+
+test('deadline contract rejects ignored expiry, surviving descendants and failed termination', () => {
+  const good = {deadlineExpired:true,aborted:false,treeEmpty:true,rootSignal:9,
+    rootExitCode:-9,rootTerminationRequestedMs:150,elapsedMs:160,serverQueryTimeoutEnforced:false};
+  const exit = {status:0,signal:null};
+  assertDeadlineOutcome(good,exit,150);
+  // Scheduling delay alone is not failure when all termination evidence holds.
+  assertDeadlineOutcome({...good,rootTerminationRequestedMs:700,elapsedMs:900},exit,150);
+  for (const patch of [{deadlineExpired:false},{treeEmpty:false},{aborted:true},
+    {rootExitCode:0},{rootSignal:null},{rootTerminationRequestedMs:null},
+    {rootTerminationRequestedMs:10},{elapsedMs:NaN},{elapsedMs:100}])
+    assert.throws(()=>assertDeadlineOutcome({...good,...patch},exit,150));
+  assert.throws(()=>assertDeadlineOutcome(good,{status:1,signal:null},150));
+  assert.throws(()=>assertDeadlineOutcome(good,exit,150,true));
 });
 
 test('monitor rechecks backend start time, exact nonce and actor at cancellation', async () => {

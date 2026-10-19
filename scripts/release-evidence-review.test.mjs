@@ -1,3 +1,4 @@
+import {syntheticCredential, syntheticCredentialUrl} from './lib/synthetic-credential-fixture.mjs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {isReviewSource, compareSourceEvidence, recoveryReplyAssertions, offlineAuditOutput, isDeploymentSchemaSource,
@@ -54,12 +55,14 @@ test('expired/future evidence, same resource and private URL cannot pass or leak
   for (const update of [
     {validUntilUtc: '2026-10-19T10:01:00Z'}, {observedAtUtc: '2026-10-19T10:31:00Z'},
     {recoveryResourceRef: 'synthetic-primary'},
-    {providerAttestationRef: 'postgres://private:DO_NOT_EMIT@invalid/database?token=DO_NOT_EMIT'},
+    {providerAttestationRef: syntheticCredentialUrl({local: false})},
     {changesPerformed: true}, {engineMajor: null}
   ]) {
     const r = reviewRecoverySourceReply({...reply(), ...update}, now);
     assert.equal(r.status, 'INFORMATION_INCOMPLETE');
     assert(!JSON.stringify(r).includes('DO_NOT_EMIT'));
+    assert(!JSON.stringify(r).includes(syntheticCredential('uri')));
+    assert(!JSON.stringify(r).includes(syntheticCredentialUrl()));
   }
 });
 test('offline success cannot close B1-B4; B5 acceptance does not reopen or imply live escalation', () => {

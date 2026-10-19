@@ -1,3 +1,4 @@
+import {syntheticCredential, syntheticCredentialUrl} from './lib/synthetic-credential-fixture.mjs';
 // Offline only: deterministic synthetic source bytes, private disposable local ciphertext.
 // No SDK, PostgreSQL client, native database tools, provider callbacks or business data.
 import {test} from 'node:test';
@@ -14,11 +15,11 @@ import {assertSourcePreflight, postgresEnvironment} from './lib/backup-job-io.mj
 import {objectArtifactName} from './lib/backup-object-manifest.mjs';
 
 const digest = value => createHash('sha256').update(value).digest('hex');
-const secret = 'SYNTHETIC_PROTECTED_DO_NOT_DISCLOSE';
+const secret = syntheticCredential("canary");
 const owner = '0123456789abcdef0123456789abcdef';
 const env = {
   NODE_ENV: 'test', B2_BACKUP_SOURCE_CLASS: 'isolated', B2_BACKUP_TEST_OWNER: owner,
-  DATABASE_URL: `postgresql://synthetic:${secret}@127.0.0.1:65432/b2_backup_test_${owner}?sslmode=disable`,
+  DATABASE_URL: syntheticCredentialUrl({local: true}),
   B2_BACKUP_OUTPUT_DIR: '/synthetic-private', AWS_ACCESS_KEY_ID: secret, AWS_SECRET_ACCESS_KEY: secret,
   AWS_BACKUP_BUCKET: 'synthetic-never-contact', AWS_REGION: 'eu-west-1',
   B2_BACKUP_KMS_KEY_ARN: 'arn:aws:kms:eu-west-1:000000000000:key/01234567-89ab-4cde-8f01-23456789abcd',
@@ -61,7 +62,7 @@ test('explicit dedicated protected source takes precedence', () => {
 });
 for (const sslmode of [null, 'disable', 'allow', 'prefer', 'require', 'verify-ca', 'verify-full']) {
   test(`production source always upgrades TLS mode ${sslmode} to verify-full`, () => {
-    const source = new URL('postgresql://synthetic:synthetic@production.invalid/synthetic');
+    const source = new URL(syntheticCredentialUrl({local: false}));
     if (sslmode) source.searchParams.set('sslmode', sslmode);
     const pg = postgresEnvironment({...env, B2_BACKUP_SOURCE_CLASS: 'production'}, source);
     assert(!validateConfig({...env, B2_BACKUP_SOURCE_CLASS: 'production',
@@ -74,7 +75,7 @@ for (const sslmode of [null, 'disable', 'allow', 'prefer', 'require', 'verify-ca
 for (const sslmode of ['invalid', 'false', 'no-verify', '']) {
   test(`production unknown TLS mode ${sslmode} fails configuration`, () => {
     const result = validateConfig({...env, B2_BACKUP_SOURCE_CLASS: 'production',
-      DATABASE_URL: `postgresql://synthetic:synthetic@production.invalid/synthetic?sslmode=${sslmode}`});
+      DATABASE_URL: syntheticCredentialUrl({local: false, sslmode})});
     assert(result.invalidFields.includes('B2_BACKUP_DATABASE_URL'));
   });
 }

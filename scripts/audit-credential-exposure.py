@@ -51,6 +51,13 @@ def classify(path, row, data, production=False):
     line = data.decode("utf-8", "replace").splitlines()[row["line"] - 1]
     # A filename, hostname, marker or nearby UI call does not establish provenance.
     # Keep detection intact; explicit source-bound review must adjudicate matches.
+    # Exact expression grammar: the detector crosses a closing UI-string quote
+    # into concatenation code. There is no credential assignment/value here.
+    if row["category"] == "credential_literal" and re.fullmatch(
+        r"""\s*alert\((['"])[^'"\n]*password:\s*\1\s*\+\s*\([A-Za-z_$][\w$]*\.[A-Za-z_$][\w$]*\s*\|\|\s*(['"])[^'"\n]*\2\)\);?\s*""",
+        line, re.I
+    ):
+        return "FALSE_POSITIVE"
     return "ACTIVE_PRODUCTION_EXPOSURE" if production else None
 
 

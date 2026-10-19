@@ -1,3 +1,4 @@
+import {syntheticCredential, syntheticCredentialUrl} from './lib/synthetic-credential-fixture.mjs';
 // Offline only. Every execution-stage test uses memory fakes; no pg_dump/AWS/SDK.
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
@@ -16,11 +17,11 @@ const owner = '0123456789abcdef0123456789abcdef';
 const id = '01234567-89ab-4cde-8f01-23456789abcd';
 const date = new Date('2026-10-18T12:34:56.789Z');
 const flags = [EXECUTE, ACKNOWLEDGE];
-const fakeSecret = 'SYNTHETIC_SECRET_NEVER_LOG';
+const fakeSecret = syntheticCredential('uri');
 const kms = 'arn:aws:kms:eu-west-1:000000000000:key/01234567-89ab-4cde-8f01-23456789abcd';
 const env = {
   NODE_ENV: 'test', B2_BACKUP_SOURCE_CLASS: 'isolated', B2_BACKUP_TEST_OWNER: owner,
-  B2_BACKUP_DATABASE_URL: `postgresql://synthetic:${fakeSecret}@127.0.0.1:65432/b2_backup_test_${owner}?sslmode=disable`,
+  B2_BACKUP_DATABASE_URL: syntheticCredentialUrl({local: true}),
   B2_BACKUP_OUTPUT_DIR: '/synthetic-private-backups', AWS_ACCESS_KEY_ID: fakeSecret,
   AWS_SECRET_ACCESS_KEY: fakeSecret, AWS_BACKUP_BUCKET: 'synthetic-never-contact',
   AWS_REGION: 'eu-west-1', B2_BACKUP_KMS_KEY_ARN: kms,
@@ -80,7 +81,7 @@ for (const [args, code] of [
 test('production source during tests is denied before any IO', async () => {
   const f = fixture();
   const result = await f.run({env: {...env, B2_BACKUP_SOURCE_CLASS: 'production',
-    B2_BACKUP_DATABASE_URL: `postgresql://synthetic:${fakeSecret}@production.invalid/db?sslmode=verify-full`,
+    B2_BACKUP_DATABASE_URL: syntheticCredentialUrl({local: false}),
     B2_BACKUP_PG_ROOT_CERT: '/synthetic-ca.pem'}});
   assert.equal(result.code, 'TEST_SOURCE_DENIED');
   assert.deepEqual(f.calls, []);

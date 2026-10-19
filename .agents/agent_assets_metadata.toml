@@ -924,3 +924,31 @@ mtime_ms = 1792403891899
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/c1d91b71-ea03-4cc3-9370-2592e83e89e5/783287cf-22a4-4b23-aa2d-cab4b24484bc"
 storage_version_token = "1792403912738529"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "Dn9DmIhjvYP0lbO6HFuyS"
+uri = "file://generated-artifacts/synthetic-fixture-release/report.md"
+type = "text"
+title = "Synthetic fixture remediation and release-gate results"
+description = "Source findings resolved; final release rerun blocked by the existing bounded-process timing assertion. Includes sanitized evidence and candidate history."
+logical_id = "5aeb41c8-0b33-49fc-8499-451f2da6ed58"
+content_hash = "sha256:df8017a37d58e742e582920e86b18f62cb723e2cf02624d6ccafd4de9502caae"
+size = 6088
+mtime_ms = 1792405641271
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/5aeb41c8-0b33-49fc-8499-451f2da6ed58/72d24057-06b5-405e-b7b0-25cf9f2aaa0f"
+storage_version_token = "1792405667283608"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "G57ctNK53INs-a13ViLEM"
+uri = "file://generated-artifacts/bounded-deadline-release/report.md"
+type = "text"
+title = "Bounded-process repair — offline release gate passed"
+description = "Five stable focused runs, one successful clean-install gate, exact candidate hash and separate production blockers."
+logical_id = "80711126-bbc6-4b17-bf2e-0c600a8514f6"
+content_hash = "sha256:c77e57f25d3dccf890bbf05de7db87748a3b3b49d01bd9d826af4ee5fa5c4d7b"
+size = 5811
+mtime_ms = 1792406090984
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/80711126-bbc6-4b17-bf2e-0c600a8514f6/61db3980-0f4c-4fb6-bf51-5a199535ec75"
+storage_version_token = "1792406102553513"
+content_type = "text/markdown"

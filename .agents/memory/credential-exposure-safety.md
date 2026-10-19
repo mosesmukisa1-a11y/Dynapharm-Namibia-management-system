@@ -46,3 +46,16 @@ per-session TLS attestation nor connection-startup timeout options.
 When such proof is explicitly required, unknown means unverified, not disabled
 or implicitly approved. Do not add a new probe or relax the controls without
 authority; record zero access if capability preflight stops before invocation.
+
+Build source-scanner negative controls at runtime; do not whitelist test files.
+
+**Why:** A source scanner also scans its own test source. Writing a credential-
+shaped assignment inside a string-building test can recreate the very finding
+being removed, even when no authentic credential exists. Separately, markers,
+reserved hosts and random suffixes do not establish a literal's provenance.
+
+**How to apply:** Generate public test-mode-only canaries without retained inputs;
+preserve ownership/TLS/path checks when replacing fixture URLs. Prove that the
+equivalent assembled hardcoded expression is still detected. For syntax-spanning
+false positives, require exact expression structure and adjacent-real-assignment
+negative tests, not a nearby keyword or filename exemption.

@@ -1,3 +1,4 @@
+import {syntheticCredential, syntheticCredentialUrl} from '../../scripts/lib/synthetic-credential-fixture.mjs';
 import bcrypt from 'bcryptjs';
 import {query} from '../../api/db.js';
 import {ensurePriceImportSchema} from '../../api/services/priceImport.js';
@@ -16,7 +17,7 @@ export async function seedPriceUi(){
   await ensurePriceImportSchema();await cleanupPriceUi();
   await query(`INSERT INTO users(id,username,password_hash,role,full_name,is_active,metadata)
     VALUES('test-pricelist-ui-gm','test_price_ui',$1,'gm','Test price review GM',TRUE,'{}')`,
-    [await bcrypt.hash('SyntheticPriceQA!2099',10)]);
+    [await bcrypt.hash(syntheticCredential('legacy-ui'),10)]);
   const rows=(await query(`INSERT INTO product_prices(description,product_code,dp,cp,cif,bv,updated_by)
     VALUES ('TEST_PRICE_UI TEA (30''S)','TST993001',100,130,70,10,'test-price-ui'),
       ('TEST_PRICE_UI DUP (30''S)','TST993002',100,130,70,10,'test-price-ui'),

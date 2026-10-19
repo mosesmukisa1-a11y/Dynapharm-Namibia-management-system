@@ -1,3 +1,4 @@
+import {syntheticCredential, syntheticCredentialUrl} from './lib/synthetic-credential-fixture.mjs';
 // Focused, non-stock-mutating visual check against the disposable audit only.
 import {chromium} from 'playwright';
 import {readFile,mkdir,writeFile} from 'node:fs/promises';
@@ -12,7 +13,7 @@ const page=await context.newPage();
 const evidence={scope:'Authenticated rendering only; no stock transactions',viewports:[],errors:[]};
 page.on('pageerror',error=>evidence.errors.push(error.message));
 try {
-  const login=await context.request.post('/api/auth/login',{data:{username:'ui_stock',password:'DisposableStockUi-2026!'}});
+  const login=await context.request.post('/api/auth/login',{data:{username:'ui_stock',password:syntheticCredential('legacy-ui')}});
   evidence.loginStatus=login.status();
   if(login.status()!==200) throw Error(`Synthetic staff login failed: ${login.status()}`);
   await page.goto('/stock');

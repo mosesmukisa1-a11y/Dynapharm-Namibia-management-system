@@ -1,3 +1,4 @@
+import {syntheticCredential, syntheticCredentialUrl} from './synthetic-credential-fixture.mjs';
 // SYNTHETIC ONLY. Owns one new local cluster, Unix socket only, no external targets.
 // No env credentials, provider SDKs, operational backup adapter or existing DB.
 import fs from 'node:fs/promises';
@@ -99,7 +100,7 @@ export async function localClient(cluster, user = 'rehearsal_admin', database = 
       !['postgres', cluster.database].includes(database)) throw new RehearsalError('connection-scope');
   const client = new pg.Client({
     host: cluster.socket, port: 5432, database, user,
-    password: 'SYNTHETIC_LOCAL_TRUST_UNUSED', ssl: false,
+    password: syntheticCredential("canary"), ssl: false,
     options: '-c application_name=b2-synthetic-role-rehearsal',
     application_name: cluster.application, connectionTimeoutMillis: 5_000,
     query_timeout: 15_000,
