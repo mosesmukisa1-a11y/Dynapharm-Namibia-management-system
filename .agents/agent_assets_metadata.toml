@@ -994,3 +994,17 @@ mtime_ms = 1792422102211
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/20800385-727b-4f30-b5b5-813547a6db25/414de055-e1d4-4133-bb3e-c9aafa05e0f9"
 storage_version_token = "1792422132967359"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "VW8_LzbDdpPdCUhpD6RCk"
+uri = "file://generated-artifacts/release-transport-readiness/report.md"
+type = "text"
+title = "Publishing transport verification — blocked; merge hook repaired"
+description = "No publication performed. Records missing authorization/recovery evidence, source drift and the syntax-only post-merge repair."
+logical_id = "d76685e4-8a6a-466b-b8ce-e0756ce14349"
+content_hash = "sha256:4a20c616d2a5596bedaa86bb36c86a47e7db908e3d8c6ac87e5f9129d5945e59"
+size = 4172
+mtime_ms = 1792422371271
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/d76685e4-8a6a-466b-b8ce-e0756ce14349/f4681c87-70f5-4567-be01-e684654b6eac"
+storage_version_token = "1792422396835750"
+content_type = "text/markdown"

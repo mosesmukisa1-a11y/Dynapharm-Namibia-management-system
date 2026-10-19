@@ -1,17 +1,20 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
-echo "Running post-merge setup..."
+echo "Running candidate-only post-merge source checks..."
 
-# Install all dependencies including dev tools (overrides .npmrc omit=dev)
-npm install --include=dev --no-fund --no-audit
+# A merge is not owner authorization to install, migrate, mint a release identity,
+# or build unreviewed source. Dependency reconciliation and release build belong
+# to the separately reviewed clean-install gate, not this automatic hook.
+if [[ "${NODE_ENV:-}" == "production" || "${REPLIT_DEPLOYMENT:-}" == "1" || "${REPLIT_DEPLOYMENT:-}" == "true" ]]; then
+  echo "Post-merge source checks refused in production." >&2
+  exit 1
+fi
 
-# Apply any pending database migrations (migrations only, no user seeding)
-echo "Running database migrations..."
-node migrations/run-migrations.js --migrations-only
+node --check scripts/lib/release-package.mjs
+node --check scripts/lib/verify-release-status.mjs
+node --check api/services/releaseStatus.js
+node --check server.js
 
-# Express serves dist; merged frontend repairs must not leave a stale bundle.
-echo "Building the frontend..."
-npm run build
-
-echo "Post-merge setup complete."
+echo "Post-merge source checks complete; no install, migration or build was performed."
+echo "Frontend dist may be stale. Release remains blocked until a reviewed candidate is frozen and its bound clean-install/build gate passes."

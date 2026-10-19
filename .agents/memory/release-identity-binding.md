@@ -16,6 +16,16 @@ the missing-binding build failure with environment digests, placeholder hashes
 or newly inventoried unreviewed source. Publishing transport must separately
 prove it preserves the required derived files.
 
+Automatic post-merge setup is not authorization for migrations or a release build.
+
+**Why:** An old hook ran migrations before attempting an unbound build, which
+then correctly failed the identity guard. Retrying that hook could repeat
+database work, while the platform retry also reconciles/restarts workflows.
+
+**How to apply:** Keep the automatic hook syntax-only and explicitly disclose
+possibly stale dist. Run reviewed dependency/build/migration work only under its
+separate authority. Do not retry platform reconciliation when restarts are barred.
+
 Public release status attests only the serving web instance's declared identity,
 local policy and cached readiness, not all deployed workers or credential safety.
 
