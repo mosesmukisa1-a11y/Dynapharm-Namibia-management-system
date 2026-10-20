@@ -1008,3 +1008,17 @@ mtime_ms = 1792422371271
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/d76685e4-8a6a-466b-b8ce-e0756ce14349/f4681c87-70f5-4567-be01-e684654b6eac"
 storage_version_token = "1792422396835750"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "3mLqLl9jj9yAhaARaem0o"
+uri = "file://generated-artifacts/replit-native-recovery-review/recovery-risk-review.md"
+type = "text"
+title = "Recovery-risk review — decision draft"
+description = "Verified protections, unproven recovery risks, and a limited exception option. No risk acceptance or production action authorized."
+logical_id = "fd2aef5e-a351-4b4a-8c65-1ebe03493cd1"
+content_hash = "sha256:4f3a9d60f54054d2f6b7242e97decfae2991eb96ada983a8608786911d276a1b"
+size = 8372
+mtime_ms = 1792502111410
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/fd2aef5e-a351-4b4a-8c65-1ebe03493cd1/e08ba784-6360-4c1a-8eec-dfea2f048037"
+storage_version_token = "1792502137923347"
+content_type = "text/markdown"
