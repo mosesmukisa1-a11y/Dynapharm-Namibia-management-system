@@ -59,3 +59,13 @@ preserve ownership/TLS/path checks when replacing fixture URLs. Prove that the
 equivalent assembled hardcoded expression is still detected. For syntax-spanning
 false positives, require exact expression structure and adjacent-real-assignment
 negative tests, not a nearby keyword or filename exemption.
+
+Scan every packaged textual source type, including shell helpers, rather than
+assuming a JavaScript/Python-oriented extension filter covers the release.
+
+**Why:** A local setup shell helper retained password material and credential-URL
+output while the narrower source scan reported no unresolved findings.
+
+**How to apply:** Bind scan coverage to the candidate manifest, explicitly include
+shell scripts, and keep current-source remediation separate from historical
+exposure and live credential-rotation evidence.
