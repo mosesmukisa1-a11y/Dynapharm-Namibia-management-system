@@ -43,5 +43,8 @@ declined internal workers/schedulers/legacy ownership, replica and build records
 and directed verification to visible Publishing, Git and Security controls.
 
 **How to apply:** Distinguish application-owned services from provider-internal
-infrastructure. Keep unavailable evidence UNKNOWN; any narrowed acceptance
-scope requires owner approval, not an inferred absence of hidden resources.
+infrastructure. On 2026-10-20 the owner approved limiting ownership verification
+to application-owned deployments, workers and schedules. Provider-internal
+inventory remains UNKNOWN but is outside this ownership gate. Do not infer
+absence of application-owned services or waive recovery, credential, candidate
+integrity or transport checks. This approval is not publication authority.
