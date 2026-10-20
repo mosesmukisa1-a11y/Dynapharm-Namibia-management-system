@@ -34,3 +34,14 @@ server can lie. A checksum is not a signed platform attestation.
 
 **How to apply:** Retain independent control-plane, recovery and credential
 containment gates; never close them solely from an endpoint response.
+
+Do not repeatedly request an internal Replit infrastructure inventory from
+support.
+
+**Why:** In an owner-provided support response recorded on 2026-10-20, support
+declined internal workers/schedulers/legacy ownership, replica and build records
+and directed verification to visible Publishing, Git and Security controls.
+
+**How to apply:** Distinguish application-owned services from provider-internal
+infrastructure. Keep unavailable evidence UNKNOWN; any narrowed acceptance
+scope requires owner approval, not an inferred absence of hidden resources.
