@@ -48,3 +48,13 @@ to application-owned deployments, workers and schedules. Provider-internal
 inventory remains UNKNOWN but is outside this ownership gate. Do not infer
 absence of application-owned services or waive recovery, credential, candidate
 integrity or transport checks. This approval is not publication authority.
+
+The owner confirmed on 2026-10-20: “No—only the main web app” when asked about
+separately deployed application workers or scheduled jobs.
+
+**Why:** Source-declared worker capabilities were being mistaken for a reason
+to repeatedly request an inventory of hypothetical deployed services.
+
+**How to apply:** Treat the separate-service inventory as owner-attested none,
+not independent platform enumeration. Reopen only with contrary/new evidence.
+This does not establish the enabled state of timers inside the web process.
