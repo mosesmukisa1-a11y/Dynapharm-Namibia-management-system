@@ -15,3 +15,13 @@ as vulnerable after the actual flaws have been fixed.
 **How to apply:** Check the installed distribution and version against the
 upstream advisory's real fixed release. Document scanner discrepancies honestly
 and do not add broad exclusions that would hide future, genuine vulnerabilities.
+
+Keep direct scanner results separate from the Security pane and publication
+enforcement.
+
+**Why:** Owner-supplied UI evidence displayed two older dependency findings while
+fresh scanner callbacks returned additional static findings. Callback results
+alone did not establish the pane's state or an actual publication rejection.
+
+**How to apply:** Label each evidence source and timestamp; never infer provider
+gate failure or synchronization from raw scan counts. Preserve the safeguard.
