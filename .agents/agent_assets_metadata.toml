@@ -1050,3 +1050,17 @@ mtime_ms = 1792505213501
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/e5ceb3f1-c03b-4ca7-af6c-779d99177e7c/6996c6f6-7e2c-49d8-b520-7ccca558a816"
 storage_version_token = "1792505240205221"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "FiA7W9eeznQWEpErNSRgc"
+uri = "file://generated-artifacts/staging-release-review/report.md"
+type = "text"
+title = "Staging readiness — isolation blocker"
+description = "Candidate checksums verified. Deployment stopped before startup because no isolated staging target could be verified; production unchanged."
+logical_id = "7ae97a02-8f71-476f-9a79-c1fa2cab6dd4"
+content_hash = "sha256:fc756fb9a0500fc7371619b4ff76f5da9a7229e7b65488f2f4a93301bc9064db"
+size = 7196
+mtime_ms = 1792507115566
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/7ae97a02-8f71-476f-9a79-c1fa2cab6dd4/98086f7b-5600-456f-adca-ffff010e8ec9"
+storage_version_token = "1792507133588861"
+content_type = "text/markdown"

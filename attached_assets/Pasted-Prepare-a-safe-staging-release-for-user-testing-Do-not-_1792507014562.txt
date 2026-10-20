@@ -1,0 +1,74 @@
+Prepare a safe staging release for user testing. Do not publish or republish the live production deployment.
+
+Project: Dynapharm-Namibia-management-system
+
+Approved candidate:
+74f2dff9731dd94f40903a05d4b73e085e82ada844ac1e46c1294a273c0c6730
+
+Required rules:
+
+1. Preserve the approved production candidate unchanged.
+2. Create or use a separate staging/preview deployment.
+3. Do not connect staging to:
+   - the production database,
+   - production credentials,
+   - production secrets,
+   - production App Storage,
+   - production domains,
+   - production queues, workers, or schedulers.
+4. Do not restore, migrate, delete, overwrite, or modify production data.
+5. Do not activate or restart production workers or schedulers.
+6. Do not reveal or print secret values, connection strings, business rows, uploaded files, or personal data.
+7. Stop immediately if staging isolation cannot be verified.
+
+Candidate preparation:
+
+8. Confirm the candidate archive and manifest SHA-256 values.
+9. Confirm there are no missing, extra, or mismatched files.
+10. Confirm the detached candidate binding matches the approved candidate.
+11. Run the clean install, production build, unit tests, isolated database tests, security tests, startup contracts, browser rehearsal, and fixture cleanup.
+12. Record sanitized results only.
+
+Staging deployment:
+
+13. Deploy the candidate only to the staging or preview target.
+14. Use clearly visible testing labels such as “STAGING” or “PREVIEW.”
+15. Confirm the staging URL, deployment type, build identity, runtime command, and health status.
+16. Run bounded smoke tests:
+   - sign-in flow,
+   - temporary-password replacement flow,
+   - representative read-only page loads,
+   - representative form validation,
+   - logout/session behavior,
+   - public source-file denial.
+17. Do not perform destructive actions or write production data.
+18. Do not invite users to the production URL. Share only the staging URL.
+
+Evidence:
+
+19. Save a sanitized report to:
+   generated-artifacts/staging-release-review/report.md
+20. Include:
+   - candidate checksum,
+   - manifest checksum,
+   - staging deployment identity,
+   - staging URL,
+   - isolation evidence,
+   - test results,
+   - smoke-test results,
+   - known limitations,
+   - proposed user-feedback process.
+21. Mark each gate PASS, FAIL, or UNKNOWN.
+22. Never treat an UNKNOWN provider control as PASS.
+23. Keep the production release verdict as BLOCKED unless all mandatory production gates are directly evidenced.
+24. Stop after staging is ready. Do not publish production.
+
+Final response must state:
+
+- staging deployment status,
+- staging URL,
+- exact candidate checksum,
+- isolation status,
+- tests passed or failed,
+- remaining blockers,
+- confirmation that production was not published or modified.
