@@ -1,0 +1,85 @@
+Fix the concrete release-preparation problem in this existing Dynapharm Namibia project. Do not rebuild the application from scratch or repeat the previous open-ended audit.
+
+GOAL
+Prepare one exact, reviewable candidate that can pass the existing production build and strict startup identity checks. Investigate how its approved detached release binding will reach Replit’s publishing build.
+
+Do not publish or modify production.
+
+FIRST READ
+- scripts/RELEASE-OBSERVABILITY.md
+- generated-artifacts/final-release-gate-review/report.md
+- generated-artifacts/candidate-security-remediation/candidate-manifest.json
+- generated-artifacts/candidate-security-remediation/release-binding.json
+- The existing packaging, binding-staging, build-plugin and strict-launcher code.
+
+KNOWN CANDIDATE
+Archive SHA-256:
+74f2dff9731dd94f40903a05d4b73e085e82ada844ac1e46c1294a273c0c6730
+
+Manifest SHA-256:
+3600bbbdb4fb942b497fd24c4324f95374f0e9fb33b1b45a3826355c60d4b927
+
+Detached binding SHA-256:
+5fbb4421fd86bf480897232051b0915e0cc5883994e6181288cb20c054f0de84
+
+Verify these values; do not assume they still match.
+
+CONCRETE PROBLEM
+At the last inspection:
+- All 885 packaged source files matched the candidate.
+- The complete disposable clean-install/build/test gate passed.
+- The retained detached binding existed in the evidence directory.
+- Workspace-root .release-binding.json and .release-identity.json were absent.
+- The disposable clean gate generated release files inside its own copy, which did not prove their availability in the actual publishing build.
+- A public live /api/release-status request returned HTTP 401. That did not prove the existing app was broken or identify its current build.
+
+AUTHORIZED WORK
+1. Verify the archive, manifest, binding and current source before changing anything.
+2. Trace exactly how the existing build consumes the detached binding and generates release identity.
+3. Use the repository’s existing staging mechanism in a candidate-owned clean release directory.
+4. Verify that the candidate builds and its strict launcher works with the correctly staged inputs using isolated fixtures.
+5. Investigate the publishing-input path using supported documentation and accessible non-secret metadata. Do not assume ignored generated files are transported.
+6. If a candidate-side packaging fix is necessary, implement the smallest secure change and add focused tests.
+7. Preserve fail-closed behavior for missing/malformed bindings, source drift, incorrect hashes and missing identity.
+8. Never substitute an arbitrary environment digest, placeholder identity or manifest freshly generated from unreviewed source.
+9. Never place release evidence, credentials or private files in public assets.
+10. If source changes, create a new candidate archive, manifest, detached binding and checksums. Run the complete existing clean-install release gate once against that exact candidate. Diagnose failures rather than repeatedly rerunning for a pass.
+11. If source is unchanged, keep the approved archive and distinguish staging verification from actual publishing-transport verification.
+
+SAFETY BOUNDARIES
+- No publication, production restart, migration, restore or production data repair.
+- No production SQL, business rows, storage objects or credential/session access.
+- No secret changes, worker activation, scheduler activation or automatic backup execution.
+- Do not enable “Copy development database to production.”
+- Do not disable security protections or remove genuine security checks.
+- Do not alter working stock, prescription, payment or client-history behavior.
+- Preserve the existing red/white theme and navigation.
+- Only the main web app is deployed, according to the owner. Do not demand an inventory of hypothetical separate workers.
+- Replit-internal infrastructure is outside the owner-approved ownership scope.
+
+IMPORTANT DISTINCTIONS
+The current live app is operational according to the owner.
+A missing candidate release file is not proof that production is broken.
+
+Production backup/PITR controls are evidenced, but isolated recovery, file recovery and recovery timing remain unproven. Do not claim this packaging fix resolves those risks.
+
+Actual publishing transport and the new live identity require a later, separately authorized publication. Do not publish merely to test them.
+
+DELIVERABLE
+Save:
+generated-artifacts/release-preparation-fix/report.md
+
+Include:
+- Exact root cause and affected files.
+- Changes made, or why staging alone was sufficient.
+- Exact candidate/archive, manifest and binding checksums.
+- Exact commands and fresh test results.
+- How approved release inputs are expected to reach the publishing build, and what remains unverified.
+- A short owner-operated publishing procedure with explicit pause points.
+- A bounded post-publication verification procedure.
+- Separate verdicts for:
+  A. Candidate preparation/build/startup.
+  B. Publishing-input readiness.
+  C. Remaining operational/recovery risks.
+
+Finish with one concise summary. If blocked, name the specific missing capability or failed check and the exact action needed. Do not manufacture evidence or rename an unverified requirement PASS.
