@@ -1036,3 +1036,17 @@ mtime_ms = 1792503718855
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/aaa9b55e-2453-4fed-b2ac-8f03fb379e78/554e756e-9742-47dc-b009-2dc500fa0c31"
 storage_version_token = "1792503790304998"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "Yj4i_5jRjZwLo2ANzggdO"
+uri = "file://generated-artifacts/exact-release-candidate/report.md"
+type = "text"
+title = "Exact release candidate — owner review"
+description = "Fresh full clean-install and isolated test results, exact checksums, reviewed findings and remaining publication requirements. No publication performed."
+logical_id = "e5ceb3f1-c03b-4ca7-af6c-779d99177e7c"
+content_hash = "sha256:7658432f9d538b9769f8fe688347a4d948ea95ab77e2c2042d66d022984a18a7"
+size = 11561
+mtime_ms = 1792505213501
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/e5ceb3f1-c03b-4ca7-af6c-779d99177e7c/6996c6f6-7e2c-49d8-b520-7ccca558a816"
+storage_version_token = "1792505240205221"
+content_type = "text/markdown"
