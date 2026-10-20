@@ -109,6 +109,19 @@ replace replica guards with a primary connection. Keep custom backup execution
 disabled. Native database recovery does not establish App Storage/legacy-file
 recovery, safe whole-code rollback, or measured 15-minute RPO/60-minute RTO.
 
+Do not propose the scheduled Production Restore action as an isolated rehearsal.
+
+**Why:** On 2026-10-20 the owner supplied Support's confirmation that scheduled
+restore switches production and may reconnect services. Support had no supported
+self-service independent destination to offer and could not confirm one; its
+permission requirements were undocumented.
+
+**How to apply:** Preserve the backup/PITR evidence, but mark this isolated
+rehearsal path blocked. Do not repeat the same support request or infer all
+alternative recovery designs impossible. Any alternative execution or narrower
+recovery risk acceptance needs separate authority; no such waiver follows from
+the Support response.
+
 Run independent offline release gates while recovery evidence remains blocked.
 
 **Why:** The owner explicitly requires candidate installation/tests/security work
