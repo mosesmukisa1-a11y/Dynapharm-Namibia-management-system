@@ -58,3 +58,15 @@ to repeatedly request an inventory of hypothetical deployed services.
 **How to apply:** Treat the separate-service inventory as owner-attested none,
 not independent platform enumeration. Reopen only with contrary/new evidence.
 This does not establish the enabled state of timers inside the web process.
+
+Do not treat documentation-search summaries or Git ignore checks as a publishing
+file-delivery contract.
+
+**Why:** Official-documentation searches gave inconsistent Git-ignore transport
+summaries, while directly fetched configuration/publishing pages did not specify
+ignored detached-dotfile delivery. A correct offline stage cannot settle that gap.
+
+**How to apply:** Cite directly supported build/run behavior separately from
+unknown build-context membership. Preserve the reviewed candidate when staging
+works; require supported private input delivery before claiming publishing-input
+readiness, and separate actual transport proof under later publication authority.

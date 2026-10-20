@@ -1022,3 +1022,17 @@ mtime_ms = 1792502111410
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/fd2aef5e-a351-4b4a-8c65-1ebe03493cd1/e08ba784-6360-4c1a-8eec-dfea2f048037"
 storage_version_token = "1792502137923347"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "qRUmWULINoLv4SDTqffes"
+uri = "file://generated-artifacts/release-preparation-fix/report.md"
+type = "text"
+title = "Release preparation report"
+description = "Verified exact candidate, fresh isolated build/startup results, publishing-input limitations, and owner pause points. No production changes."
+logical_id = "aaa9b55e-2453-4fed-b2ac-8f03fb379e78"
+content_hash = "sha256:916b854c44d78aea3346aceb3f4c022f600804c848c783ec1936adda6ceca2f5"
+size = 24086
+mtime_ms = 1792503718855
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/aaa9b55e-2453-4fed-b2ac-8f03fb379e78/554e756e-9742-47dc-b009-2dc500fa0c31"
+storage_version_token = "1792503790304998"
+content_type = "text/markdown"
