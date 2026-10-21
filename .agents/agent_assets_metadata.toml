@@ -1078,3 +1078,17 @@ mtime_ms = 1792574183454
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/68a5eac9-65ec-4349-962b-40695ae6d206/a8e12f5e-861e-4992-a490-837adecb3c4a"
 storage_version_token = "1792574188470895"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "AQzm4MNdDlO2rNkzlhWRJ"
+uri = "file://generated-artifacts/release-local-continuation/report.md"
+type = "text"
+title = "Offline recovery and release verification"
+description = "271 focused tests passed, memory-only restore and cleanup passed, candidate unchanged. Includes concrete production-binding and historical rollback limitations; no production operations."
+logical_id = "cabe91ba-8914-4fa8-af69-6606c43629dd"
+content_hash = "sha256:520cc7bbfb20dad956f7d8803e3b8468c0ccf506c0667b805f8365cc464a6884"
+size = 8139
+mtime_ms = 1792575083514
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/cabe91ba-8914-4fa8-af69-6606c43629dd/fe65e2c9-7d7f-4f58-8165-4da64722cca3"
+storage_version_token = "1792575102183416"
+content_type = "text/markdown"
