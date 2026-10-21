@@ -28,6 +28,7 @@ import GMSectionLayout from '../../components/GMSectionLayout';
 import { parsePriceListText, businessToday } from '../../../../shared/price-list-import.js';
 
 export default function GMPortal() {
+  const { user, hasPortalAccess } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [pendingAdj, setPendingAdj] = useState(0);
   const [tabVisits, setTabVisits] = useState({ dashboard: 1 });
@@ -42,9 +43,33 @@ export default function GMPortal() {
   }, [activeTab]);
 
   useEffect(() => {
-    api.get('/stock-adjustments?status=pending')
-      .then(d => setPendingAdj(Array.isArray(d) ? d.length : 0))
-      .catch(() => {});
+    if (!user || !hasPortalAccess('gm')) {
+      setPendingAdj(0);
+      return;
+    }
+    let mounted = true;
+    let latestRequest = 0;
+    const refreshPendingCount = () => {
+      const request = ++latestRequest;
+      api.get('/stock-adjustments?status=pending')
+        .then(data => {
+          if (mounted && request === latestRequest && Array.isArray(data)) {
+            setPendingAdj(data.length);
+          }
+        })
+        .catch(() => {});
+    };
+    refreshPendingCount();
+    // Reviews by other staff need not emit a stock mutation (e.g. rejection).
+    // Recheck on return without opening a second stock realtime subscription.
+    window.addEventListener('focus', refreshPendingCount);
+    return () => {
+      mounted = false;
+      window.removeEventListener('focus', refreshPendingCount);
+    };
+  }, [user, hasPortalAccess]);
+
+  useEffect(() => {
     api.prices.list().then(data => {
       if (Array.isArray(data) && data.length > 0) setLivePrices(data);
     }).catch(() => {});
