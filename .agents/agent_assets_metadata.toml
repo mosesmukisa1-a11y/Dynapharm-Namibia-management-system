@@ -1106,3 +1106,17 @@ mtime_ms = 1792575889929
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/69b8454e-d06b-4231-93d0-caea7cca50f1/afa3077a-a869-421b-b092-f05a0e7ac8a0"
 storage_version_token = "1792575909336390"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "50N9FCcr2iWALZmBlNa0x"
+uri = "file://generated-artifacts/candidate-startup-settings-20261021/report.md"
+type = "text"
+title = "Updated candidate and migration review"
+description = "New candidate hashes, fresh clean-install results, and the nine-statement publishing review. No production changes or publication."
+logical_id = "aa7422c6-3a6e-45e1-af06-151ae298817e"
+content_hash = "sha256:f9f367191ea0489145ba47d54b11f62c611049c8b1af2ec5207a116f75fac800"
+size = 10369
+mtime_ms = 1792591469735
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/aa7422c6-3a6e-45e1-af06-151ae298817e/6967a2e5-4e2b-455e-85a6-5b45d3ea30dc"
+storage_version_token = "1792591519117397"
+content_type = "text/markdown"

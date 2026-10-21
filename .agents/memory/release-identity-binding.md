@@ -81,3 +81,15 @@ metadata. Even an approved safety-only change can invalidate a frozen binding.
 recheck candidate coverage before building or suggesting publication. Preserve the
 old archive; repackage and review the approved configuration change rather than
 bypassing integrity checks or reusing the old identity.
+
+Application code-only startup guards do not govern provider publishing-time schema synchronization.
+
+**Why:** A failed publication built successfully and logged additive schema DDL
+before its launcher crash. Whether that DDL committed was not established by the
+failure logs; failure at readiness does not prove database rollback.
+
+**How to apply:** Under a no-migration release, require a current supported
+provider plan proving zero schema changes before retrying. Do not equate the
+unchecked development-data-copy option with disabling schema synchronization,
+or infer schema state from application flags. Avoid a diff callback that may
+provision a replica when no production resource changes are authorized.
