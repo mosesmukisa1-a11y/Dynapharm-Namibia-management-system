@@ -65,3 +65,78 @@ it('rejects the full pending set and displays refresh failures rather than an em
   expect(host.textContent).toContain('Could not refresh stock edits: Connection lost');
   expect(button('Approve All (16)')).toBeTruthy();
 });
+
+const openSingleWithNotes = async (action = 'approve') => {
+  api.get.mockResolvedValueOnce([pending[0]]);
+  await act(async () => root.render(<StockAdjustmentsTab />));
+  await act(async () => [...host.querySelectorAll('button')]
+    .find(b => b.textContent.trim() === (action === 'approve' ? '✓ Approve' : '✕ Reject')).click());
+  const textarea = host.querySelector('textarea');
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(textarea, 'Keep my draft notes');
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  return textarea;
+};
+const focusRefresh = async () => {
+  await act(async () => window.dispatchEvent(new Event('focus')));
+};
+
+it.each([
+  ['approved', 'reject'],
+  ['rejected', 'approve'],
+])('warns inside the preserved %s dialog and retains notes, action and server conflict handling', async (status, action) => {
+  const textarea = await openSingleWithNotes(action);
+  api.get.mockResolvedValueOnce([{ ...pending[0], status }]);
+  await focusRefresh();
+
+  const notice = host.querySelector('[role="status"]');
+  expect(notice.textContent).toContain(`This request has already been ${status}`);
+  expect(notice.closest('.fixed')).toBeTruthy();
+  expect(host.querySelector('textarea')).toBe(textarea);
+  expect(textarea.value).toBe('Keep my draft notes');
+  expect(api.patch).not.toHaveBeenCalled();
+  // A refreshed decision is informational, not a replacement for server checks.
+  api.patch.mockRejectedValueOnce(new Error('This request has already been reviewed'));
+  await act(async () => button(action === 'approve' ? '✓ Approve & Apply' : '✕ Reject').click());
+  expect(api.patch).toHaveBeenCalledExactlyOnceWith(`/stock-adjustments/${pending[0].id}/${action}`, {
+    gm_notes: 'Keep my draft notes',
+  });
+  expect(host.textContent).toContain('This request has already been reviewed');
+  expect(host.querySelector('textarea').value).toBe('Keep my draft notes');
+  expect(host.querySelector('[role="status"]').textContent).toContain(`already been ${status}`);
+});
+
+it.each([
+  ['failed', new Error('Connection lost')],
+  ['non-array', { status: 'approved' }],
+  ['null row', [null]],
+  ['malformed row', [{ id: pending[0].id, status: 'approved' }, { id: 'broken' }]],
+  ['duplicate IDs', [{ ...pending[0], status: 'approved' }, pending[0]]],
+  ['missing request', [{ id: 'OTHER', status: 'approved' }]],
+  ['still pending', [pending[0]]],
+  ['unknown decision', [{ ...pending[0], status: 'unknown' }]],
+])('does not infer a decision from a %s refresh or discard the draft', async (_label, response) => {
+  const textarea = await openSingleWithNotes();
+  if (response instanceof Error) api.get.mockRejectedValueOnce(response);
+  else api.get.mockResolvedValueOnce(response);
+  await focusRefresh();
+  expect(host.querySelector('[role="status"]')).toBeNull();
+  expect(host.querySelector('textarea')).toBe(textarea);
+  expect(textarea.value).toBe('Keep my draft notes');
+  expect(button('✓ Approve & Apply')).toBeTruthy();
+  expect(api.patch).not.toHaveBeenCalled();
+});
+
+it('retains the last successful decision after a failed refresh and updates it only from a valid response', async () => {
+  await openSingleWithNotes();
+  api.get.mockResolvedValueOnce([{ ...pending[0], status: 'approved' }]);
+  await focusRefresh();
+  api.get.mockRejectedValueOnce(new Error('Connection lost'));
+  await focusRefresh();
+  expect(host.querySelector('[role="status"]').textContent).toContain('already been approved');
+  api.get.mockResolvedValueOnce([{ ...pending[0], status: 'rejected' }]);
+  await focusRefresh();
+  expect(host.querySelector('[role="status"]').textContent).toContain('already been rejected');
+  expect(host.querySelector('textarea').value).toBe('Keep my draft notes');
+});

@@ -290,7 +290,12 @@ export function StockAdjustmentsTab({ onCountChange }) {
     try {
         const d = await api.get('/stock-adjustments');
         if (!mounted.current || request !== latestRequest.current) return;
-        if (!Array.isArray(d)) throw new Error('Invalid stock edits response');
+        if (!Array.isArray(d) || !d.every(a =>
+          a && (typeof a.id === 'string' || typeof a.id === 'number') &&
+          String(a.id).trim() !== '' && ['pending', 'approved', 'rejected'].includes(a.status)
+        ) || new Set(d.map(a => String(a.id))).size !== d.length) {
+          throw new Error('Invalid stock edits response');
+        }
         setAdjustments(d);
         if (onCountChange) onCountChange(d.filter(a => a.status === 'pending').length);
     } catch (err) {
@@ -323,6 +328,11 @@ export function StockAdjustmentsTab({ onCountChange }) {
 
   const filtered = filter === 'all' ? adjustments : adjustments.filter(a => a.status === filter);
   const pendingCount = adjustments.filter(a => a.status === 'pending').length;
+  // The dialog snapshot and draft stay intact; only a validated list can report
+  // an external decision. A missing row is not evidence of approval/rejection.
+  const latestModalRequest = actionModal && adjustments.find(a => a.id === actionModal.id);
+  const externalDecision = ['approved', 'rejected'].includes(latestModalRequest?.status)
+    ? latestModalRequest.status : null;
 
   const handleDecision = async (action) => {
     if (!actionModal || bulkProcessing || processing) return;
@@ -486,6 +496,15 @@ export function StockAdjustmentsTab({ onCountChange }) {
         <div className="p-6 space-y-4">
           {actionModal && (
             <>
+              {externalDecision && (
+                <div role="status">
+                  <Alert type="info">
+                    This request has already been {externalDecision}, according to the latest successful refresh.
+                    {' '}Your draft notes and selected action have been kept. You can close this dialog;
+                    submitting will still be checked by the server.
+                  </Alert>
+                </div>
+              )}
               <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 16px' }}>
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Request Details</p>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
