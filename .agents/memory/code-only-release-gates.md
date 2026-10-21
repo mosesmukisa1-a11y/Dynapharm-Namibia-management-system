@@ -132,3 +132,15 @@ attempts unnecessarily stopped all candidate work at the recovery prerequisite.
 approval. Bind each to exact current inputs, retain B2 independently, stop on a
 new concrete test failure/source drift, and never promote offline success into
 production recovery, credential-containment or live-worker ownership proof.
+
+Retain the original isolated-restore and measured recovery release requirements;
+do not propose risk acceptance as if it were still an unanswered decision.
+
+**Why:** On 2026-10-21 the owner explicitly selected “Keep the isolated-restore
+and measured recovery requirements.” No exception was accepted.
+
+**How to apply:** Require independent isolated restore/completeness/cleanup
+evidence, RPO ≤15 minutes and restoration plus validation RTO ≤60 minutes before
+release. Daily-backup/PITR settings and synthetic timing do not satisfy these
+requirements. Keep offline work independent and do not use production in-place
+restore as a rehearsal. Revisit only if the owner explicitly changes this policy.
