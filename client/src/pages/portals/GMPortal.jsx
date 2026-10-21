@@ -894,8 +894,8 @@ function DashboardTab() {
   );
 }
 
-function ApprovalsTab() {
-  const { user } = useAuth();
+export function ApprovalsTab() {
+  const { user, hasPortalAccess } = useAuth();
   const [approvalTab, setApprovalTab] = useState('transfers');
   const [cashRequests, setCashRequests] = useState([]);
   const [leaveRequests, setLeaveRequests] = useState([]);
@@ -939,6 +939,27 @@ function ApprovalsTab() {
   const [rentReviewNote, setRentReviewNote] = useState('');
   const [salaryReviewModal, setSalaryReviewModal] = useState(null);
   const [salaryReviewNote, setSalaryReviewNote] = useState('');
+  const mounted = useRef(false);
+  const latestRequest = useRef(0);
+  const deciding = useRef(false);
+  const refreshAfterDecision = useRef(false);
+
+  const beginDecision = () => {
+    deciding.current = true;
+    // An earlier queue snapshot must not undo a successful local decision.
+    latestRequest.current++;
+    setProcessing(true);
+  };
+  const endDecision = () => {
+    deciding.current = false;
+    if (mounted.current) {
+      setProcessing(false);
+      if (refreshAfterDecision.current) {
+        refreshAfterDecision.current = false;
+        loadData({ background: true });
+      }
+    }
+  };
 
   const fmtLoc = (loc) => {
     if (!loc) return '—';
@@ -948,12 +969,20 @@ function ApprovalsTab() {
 
   const fmtDate = (d) => { if (!d) return '—'; try { return new Date(d).toLocaleDateString('en-ZA', { year: 'numeric', month: 'short', day: 'numeric' }); } catch { return d; } };
 
-  const toArr = (v) => Array.isArray(v) ? v : [];
-
-  const loadData = async () => {
-    setLoading(true);
+  const loadData = useCallback(async ({ background = false } = {}) => {
+    if (!mounted.current || !user || !hasPortalAccess('gm')) return;
+    if (deciding.current) {
+      refreshAfterDecision.current = true;
+      return;
+    }
+    const request = ++latestRequest.current;
+    if (!background) setLoading(true);
+    const toArr = (v) => {
+      if (!Array.isArray(v)) throw new Error('Invalid queue response');
+      return v;
+    };
     const loadErrors=[];
-    const reportError=label=>error=>{loadErrors.push(`${label}: ${error.message || 'Unable to load'}`);return [];};
+    const reportError=label=>error=>{loadErrors.push(`${label}: ${error.message || 'Unable to load'}`);return null;};
     try {
       const [cash, leaves, stock, transfers, fieldReqs, pcReqs, rentReqs, salaryReqs, casReqs, adminLeaves, bonusDelReqs, staffChangeReqs, writeOffs] = await Promise.all([
         api.branch.cashMovements().then(d => toArr(d?.movements ?? d)).catch(reportError('Cash movements')),
@@ -970,33 +999,60 @@ function ApprovalsTab() {
         api.hr.staffChangeRequests.list('pending').then(d => toArr(d?.requests)).catch(reportError('Staff changes')),
         api.get('/stock-movements?type=write_off&status=pending_approval&limit=200').then(d => toArr(d?.movements)).catch(reportError('Write-offs')),
       ]);
-      setCashRequests(cash.filter(c => c.status === 'pending'));
-      setLeaveRequests(leaves.filter(l => l.status === 'pending'));
-      setStockRequests(stock.filter(s => ['pending','reviewed'].includes(s.status)));
-      setPendingTransfers(transfers);
-      setFieldRequests(fieldReqs.filter(r => r.status === 'pending'));
-      setAllFieldRequests(fieldReqs);
-      setPettyCashRequests(pcReqs.filter(r => r.status === 'pending_gm'));
-      setRentEditRequests(rentReqs);
-      setSalaryEditRequests(salaryReqs);
-      setCasRequests(casReqs);
-      setAdminLeaveRequests(adminLeaves.filter(r => r.status?.toLowerCase() === 'pending'));
-      setAllLeaveHistory(adminLeaves);
-      setBonusDeleteRequests(bonusDelReqs);
-      setStaffChangeRequests(staffChangeReqs);
-      setPendingWriteOffs(writeOffs.filter(w => w.status === 'pending_approval'));
+      if (!mounted.current || request !== latestRequest.current) return;
+      // A failed queue keeps its last snapshot; independent successful queues
+      // still refresh. Do not interpret an unavailable endpoint as an empty list.
+      if (cash) setCashRequests(cash.filter(c => c.status === 'pending'));
+      if (leaves) setLeaveRequests(leaves.filter(l => l.status === 'pending'));
+      if (stock) setStockRequests(stock.filter(s => ['pending','reviewed'].includes(s.status)));
+      if (transfers) setPendingTransfers(transfers);
+      if (fieldReqs) {
+        setFieldRequests(fieldReqs.filter(r => r.status === 'pending'));
+        setAllFieldRequests(fieldReqs);
+      }
+      if (pcReqs) setPettyCashRequests(pcReqs.filter(r => r.status === 'pending_gm'));
+      if (rentReqs) setRentEditRequests(rentReqs);
+      if (salaryReqs) setSalaryEditRequests(salaryReqs);
+      if (casReqs) setCasRequests(casReqs);
+      if (adminLeaves) {
+        setAdminLeaveRequests(adminLeaves.filter(r => r.status?.toLowerCase() === 'pending'));
+        setAllLeaveHistory(adminLeaves);
+      }
+      if (bonusDelReqs) setBonusDeleteRequests(bonusDelReqs);
+      if (staffChangeReqs) setStaffChangeRequests(staffChangeReqs);
+      if (writeOffs) setPendingWriteOffs(writeOffs.filter(w => w.status === 'pending_approval'));
       if(loadErrors.length) setMessage('Error loading approval queues — '+loadErrors.join('; '));
+      else setMessage(previous => previous.startsWith('Error loading approval queues — ') ? '' : previous);
     } catch (err) {
-      setMessage('Error: ' + err.message);
+      if (mounted.current && request === latestRequest.current) setMessage('Error: ' + err.message);
     } finally {
-      setLoading(false);
+      if (mounted.current && request === latestRequest.current) setLoading(false);
     }
-  };
+  }, [user, hasPortalAccess]);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    if (!user || !hasPortalAccess('gm')) {
+      [setCashRequests, setLeaveRequests, setStockRequests, setPendingTransfers,
+        setFieldRequests, setAllFieldRequests, setPettyCashRequests, setRentEditRequests,
+        setSalaryEditRequests, setCasRequests, setAdminLeaveRequests, setAllLeaveHistory,
+        setBonusDeleteRequests, setStaffChangeRequests, setPendingWriteOffs].forEach(setRows => setRows([]));
+      setLoading(false);
+      return;
+    }
+    mounted.current = true;
+    loadData();
+    const refreshOnReturn = () => loadData({ background: true });
+    window.addEventListener('focus', refreshOnReturn);
+    return () => {
+      mounted.current = false;
+      latestRequest.current++;
+      refreshAfterDecision.current = false;
+      window.removeEventListener('focus', refreshOnReturn);
+    };
+  }, [user, hasPortalAccess, loadData]);
 
   const handleAction = async (type, id, action) => {
-    setProcessing(true);
+    beginDecision();
     try {
       if (type === 'cash') {
         await api.put(`/branch/cash-movements/${id}`, { status: action, notes: note });
@@ -1048,13 +1104,13 @@ function ApprovalsTab() {
     } catch (err) {
       setMessage('Error: ' + err.message);
     } finally {
-      setProcessing(false);
+      endDecision();
     }
   };
 
   const handleAmendApprove = async (commentOverride) => {
     if (!amendModal) return;
-    setProcessing(true);
+    beginDecision();
     try {
       const gmName = user?.full_name || user?.username || 'GM';
       const effectiveComment = commentOverride !== undefined ? commentOverride : amendComment;
@@ -1103,12 +1159,12 @@ function ApprovalsTab() {
     } catch (err) {
       setMessage('Error: ' + err.message);
     } finally {
-      setProcessing(false);
+      endDecision();
     }
   };
 
   const handleReturnForCorrection = async (transferId) => {
-    setProcessing(true);
+    beginDecision();
     try {
       const gmName = user?.full_name || user?.username || 'GM';
       await api.stock.updateTransfer(transferId, {
@@ -1125,7 +1181,7 @@ function ApprovalsTab() {
     } catch (err) {
       setMessage('Error: ' + err.message);
     } finally {
-      setProcessing(false);
+      endDecision();
     }
   };
 
@@ -1170,7 +1226,7 @@ function ApprovalsTab() {
   };
 
   const handleWriteOffAction = async (ids, action, noteText) => {
-    setProcessing(true);
+    beginDecision();
     try {
       const gmName = user?.full_name || user?.username || 'GM';
       await api.put('/stock-movements', {
@@ -1189,7 +1245,7 @@ function ApprovalsTab() {
     } catch (err) {
       setMessage('Error: ' + err.message);
     } finally {
-      setProcessing(false);
+      endDecision();
     }
   };
 
@@ -1220,7 +1276,7 @@ function ApprovalsTab() {
 
   const handleRentReview = async (action) => {
     if (!rentReviewModal) return;
-    setProcessing(true);
+    beginDecision();
     try {
       const result = await api.finance.rent.reviewEdit(rentReviewModal.id, action, rentReviewNote);
       if (!result.success) throw new Error(result.error || 'Failed');
@@ -1231,13 +1287,13 @@ function ApprovalsTab() {
     } catch (err) {
       setMessage('Error: ' + err.message);
     } finally {
-      setProcessing(false);
+      endDecision();
     }
   };
 
   const handleCasAction = async (action) => {
     if (!casModal) return;
-    setProcessing(true);
+    beginDecision();
     try {
       await api.patch(`/cash-requests/${casModal.id}`, { status: action, note: casNote });
       const msg = action === 'approved'
@@ -1250,13 +1306,13 @@ function ApprovalsTab() {
     } catch (err) {
       setMessage('Error: ' + err.message);
     } finally {
-      setProcessing(false);
+      endDecision();
     }
   };
 
   const handleLeaveApproval = async (action) => {
     if (!leaveApprovalModal) return;
-    setProcessing(true);
+    beginDecision();
     try {
       await api.patch(`/leave-requests/${leaveApprovalModal.id}`, { status: action, note: leaveApprovalNote });
       const msg = action === 'approved'
@@ -1278,13 +1334,13 @@ function ApprovalsTab() {
     } catch (err) {
       setMessage('Error: ' + err.message);
     } finally {
-      setProcessing(false);
+      endDecision();
     }
   };
 
   const handleSalaryReview = async (action) => {
     if (!salaryReviewModal) return;
-    setProcessing(true);
+    beginDecision();
     try {
       const result = await api.hr.salaryLedger.reviewEdit(salaryReviewModal.id, action, salaryReviewNote);
       if (!result.success) throw new Error(result.error || 'Failed');
@@ -1295,7 +1351,7 @@ function ApprovalsTab() {
     } catch (err) {
       setMessage('Error: ' + err.message);
     } finally {
-      setProcessing(false);
+      endDecision();
     }
   };
 
@@ -2283,7 +2339,7 @@ function ApprovalsTab() {
                   <button
                     disabled={processing}
                     onClick={async () => {
-                      setProcessing(true);
+                      beginDecision();
                       try {
                         const result = await api.finance.actionBonusPeriodDeleteRequest(bonusDeleteModal.req.id, {
                           action: bonusDeleteModal.action,
@@ -2298,7 +2354,7 @@ function ApprovalsTab() {
                       } catch (err) {
                         setMessage('Error: ' + err.message);
                       } finally {
-                        setProcessing(false);
+                        endDecision();
                       }
                     }}
                     style={{
@@ -2405,7 +2461,7 @@ function ApprovalsTab() {
                   <button
                     disabled={processing}
                     onClick={async () => {
-                      setProcessing(true);
+                      beginDecision();
                       try {
                         await api.hr.staffChangeRequests.review(staffChangeModal.req.id, staffChangeModal.action, staffChangeNote);
                         setMessage(staffChangeModal.action === 'approved'
@@ -2417,7 +2473,7 @@ function ApprovalsTab() {
                       } catch (err) {
                         setMessage('Error: ' + err.message);
                       } finally {
-                        setProcessing(false);
+                        endDecision();
                       }
                     }}
                     style={{ flex: 2, padding: '10px', border: 'none', borderRadius: 10, fontWeight: 800, cursor: processing ? 'not-allowed' : 'pointer', opacity: processing ? 0.65 : 1,
