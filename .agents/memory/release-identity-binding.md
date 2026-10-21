@@ -70,3 +70,14 @@ ignored detached-dotfile delivery. A correct offline stage cannot settle that ga
 unknown build-context membership. Preserve the reviewed candidate when staging
 works; require supported private input delivery before claiming publishing-input
 readiness, and separate actual transport proof under later publication authority.
+
+Managed non-secret environment updates can modify the manifest-covered project configuration.
+
+**Why:** A production-scoped managed settings update persisted a new production
+environment section in `.replit`, rather than remaining detached control-plane
+metadata. Even an approved safety-only change can invalidate a frozen binding.
+
+**How to apply:** After managed environment changes, inspect tracked diffs and
+recheck candidate coverage before building or suggesting publication. Preserve the
+old archive; repackage and review the approved configuration change rather than
+bypassing integrity checks or reusing the old identity.
