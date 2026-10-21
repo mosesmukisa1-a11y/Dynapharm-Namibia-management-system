@@ -22,6 +22,7 @@ import HistoricalRefundReview from '../../components/HistoricalRefundEvidence';
 import StaffMessagesTab from '../../components/StaffMessagesTab';
 import ControlledStockOperations from '../../components/ControlledStockOperations';
 import BranchStockClearance from '../../components/BranchStockClearance';
+import GMSectionLayout from '../../components/GMSectionLayout';
 import { parsePriceListText, businessToday } from '../../../../shared/price-list-import.js';
 
 export default function GMPortal() {
@@ -76,13 +77,7 @@ export default function GMPortal() {
         <h1 className="text-xl font-bold text-gray-900">GM Portal</h1>
         <p className="text-sm text-gray-500">Country-wide oversight, approvals, and strategic management</p>
       </div>
-      <div className="flex items-center gap-2">
-        <div className="flex-1"><Tabs tabs={tabs} active={activeTab} onChange={handleTabChange} /></div>
-        <button onClick={refreshCurrentTab} title="Refresh tab data" className="ml-2 p-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-500 hover:text-primary transition-colors shrink-0" style={{ marginBottom: '-2px' }}>
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
-        </button>
-      </div>
-      <div className="mt-6">
+      <GMSectionLayout tabs={tabs} active={activeTab} onChange={handleTabChange} onRefresh={refreshCurrentTab}>
         {activeTab === 'dashboard' && <DashboardTab key={tabVisits.dashboard || 0} />}
         {activeTab === 'approvals' && <ApprovalsTab key={tabVisits.approvals || 0} />}
         {activeTab === 'stockAdjustments' && <StockAdjustmentsTab key={tabVisits.stockAdjustments || 0} onCountChange={setPendingAdj} />}
@@ -103,7 +98,7 @@ export default function GMPortal() {
         {activeTab === 'distributors' && <DistributorPerformanceTab key={tabVisits.distributors || 0} title="Distributor Performance — All Branches" />}
         {activeTab === 'discrepancies' && <DiscrepancyInboxTab key={tabVisits.discrepancies || 0} />}
         {activeTab === 'checkups' && <CheckupsTab key={tabVisits.checkups || 0} />}
-      </div>
+      </GMSectionLayout>
     </div>
   );
 }
