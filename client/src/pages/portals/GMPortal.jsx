@@ -270,6 +270,7 @@ function DiscrepancyInboxTab() {
 
 // ── Stock Adjustments Approval Tab (GM only) ─────────────────────────────────
 export function StockAdjustmentsTab({ onCountChange }) {
+  const { user, hasPortalAccess } = useAuth();
   const [adjustments, setAdjustments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('pending');
@@ -279,22 +280,46 @@ export function StockAdjustmentsTab({ onCountChange }) {
   const [message, setMessage] = useState(null);
   const [bulkProcessing, setBulkProcessing] = useState(false);
   const [bulkConfirm, setBulkConfirm] = useState(null);
+  const mounted = useRef(false);
+  const latestRequest = useRef(0);
 
-  const load = async () => {
-    setLoading(true);
+  const load = useCallback(async ({ background = false } = {}) => {
+    if (!mounted.current || !user || !hasPortalAccess('gm')) return;
+    const request = ++latestRequest.current;
+    if (!background) setLoading(true);
     try {
         const d = await api.get('/stock-adjustments');
-        const list = Array.isArray(d) ? d : [];
-        setAdjustments(list);
-        if (onCountChange) onCountChange(list.filter(a => a.status === 'pending').length);
+        if (!mounted.current || request !== latestRequest.current) return;
+        if (!Array.isArray(d)) throw new Error('Invalid stock edits response');
+        setAdjustments(d);
+        if (onCountChange) onCountChange(d.filter(a => a.status === 'pending').length);
     } catch (err) {
-      setMessage({ type: 'error', text: `Could not refresh stock edits: ${err.message || 'Request failed'}. Please refresh before reviewing.` });
+      if (mounted.current && request === latestRequest.current) {
+        setMessage({ type: 'error', text: `Could not refresh stock edits: ${err.message || 'Request failed'}. Please refresh before reviewing.` });
+      }
     } finally {
-      setLoading(false);
+      if (mounted.current && request === latestRequest.current) setLoading(false);
     }
-  };
+  }, [user, hasPortalAccess, onCountChange]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    if (!user || !hasPortalAccess('gm')) {
+      setAdjustments([]);
+      setLoading(false);
+      return;
+    }
+    mounted.current = true;
+    load();
+    // Refresh rows, not the tab: keep filters, draft notes and confirmations.
+    // Rejections need not emit a stock event, so refresh on return as well.
+    const refreshOnReturn = () => load({ background: true });
+    window.addEventListener('focus', refreshOnReturn);
+    return () => {
+      mounted.current = false;
+      latestRequest.current++;
+      window.removeEventListener('focus', refreshOnReturn);
+    };
+  }, [user, hasPortalAccess, load]);
 
   const filtered = filter === 'all' ? adjustments : adjustments.filter(a => a.status === filter);
   const pendingCount = adjustments.filter(a => a.status === 'pending').length;

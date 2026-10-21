@@ -3,11 +3,15 @@ import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 vi.mock('../client/src/lib/api', () => ({ api: { get: vi.fn(), post: vi.fn(), patch: vi.fn() } }));
+vi.mock('../client/src/contexts/AuthContext', () => ({
+  useAuth: () => authorizedGM,
+}));
 vi.mock('../client/src/components/BranchStockClearance', () => ({ default: () => null }));
 import { api } from '../client/src/lib/api';
 import { StockAdjustmentsTab } from '../client/src/pages/portals/GMPortal';
 
 let host, root, previousReact;
+const authorizedGM = { user: { id: 'gm', role: 'gm' }, hasPortalAccess: portal => portal === 'gm' };
 const pending = Array.from({ length: 16 }, (_, i) => ({
   id: `BULK-${i}`, adj_number: `BULK-${i}`, status: 'pending',
   target_type: 'warehouse', field_to_adjust: 'quantity', new_value: '0',

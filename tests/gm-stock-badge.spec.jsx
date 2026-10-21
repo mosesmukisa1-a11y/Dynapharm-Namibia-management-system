@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 
 vi.mock('../client/src/lib/api', () => ({
@@ -26,7 +27,7 @@ let host, root, previousReact;
 const pendingUrl = '/stock-adjustments?status=pending';
 const pending = [{ id: 'one', status: 'pending' }, { id: 'two', status: 'pending' }];
 const focus = () => act(async () => window.dispatchEvent(new Event('focus')));
-const render = () => act(async () => root.render(<GMPortal />));
+const render = () => act(async () => root.render(<MemoryRouter><GMPortal /></MemoryRouter>));
 const deferred = () => {
   let resolve;
   const promise = new Promise(r => { resolve = r; });
