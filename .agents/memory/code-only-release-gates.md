@@ -144,3 +144,16 @@ evidence, RPO ≤15 minutes and restoration plus validation RTO ≤60 minutes be
 release. Daily-backup/PITR settings and synthetic timing do not satisfy these
 requirements. Keep offline work independent and do not use production in-place
 restore as a rehearsal. Revisit only if the owner explicitly changes this policy.
+
+The owner subsequently authorized a candidate-specific publication exception
+despite documented UNKNOWN gates, without claiming those gates passed.
+
+**Why:** On 2026-10-21 explicit exception instructions superseded the preceding
+no-exception decision for that requested release, while still requiring exact
+archive integrity and rollback only to a previously verified healthy artifact.
+
+**How to apply:** Preserve the original recovery requirements as unmet evidence,
+record the candidate-specific exception separately, and do not keep asking for
+the same risk approval. Do not invent a verified fallback, broaden publication
+authority to migrations/credentials/data/jobs, or report publication without an
+actual deployment result. This is not a permanent recovery-policy waiver.
