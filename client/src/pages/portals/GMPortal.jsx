@@ -2,6 +2,7 @@ import SavedSaleProfitReport from '../../components/SavedSaleProfitReport';
 import ManualPriceControl from '../../components/ManualPriceControl.jsx';
 import { originalChargedMargin } from '../../lib/originalChargedMargin.js';
 import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import DistributorPerformanceTab from '../../components/DistributorPerformanceTab';
 import DispatchNote from '../../components/DispatchNote';
 import DailySalesCard from '../../components/DailySalesCard';
@@ -27,16 +28,51 @@ import BranchStockClearance from '../../components/BranchStockClearance';
 import GMSectionLayout from '../../components/GMSectionLayout';
 import { parsePriceListText, businessToday } from '../../../../shared/price-list-import.js';
 
+const GM_SECTIONS = [
+    { id: 'dashboard', label: 'Dashboard', icon: '📊' },
+    { id: 'approvals', label: 'Approvals', icon: '✅' },
+    { id: 'stockAdjustments', label: 'Stock Edits', icon: '✏️' },
+    { id: 'priceList', label: 'Price List', icon: '💲' },
+    { id: 'priceAdvisor', label: 'Price Advisor', icon: '💡' },
+    { id: 'campaigns', label: 'Campaigns', icon: '📢' },
+    { id: 'profitAnalysis', label: 'Profit Analysis', icon: '💰' },
+    { id: 'currentStock', label: 'Current Stock', icon: '📦' },
+          { id:'originalCosts',label:'Original Costs & Profit',icon:'📊' },
+    { id: 'controlledOperations', label: 'Controlled Counts & Returns' },
+    { id: 'historicalRefunds', label: 'Historical Refund Evidence' },
+    { id: 'accounts', label: 'Accounts', icon: '📒' },
+    { id: 'bonus', label: 'Bonus History', icon: '🎁' },
+    { id: 'statements', label: 'Statements', icon: '📄' },
+    { id: 'communication', label: 'Communication', icon: '💬' },
+    { id: 'staff', label: 'Staff Services', icon: '👤' },
+    { id: 'messages', label: 'My Messages', icon: '📨' },
+    { id: 'distributors', label: 'Distributor Performance', icon: '👥' },
+    { id: 'discrepancies', label: 'Discrepancy Inbox', icon: '⚠️' },
+    { id: 'checkups', label: 'Check-ups', icon: '🩺' },
+];
+
 export default function GMPortal() {
   const { user, hasPortalAccess } = useAuth();
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const location = useLocation();
+  const navigate = useNavigate();
+  const requestedSection = new URLSearchParams(location.search).get('section');
+  const activeTab = GM_SECTIONS.some(tab => tab.id === requestedSection) ? requestedSection : 'dashboard';
   const [pendingAdj, setPendingAdj] = useState(0);
   const [tabVisits, setTabVisits] = useState({ dashboard: 1 });
+  const tabs = GM_SECTIONS.map(tab => tab.id === 'stockAdjustments' && pendingAdj > 0
+    ? { ...tab, label: `Stock Edits (${pendingAdj})` }
+    : tab);
 
   const handleTabChange = useCallback((tab) => {
-    setActiveTab(tab);
+    if (!GM_SECTIONS.some(section => section.id === tab)) return;
+    if (tab !== activeTab) {
+      const params = new URLSearchParams(location.search);
+      params.set('section', tab);
+      navigate({ pathname: location.pathname, search: `?${params}`, hash: location.hash });
+    }
+    // Selecting the current section still remounts it, without duplicating history.
     setTabVisits(prev => ({ ...prev, [tab]: (prev[tab] || 0) + 1 }));
-  }, []);
+  }, [activeTab, location.pathname, location.search, location.hash, navigate]);
 
   const refreshCurrentTab = useCallback(() => {
     setTabVisits(prev => ({ ...prev, [activeTab]: (prev[activeTab] || 0) + 1 }));
@@ -74,29 +110,6 @@ export default function GMPortal() {
       if (Array.isArray(data) && data.length > 0) setLivePrices(data);
     }).catch(() => {});
   }, []);
-
-  const tabs = [
-    { id: 'dashboard', label: 'Dashboard', icon: '📊' },
-    { id: 'approvals', label: 'Approvals', icon: '✅' },
-    { id: 'stockAdjustments', label: pendingAdj > 0 ? `Stock Edits (${pendingAdj})` : 'Stock Edits', icon: '✏️' },
-    { id: 'priceList', label: 'Price List', icon: '💲' },
-    { id: 'priceAdvisor', label: 'Price Advisor', icon: '💡' },
-    { id: 'campaigns', label: 'Campaigns', icon: '📢' },
-    { id: 'profitAnalysis', label: 'Profit Analysis', icon: '💰' },
-    { id: 'currentStock', label: 'Current Stock', icon: '📦' },
-          { id:'originalCosts',label:'Original Costs & Profit',icon:'📊' },
-    { id: 'controlledOperations', label: 'Controlled Counts & Returns' },
-    { id: 'historicalRefunds', label: 'Historical Refund Evidence' },
-    { id: 'accounts', label: 'Accounts', icon: '📒' },
-    { id: 'bonus', label: 'Bonus History', icon: '🎁' },
-    { id: 'statements', label: 'Statements', icon: '📄' },
-    { id: 'communication', label: 'Communication', icon: '💬' },
-    { id: 'staff', label: 'Staff Services', icon: '👤' },
-    { id: 'messages', label: 'My Messages', icon: '📨' },
-    { id: 'distributors', label: 'Distributor Performance', icon: '👥' },
-    { id: 'discrepancies', label: 'Discrepancy Inbox', icon: '⚠️' },
-    { id: 'checkups', label: 'Check-ups', icon: '🩺' },
-  ];
 
   return (
     <div>
