@@ -1,3 +1,4 @@
+import { normalizeBranchSlug } from '../../../../api/_lib/branchUtils.js';
 import { movementDPValue, movementDPUnit, namibiaDay } from '../../lib/saleEvidence.js';
 import { stockFormulaReview } from '../../lib/stockReportFormula.js';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -46,24 +47,6 @@ const getBatchCIF = (b) => {
 
 // ── Stock AI Engine ────────────────────────────────────────────────────────────
 const stockAI = {
-  getDailyRate: (productName, movements, branchFilter = null) => {
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    return movements
-      .filter(m => {
-        const isProduct = !productName || m.product_name === productName;
-        const isRecent = m.created_at && new Date(m.created_at) >= thirtyDaysAgo;
-        const isOut = ['out', 'sale', 'sold', 'dispensed', 'transfer_out'].some(t => (m.movement_type || '').toLowerCase().includes(t));
-        const isBranch = !branchFilter || (m.source_location || m.location || '').toLowerCase().replace(/\s+/g, '_') === branchFilter;
-        return isProduct && isRecent && isOut && isBranch;
-      })
-      .reduce((s, m) => s + Number(m.quantity || 0), 0) / 30;
-  },
-
-  getDaysOfStock: (currentQty, dailyRate) => {
-    if (dailyRate <= 0) return 999;
-    return Math.round(currentQty / dailyRate);
-  },
-
   getPriority: (daysOfStock, qty = 1) => {
     if (qty <= 0 || daysOfStock <= 0) return { label: 'OUT OF STOCK', color: '#dc2626', bg: '#fef2f2', score: 100 };
     if (daysOfStock <= 14)  return { label: 'CRITICAL',     color: '#dc2626', bg: '#fef2f2', score: 95 };
@@ -111,8 +94,9 @@ const stockAI = {
     const insights = [];
     const criticalItems = Object.entries(productMap).filter(([, d]) => d.qty < 5 && d.qty > 0);
     const outItems = Object.entries(productMap).filter(([, d]) => d.qty <= 0);
-    const expiringBatches = batches.filter(b => b.expiry_date && new Date(b.expiry_date) > now && new Date(b.expiry_date) <= thirtyFwd);
-    const expiredBatches = batches.filter(b => b.expiry_date && new Date(b.expiry_date) < now && Number(b.remaining_quantity || b.quantity || 0) > 0);
+    const windows=expiryWindows(batches);
+    const expiringBatches = windows.within30;
+    const expiredBatches = windows.expired;
     const pendingTransfers = transfers.filter(t => t.status === 'pending' || t.status === 'requested');
     const overdueTransfers = transfers.filter(t => {
       const age = (Date.now() - new Date(t.created_at || 0)) / (1000 * 60 * 60 * 24);
@@ -120,30 +104,16 @@ const stockAI = {
     });
     if (outItems.length > 0) insights.push({ type: 'critical', icon: '🚨', text: `${outItems.length} product${outItems.length > 1 ? 's are' : ' is'} completely OUT OF STOCK. Immediate sourcing required.` });
     if (criticalItems.length > 0) insights.push({ type: 'critical', icon: '⚠️', text: `${criticalItems.length} product${criticalItems.length > 1 ? 's are' : ' is'} critically low (under 5 units). ${criticalItems.slice(0,2).map(([n]) => n).join(', ')}${criticalItems.length > 2 ? '…' : ''}.` });
-    if (expiredBatches.length > 0) insights.push({ type: 'danger', icon: '🗑️', text: `${expiredBatches.length} batch${expiredBatches.length > 1 ? 'es have' : ' has'} expired and still hold stock. These should be written off immediately.` });
+    if (expiredBatches.length > 0) insights.push({ type: 'danger', icon: '🗑️', text: `${expiredBatches.length} batch${expiredBatches.length > 1 ? 'es have' : ' has'} expired and still hold stock. Verify expiry and follow the approved quarantine/write-off workflow.` });
     if (expiringBatches.length > 0) insights.push({ type: 'warning', icon: '📅', text: `${expiringBatches.length} batch${expiringBatches.length > 1 ? 'es expire' : ' expires'} within 30 days. Move to high-velocity branches.` });
     if (overdueTransfers.length > 0) insights.push({ type: 'warning', icon: '🚚', text: `${overdueTransfers.length} transfer${overdueTransfers.length > 1 ? 's are' : ' is'} overdue (pending > 3 days). Follow up with dispatch team.` });
     if (pendingTransfers.length > 3) insights.push({ type: 'info', icon: '🔄', text: `${pendingTransfers.length} transfers pending dispatch. Consider batching deliveries for efficiency.` });
-    if (insights.length === 0) insights.push({ type: 'success', icon: '✅', text: 'All stock levels are healthy across all locations. Great job maintaining inventory!' });
+    if(windows.missing.length) insights.push({type:'warning',icon:'📅',text:`${windows.missing.length} batches have missing or invalid expiry evidence. Review source records.`});
+    if (insights.length === 0) insights.push({ type: 'info', icon: 'ℹ️', text: 'No alerts found in the loaded stock records. Confirm counts and source evidence before relying on availability.' });
     return insights;
   },
 
-  getReorderRecommendations: (batches, movements, sales) => {
-    const productMap = {};
-    batches.forEach(b => {
-      const key = `${b.product_name}||${b.location || 'unknown'}`;
-      if (!productMap[key]) productMap[key] = { product_name: b.product_name, location: b.location || 'unknown', qty: 0, expiry: null };
-      productMap[key].qty += Number(b.remaining_quantity || b.quantity || 0);
-      if (b.expiry_date && (!productMap[key].expiry || new Date(b.expiry_date) < new Date(productMap[key].expiry))) productMap[key].expiry = b.expiry_date;
-    });
-    return Object.values(productMap).map(p => {
-      const dailyRate = stockAI.getDailyRate(p.product_name, movements);
-      const daysOfStock = stockAI.getDaysOfStock(p.qty, dailyRate);
-      const priority = stockAI.getPriority(daysOfStock, p.qty);
-      const suggestedOrder = dailyRate > 0 ? Math.ceil(dailyRate * 180) : (p.qty < 5 ? 180 : 0);
-      return { ...p, dailyRate: dailyRate.toFixed(2), daysOfStock, priority, suggestedOrder };
-    }).filter(r => r.priority.score > 0).sort((a, b) => b.priority.score - a.priority.score);
-  },
+
 };
 
 // ── Location label helper ──────────────────────────────────────────────────────
@@ -1691,14 +1661,16 @@ function StockPortalContent() {
 function AICommandCenter({ branch }) {
   const {user}=useAuth();
   const { expiryWarningDays } = useStockAlertPolicy();
-  const [data, setData] = useState({ batches: [], movements: [], transfers: [], sales: [], branchData: [],companySnapshot:null });
+  const [data, setData] = useState({ batches: [], movements: [], transfers: [], sales: [], branchData: [],companySnapshot:null,reorderEvidence:[] });
   const [snapshotError,setSnapshotError]=useState('');
   const [loading, setLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState(new Date());
   const [alertFilter, setAlertFilter] = useState('all');
+  const dashboardSequence=useRef(0);
 
   const load = useCallback(() => {
     setLoading(true);
+    const sequence=++dashboardSequence.current;
     Promise.all([
       api.prices.list(),
       api.stock.batches().then(d => Array.isArray(d) ? d : d.batches || []),
@@ -1708,22 +1680,25 @@ function AICommandCenter({ branch }) {
         read:query=>api.branch.walkinSales(query)}),
       api.branch.stockSummary().then(d => d.branches || []),
       api.get('/stock/current-overview'),
-    ]).then(([priceData, batches, movements, transfers, sales, branchData,companySnapshot]) => {
+      api.get(`/stock/ai-reorder?branchId=${encodeURIComponent(branch)}`),
+    ]).then(([priceData, batches, movements, transfers, sales, branchData,companySnapshot,reorderData]) => {
+      if(sequence!==dashboardSequence.current)return;
       if (Array.isArray(priceData) && priceData.length > 0) setLivePrices(priceData);
-      setData({ batches, movements, transfers, sales, branchData,companySnapshot });
+      if(reorderData?.success!==true || !Array.isArray(reorderData.suggestions)) throw new Error('Could not load reorder evidence');
+      setData({ batches, movements, transfers, sales, branchData,companySnapshot,reorderEvidence:reorderData.suggestions });
       setSnapshotError('');
       setLastRefresh(new Date());
-    }).catch(error=>setSnapshotError(error.message || 'Could not load stock dashboard')).finally(() => setLoading(false));
+    }).catch(error=>{if(sequence===dashboardSequence.current)setSnapshotError(error.message || 'Could not load stock dashboard');}).finally(() => {if(sequence===dashboardSequence.current)setLoading(false);});
   }, [branch,user?.role]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); return ()=>{dashboardSequence.current++;}; }, [load]);
 
   if (loading) return <LoadingSpinner />;
   if (snapshotError) return <section role="alert" className="sp-panel sp-panel-content">
     <h2>Could not load Command Center</h2><p>{snapshotError}</p><button className="sp-btn" onClick={load}>Retry dashboard</button>
   </section>;
 
-  const filterBatch = (b) => branch === 'all' || (b.location || '').toLowerCase().replace(/\s+/g, '_') === branch;
+  const filterBatch = (b) => branch === 'all' || normalizeBranchSlug(b.location) === normalizeBranchSlug(branch);
   const filteredBatches = data.batches.filter(filterBatch);
 
   const branchBatchesFlat = data.branchData.flatMap(br => (br.physical_inventory || br.inventory || []).map(inv => ({
@@ -1732,7 +1707,8 @@ function AICommandCenter({ branch }) {
     quantity: inv.quantity, unit_price: inv.unit_price || getCIFPrice(inv.product_name || ''),
     location: br.branch_id,
   })));
-  const allBatches = [...filteredBatches, ...branchBatchesFlat.filter(filterBatch)];
+  const allBatches = [...filteredBatches, ...branchBatchesFlat.filter(filterBatch)].map(b=>({...b,
+    product_name:b.product_name || b.description, quantity:Number(b.remaining_quantity ?? b.quantity ?? 0)}));
   const expirySnapshot=expiryWindows(allBatches,stockAsOfDate());
 
   const now = new Date();
@@ -1764,8 +1740,10 @@ function AICommandCenter({ branch }) {
 
   const insights = stockAI.generateInsights(allBatches, data.movements, data.transfers);
 
-  const reorderRecs = stockAI.getReorderRecommendations(allBatches, data.movements, data.sales)
-    .slice(0, 8);
+  const reorderRecs = data.reorderEvidence.map(r=>({product_name:r.productName,
+    location:branch==='all'?'all_branches':branch,qty:r.currentQty,dailyRate:r.avgDailyUsage.toFixed(2),
+    daysOfStock:r.daysRemaining,priority:stockAI.getPriority(r.daysRemaining,r.currentQty),
+    suggestedOrder:null})).slice(0,8);
 
   const branchHealthScores = BRANCH_DETAILS.map(br => {
     const key = br.id;
@@ -1902,7 +1880,7 @@ function AICommandCenter({ branch }) {
             <div className="flex justify-between items-center flex-wrap gap-2">
               <h3 className="font-bold text-gray-800 flex items-center gap-2"><Target size={16} className="text-primary" /> Reorder Recommendations</h3>
               <Button size="sm" variant="secondary" onClick={() => {
-                const rows = reorderRecs.map(r => `<tr><td>${r.product_name}</td><td>${fmtLocation(r.location)}</td><td>${r.priority.label}</td><td>${r.qty}</td><td>${r.dailyRate}/day</td><td>${r.daysOfStock === 999 ? '—' : r.daysOfStock + ' days'}</td><td>${r.suggestedOrder}</td></tr>`).join('');
+                const rows = reorderRecs.map(r => `<tr><td>${r.product_name}</td><td>${fmtLocation(r.location)}</td><td>${r.priority.label}</td><td>${r.qty}</td><td>${r.dailyRate}/day</td><td>${r.daysOfStock === 999 ? '—' : r.daysOfStock + ' days'}</td><td>Manual review</td></tr>`).join('');
                 printDocument('Reorder Recommendations', `<table><thead><tr><th>Product</th><th>Location</th><th>Priority</th><th>Current Qty</th><th>Daily Rate</th><th>Days Left</th><th>Suggested Order</th></tr></thead><tbody>${rows}</tbody></table>`);
               }}><Printer size={14} /> Print</Button>
             </div>
@@ -1929,7 +1907,7 @@ function AICommandCenter({ branch }) {
                     <td style={{ padding: '8px 12px', fontWeight: 700, color: r.daysOfStock <= 14 ? '#dc2626' : r.daysOfStock <= 30 ? '#d97706' : '#16a34a' }}>
                       {r.daysOfStock === 999 ? '—' : `${r.daysOfStock}d`}
                     </td>
-                    <td style={{ padding: '8px 12px', fontWeight: 800, color: '#7c3aed' }}>{r.suggestedOrder > 0 ? r.suggestedOrder : '—'}</td>
+                    <td style={{ padding: '8px 12px', fontWeight: 800, color: '#7c3aed' }}>Manual review</td>
                   </tr>
                 ))}
               </tbody>
@@ -1943,7 +1921,7 @@ function AICommandCenter({ branch }) {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {expiredBatches.length > 0 && (
             <Card>
-              <CardHeader><h3 className="font-bold text-red-700 flex items-center gap-2"><AlertTriangle size={16} /> Expired — Needs Write-off ({expiredBatches.length})</h3></CardHeader>
+              <CardHeader><h3 className="font-bold text-red-700 flex items-center gap-2"><AlertTriangle size={16} /> Expired — Review Required ({expiredBatches.length})</h3></CardHeader>
               <Table
                 columns={[
                   { header: 'Product', render: r => <span className="font-semibold text-sm">{r.product_name}</span> },
@@ -1997,26 +1975,33 @@ function AICommandCenter({ branch }) {
 }
 
 // ── Overview Tab (branch-aware) ───────────────────────────────────────────────
-function OverviewTab({ branch }) {
+export function OverviewTab({ branch }) {
   const { lowStockThreshold, expiryWarningDays } = useStockAlertPolicy();
-  const [data, setData] = useState({ batches: [], movements: [], transfers: [], imports: [], fieldStock: [], branchData: [], locationBreakdown: [] });
+  const [data, setData] = useState({ batches: [], movements: [], transfers: [], imports: [], fieldStock: [], branchData: [], locationBreakdown: [],companySnapshot:null });
   const [loading, setLoading] = useState(true);
+  const [loadError,setLoadError]=useState('');
+  const sequence=useRef(0);
 
   const loadOverview = useCallback(() => {
     setLoading(true);
+    const current=++sequence.current;
     Promise.all([
-      api.prices.list().catch(() => []),
-      api.stock.batches().then(d => Array.isArray(d) ? d : d.batches || []).catch(() => []),
-      api.stock.movements().then(d => Array.isArray(d) ? d : d.movements || []).catch(() => []),
-      api.stock.transfers().then(d => Array.isArray(d) ? d : d.transfers || []).catch(() => []),
-      api.stock.supplierImports().catch(() => []),
-      api.stock.fieldStock().catch(() => []),
-      api.branch.stockSummary().then(d => d.branches || []).catch(() => []),
-      api.stock.countryStock().then(d => d.locationBreakdown || []).catch(() => []),
-    ]).then(([priceData, batches, movements, transfers, imports, fieldStock, branchData, locationBreakdown]) => {
+      api.prices.list(),
+      api.stock.batches().then(d => Array.isArray(d) ? d : d.batches || []),
+      api.stock.movements().then(d => Array.isArray(d) ? d : d.movements || []),
+      api.stock.transfers().then(d => Array.isArray(d) ? d : d.transfers || []),
+      api.stock.supplierImports(),
+      api.stock.fieldStock(),
+      api.branch.stockSummary().then(d => d.branches || []),
+      api.stock.countryStock().then(d => d.locationBreakdown || []),
+      api.get('/stock/current-overview'),
+    ]).then(([priceData, batches, movements, transfers, imports, fieldStock, branchData, locationBreakdown,companySnapshot]) => {
+      if(current!==sequence.current)return;
+      if(!stockOverviewLocation(companySnapshot))throw new Error('Stock snapshot unavailable');
+      setLoadError('');
       if (Array.isArray(priceData) && priceData.length > 0) setLivePrices(priceData);
       setData({
-        batches,
+        companySnapshot,batches,
         movements,
         transfers,
         imports: Array.isArray(imports) ? imports : [],
@@ -2024,19 +2009,20 @@ function OverviewTab({ branch }) {
         branchData,
         locationBreakdown: Array.isArray(locationBreakdown) ? locationBreakdown : [],
       });
-    }).finally(() => setLoading(false));
+    }).catch(error=>{if(current===sequence.current)setLoadError(error.message || 'Stock overview unavailable');}).finally(() => {if(current===sequence.current)setLoading(false);});
   }, []);
 
   useStockRealtime({ onUpdate: loadOverview });
-  useEffect(() => { loadOverview(); }, [loadOverview]);
+  useEffect(() => { loadOverview(); return ()=>{sequence.current++;}; }, [loadOverview]);
   useEffect(() => {
     const iv = setInterval(loadOverview, 60000);
     return () => clearInterval(iv);
   }, [loadOverview]);
 
   if (loading) return <LoadingSpinner />;
+  if(loadError)return <section role="alert"><h2>Could not load stock overview</h2><p>{loadError}</p><Button onClick={loadOverview}>Retry</Button></section>;
 
-  const filterBatch = (b) => branch === 'all' || (b.location || '').toLowerCase().replace(/\s+/g, '_') === branch;
+  const filterBatch = (b) => branch === 'all' || normalizeBranchSlug(b.location) === normalizeBranchSlug(branch);
   const filteredBatches = data.batches.filter(filterBatch);
 
   // country_stock is staging/holding — excluded from all operational totals
@@ -2062,27 +2048,16 @@ function OverviewTab({ branch }) {
         (m.location || m.source_location || m.destination_location || '').toLowerCase().replace(/\s+/g, '_') === branch
       );
 
-  const branchTotalQty = data.branchData.reduce((s, br) => s + (br.closing_qty || 0), 0);
-  const branchTotalDPC = data.branchData.reduce((s, br) => {
-    return s + (br.inventory || []).reduce((si, inv) => {
-      const qty = Number(inv.quantity || 0);
-      return si + qty * (getDPCPrice(inv.product_name || '') || Number(inv.unit_price || 0));
-    }, 0);
-  }, 0);
-
-  // Use remaining_quantity only (no fallback to original quantity — depleted batches should count as 0)
-  const warehouseQty = operationalBatches.reduce((sum, b) => sum + Number(b.remaining_quantity || 0), 0);
-  const totalItems = warehouseQty + branchTotalQty;
-  const totalCIF = operationalBatches.reduce((sum, b) => {
-    const qty = Number(b.remaining_quantity || 0);
-    const cif = getBatchCIF(b);
-    return sum + qty * cif;
-  }, 0);
-  const totalDPC = operationalBatches.reduce((sum, b) => {
-    const qty = Number(b.remaining_quantity || 0);
-    const dpc = Number(b.dpc_unit_value || 0) || getDPCPrice(b.description || b.product_name || '');
-    return sum + qty * dpc;
-  }, 0) + branchTotalDPC;
+  const snapshot=stockOverviewLocation(data.companySnapshot,branch);
+  const branchTotalQty=data.companySnapshot.products.flatMap(p=>p.locations || [])
+    .filter(r=>r.locationType==='branch' && (branch==='all' || normalizeBranchSlug(r.locationId)===normalizeBranchSlug(branch)))
+    .reduce((sum,r)=>sum+Number(r.qty || 0),0);
+  const branchTotalDPC=data.companySnapshot.products.flatMap(p=>p.locations || [])
+    .filter(r=>r.locationType==='branch' && (branch==='all' || normalizeBranchSlug(r.locationId)===normalizeBranchSlug(branch)))
+    .reduce((sum,r)=>sum+Number(r.valueDP || 0),0);
+  const totalItems=Number(snapshot?.totalQtyUnits || 0);
+  const totalCIF=Number(snapshot?.totalValueCIF || 0);
+  const totalDPC=Number(snapshot?.totalValueDP || 0);
   const pendingTransfers = data.transfers.filter(t => {
     const related = branch === 'all' || (t.from_location || '').toLowerCase().replace(/\s+/g, '_') === branch || (t.to_location || '').toLowerCase().replace(/\s+/g, '_') === branch;
     return related && (t.status === 'pending' || t.status === 'pending_approval' || t.status === 'submitted');
@@ -2108,7 +2083,7 @@ function OverviewTab({ branch }) {
 
   const allBatchesForExpiry = [
     ...filteredBatches,
-    ...data.branchData.flatMap(br => (br.inventory || []).map(inv => ({
+    ...data.branchData.filter(br=>branch==='all' || normalizeBranchSlug(br.branch_id)===normalizeBranchSlug(branch)).flatMap(br => (br.physical_inventory || br.inventory || []).map(inv => ({
       product_name: inv.product_name,
       description: inv.product_name,
       batch_no: inv.batch_no,
@@ -2117,13 +2092,13 @@ function OverviewTab({ branch }) {
       location: br.branch_id,
     }))),
   ];
-  const expiringBatches = allBatchesForExpiry.filter(b => {
-    if (!b.expiry_date) return false;
-    const exp = new Date(b.expiry_date);
-    return exp <= expiryThreshold && Number(b.remaining_quantity || b.quantity || 0) > 0;
+  const overviewExpiry=expiryWindows(allBatchesForExpiry);
+  const expiredBatches=overviewExpiry.expired;
+  const soonExpiring=allBatchesForExpiry.filter(b=>{
+    const days=expiryDays(b.expiry_date,overviewExpiry.asOf);
+    return Number(b.remaining_quantity ?? b.quantity ?? 0)>0 && days!==null && days>=0 && days<=expiryWarningDays;
   });
-  const expiredBatches = expiringBatches.filter(b => new Date(b.expiry_date) <= now);
-  const soonExpiring = expiringBatches.filter(b => new Date(b.expiry_date) > now);
+  const expiringBatches=[...expiredBatches,...soonExpiring];
 
   const lowStockProducts = (() => {
     const byProduct = {};
@@ -2144,8 +2119,8 @@ function OverviewTab({ branch }) {
       )}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <StatCard title="Total Stock Units" value={totalItems.toLocaleString()} color="blue" icon={<Package size={24} />} />
-        <StatCard title="Stock Value (CIF)" value={formatCurrency(totalCIF)} color="green" icon={<DollarSign size={24} />} />
-        <StatCard title="Stock Value (DPC)" value={formatCurrency(totalDPC)} color="blue" icon={<TrendingUp size={24} />} />
+        <StatCard title={snapshot?.missingCostQuantity ? "Known original CIF subtotal" : "Stock Value (CIF)"} value={formatCurrency(totalCIF)} color="green" icon={<DollarSign size={24} />} />
+        <StatCard title={snapshot?.missingDPQuantity ? "Known original DP subtotal" : "Stock Value (DPC)"} value={formatCurrency(totalDPC)} color="blue" icon={<TrendingUp size={24} />} />
         <StatCard title="Pending / In Transit" value={`${pendingTransfers} / ${inTransit}`} color="orange" icon={<Truck size={24} />} />
       </div>
 
@@ -9157,11 +9132,12 @@ function BarcodeTab() {
   );
 }
 
-function SmartReorderTab({ branch }) {
+export function SmartReorderTab({ branch }) {
   const { lowStockThreshold } = useStockAlertPolicy();
   const { user } = useAuth();
-  const [batches, setBatches]         = useState([]);
-  const [movements, setMovements]     = useState([]);
+  const [evidence, setEvidence] = useState([]);
+  const [loadError,setLoadError] = useState('');
+  const loadSequence=useRef(0);
   const [loading, setLoading]         = useState(true);
   const [thresholds, setThresholds]   = useState({});
   const [editProduct, setEditProduct] = useState(null);
@@ -9180,11 +9156,15 @@ function SmartReorderTab({ branch }) {
 
   const load = useCallback(() => {
     setLoading(true);
-    Promise.all([
-      api.stock.batches().then(d => Array.isArray(d) ? d : d.batches || []).catch(() => []),
-      api.stock.movements().then(d => Array.isArray(d) ? d : d.movements || []).catch(() => []),
-    ]).then(([b, m]) => { setBatches(b); setMovements(m); }).finally(() => setLoading(false));
-  }, []);
+    const sequence=++loadSequence.current;
+    api.get(`/stock/ai-reorder?branchId=${encodeURIComponent(branch)}`)
+      .then(result=>{
+        if(sequence!==loadSequence.current)return;
+        if(result?.success!==true || !Array.isArray(result.suggestions)) throw new Error('Reorder evidence unavailable');
+        setEvidence(result.suggestions);setLoadError('');
+      }).catch(error=>{if(sequence===loadSequence.current)setLoadError(error.message || 'Reorder evidence unavailable');})
+      .finally(()=>{if(sequence===loadSequence.current)setLoading(false);});
+  }, [branch]);
 
   const loadPOs = useCallback(() => {
     setPoLoading(true);
@@ -9194,37 +9174,20 @@ function SmartReorderTab({ branch }) {
       .finally(() => setPoLoading(false));
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); return ()=>{loadSequence.current++;}; }, [load]);
   useEffect(() => { if (showPOs) loadPOs(); }, [showPOs, loadPOs]);
 
   if (loading) return <LoadingSpinner />;
 
-  const filterBatch = (b) => branch === 'all' || (b.location || '').toLowerCase().replace(/\s+/g, '_') === branch;
-  const filteredBatches = batches.filter(filterBatch);
-
-  // ── Aggregate by product + location, use remaining_quantity ───────────
-  const productMap = {};
-  filteredBatches.forEach(b => {
-    const loc = (b.location || '').toLowerCase();
-    if (loc === 'country_stock') return;
-    const key = `${b.product_name}||${loc || 'unknown'}`;
-    if (!productMap[key]) productMap[key] = { product_name: b.product_name, location: b.location || 'unknown', qty: 0, expiry: null };
-    productMap[key].qty += Number(b.remaining_quantity ?? b.remainingQuantity ?? b.quantity ?? 0);
-    if (b.expiry_date && (!productMap[key].expiry || new Date(b.expiry_date) < new Date(productMap[key].expiry)))
-      productMap[key].expiry = b.expiry_date;
-  });
-
-  const allItems = Object.values(productMap).map(p => {
-    const dailyRate = stockAI.getDailyRate(p.product_name, movements, branch === 'all' ? null : branch);
-    const daysOfStock = stockAI.getDaysOfStock(p.qty, dailyRate);
-    const priority = stockAI.getPriority(daysOfStock, p.qty);
-    const threshold = thresholds[p.product_name] ?? lowStockThreshold;
-    // Suggested order = 6-month supply minus current stock
-    const sixMonthNeed = dailyRate > 0 ? Math.ceil(dailyRate * 180) : (p.qty < 5 ? 180 : 0);
-    const suggestedOrder = Math.max(0, sixMonthNeed - p.qty);
-    const classicStatus = p.qty < 5 ? 'Critical' : p.qty < threshold ? 'Low' : 'OK';
-    return { ...p, dailyRate, daysOfStock, priority, threshold, suggestedOrder, classicStatus };
-  }).sort((a, b) => b.priority.score - a.priority.score);
+  if(loadError)return <section role="alert" className="sp-panel sp-panel-content"><h2>Could not load reorder evidence</h2><p>{loadError}</p><Button onClick={load}>Retry</Button></section>;
+  const allItems = evidence.map(r=>{
+    const p={product_name:r.productName,location:branch==='all'?'all_branches':branch,qty:r.currentQty};
+    const dailyRate=r.avgDailyUsage,daysOfStock=r.daysRemaining;
+    const priority=stockAI.getPriority(daysOfStock,p.qty);
+    const threshold=thresholds[p.product_name] ?? lowStockThreshold;
+    const classicStatus=p.qty<5?'Critical':p.qty<threshold?'Low':'OK';
+    return {...p,dailyRate,daysOfStock,priority,threshold,suggestedOrder:null,classicStatus};
+  }).sort((a,b)=>b.priority.score-a.priority.score);
 
   // Items that need action = anything with < 6 months stock remaining
   const aiActionable = allItems.filter(i => i.priority.score > 0);
@@ -9288,7 +9251,7 @@ function SmartReorderTab({ branch }) {
             🤖 Supplier Reorder Intelligence
           </h3>
           <p style={{ fontSize: '0.78rem', opacity: 0.85, margin: '3px 0 0' }}>
-            Flags products with &lt;6 months stock based on actual daily sales velocity · Generates supplier purchase orders automatically
+            Available branch stock and recorded sale allocations · Enter and review purchase quantities manually
             {branch !== 'all' && ` · ${fmtLocation(branch)}`}
           </p>
         </div>
@@ -9417,7 +9380,7 @@ function SmartReorderTab({ branch }) {
               </div>
               <Button size="sm" variant="secondary" onClick={() => {
                 const rows = aiFiltered.map(r =>
-                  `<tr><td>${r.product_name}</td><td>${fmtLocation(r.location)}</td><td>${r.priority.label}</td><td>${r.qty}</td><td>${r.dailyRate > 0 ? r.dailyRate.toFixed(2) + '/day' : '—'}</td><td>${r.daysOfStock === 999 ? '—' : r.daysOfStock + ' days'}</td><td>${r.suggestedOrder || '—'}</td></tr>`
+                  `<tr><td>${r.product_name}</td><td>${fmtLocation(r.location)}</td><td>${r.priority.label}</td><td>${r.qty}</td><td>${r.dailyRate > 0 ? r.dailyRate.toFixed(2) + '/day' : '—'}</td><td>${r.daysOfStock === 999 ? '—' : r.daysOfStock + ' days'}</td><td>Manual review</td></tr>`
                 ).join('');
                 printDocument('Reorder Report — 6-Month Horizon', `<table><thead><tr><th>Product</th><th>Location</th><th>Priority</th><th>Current Qty</th><th>Daily Rate</th><th>Days Left</th><th>Suggested Order</th></tr></thead><tbody>${rows}</tbody></table>`);
               }}><Printer size={14} /> Print</Button>
@@ -9460,7 +9423,7 @@ function SmartReorderTab({ branch }) {
                           {monthsLeft === null ? '—' : `${monthsLeft} mo`}
                         </td>
                         <td style={{ padding: '9px 12px', fontWeight: 800, color: '#7c3aed' }}>
-                          {r.suggestedOrder > 0 ? r.suggestedOrder.toLocaleString() : '—'}
+                          Manual review
                           {r.suggestedOrder > 0 && r.dailyRate > 0 && <div style={{ fontSize: '0.67rem', color: '#94a3b8', fontWeight: 400 }}>covers ~6 mo</div>}
                         </td>
                         <td style={{ padding: '9px 12px' }}>
@@ -9519,7 +9482,7 @@ function SmartReorderTab({ branch }) {
               <div><span className="text-gray-500">Days Remaining:</span> <strong style={{ color: orderModal?.daysOfStock <= 30 ? '#dc2626' : orderModal?.daysOfStock <= 90 ? '#d97706' : '#2563eb' }}>{orderModal?.daysOfStock === 999 ? 'Unknown' : `${orderModal?.daysOfStock} days (${(orderModal?.daysOfStock / 30).toFixed(1)} mo)`}</strong></div>
               <div><span className="text-gray-500">Priority:</span> <strong style={{ color: orderModal?.priority?.color }}>{orderModal?.priority?.label}</strong></div>
             </div>
-            <div className="text-xs text-gray-500 mt-2">Suggested order covers 6 months of supply. Adjust quantity below as needed.</div>
+            <div className="text-xs text-gray-500 mt-2">No automatic order quantity policy is approved. Enter the quantity after reviewing demand, lead time and available stock.</div>
           </div>
           {orderAlert && <Alert type={orderAlert.type}>{orderAlert.msg}</Alert>}
           <div style={{ background: '#f8fafc', borderRadius: 8, padding: '10px 14px', fontSize: '0.85rem' }}>

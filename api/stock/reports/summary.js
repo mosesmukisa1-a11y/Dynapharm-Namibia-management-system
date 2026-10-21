@@ -75,8 +75,8 @@ export default async function handler(req, res) {
     );
 
     const stock = projection.filter((r) => !branchId || r.location === branchId);
-    const batches = stock.filter((r) => inferLocationType(r.location) === 'warehouse');
-    const branchInv = stock.filter((r) => inferLocationType(r.location) === 'branch');
+    const batches = stock.filter((r) => (r.locationType || inferLocationType(r.location)) === 'warehouse');
+    const branchInv = stock.filter((r) => (r.locationType || inferLocationType(r.location)) === 'branch');
     const warehouseQty = batches.reduce((s, b) => s + b.qty, 0);
     const warehouseCIF = batches.reduce((s, b) => s + b.qty * (b.unitCIF ?? 0), 0);
     const warehouseDPC = batches.reduce((s, b) => s + b.qty * (b.unitDPC ?? 0), 0);

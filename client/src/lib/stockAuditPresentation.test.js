@@ -17,3 +17,9 @@ it('preserves compatible views and refuses unavailable tabs',()=>{
  expect(stockView(new URLSearchParams('view=writeOffs'),ids)).toBe('writeOffs');
  expect(stockView(new URLSearchParams('view=dispatchReturns'),ids)).toBe('aiDashboard');
 });
+
+it('compares write-off timestamps using the Namibian business day',()=>{
+ expect(expiryReasonConflict({write_off_reason:'expired',expiry_date:'2026-10-22',created_at:'2026-10-21T23:30:00Z'})).toBe(false);
+ expect(expiryReasonConflict({write_off_reason:'expired',expiry_date:'2026-10-23',created_at:'2026-10-21T23:30:00Z'})).toBe(true);
+ expect(expiryReasonConflict({write_off_reason:'expired',expiry_date:'2026-02-30',created_at:'2026-02-28T12:00:00Z'})).toBe(false);
+});

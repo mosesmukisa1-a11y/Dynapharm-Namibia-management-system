@@ -28,3 +28,13 @@ it('keeps an explicitly warehouse-owned Windhoek hold separate from the Windhoek
   expect(report.rows.find(r=>r.locationType==='warehouse')).toMatchObject({location:'windhoek',physicalQty:5,projectionMinusStored:0});
   expect(report.rows.find(r=>r.locationType==='branch')).toMatchObject({location:'townshop',physicalQty:3,projectionMinusStored:0});
 });
+it('counts a transfer between distinct namespaces even when the location spelling is identical',async()=>{
+  const report=await buildStockReconciliation({
+    projection:{stock:[],branches:[],reservations:[],segregated:[]},balances:[],
+    movements:[{source_location:'ondangwa',destination_location:'ondangwa',
+      source_location_type:'warehouse',destination_location_type:'branch',
+      movement_type:'branch_receipt',quantity:4,product_name:'NAMESPACE-TRANSFER',batch_no:'LOT'}]
+  });
+  expect(report.rows.find(r=>r.locationType==='warehouse').movementNet).toBe(-4);
+  expect(report.rows.find(r=>r.locationType==='branch').movementNet).toBe(4);
+});

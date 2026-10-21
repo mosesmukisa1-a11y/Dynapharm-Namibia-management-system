@@ -1,3 +1,4 @@
+import {stockAsOfDate,expiryDays} from './expiryWindows.js';
 export function disposalFeedback(result, requested) {
   const count = Number(result?.disposed);
   if (result?.success !== true || !Number.isInteger(count) || count < 1 || count > requested) {
@@ -10,8 +11,12 @@ export function disposalFeedback(result, requested) {
 export function expiryReasonConflict(movement) {
   if (String(movement.write_off_reason || '').trim().toLowerCase() !== 'expired') return false;
   const expiry = String(movement.expiry_date || '').slice(0, 10);
-  const written = String(movement.created_at || '').slice(0, 10);
-  return /^\d{4}-\d{2}-\d{2}$/.test(expiry) && /^\d{4}-\d{2}-\d{2}$/.test(written) && expiry > written;
+  const raw = String(movement.created_at || '');
+  const timestamp = new Date(raw);
+  if(!Number.isFinite(timestamp.getTime()))return false;
+  const written = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : stockAsOfDate(timestamp);
+  const days=expiryDays(expiry,written);
+  return days!==null && days>0;
 }
 
 export function stockView(params, ids) {

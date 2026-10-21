@@ -11,7 +11,7 @@ export default async function handler(req, res) {
 
   try {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-    const days = parseInt(url.searchParams.get('days') || '30', 10);
+    const days = Number(url.searchParams.get('days') ?? '30');
     const branchId = url.searchParams.get('branchId') || 'all';
     if (!Number.isInteger(days) || days < 1 || days > 365) return res.status(400).json({ error: 'days must be 1–365' });
     const scope = getBranchScope(req.user);
@@ -56,7 +56,7 @@ export default async function handler(req, res) {
     map(([name, inv]) => {
       const totalSales = salesByProduct[name] || 0;
       const avgDailyUsage = totalSales / days;
-      const daysRemaining = avgDailyUsage > 0 ? inv.totalQty / avgDailyUsage : 999;
+      const daysRemaining = inv.totalQty <= 0 ? 0 : avgDailyUsage > 0 ? inv.totalQty / avgDailyUsage : 999;
       // Surface evidence for manual review; no unapproved stocking target.
       return {
         productName: name,

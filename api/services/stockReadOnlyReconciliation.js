@@ -77,7 +77,7 @@ export async function buildStockReconciliation(snapshot, { environment = 'develo
   for (const movement of snapshot.movements) {
     if (movement.movement_type === 'reserved') continue;
     const src = location(movement.source_location, movement.source_location_type),dst = location(movement.destination_location, movement.destination_location_type);
-    if (src && src === dst) continue; // condition/internal relocation, not consumption
+    if (src && src === dst && kind(src, movement.source_location_type) === kind(dst, movement.destination_location_type)) continue; // condition/internal relocation, not consumption
     for (const [loc, type, inward] of [[dst, movement.destination_location_type, true], [src, movement.source_location_type, false]]) {
       if (!loc || external.has(loc) || type === 'external') continue;
       if (!ownedLocations.has(loc) && !['branch', 'country', 'warehouse', 'in_transit', 'quarantine'].includes(type)) continue;
