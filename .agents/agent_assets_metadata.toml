@@ -1064,3 +1064,17 @@ mtime_ms = 1792507115566
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/7ae97a02-8f71-476f-9a79-c1fa2cab6dd4/98086f7b-5600-456f-adca-ffff010e8ec9"
 storage_version_token = "1792507133588861"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "URhTdslWUHozJ1MY3SBBm"
+uri = "file://generated-artifacts/live-publication-preparation/report.md"
+type = "text"
+title = "Live publishing preparation and release checklist"
+description = "Exact candidate verified, detached release inputs prepared offline, startup settings validated, and remaining publication prerequisites listed. No production changes."
+logical_id = "68a5eac9-65ec-4349-962b-40695ae6d206"
+content_hash = "sha256:20e3ae6f3a9c0eea0c41a09dfc781a1e54a3bdb6308a4d885410d33d1b5ff8a4"
+size = 11886
+mtime_ms = 1792574183454
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e7264d4f-0fa2-4ff5-9b24-b38897afcd70/68a5eac9-65ec-4349-962b-40695ae6d206/a8e12f5e-861e-4992-a490-837adecb3c4a"
+storage_version_token = "1792574188470895"
+content_type = "text/markdown"
