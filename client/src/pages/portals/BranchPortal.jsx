@@ -1,3 +1,6 @@
+import { bestCampaignPricing, resolveCampaignPricing } from '../../../../shared/campaignPricing.js';
+import { assertCampaignEligible } from '../../../../api/services/campaignPricing.js';
+import CampaignPricingTerms from '../../components/campaigns/CampaignPricingTerms.jsx';
 import { isOpenStockRequest } from '../../../../shared/stockRequests.js';
 import { saleReviewErrors } from '../../lib/branchSaleReview.js';
 import './branch-pos.css';
@@ -1629,13 +1632,12 @@ export function WalkInSalesTab() {
     api.get('/campaigns').then(d => {
       const all = Array.isArray(d) ? d : (d.campaigns || []);
       const now = new Date();
-      setCampaigns(all.filter(c =>
-        c.campaign_type === 'discount' &&
-        c.status !== 'pending_approval' && c.status !== 'rejected' &&
-        new Date(c.start_date) <= now && new Date(c.end_date) >= now
-      ));
+      setCampaigns(all.filter(c => {
+        if (c.campaign_type !== 'discount') return false;
+        try { assertCampaignEligible(c, effectiveBranch, now); return true; } catch { return false; }
+      }));
     }).catch(() => {});
-  }, []);
+  }, [effectiveBranch]);
 
   useEffect(() => {
     loadSales(portalBranch);
@@ -1700,28 +1702,8 @@ export function WalkInSalesTab() {
 
   // Returns the best active discount campaign covering a product (null if none)
   const getWalkinCampaignDiscount = (productName) => {
-    if (!productName || campaigns.length === 0) return null;
-    const nameLower = productName.trim().toLowerCase();
-    let best = null;
-    for (const camp of campaigns) {
-      const pct = parseFloat(camp.discount_percentage || 0);
-      if (pct <= 0) continue;
-      const cond = typeof camp.conditions === 'string'
-        ? (() => { try { return JSON.parse(camp.conditions); } catch { return {}; } })()
-        : (camp.conditions || {});
-      const productsList = Array.isArray(cond.products) ? cond.products : [];
-      const productsText = cond.products_text || '';
-      const rawProds = productsList.length > 0 ? productsList : productsText.split(',');
-      const allProducts = [...new Set(
-        rawProds.map(p => (typeof p === 'string' ? p.trim().toLowerCase() : '')).filter(Boolean)
-      )];
-      if (allProducts.length === 0 || allProducts.includes(nameLower)) {
-        if (!best || pct > best.pct) {
-          best = { pct, campaignId: camp.id, campaignName: camp.name };
-        }
-      }
-    }
-    return best;
+    const product = products.find(p => (p.name || p.description || '').trim().toLowerCase() === productName?.trim().toLowerCase());
+    return product ? bestCampaignPricing(campaigns, product, { member: customerType === 'registered' }) : null;
   };
 
   const toggleNoReferral = (checked) => {
@@ -1767,35 +1749,33 @@ export function WalkInSalesTab() {
     if (campaigns.length === 0 || products.length === 0) return [];
     const result = [];
     for (const camp of campaigns) {
-      const pct = parseFloat(camp.discount_percentage || 0);
-      if (pct <= 0) continue;
-      const mult = 1 - pct / 100;
       const cond = typeof camp.conditions === 'string'
         ? (() => { try { return JSON.parse(camp.conditions); } catch { return {}; } })()
         : (camp.conditions || {});
       const productsList = Array.isArray(cond.products) ? cond.products : [];
       const productsText = typeof cond.products_text === 'string' ? cond.products_text : '';
-      const campProductNames = [...productsList, ...productsText.split(',')]
+      const campProductNames = [...(cond.product_pricing || []).map(r => r.product_name), ...productsList, ...productsText.split(',')]
         .map(n => (typeof n === 'string' ? n.trim() : '')).filter(Boolean);
 
       // Only show individual cards for explicitly configured products.
       // Campaigns with no product list are "all products" — badges handled elsewhere.
       if (campProductNames.length === 0) continue;
 
-      const campDisc = { pct, campaignId: camp.id, campaignName: camp.name };
-
       for (const pName of campProductNames) {
         const p = products.find(pr =>
           (pr.name || pr.description || '').trim().toLowerCase() === pName.toLowerCase()
         );
         if (p) {
+          const pricing = resolveCampaignPricing(camp, p, { member: customerType === 'registered' });
+          if (!pricing) continue;
+          const campDisc = { ...pricing, pct: pricing.percentage ?? 0, campaignId: camp.id, campaignName: camp.name };
           result.push({
             ...p,
             id: `camp-${camp.id}-${p.id}`,
             originalCp: p.cp,
             originalDp: p.dp,
-            cp: Math.round((p.cp || 0) * mult * 100) / 100,
-            dp: Math.round((p.dp || 0) * mult * 100) / 100,
+            cp: pricing.effective_cp,
+            dp: pricing.effective_dp,
             campaignDiscount: campDisc,
             isCampaignProduct: true,
           });
@@ -1803,7 +1783,7 @@ export function WalkInSalesTab() {
       }
     }
     return result;
-  }, [campaigns, products]);
+  }, [campaigns, products, customerType]);
 
   const addToCart = (product, quantity = 1) => {
     const addQty = Number(quantity);
@@ -1821,15 +1801,14 @@ export function WalkInSalesTab() {
         }
         // Regular product card — check if it's in an active campaign
         const campDisc = getWalkinCampaignDiscount(product.name || product.description);
-        if (campDisc && campDisc.pct > 0) {
-          const mult = 1 - campDisc.pct / 100;
+        if (campDisc) {
           return [...prev, {
             ...product,
             qty: addQty,
             originalCp: product.cp,
             originalDp: product.dp,
-            cp: Math.round((product.cp || 0) * mult * 100) / 100,
-            dp: Math.round((product.dp || 0) * mult * 100) / 100,
+            cp: campDisc.effective_cp,
+            dp: campDisc.effective_dp,
             campaignDiscount: campDisc,
           }];
         }
@@ -1883,7 +1862,13 @@ export function WalkInSalesTab() {
   const updateQty = (id, delta) => setCart(prev => prev.map(c => c.id === id ? { ...c, qty: Math.max(1, c.qty + delta) } : c));
   const removeFromCart = (id) => setCart(prev => prev.filter(c => c.id !== id));
 
-  const cartData = calculateCartTotals(cart, isMember);
+  const pricedCart = cart.map(item => {
+    const base = { ...item, cp: item.originalCp ?? item.cp, dp: item.originalDp ?? item.dp };
+    if (!isCampaignSale) return { ...base, campaignDiscount: null };
+    const pricing = bestCampaignPricing(campaigns, base, { member: isMember, quantity: item.qty });
+    return pricing ? { ...base, cp: pricing.effective_cp, dp: pricing.effective_dp, campaignDiscount: pricing } : { ...base, campaignDiscount: null };
+  });
+  const cartData = calculateCartTotals(pricedCart, isMember);
   const branchProfit = !isMember ? cartData.items.reduce((s, item) => s + ((item.cp || 0) - (item.dp || 0)) * item.qty, 0) : 0;
   const branchAmount = !isMember ? cartData.items.reduce((s, item) => s + (item.dp || 0) * item.qty, 0) : 0;
   // Cashback owed to referring distributor from checkup services (non-member only)
@@ -1950,7 +1935,7 @@ export function WalkInSalesTab() {
         line_total: item.lineTotal,
         bv: item.bv || 0,
         lineProfit: !isMember ? ((item.cp || 0) - (item.dp || 0)) * item.qty : null,
-        dpPrice: isMember ? (item.memberPrice != null ? item.memberPrice : item.dp || 0) : (item.dp || 0),
+        dpPrice: item.campaignDiscount ? item.dp : isMember ? (item.memberPrice ?? item.dp ?? 0) : (item.dp ?? 0),
         cpPrice: item.cp || 0,
         isPackage: item.isPackage || false,
         components: item.isPackage && Array.isArray(item.components) ? item.components : undefined,
@@ -1964,6 +1949,11 @@ export function WalkInSalesTab() {
         campaign_discount_pct: (isCampaignSale && item.campaignDiscount) ? item.campaignDiscount.pct : undefined,
         campaign_id: (isCampaignSale && item.campaignDiscount) ? item.campaignDiscount.campaignId : undefined,
         campaign_name: (isCampaignSale && item.campaignDiscount) ? item.campaignDiscount.campaignName : undefined,
+        ...(isCampaignSale && item.campaignDiscount ? {
+          campaign_pricing: item.campaignDiscount,
+          original_cp: item.campaignDiscount.original_cp, original_dp: item.campaignDiscount.original_dp,
+          effective_cp: item.cp, effective_dp: item.dp,
+        } : {}),
       }));
 
       const saleData = {
@@ -2508,7 +2498,7 @@ export function WalkInSalesTab() {
                                   </div>
                                 )}
                                 <div style={{ position: 'absolute', top: 6, left: 6, zIndex: 2, background: '#16a34a', color: '#fff', borderRadius: 7, padding: '2px 7px', fontSize: '0.62rem', fontWeight: 800 }}>
-                                  {p.campaignDiscount.pct}% OFF
+                                  {p.campaignDiscount.mode === 'custom' ? 'CUSTOM PRICE' : `${p.campaignDiscount.pct}% OFF`}
                                 </div>
                                 {p.bv > 0 && (
                                   <div style={{ position: 'absolute', top: 6, right: 6, zIndex: 2, background: '#fffbeb', border: '1px solid #fcd34d', color: '#d97706', borderRadius: 8, padding: '1px 6px', fontSize: '0.6rem', fontWeight: 800 }}>{p.bv} BV</div>
@@ -2542,7 +2532,7 @@ export function WalkInSalesTab() {
                         ? (isMember ? p.memberPrice : p.cp)
                         : (isMember ? (p.dp || p.price) : (p.cp || p.price));
                       const campDisc = getWalkinCampaignDiscount(p.name || p.description);
-                      const price = campDisc ? Math.round((rawPrice || 0) * (1 - campDisc.pct / 100) * 100) / 100 : rawPrice;
+                      const price = campDisc ? campDisc.charged_unit : rawPrice;
                       const inCart = cart.find(c => c.id === p.id);
                       const profit = !isMember && !campDisc ? (p.cp || 0) - (p.dp || 0) : 0;
                       const accentColor = p.isCheckup ? '#0d9488' : p.isPackage ? '#3b82f6' : '#c41e3a';
@@ -2572,7 +2562,7 @@ export function WalkInSalesTab() {
                             {/* Discount campaign badge over image */}
                             {campDisc && (
                               <div style={{ position: 'absolute', top: 6, left: 6, zIndex: 2, background: '#16a34a', color: '#fff', borderRadius: 7, padding: '2px 7px', fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.02em' }}>
-                                {campDisc.pct}% OFF
+                                {campDisc.mode === 'custom' ? 'CUSTOM PRICE' : `${campDisc.pct}% OFF`}
                               </div>
                             )}
                           </div>
@@ -2626,7 +2616,7 @@ export function WalkInSalesTab() {
                     </div>
                   ) : cartData.items.map(item => {
                     const lineProfit = !isMember && !item.campaignDiscount ? ((item.originalCp || item.cp || 0) - (item.originalDp || item.dp || 0)) * item.qty : null;
-                    const hasDiscount = item.campaignDiscount && item.campaignDiscount.pct > 0;
+                    const hasDiscount = !!item.campaignDiscount;
                     return (
                       <div key={item.id} style={{ padding: '10px 0', borderBottom: '1px solid #fdf5f5' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
@@ -2634,7 +2624,7 @@ export function WalkInSalesTab() {
                             <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.82rem', lineHeight: 1.3 }}>{item.name || item.description}</div>
                             {hasDiscount && (
                               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 2, background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 5, padding: '1px 6px' }}>
-                                <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#16a34a' }}>🏷️ {item.campaignDiscount.pct}% OFF</span>
+                                <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#16a34a' }}>{item.campaignDiscount.mode === 'custom' ? 'CUSTOM PRICE' : `${item.campaignDiscount.pct}% OFF`}</span>
                               </div>
                             )}
                             {lineProfit != null && lineProfit > 0 && <div style={{ fontSize: '0.68rem', color: '#0891b2', fontWeight: 600, marginTop: 1 }}>+{formatCurrency(lineProfit)} profit</div>}
@@ -2754,7 +2744,7 @@ export function WalkInSalesTab() {
                 <div style={{ fontSize: '0.62rem', fontWeight: 800, letterSpacing: '.12em', color: '#c41e3a', textTransform: 'uppercase', marginBottom: 10 }}>Items ({cart.length})</div>
                 <div style={{ maxHeight: 175, overflowY: 'auto' }}>
                   {cartData.items.map((item, i) => {
-                    const hasDiscount = item.campaignDiscount && item.campaignDiscount.pct > 0;
+                    const hasDiscount = !!item.campaignDiscount;
                     const originalUnitPrice = isMember ? (item.originalDp ?? item.unitPrice) : (item.originalCp ?? item.unitPrice);
                     const originalLineTotal = hasDiscount ? originalUnitPrice * item.qty : null;
                     const lineProfit = !isMember && !hasDiscount ? ((item.originalCp || item.cp || 0) - (item.originalDp || item.dp || 0)) * item.qty : null;
@@ -2769,7 +2759,7 @@ export function WalkInSalesTab() {
                             {' · '}Expected stock movement −{item.qty}
                           </div>
                           {hasDiscount && (
-                            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#16a34a', marginTop: 1 }}>🏷️ {item.campaignDiscount.pct}% OFF — {item.campaignDiscount.campaignName}</div>
+                            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#16a34a', marginTop: 1 }}>{item.campaignDiscount.mode === 'custom' ? 'CUSTOM PRICE' : `${item.campaignDiscount.pct}% OFF`} — {item.campaignDiscount.campaignName}</div>
                           )}
                         </div>
                         <div style={{ textAlign: 'right' }}>
@@ -3341,6 +3331,9 @@ function PrescriptionsTab() {
       const cond = typeof camp.conditions === 'string'
         ? (() => { try { return JSON.parse(camp.conditions); } catch { return {}; } })()
         : (camp.conditions || {});
+      // This legacy prescription quote only understands scalar campaigns.
+      // Never reinterpret selected-product rules as an all-product discount.
+      if (cond.pricing_scope === 'products' || cond.product_pricing) continue;
       const productsList = Array.isArray(cond.products) ? cond.products : [];
       const productsText = cond.products_text || '';
       const rawProds = productsList.length > 0 ? productsList : productsText.split(',');
@@ -12352,8 +12345,8 @@ function printCampaignReceipt(receipt, branchDisplayName) {
     //   member → original DP (stored as it.original_dp; falls back to it.dp for old records)
     //   non-member → original CP (it.cp is always the undiscounted CP)
     const originalBase = isMember
-      ? Number(it.original_dp || it.dp || 0)
-      : Number(it.cp || 0);
+      ? Number(it.original_dp ?? it.dp ?? 0)
+      : Number(it.original_cp ?? it.cp ?? 0);
     // Prefer item-level discount_pct (supports hybrid campaigns); fall back to receipt-level
     const itemDiscPct  = Number(it.discount_pct ?? discountPct ?? 0);
     const hasDiscount  = itemDiscPct > 0 && chargedPrice < originalBase;
@@ -12550,6 +12543,7 @@ function BranchCampaignsTab() {
 
   // Derive products_text from conditions, handling both array (conditions.products) and string (conditions.products_text)
   const getProductsText = (cond) => {
+    if (cond.pricing_scope === 'products') return (cond.product_pricing || []).map(r => r.product_name).join(', ');
     if (cond.products_text && typeof cond.products_text === 'string' && cond.products_text.trim()) {
       return cond.products_text.trim();
     }
@@ -12687,7 +12681,7 @@ function BranchCampaignsTab() {
           const productsText = typeof cond.products_text === 'string' ? cond.products_text : '';
           // Prefer the products array; fall back to products_text string. Deduplicate so
           // campaigns that store both fields don't show the same product card twice.
-          const rawNames = productsList.length > 0
+          const rawNames = cond.pricing_scope === 'products' ? (cond.product_pricing || []).map(r => r.product_name) : productsList.length > 0
             ? productsList
             : productsText.split(',');
           const productNames = [...new Set(
@@ -12719,6 +12713,7 @@ function BranchCampaignsTab() {
                             <span style={{ background: '#dc2626', color: '#fff', borderRadius: 5, padding: '2px 8px', fontWeight: 800, fontSize: '0.72rem', letterSpacing: '0.02em' }}>🏷️ {discountPct}% OFF</span>
                           </div>
                         )}
+                        <CampaignPricingTerms campaign={c} />
                         {cond.min_purchase && <div>📌 Min purchase: N${cond.min_purchase}</div>}
                         {prize.description && <div>🏆 {prize.description}</div>}
                         {freeProduct && (
@@ -12771,7 +12766,8 @@ function BranchCampaignsTab() {
                               <span style={{ background: '#d97706', color: '#fff', borderRadius: 4, padding: '1px 6px', fontWeight: 800, fontSize: '0.68rem' }}>FREE</span>
                             </div>
                           )}
-                          {isDiscount && discountPct > 0 && (() => {
+                          {isDiscount && <CampaignPricingTerms campaign={c} />}
+                          {isDiscount && !cond.product_pricing && discountPct > 0 && (() => {
                             const priceRow = prices.find(p => (p.description || p.name || '').trim().toLowerCase() === pName.trim().toLowerCase());
                             const baseDP = priceRow ? parseFloat(priceRow.dp || 0) : 0;
                             const discountedDP = baseDP > 0 ? Math.round(baseDP * (1 - discountPct / 100) * 100) / 100 : 0;
@@ -13083,6 +13079,7 @@ function BranchCampaignsTab() {
                     : (saleModal.conditions || {})
                 ) : {};
                 const modalCampProducts = [
+                  ...(modalCond.product_pricing || []).map(r => r.product_name),
                   ...(Array.isArray(modalCond.products) ? modalCond.products : []),
                   ...(typeof modalCond.products_text === 'string' ? modalCond.products_text.split(',').map(n => n.trim()).filter(Boolean) : []),
                 ];
@@ -13164,16 +13161,15 @@ function BranchCampaignsTab() {
                 // Resolve discount % for discount-type campaigns
                 const isDiscountCamp = saleModal?.campaign_type === 'discount';
                 const campCond = saleModal ? (typeof saleModal.conditions === 'string' ? (() => { try { return JSON.parse(saleModal.conditions); } catch { return {}; } })() : (saleModal.conditions || {})) : {};
-                const discountPct = isDiscountCamp
-                  ? (parseFloat(saleModal?.discount_percentage || campCond.discount_pct || 0))
-                  : 0;
-                const discountMult = discountPct > 0 ? (1 - discountPct / 100) : 1;
+                const pricing = isDiscountCamp ? resolveCampaignPricing(saleModal, { description: saleForm.paid_product, cp, dp }, { member: isMem, quantity: qty }) : null;
+                if (isDiscountCamp && !pricing) return <p role="alert">This product or quantity is not eligible for the campaign.</p>;
+                const discountPct = pricing?.percentage ?? 0;
 
                 const basePrice   = isMem ? dp : cp;
-                const unitPrice   = Math.round(basePrice * discountMult * 100) / 100;
+                const unitPrice   = pricing?.charged_unit ?? basePrice;
                 const lineTotal   = Math.round(unitPrice * qty * 100) / 100;
                 const lineBv      = isMem ? Math.round(bv * qty * 100) / 100 : 0;
-                const profit      = isMem ? 0 : Math.round((unitPrice - dp) * qty * 100) / 100;
+                const profit      = isMem ? 0 : Math.round((unitPrice - (pricing?.effective_dp ?? dp)) * qty * 100) / 100;
                 return (
                   <div style={{ background: isMem ? '#eff6ff' : '#fefce8', border: `1px solid ${isMem ? '#bfdbfe' : '#fde68a'}`, borderRadius: 10, padding: '10px 14px', fontSize: '0.82rem' }}>
                     <div style={{ fontWeight: 700, color: isMem ? '#1d4ed8' : '#92400e', marginBottom: 6 }}>

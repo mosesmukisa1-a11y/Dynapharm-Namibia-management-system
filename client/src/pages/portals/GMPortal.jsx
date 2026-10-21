@@ -14,6 +14,8 @@ import { formatCurrency, formatDateTime, formatDate, BRANCHES, BRANCH_DETAILS } 
 import { Tabs, Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert } from '../../components/ui';
 import { BarChart3, ClipboardList, CheckCircle, Megaphone, TrendingUp, Users, DollarSign, Package, XCircle, Download, Ship, AlertTriangle, Edit2, Clock } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import CampaignPricingEditor, { normalizeProductPricing, validateCampaignPricing } from '../../components/campaigns/CampaignPricingEditor';
+import CampaignPricingTerms from '../../components/campaigns/CampaignPricingTerms';
 import { useStockRealtime } from '../../hooks/useStockRealtime';
 import AccountsTab from '../../components/AccountsTab';
 import CurrentStockTab from '../../components/CurrentStockTab';
@@ -2826,8 +2828,7 @@ function CampaignTypeConditionsForm({ type, conditions, onChange, products = [] 
 
   if (type === 'discount') return (
     <div className="space-y-3">
-      <Input label="Discount %" type="number" min="1" max="100" value={conditions.discount_pct || ''} onChange={e => set('discount_pct', e.target.value)} placeholder="e.g. 15" />
-      <MultiProductSelect label="Applicable Products (leave blank = all products)" value={getArr('products')} onChange={v => set('products', v)} products={products} />
+      <CampaignPricingEditor conditions={conditions} onChange={onChange} products={products} />
       <Input label="Minimum Purchase Amount (N$)" type="number" value={conditions.min_purchase || ''} onChange={e => set('min_purchase', e.target.value)} placeholder="0 = no minimum" />
     </div>
   );
@@ -3342,13 +3343,10 @@ function CampaignsTab() {
   useEffect(() => {
     loadCampaigns();
     // Load product list for dropdowns
-    api.get('/prices').then(d => {
-      const list = Array.isArray(d) ? d : (d.prices || d.products || []);
-      setProducts(list.filter(p => !p.is_package));
-    }).catch(() => {
-      const live = getLiveProductList();
-      if (live.length > 0) setProducts(live);
-    });
+    api.prices.list().then(list => {
+      if (Array.isArray(list) && list.length) setProducts(list.filter(p => !p.is_package));
+      else setProducts(getLiveProductList().filter(p => !p.is_package));
+    }).catch(() => setProducts(getLiveProductList().filter(p => !p.is_package)));
   }, []);
 
   const loadDetail = (id) => {
@@ -3390,9 +3388,17 @@ function CampaignsTab() {
       scope: c.scope || 'countrywide',
       target_branches: Array.isArray(c.target_branches) ? c.target_branches : [],
       status: c.status || 'upcoming',
-      conditions: { ...cond, stock_assignments: undefined },
       prize,
       discount_percentage: Number(c.discount_percentage || 0),
+      conditions: {
+        ...cond,
+        stock_assignments: undefined,
+        pricing_scope: c.pricing_scope || cond.pricing_scope || (Array.isArray(c.product_pricing || cond.product_pricing) && (c.product_pricing || cond.product_pricing).length ? 'products' : 'campaign'),
+        product_pricing: (c.pricing_scope || cond.pricing_scope || (Array.isArray(c.product_pricing || cond.product_pricing) && (c.product_pricing || cond.product_pricing).length ? 'products' : 'campaign')) === 'products'
+          ? (Array.isArray(c.product_pricing) ? c.product_pricing : (Array.isArray(cond.product_pricing) ? cond.product_pricing : []))
+          : undefined,
+        discount_pct: cond.discount_pct ?? Number(c.discount_percentage || 0),
+      },
     });
     setEditCampaignModal(c);
   };
@@ -3403,6 +3409,8 @@ function CampaignsTab() {
       setAlert({ type: 'error', msg: 'Campaign name, start date and end date are required.' });
       return;
     }
+    const pricingError = validateCampaignPricing(editCampaignForm.conditions, editCampaignForm.campaign_type);
+    if (pricingError) { setAlert({ type: 'error', msg: pricingError }); return; }
     setEditCampaignSubmitting(true);
     try {
       await api.put(`/campaigns/${editCampaignModal.id}`, {
@@ -3413,6 +3421,8 @@ function CampaignsTab() {
         end_date: editCampaignForm.end_date,
         scope: editCampaignForm.scope,
         target_branches: editCampaignForm.target_branches,
+        pricing_scope: editCampaignForm.campaign_type === 'discount' ? (editCampaignForm.conditions.pricing_scope || 'products') : undefined,
+        product_pricing: editCampaignForm.campaign_type === 'discount' && editCampaignForm.conditions.pricing_scope !== 'campaign' ? normalizeProductPricing(editCampaignForm.conditions.product_pricing) : undefined,
         status: editCampaignForm.status,
         conditions: normalizeConditions(editCampaignForm.conditions),
         prize: editCampaignForm.prize,
@@ -3451,9 +3461,13 @@ function CampaignsTab() {
       setAlert({ type: 'error', msg: 'Campaign name, start date and end date are required.' });
       return;
     }
+    const pricingError = validateCampaignPricing(form.conditions, form.campaign_type);
+    if (pricingError) { setAlert({ type: 'error', msg: pricingError }); return; }
     try {
       await api.post('/campaigns', {
         ...form,
+        pricing_scope: form.campaign_type === 'discount' ? (form.conditions.pricing_scope || 'products') : undefined,
+        product_pricing: form.campaign_type === 'discount' && form.conditions.pricing_scope !== 'campaign' ? normalizeProductPricing(form.conditions.product_pricing) : undefined,
         conditions: normalizeConditions(form.conditions),
         discount_percentage: form.campaign_type === 'discount' ? Number(form.conditions?.discount_pct || 0) : 0,
       });
@@ -3670,6 +3684,7 @@ function CampaignsTab() {
                           {c.created_at && <span>{new Date(c.created_at).toLocaleString()}</span>}
                         </div>
                         {c.description && <div className="text-sm text-gray-600 mt-1">{c.description}</div>}
+                        <CampaignPricingTerms campaign={c} products={products} compact />
                         {/* Show conditions summary */}
                         {(() => {
                           const cond = typeof c.conditions === 'string' ? JSON.parse(c.conditions || '{}') : (c.conditions || {});
@@ -3836,6 +3851,7 @@ function CampaignsTab() {
                         <div className="grid grid-cols-2 gap-3">
                           <div className="p-3 rounded-lg bg-gray-50 border border-gray-200">
                             <div className="text-xs font-bold text-gray-500 uppercase mb-2">Conditions</div>
+                            <CampaignPricingTerms campaign={c} products={products} compact />
                             {(() => {
                               const cond = typeof c.conditions === 'string' ? JSON.parse(c.conditions || '{}') : (c.conditions || {});
                               const entries = Object.entries(cond).filter(([k]) => k !== 'stock_assignments');
@@ -4139,6 +4155,10 @@ function CampaignsTab() {
               {reviewModal._action === 'approve' ? '✅ Approve Campaign' : '❌ Reject Campaign'}
             </div>
             <div className="text-sm text-gray-500 mb-4">{reviewModal.name}</div>
+            <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Pricing terms for review</div>
+              <CampaignPricingTerms campaign={reviewModal} products={products} />
+            </div>
             {reviewModal._action === 'approve' ? (
               <div className="text-sm text-gray-700 mb-4 p-3 bg-green-50 rounded-lg border border-green-200">
                 This campaign will be marked as <strong>upcoming</strong> and will automatically become active on its start date.

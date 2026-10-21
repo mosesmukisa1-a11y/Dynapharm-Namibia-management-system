@@ -1,4 +1,5 @@
 import drift from './registeredSql/drift.js';
+import campaignPricing from './registeredSql/campaignPricing.js';
 import reconciliation from './registeredSql/reconciliation.js';
 // Fixed repository SQL catalog. Generated offline; never extended at runtime.
 import p0 from './registeredSql/part-01.js';
@@ -22,4 +23,4 @@ import p17 from './registeredSql/part-18.js';
 import p18 from './registeredSql/part-19.js';
 import p19 from './registeredSql/part-20.js';
 import p20 from './registeredSql/part-21.js';
-export default Object.freeze({...drift,...reconciliation,...p0,...p1,...p2,...p3,...p4,...p5,...p6,...p7,...p8,...p9,...p10,...p11,...p12,...p13,...p14,...p15,...p16,...p17,...p18,...p19,...p20});
+export default Object.freeze({...campaignPricing,...drift,...reconciliation,...p0,...p1,...p2,...p3,...p4,...p5,...p6,...p7,...p8,...p9,...p10,...p11,...p12,...p13,...p14,...p15,...p16,...p17,...p18,...p19,...p20});

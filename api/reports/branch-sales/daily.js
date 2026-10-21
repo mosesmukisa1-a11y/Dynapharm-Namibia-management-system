@@ -137,7 +137,7 @@ export default async function handler(req, res) {
     //   walk_in_non_member_sale — non-member paid item (same saleId reference)
     //   campaign_free_item   — free item (unit_price = NULL → 0 DP, stock still deducted)
     // The subquery identifies campaign references via branch_walkin_sales.data->>'sale_type'.
-    __qd_executePlan(getMany, __qd_registeredPlan("api/reports/branch-sales/daily.js:141:9", [
+    __qd_executePlan(getMany, __qd_registeredPlan("campaign-pricing-report:daily"),
 
 
 
@@ -175,7 +175,6 @@ export default async function handler(req, res) {
 
 
 
-    normBranchId ? `AND LOWER(REPLACE(branch_id, ' ', '_')) = $2` : '']),
 
 
 
@@ -335,7 +334,7 @@ export default async function handler(req, res) {
         const qty = Number(item.quantity || item.qty || 0);
         // Non-member walk-in: item.unit_price = consumer price (CP), never DP.
         // Only allow unit_price as a last-resort fallback for member/general sales.
-        const dp = lookupDp(name) || Number(item.dpPrice || item.dp || (saleIsNonMember ? 0 : item.unit_price) || 0);
+        const dp = Number(item.effective_dp ?? item.dpPrice ?? item.dp ?? lookupDp(name));
         if (!walkinProductAgg[key]) walkinProductAgg[key] = { product_name: name, qty: 0, dp_value: 0, unit_dp: dp };
         walkinProductAgg[key].qty += qty;
         walkinProductAgg[key].dp_value = parseFloat((walkinProductAgg[key].dp_value + qty * dp).toFixed(2));
@@ -382,13 +381,14 @@ export default async function handler(req, res) {
       // (walk_in_non_member_sale inside a campaign) fall back to list_dp because their
       // unit_price is the consumer price (CP), not DP.
       const unitPriceForDisplay = isFree ? 0 :
-      c.type === 'campaign_sale' && soldUnitPrice > 0 ? soldUnitPrice : listDp;
+      c.captured_pricing ? soldUnitPrice : c.type === 'campaign_sale' && soldUnitPrice > 0 ? soldUnitPrice : listDp;
       if (!campaignProductMap[ref]) campaignProductMap[ref] = [];
       campaignProductMap[ref].push({
         product_name: c.product_name,
         qty: Number(c.total_qty || 0),
         dp_value: parseFloat(Number(c.total_dp || 0).toFixed(2)),
         is_free: isFree,
+        captured_pricing: c.captured_pricing,
         base_price: isFree ? 0 : listDp, // list DP — "before discount" reference price
         unit_price: unitPriceForDisplay // actual charged price (may be discounted)
       });
@@ -405,7 +405,7 @@ export default async function handler(req, res) {
     const campaignMissingPriceWarnings = [];
     for (const [ref, products] of Object.entries(campaignProductMap)) {
       for (const p of products) {
-        if (!p.is_free && p.qty > 0 && p.dp_value === 0) {
+        if (!p.is_free && !p.captured_pricing && p.qty > 0 && p.dp_value === 0) {
           campaignMissingPriceWarnings.push({
             reference: ref,
             product_name: p.product_name,
@@ -465,7 +465,7 @@ export default async function handler(req, res) {
     // product cost (e.g. consultation fees, online orders) where grand_total = fee charged.
     // CP (consumer price) is the patient/customer-facing amount and must NOT appear in
     // company revenue reports — it is only relevant for distributor profit calculations.
-    const dpValue = (r) => Number(r.product_total_dp || r.grand_total || 0);
+    const dpValue = (r) => Number(r.product_total_dp ?? r.grand_total ?? 0);
 
     const buildPaymentBreakdown = (rows) => {
       const paymentMethods = {};

@@ -1,5 +1,16 @@
 import { registeredPlan as __qd_registeredPlan, joinPlans as __qd_joinPlans, executePlan as __qd_executePlan } from "./services/queryDescriptors.js";import { applyAuthCors } from './_lib/auth.js';
 import { query, getMany, getOne, withTransaction } from './db.js';
+import { campaignConditions, campaignNumber, normalizeCampaignConditions } from '../shared/campaignPricing.js';
+
+async function validatePricing(conditions, type) {
+  if (conditions?.discount_pct !== undefined)
+    campaignNumber(conditions.discount_pct, 'Campaign discount percentage', 100);
+  if (type !== 'discount' && (conditions.product_pricing !== undefined || conditions.pricing_scope === 'products'))
+    throw Object.assign(new Error('Product pricing is only available for discount campaigns'), { statusCode: 400 });
+  const catalogue = conditions.product_pricing !== undefined || conditions.pricing_scope === 'products'
+    ? await __qd_executePlan(getMany, __qd_registeredPlan("api/branch/campaign-sale.js:242:8"), []) : [];
+  return normalizeCampaignConditions(conditions, catalogue);
+}
 
 async function parseJsonBody(req) {
   if (req.body && typeof req.body === 'object') return req.body;
@@ -287,8 +298,10 @@ async function handler(req, res) {
 
       const effectiveSubmittedBy = submitted_by || (status === 'pending_approval' ? req.user?.username || null : null);
 
+      const normalized = await validatePricing(conditions, campaign_type);
+      const scalarDiscount = campaignNumber(discount_percentage, 'Campaign discount percentage', 100);
       const conditionsWithAssignments = {
-        ...conditions,
+        ...normalized,
         stock_assignments: Array.isArray(stock_assignments) ? stock_assignments.filter((a) => a.product) : []
       };
 
@@ -297,7 +310,7 @@ async function handler(req, res) {
 
       [id, name, description, campaign_type, start_date, end_date, status, branch, scope,
       JSON.stringify(conditionsWithAssignments), JSON.stringify(prize),
-      Number(discount_percentage) || 0,
+       scalarDiscount,
       JSON.stringify(Array.isArray(target_branches) ? target_branches : []),
       req.user?.username || 'system',
       effectiveSubmittedBy]);
@@ -352,6 +365,14 @@ async function handler(req, res) {
       const existing = await __qd_executePlan(getOne, __qd_registeredPlan("api/campaigns.js:352:21"), [id]);
       if (!existing) return res.status(404).json({ error: 'Campaign not found' });
 
+      if (editRole === 'stock') {
+        if (body.status && body.status !== 'pending_approval')
+          return res.status(403).json({ error: 'Stock edits require GM approval' });
+        body.status = 'pending_approval';
+      }
+      body.conditions = await validatePricing(body.conditions ?? campaignConditions(existing), body.campaign_type ?? existing.campaign_type);
+      if (body.discount_percentage !== undefined)
+        body.discount_percentage = campaignNumber(body.discount_percentage, 'Campaign discount percentage', 100);
       const fields = ['name', 'description', 'campaign_type', 'start_date', 'end_date', 'status', 'branch', 'scope', 'discount_percentage'];
       const jsonFields = ['conditions', 'prize', 'target_branches'];
       const setClauses = [];
@@ -547,7 +568,7 @@ async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (err) {
     console.error('Campaigns API error:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+    return res.status(err.statusCode || 500).json({ error: err.message || 'Internal server error' });
   }
 }
 export default atomicStockRequest(handler);

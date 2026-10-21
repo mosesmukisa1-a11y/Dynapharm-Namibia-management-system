@@ -35,7 +35,7 @@ export async function historicalRefundCandidatesTx(client, refund, saleReference
   [reference, aliases, refund.product_name, refund.batch_no, date(expiry)])).rows;
 }
 
-export async function recordBranchSaleAllocationTx(client, { movementId, saleReference, batchId, quantity, branchMovementId, revenueUnit, bvUnit = 0, financialDpUnit }) {
+export async function recordBranchSaleAllocationTx(client, { movementId, saleReference, batchId, quantity, branchMovementId, revenueUnit, bvUnit = 0, financialDpUnit, campaignPricing }) {
   await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/services/stockSaleAllocations.js:39:1"), []);
   const row = (await __qd_executePlan(client.query.bind(client), __qd_registeredPlan("api/services/stockSaleAllocations.js:40:2"), [batchId])).rows[0];
   if (!row) throw new Error('Locked sale batch identity was lost');
@@ -62,6 +62,7 @@ export async function recordBranchSaleAllocationTx(client, { movementId, saleRef
     original_source: original ? { ...original, expiry_date: date(original.expiry_date) } : null,
     cost_layers: taken, missing_cost_quantity: taken.filter((l) => l.source?.cif_unit_cost == null).reduce((sum, l) => sum + l.quantity, 0),
     revenue_unit: revenueUnit ?? null,
+    ...(campaignPricing ? { campaign_pricing: campaignPricing } : {}),
     bv_unit: bvUnit, financial_dp_unit: financialDpUnit ?? null, branch_movement_id: branchMovementId || null,
     status: 'in_stock', condition: 'saleable'
   };

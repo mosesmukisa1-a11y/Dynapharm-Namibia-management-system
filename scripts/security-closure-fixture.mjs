@@ -215,14 +215,17 @@ try{
     if(process.argv.includes('--diagnose')||process.argv.includes('--query-diagnostics'))Object.assign(testEnv,{
       NODE_OPTIONS:'--import '+root+'/scripts/lib/owned-query-diagnostics.mjs',
       OWNED_QUERY_DIAGNOSTICS:out+'/query-diagnostics.jsonl'});
+    const requestedSuites=process.argv.filter(arg=>arg.startsWith('--suite=')).map(arg=>arg.slice(8));
+    if(requestedSuites.some(name=>!/^tests\/[a-z0-9-]+\.spec\.js$/.test(name)))throw Error('Invalid owned suite filter');
     const runs=[['full',['scripts/run-isolated-stock-audit.mjs','--all',
+      ...requestedSuites,
       ...(process.argv.includes('--sql-families-only')?['tests/sql-security-families.spec.js']:[]),
       ...(process.argv.includes('--diagnose')?['tests/sale-evidence.spec.js',
         'tests/transfer-dispatch-cancel-concurrency.spec.js','tests/gm-decisions.spec.js',
         'tests/daily-campaign-free-item-dp.spec.js']:[])]],
       ['credential',['scripts/run-isolated-stock-audit.mjs','tests/credential-security.spec.js']]];
     for(const [label,args]of (process.argv.includes('--credential-only')?runs.slice(1):
-      (process.argv.includes('--diagnose')||process.argv.includes('--sql-families-only'))?runs.slice(0,1):runs)){
+      (requestedSuites.length||process.argv.includes('--diagnose')||process.argv.includes('--sql-families-only'))?runs.slice(0,1):runs)){
       const resultDirectory=out+'/'+label+'-results';
       await fs.writeFile(out+'/'+label+'-results-ownership.json',JSON.stringify({
         runId,label,directory:resultDirectory,production:false,purpose:'Unique current-invocation test output',

@@ -9,6 +9,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { MembershipAgreementForm } from '../../components/MembershipAgreementForm';
 import NetworkReportTab from '../../components/NetworkReportTab';
 import QRCodeLib from 'qrcode';
+import CampaignPricingTerms from '../../components/campaigns/CampaignPricingTerms';
+import { resolveCampaignPricing } from '../../../../shared/campaignPricing.js';
 
 function parseItems(raw) {
   try {
@@ -3368,10 +3370,13 @@ function CampaignsTab() {
     try {
     const conditions = safeJson(camp.conditions);
     const discountPct = Number(camp.discount_percentage || 0);
+    const productScope = conditions.pricing_scope === 'products';
 
     // Build full product name list from campaign conditions
     let campProductNames = [];
-    if (Array.isArray(conditions.products) && conditions.products.length > 0) {
+    if (productScope) {
+      campProductNames = (conditions.product_pricing || []).map(rule => rule.product_name);
+    } else if (Array.isArray(conditions.products) && conditions.products.length > 0) {
       campProductNames = conditions.products;
     } else if (conditions.products_text) {
       campProductNames = conditions.products_text.split(',').map(s => s.trim()).filter(Boolean);
@@ -3387,8 +3392,9 @@ function CampaignsTab() {
         (p.name || p.description || '').toLowerCase().includes(name.toLowerCase()) ||
         name.toLowerCase().includes((p.name || p.description || '').toLowerCase())
       );
-      const dp = Number(match?.dp || 0);
-      const nowPrice = dp > 0 ? dp * (1 - discountPct / 100) : 0;
+      const pricing = match && camp.campaign_type === 'discount' ? resolveCampaignPricing(camp, match, { member: true }) : null;
+      const dp = Number(pricing?.original_dp ?? match?.dp ?? 0);
+      const nowPrice = pricing?.effective_dp ?? (dp > 0 ? dp * (1 - discountPct / 100) : 0);
       let imageSrc = null;
       if (match?.images && match.images.length > 0) {
         const pri = match.images.find(img => img.is_primary) || match.images[0];
@@ -3517,9 +3523,9 @@ function CampaignsTab() {
       const fs = pct >= 100 ? Math.round(r * 0.56) : Math.round(r * 0.7);
       ctx.font = `900 ${fs}px Georgia, serif`;
       ctx.shadowColor = 'rgba(0,0,0,0.22)'; ctx.shadowBlur = 8;
-      ctx.fillText(`${pct}%`, cx, cy + fs * 0.3);
+      ctx.fillText(productScope ? 'DEAL' : `${pct}%`, cx, cy + fs * 0.3);
       ctx.font = `bold ${Math.round(r * 0.34)}px Georgia, serif`;
-      ctx.fillText('OFF', cx, cy + fs * 0.66);
+      ctx.fillText(productScope ? 'PRICE' : 'OFF', cx, cy + fs * 0.66);
       ctx.shadowBlur = 0;
     };
 
@@ -3674,7 +3680,7 @@ function CampaignsTab() {
       } else {
         ctx.textAlign = 'center';
         ctx.fillStyle = mkGold(0, 0, W, 0); ctx.font = 'bold 48px Georgia, serif';
-        ctx.fillText(`${discountPct}% DISCOUNT APPLIES`, W / 2, pnY + 52);
+        ctx.fillText(productScope ? 'SELECTED PRODUCT PRICING' : `${discountPct}% DISCOUNT APPLIES`, W / 2, pnY + 52);
       }
 
       // Campaign description (if any)
@@ -3802,7 +3808,7 @@ function CampaignsTab() {
           ctx.fillText(`NOW  N$${prod.nowPrice.toFixed(2)}`, tx, ry + 150);
         } else {
           ctx.fillStyle = CRIMSON; ctx.font = 'bold 26px Georgia, serif';
-          ctx.fillText(`${discountPct}% DISCOUNT APPLIES`, tx, ry + 118);
+          ctx.fillText(productScope ? 'SELECTED PRODUCT PRICING' : `${discountPct}% DISCOUNT APPLIES`, tx, ry + 118);
         }
       });
 
@@ -3911,10 +3917,16 @@ function CampaignsTab() {
               // Build deduplicated product name list (prefer array, fall back to text)
               const productsList = Array.isArray(conditions.products) ? conditions.products : [];
               const productsText = typeof conditions.products_text === 'string' ? conditions.products_text : '';
-              const rawNames = productsList.length > 0 ? productsList : productsText.split(',');
-              const productNames = [...new Set(
-                rawNames.map(n => (typeof n === 'string' ? n.trim() : '')).filter(Boolean)
-              )];
+              const conditionNames = productsList.length > 0 ? productsList : productsText.split(',');
+              const pricingRules = Array.isArray(camp.product_pricing) && camp.product_pricing.length
+                ? camp.product_pricing : (Array.isArray(conditions.product_pricing) ? conditions.product_pricing : []);
+              const pricingNames = pricingRules.map(rule => rule.product_name);
+              const isProductScope = (camp.pricing_scope || conditions.pricing_scope) === 'products';
+              const campaignPricingConditions = { ...conditions, pricing_scope: camp.pricing_scope || conditions.pricing_scope };
+              if (isProductScope) campaignPricingConditions.product_pricing = pricingRules;
+              else delete campaignPricingConditions.product_pricing;
+              const rawNames = isProductScope ? pricingNames : conditionNames;
+              const productNames = [...new Set(rawNames.map(n => (typeof n === 'string' ? n.trim() : '')).filter(Boolean))];
 
               const statusBadge = (
                 <span className="flex items-center gap-2 flex-wrap">
@@ -3945,8 +3957,11 @@ function CampaignsTab() {
                     (p.name || p.description || '').toLowerCase().trim() === pName.toLowerCase().trim() ||
                     (p.name || p.description || '').toLowerCase().includes(pName.toLowerCase())
                   );
-                  const dp = Number(match?.dp || 0);
-                  const nowP = dp > 0 ? dp * (1 - discountPct / 100) : 0;
+                  const pricing = camp.campaign_type === 'discount' && match
+                    ? resolveCampaignPricing({ ...camp, conditions: campaignPricingConditions }, match, { member: true, quantity: 1 }) : null;
+                  const dp = Number(pricing?.original_dp ?? match?.dp ?? 0);
+                  const nowP = Number(pricing?.effective_dp ?? (dp > 0 ? dp * (1 - discountPct / 100) : 0));
+                  const shownDiscount = pricing?.mode === 'percentage' ? Number(pricing.percentage) : discountPct;
 
                   cards.push(
                     <Card key={`${camp.id}-${idx}`} className={`overflow-hidden border-2 transition-all ${active ? 'border-orange-200' : isUpcoming ? 'border-amber-200' : 'border-gray-100'}`}>
@@ -3961,11 +3976,11 @@ function CampaignsTab() {
                         {dateRow}
 
                         {/* Discount highlight */}
-                        {camp.campaign_type === 'discount' && discountPct > 0 && (
+                        {camp.campaign_type === 'discount' && (pricing || discountPct > 0) && (
                           <div className="mt-3 flex items-center justify-between rounded-lg px-3 py-2" style={{ background: 'linear-gradient(135deg,#7b0d1e,#c41e3a)' }}>
                             <div>
-                              <p className="text-xs text-orange-200 font-bold mb-0.5">🏷️ DISCOUNT</p>
-                              <p style={{ fontSize: '1.6rem', fontWeight: 900, color: '#ffd700', lineHeight: 1 }}>{discountPct}% OFF</p>
+                              <p className="text-xs text-orange-200 font-bold mb-0.5">CAMPAIGN PRICE</p>
+                              <p style={{ fontSize: '1.6rem', fontWeight: 900, color: '#ffd700', lineHeight: 1 }}>{pricing?.mode === 'custom' ? 'CUSTOM' : `${shownDiscount}% OFF`}</p>
                             </div>
                             {dp > 0 ? (
                               <div className="text-right">
@@ -3973,10 +3988,11 @@ function CampaignsTab() {
                                 <p className="text-lg font-black" style={{ color: '#ffd700' }}>N${nowP.toFixed(2)}</p>
                               </div>
                             ) : (
-                              <p className="text-sm font-bold text-yellow-300">{discountPct}% off DP</p>
+                              <p className="text-sm font-bold text-yellow-300">{pricing?.mode === 'custom' ? 'Custom member price' : `${shownDiscount}% off DP`}</p>
                             )}
                           </div>
                         )}
+                        {camp.campaign_type === 'discount' && <CampaignPricingTerms campaign={camp} products={products} member compact />}
 
                         {/* Buy X Get Y highlight */}
                         {camp.campaign_type === 'buy_x_get_y' && (
@@ -4050,6 +4066,9 @@ function CampaignsTab() {
                                 </button>
                               )}
                             </div>
+                          </div>
+                          <div className="bg-orange-50/70 p-3">
+                            <CampaignPricingTerms campaign={camp} products={products} member compact />
                           </div>
                         </div>
                       )}
@@ -4128,7 +4147,7 @@ function CampaignPurchaseModal({ campaign, products, branches, nb, onClose }) {
 
   const conditions = safeJson(campaign.conditions);
   const prize = safeJson(campaign.prize);
-  const discountPct = Number(campaign.discount_percentage || 0);
+  const discountPct = Number(campaign.discount_percentage || conditions.discount_pct || 0);
   const isBuyXGetY = campaign.campaign_type === 'buy_x_get_y';
   const isDiscount = campaign.campaign_type === 'discount';
 
@@ -4165,11 +4184,20 @@ function CampaignPurchaseModal({ campaign, products, branches, nb, onClose }) {
     ? condProductsText.split(',').map(p => p.trim().toLowerCase()).filter(Boolean)
     : [];
 
-  const eligibleProducts = isBuyXGetY && rawEligibleNames.length > 0
-    ? products.filter(p => rawEligibleNames.some(n => (p.name || p.description || '').toLowerCase().includes(n)))
-    : products;
+  const pricingRules = Array.isArray(campaign.product_pricing) && campaign.product_pricing.length ? campaign.product_pricing
+    : (Array.isArray(conditions.product_pricing) ? conditions.product_pricing : []);
+  const productScope = (campaign.pricing_scope || conditions.pricing_scope) === 'products';
+  const pricingConditions = { ...conditions, pricing_scope: campaign.pricing_scope || conditions.pricing_scope };
+  if (productScope) pricingConditions.product_pricing = pricingRules;
+  else delete pricingConditions.product_pricing;
+  const scopedNames = productScope ? pricingRules.map(rule => String(rule.product_name || '').toLowerCase()) : [];
+  const eligibleProducts = productScope && isDiscount
+    ? products.filter(p => scopedNames.includes((p.description || p.name || '').toLowerCase()))
+    : isBuyXGetY && rawEligibleNames.length > 0
+      ? products.filter(p => rawEligibleNames.some(n => (p.name || p.description || '').toLowerCase().includes(n)))
+      : products;
 
-  const allProducts = products;
+  const allProducts = eligibleProducts;
 
   const [selectedBranchId, setSelectedBranchId] = useState('');
   const [selectedProductId, setSelectedProductId] = useState('');
@@ -4181,7 +4209,7 @@ function CampaignPurchaseModal({ campaign, products, branches, nb, onClose }) {
   const selectedBranch = branches.find(b => b.id === selectedBranchId) || null;
   const selectedProduct = isBuyXGetY
     ? (findProduct(campaignPaidProductName) || { name: campaignPaidProductName, description: campaignPaidProductName, dp: 0, bv: 0 })
-    : (products.find(p => (p.id || p.description) === selectedProductId) || null);
+    : (eligibleProducts.find(p => String(p.id || p.description) === String(selectedProductId)) || null);
 
   // Auto-select product for non-buy_x_get_y campaigns
   useEffect(() => {
@@ -4194,9 +4222,12 @@ function CampaignPurchaseModal({ campaign, products, branches, nb, onClose }) {
   }, [allProducts.length]);
 
   // Calculations
-  const baseDp = selectedProduct?.dp || 0;
+  const pricingResult = isDiscount && selectedProduct
+    ? resolveCampaignPricing({ ...campaign, conditions: pricingConditions }, selectedProduct, { member: true, quantity: Number(qty) || 1 })
+    : null;
+  const baseDp = Number(pricingResult?.original_dp ?? selectedProduct?.dp ?? 0);
   const bvPerUnit = selectedProduct?.bv || 0;
-  const unitPrice = isDiscount ? Math.round(baseDp * (1 - discountPct / 100) * 100) / 100 : baseDp;
+  const unitPrice = isDiscount ? Number(pricingResult?.charged_unit ?? Math.round(baseDp * (1 - discountPct / 100) * 100) / 100) : baseDp;
   const totalCost = unitPrice * qty;
   const totalBV = bvPerUnit * qty;
   const freeItems = isBuyXGetY ? Math.floor(qty / buyQty) * getQty : 0;
@@ -4208,6 +4239,7 @@ function CampaignPurchaseModal({ campaign, products, branches, nb, onClose }) {
       return;
     }
     if (!isBuyXGetY && !selectedProduct) { setMessage('Error: Please select a product.'); return; }
+    if (isDiscount && productScope && !pricingResult) { setMessage('Error: The selected product is not eligible for this campaign.'); return; }
     if (qty <= 0) { setMessage('Error: Quantity must be at least 1.'); return; }
     if (isBuyXGetY && qty < buyQty) {
       setMessage(`Error: You must buy at least ${buyQty} unit(s) to qualify for this campaign.`);
@@ -4245,7 +4277,7 @@ function CampaignPurchaseModal({ campaign, products, branches, nb, onClose }) {
 
       const campaignNote = isBuyXGetY
         ? `CAMPAIGN ORDER: ${campaign.name} | Buy ${qty} × ${productName}${freeItems > 0 ? `, get ${freeItems} × ${freeProductName} FREE` : ''} | BV: ${totalBV.toFixed(1)} | Branch: ${branchName} | NB: ${nb}`
-        : `CAMPAIGN ORDER: ${campaign.name} | ${discountPct}% Discount | ${qty} × ${productName} | Cost: N$${totalCost.toFixed(2)} (DP: N$${baseDp.toFixed(2)}) | BV: ${totalBV.toFixed(1)} | Branch: ${branchName} | NB: ${nb}`;
+        : `CAMPAIGN ORDER: ${campaign.name} | ${pricingResult?.mode === 'custom' ? 'Custom price' : `${pricingResult?.percentage ?? discountPct}% Discount`} | ${qty} × ${productName} | Cost: N$${totalCost.toFixed(2)} (DP: N$${baseDp.toFixed(2)}) | BV: ${totalBV.toFixed(1)} | Branch: ${branchName} | NB: ${nb}`;
 
       await api.orders.create({
         customer_name: nb || 'Distributor',
@@ -4299,7 +4331,7 @@ function CampaignPurchaseModal({ campaign, products, branches, nb, onClose }) {
               )}
               {isDiscount && (
                 <p className="text-orange-700 font-semibold flex items-center gap-1">
-                  <Tag size={14} /> {discountPct}% discount applied on all products
+                  <Tag size={14} /> {productScope ? 'Saved pricing applies only to selected products' : `${discountPct}% campaign discount`}
                 </p>
               )}
             </div>

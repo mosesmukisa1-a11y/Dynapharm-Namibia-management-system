@@ -144,9 +144,9 @@ export function calculateCartTotals(cart, isMember) {
   let totalBV = 0;
   const items = cart.map(item => {
     const price = isMember
-      ? (item.memberPrice != null ? item.memberPrice : (item.dp || item.price || 0))
-      : (item.cp || item.price || 0);
-    const lineTotal = price * item.qty;
+      ? (item.campaignDiscount ? item.dp : (item.memberPrice ?? item.dp ?? item.price ?? 0))
+      : (item.cp ?? item.price ?? 0);
+    const lineTotal = Math.round(price * item.qty * 100) / 100;
     const lineBV = (item.bv || 0) * item.qty;
     totalAmount += lineTotal;
     totalBV += lineBV;

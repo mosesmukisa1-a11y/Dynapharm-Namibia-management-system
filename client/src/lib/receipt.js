@@ -1,4 +1,8 @@
-import { COMPANY_INFO, BRANCH_DETAILS, formatCurrency } from './constants';
+import { COMPANY_INFO, BRANCH_DETAILS } from './constants';
+
+// Receipts must preserve the cents captured at checkout (catalogue dashboards
+// intentionally use whole-dollar formatting, which is not sale evidence).
+const formatCurrency = amount => `N$ ${Number(amount ?? 0).toFixed(2)}`;
 
 /* ────────────────────────────────────────────────────────────────
    THERMAL RECEIPT  (80mm roll)
@@ -14,6 +18,14 @@ export function generateReceiptHTML({
   consultFeeAmount = 0, consultFeeMode = null,
   followUpDate = null, followUpNotes = null, saleDate = null,
 }) {
+  // Captured charged price takes precedence over catalogue/customer-price hints.
+  // Commercial DP remains a separate saved amount, including legitimate zero.
+  items = items.map(item => item.campaign_pricing || item.effective_dp != null ? {
+    ...item,
+    unit_price: item.unit_price ?? item.unitPrice ?? item.campaign_pricing?.charged_unit,
+    cpPrice: item.unit_price ?? item.unitPrice ?? item.campaign_pricing?.charged_unit,
+    dpPrice: item.effective_dp ?? item.campaign_pricing?.effective_dp ?? item.dpPrice ?? item.dp,
+  } : item);
   const branchInfo = BRANCH_DETAILS.find(b => b.name === branch) || {};
   const branchDisplay = branchInfo.name || branch || '';
   const now = saleDate ? new Date(saleDate) : new Date();
@@ -32,7 +44,7 @@ export function generateReceiptHTML({
       return `<tr>
         <td style="padding:3px 6px;font-size:11px;border-bottom:1px solid #f0f0f0;">${item.product_name || item.name || item.description}</td>
         <td style="padding:3px 6px;text-align:center;font-size:11px;border-bottom:1px solid #f0f0f0;">${item.quantity || item.qty || 1}</td>
-        <td style="padding:3px 6px;text-align:right;font-size:11px;border-bottom:1px solid #f0f0f0;">${formatCurrency(item.unit_price || item.unitPrice)}</td>
+        <td style="padding:3px 6px;text-align:right;font-size:11px;border-bottom:1px solid #f0f0f0;">${formatCurrency(item.unit_price ?? item.unitPrice ?? 0)}</td>
         ${showBV ? `<td style="padding:3px 6px;text-align:right;font-size:11px;border-bottom:1px solid #f0f0f0;color:#e67e22;">${bv > 0 ? bv.toFixed(1) : '—'}</td>` : ''}
         <td style="padding:3px 6px;text-align:right;font-size:11px;border-bottom:1px solid #f0f0f0;font-weight:600;">${formatCurrency(item.line_total || item.lineTotal)}</td>
       </tr>`;

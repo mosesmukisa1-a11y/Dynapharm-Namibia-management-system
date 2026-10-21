@@ -34,6 +34,8 @@ import { formatCurrency, formatDateTime, formatDate, BRANCHES, BRANCH_DETAILS, g
 import { Card, CardBody, CardHeader, Button, Input, Badge, LoadingSpinner, EmptyState, StatCard, Table, Modal, Alert, Select, Textarea } from '../../components/ui';
 import { Package, Warehouse, Truck, ArrowLeftRight, Globe, BarChart3, ClipboardList, FileSpreadsheet, Zap, Share2, ShoppingCart, Plus, Download, Filter, Search, DollarSign, TrendingUp, Ship, Calendar, CheckCircle, Printer, Tag, Edit2, Clock, XCircle, Brain, AlertTriangle, TrendingDown, MapPin, Users, Activity, Shield, Bell, RefreshCw, Target, Cpu, Megaphone } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import CampaignPricingEditor, { normalizeProductPricing, validateCampaignPricing } from '../../components/campaigns/CampaignPricingEditor';
+import CampaignPricingTerms from '../../components/campaigns/CampaignPricingTerms';
 
 // CIF helper: uses stored cif_unit_cost when > 0, otherwise looks up live GM price list
 const getBatchCIF = (b) => {
@@ -12386,10 +12388,10 @@ function StockCampaignsTab() {
 
   useEffect(() => {
     load();
-    api.get('/prices').then(d => {
-      const list = Array.isArray(d) ? d : (d.prices || d.products || []);
-      setProducts(list.filter(p => !p.is_package));
-    }).catch(() => {});
+    api.prices.list().then(list => {
+      if (Array.isArray(list) && list.length) setProducts(list.filter(p => !p.is_package));
+      else setProducts(getLiveProductList().filter(p => !p.is_package));
+    }).catch(() => setProducts(getLiveProductList().filter(p => !p.is_package)));
   }, []);
 
   const handleCreate = async (e) => {
@@ -12398,10 +12400,14 @@ function StockCampaignsTab() {
       setAlert({ type: 'error', msg: 'Campaign name, start date and end date are required.' });
       return;
     }
+    const pricingError = validateCampaignPricing(form.conditions, form.campaign_type);
+    if (pricingError) { setAlert({ type: 'error', msg: pricingError }); return; }
     setSubmitting(true);
     try {
       await api.post('/campaigns', {
         ...form,
+        pricing_scope: form.campaign_type === 'discount' ? (form.conditions.pricing_scope || 'products') : undefined,
+        product_pricing: form.campaign_type === 'discount' && form.conditions.pricing_scope !== 'campaign' ? normalizeProductPricing(form.conditions.product_pricing) : undefined,
         status: 'pending_approval',
         submitted_by: user?.username || user?.full_name || 'stock',
         discount_percentage: form.campaign_type === 'discount' ? Number(form.conditions?.discount_pct || 0) : 0,
@@ -12431,9 +12437,17 @@ function StockCampaignsTab() {
       end_date: c.end_date ? c.end_date.slice(0, 10) : '',
       scope: c.scope || 'countrywide',
       target_branches: Array.isArray(c.target_branches) ? c.target_branches : [],
-      conditions: { ...cond, stock_assignments: undefined },
       prize,
       discount_percentage: Number(c.discount_percentage || 0),
+      conditions: {
+        ...cond,
+        stock_assignments: undefined,
+        pricing_scope: c.pricing_scope || cond.pricing_scope || (Array.isArray(c.product_pricing || cond.product_pricing) && (c.product_pricing || cond.product_pricing).length ? 'products' : 'campaign'),
+        product_pricing: (c.pricing_scope || cond.pricing_scope || (Array.isArray(c.product_pricing || cond.product_pricing) && (c.product_pricing || cond.product_pricing).length ? 'products' : 'campaign')) === 'products'
+          ? (Array.isArray(c.product_pricing) ? c.product_pricing : (Array.isArray(cond.product_pricing) ? cond.product_pricing : []))
+          : undefined,
+        discount_pct: cond.discount_pct ?? Number(c.discount_percentage || 0),
+      },
       stock_assignments: sa,
     });
     setEditingCampaign(c);
@@ -12446,6 +12460,8 @@ function StockCampaignsTab() {
       setAlert({ type: 'error', msg: 'Campaign name, start date and end date are required.' });
       return;
     }
+    const pricingError = validateCampaignPricing(editForm.conditions, editForm.campaign_type);
+    if (pricingError) { setAlert({ type: 'error', msg: pricingError }); return; }
     setEditSubmitting(true);
     try {
       const conditionsWithAssignments = {
@@ -12460,6 +12476,8 @@ function StockCampaignsTab() {
         end_date: editForm.end_date,
         scope: editForm.scope,
         target_branches: editForm.target_branches,
+        pricing_scope: editForm.campaign_type === 'discount' ? (editForm.conditions.pricing_scope || 'products') : undefined,
+        product_pricing: editForm.campaign_type === 'discount' && editForm.conditions.pricing_scope !== 'campaign' ? normalizeProductPricing(editForm.conditions.product_pricing) : undefined,
         conditions: conditionsWithAssignments,
         prize: editForm.prize,
         discount_percentage: editForm.campaign_type === 'discount' ? Number(editForm.conditions?.discount_pct || 0) : 0,
@@ -12577,7 +12595,7 @@ function StockCampaignsTab() {
               {/* Conditions summary */}
               <div className="p-4 rounded-xl border-2" style={{ background: tc.bg, borderColor: tc.border }}>
                 <div className="font-semibold text-sm mb-3" style={{ color: tc.text }}>📋 Conditions / Rules</div>
-                <StockCampaignConditionsForm type={form.campaign_type} conditions={form.conditions} onChange={c => setForm(f => ({ ...f, conditions: c }))} products={products} />
+        <StockCampaignConditionsForm type={form.campaign_type} conditions={form.conditions} onChange={c => setForm(f => ({ ...f, conditions: c }))} products={products} />
               </div>
 
               <div className="p-4 rounded-xl border-2 border-amber-200 bg-amber-50">
@@ -12671,7 +12689,7 @@ function StockCampaignsTab() {
                 return (
                   <div className="p-4 rounded-xl border-2" style={{ background: tc2.bg, borderColor: tc2.border }}>
                     <div className="font-semibold text-sm mb-3" style={{ color: tc2.text }}>📋 Conditions / Rules</div>
-                    <StockCampaignConditionsForm type={editForm.campaign_type} conditions={editForm.conditions} onChange={c => setEditForm(f => ({ ...f, conditions: c }))} products={products} />
+               <StockCampaignConditionsForm type={editForm.campaign_type} conditions={editForm.conditions} onChange={c => setEditForm(f => ({ ...f, conditions: c }))} products={products} />
                   </div>
                 );
               })()}
@@ -12741,6 +12759,12 @@ function StockCampaignsTab() {
                       </div>
                       <div className="text-xs text-gray-500 mt-1">{formatDate(c.start_date)} → {formatDate(c.end_date)}</div>
                       {c.description && <div className="text-sm text-gray-600 mt-1">{c.description}</div>}
+                      {c.campaign_type === 'discount' && (
+                        <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                          <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Pricing terms</div>
+                          <CampaignPricingTerms campaign={c} products={products} />
+                        </div>
+                      )}
                       {c.submitted_by && <div className="text-xs text-gray-400 mt-1">Submitted by: {c.submitted_by}</div>}
                       {c.status === 'rejected' && c.rejection_note && (
                         <div className="mt-2 text-xs text-red-600 bg-red-50 rounded p-2 border border-red-200">
@@ -12780,7 +12804,7 @@ function StockCampaignConditionsForm({ type, conditions, onChange, products = []
 
   if (type === 'discount') return (
     <div className="space-y-3">
-      <Input label="Discount %" type="number" min="1" max="100" value={conditions.discount_pct || ''} onChange={e => set('discount_pct', e.target.value)} placeholder="e.g. 15" />
+      <CampaignPricingEditor conditions={conditions} onChange={onChange} products={products} />
       <Input label="Minimum Purchase Amount (N$)" type="number" value={conditions.min_purchase || ''} onChange={e => set('min_purchase', e.target.value)} placeholder="0 = no minimum" />
     </div>
   );

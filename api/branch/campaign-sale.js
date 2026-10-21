@@ -7,6 +7,8 @@ import { recomputeLocationBalances } from '../services/stockEngine.js';
 import { postActivityRecord, generateBatId } from '../_lib/activityCapture.js';
 import { authorizeBranchReturn } from '../services/linkedReversals.js';
 import { completeSaleEvidenceTx } from '../services/saleEvidence.js';
+import { resolveCampaignPricing } from '../../shared/campaignPricing.js';
+import { assertCampaignEligible } from '../services/campaignPricing.js';
 
 async function parseJsonBody(req) {
   if (req.body && typeof req.body === 'object') return req.body;
@@ -54,7 +56,7 @@ async function resolveBranchId(raw) {
 }
 
 // Only locked physical batches are sellable. Cached balances cannot create stock.
-export async function deductStock(client, branchId, productName, qty, movType, noteStr, saleId, unitPrice, createdBy, revenueUnit, bvUnit = 0, financialDpUnit) {
+export async function deductStock(client, branchId, productName, qty, movType, noteStr, saleId, unitPrice, createdBy, revenueUnit, bvUnit = 0, financialDpUnit, campaignPricing) {
   let remaining = qty;
   const deductions = [];
 
@@ -95,7 +97,7 @@ export async function deductStock(client, branchId, productName, qty, movType, n
     [smId1, batch.product_name, batch.batch_no || '', batch.expiry_date || null,
     take, movType, branchId, saleId, noteStr, unitPrice ?? null]);
 
-    await recordBranchSaleAllocationTx(client, { movementId: smId1, saleReference: saleId, batchId: batch.id, quantity: take, branchMovementId: bimId, revenueUnit, bvUnit, financialDpUnit });
+    await recordBranchSaleAllocationTx(client, { movementId: smId1, saleReference: saleId, batchId: batch.id, quantity: take, branchMovementId: bimId, revenueUnit, bvUnit, financialDpUnit, campaignPricing });
     deductions.push({ product_name: batch.product_name, batch_no: batch.batch_no, quantity: take, movement_type: movType });
     remaining -= take;
   }
@@ -146,6 +148,7 @@ async function handler(req, res) {
 
       const campaign = await __qd_executePlan(getOne, __qd_registeredPlan("api/branch/campaign-sale.js:147:6"), [campaign_id]);
       if (!campaign) return res.status(404).json({ success: false, error: 'Campaign not found' });
+      assertCampaignEligible(campaign, branch);
       const now = new Date();
       const isActive = campaign.status !== 'pending_approval' && campaign.status !== 'rejected' &&
       now >= new Date(campaign.start_date) && now <= new Date(campaign.end_date);
@@ -181,6 +184,8 @@ async function handler(req, res) {
       JSON.parse(campaign.prize || '{}') : campaign.prize || {};
 
       let paid_product, paid_qty, free_product, free_qty;
+      if ((body.paid_items?.length || 0) > 1)
+        return res.status(400).json({ error: 'Campaign checkout supports one paid product per transaction' });
       await assertActivePriceProducts(body.paid_items || (body.paid_product ? [{ name: body.paid_product }] : []));
 
       if (body.paid_product) {
@@ -235,7 +240,9 @@ async function handler(req, res) {
         free_product = campaignFreeProduct || paid_product;
         free_qty = Math.floor(paid_qty / buyQty) * getQty;
       } else {
-        free_qty = free_product ? Number(body.free_qty || 1) : 0;
+        if (free_product || body.free_items?.length)
+          return res.status(400).json({ error: 'Free items must be authorized by a buy-X-get-Y campaign' });
+        free_qty = 0;
       }
 
       // ── Pricing: member = DP price + BV; non-member = CP price, no BV ────────
@@ -244,6 +251,8 @@ async function handler(req, res) {
       p.description && name && p.description.trim().toLowerCase() === name.trim().toLowerCase()
       );
 
+      if (livePrices.filter(p => p.description?.trim().toLowerCase() === paid_product.trim().toLowerCase()).length !== 1)
+        return res.status(400).json({ error: 'Unknown or ambiguous paid product' });
       const paidPrice = matchPrice(paid_product);
       if (paidPrice?.dp == null || !isMember && paidPrice?.cp == null)
       return res.status(422).json({ success: false, error: 'Original campaign DP/charged price is required' });
@@ -254,17 +263,18 @@ async function handler(req, res) {
       // Resolve discount for discount-type campaigns
       // discount_percentage lives in the campaigns table column; discount_pct may also be in conditions JSON
       const isDiscountCampaign = campaign.campaign_type === 'discount';
-      const discountPct = isDiscountCampaign ?
-      Math.max(0, Math.min(100, Number(campaign.discount_percentage || campConditions.discount_pct || 0))) :
-      0;
-      const discountMult = discountPct > 0 ? 1 - discountPct / 100 : 1;
+      const pricing = isDiscountCampaign ? resolveCampaignPricing(campaign, paidPrice, { member: isMember, quantity: paid_qty }) : null;
+      if (isDiscountCampaign && !pricing)
+        return res.status(400).json({ error: 'Selected product or quantity is not eligible for this campaign' });
+      const discountPct = pricing?.percentage ?? 0;
 
       // Discounted DP — the discount applies to both DP and CP (branch books discounted cost)
-      const paidDpDiscounted = Math.round(paidDp * discountMult * 100) / 100;
+      const paidDpDiscounted = pricing?.effective_dp ?? paidDp;
+      const effectiveCp = pricing?.effective_cp ?? paidCp;
 
       // Member pays DP (with any campaign discount); non-member pays CP (with any campaign discount)
       const basePrice = isMember ? paidDp : paidCp;
-      const paidUnitPrice = Math.round(basePrice * discountMult * 100) / 100;
+      const paidUnitPrice = pricing?.charged_unit ?? basePrice;
       const paidTotal = Math.round(paidUnitPrice * paid_qty * 100) / 100;
       // BV credited only for member sales (on the discounted unit price)
       const paidBvTotal = isMember ? Math.round(paidBv * paid_qty * 100) / 100 : 0;
@@ -279,11 +289,16 @@ async function handler(req, res) {
         dp: paidDpDiscounted,
         // original_dp preserved for auditing (not used by receipt display)
         original_dp: paidDp,
-        cp: paidCp,
+        original_cp: paidCp,
+        effective_cp: effectiveCp,
+        effective_dp: paidDpDiscounted,
+        campaign_pricing: pricing,
+        pricing_mode: pricing?.mode || 'list',
+        cp: effectiveCp,
         bv: isMember ? paidBv : 0,
         unit_price: paidUnitPrice,
         total_dp: Math.round(paidDpDiscounted * paid_qty * 100) / 100,
-        total_cp: Math.round(paidCp * paid_qty * 100) / 100,
+        total_cp: Math.round(effectiveCp * paid_qty * 100) / 100,
         total: paidTotal,
         total_bv: paidBvTotal,
         is_free: false,
@@ -319,7 +334,7 @@ async function handler(req, res) {
           client, branch, paid_product, paid_qty,
           isMember ? 'campaign_sale' : 'walk_in_non_member_sale',
           `Campaign: ${campaign.name} — paid item`,
-          saleId, paidUnitPrice, processed_by, paidUnitPrice, isMember ? paidBv : 0, paidDpDiscounted
+          saleId, paidUnitPrice, processed_by, paidUnitPrice, isMember ? paidBv : 0, paidDpDiscounted, pricing
         );
         allDeductions.push(...paidResult.deductions);
         if (paidResult.short > 0) insufficientItems.push({ product_name: paid_product, short: paidResult.short });
@@ -340,7 +355,7 @@ async function handler(req, res) {
         }
 
         // Discount amount saved in the discount column for reporting
-        const discountAmount = isDiscountCampaign && discountPct > 0 ?
+        const discountAmount = isDiscountCampaign ?
         Math.round((basePrice - paidUnitPrice) * paid_qty * 100) / 100 :
         0;
 
@@ -413,8 +428,8 @@ async function handler(req, res) {
         activity_type: actType,
         workflow_source: 'branch_portal',
         form_reference_id: saleId,
-        product_total_dp: Math.round(paidDp * discountMult * paid_qty * 100) / 100,
-        product_total_cp: Math.round(paidCp * discountMult * paid_qty * 100) / 100,
+        product_total_dp: Math.round(paidDpDiscounted * paid_qty * 100) / 100,
+        product_total_cp: Math.round(effectiveCp * paid_qty * 100) / 100,
         total_qty: paid_qty,
         grand_total: paidTotal,
         payment_status: 'paid',
@@ -466,7 +481,8 @@ async function handler(req, res) {
           discount_pct: discountPct,
           dp: paidDpDiscounted,
           original_dp: paidDp,
-          cp: paidCp,
+          cp: effectiveCp,
+          original_cp: paidCp,
           bv_per_unit: isMember ? paidBv : 0,
           total: paidTotal,
           total_dp: Math.round(paidDpDiscounted * paid_qty * 100) / 100,

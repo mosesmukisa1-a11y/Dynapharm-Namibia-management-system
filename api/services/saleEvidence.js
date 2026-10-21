@@ -43,6 +43,7 @@ export async function saveMovementSaleEvidenceTx(client, allocation, branchMovem
     charged_unit_price: charge, charged_value: charged,
     branch_profit_value: dp == null || charged == null ? null : charged - dp * q,
     original_received_dpc: number(s.unit_dp), original_received_cost: number(s.unit_cost),
+    ...(s.campaign_pricing ? { campaign_pricing: s.campaign_pricing } : {}),
     zero_cost_approved: s.zeroCostApproved === true };
   // The exact mirror ID is captured at posting, never inferred by batch/name.
   const mirror = branchMovementId || s.branch_movement_id;
@@ -67,6 +68,7 @@ export async function completeSaleEvidenceTx(client, { sourceKey, reference, rec
       expiryDate: a.expiry_date, quantity: q, dpUnitPrice: dp, dpTotal: dp == null ? null : dp * q,
       chargedTotal: charged, branchProfit: dp == null || charged == null ? null : charged - dp * q,
       originalReceivedCost: s.unit_cost, originalReceivedDPC: s.unit_dp,
+      ...(s.campaign_pricing ? { campaignPricing: s.campaign_pricing } : {}),
       costEvidenceStatus: classifySaleCostEvidence({ originalReceivedDPC: s.unit_dp,
         originalReceivedCost: s.unit_cost, zeroCostApproved: s.zeroCostApproved === true }) };
   });

@@ -20,6 +20,7 @@ export const stockAuditSuites = [
 ];
 
 export const databaseSuites = [
+  'tests/campaign-product-pricing.spec.js',
   'tests/sql-security-families.spec.js',
   'tests/credential-security.spec.js',
   'tests/stock-worker.spec.js',

@@ -13,6 +13,8 @@ import { getPackageComponents } from '../_lib/packageDefinitions.js';
 import { completeSaleEvidenceTx } from '../services/saleEvidence.js';
 import { businessDatePredicate } from '../services/businessDates.js';
 import { withCapturedReceiptDP } from '../services/saleReceiptPricing.js';
+import { resolveCampaignPricing, campaignMoney } from '../../shared/campaignPricing.js';
+import { assertCampaignEligible } from '../services/campaignPricing.js';
 
 async function parseJsonBody(req) {
   if (req.body && typeof req.body === 'object') {
@@ -171,7 +173,7 @@ function buildSaleRecord(payload, existing = {}) {
   const hasCampaignItems = campaignItems.length > 0;
   // Build per-item data enrichment: stamp sale_type + discount_pct on campaign items
   const enrichedProducts = products.map((p) => {
-    if (p.isCampaignSale && p.campaign_discount_pct > 0) {
+    if (p.isCampaignSale) {
       return { ...p, sale_type: 'campaign_sale', discount_pct: p.campaign_discount_pct };
     }
     return p;
@@ -207,7 +209,7 @@ function buildSaleRecord(payload, existing = {}) {
         sale_type: 'campaign_sale',
         // Use the highest discount_pct among campaign items for the top-level record
         // (per-item discount_pct on each enrichedProduct is the authoritative per-item figure)
-        discount_pct: Math.max(...campaignItems.map((p) => Number(p.campaign_discount_pct || 0)))
+        pricing_basis: 'per_item'
       } : {})
     }),
     referral_nb:
@@ -450,7 +452,7 @@ async function handler(req, res) {
         }
       }
 
-      const record = buildSaleRecord(salePayload);
+      let record = buildSaleRecord(salePayload);
       record.created_by = req.user.fullName || req.user.username || req.user.id || req.user.sub;
       record.sale_date = new Date().toISOString();
       record.created_at = record.sale_date;
@@ -478,6 +480,57 @@ async function handler(req, res) {
         if (row.description) livePriceMap[row.description.toLowerCase()] = row;
       }
 
+      const hasCampaign = saleItems.some(i => i.isCampaignSale || i.campaign_id || i.campaign_pricing);
+      for (const item of saleItems) {
+        if (!(item.isCampaignSale || item.campaign_id || item.campaign_pricing)) {
+          if (Number(item.campaign_discount_pct) > 0 || item.pricing_mode === 'custom')
+            throw Object.assign(new Error('Price overrides require an approved campaign'), { statusCode: 400 });
+          if (hasCampaign) {
+            const name = item.product_name || item.name || item.description;
+            const matches = livePriceRows.filter(p => p.description?.trim().toLowerCase() === name?.trim().toLowerCase());
+            if (matches.length !== 1)
+              throw Object.assign(new Error('Each mixed campaign receipt item must match one catalogue product'), { statusCode: 400 });
+            const price = matches[0], cp = Number(price.cp), dp = Number(price.dp);
+            const charge = isMemberSale ? dp : cp;
+            if (!Number.isFinite(charge) || campaignMoney(Number(item.unit_price ?? item.unitPrice)) !== campaignMoney(charge))
+              throw Object.assign(new Error('Non-campaign product price must retain its catalogue price'), { statusCode: 400 });
+            Object.assign(item, { original_cp: cp, original_dp: dp, effective_cp: cp, effective_dp: dp,
+              cpPrice: cp, dpPrice: dp, cp, dp, unit_price: charge });
+          }
+          continue;
+        }
+        if (!item.campaign_id) throw Object.assign(new Error('Campaign ID is required for campaign pricing'), { statusCode: 400 });
+        const campaign = await __qd_executePlan(getOne, __qd_registeredPlan("api/branch/campaign-sale.js:147:6"), [item.campaign_id]);
+        if (!campaign) throw Object.assign(new Error('Campaign not found'), { statusCode: 400 });
+        assertCampaignEligible(campaign, branchId);
+        const name = item.product_name || item.name || item.description;
+        const matches = livePriceRows.filter(p => p.description?.trim().toLowerCase() === name?.trim().toLowerCase());
+        if (matches.length !== 1 || getPackageComponents(name))
+          throw Object.assign(new Error('Campaign product must match one catalogue stock product'), { statusCode: 400 });
+        const pricing = resolveCampaignPricing(campaign, matches[0], { member: isMemberSale, quantity: Number(item.quantity ?? item.qty) });
+        if (!pricing) throw Object.assign(new Error('Product or quantity is not eligible for this discount campaign'), { statusCode: 400 });
+        const sent = Number(item.unit_price ?? item.unitPrice);
+        if (!Number.isFinite(sent) || campaignMoney(sent) !== pricing.charged_unit)
+          throw Object.assign(new Error('Campaign price changed or does not match approved terms; refresh the sale'), { statusCode: 409 });
+        Object.assign(item, { isCampaignSale: true, pricing_mode: pricing.mode,
+          campaign_pricing: pricing, original_cp: pricing.original_cp, original_dp: pricing.original_dp,
+          effective_cp: pricing.effective_cp, effective_dp: pricing.effective_dp,
+          cpPrice: pricing.effective_cp, dpPrice: pricing.effective_dp,
+          cp: pricing.effective_cp, dp: pricing.effective_dp, unit_price: pricing.charged_unit,
+          campaign_discount_pct: pricing.percentage, discount_pct: pricing.percentage,
+          bv: isMemberSale ? Number(matches[0].bv || 0) : 0,
+          line_total: campaignMoney(pricing.charged_unit * Number(item.quantity ?? item.qty)) });
+      }
+      if (hasCampaign) {
+        const expected = campaignMoney(saleItems.reduce((sum, i) =>
+          sum + Number(i.unit_price ?? i.unitPrice) * Number(i.quantity ?? i.qty), 0));
+        if (!Number.isFinite(expected) || expected !== campaignMoney(record.total) || record.discount !== 0 || record.tax !== 0)
+          throw Object.assign(new Error('Campaign receipt total must match approved per-item prices without additional discounts'), { statusCode: 400 });
+        record = { ...record, ...buildSaleRecord({ ...salePayload, items: saleItems, products: saleItems }) };
+        record.created_by = req.user.fullName || req.user.username || req.user.id || req.user.sub;
+        record.sale_date = record.created_at = new Date().toISOString();
+      }
+
       for (const item of saleItems) {
         const qty = Number(item.quantity || item.qty || 0);
         if (!Number.isFinite(qty) || qty <= 0) throw Object.assign(new Error('Sale quantities must be positive'), { statusCode: 400 });
@@ -488,7 +541,7 @@ async function handler(req, res) {
         const itemName = item.product_name || item.name || item.description || '';
         const itemLivePrice = livePriceMap[itemName.toLowerCase()];
         // Prefer: (1) live product_prices.dp, (2) frontend dpPrice/dp, (3) unit_price fallback
-        const originalDP = itemLivePrice?.dp;
+        const originalDP = item.campaign_pricing?.effective_dp ?? itemLivePrice?.dp;
         // CP is not evidence of distributor price. An unknown original DP
         // remains unknown; received CIF/source layers still determine COGS.
         const unitPrice = originalDP == null ? null : Number(originalDP);
@@ -518,8 +571,8 @@ async function handler(req, res) {
             });
           }
         } else {
-          const charged = isMemberSale ? itemLivePrice?.dp : itemLivePrice?.cp;
-          deductItems.push({ name: itemName, qty, unitPrice, revenueUnit: charged == null ? null : Number(charged), bvUnit: isMemberSale ? Number(item.bv || item.bvPrice || 0) : 0 });
+          const charged = item.campaign_pricing?.charged_unit ?? (isMemberSale ? itemLivePrice?.dp : itemLivePrice?.cp);
+          deductItems.push({ name: itemName, qty, unitPrice, revenueUnit: charged == null ? null : Number(charged), bvUnit: isMemberSale ? Number(item.bv || item.bvPrice || 0) : 0, campaignPricing: item.campaign_pricing });
         }
       }
 
@@ -574,7 +627,7 @@ async function handler(req, res) {
               [smId, batch.product_name, batch.batch_no || '', batch.expiry_date || null,
               take, saleMovType, branchId, saleId, 'Walk-in ' + customerType + ' sale', item.unitPrice ?? null]);
 
-              await recordBranchSaleAllocationTx(client, { movementId: smId, saleReference: saleId, batchId: batch.id, quantity: take, branchMovementId: bimId, revenueUnit: item.revenueUnit, bvUnit: item.bvUnit || 0, financialDpUnit: item.unitPrice });
+              await recordBranchSaleAllocationTx(client, { movementId: smId, saleReference: saleId, batchId: batch.id, quantity: take, branchMovementId: bimId, revenueUnit: item.revenueUnit, bvUnit: item.bvUnit || 0, financialDpUnit: item.unitPrice, campaignPricing: item.campaignPricing });
               remaining -= take;
             }
             if (remaining > 0) {
@@ -618,7 +671,7 @@ async function handler(req, res) {
       const dpSubtotal = saleItems.reduce((s, i) => {
         const nm = (i.product_name || i.name || i.description || '').toLowerCase();
         const liveRow = livePriceMap[nm];
-        const dp = liveRow ? Number(liveRow.dp) || Number(i.dpPrice || i.dp || 0) : Number(i.dpPrice || i.dp || 0);
+        const dp = i.campaign_pricing?.effective_dp ?? (liveRow ? Number(liveRow.dp) || Number(i.dpPrice || i.dp || 0) : Number(i.dpPrice || i.dp || 0));
         return s + dp * Number(i.quantity || i.qty || 0);
       }, 0);
       await postActivityRecord({
@@ -670,9 +723,9 @@ async function handler(req, res) {
             }, 0);
             return s + pkgProfit;
           }
-          let dp = Number(i.dpPrice || i.dp || 0);
-          let cp = Number(i.cpPrice || i.cp || 0);
-          if (!cp || !dp) {
+          let dp = Number(i.dpPrice ?? i.dp ?? 0);
+          let cp = Number(i.cpPrice ?? i.cp ?? 0);
+          if (!i.campaign_pricing && (!cp || !dp)) {
             const livePrice = livePriceMap[itemName];
             if (livePrice) {
               if (!dp) dp = Number(livePrice.dp) || 0;
@@ -771,7 +824,7 @@ async function handler(req, res) {
     return res.status(405).json({ success: false, error: 'Method not allowed' });
   } catch (error) {
     console.error('Walk-in sales API error:', error);
-    return res.status(500).json({ success: false, error: 'Internal server error' });
+    return res.status(error.statusCode || 500).json({ success: false, error: error.statusCode ? error.message : 'Internal server error' });
   }
 }
 export default atomicSaleRequest(handler);

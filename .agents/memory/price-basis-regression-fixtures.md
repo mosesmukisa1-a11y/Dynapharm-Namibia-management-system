@@ -16,3 +16,14 @@ Do not alter valid historical inventory values to make them match current
 sale prices. Distinguish known original cost from complete import provenance,
 and disclose unknown prescription customer charges rather than adding DP
 records to customer-receipt totals.
+
+Receipt assertions must independently check fractional cents, including zero,
+rather than sharing a dashboard currency formatter with the implementation.
+
+**Why:** A shared whole-dollar formatter can make a test pass while concealing
+the loss of a captured fractional sale price in the receipt itself.
+
+**How to apply:** Use explicit expected currency strings for known fixture
+amounts, and compare frozen receipt bytes after catalogue changes. When checking
+the browser, establish that it loaded current development source, not an older
+static build served by another application port.
